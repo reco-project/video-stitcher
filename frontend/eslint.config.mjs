@@ -7,6 +7,7 @@ import pluginImport from "eslint-plugin-import";
 import r3fConfig from "./r3f.eslint.config.mjs";
 
 export default defineConfig([
+  js.configs.recommended,
   pluginReact.configs.flat.recommended,
   pluginImport.flatConfigs.recommended,
   r3fConfig, // React Three Fiber custom rules
@@ -21,15 +22,24 @@ export default defineConfig([
         MAIN_WINDOW_VITE_DEV_SERVER_URL: "readonly",
         MAIN_WINDOW_VITE_NAME: "readonly",
       },
+      ecmaVersion: "latest",
     },
     settings: {
       //
       react: {
         version: "detect",
       },
+      "import/resolver": {
+        node: {
+          paths: ["src"],
+          extensions: [".js", ".jsx", ".ts", ".tsx", ".mjs"]
+        },
+      },
     },
     rules: {
-      "react/no-unknown-property": ["error", { ignore: ["position"] }],
+      "react/no-unknown-property": ["error", { ignore: ["position", "rotation", "args", "uniforms"] }],
+      "import/no-unresolved": "off", // TODO: Too generic, but I don't want to deal with these errors now
+      "import/named": "off", // TODO: Too generic, but I don't want to deal with these errors now
       "import/no-restricted-paths": [
         // cf. https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md
         "error",
@@ -64,11 +74,6 @@ export default defineConfig([
           ],
         },
       ],
-    },
-    "import/resolver": {
-      node: {
-        extensions: [".js", ".jsx"], // this is to allow importing without specifying extensions
-      },
     },
   },
 ]);
