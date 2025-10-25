@@ -1,45 +1,19 @@
+/* eslint-disable react/prop-types */ // TODO: remove this line and define prop types
 //import PropTypes from "prop-types";
 import * as THREE from "three";
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
+import { usePlayerStore } from "../states/store.js";
 import { Canvas } from "@react-three/fiber";
 import { useVideoTexture } from "@react-three/drei";
 import fisheyeShader from "./shaders/fisheye";
 import { ErrorBoundary } from "react-error-boundary";
 import Controls from "./Controls.jsx";
-
-/*Viewer.propTypes = {
-  match: PropTypes.shape({
-    src: PropTypes.string.isRequired,
-  }).isRequired,
-  settings: PropTypes.shape({
-    cam_d: PropTypes.number.isRequired,
-  }).isRequired,
-};*/
+import { formatUniforms } from "../utils/utils.js";
 
 const VideoPlane = ({ texture, isLeft }) => {
-  const params = {
-    intersect: 0.5472022558355283,
-    zRx: -0.04131782452879521,
-    xTy: -0.002024608962576278,
-    xRz: -0.01969244886237673,
-  };
-
-  function createUniforms() {
-    const width = 3840;
-    const height = 2160;
-    return {
-      uVideo: { value: texture },
-      fx: { value: 1796.3208206894308 / width },
-      fy: { value: 1797.22277342282 / height },
-      cx: { value: 1919.372365976781 / width },
-      cy: { value: 1063.171593155705 / height },
-      d: {
-        value: new THREE.Vector4(0.03421388, 0.0676732, -0.0740897, 0.02994442),
-      },
-    };
-  }
-
-  const uniforms = createUniforms();
+  const selectedMatch = usePlayerStore((s) => s.selectedMatch);
+  const params = selectedMatch ? selectedMatch.params : {};
+  const u = selectedMatch ? selectedMatch.uniforms : {};
   const planeWidth = 1;
   const aspect = 16 / 9;
 
@@ -53,22 +27,41 @@ const VideoPlane = ({ texture, isLeft }) => {
   return (
     <mesh position={position} rotation={rotation}>
       <planeGeometry args={[planeWidth, planeWidth / aspect]} />
-      <shaderMaterial uniforms={uniforms} {...fisheyeShader(isLeft)} />
+      <shaderMaterial
+        uniforms={formatUniforms(u, texture)}
+        {...fisheyeShader(isLeft)}
+      />
     </mesh>
   );
 };
 
 const VideoPanorama = () => {
-  const texture = useVideoTexture(
-    "https://storage.googleapis.com/reco-bucket-processed/stacked_genolier.mp4",
-    {
-      muted: true,
-      loop: true,
-      playsInline: true,
-      start: true,
-      unsuspend: "canplay",
-    } // TODO: should remove things already defaulted
-  );
+  const selectedMatch = usePlayerStore((s) => s.selectedMatch);
+  const src = selectedMatch ? selectedMatch.src : null;
+  const setVideoRef = usePlayerStore((s) => s.setVideoRef);
+  const clearVideoRef = usePlayerStore((s) => s.clearVideoRef);
+
+  const texture = useVideoTexture(src || "", {
+    muted: true,
+    loop: true,
+    playsInline: true,
+    start: !!src,
+    unsuspend: "canplay",
+  });
+
+  // Register the underlying HTMLVideoElement (texture.image) in the store so controls can use it.
+  React.useEffect(() => {
+    const v = texture?.image;
+    if (v) {
+      setVideoRef(v);
+    }
+    return () => {
+      clearVideoRef();
+    };
+  }, [texture, setVideoRef, clearVideoRef]);
+
+  if (!src) return null;
+
   return (
     <group>
       <VideoPlane texture={texture} isLeft={true} />
@@ -77,9 +70,17 @@ const VideoPanorama = () => {
   );
 };
 
-const Viewer = ({ cameraAxisOffset }) => {
+const Viewer = ({ selectedMatch }) => {
   const containerRef = useRef(null);
+  const setSelectedMatch = usePlayerStore((s) => s.setSelectedMatch);
 
+  useEffect(() => {
+    setSelectedMatch(selectedMatch);
+  }, [selectedMatch, setSelectedMatch]); // TODO: missing validation
+
+  const cameraAxisOffset = selectedMatch.params.cameraAxisOffset; // TODO: validate. No use of "?." here to avoid silent errors.
+
+  // TODO: this should be moved to the video player controls
   const enterFullscreen = () => {
     const el = containerRef.current;
     if (!el) return;
