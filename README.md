@@ -1,5 +1,5 @@
 # video-stitcher  
-### An open-source, GPU-accelerated alternative to Veo for affordable sports filming
+### An open-source, GPU-accelerated alternative to [Veo](https://www.veo.co/) for affordable sports filming
 
 **Status:** Imminent beta release  
 **License:** AGPL-3.0  
