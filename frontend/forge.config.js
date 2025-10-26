@@ -1,6 +1,8 @@
 /*const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');*/
 
+// Couldn't move this file to ./config because I did not find some "--config" way to point to this file in electron-forge CLI
+// Didn't want to add the config path in package.json either... so here we are.
 module.exports = {
   packagerConfig: {
     asar: true,
@@ -33,20 +35,20 @@ module.exports = {
         build: [
           {
             // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-            entry: 'src/main.js',
-            config: 'vite.main.config.mjs',
+            entry: 'config/main.js',
+            config: 'config/vite.main.config.mjs',
             target: 'main',
           },
           {
-            entry: 'src/preload.js',
-            config: 'vite.preload.config.mjs',
+            entry: 'config/preload.js',
+            config: 'config/vite.preload.config.mjs',
             target: 'preload',
           },
         ],
         renderer: [
           {
             name: 'main_window',
-            config: 'vite.renderer.config.mjs',
+            config: 'config/vite.renderer.config.mjs',
           },
         ],
       },

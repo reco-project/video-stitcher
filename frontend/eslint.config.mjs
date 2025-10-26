@@ -4,8 +4,9 @@ import globals from "globals";
 import { defineConfig } from "eslint/config";
 import pluginReact from "eslint-plugin-react";
 import pluginImport from "eslint-plugin-import";
-import r3fConfig from "./r3f.eslint.config.mjs";
+import r3fConfig from "./config/r3f.eslint.config.mjs";
 
+// Couldn't move this file to config because I had issues with VSCode resolving it
 export default defineConfig([
   js.configs.recommended,
   pluginReact.configs.flat.recommended,
@@ -37,6 +38,7 @@ export default defineConfig([
       },
     },
     rules: {
+      "react/prop-types": "off",
       "react/no-unknown-property": ["error", { ignore: ["position", "rotation", "args", "uniforms"] }],
       "import/no-unresolved": "off", // TODO: Too generic, but I don't want to deal with these errors now
       "import/named": "off", // TODO: Too generic, but I don't want to deal with these errors now
@@ -74,6 +76,6 @@ export default defineConfig([
           ],
         },
       ],
-    },
+    }
   },
 ]);

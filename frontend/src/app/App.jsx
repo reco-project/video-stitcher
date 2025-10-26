@@ -1,33 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Viewer from "../features/viewer/components/Viewer.jsx";
 import matches from "./data/matches.js";
 
 export default function App() {
   const [selectedMatch, setSelectedMatch] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // TODO: possibly should move this to a custom hook or elsewhere
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-    document.addEventListener("msfullscreenchange", handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      document.removeEventListener(
-        "webkitfullscreenchange",
-        handleFullscreenChange
-      );
-      document.removeEventListener(
-        "msfullscreenchange",
-        handleFullscreenChange
-      );
-    };
-  }, []);
 
   return (
     <div className="flex flex-col items-center w-full p-4 gap-4">
@@ -55,12 +33,7 @@ export default function App() {
       </div>
 
       {selectedMatch && (
-        <section
-          className={
-            "w-full aspect-video h-fit" +
-            (isFullscreen ? " absolute top-0 left-0 z-50" : "")
-          }
-        >
+        <section className={"w-full aspect-video h-full"}>
           <Viewer key={selectedMatch.id} selectedMatch={selectedMatch} />
         </section>
       )}
