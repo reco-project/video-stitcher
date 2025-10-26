@@ -4,7 +4,7 @@ import { create } from "zustand";
  * Player store using Zustand.
  * It holds the selected match, playback state, and video element reference.
  */
-export const usePlayerStore = create((set) => ({
+export const useViewerStore = create((set) => ({
   // selected match object: { id, label, src, params, uniforms }
   selectedMatch: null,
   setSelectedMatch: (match) => set({ selectedMatch: match }),
@@ -19,4 +19,4 @@ export const usePlayerStore = create((set) => ({
   clearVideoRef: () => set({ videoRef: null }),
 }));
 
-export default usePlayerStore;
+export default useViewerStore;

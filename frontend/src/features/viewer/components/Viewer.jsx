@@ -2,7 +2,7 @@
 //import PropTypes from "prop-types";
 import * as THREE from "three";
 import React, { useEffect, useRef } from "react";
-import { usePlayerStore } from "../states/store.js";
+import { useViewerStore } from "../stores/store.js";
 import { Canvas } from "@react-three/fiber";
 import { useVideoTexture } from "@react-three/drei";
 import fisheyeShader from "../shaders/fisheye.js";
@@ -11,7 +11,7 @@ import Controls from "./Controls.jsx";
 import { formatUniforms } from "../utils/utils.js";
 
 const VideoPlane = ({ texture, isLeft }) => {
-  const selectedMatch = usePlayerStore((s) => s.selectedMatch);
+  const selectedMatch = useViewerStore((s) => s.selectedMatch);
   const params = selectedMatch ? selectedMatch.params : {};
   const u = selectedMatch ? selectedMatch.uniforms : {};
   const planeWidth = 1;
@@ -36,10 +36,10 @@ const VideoPlane = ({ texture, isLeft }) => {
 };
 
 const VideoPanorama = () => {
-  const selectedMatch = usePlayerStore((s) => s.selectedMatch);
+  const selectedMatch = useViewerStore((s) => s.selectedMatch);
   const src = selectedMatch ? selectedMatch.src : null;
-  const setVideoRef = usePlayerStore((s) => s.setVideoRef);
-  const clearVideoRef = usePlayerStore((s) => s.clearVideoRef);
+  const setVideoRef = useViewerStore((s) => s.setVideoRef);
+  const clearVideoRef = useViewerStore((s) => s.clearVideoRef);
 
   const texture = useVideoTexture(src || "", {
     muted: true,
@@ -72,7 +72,7 @@ const VideoPanorama = () => {
 
 const Viewer = ({ selectedMatch }) => {
   const containerRef = useRef(null);
-  const setSelectedMatch = usePlayerStore((s) => s.setSelectedMatch);
+  const setSelectedMatch = useViewerStore((s) => s.setSelectedMatch);
 
   useEffect(() => {
     setSelectedMatch(selectedMatch);
