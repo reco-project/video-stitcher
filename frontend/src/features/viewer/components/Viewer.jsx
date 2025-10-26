@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */ // TODO: remove this line and define prop types
 //import PropTypes from "prop-types";
 import * as THREE from "three";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import { useViewerStore } from "../stores/store.js";
 import { Canvas } from "@react-three/fiber";
 import { useVideoTexture } from "@react-three/drei";
@@ -9,6 +9,7 @@ import fisheyeShader from "../shaders/fisheye.js";
 import { ErrorBoundary } from "react-error-boundary";
 import Controls from "./Controls.jsx";
 import { formatUniforms } from "../utils/utils.js";
+import VideoPlayerContainer from "./VideoPlayer.jsx";
 
 const VideoPlane = ({ texture, isLeft }) => {
   const selectedMatch = useViewerStore((s) => s.selectedMatch);
@@ -42,8 +43,8 @@ const VideoPanorama = () => {
   const clearVideoRef = useViewerStore((s) => s.clearVideoRef);
 
   const texture = useVideoTexture(src || "", {
-    muted: true,
-    loop: true,
+    muted: false,
+    loop: false,
     playsInline: true,
     start: !!src,
     unsuspend: "canplay",
@@ -71,48 +72,31 @@ const VideoPanorama = () => {
 };
 
 const Viewer = ({ selectedMatch }) => {
-  const containerRef = useRef(null);
   const setSelectedMatch = useViewerStore((s) => s.setSelectedMatch);
 
   useEffect(() => {
     setSelectedMatch(selectedMatch);
   }, [selectedMatch, setSelectedMatch]); // TODO: missing validation
 
+  const defaultFOV = 75;
   const cameraAxisOffset = selectedMatch.params.cameraAxisOffset; // TODO: validate. No use of "?." here to avoid silent errors.
-
-  // TODO: this should be moved to the video player controls
-  const enterFullscreen = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (el.requestFullscreen) {
-      el.requestFullscreen();
-    } else if (el.webkitRequestFullscreen) {
-      el.webkitRequestFullscreen();
-    } else if (el.msRequestFullscreen) {
-      el.msRequestFullscreen();
-    }
-  };
 
   return (
     <ErrorBoundary fallback={<div>Error loading video panorama</div>}>
-      <Canvas
-        ref={containerRef}
-        camera={{
-          position: [cameraAxisOffset, 0, cameraAxisOffset],
-          fov: 75,
-          near: 0.01,
-          far: 5,
-        }}
-      >
-        <Controls />
-        <VideoPanorama />
-      </Canvas>
-      <button
-        onClick={enterFullscreen}
-        className="absolute bottom-2 right-2 px-2 py-1 rounded bg-purple-600 text-white"
-      >
-        Fullscreen
-      </button>
+      <VideoPlayerContainer>
+        <Canvas
+          camera={{
+            position: [cameraAxisOffset, 0, cameraAxisOffset],
+            fov: defaultFOV,
+            near: 0.01,
+            far: 5,
+          }}
+        >
+          <Controls />
+
+          <VideoPanorama />
+        </Canvas>
+      </VideoPlayerContainer>
     </ErrorBoundary>
   );
 };

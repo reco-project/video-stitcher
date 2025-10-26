@@ -70,8 +70,8 @@ The following steps mainly involve refactoring and integration work before the p
 - [x] Implement initial stitcher with hardcoded settings  
 - [x] Add controls to pan across the panorama  
 - [x] Introduce state management to replace hardcoded settings  
-- Add video player controls
-- [ ] Integrate backend processing pipeline  
+- [x] Add video player controls
+- Integrate backend processing pipeline  
 - [ ] Design and implement a clean UI  
 - [ ] Prepare and publish beta release  
 

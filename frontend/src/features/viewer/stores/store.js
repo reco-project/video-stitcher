@@ -17,6 +17,10 @@ export const useViewerStore = create((set) => ({
   videoRef: null,
   setVideoRef: (el) => set({ videoRef: el }),
   clearVideoRef: () => set({ videoRef: null }),
+
+  // fullscreen state
+  fullscreen: false,
+  setFullscreen: (fs) => set({ fullscreen: fs }),
 }));
 
 export default useViewerStore;
