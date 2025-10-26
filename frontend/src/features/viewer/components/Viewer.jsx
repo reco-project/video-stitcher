@@ -5,7 +5,7 @@ import React, { useEffect, useRef } from "react";
 import { usePlayerStore } from "../states/store.js";
 import { Canvas } from "@react-three/fiber";
 import { useVideoTexture } from "@react-three/drei";
-import fisheyeShader from "./shaders/fisheye";
+import fisheyeShader from "../shaders/fisheye.js";
 import { ErrorBoundary } from "react-error-boundary";
 import Controls from "./Controls.jsx";
 import { formatUniforms } from "../utils/utils.js";

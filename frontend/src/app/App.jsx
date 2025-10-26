@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import Viewer from "./features/viewer/components/Viewer.jsx";
-import matches from "./app/data/matches.js";
+import Viewer from "../features/viewer/components/Viewer.jsx";
+import matches from "./data/matches.js";
 
 export default function App() {
   const [selectedMatch, setSelectedMatch] = useState(null);
