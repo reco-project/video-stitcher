@@ -86,6 +86,7 @@ const Controls = () => {
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerleave", onPointerUp);
 
     return () => {
       canvas.removeEventListener("wheel", onWheel);
