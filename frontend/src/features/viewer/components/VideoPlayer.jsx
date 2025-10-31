@@ -161,7 +161,7 @@ export default function VideoPlayer({ children, className }) {
   return (
     <div
       className={cn(
-        "relative w-full max-w-5xl bg-black rounded-lg overflow-hidden",
+        `relative w-full max-w-5xl bg-black overflow-hidden ${isFullscreen ? 'rounded-none' : 'rounded-lg'}`,
         className
       )}
       ref={containerRef}
