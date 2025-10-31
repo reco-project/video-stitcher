@@ -1,15 +1,13 @@
-/* eslint-disable react/prop-types */ // TODO: remove this line and define prop types
-//import PropTypes from "prop-types";
 import * as THREE from "three";
 import React, { useEffect } from "react";
 import { useViewerStore } from "../stores/store.js";
 import { Canvas } from "@react-three/fiber";
-import { useVideoTexture } from "@react-three/drei";
 import fisheyeShader from "../shaders/fisheye.js";
 import { ErrorBoundary } from "react-error-boundary";
 import Controls from "./Controls.jsx";
 import { formatUniforms } from "../utils/utils.js";
 import VideoPlayerContainer from "./VideoPlayer.jsx";
+import { useCustomVideoTexture } from "../hooks/useCustomVideoTexture.js";
 
 const VideoPlane = ({ texture, isLeft }) => {
   const selectedMatch = useViewerStore((s) => s.selectedMatch);
@@ -39,29 +37,10 @@ const VideoPlane = ({ texture, isLeft }) => {
 const VideoPanorama = () => {
   const selectedMatch = useViewerStore((s) => s.selectedMatch);
   const src = selectedMatch ? selectedMatch.src : null;
-  const setVideoRef = useViewerStore((s) => s.setVideoRef);
-  const clearVideoRef = useViewerStore((s) => s.clearVideoRef);
-
-  const texture = useVideoTexture(src || "", {
-    muted: false,
-    loop: false,
-    playsInline: true,
-    start: !!src,
-    unsuspend: "canplay",
-  });
-
-  // Register the underlying HTMLVideoElement (texture.image) in the store so controls can use it.
-  React.useEffect(() => {
-    const v = texture?.image;
-    if (v) {
-      setVideoRef(v);
-    }
-    return () => {
-      clearVideoRef();
-    };
-  }, [texture, setVideoRef, clearVideoRef]);
-
   if (!src) return null;
+
+  const texture = useCustomVideoTexture(src);
+  if (!texture) return null;
 
   return (
     <group>
@@ -93,7 +72,6 @@ const Viewer = ({ selectedMatch }) => {
           }}
         >
           <Controls />
-
           <VideoPanorama />
         </Canvas>
       </VideoPlayerContainer>
