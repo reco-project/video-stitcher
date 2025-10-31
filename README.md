@@ -58,6 +58,7 @@ If the project gains traction, a more robust stack will be explored, likely Rust
 - Cloud deployment  
 - Seamless AI-based football tracking (although auto-panning via ball coordinates is already feasible)
 
+*Note: Just found out about [Webcodecs](https://developer.chrome.com/docs/web-platform/best-practices/webcodecs) which could be useful to mitigate the above mentionned quirks, without having to rebuild in a new tech stack. This shall be considered soon. Also, this [rVFC demo](https://web.dev/articles/requestvideoframecallback-rvfc#demo) is very impressive, and could hopefully allow us to sync the two videos without having to transcode.*
 
 ---
 
