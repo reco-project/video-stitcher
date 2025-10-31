@@ -5,8 +5,6 @@ import matches from "./data/matches.js";
 export default function App() {
   const [selectedMatch, setSelectedMatch] = useState(null);
 
-  // TODO: possibly should move this to a custom hook or elsewhere
-
   return (
     <div className="flex flex-col items-center w-full p-4 gap-4">
       <h1 className="text-purple-600">Video Stitcher</h1>
@@ -33,7 +31,7 @@ export default function App() {
       </div>
 
       {selectedMatch && (
-        <section className={"w-full aspect-video h-full"}>
+        <section className={"w-full aspect-video h-full flex flex-col items-center align-middle"}>
           <Viewer key={selectedMatch.id} selectedMatch={selectedMatch} />
         </section>
       )}
