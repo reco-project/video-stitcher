@@ -7,6 +7,7 @@
 	"scripts": {
 		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && npm run backend-install",
 		"backend-install": "node scripts/setup.js",
+		"backend-dev": "node scripts/start-backend.js",
 		"backend-build": "cross-env SHELL=1 cd backend && pyinstaller --onefile app/main.py --name fastapi_backend --distpath ../electron/resources",
 		"frontend-dev": "cd frontend && npm run dev",
 		"frontend-build": "cd frontend && npm run build",
@@ -14,7 +15,7 @@
 		"electron-package": "electron-forge package",
 		"electron-make": "electron-forge make",
 		"electron-publish": "electron-forge publish",
-		"dev": "concurrently -k \"npm:frontend-dev\" \"npm:electron-dev\"",
+		"dev": "concurrently -k \"npm:frontend-dev\" \"npm:electron-dev\" \"npm:backend-dev\"",
 		"build": "npm run backend-build && npm run frontend-build && npm run electron-package",
 		"format": "npm run format:js && npm run format:py && npm run format:other",
 		"format:js": "prettier --write \"frontend/src/**/*.{js,jsx}\"",
@@ -52,6 +53,7 @@
 		"rimraf": "^6.1.0"
 	},
 	"dependencies": {
-		"electron-squirrel-startup": "^1.0.1"
+		"electron-squirrel-startup": "^1.0.1",
+		"react-router": "^7.9.5"
 	}
 }
