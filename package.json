@@ -18,7 +18,12 @@
 		"build": "npm run backend-build && npm run frontend-build && npm run electron-package",
 		"format": "npm run format:js && npm run format:py",
 		"format:js": "prettier --write \"frontend/src/**/*.{js,jsx}\"",
-		"format:py": "black backend/"
+		"format:py": "black backend/",
+        "format:check": "npm run format:check:js && npm run format:check:py",
+        "format:check:js": "prettier --check \"frontend/src/**/*.{js,jsx}\"",
+        "format:check:py": "black --check backend/",
+        "lint": "npm run lint:js",
+        "lint:js": "cd frontend && npm run lint"
 	},
 	"keywords": [
 		"electron",
