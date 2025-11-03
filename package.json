@@ -5,8 +5,8 @@
 	"main": "electron/main.js",
 	"type": "module",
 	"scripts": {
-		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && cross-env SHELL=1 python -m venv venv && cross-env SHELL=1 venv/Scripts/python -m pip install --upgrade pip && cross-env SHELL=1 venv/Scripts/python -m pip install -r requirements.txt",
-		"backend-install": "cross-env SHELL=1 cd backend && venv/Scripts/python -m pip install -r requirements.txt",
+		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && cross-env SHELL=1 python -m venv venv && cross-env SHELL=1 venv\\Scripts\\python.exe -m pip install --upgrade pip && cross-env SHELL=1 venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+		"backend-install": "cross-env SHELL=1 cd backend && venv\\Scripts\\python.exe -m pip install -r requirements.txt",
 		"backend-build": "cross-env SHELL=1 cd backend && pyinstaller --onefile app/main.py --name fastapi_backend --distpath ../electron/resources",
 		"frontend-dev": "cd frontend && npm run dev",
 		"frontend-build": "cd frontend && npm run build",
