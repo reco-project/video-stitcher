@@ -6,7 +6,7 @@ const isWin = os.platform() === 'win32';
 const pythonPath = join('venv', isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python');
 
 const args = process.argv.slice(2); // pass extra args like --check
-console.log('Using python at:', pythonPath);
+
 try {
 	// check if venv exists
 	execSync(`${pythonPath} --version`, {
@@ -19,7 +19,6 @@ try {
 	process.exit(1);
 }
 
-console.log('Verified virtual environment.');
 try {
 	// check if black is installed
 	execSync(`${pythonPath} -m black --help`, {
@@ -32,7 +31,6 @@ try {
 	process.exit(1);
 }
 
-console.log('Verified black installation.');
 try {
 	execSync(`${pythonPath} -m black ${args.join(' ') || '.'}`, {
 		cwd: 'backend',

@@ -23,7 +23,7 @@
 		"format:check": "npm run format:check:js && npm run format:check:py && npm run format:check:other",
 		"format:check:js": "prettier --check \"frontend/src/**/*.{js,jsx,ts,tsx}\"",
 		"format:check:other": "prettier --check \"*.{json,md,css,html}\"",
-		"format:check:py": "node scripts/format-backend.js --check",
+		"format:check:py": "node scripts/format-backend.js --check .",
 		"lint": "npm run lint:js",
 		"lint:js": "cd frontend && npm run lint",
 		"clean": "npx rimraf node_modules frontend/node_modules electron/node_modules backend/node_modules frontend/dist electron/resources && npx rimraf package-lock.json frontend/package-lock.json electron/package-lock.json && npx rimraf backend/venv"
