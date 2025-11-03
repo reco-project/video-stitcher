@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { cn } from '../../../lib/cn';
+import { cn } from '@/lib/cn';
 import { useViewerStore } from '../stores/store';
 import { LucidePlay, LucidePause, LucideVolume, LucideMaximize } from 'lucide-react';
 
