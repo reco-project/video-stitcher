@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import * as THREE from "three";
-import { Hls, isSupported } from "hls.js";
-import { useViewerStore } from "../stores/store.js";
+import { useEffect, useState } from 'react';
+import * as THREE from 'three';
+import { Hls, isSupported } from 'hls.js';
+import { useViewerStore } from '../stores/store.js';
 
 /** 
  * 
@@ -28,84 +28,84 @@ import { useViewerStore } from "../stores/store.js";
  
  */
 export const useCustomVideoTexture = (src) => {
-  const setVideoRef = useViewerStore((s) => s.setVideoRef);
-  const clearVideoRef = useViewerStore((s) => s.clearVideoRef);
-  const [texture, setTexture] = useState(null);
+	const setVideoRef = useViewerStore((s) => s.setVideoRef);
+	const clearVideoRef = useViewerStore((s) => s.clearVideoRef);
+	const [texture, setTexture] = useState(null);
 
-  useEffect(() => {
-    if (!src) return; // TODO: validate src format to prevent undesired behavior
+	useEffect(() => {
+		if (!src) return; // TODO: validate src format to prevent undesired behavior
 
-    const video = document.createElement("video");
-    video.crossOrigin = "anonymous";
-    video.preload = "auto";
-    video.playsInline = true;
+		const video = document.createElement('video');
+		video.crossOrigin = 'anonymous';
+		video.preload = 'auto';
+		video.playsInline = true;
 
-    const videoTexture = new THREE.VideoTexture(video);
-    videoTexture.minFilter = THREE.LinearFilter;
-    videoTexture.magFilter = THREE.LinearFilter;
-    videoTexture.generateMipmaps = false;
-    setTexture(videoTexture);
+		const videoTexture = new THREE.VideoTexture(video);
+		videoTexture.minFilter = THREE.LinearFilter;
+		videoTexture.magFilter = THREE.LinearFilter;
+		videoTexture.generateMipmaps = false;
+		setTexture(videoTexture);
 
-    setVideoRef(video);
+		setVideoRef(video);
 
-    let hls;
-    const isHls = typeof src === "string" && /\.m3u8($|\?)/i.test(src); // checks for .m3u8 at end or before query params
-    const tryPlay = () => {
-      const p = video.play();
-      if (p && typeof p.then === "function") p.catch(() => {});
-    };
+		let hls;
+		const isHls = typeof src === 'string' && /\.m3u8($|\?)/i.test(src); // checks for .m3u8 at end or before query params
+		const tryPlay = () => {
+			const p = video.play();
+			if (p && typeof p.then === 'function') p.catch(() => {});
+		};
 
-    if (isHls) {
-      if (isSupported()) {
-        hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-          backBufferLength: 90,
-        });
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-          hls.loadSource(src);
-        });
-        hls.on(Hls.Events.MANIFEST_PARSED, tryPlay);
-      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        // TODO: check if this code is valid/reachable
-        video.src = src; // Safari
-        video.addEventListener("loadedmetadata", tryPlay, { once: true });
-      } else {
-        console.warn("HLS not supported in this browser.");
-      }
-    } else {
-      video.src = src;
-      video.addEventListener("loadedmetadata", tryPlay, { once: true });
-    }
+		if (isHls) {
+			if (isSupported()) {
+				hls = new Hls({
+					enableWorker: true,
+					lowLatencyMode: true,
+					backBufferLength: 90,
+				});
+				hls.attachMedia(video);
+				hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+					hls.loadSource(src);
+				});
+				hls.on(Hls.Events.MANIFEST_PARSED, tryPlay);
+			} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+				// TODO: check if this code is valid/reachable
+				video.src = src; // Safari
+				video.addEventListener('loadedmetadata', tryPlay, { once: true });
+			} else {
+				console.warn('HLS not supported in this browser.');
+			}
+		} else {
+			video.src = src;
+			video.addEventListener('loadedmetadata', tryPlay, { once: true });
+		}
 
-    return () => {
-      // Clean up HLS instance
-      if (hls) {
-        try {
-          hls.destroy();
-        } catch (error) {
-          console.warn("Error destroying HLS instance:", error);
-        }
-      }
-      // Clean up video element
-      if (video) {
-        try {
-          video.pause();
-        } catch (error) {
-          console.warn("Error pausing video:", error);
-        }
-        video.removeAttribute("src");
-        try {
-          video.load();
-        } catch (error) {
-          console.warn("Error unmounting video:", error);
-        }
-      }
-      clearVideoRef();
-      videoTexture.dispose();
-    };
-  }, [src, setVideoRef, clearVideoRef]);
+		return () => {
+			// Clean up HLS instance
+			if (hls) {
+				try {
+					hls.destroy();
+				} catch (error) {
+					console.warn('Error destroying HLS instance:', error);
+				}
+			}
+			// Clean up video element
+			if (video) {
+				try {
+					video.pause();
+				} catch (error) {
+					console.warn('Error pausing video:', error);
+				}
+				video.removeAttribute('src');
+				try {
+					video.load();
+				} catch (error) {
+					console.warn('Error unmounting video:', error);
+				}
+			}
+			clearVideoRef();
+			videoTexture.dispose();
+		};
+	}, [src, setVideoRef, clearVideoRef]);
 
-  return texture;
+	return texture;
 };

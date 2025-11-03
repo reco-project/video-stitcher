@@ -1,26 +1,26 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
 /**
  * Player store using Zustand.
  * It holds the selected match, playback state, and video element reference.
  */
 export const useViewerStore = create((set) => ({
-  // selected match object: { id, label, src, params, uniforms }
-  selectedMatch: null,
-  setSelectedMatch: (match) => set({ selectedMatch: match }),
+	// selected match object: { id, label, src, params, uniforms }
+	selectedMatch: null,
+	setSelectedMatch: (match) => set({ selectedMatch: match }),
 
-  // playback state (kept minimal for now)
-  playing: false,
-  setPlaying: (p) => set({ playing: p }),
+	// playback state (kept minimal for now)
+	playing: false,
+	setPlaying: (p) => set({ playing: p }),
 
-  // single video element ref (each match has at most one video)
-  videoRef: null,
-  setVideoRef: (el) => set({ videoRef: el }),
-  clearVideoRef: () => set({ videoRef: null }),
+	// single video element ref (each match has at most one video)
+	videoRef: null,
+	setVideoRef: (el) => set({ videoRef: el }),
+	clearVideoRef: () => set({ videoRef: null }),
 
-  // fullscreen state
-  fullscreen: false,
-  setFullscreen: (fs) => set({ fullscreen: fs }),
+	// fullscreen state
+	fullscreen: false,
+	setFullscreen: (fs) => set({ fullscreen: fs }),
 }));
 
 export default useViewerStore;

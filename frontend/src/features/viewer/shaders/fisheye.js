@@ -24,15 +24,15 @@
  *
  */
 const fisheyeShader = (isLeft) => {
-  return {
-    vertexShader: `
+	return {
+		vertexShader: `
       varying vec2 vUv;
       void main() {
         vUv = uv * 2.0 - 0.5;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
-    fragmentShader: `
+		fragmentShader: `
       precision highp float;
       uniform sampler2D uVideo;
       uniform float fx, fy, cx, cy;
@@ -52,20 +52,20 @@ const fisheyeShader = (isLeft) => {
         distortedUV.x = fx * x + cx;
         distortedUV.y = fy * y + cy;
 
-        if (${isLeft ? "false" : "true"}) {
+        if (${isLeft ? 'false' : 'true'}) {
           distortedUV.y *= 0.5;
         } else {
           distortedUV.y = distortedUV.y * 0.5 + 0.5;
         }
 
-        if (distortedUV.x < 0.0 || distortedUV.x > 1.0 || distortedUV.y < ${isLeft ? "0.5" : "0.0"} || distortedUV.y > ${isLeft ? "1.0" : "0.5"}) {
+        if (distortedUV.x < 0.0 || distortedUV.x > 1.0 || distortedUV.y < ${isLeft ? '0.5' : '0.0'} || distortedUV.y > ${isLeft ? '1.0' : '0.5'}) {
           gl_FragColor = vec4(0.0);
         } else {
           gl_FragColor = texture2D(uVideo, distortedUV);
         }
       }
     `,
-  };
+	};
 };
 
 export default fisheyeShader;

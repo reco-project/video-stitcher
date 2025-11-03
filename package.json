@@ -1,45 +1,48 @@
 {
-  "name": "video-stitcher",
-  "version": "0.0.0",
-  "description": "Reco Video Stitcher Application based on Electron, FastAPI, React, Vite and Three.js",
-  "main": "electron/main.js",
-  "type": "module",
-  "scripts": {
-    "setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && cross-env SHELL=1 python -m venv venv && cross-env SHELL=1 venv/Scripts/python -m pip install -r requirements.txt",
-    "backend-install": "cross-env SHELL=1 cd backend && venv/Scripts/python -m pip install -r requirements.txt",
-    "backend-build": "cross-env SHELL=1 cd backend && pyinstaller --onefile app/main.py --name fastapi_backend --distpath ../electron/resources",
-    "frontend-dev": "cd frontend && npm run dev",
-    "frontend-build": "cd frontend && npm run build",
-    "electron-dev": "electron-forge start",
-    "electron-package": "electron-forge package",
-    "electron-make": "electron-forge make",
-    "electron-publish": "electron-forge publish",
-    "dev": "concurrently -k \"npm:frontend-dev\" \"npm:electron-dev\"",
-    "build": "npm run backend-build && npm run frontend-build && npm run electron-package"
-  },
-  "keywords": [
-    "electron",
-    "fastapi",
-    "react",
-    "vite"
-  ],
-  "author": "Mohamed Taha GUELZIM <mohamedtahaguelzim@gmail.com>",
-  "license": "AGPL-3.0",
-  "devDependencies": {
-    "@electron-forge/cli": "^7.10.2",
-    "@electron-forge/maker-deb": "^7.9.0",
-    "@electron-forge/maker-rpm": "^7.9.0",
-    "@electron-forge/maker-squirrel": "^7.9.0",
-    "@electron-forge/maker-zip": "^7.9.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.9.0",
-    "@electron-forge/plugin-fuses": "^7.9.0",
-    "@electron-forge/plugin-vite": "^7.9.0",
-    "@electron/fuses": "^1.8.0",
-    "concurrently": "^9.2.1",
-    "cross-env": "^10.1.0",
-    "electron": "38.2.1"
-  },
-  "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
-  }
+	"name": "video-stitcher",
+	"version": "0.0.0",
+	"description": "Reco Video Stitcher Application based on Electron, FastAPI, React, Vite and Three.js",
+	"main": "electron/main.js",
+	"type": "module",
+	"scripts": {
+		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && cross-env SHELL=1 python -m venv venv && cross-env SHELL=1 venv/Scripts/python -m pip install -r requirements.txt",
+		"backend-install": "cross-env SHELL=1 cd backend && venv/Scripts/python -m pip install -r requirements.txt",
+		"backend-build": "cross-env SHELL=1 cd backend && pyinstaller --onefile app/main.py --name fastapi_backend --distpath ../electron/resources",
+		"frontend-dev": "cd frontend && npm run dev",
+		"frontend-build": "cd frontend && npm run build",
+		"electron-dev": "electron-forge start",
+		"electron-package": "electron-forge package",
+		"electron-make": "electron-forge make",
+		"electron-publish": "electron-forge publish",
+		"dev": "concurrently -k \"npm:frontend-dev\" \"npm:electron-dev\"",
+		"build": "npm run backend-build && npm run frontend-build && npm run electron-package",
+		"format": "npm run format:js && npm run format:py",
+		"format:js": "prettier --write \"frontend/src/**/*.{js,jsx}\"",
+		"format:py": "black backend/"
+	},
+	"keywords": [
+		"electron",
+		"fastapi",
+		"react",
+		"vite"
+	],
+	"author": "Mohamed Taha GUELZIM <mohamedtahaguelzim@gmail.com>",
+	"license": "AGPL-3.0",
+	"devDependencies": {
+		"@electron-forge/cli": "^7.10.2",
+		"@electron-forge/maker-deb": "^7.9.0",
+		"@electron-forge/maker-rpm": "^7.9.0",
+		"@electron-forge/maker-squirrel": "^7.9.0",
+		"@electron-forge/maker-zip": "^7.9.0",
+		"@electron-forge/plugin-auto-unpack-natives": "^7.9.0",
+		"@electron-forge/plugin-fuses": "^7.9.0",
+		"@electron-forge/plugin-vite": "^7.9.0",
+		"@electron/fuses": "^1.8.0",
+		"concurrently": "^9.2.1",
+		"cross-env": "^10.1.0",
+		"electron": "38.2.1"
+	},
+	"dependencies": {
+		"electron-squirrel-startup": "^1.0.1"
+	}
 }

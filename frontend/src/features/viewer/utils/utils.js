@@ -1,4 +1,4 @@
-import * as THREE from "three";
+import * as THREE from 'three';
 
 // Consideration: This function may be useless if we already store uniforms in the expected format.
 // But I like to think that this would benefit modularity and reusability.
@@ -10,14 +10,14 @@ import * as THREE from "three";
  * @returns An object with the converted uniforms
  */
 export function formatUniforms(u, texture) {
-    const width = u.width;
-    const height = u.height;
-    return {
-        uVideo: { value: texture },
-        fx: { value: u.fx / width },
-        fy: { value: u.fy / height },
-        cx: { value: u.cx / width },
-        cy: { value: u.cy / height },
-        d: { value: new THREE.Vector4(...u.d) },
-    };
+	const width = u.width;
+	const height = u.height;
+	return {
+		uVideo: { value: texture },
+		fx: { value: u.fx / width },
+		fy: { value: u.fy / height },
+		cx: { value: u.cx / width },
+		cy: { value: u.cy / height },
+		d: { value: new THREE.Vector4(...u.d) },
+	};
 }
