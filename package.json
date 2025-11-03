@@ -6,7 +6,7 @@
 	"type": "module",
 	"scripts": {
 		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && npm run backend-install",
-		"backend-install": "cd backend && cross-env SHELL=1 python -m venv venv && cross-env SHELL=1 venv/$([ -f venv/Scripts/python.exe ] && echo Scripts/python.exe || echo bin/python) -m pip install --upgrade pip && cross-env SHELL=1 venv/$([ -f venv/Scripts/python.exe ] && echo Scripts/python.exe || echo bin/python) -m pip install -r requirements.txt",
+		"backend-install": "node scripts/setup.js",
 		"backend-build": "cross-env SHELL=1 cd backend && pyinstaller --onefile app/main.py --name fastapi_backend --distpath ../electron/resources",
 		"frontend-dev": "cd frontend && npm run dev",
 		"frontend-build": "cd frontend && npm run build",
@@ -18,7 +18,7 @@
 		"build": "npm run backend-build && npm run frontend-build && npm run electron-package",
 		"format": "npm run format:js && npm run format:py && npm run format:other",
 		"format:js": "prettier --write \"frontend/src/**/*.{js,jsx}\"",
-		"format:py": "cd backend && cross-env SHELL=1 venv/$([ -f venv/Scripts/python.exe ] && echo Scripts/python.exe || echo bin/python) -m black .",
+		"format:py": "node scripts/format-backend.js",
 		"format:other": "prettier --write \"*.{json,md,css,html}\"",
 		"format:check": "npm run format:check:js && npm run format:check:py && npm run format:check:other",
 		"format:check:js": "prettier --check \"frontend/src/**/*.{js,jsx,ts,tsx}\"",
@@ -26,7 +26,7 @@
 		"format:check:py": "cd backend && cross-env SHELL=1 venv/$([ -f venv/Scripts/python.exe ] && echo Scripts/python.exe || echo bin/python) -m black --check .",
 		"lint": "npm run lint:js",
 		"lint:js": "cd frontend && npm run lint",
-		"clear": "npx rimraf node_modules frontend/node_modules electron/node_modules backend/node_modules frontend/dist electron/resources && npx rimraf package-lock.json frontend/package-lock.json electron/package-lock.json && npx rimraf backend/venv"
+		"clean": "npx rimraf node_modules frontend/node_modules electron/node_modules backend/node_modules frontend/dist electron/resources && npx rimraf package-lock.json frontend/package-lock.json electron/package-lock.json && npx rimraf backend/venv"
 	},
 	"keywords": [
 		"electron",
