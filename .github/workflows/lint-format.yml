@@ -9,7 +9,6 @@ on:
 jobs:
     lint-and-format:
         runs-on: ubuntu-latest
-
         strategy:
             matrix:
                 node-version: [20]
@@ -35,14 +34,10 @@ jobs:
             - name: Run setup script
               run: npm run setup
 
-            # Run ESLint
+            # ESLint check
             - name: ESLint check
-              run: npm run lint:js
+              run: npm run lint
 
             # Prettier check
             - name: Check frontend formatting
-              run: npm run format:check:js
-
-            # Black check
-            - name: Check backend formatting
-              run: npm run format:check:py
+              run: npm run format:check
