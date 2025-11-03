@@ -5,7 +5,7 @@
 	"main": "electron/main.js",
 	"type": "module",
 	"scripts": {
-		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && cross-env SHELL=1 python -m venv venv && cross-env SHELL=1 venv/Scripts/python -m pip install -r requirements.txt",
+		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && cross-env SHELL=1 python -m venv venv && cross-env SHELL=1 venv/Scripts/python -m pip install --upgrade pip && cross-env SHELL=1 venv/Scripts/python -m pip install -r requirements.txt",
 		"backend-install": "cross-env SHELL=1 cd backend && venv/Scripts/python -m pip install -r requirements.txt",
 		"backend-build": "cross-env SHELL=1 cd backend && pyinstaller --onefile app/main.py --name fastapi_backend --distpath ../electron/resources",
 		"frontend-dev": "cd frontend && npm run dev",
@@ -16,14 +16,17 @@
 		"electron-publish": "electron-forge publish",
 		"dev": "concurrently -k \"npm:frontend-dev\" \"npm:electron-dev\"",
 		"build": "npm run backend-build && npm run frontend-build && npm run electron-package",
-		"format": "npm run format:js && npm run format:py",
+		"format": "npm run format:js && npm run format:py && npm run format:other",
 		"format:js": "prettier --write \"frontend/src/**/*.{js,jsx}\"",
 		"format:py": "black backend/",
-        "format:check": "npm run format:check:js && npm run format:check:py",
-        "format:check:js": "prettier --check \"frontend/src/**/*.{js,jsx}\"",
-        "format:check:py": "black --check backend/",
-        "lint": "npm run lint:js",
-        "lint:js": "cd frontend && npm run lint"
+		"format:other": "prettier --write \"*.{json,md,css,html}\"",
+		"format:check": "npm run format:check:js && npm run format:check:py && npm run format:check:other",
+		"format:check:js": "prettier --check \"frontend/src/**/*.{js,jsx,ts,tsx}\"",
+		"format:check:other": "prettier --check \"*.{json,md,css,html}\"",
+		"format:check:py": "black --check backend/",
+		"lint": "npm run lint:js",
+		"lint:js": "cd frontend && npm run lint",
+		"clear": "npx rimraf node_modules frontend/node_modules electron/node_modules backend/node_modules frontend/dist electron/resources && npx rimraf package-lock.json frontend/package-lock.json electron/package-lock.json && npx rimraf backend/venv"
 	},
 	"keywords": [
 		"electron",
@@ -45,7 +48,8 @@
 		"@electron/fuses": "^1.8.0",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
-		"electron": "38.2.1"
+		"electron": "38.2.1",
+		"rimraf": "^6.1.0"
 	},
 	"dependencies": {
 		"electron-squirrel-startup": "^1.0.1"
