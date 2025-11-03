@@ -1,0 +1,36 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments & env files
+venv/
+.venv/
+.env
+.env.*
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+*.whl
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local files / secrets
+local_settings.py
+secrets.json
+db.sqlite3
+
+# IDEs & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project artifacts
+media/
+static/

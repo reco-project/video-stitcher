@@ -4,14 +4,12 @@ import globals from "globals";
 import { defineConfig } from "eslint/config";
 import pluginReact from "eslint-plugin-react";
 import pluginImport from "eslint-plugin-import";
-import r3fConfig from "./config/r3f.eslint.config.mjs";
 
 // Couldn't move this file to config because I had issues with VSCode resolving it
 export default defineConfig([
   js.configs.recommended,
   pluginReact.configs.flat.recommended,
   pluginImport.flatConfigs.recommended,
-  r3fConfig, // React Three Fiber custom rules
   {
     files: ["**/*.{js,mjs,cjs,jsx}"],
     plugins: { js },
