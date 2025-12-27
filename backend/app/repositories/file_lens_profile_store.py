@@ -107,11 +107,69 @@ class FileLensProfileStore(LensProfileStore):
         """
         Get profile by ID using direct path derivation.
 
-        Note: This requires scanning to find the brand/model,
-        but we optimize by caching the path structure.
-        For now, we scan to find the file.
+        Profile IDs follow the format: brand-model[-lens]-widthxheight
+        We parse this to derive the filesystem path without scanning.
+
+        Args:
+            profile_id: Profile identifier (e.g., "gopro-hero10-black-linear-1920x1080")
+
+        Returns:
+            Profile dictionary if found, None otherwise
         """
-        # Scan for file matching the profile ID
+        # Parse profile ID to extract brand and model slugs
+        # Format: brand-model[-lens]-widthxheight
+        parts = profile_id.split('-')
+
+        if len(parts) < 3:
+            # Invalid ID format, fall back to scanning
+            return self._get_by_id_fallback(profile_id)
+
+        # Try to find the resolution pattern (widthxheight) to split correctly
+        # Work backwards to find where resolution starts
+        resolution_idx = None
+        for i in range(len(parts) - 1, -1, -1):
+            if 'x' in parts[i] and parts[i].replace('x', '').isdigit():
+                resolution_idx = i
+                break
+
+        if resolution_idx is None or resolution_idx < 2:
+            # Can't determine structure, fall back to scanning
+            return self._get_by_id_fallback(profile_id)
+
+        # Brand is always first part
+        brand_slug = parts[0]
+
+        # Model could be one or more parts (everything between brand and resolution, excluding lens)
+        # We need to try different combinations since we don't know where model ends and lens begins
+        # Try from most specific (fewer model parts) to least specific (more model parts)
+        for model_end_idx in range(1, resolution_idx):
+            model_slug = '-'.join(parts[1 : model_end_idx + 1])
+
+            # Try this path
+            file_path = self.base_path / brand_slug / model_slug / f"{profile_id}.json"
+
+            if file_path.exists():
+                try:
+                    profile = self._load_profile_file(file_path)
+                    if profile.get("id") == profile_id:
+                        return profile
+                except (ValueError, KeyError):
+                    continue
+
+        # No match found with path derivation, fall back to scanning
+        return self._get_by_id_fallback(profile_id)
+
+    def _get_by_id_fallback(self, profile_id: str) -> Optional[Dict]:
+        """
+        Fallback method: scan filesystem for profile ID.
+        Used when ID format is non-standard or path derivation fails.
+
+        Args:
+            profile_id: Profile identifier
+
+        Returns:
+            Profile dictionary if found, None otherwise
+        """
         for json_file in self.base_path.rglob(f"{profile_id}.json"):
             try:
                 profile = self._load_profile_file(json_file)

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useProfiles } from '../hooks/useProfiles';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 export default function ProfileList({ onSelect }) {
 	const { profiles, loading, error } = useProfiles();
@@ -11,23 +12,29 @@ export default function ProfileList({ onSelect }) {
 		<div className="w-full">
 			<h3 className="text-lg font-bold mb-2">Lens Profiles</h3>
 			{profiles.length === 0 ? (
-				<p className="text-gray-500">No profiles available</p>
+				<p className="text-muted-foreground">No profiles available</p>
 			) : (
 				<div className="grid gap-2">
 					{profiles.map((profile) => (
-						<div
+						<Card
 							key={profile.id}
-							className="p-3 border rounded hover:bg-gray-50 cursor-pointer transition"
+							className="cursor-pointer hover:bg-accent transition-colors"
 							onClick={() => onSelect && onSelect(profile)}
 						>
-							<div className="font-bold">
-								{profile.camera_brand} {profile.camera_model}
-							</div>
-							{profile.lens_model && <div className="text-sm text-gray-600">{profile.lens_model}</div>}
-							<div className="text-xs text-gray-500">
-								{profile.resolution.width}x{profile.resolution.height}
-							</div>
-						</div>
+							<CardHeader className="p-3">
+								<CardTitle className="text-base">
+									{profile.camera_brand} {profile.camera_model}
+								</CardTitle>
+							</CardHeader>
+							<CardContent className="p-3 pt-0">
+								{profile.lens_model && (
+									<div className="text-sm text-muted-foreground">{profile.lens_model}</div>
+								)}
+								<div className="text-xs text-muted-foreground">
+									{profile.resolution.width}x{profile.resolution.height}
+								</div>
+							</CardContent>
+						</Card>
 					))}
 				</div>
 			)}
