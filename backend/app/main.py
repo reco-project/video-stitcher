@@ -1,7 +1,22 @@
 # backend/app/main.py
 
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.repositories.file_lens_profile_store import FileLensProfileStore
+from app.repositories.lens_profile_store import LensProfileStore
+import app.routers.profiles as profiles_router
+
+# Initialize lens profile store
+PROFILES_DIR = Path(__file__).parent.parent / "lens_profiles"
+profile_store = FileLensProfileStore(str(PROFILES_DIR))
+
+
+def get_profile_store() -> LensProfileStore:
+    """Dependency injection for profile store."""
+    return profile_store
+
 
 app = FastAPI(title="Video Stitcher Backend")
 
@@ -13,6 +28,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers with dependency override
+app.include_router(profiles_router.router, tags=["profiles"])
+app.dependency_overrides[profiles_router.get_store] = get_profile_store
 
 
 @app.get("/")
