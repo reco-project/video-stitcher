@@ -4,70 +4,62 @@
  * Provides functions to interact with the lens profile management API.
  */
 
-import { apiRequest } from '@/lib/api';
+import { api } from '@/lib/api';
 
 /**
  * List all lens profiles
  */
 export async function listProfiles() {
-	return apiRequest('/profiles');
+	return api.get('/profiles');
 }
 
 /**
  * Get a specific lens profile by ID
  */
 export async function getProfile(profileId) {
-	return apiRequest(`/profiles/${profileId}`);
+	return api.get(`/profiles/${profileId}`);
 }
 
 /**
  * Create a new lens profile
  */
 export async function createProfile(profileData) {
-	return apiRequest('/profiles', {
-		method: 'POST',
-		body: JSON.stringify(profileData),
-	});
+	return api.post('/profiles', profileData);
 }
 
 /**
  * Update an existing lens profile
  */
 export async function updateProfile(profileId, profileData) {
-	return apiRequest(`/profiles/${profileId}`, {
-		method: 'PUT',
-		body: JSON.stringify(profileData),
-	});
+	return api.put(`/profiles/${profileId}`, profileData);
 }
 
 /**
  * Delete a lens profile
  */
 export async function deleteProfile(profileId) {
-	return apiRequest(`/profiles/${profileId}`, {
-		method: 'DELETE',
-	});
+	return api.delete(`/profiles/${profileId}`);
 }
 
 /**
  * List all camera brands
  */
 export async function listBrands() {
-	return apiRequest('/profiles/hierarchy/brands');
+	return api.get('/profiles/hierarchy/brands');
 }
 
 /**
  * List all models for a specific brand
  */
 export async function listModels(brand) {
-	return apiRequest(`/profiles/hierarchy/brands/${encodeURIComponent(brand)}/models`);
+	return api.get(`/profiles/hierarchy/brands/${encodeURIComponent(brand)}/models`);
 }
 
 /**
  * List all profiles for a specific brand and model
  */
 export async function listProfilesByBrandModel(brand, model) {
-	return apiRequest(`/profiles/hierarchy/brands/${encodeURIComponent(brand)}/models/${encodeURIComponent(model)}`);
+	return api.get(`/profiles/hierarchy/brands/${encodeURIComponent(brand)}/models/${encodeURIComponent(model)}`);
 }
 
 /**

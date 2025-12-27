@@ -3,6 +3,7 @@ import { createBrowserRouter, useNavigate } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 
 import Home from './routes/Home';
+import Profiles from './routes/Profiles';
 import NotFound from './routes/NotFound';
 
 /*
@@ -15,6 +16,11 @@ const paths = {
 		pattern: '/',
 		build: () => '/',
 		title: 'Home',
+	},
+	profiles: {
+		pattern: '/profiles',
+		build: () => '/profiles',
+		title: 'Lens Profiles',
 	},
 };
 
@@ -30,6 +36,7 @@ export const useNavigateTo = () => {
 	const navigate = useNavigate();
 	return {
 		toHome: () => navigate(paths.home.build()),
+		toProfiles: () => navigate(paths.profiles.build()),
 	};
 };
 
@@ -37,6 +44,10 @@ const router = createBrowserRouter([
 	{
 		path: paths.home.pattern,
 		element: <Home />,
+	},
+	{
+		path: paths.profiles.pattern,
+		element: <Profiles />,
 	},
 	{
 		path: '*',
