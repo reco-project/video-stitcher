@@ -3,6 +3,7 @@ Comprehensive test suite for the Lens Profile API endpoints.
 
 Tests all CRUD operations, hierarchy endpoints, validation, and error handling.
 """
+
 import sys
 from pathlib import Path
 
@@ -77,18 +78,9 @@ def test_create_profile():
         "lens_model": "Standard",
         "resolution": {"width": 1920, "height": 1080},
         "distortion_model": "fisheye_kb4",
-        "camera_matrix": {
-            "fx": 1000.0,
-            "fy": 1000.0,
-            "cx": 960.0,
-            "cy": 540.0
-        },
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
         "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
-        "metadata": {
-            "calibrated_by": "Test Suite",
-            "calibration_date": "2025-12-27",
-            "notes": "Test profile"
-        }
+        "metadata": {"calibrated_by": "Test Suite", "calibration_date": "2025-12-27", "notes": "Test profile"},
     }
     response = client.post("/api/profiles", json=new_profile)
     assert response.status_code == 201
@@ -105,13 +97,8 @@ def test_create_duplicate_profile():
         "camera_model": "TestModel",
         "resolution": {"width": 1920, "height": 1080},
         "distortion_model": "fisheye_kb4",
-        "camera_matrix": {
-            "fx": 1000.0,
-            "fy": 1000.0,
-            "cx": 960.0,
-            "cy": 540.0
-        },
-        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02]
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     response = client.post("/api/profiles", json=duplicate_profile)
     assert response.status_code == 409
@@ -126,18 +113,9 @@ def test_update_profile():
         "lens_model": "Standard",
         "resolution": {"width": 1920, "height": 1080},
         "distortion_model": "fisheye_kb4",
-        "camera_matrix": {
-            "fx": 1000.0,
-            "fy": 1000.0,
-            "cx": 960.0,
-            "cy": 540.0
-        },
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
         "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
-        "metadata": {
-            "calibrated_by": "Test Suite",
-            "calibration_date": "2025-12-27",
-            "notes": "Updated by test suite"
-        }
+        "metadata": {"calibrated_by": "Test Suite", "calibration_date": "2025-12-27", "notes": "Updated by test suite"},
     }
     response = client.put("/api/profiles/test-brand-model-1920x1080", json=updated_profile)
     assert response.status_code == 200
@@ -154,13 +132,8 @@ def test_update_nonexistent_profile():
         "camera_model": "Test",
         "resolution": {"width": 1920, "height": 1080},
         "distortion_model": "fisheye_kb4",
-        "camera_matrix": {
-            "fx": 1000.0,
-            "fy": 1000.0,
-            "cx": 960.0,
-            "cy": 540.0
-        },
-        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02]
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     response = client.put("/api/profiles/non-existent-id", json=profile)
     assert response.status_code in [400, 404]
@@ -193,13 +166,8 @@ def test_validation_invalid_distortion_model():
         "camera_model": "Test",
         "resolution": {"width": 1920, "height": 1080},
         "distortion_model": "invalid_model",
-        "camera_matrix": {
-            "fx": 1000.0,
-            "fy": 1000.0,
-            "cx": 960.0,
-            "cy": 540.0
-        },
-        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02]
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     response = client.post("/api/profiles", json=invalid_profile)
     assert response.status_code == 422
@@ -213,13 +181,8 @@ def test_validation_wrong_coefficient_count():
         "camera_model": "Test",
         "resolution": {"width": 1920, "height": 1080},
         "distortion_model": "fisheye_kb4",
-        "camera_matrix": {
-            "fx": 1000.0,
-            "fy": 1000.0,
-            "cx": 960.0,
-            "cy": 540.0
-        },
-        "distortion_coeffs": [0.1, 0.2]  # Only 2 instead of 4
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.2],  # Only 2 instead of 4
     }
     response = client.post("/api/profiles", json=invalid_profile)
     assert response.status_code == 422
@@ -228,7 +191,7 @@ def test_validation_wrong_coefficient_count():
 if __name__ == "__main__":
     """Run all tests when executed directly"""
     print("=== Comprehensive Lens Profile API Test ===\n")
-    
+
     test_functions = [
         ("List all profiles", test_list_all_profiles),
         ("Get profile by ID", test_get_profile_by_id),
@@ -246,10 +209,10 @@ if __name__ == "__main__":
         ("Validation - invalid model", test_validation_invalid_distortion_model),
         ("Validation - wrong coeff count", test_validation_wrong_coefficient_count),
     ]
-    
+
     passed = 0
     failed = 0
-    
+
     for i, (name, test_func) in enumerate(test_functions, 1):
         try:
             print(f"{i}. {name}")
@@ -262,11 +225,11 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"   ERROR: {e}\n")
             failed += 1
-    
+
     print("=" * 50)
     print(f"Results: {passed} passed, {failed} failed")
     print("=" * 50)
-    
+
     if failed == 0:
         print("\nALL TESTS PASSED!")
         print("\nAPI Summary:")
