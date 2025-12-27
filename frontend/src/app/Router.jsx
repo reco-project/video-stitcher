@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBrowserRouter, useNavigate } from 'react-router';
-import { RouterProvider } from 'react-router/dom';
+import { RouterProvider } from 'react-router-dom';
 
 import Home from './routes/Home';
 import NotFound from './routes/NotFound';
