@@ -1,0 +1,4 @@
+# Lens profiles directory
+#
+# This directory stores camera lens calibration profiles as JSON files.
+# Structure: {brand_slug}/{model_slug}/{profile_id}.json
