@@ -1,10 +1,4 @@
-"""
-FastAPI router for lens profile API endpoints.
-
-Provides REST API for lens profile CRUD operations.
-Phase 3a: Read-only endpoints
-Phase 3b: Write endpoints
-"""
+"""FastAPI router for lens profile API endpoints."""
 
 from typing import List, Dict
 from fastapi import APIRouter, HTTPException, Depends, status, Body
@@ -24,10 +18,6 @@ def get_store() -> LensProfileStore:
     """
     raise NotImplementedError("Store dependency not configured")
 
-
-# ============================================================================
-# Phase 3a: Read-only endpoints
-# ============================================================================
 
 @router.get("", response_model=List[Dict])
 def list_all_profiles(store: LensProfileStore = Depends(get_store)):
@@ -106,10 +96,6 @@ def list_profiles_by_brand_model(
     """
     return store.list_by_brand_model(brand, model)
 
-
-# ============================================================================
-# Phase 3b: Write endpoints
-# ============================================================================
 
 @router.post("", response_model=Dict, status_code=status.HTTP_201_CREATED)
 def create_profile(
