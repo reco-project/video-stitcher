@@ -7,7 +7,7 @@ from app.repositories.lens_profile_store import LensProfileStore
 from app.models.lens_profile import LensProfileModel
 
 
-router = APIRouter(prefix="/api/profiles")
+router = APIRouter(prefix="/profiles")
 
 
 # Dependency injection placeholder - will be configured in main.py

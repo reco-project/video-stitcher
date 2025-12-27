@@ -30,7 +30,7 @@ app.add_middleware(
 )
 
 # Register routers with dependency override
-app.include_router(profiles_router.router, tags=["profiles"])
+app.include_router(profiles_router.router, prefix="/api", tags=["profiles"])
 app.dependency_overrides[profiles_router.get_store] = get_profile_store
 
 
@@ -39,7 +39,7 @@ async def root():
     return {"message": "FastAPI backend is running!"}
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {"status": "healthy"}
 
