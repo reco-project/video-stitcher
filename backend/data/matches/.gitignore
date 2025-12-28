@@ -1,0 +1,8 @@
+# Ignore all matches except default samples
+*
+!.gitignore
+!m1.json
+!m2.json
+!m3.json
+!m4.json
+!m5.json

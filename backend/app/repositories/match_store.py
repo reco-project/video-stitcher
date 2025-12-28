@@ -1,108 +1,97 @@
 """
-In-memory match store for session-based match management.
+Abstract interface for match storage operations.
 
-This is a temporary storage solution. Matches are not persisted to disk.
-When the application restarts, all matches are lost.
+This interface defines the contract for match storage implementations.
+Storage backends (file-based, database, etc.) must implement all methods.
 """
 
+from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
-from app.models.match import MatchModel
 
 
-class InMemoryMatchStore:
-    """In-memory storage for match data."""
-    
-    def __init__(self):
-        """Initialize empty match store."""
-        self._matches: Dict[str, Dict] = {}
-    
+class MatchStore(ABC):
+    """
+    Abstract interface for match storage operations.
+
+    All methods work with plain dicts (JSON-serializable).
+    Implementations must handle validation internally.
+    """
+
+    @abstractmethod
     def list_all(self) -> List[Dict]:
         """
-        Get all matches.
-        
+        Return all matches as list of dicts.
+
         Returns:
-            List of all match dictionaries
+            List of match dictionaries
         """
-        return list(self._matches.values())
-    
+        pass
+
+    @abstractmethod
     def get_by_id(self, match_id: str) -> Optional[Dict]:
         """
-        Get match by ID.
-        
+        Return single match by ID, or None if not found.
+
         Args:
-            match_id: Match identifier
-            
+            match_id: Unique match identifier
+
         Returns:
-            Match dictionary if found, None otherwise
+            Match dict if found, None otherwise
         """
-        return self._matches.get(match_id)
-    
+        pass
+
+    @abstractmethod
     def create(self, match: Dict) -> Dict:
         """
         Create new match.
-        
+
         Args:
             match: Match dictionary to create
-            
+
         Returns:
-            Created match dictionary
-            
-        Raises:
-            ValueError: If match with same ID already exists
+            Created match dictionary with validation applied
         """
-        # Validate using Pydantic model
-        validated_match = MatchModel(**match).model_dump()
-        
-        match_id = validated_match["id"]
-        
-        if match_id in self._matches:
-            raise ValueError(f"Match with ID '{match_id}' already exists")
-        
-        self._matches[match_id] = validated_match
-        return validated_match
-    
+        pass
+
+    @abstractmethod
     def update(self, match_id: str, match: Dict) -> Dict:
         """
         Update existing match.
-        
+
         Args:
-            match_id: ID of match to update
+            match_id: Match ID to update
             match: Updated match data
-            
+
         Returns:
             Updated match dictionary
-            
+
         Raises:
-            ValueError: If match not found or ID mismatch
+            ValueError: If match not found
         """
-        if match_id not in self._matches:
-            raise ValueError(f"Match with ID '{match_id}' not found")
-        
-        # Validate using Pydantic model
-        validated_match = MatchModel(**match).model_dump()
-        
-        # Ensure ID consistency
-        if validated_match["id"] != match_id:
-            raise ValueError(f"Match ID mismatch: URL has '{match_id}', body has '{validated_match['id']}'")
-        
-        self._matches[match_id] = validated_match
-        return validated_match
-    
+        pass
+
+    @abstractmethod
     def delete(self, match_id: str) -> bool:
         """
-        Delete match.
-        
+        Delete match by ID.
+
         Args:
-            match_id: ID of match to delete
-            
+            match_id: Match ID to delete
+
         Returns:
             True if deleted, False if not found
         """
-        if match_id in self._matches:
-            del self._matches[match_id]
-            return True
-        return False
-    
-    def clear(self):
-        """Clear all matches. Useful for testing."""
-        self._matches.clear()
+        pass
+
+    @abstractmethod
+    def exists(self, match_id: str) -> bool:
+        """
+        Check if match exists.
+
+        Args:
+            match_id: Match ID to check
+
+        Returns:
+            True if exists, False otherwise
+        """
+        pass
