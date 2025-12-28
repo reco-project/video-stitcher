@@ -3,6 +3,7 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.repositories.file_lens_profile_store import FileLensProfileStore
 from app.repositories.lens_profile_store import LensProfileStore
@@ -10,6 +11,7 @@ from app.repositories.file_match_store import FileMatchStore
 from app.repositories.match_store import MatchStore
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
+import app.routers.processing as processing_router
 
 # Initialize lens profile store
 PROFILES_DIR = Path(__file__).parent.parent / "data" / "lens_profiles"
@@ -18,6 +20,9 @@ profile_store = FileLensProfileStore(str(PROFILES_DIR))
 # Initialize match store (file-based, persistent)
 MATCHES_DIR = Path(__file__).parent.parent / "data" / "matches"
 match_store = FileMatchStore(str(MATCHES_DIR))
+
+# Videos directory for static file serving
+VIDEOS_DIR = Path(__file__).parent.parent / "data" / "videos"
 
 
 def get_profile_store() -> LensProfileStore:
@@ -47,6 +52,13 @@ app.dependency_overrides[profiles_router.get_store] = get_profile_store
 
 app.include_router(matches_router.router, prefix="/api", tags=["matches"])
 app.dependency_overrides[matches_router.get_store] = get_match_store
+
+app.include_router(processing_router.router, prefix="/api", tags=["processing"])
+
+# Mount static files for video serving
+# Ensure the videos directory exists
+VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/videos", StaticFiles(directory=str(VIDEOS_DIR)), name="videos")
 
 
 @app.get("/")
