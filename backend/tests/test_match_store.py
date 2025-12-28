@@ -32,12 +32,8 @@ def sample_match():
     return {
         "id": "match-test-123",
         "name": "Test Match",
-        "left_videos": [
-            {"path": "/videos/left1.mp4", "profile_id": "gopro-hero10-linear"}
-        ],
-        "right_videos": [
-            {"path": "/videos/right1.mp4", "profile_id": "gopro-hero9-wide"}
-        ],
+        "left_videos": [{"path": "/videos/left1.mp4", "profile_id": "gopro-hero10-linear"}],
+        "right_videos": [{"path": "/videos/right1.mp4", "profile_id": "gopro-hero9-wide"}],
         "params": {
             "cameraAxisOffset": 0.23,
             "intersect": 0.55,
