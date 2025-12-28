@@ -21,7 +21,7 @@ Inspired by [Gyroflow's lens_profiles repository](https://github.com/gyroflow/le
 - `app/routers/profiles.py` - FastAPI REST endpoints
 - `app/utils/slug.py` - Slug generation utility
 
-**Storage:** `backend/lens_profiles/{brand-slug}/{model-slug}/{profile-id}.json`
+**Storage:** `backend/data/lens_profiles/{brand-slug}/{model-slug}/{profile-id}.json`
 
 ## Profile Schema
 
@@ -124,7 +124,7 @@ Included profiles are from [Gyroflow lens_profiles](https://github.com/gyroflow/
 
 **Via API:** Use `POST /api/profiles` with profile JSON
 
-**Manual:** Create `backend/lens_profiles/{brand-slug}/{model-slug}/{profile-id}.json` and restart server
+**Manual:** Create `backend/data/lens_profiles/{brand-slug}/{model-slug}/{profile-id}.json` and restart server
 
 ## Development
 
