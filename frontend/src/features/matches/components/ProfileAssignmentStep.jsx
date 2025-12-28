@@ -29,12 +29,20 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 
 	const handleNext = () => {
 		if (!leftProfileId) {
-			setError('Please select a lens profile for the left videos');
+			setError('Please select a lens profile for the left camera videos');
 			return;
 		}
 
 		if (!rightProfileId) {
-			setError('Please select a lens profile for the right videos');
+			setError('Please select a lens profile for the right camera videos');
+			return;
+		}
+
+		const leftProfile = profilesLeft.find((p) => p.id === leftProfileId);
+		const rightProfile = profilesRight.find((p) => p.id === rightProfileId);
+
+		if (!leftProfile || !rightProfile) {
+			setError('Selected profiles not found');
 			return;
 		}
 
@@ -48,6 +56,8 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 				...v,
 				profile_id: rightProfileId,
 			})),
+			leftProfile,
+			rightProfile,
 		});
 	};
 
@@ -55,6 +65,10 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 		<Card>
 			<CardHeader>
 				<CardTitle>Step 2: Assign Lens Profiles</CardTitle>
+				<p className="text-sm text-muted-foreground mt-2">
+					Select lens profiles for the left and right camera videos. The backend will use these to process and
+					stitch the videos.
+				</p>
 			</CardHeader>
 			<CardContent className="space-y-6">
 				{error && (
@@ -63,16 +77,21 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 					</Alert>
 				)}
 
-				{/* Left Videos Profile */}
+				{/* Left Camera Profile */}
 				<div className="space-y-4 p-4 border rounded">
 					<h3 className="font-semibold">
-						Left Camera ({matchData.left_videos.length} video{matchData.left_videos.length > 1 ? 's' : ''})
+						Left Camera ({matchData.left_videos?.length || 0} video
+						{matchData.left_videos?.length !== 1 ? 's' : ''})
 					</h3>
-					<div className="text-sm text-muted-foreground space-y-1">
-						{matchData.left_videos.map((video, idx) => (
-							<div key={idx}>{video.path}</div>
-						))}
-					</div>
+					{matchData.left_videos && matchData.left_videos.length > 0 && (
+						<div className="text-sm text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
+							{matchData.left_videos.map((video, idx) => (
+								<div key={idx} className="truncate">
+									{video.path}
+								</div>
+							))}
+						</div>
+					)}
 
 					<div>
 						<Label htmlFor="left-brand">Brand</Label>
@@ -137,21 +156,49 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 									))}
 								</SelectContent>
 							</Select>
+							{leftProfileId &&
+								(() => {
+									const selectedProfile = profilesLeft.find((p) => p.id === leftProfileId);
+									return selectedProfile ? (
+										<div className="mt-2 p-3 bg-muted rounded text-xs space-y-1">
+											<div className="font-semibold">Profile Details:</div>
+											<div>
+												Resolution: {selectedProfile.resolution.width}x
+												{selectedProfile.resolution.height}
+											</div>
+											<div>Lens: {selectedProfile.lens_model || 'Standard'}</div>
+											{selectedProfile.distortion_coefficients && (
+												<div>
+													Distortion: [
+													{selectedProfile.distortion_coefficients
+														.slice(0, 3)
+														.map((d) => d.toFixed(3))
+														.join(', ')}
+													...]
+												</div>
+											)}
+										</div>
+									) : null;
+								})()}
 						</div>
 					)}
 				</div>
 
-				{/* Right Videos Profile */}
+				{/* Right Camera Profile */}
 				<div className="space-y-4 p-4 border rounded">
 					<h3 className="font-semibold">
-						Right Camera ({matchData.right_videos.length} video
-						{matchData.right_videos.length > 1 ? 's' : ''})
+						Right Camera ({matchData.right_videos?.length || 0} video
+						{matchData.right_videos?.length !== 1 ? 's' : ''})
 					</h3>
-					<div className="text-sm text-muted-foreground space-y-1">
-						{matchData.right_videos.map((video, idx) => (
-							<div key={idx}>{video.path}</div>
-						))}
-					</div>
+					{matchData.right_videos && matchData.right_videos.length > 0 && (
+						<div className="text-sm text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
+							{matchData.right_videos.map((video, idx) => (
+								<div key={idx} className="truncate">
+									{video.path}
+								</div>
+							))}
+						</div>
+					)}
 
 					<div>
 						<Label htmlFor="right-brand">Brand</Label>
@@ -216,6 +263,30 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 									))}
 								</SelectContent>
 							</Select>
+							{rightProfileId &&
+								(() => {
+									const selectedProfile = profilesRight.find((p) => p.id === rightProfileId);
+									return selectedProfile ? (
+										<div className="mt-2 p-3 bg-muted rounded text-xs space-y-1">
+											<div className="font-semibold">Profile Details:</div>
+											<div>
+												Resolution: {selectedProfile.resolution.width}x
+												{selectedProfile.resolution.height}
+											</div>
+											<div>Lens: {selectedProfile.lens_model || 'Standard'}</div>
+											{selectedProfile.distortion_coefficients && (
+												<div>
+													Distortion: [
+													{selectedProfile.distortion_coefficients
+														.slice(0, 3)
+														.map((d) => d.toFixed(3))
+														.join(', ')}
+													...]
+												</div>
+											)}
+										</div>
+									) : null;
+								})()}
 						</div>
 					)}
 				</div>

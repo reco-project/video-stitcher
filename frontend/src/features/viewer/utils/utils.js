@@ -10,6 +10,16 @@ import * as THREE from 'three';
  * @returns An object with the converted uniforms
  */
 export function formatUniforms(u, texture) {
+	if (!u || !u.width || !u.height || !u.fx || !u.fy || !u.cx || !u.cy) {
+		console.error('Invalid uniforms:', u);
+		throw new Error('Missing required uniform parameters');
+	}
+
+	if (!u.d || !Array.isArray(u.d) || u.d.length !== 4) {
+		console.error('Invalid distortion coefficients:', u.d);
+		throw new Error('Distortion coefficients must be an array of 4 numbers');
+	}
+
 	const width = u.width;
 	const height = u.height;
 	return {

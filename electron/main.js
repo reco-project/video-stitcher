@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join, dirname } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 import fetch from 'node-fetch';
 import { fileURLToPath } from 'url';
 import started from 'electron-squirrel-startup';
@@ -90,3 +91,60 @@ ipcMain.handle('dialog:selectVideoFile', async () => {
 
 	return result.filePaths[0];
 });
+
+// IPC handler for multi-select file dialog
+ipcMain.handle('dialog:selectVideoFiles', async () => {
+	const result = await dialog.showOpenDialog({
+		properties: ['openFile', 'multiSelections'],
+		filters: [
+			{ name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm3u8'] },
+			{ name: 'All Files', extensions: ['*'] },
+		],
+	});
+
+	if (result.canceled) {
+		return [];
+	}
+
+	return result.filePaths;
+});
+
+// IPC handler to check if file exists
+ipcMain.handle('file:exists', async (event, filePath) => {
+	try {
+		return existsSync(filePath);
+	} catch {
+		return false;
+	}
+});
+
+// IPC handler to get file metadata
+ipcMain.handle('file:getMetadata', async (event, filePath) => {
+	try {
+		if (!existsSync(filePath)) {
+			return null;
+		}
+
+		const stats = statSync(filePath);
+		const fileName = filePath.split(/[/\\]/).pop();
+
+		return {
+			name: fileName,
+			size: stats.size,
+			sizeFormatted: formatFileSize(stats.size),
+			modified: stats.mtime.toISOString(),
+		};
+	} catch (error) {
+		console.error('Failed to get file metadata:', error);
+		return null;
+	}
+});
+
+// Helper function to format file size
+function formatFileSize(bytes) {
+	if (bytes === 0) return '0 Bytes';
+	const k = 1024;
+	const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
