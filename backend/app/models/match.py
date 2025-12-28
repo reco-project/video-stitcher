@@ -7,7 +7,7 @@ This is the first step in the video stitching pipeline.
 
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class VideoInput(BaseModel):
@@ -79,7 +79,7 @@ class MatchModel(BaseModel):
             "d": [0.03421388, 0.0676732, -0.0740897, 0.02994442],
         }
     )
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat(), description="Creation timestamp")
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Creation timestamp")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
     @field_validator("id")
