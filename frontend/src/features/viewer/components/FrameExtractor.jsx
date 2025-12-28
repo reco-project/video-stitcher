@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import fisheyeShader from '../shaders/fisheye.js';
 import { formatUniforms } from '../utils/utils.js';
@@ -21,8 +21,10 @@ const ExtractorPlane = ({ texture, isLeft, uniforms, onCapture }) => {
 	React.useEffect(() => {
 		if (!texture || captureReady) return;
 
+		console.log('ExtractorPlane texture ready, side:', isLeft ? 'left' : 'right');
+
 		let frameCount = 0;
-		const maxFrames = 10;
+		const maxFrames = 30; // Increased from 10 to 30 for more reliable rendering
 
 		const renderLoop = () => {
 			if (frameCount < maxFrames) {
@@ -30,25 +32,32 @@ const ExtractorPlane = ({ texture, isLeft, uniforms, onCapture }) => {
 				requestAnimationFrame(renderLoop);
 			} else {
 				setCaptureReady(true);
-				// Small delay to ensure final render is complete
+				// Longer delay to ensure final render is complete
 				setTimeout(() => {
 					// Render one final time
 					gl.render(scene, camera);
 
+					console.log('Capturing canvas, size:', gl.domElement.width, 'x', gl.domElement.height);
+
 					// Capture the canvas
 					gl.domElement.toBlob(
 						(blob) => {
-							onCapture(blob);
+							if (blob) {
+								console.log('Blob created:', blob.size, 'bytes');
+								onCapture(blob);
+							} else {
+								console.error('Failed to create blob from canvas');
+							}
 						},
 						'image/png',
 						1.0
 					);
-				}, 100);
+				}, 200); // Increased from 100ms to 200ms
 			}
 		};
 
 		renderLoop();
-	}, [texture, gl, scene, camera, onCapture, captureReady]);
+	}, [texture, gl, scene, camera, onCapture, captureReady, isLeft]);
 
 	if (!texture || !uniforms) return null;
 
@@ -60,9 +69,10 @@ const ExtractorPlane = ({ texture, isLeft, uniforms, onCapture }) => {
 	);
 };
 
-const ExtractionCanvas = ({ videoSrc, isLeft, uniforms, onComplete }) => {
-	const texture = useCustomVideoTexture(videoSrc);
+const ExtractionCanvas = ({ videoElement, isLeft, uniforms, onComplete }) => {
+	const texture = useCustomVideoTexture(null, { videoElement, autoPlay: false });
 	const [captureStarted, setCaptureStarted] = useState(false);
+	const canvasRef = useRef(null);
 
 	const handleCapture = useCallback(
 		(blob) => {
@@ -87,27 +97,30 @@ const ExtractionCanvas = ({ videoSrc, isLeft, uniforms, onComplete }) => {
 	const cameraDistance = 1;
 
 	return (
-		<Canvas
-			gl={{
-				preserveDrawingBuffer: true,
-				antialias: false,
-				alpha: false,
-			}}
-			camera={{
-				position: [0, 0, cameraDistance],
-				fov: cameraFOV,
-				aspect: 16 / 9,
-				near: 0.01,
-				far: 5,
-			}}
-			style={{ width: '100%', height: '100%' }}
-			dpr={1}
-			onCreated={({ gl }) => {
-				gl.setSize(renderWidth, renderHeight, false);
-			}}
-		>
-			<ExtractorPlane texture={texture} isLeft={isLeft} uniforms={uniforms} onCapture={handleCapture} />
-		</Canvas>
+		<div ref={canvasRef} style={{ width: '100%', height: '100%' }}>
+			<Canvas
+				gl={{
+					preserveDrawingBuffer: true,
+					antialias: false,
+					alpha: false,
+					powerPreference: 'high-performance',
+				}}
+				camera={{
+					position: [0, 0, cameraDistance],
+					fov: cameraFOV,
+					aspect: 16 / 9,
+					near: 0.01,
+					far: 5,
+				}}
+				style={{ width: '100%', height: '100%' }}
+				dpr={1}
+				onCreated={({ gl }) => {
+					gl.setSize(renderWidth, renderHeight, false);
+				}}
+			>
+				<ExtractorPlane texture={texture} isLeft={isLeft} uniforms={uniforms} onCapture={handleCapture} />
+			</Canvas>
+		</div>
 	);
 };
 
@@ -117,15 +130,33 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 	const videoRef = useRef(null);
 	const [videoReady, setVideoReady] = useState(false);
 
-	// Handle video seeking
+	// Handle video seeking and side switching
 	React.useEffect(() => {
 		if (!videoRef.current) return;
 
 		const video = videoRef.current;
 
 		const handleSeeked = () => {
-			console.log('Video seeked to:', video.currentTime);
+			console.log('Video seeked to:', video.currentTime, 'for', currentSide, 'side');
+			// Ensure video is paused before extraction
+			video.pause();
+			console.log(
+				'Video paused, ready state:',
+				video.readyState,
+				'dimensions:',
+				video.videoWidth,
+				'x',
+				video.videoHeight
+			);
 			setVideoReady(true);
+		};
+
+		const handleLoadedMetadata = () => {
+			console.log('Video metadata loaded');
+			// Pause immediately when metadata loads
+			video.pause();
+			// Then seek to the desired frame
+			video.currentTime = frameTime;
 		};
 
 		const handleError = (e) => {
@@ -133,27 +164,47 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 			onError?.(new Error('Failed to load or seek video'));
 		};
 
+		// Reset video ready state when switching sides
+		setVideoReady(false);
+
+		video.addEventListener('loadedmetadata', handleLoadedMetadata);
 		video.addEventListener('seeked', handleSeeked);
 		video.addEventListener('error', handleError);
 
-		// Seek to frame time
-		video.currentTime = frameTime;
+		// If metadata already loaded, seek immediately
+		if (video.readyState >= 1) {
+			video.pause();
+			video.currentTime = frameTime;
+		}
 
 		return () => {
+			video.removeEventListener('loadedmetadata', handleLoadedMetadata);
 			video.removeEventListener('seeked', handleSeeked);
 			video.removeEventListener('error', handleError);
 		};
-	}, [frameTime, onError]);
+	}, [frameTime, onError, currentSide]);
 
 	const handleLeftComplete = useCallback((blob) => {
-		console.log('Left frame captured:', blob.size, 'bytes');
+		console.log('Left frame captured:', blob ? blob.size : 0, 'bytes');
+		if (!blob || blob.size === 0) {
+			console.error('Left frame is empty!');
+			return;
+		}
 		setLeftBlob(blob);
-		setCurrentSide('right');
+		// Add delay before switching to right side to allow WebGL context to stabilize
+		setTimeout(() => {
+			setCurrentSide('right');
+			setVideoReady(false); // Reset for right side
+		}, 500);
 	}, []);
 
 	const handleRightComplete = useCallback(
 		(blob) => {
-			console.log('Right frame captured:', blob.size, 'bytes');
+			console.log('Right frame captured:', blob ? blob.size : 0, 'bytes');
+			if (!blob || blob.size === 0) {
+				console.error('Right frame is empty!');
+				return;
+			}
 			if (leftBlob) {
 				onComplete?.({ leftBlob, rightBlob: blob });
 			}
@@ -174,7 +225,7 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 				<div className="w-full aspect-video bg-black rounded overflow-hidden">
 					{videoReady && currentSide === 'left' && (
 						<ExtractionCanvas
-							videoSrc={videoSrc}
+							videoElement={videoRef.current}
 							isLeft={true}
 							uniforms={leftUniforms}
 							onComplete={handleLeftComplete}
@@ -182,7 +233,7 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 					)}
 					{videoReady && currentSide === 'right' && (
 						<ExtractionCanvas
-							videoSrc={videoSrc}
+							videoElement={videoRef.current}
 							isLeft={false}
 							uniforms={rightUniforms}
 							onComplete={handleRightComplete}

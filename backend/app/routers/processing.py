@@ -302,6 +302,8 @@ async def process_match_with_frames(
         match_data["processing_step"] = "complete"
         match_data["processing_message"] = "Processing complete"
         match_data["processing_completed_at"] = datetime.now(timezone.utc).isoformat()
+        match_data["error_code"] = None
+        match_data["error_message"] = None
         match_store.update(match_id, match_data)
 
         return {

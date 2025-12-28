@@ -28,6 +28,9 @@ const resolveVideoUrl = (src) => {
  * video texture is returned for use in 3D scenes.
  * The video ref is also stored in the global viewer store for access by other components.
  * @param {string} src - The video source URL.
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.autoPlay - Whether to auto-play the video (default: true)
+ * @param {HTMLVideoElement} options.videoElement - Use existing video element instead of creating new one
  * @returns {THREE.VideoTexture} - The video texture.
  *
  * Note:
@@ -44,12 +47,32 @@ const resolveVideoUrl = (src) => {
  * This hook supports HLS sources (.m3u8) as well as regular video sources.
  
  */
-export const useCustomVideoTexture = (src) => {
+export const useCustomVideoTexture = (src, options = {}) => {
+	const { autoPlay = true, videoElement: externalVideoElement } = options;
 	const setVideoRef = useViewerStore((s) => s.setVideoRef);
 	const clearVideoRef = useViewerStore((s) => s.clearVideoRef);
 	const [texture, setTexture] = useState(null);
 
 	useEffect(() => {
+		// If using external video element, just create texture from it
+		if (externalVideoElement) {
+			if (externalVideoElement.readyState < 2) {
+				console.warn('Video not ready for texture creation');
+				return;
+			}
+
+			const videoTexture = new THREE.VideoTexture(externalVideoElement);
+			videoTexture.minFilter = THREE.LinearFilter;
+			videoTexture.magFilter = THREE.LinearFilter;
+			videoTexture.generateMipmaps = false;
+			videoTexture.needsUpdate = true;
+			setTexture(videoTexture);
+
+			return () => {
+				videoTexture.dispose();
+			};
+		}
+
 		if (!src) return; // TODO: validate src format to prevent undesired behavior
 
 		// Convert relative path to absolute backend URL
@@ -71,8 +94,10 @@ export const useCustomVideoTexture = (src) => {
 		let hls;
 		const isHls = typeof videoUrl === 'string' && /\.m3u8($|\?)/i.test(videoUrl); // checks for .m3u8 at end or before query params
 		const tryPlay = () => {
-			const p = video.play();
-			if (p && typeof p.then === 'function') p.catch(() => {});
+			if (autoPlay) {
+				const p = video.play();
+				if (p && typeof p.then === 'function') p.catch(() => {});
+			}
 		};
 
 		if (isHls) {
@@ -125,7 +150,7 @@ export const useCustomVideoTexture = (src) => {
 			clearVideoRef();
 			videoTexture.dispose();
 		};
-	}, [src, setVideoRef, clearVideoRef]);
+	}, [src, setVideoRef, clearVideoRef, autoPlay, externalVideoElement]);
 
 	return texture;
 };

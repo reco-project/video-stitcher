@@ -47,9 +47,6 @@ def optimize_position(left_points: List[List[float]], right_points: List[List[fl
     # Minimize sum of angles
     result = _minimize_sum_of_angles(x_plane, z_plane)
 
-    if result is None:
-        raise ValueError("Position optimization failed")
-
     return result
 
 
@@ -175,7 +172,7 @@ def _minimize_sum_of_angles(x_plane_points: np.ndarray, z_plane_points: np.ndarr
     result = minimize(objective, x0, bounds=bounds, method='Powell', options={'disp': False, 'maxiter': 1000})
 
     if not result.success:
-        return None
+        raise ValueError(f"Optimization failed: {result.message}")
 
     # Extract optimized parameters
     x_ty, intersect, cam_d, x_rz, z_rx = result.x
