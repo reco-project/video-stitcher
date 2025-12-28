@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Viewer from '@/features/viewer/components/Viewer.jsx';
-import Health from '@/features/health/components/Health.jsx';
-import { useNavigateTo } from '../Router';
-import { Button } from '@/components/ui/button';
 import MatchWizard from '@/features/matches/components/MatchWizard';
 import MatchList from '@/features/matches/components/MatchList';
 import { useMatchMutations } from '@/features/matches/hooks/useMatches';
@@ -11,11 +9,20 @@ import legacyMatches from '@/data/matches.js';
 const LEGACY_LOADED_KEY = 'legacyMatchesLoaded';
 
 export default function Home() {
+	const [searchParams, setSearchParams] = useSearchParams();
 	const [selectedMatch, setSelectedMatch] = useState(null);
-	const [showWizard, setShowWizard] = useState(false);
-	const [showList, setShowList] = useState(true); // Start with Browse view
-	const navigate = useNavigateTo();
 	const { create } = useMatchMutations();
+
+	// Determine current view from URL params
+	const mode = searchParams.get('view') || 'list';
+	const showWizard = mode === 'create';
+	const showList = mode === 'list';
+	const showViewer = mode === 'viewer';
+
+	// Helper to update view
+	const setView = (newView) => {
+		setSearchParams({ view: newView });
+	};
 
 	// Load legacy matches into DB once on first run
 	useEffect(() => {
@@ -49,68 +56,53 @@ export default function Home() {
 	}, [create]);
 
 	const handleWizardComplete = async (newMatch) => {
-		setShowWizard(false);
-
-		// Only auto-select if match is ready (has been processed)
-		// Otherwise, show the match list where user can process it later
+		// Auto-navigate to viewer if match is ready, otherwise show list
 		if (newMatch.status === 'ready' && newMatch.params) {
-			setShowList(false);
 			setSelectedMatch(newMatch);
+			setView('viewer');
 		} else {
-			// Show match list for unprocessed matches
-			setShowList(true);
+			// Show match list for incomplete matches
+			setView('list');
 		}
 	};
 
 	const handleSelectMatch = (match) => {
 		setSelectedMatch(match);
-		setShowList(false);
+		setView('viewer');
 	};
 
 	const handleCreateNew = () => {
-		setShowList(false);
-		setShowWizard(true);
-	};
-
-	const handleBrowseMatches = () => {
-		setShowWizard(false);
-		setShowList(true);
+		setView('create');
 	};
 
 	return (
-		<div className="flex flex-col items-center w-full p-4 gap-4">
-			<div className="text-center mb-2">
-				<h1 className="text-4xl font-bold text-purple-600 mb-2">Video Stitcher</h1>
-				<p className="text-muted-foreground">Create and manage your video stitching projects</p>
+		<div className="w-full h-full flex flex-col items-center justify-start px-6 py-6">
+			<div className="w-full max-w-6xl">
+				{/* Page Content */}
+				{showWizard ? (
+					<div className="mt-6 flex justify-center">
+						<MatchWizard onComplete={handleWizardComplete} onCancel={() => setView('list')} />
+					</div>
+				) : showList ? (
+					<div className="mt-6 flex justify-center">
+						<MatchList onSelectMatch={handleSelectMatch} onCreateNew={handleCreateNew} />
+					</div>
+				) : showViewer ? (
+					<div className="mt-6 w-full flex justify-center">
+						{selectedMatch && (
+							<section className="w-full max-w-6xl aspect-video flex flex-col gap-4">
+								<button
+									onClick={() => setView('list')}
+									className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+								>
+									← Back to Matches
+								</button>
+								<Viewer key={selectedMatch.id} selectedMatch={selectedMatch} />
+							</section>
+						)}
+					</div>
+				) : null}
 			</div>
-
-			<div className="flex gap-2 mb-4">
-				<Button onClick={handleCreateNew} disabled={showWizard}>
-					+ Create New Match
-				</Button>
-				<Button variant="outline" onClick={handleBrowseMatches} disabled={showList}>
-					Browse Matches
-				</Button>
-				<Button variant="outline" onClick={navigate.toProfiles}>
-					Manage Lens Profiles
-				</Button>
-			</div>
-
-			<Health />
-
-			{showWizard ? (
-				<MatchWizard onComplete={handleWizardComplete} onCancel={() => setShowWizard(false)} />
-			) : showList ? (
-				<MatchList onSelectMatch={handleSelectMatch} onCreateNew={handleCreateNew} />
-			) : (
-				<>
-					{selectedMatch && (
-						<section className={'w-full aspect-video h-full flex flex-col items-center align-middle'}>
-							<Viewer key={selectedMatch.id} selectedMatch={selectedMatch} />
-						</section>
-					)}
-				</>
-			)}
 		</div>
 	);
 }

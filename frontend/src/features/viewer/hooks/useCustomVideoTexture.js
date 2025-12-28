@@ -56,20 +56,44 @@ export const useCustomVideoTexture = (src, options = {}) => {
 	useEffect(() => {
 		// If using external video element, just create texture from it
 		if (externalVideoElement) {
-			if (externalVideoElement.readyState < 2) {
-				console.warn('Video not ready for texture creation');
-				return;
+			let videoTexture = null;
+
+			// Wait for video to be ready before creating texture
+			const createTextureWhenReady = () => {
+				if (externalVideoElement.readyState >= 2 && !videoTexture) {
+					videoTexture = new THREE.VideoTexture(externalVideoElement);
+					videoTexture.minFilter = THREE.LinearFilter;
+					videoTexture.magFilter = THREE.LinearFilter;
+					videoTexture.generateMipmaps = false;
+					videoTexture.needsUpdate = true;
+					setTexture(videoTexture);
+					return true;
+				}
+				return false;
+			};
+
+			// Try immediately
+			if (!createTextureWhenReady()) {
+				// If not ready, wait for loadeddata event
+				const handleLoadedData = () => {
+					createTextureWhenReady();
+				};
+				externalVideoElement.addEventListener('loadeddata', handleLoadedData);
+				externalVideoElement.addEventListener('canplay', handleLoadedData);
+
+				return () => {
+					externalVideoElement.removeEventListener('loadeddata', handleLoadedData);
+					externalVideoElement.removeEventListener('canplay', handleLoadedData);
+					if (videoTexture) {
+						videoTexture.dispose();
+					}
+				};
 			}
 
-			const videoTexture = new THREE.VideoTexture(externalVideoElement);
-			videoTexture.minFilter = THREE.LinearFilter;
-			videoTexture.magFilter = THREE.LinearFilter;
-			videoTexture.generateMipmaps = false;
-			videoTexture.needsUpdate = true;
-			setTexture(videoTexture);
-
 			return () => {
-				videoTexture.dispose();
+				if (videoTexture) {
+					videoTexture.dispose();
+				}
 			};
 		}
 

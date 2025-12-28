@@ -89,6 +89,7 @@ class MatchModel(BaseModel):
     processing_completed_at: Optional[str] = Field(None, description="Processing completion timestamp")
     processing_step: Optional[ProcessingStep] = Field(None, description="Current processing step")
     processing_message: Optional[str] = Field(None, description="Detailed processing progress message")
+    viewed: bool = Field(default=False, description="Whether the match has been viewed in the viewer")
 
     @field_validator("id")
     @classmethod

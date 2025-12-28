@@ -270,3 +270,69 @@ def _stack_videos(video1_path: str, video2_path: str, offset: float, output_path
     # If we got here, all encoders failed
     if last_error:
         raise RuntimeError(f"Video stacking failed with all encoders: {last_error}") from last_error
+
+
+def extract_preview_frame(video_path: str, output_path: str, timestamp: float = 1.0) -> str:
+	"""
+	Extract a single frame from video as a preview thumbnail.
+
+	Args:
+		video_path: Path to input video
+		output_path: Path for output preview image (JPEG)
+		timestamp: Time in seconds to extract frame from (default: 1.0 second)
+
+	Returns:
+		Path to output preview image
+
+	Raises:
+		RuntimeError: If frame extraction fails
+		FileNotFoundError: If video not found
+	"""
+	check_ffmpeg()
+
+	if not os.path.exists(video_path):
+		raise FileNotFoundError(f"Video not found: {video_path}")
+
+	# Ensure output directory exists
+	os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+	try:
+		# Use ffmpeg to extract frame at specified timestamp
+		# -ss: seek to timestamp (fast seeking)
+		# -vframes 1: extract only 1 frame
+		# -q:v 2: quality (1-31, lower is better)
+		cmd = [
+			"ffmpeg",
+			"-ss", str(timestamp),
+			"-i", video_path,
+			"-vframes", "1",
+			"-q:v", "2",
+			"-y",  # Overwrite output file
+			output_path,
+		]
+
+		result = subprocess.run(
+			cmd,
+			capture_output=True,
+			text=True,
+			timeout=30,
+		)
+
+		if result.returncode != 0:
+			raise RuntimeError(f"FFmpeg failed: {result.stderr}")
+
+		if not os.path.exists(output_path):
+			raise RuntimeError("Preview image was not created")
+
+		return output_path
+
+	except subprocess.TimeoutExpired:
+		raise RuntimeError("Frame extraction timed out")
+	except Exception as e:
+		# Clean up partial output
+		if os.path.exists(output_path):
+			try:
+				os.remove(output_path)
+			except:
+				pass
+		raise RuntimeError(f"Frame extraction failed: {str(e)}") from e

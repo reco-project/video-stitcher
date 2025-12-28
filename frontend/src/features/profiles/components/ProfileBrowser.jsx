@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useBrands, useModels, useProfilesByBrandModel } from '../hooks/useProfiles';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Search, Camera, Package } from 'lucide-react';
 
 export default function ProfileBrowser({ onSelect }) {
 	const [selectedBrand, setSelectedBrand] = useState('');
 	const [selectedModel, setSelectedModel] = useState('');
+	const [searchQuery, setSearchQuery] = useState('');
 
 	const { brands, loading: brandsLoading } = useBrands();
 	const { models, loading: modelsLoading } = useModels(selectedBrand);
@@ -21,9 +24,36 @@ export default function ProfileBrowser({ onSelect }) {
 		setSelectedModel(model);
 	};
 
+	// Filter profiles by search query
+	const filteredProfiles = profiles.filter((profile) => {
+		if (!searchQuery) return true;
+		const query = searchQuery.toLowerCase();
+		return (
+			profile.lens_model?.toLowerCase().includes(query) ||
+			profile.id.toLowerCase().includes(query) ||
+			`${profile.resolution.width}x${profile.resolution.height}`.includes(query)
+		);
+	});
+
+	// Get camera brand icon
+	const getCameraBrandIcon = (brand) => {
+		const brandLower = brand?.toLowerCase() || '';
+		if (brandLower.includes('gopro')) return '📷';
+		if (brandLower.includes('dji')) return '🚁';
+		if (brandLower.includes('insta360')) return '🎥';
+		return '📹';
+	};
+
 	return (
 		<div className="w-full">
-			<h3 className="text-lg font-bold mb-2">Browse by Camera</h3>
+			<div className="flex items-center justify-between mb-4">
+				<h3 className="text-lg font-bold">Browse by Camera</h3>
+				{selectedBrand && selectedModel && profiles.length > 0 && (
+					<span className="text-xs text-muted-foreground">
+						{filteredProfiles.length} of {profiles.length} profiles
+					</span>
+				)}
+			</div>
 
 			<div className="space-y-4">
 				<div>
@@ -62,29 +92,63 @@ export default function ProfileBrowser({ onSelect }) {
 
 				{selectedBrand && selectedModel && (
 					<div>
-						<Label>Profile</Label>
+						<div className="flex items-center justify-between mb-2">
+							<Label>Profiles</Label>
+							{profiles.length > 3 && (
+								<div className="relative flex-1 max-w-xs ml-4">
+									<Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+									<Input
+										type="text"
+										placeholder="Search profiles..."
+										value={searchQuery}
+										onChange={(e) => setSearchQuery(e.target.value)}
+										className="pl-8 h-9 text-sm"
+									/>
+								</div>
+							)}
+						</div>
 						{profilesLoading ? (
-							<div className="text-sm text-muted-foreground">Loading...</div>
+							<div className="flex items-center justify-center p-8 text-muted-foreground">
+								<Package className="h-5 w-5 mr-2 animate-pulse" />
+								<span>Loading profiles...</span>
+							</div>
 						) : profiles.length === 0 ? (
-							<div className="text-sm text-muted-foreground">No profiles found</div>
+							<div className="border-2 border-dashed rounded-lg p-8 text-center">
+								<Camera className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+								<p className="text-sm font-medium mb-1">No profiles found</p>
+								<p className="text-xs text-muted-foreground">
+									No lens profiles exist for {selectedBrand} {selectedModel}
+								</p>
+							</div>
+						) : filteredProfiles.length === 0 ? (
+							<div className="border-2 border-dashed rounded-lg p-8 text-center">
+								<Search className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+								<p className="text-sm font-medium mb-1">No matches found</p>
+								<p className="text-xs text-muted-foreground">Try adjusting your search query</p>
+							</div>
 						) : (
 							<div className="grid gap-2 mt-2">
-								{profiles.map((profile) => (
+								{filteredProfiles.map((profile) => (
 									<Card
 										key={profile.id}
-										className="cursor-pointer hover:bg-accent transition-colors"
+										className="cursor-pointer hover:bg-accent hover:border-primary/50 transition-all"
 										onClick={() => onSelect && onSelect(profile)}
 									>
 										<CardHeader className="p-3">
-											<CardTitle className="text-sm">
-												{profile.lens_model || 'Standard'}
-											</CardTitle>
-										</CardHeader>
-										<CardContent className="p-3 pt-0">
-											<div className="text-xs text-muted-foreground">
-												{profile.resolution.width}x{profile.resolution.height}
+											<div className="flex items-start gap-2">
+												<span className="text-2xl">
+													{getCameraBrandIcon(profile.camera_brand)}
+												</span>
+												<div className="flex-1 min-w-0">
+													<CardTitle className="text-sm">
+														{profile.lens_model || 'Standard Lens'}
+													</CardTitle>
+													<div className="text-xs text-muted-foreground mt-1">
+														{profile.resolution.width}×{profile.resolution.height}
+													</div>
+												</div>
 											</div>
-										</CardContent>
+										</CardHeader>
 									</Card>
 								))}
 							</div>

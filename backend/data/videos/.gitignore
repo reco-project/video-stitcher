@@ -1,8 +1,0 @@
-# Ignore all video files (users' data)
-*
-
-# Keep this .gitignore file
-!.gitignore
-
-# Keep README if we add one
-!README.md

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -26,6 +26,53 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 	const { brands: brandsRight } = useBrands();
 	const { models: modelsRight } = useModels(rightBrand);
 	const { profiles: profilesRight } = useProfilesByBrandModel(rightBrand, rightModel);
+
+	// Auto-select when there's only one option available in a select box
+	useEffect(() => {
+		if (!leftBrand && brandsLeft.length === 1) {
+			setLeftBrand(brandsLeft[0]);
+		}
+	}, [brandsLeft, leftBrand]);
+
+	useEffect(() => {
+		if (leftBrand && !leftModel && modelsLeft.length === 1) {
+			setLeftModel(modelsLeft[0]);
+		}
+	}, [modelsLeft, leftBrand, leftModel]);
+
+	useEffect(() => {
+		if (leftBrand && leftModel && !leftProfileId && profilesLeft.length === 1) {
+			setLeftProfileId(profilesLeft[0].id);
+		}
+	}, [profilesLeft, leftBrand, leftModel, leftProfileId]);
+
+	useEffect(() => {
+		if (!rightBrand && brandsRight.length === 1) {
+			setRightBrand(brandsRight[0]);
+		}
+	}, [brandsRight, rightBrand]);
+
+	useEffect(() => {
+		if (rightBrand && !rightModel && modelsRight.length === 1) {
+			setRightModel(modelsRight[0]);
+		}
+	}, [modelsRight, rightBrand, rightModel]);
+
+	useEffect(() => {
+		if (rightBrand && rightModel && !rightProfileId && profilesRight.length === 1) {
+			setRightProfileId(profilesRight[0].id);
+		}
+	}, [profilesRight, rightBrand, rightModel, rightProfileId]);
+
+	const handleAutoAssign = () => {
+		if (brandsLeft.length === 1) setLeftBrand(brandsLeft[0]);
+		if (modelsLeft.length === 1) setLeftModel(modelsLeft[0]);
+		if (profilesLeft.length === 1) setLeftProfileId(profilesLeft[0].id);
+
+		if (brandsRight.length === 1) setRightBrand(brandsRight[0]);
+		if (modelsRight.length === 1) setRightModel(modelsRight[0]);
+		if (profilesRight.length === 1) setRightProfileId(profilesRight[0].id);
+	};
 
 	const handleNext = () => {
 		if (!leftProfileId) {
@@ -65,10 +112,16 @@ export default function ProfileAssignmentStep({ matchData, onNext, onBack }) {
 		<Card>
 			<CardHeader>
 				<CardTitle>Step 2: Assign Lens Profiles</CardTitle>
-				<p className="text-sm text-muted-foreground mt-2">
-					Select lens profiles for the left and right camera videos. The backend will use these to process and
-					stitch the videos.
-				</p>
+				<div className="flex items-center justify-between gap-4">
+					<p className="text-sm text-muted-foreground mt-2">
+						Select lens profiles for the left and right camera videos. The backend will use these to process
+						and stitch the videos.
+					</p>
+					{/* Button to auto-assign profiles when only one option exists */}
+					<Button size="sm" variant="outline" onClick={handleAutoAssign}>
+						Auto Assign Profiles
+					</Button>
+				</div>
 			</CardHeader>
 			<CardContent className="space-y-6">
 				{error && (

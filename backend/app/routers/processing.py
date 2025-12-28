@@ -125,6 +125,16 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                     left_video_path, right_video_path, output_video_path, temp_dir
                 )
 
+                # Extract preview frame from the stacked video
+                try:
+                    from app.services.transcoding import extract_preview_frame
+                    preview_path = os.path.join("data/videos", f"{match_id}_preview.jpg")
+                    extract_preview_frame(stacked_path, preview_path, timestamp=1.0)
+                    logger.info(f"Preview generated for {match_id} at {preview_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to generate preview for {match_id}: {e}")
+                    # Continue even if preview generation fails - not critical
+
                 # Update match with video path
                 match_data["src"] = f"videos/{match_id}.mp4"
                 match_data["offset_seconds"] = round(offset, 2)
