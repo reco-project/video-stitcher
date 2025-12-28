@@ -35,15 +35,6 @@ export default function ProfileBrowser({ onSelect }) {
 		);
 	});
 
-	// Get camera brand icon
-	const getCameraBrandIcon = (brand) => {
-		const brandLower = brand?.toLowerCase() || '';
-		if (brandLower.includes('gopro')) return '📷';
-		if (brandLower.includes('dji')) return '🚁';
-		if (brandLower.includes('insta360')) return '🎥';
-		return '📹';
-	};
-
 	return (
 		<div className="w-full">
 			<div className="flex items-center justify-between mb-4">
@@ -135,18 +126,11 @@ export default function ProfileBrowser({ onSelect }) {
 										onClick={() => onSelect && onSelect(profile)}
 									>
 										<CardHeader className="p-3">
-											<div className="flex items-start gap-2">
-												<span className="text-2xl">
-													{getCameraBrandIcon(profile.camera_brand)}
-												</span>
-												<div className="flex-1 min-w-0">
-													<CardTitle className="text-sm">
-														{profile.lens_model || 'Standard Lens'}
-													</CardTitle>
-													<div className="text-xs text-muted-foreground mt-1">
-														{profile.resolution.width}×{profile.resolution.height}
-													</div>
-												</div>
+											<CardTitle className="text-sm">
+												{profile.lens_model || 'Standard Lens'}
+											</CardTitle>
+											<div className="text-xs text-muted-foreground mt-1">
+												{profile.resolution.width}×{profile.resolution.height}
 											</div>
 										</CardHeader>
 									</Card>
