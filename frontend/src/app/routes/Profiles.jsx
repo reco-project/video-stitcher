@@ -2,7 +2,6 @@ import React from 'react';
 import ProfileManager from '@/features/profiles/components/ProfileManager';
 import AppSettings from '@/features/settings/components/AppSettings';
 import About from '@/features/settings/components/About';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Profiles() {

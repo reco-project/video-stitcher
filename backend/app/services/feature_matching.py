@@ -53,7 +53,7 @@ def match_features(
     # Check if images are valid (not blank/black) - relaxed threshold
     left_std = gray_left.std()
     right_std = gray_right.std()
-    
+
     if left_std < 0.1 or right_std < 0.1:
         raise ValueError(f"Images appear to be blank (std: left={left_std:.2f}, right={right_std:.2f})")
 
@@ -61,8 +61,10 @@ def match_features(
     kp1, des1, kp2, des2, norm_type = _detect_features(gray_left, gray_right, method)
 
     if des1 is None or des2 is None:
-        raise ValueError(f"Failed to detect features: des1={'None' if des1 is None else 'OK'}, des2={'None' if des2 is None else 'OK'}")
-    
+        raise ValueError(
+            f"Failed to detect features: des1={'None' if des1 is None else 'OK'}, des2={'None' if des2 is None else 'OK'}"
+        )
+
     if len(kp1) == 0 or len(kp2) == 0:
         raise ValueError(f"No keypoints found: kp1={len(kp1)}, kp2={len(kp2)}")
 

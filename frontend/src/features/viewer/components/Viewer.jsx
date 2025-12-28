@@ -98,7 +98,6 @@ const Viewer = ({ selectedMatch }) => {
 	const [yawRange, setYawRange] = useState(140);
 	const [pitchRange, setPitchRange] = useState(20);
 	const [isExpanded, setIsExpanded] = useState(false);
-	const [isSaving, setIsSaving] = useState(false);
 	const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
 	const saveTimeoutRef = React.useRef(null);
 
@@ -136,7 +135,6 @@ const Viewer = ({ selectedMatch }) => {
 		saveTimeoutRef.current = setTimeout(() => {
 			const handleAutoSave = async () => {
 				try {
-					setIsSaving(true);
 					setSaveStatus('saving');
 					const updatedMatch = {
 						...selectedMatch,
@@ -156,8 +154,6 @@ const Viewer = ({ selectedMatch }) => {
 					console.warn('Failed to auto-save panning ranges:', err);
 					setSaveStatus('error');
 					setTimeout(() => setSaveStatus(null), 3000);
-				} finally {
-					setIsSaving(false);
 				}
 			};
 

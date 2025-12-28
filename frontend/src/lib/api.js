@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { env } from '@/config/env';
 import { getApiBaseUrl } from '@/hooks/useSettings';
 
 export const api = axios.create({

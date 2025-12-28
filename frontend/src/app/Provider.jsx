@@ -6,7 +6,7 @@ import { useDarkMode } from '@/hooks/useDarkMode';
 const queryClient = new QueryClient();
 
 function ThemeInitializer({ children }) {
-	const { isDark } = useDarkMode();
+	useDarkMode();
 
 	return children;
 }

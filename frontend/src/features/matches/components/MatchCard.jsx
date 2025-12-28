@@ -119,8 +119,8 @@ export default function MatchCard({ match, onSelect, className }) {
 							{typeof match.fps === 'number' && <p>⚡ FPS: {match.fps}</p>}
 							{match.frames_processed != null && match.frames_total != null ? (
 								<p>
-									🎞 Frames: {match.frames_processed} / {match.frames_total}{' '}
-									({Math.round((match.frames_processed / Math.max(1, match.frames_total)) * 100)}%)
+									🎞 Frames: {match.frames_processed} / {match.frames_total} (
+									{Math.round((match.frames_processed / Math.max(1, match.frames_total)) * 100)}%)
 								</p>
 							) : match.progress_percent != null ? (
 								<p>Progress: {Math.round(match.progress_percent)}%</p>

@@ -128,6 +128,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 # Extract preview frame from the stacked video
                 try:
                     from app.services.transcoding import extract_preview_frame
+
                     preview_path = os.path.join("data/videos", f"{match_id}_preview.jpg")
                     extract_preview_frame(stacked_path, preview_path, timestamp=1.0)
                     logger.info(f"Preview generated for {match_id} at {preview_path}")

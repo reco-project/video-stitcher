@@ -122,7 +122,7 @@ export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameB
 
 	try {
 		return JSON.parse(text);
-	} catch (e) {
+	} catch {
 		console.error('Failed to parse response:', text);
 		throw new Error('Invalid response from server');
 	}
