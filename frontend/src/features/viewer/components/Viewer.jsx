@@ -41,6 +41,7 @@ const VideoPlane = ({ texture, isLeft }) => {
 	// Validate uniforms exist
 	if (!u || !u.width || !u.fx) {
 		console.error('Missing uniforms for', isLeft ? 'left' : 'right', 'camera:', u);
+		console.error('Match data:', selectedMatch);
 		return null;
 	}
 
@@ -83,9 +84,32 @@ const Viewer = ({ selectedMatch }) => {
 		setSelectedMatch(selectedMatch);
 	}, [selectedMatch, setSelectedMatch]);
 
-	// Validate params exist
-	if (!selectedMatch?.params) {
-		throw new Error('Match is missing calibration parameters');
+	// Show friendly message for unprocessed matches
+	if (!selectedMatch?.params || !selectedMatch?.left_uniforms || !selectedMatch?.right_uniforms) {
+		const missingItems = [];
+		if (!selectedMatch?.params) missingItems.push('calibration parameters');
+		if (!selectedMatch?.left_uniforms) missingItems.push('left camera uniforms');
+		if (!selectedMatch?.right_uniforms) missingItems.push('right camera uniforms');
+
+		return (
+			<div className="flex items-center justify-center p-8">
+				<Alert className="max-w-2xl">
+					<AlertTitle>Match Needs Processing</AlertTitle>
+					<AlertDescription className="mt-2">
+						<p className="mb-2">
+							This match is missing: {missingItems.join(', ')}.
+							{!selectedMatch?.params &&
+								' Processing will transcode the videos and calibrate the camera parameters needed for stitching.'}
+						</p>
+						<p className="text-sm text-muted-foreground">
+							Go back to the match list and click &quot;
+							{selectedMatch?.status === 'ready' ? 'Retry' : 'Process Now'}&quot; to{' '}
+							{selectedMatch?.status === 'ready' ? 're-' : ''}process this match.
+						</p>
+					</AlertDescription>
+				</Alert>
+			</div>
+		);
 	}
 
 	const defaultFOV = 75;

@@ -50,9 +50,16 @@ export default function Home() {
 
 	const handleWizardComplete = async (newMatch) => {
 		setShowWizard(false);
-		setShowList(false);
-		// Auto-select the newly created match
-		setSelectedMatch(newMatch);
+
+		// Only auto-select if match is ready (has been processed)
+		// Otherwise, show the match list where user can process it later
+		if (newMatch.status === 'ready' && newMatch.params) {
+			setShowList(false);
+			setSelectedMatch(newMatch);
+		} else {
+			// Show match list for unprocessed matches
+			setShowList(true);
+		}
 	};
 
 	const handleSelectMatch = (match) => {
