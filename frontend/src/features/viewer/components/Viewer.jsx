@@ -8,18 +8,49 @@ import Controls from './Controls.jsx';
 import { formatUniforms } from '../utils/utils.js';
 import VideoPlayerContainer from './VideoPlayer.jsx';
 import { useCustomVideoTexture } from '../hooks/useCustomVideoTexture.js';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+
+const ViewerErrorFallback = ({ error, resetErrorBoundary }) => {
+	return (
+		<div className="flex items-center justify-center p-8">
+			<Alert variant="destructive" className="max-w-2xl">
+				<AlertTitle>Failed to load video viewer</AlertTitle>
+				<AlertDescription className="mt-2">
+					<p className="mb-2">{error.message || 'An unexpected error occurred'}</p>
+					<p className="text-sm text-muted-foreground mb-4">
+						This may happen if the match data is incomplete or the video file cannot be loaded.
+					</p>
+					<Button onClick={resetErrorBoundary} variant="outline" size="sm">
+						Try Again
+					</Button>
+				</AlertDescription>
+			</Alert>
+		</div>
+	);
+};
 
 const VideoPlane = ({ texture, isLeft }) => {
 	const selectedMatch = useViewerStore((s) => s.selectedMatch);
-	const params = selectedMatch ? selectedMatch.params : {};
-	const u = selectedMatch ? selectedMatch.uniforms : {};
+
+	if (!selectedMatch) return null;
+
+	const params = selectedMatch.params || {};
+	const u = isLeft ? selectedMatch.left_uniforms : selectedMatch.right_uniforms;
+
+	// Validate uniforms exist
+	if (!u || !u.width || !u.fx) {
+		console.error('Missing uniforms for', isLeft ? 'left' : 'right', 'camera:', u);
+		return null;
+	}
+
 	const planeWidth = 1;
 	const aspect = 16 / 9;
 
 	const position = isLeft
-		? [0, 0, (planeWidth / 2) * (1 - params.intersect)]
-		: [(planeWidth / 2) * (1 - params.intersect), params.xTy, 0];
-	const rotation = isLeft ? [params.zRx, THREE.MathUtils.degToRad(90), 0] : [0, 0, params.xRz];
+		? [0, 0, (planeWidth / 2) * (1 - (params.intersect || 0.5))]
+		: [(planeWidth / 2) * (1 - (params.intersect || 0.5)), params.xTy || 0, 0];
+	const rotation = isLeft ? [params.zRx || 0, THREE.MathUtils.degToRad(90), 0] : [0, 0, params.xRz || 0];
 
 	return (
 		<mesh position={position} rotation={rotation}>
@@ -50,13 +81,18 @@ const Viewer = ({ selectedMatch }) => {
 
 	useEffect(() => {
 		setSelectedMatch(selectedMatch);
-	}, [selectedMatch, setSelectedMatch]); // TODO: missing validation
+	}, [selectedMatch, setSelectedMatch]);
+
+	// Validate params exist
+	if (!selectedMatch?.params) {
+		throw new Error('Match is missing calibration parameters');
+	}
 
 	const defaultFOV = 75;
-	const cameraAxisOffset = selectedMatch.params.cameraAxisOffset; // TODO: validate. No use of "?." here to avoid silent errors.
+	const cameraAxisOffset = selectedMatch.params.cameraAxisOffset;
 
 	return (
-		<ErrorBoundary fallback={<div>Error loading video panorama</div>}>
+		<ErrorBoundary FallbackComponent={ViewerErrorFallback}>
 			<VideoPlayerContainer>
 				<Canvas
 					camera={{
