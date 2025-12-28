@@ -145,4 +145,4 @@ Then update `app/main.py` to use the new store.
 
 ---
 
-**License:** Gyroflow calibration data is CC0 1.0 Universal (Public Domain)
+**License:** Calibration data is CC0 1.0 Universal (Public Domain)

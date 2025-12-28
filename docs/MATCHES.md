@@ -82,39 +82,6 @@ Same as input + processing fields:
 
 ## Usage Examples
 
-### Python (Direct API)
-
-```python
-import httpx
-
-# List all matches
-response = httpx.get("http://localhost:8000/api/matches")
-matches = response.json()
-
-# Get specific match
-match = httpx.get("http://localhost:8000/api/matches/match-1735344000000").json()
-
-# Create match
-new_match = {
-    "id": "match-1735344000001",
-    "name": "Test Match",
-    "left_videos": [{"path": "/video1.mp4"}],
-    "right_videos": [{"path": "/video2.mp4"}],
-    "params": {...},
-    "left_uniforms": {...},
-    "right_uniforms": {...}
-}
-httpx.post("http://localhost:8000/api/matches", json=new_match)
-```
-
-### JavaScript (Frontend)
-
-````javascript
-import { useMatches, useMatchMutations } from '@/features/matches/hooks/useMatches';
-
-// React hooks
-## Usage
-
 ### Python
 
 ```python
@@ -122,7 +89,7 @@ import httpx
 matches = httpx.get("http://localhost:8000/api/matches").json()
 match = httpx.get("http://localhost:8000/api/matches/match-123").json()
 httpx.post("http://localhost:8000/api/matches", json=match_data)
-````
+```
 
 ### JavaScript
 
@@ -138,32 +105,6 @@ await create(matchData);
 curl http://localhost:8000/api/matches
 curl -X POST http://localhost:8000/api/matches -H "Content-Type: application/json" -d @match.json
 ```
-
-from app.repositories.match_store import MatchStore
-
-class DatabaseMatchStore(MatchStore):
-def list_all(self) -> List[Dict]: # Database implementation
-pass
-
-    def create(self, match: Dict) -> Dict:
-        # Database implementation
-        pass
-
-    # ... implement all abstract methods
-
-````
-
-Update `app/main.py` to use the new implementation:
-
-```python
-from app.repositories.database_match_store import DatabaseMatchStore
-
-match_store = DatabaseMatchStore(connection_string)
-````
-
-### Adding Backend Processing
-
-Future implementation should:
 
 ## Frontend Integration
 

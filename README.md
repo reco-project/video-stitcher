@@ -19,16 +19,17 @@ More context: [Reddit post](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/
 
 **Current tech stack:**
 
-- **Frontend:** React + Vite (Three.js / React Three Fiber for WebGL and shaders)
-- **Backend:** Python Flask (OpenCV / NumPy + FFmpeg for stitching and transcoding)
+- **Frontend:** React + Vite (Three.js / React Three Fiber for WebGL video stitching and frame warping)
+- **Backend:** Python FastAPI (OpenCV for feature matching + FFmpeg for transcoding)
 - **Platforms:** Windows, macOS, Linux (x86_64 and arm64)
 
 ---
 
 ## Current Features
 
-- Live stitching of two video feeds (GPU-accelerated)
-- Browser-based stitching, even on mobile devices
+- Live stitching of two video feeds (GPU-accelerated with WebGL shaders)
+- Automatic camera calibration using feature matching
+- Browser-based processing with frontend frame warping
 - Works with arbitrary camera models and positions
 - Experimental livestreaming support (in progress)
 
@@ -78,7 +79,7 @@ The following steps mainly involve refactoring and integration work before the p
 - [x] Create comprehensive backend API (FastAPI) with testing suite
 - [x] Add multi-step match wizard UI with validation
 - [x] Establish proper data organization and documentation
-- [ ] Integrate backend video processing pipeline
+- [x] Integrate backend video processing pipeline (transcoding + calibration)
 - [ ] Design and implement enhanced UI/UX improvements
 - [ ] Prepare and publish beta release
 
