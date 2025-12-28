@@ -41,3 +41,7 @@ jobs:
             # Prettier check
             - name: Check frontend formatting
               run: npm run format:check
+
+            # Run tests
+            - name: Run backend tests
+              run: npm test
