@@ -16,12 +16,13 @@ Backend system for managing video stitching projects with multiple video inputs 
 1. Select raw videos → VideoImportStep
 2. Assign lens profiles → ProfileAssignmentStep
 3. Create match (videos + uniforms) → API
-4. [Backend stitching - NOT IMPLEMENTED]
-5. Backend adds `src` URL → Match viewable
-6. View stitched result → Viewer
+4. Transcode videos → POST /api/transcode (status: awaiting_frames)
+5. Frontend extracts warped frames → FrameExtractor.jsx
+6. Backend calibrates → POST /api/process-with-frames (status: ready)
+7. View stitched result → Viewer (ready matches can be recalibrated)
 ```
 
-**Note:** Backend video processing (step 4) not implemented. Only pre-stitched matches (with `src` URLs) can be viewed.
+**Processing:** Two-step flow - backend stacks videos, frontend warps frames using Three.js shaders, backend performs feature matching and position optimization.
 
 ## Match Schema
 
@@ -56,7 +57,18 @@ Backend system for managing video stitching projects with multiple video inputs 
 
 ### Output (After Processing)
 
-Same as input + `"src": "https://storage.../stitched_output.mp4"` + `"created_at": "2024-12-27T10:30:00Z"`
+Same as input + processing fields:
+
+```json
+{
+	"src": "file:///.../temp/{match_id}/stacked_video.mp4",
+	"status": "ready", // or "awaiting_frames", "transcoding", "feature_matching", etc.
+	"processing_started_at": "2024-12-27T10:30:00Z",
+	"processing_completed_at": "2024-12-27T10:32:00Z"
+}
+```
+
+**Status values:** `pending`, `transcoding`, `awaiting_frames`, `feature_matching`, `optimizing`, `ready`, `error`
 
 ## API
 
@@ -155,11 +167,17 @@ Future implementation should:
 
 ## Frontend Integration
 
-**Creation:** VideoImportStep → ProfileAssignmentStep → MatchWizard (extracts uniforms, creates match without `src`)
+**Creation:** VideoImportStep → ProfileAssignmentStep → MatchWizard (extracts uniforms, creates match)
+
+**Processing:**
+
+1. POST /api/transcode → status: `awaiting_frames`
+2. FrameExtractor.jsx extracts warped frames using Three.js
+3. POST /api/process-with-frames → status: `ready`
 
 **Viewing:** Requires `match.src`, `match.left_uniforms`, `match.right_uniforms`, `match.params`
 
-Matches without `src` cannot be viewed (backend processing pending).
+**Recalibration:** Ready matches can re-extract frames and recalibrate without transcoding again.
 
 ## Storage
 
@@ -167,4 +185,4 @@ Implement `MatchStore` interface for alternative backends (database, S3, etc.). 
 
 ---
 
-**Status:** Storage and API complete. Video stitching pending.
+**Status:** Transcoding and calibration pipeline complete. Frontend frame extraction with Three.js shaders.

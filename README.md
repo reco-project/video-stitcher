@@ -19,16 +19,17 @@ More context: [Reddit post](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/
 
 **Current tech stack:**
 
-- **Frontend:** React + Vite (Three.js / React Three Fiber for WebGL and shaders)
-- **Backend:** Python Flask (OpenCV / NumPy + FFmpeg for stitching and transcoding)
+- **Frontend:** React + Vite (Three.js / React Three Fiber for WebGL video stitching and frame warping)
+- **Backend:** Python FastAPI (OpenCV for feature matching + FFmpeg for transcoding)
 - **Platforms:** Windows, macOS, Linux (x86_64 and arm64)
 
 ---
 
 ## Current Features
 
-- Live stitching of two video feeds (GPU-accelerated)
-- Browser-based stitching, even on mobile devices
+- Live stitching of two video feeds (GPU-accelerated with WebGL shaders)
+- Automatic camera calibration using feature matching
+- Browser-based processing with frontend frame warping
 - Works with arbitrary camera models and positions
 - Experimental livestreaming support (in progress)
 
@@ -63,6 +64,42 @@ _Note: Just found out about [Webcodecs](https://developer.chrome.com/docs/web-pl
 
 ---
 
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** 20+ and npm
+- **Python** 3.9+ (3.11+ recommended)
+- **FFmpeg** installed and available in PATH
+
+### Installation
+
+1. Clone the repository:
+
+    ```bash
+    git clone https://github.com/reco-project/video-stitcher.git
+    cd video-stitcher
+    ```
+
+2. Install all dependencies:
+
+    ```bash
+    npm run setup
+    ```
+
+3. Run the development environment:
+    ```bash
+    npm run dev
+    ```
+
+The app will start with:
+
+- Frontend dev server (Vite)
+- Backend API server (FastAPI)
+- Electron desktop app
+
+---
+
 ## Development Progress
 
 All core functionality already exists in a private repository.  
@@ -78,8 +115,8 @@ The following steps mainly involve refactoring and integration work before the p
 - [x] Create comprehensive backend API (FastAPI) with testing suite
 - [x] Add multi-step match wizard UI with validation
 - [x] Establish proper data organization and documentation
-- [ ] Integrate backend video processing pipeline
-- [ ] Design and implement enhanced UI/UX improvements
+- [x] Integrate backend video processing pipeline (transcoding + calibration)
+- [x] Design and implement enhanced UI/UX improvements
 - [ ] Prepare and publish beta release
 
 ---

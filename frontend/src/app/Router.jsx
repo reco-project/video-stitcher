@@ -2,13 +2,15 @@ import React from 'react';
 import { createBrowserRouter, useNavigate } from 'react-router';
 import { RouterProvider } from 'react-router-dom';
 
-import Home from './routes/Home';
+import AppLayout from './AppLayout';
+import MatchList from './routes/MatchList';
+import CreateMatch from './routes/CreateMatch';
+import MatchViewer from './routes/MatchViewer';
 import Profiles from './routes/Profiles';
 import NotFound from './routes/NotFound';
 
 /*
- * For the moment, I don't need complex routing, so I'll keep this centralized.
- * When the app grows, we can split (see https://github.com/alan2207/bulletproof-react/blob/master/apps/react-vite/src/app/router.tsx).
+ * Simplified routing with dedicated routes for each view
  */
 
 const paths = {
@@ -17,10 +19,20 @@ const paths = {
 		build: () => '/',
 		title: 'Home',
 	},
+	create: {
+		pattern: '/create',
+		build: () => '/create',
+		title: 'Create Match',
+	},
+	viewer: {
+		pattern: '/viewer/:id',
+		build: (id) => `/viewer/${id}`,
+		title: 'Viewer',
+	},
 	profiles: {
 		pattern: '/profiles',
 		build: () => '/profiles',
-		title: 'Lens Profiles',
+		title: 'Settings',
 	},
 };
 
@@ -36,6 +48,8 @@ export const useNavigateTo = () => {
 	const navigate = useNavigate();
 	return {
 		toHome: () => navigate(paths.home.build()),
+		toCreate: () => navigate(paths.create.build()),
+		toViewer: (id) => navigate(paths.viewer.build(id)),
 		toProfiles: () => navigate(paths.profiles.build()),
 	};
 };
@@ -43,11 +57,35 @@ export const useNavigateTo = () => {
 const router = createBrowserRouter([
 	{
 		path: paths.home.pattern,
-		element: <Home />,
+		element: (
+			<AppLayout>
+				<MatchList />
+			</AppLayout>
+		),
+	},
+	{
+		path: paths.create.pattern,
+		element: (
+			<AppLayout>
+				<CreateMatch />
+			</AppLayout>
+		),
+	},
+	{
+		path: paths.viewer.pattern,
+		element: (
+			<AppLayout>
+				<MatchViewer />
+			</AppLayout>
+		),
 	},
 	{
 		path: paths.profiles.pattern,
-		element: <Profiles />,
+		element: (
+			<AppLayout>
+				<Profiles />
+			</AppLayout>
+		),
 	},
 	{
 		path: '*',

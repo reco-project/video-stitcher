@@ -1,6 +1,14 @@
 # Backend API
 
-FastAPI backend for lens profile management and match orchestration.
+FastAPI backend for lens profile management, match orchestration, and video processing.
+
+## Prerequisites
+
+- Python 3.10+
+- **FFmpeg** (required for video processing)
+    - Download: https://ffmpeg.org/download.html
+    - Ensure `ffmpeg` is in your PATH
+    - Verify: `ffmpeg -version`
 
 ## Quick Start
 
@@ -40,9 +48,6 @@ backend/
 │   │   └── {brand}/{model}/{id}.json
 │   └── matches/                         # Match storage
 │       └── {match-id}.json
-├── docs/
-│   ├── LENS_PROFILES.md                 # Profile system documentation
-│   └── MATCHES.md                       # Match system documentation
 ├── tests/
 │   ├── test_profiles_api.py             # Profile API tests
 │   ├── test_matches_api.py              # Match API tests
@@ -56,8 +61,11 @@ backend/
 - **Health:** `GET /`, `GET /api/health`
 - **Profiles:** `/api/profiles` - Full CRUD + hierarchy navigation
 - **Matches:** `/api/matches` - Full CRUD operations
+- **Processing:**
+    - `POST /api/transcode` - Stack videos vertically (awaits frontend frame extraction)
+    - `POST /api/process-with-frames` - Calibrate using warped frames from frontend
 
-See [LENS_PROFILES.md](./docs/LENS_PROFILES.md) and [MATCHES.md](./docs/MATCHES.md) for details.
+See [LENS_PROFILES.md](../docs/LENS_PROFILES.md) and [MATCHES.md](../docs/MATCHES.md) for details.
 
 ## Storage
 
@@ -154,5 +162,5 @@ Check `allow_origins` in `app/main.py`. For development, use `["*"]`. For produc
 
 ---
 
-**Detailed docs:** [Lens Profiles](./docs/LENS_PROFILES.md) | [Matches](./docs/MATCHES.md)  
+**Detailed docs:** [Lens Profiles](../docs/LENS_PROFILES.md) | [Matches](../docs/MATCHES.md)  
 **License:** AGPL-3.0 | Gyroflow data: CC0 1.0 Universal

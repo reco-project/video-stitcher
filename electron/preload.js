@@ -13,4 +13,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	fileExists: (filePath) => ipcRenderer.invoke('file:exists', filePath),
 	// Get file metadata
 	getFileMetadata: (filePath) => ipcRenderer.invoke('file:getMetadata', filePath),
+	// Open URL in default browser
+	openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 });

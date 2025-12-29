@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
-export default function VideoImportStep({ onNext, initialData }) {
+export default function VideoImportStep({ onNext, initialData, onChange }) {
 	const [name, setName] = useState(initialData?.name || '');
 	const [leftVideoPaths, setLeftVideoPaths] = useState(initialData?.left_videos?.map((v) => v.path) || ['']);
 	const [rightVideoPaths, setRightVideoPaths] = useState(initialData?.right_videos?.map((v) => v.path) || ['']);
@@ -54,11 +54,23 @@ export default function VideoImportStep({ onNext, initialData }) {
 					newPaths[index] = filePath;
 					setLeftVideoPaths(newPaths);
 					loadMetadata(filePath, side, index);
+					if (onChange)
+						onChange({
+							name,
+							left_videos: newPaths.map((p) => ({ path: p })),
+							right_videos: rightVideoPaths.map((p) => ({ path: p })),
+						});
 				} else {
 					const newPaths = [...rightVideoPaths];
 					newPaths[index] = filePath;
 					setRightVideoPaths(newPaths);
 					loadMetadata(filePath, side, index);
+					if (onChange)
+						onChange({
+							name,
+							left_videos: leftVideoPaths.map((p) => ({ path: p })),
+							right_videos: newPaths.map((p) => ({ path: p })),
+						});
 				}
 				setError(null);
 			}
@@ -69,9 +81,23 @@ export default function VideoImportStep({ onNext, initialData }) {
 
 	const handleAddVideo = (side) => {
 		if (side === 'left') {
-			setLeftVideoPaths([...leftVideoPaths, '']);
+			const newPaths = [...leftVideoPaths, ''];
+			setLeftVideoPaths(newPaths);
+			if (onChange)
+				onChange({
+					name,
+					left_videos: newPaths.map((p) => ({ path: p })),
+					right_videos: rightVideoPaths.map((p) => ({ path: p })),
+				});
 		} else {
-			setRightVideoPaths([...rightVideoPaths, '']);
+			const newPaths = [...rightVideoPaths, ''];
+			setRightVideoPaths(newPaths);
+			if (onChange)
+				onChange({
+					name,
+					left_videos: leftVideoPaths.map((p) => ({ path: p })),
+					right_videos: newPaths.map((p) => ({ path: p })),
+				});
 		}
 	};
 
@@ -106,9 +132,23 @@ export default function VideoImportStep({ onNext, initialData }) {
 
 	const handleRemoveVideo = (side, index) => {
 		if (side === 'left' && leftVideoPaths.length > 1) {
-			setLeftVideoPaths(leftVideoPaths.filter((_, i) => i !== index));
+			const newPaths = leftVideoPaths.filter((_, i) => i !== index);
+			setLeftVideoPaths(newPaths);
+			if (onChange)
+				onChange({
+					name,
+					left_videos: newPaths.map((p) => ({ path: p })),
+					right_videos: rightVideoPaths.map((p) => ({ path: p })),
+				});
 		} else if (side === 'right' && rightVideoPaths.length > 1) {
-			setRightVideoPaths(rightVideoPaths.filter((_, i) => i !== index));
+			const newPaths = rightVideoPaths.filter((_, i) => i !== index);
+			setRightVideoPaths(newPaths);
+			if (onChange)
+				onChange({
+					name,
+					left_videos: leftVideoPaths.map((p) => ({ path: p })),
+					right_videos: newPaths.map((p) => ({ path: p })),
+				});
 		}
 	};
 
@@ -117,10 +157,22 @@ export default function VideoImportStep({ onNext, initialData }) {
 			const newPaths = [...leftVideoPaths];
 			newPaths[index] = value;
 			setLeftVideoPaths(newPaths);
+			if (onChange)
+				onChange({
+					name,
+					left_videos: newPaths.map((p) => ({ path: p })),
+					right_videos: rightVideoPaths.map((p) => ({ path: p })),
+				});
 		} else {
 			const newPaths = [...rightVideoPaths];
 			newPaths[index] = value;
 			setRightVideoPaths(newPaths);
+			if (onChange)
+				onChange({
+					name,
+					left_videos: leftVideoPaths.map((p) => ({ path: p })),
+					right_videos: newPaths.map((p) => ({ path: p })),
+				});
 		}
 	};
 
@@ -231,7 +283,15 @@ export default function VideoImportStep({ onNext, initialData }) {
 						id="match-name"
 						type="text"
 						value={name}
-						onChange={(e) => setName(e.target.value)}
+						onChange={(e) => {
+							setName(e.target.value);
+							if (onChange)
+								onChange({
+									name: e.target.value,
+									left_videos: leftVideoPaths.map((p) => ({ path: p })),
+									right_videos: rightVideoPaths.map((p) => ({ path: p })),
+								});
+						}}
 						placeholder="e.g., Match 2024-12-27"
 					/>
 				</div>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import fetch from 'node-fetch';
@@ -137,6 +137,17 @@ ipcMain.handle('file:getMetadata', async (event, filePath) => {
 	} catch (error) {
 		console.error('Failed to get file metadata:', error);
 		return null;
+	}
+});
+
+// IPC handler to open URL in external browser
+ipcMain.handle('shell:openExternal', async (event, url) => {
+	try {
+		await shell.openExternal(url);
+		return true;
+	} catch (error) {
+		console.error('Failed to open external URL:', error);
+		return false;
 	}
 });
 

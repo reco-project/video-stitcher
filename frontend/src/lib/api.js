@@ -1,8 +1,14 @@
 import axios from 'axios';
-import { env } from '@/config/env';
+import { getApiBaseUrl } from '@/hooks/useSettings';
 
 export const api = axios.create({
-	baseURL: env.API_BASE_URL,
+	baseURL: getApiBaseUrl(),
+});
+
+// Update baseURL dynamically from settings
+api.interceptors.request.use((config) => {
+	config.baseURL = getApiBaseUrl();
+	return config;
 });
 
 api.interceptors.response.use(

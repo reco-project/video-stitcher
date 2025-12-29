@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useCameraControls } from '../stores/cameraContext';
 
 const Controls = () => {
 	const { camera, gl } = useThree();
+	const { yawRange, pitchRange } = useCameraControls();
 	const canvas = gl.domElement;
 	const dragging = useRef(false);
 	const lastX = useRef(0);
@@ -20,14 +22,14 @@ const Controls = () => {
 	const pitchQuat = new THREE.Quaternion();
 	const rightVec = new THREE.Vector3(1, 0, 0);
 
-	// TODO: adjust these ranges dynamically based on FOV and distortion
-	const pitchRange = THREE.MathUtils.degToRad(20); // vertical
-	const yawRange = THREE.MathUtils.degToRad(140); // horizontal
+	// Convert configurable degree ranges to radians
+	const pitchRangeRad = THREE.MathUtils.degToRad(pitchRange); // vertical
+	const yawRangeRad = THREE.MathUtils.degToRad(yawRange); // horizontal
 
-	const minPitch = -pitchRange / 2 - THREE.MathUtils.degToRad(10);
-	const maxPitch = pitchRange / 2 - THREE.MathUtils.degToRad(10);
-	const minYaw = -yawRange / 2 + THREE.MathUtils.degToRad(45);
-	const maxYaw = yawRange / 2 + THREE.MathUtils.degToRad(45);
+	const minPitch = -pitchRangeRad / 2 - THREE.MathUtils.degToRad(10);
+	const maxPitch = pitchRangeRad / 2 - THREE.MathUtils.degToRad(10);
+	const minYaw = -yawRangeRad / 2 + THREE.MathUtils.degToRad(45);
+	const maxYaw = yawRangeRad / 2 + THREE.MathUtils.degToRad(45);
 
 	useEffect(() => {
 		const onPointerDown = (e) => {
@@ -83,7 +85,7 @@ const Controls = () => {
 			canvas.removeEventListener('pointerup', onPointerUp);
 			canvas.removeEventListener('pointermove', onPointerMove);
 		};
-	}, [camera]);
+	}, [camera, yawRange, pitchRange]);
 };
 
 export default Controls;
