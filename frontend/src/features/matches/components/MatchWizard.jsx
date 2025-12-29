@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/components/ui/toast';
-import VideoImportStep from './VideoImportStep';
-import ProfileAssignmentStep from './ProfileAssignmentStep';
+import MatchCreationForm from './MatchCreationForm';
 import ProcessingStatus from './ProcessingStatus';
-import StepIndicator from '@/components/StepIndicator';
 import { useMatchMutations } from '../hooks/useMatches';
 import { useMatchProcessing } from '../hooks/useMatchProcessing';
 import { getMatch, processMatchWithFrames } from '../api/matches';
@@ -12,83 +10,42 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-const DRAFT_KEY = 'matchWizardDraft';
-
 export default function MatchWizard({ onComplete, onCancel }) {
 	const { showToast } = useToast();
-	// Load draft from localStorage on mount
-	const loadDraft = () => {
-		try {
-			const saved = localStorage.getItem(DRAFT_KEY);
-			if (saved) {
-				const draft = JSON.parse(saved);
-				return {
-					step: draft.step || 1,
-					matchData: draft.matchData || {
-						name: '',
-						left_videos: [{ path: '', profile_id: null }],
-						right_videos: [{ path: '', profile_id: null }],
-					},
-				};
-			}
-		} catch (err) {
-			console.warn('Failed to load draft:', err);
-		}
-		return {
-			step: 1,
-			matchData: {
-				name: '',
-				left_videos: [{ path: '', profile_id: null }],
-				right_videos: [{ path: '', profile_id: null }],
-			},
-		};
-	};
 
-	const initialState = loadDraft();
-	const [step, setStep] = useState(initialState.step);
-	const [matchData, setMatchData] = useState(initialState.matchData);
-	const [error, setError] = useState(null);
 	const [createdMatchId, setCreatedMatchId] = useState(null);
 	const [createdMatchData, setCreatedMatchData] = useState(null);
 	const [showProcessing, setShowProcessing] = useState(false);
 	const [extractingMatch, setExtractingMatch] = useState(null);
+	const [error, setError] = useState(null);
 	const extractionOpenedIds = React.useRef(new Set());
 
 	const { create } = useMatchMutations();
 	const processing = useMatchProcessing(createdMatchId, {
-		pollInterval: 5000, // Poll every 5 seconds
+		pollInterval: 5000,
 		autoPoll: showProcessing && createdMatchId !== null,
 	});
 
 	// Auto-complete wizard when processing finishes successfully
 	useEffect(() => {
-		// If extractor is open, suppress additional processing toasts to avoid clutter
 		if (extractingMatch) {
 			return;
 		}
 		if (
-			step === 3 &&
+			showProcessing &&
 			processing.status &&
 			(processing.status.status === 'ready' || processing.status.status === 'complete')
 		) {
-			// Auto-navigate to viewer
 			showToast({ message: 'Processing complete! Opening viewer...', type: 'success' });
-			// Wait a moment for toast to show, then navigate
 			const timer = setTimeout(() => {
 				handleProcessingComplete();
 			}, 1000);
 			return () => clearTimeout(timer);
 		}
-		if (step === 3 && processing.status && processing.status.status === 'error') {
+		if (showProcessing && processing.status && processing.status.status === 'error') {
 			showToast({ message: 'Error during processing', type: 'error' });
 		}
-		if (step === 3 && processing.status && processing.status.status === 'encoding') {
-			showToast({ message: 'Encoding video...', type: 'info' });
-		}
-		if (step === 3 && processing.status && processing.status.status === 'calibrating') {
-			showToast({ message: 'Calibrating...', type: 'info' });
-		}
-	}, [processing.status, step, extractingMatch]);
+	}, [processing.status, showProcessing, extractingMatch]);
 
 	// Auto-open frame extractor when backend indicates frames are required
 	useEffect(() => {
@@ -127,21 +84,11 @@ export default function MatchWizard({ onComplete, onCancel }) {
 	}, [processing.status, createdMatchId, extractingMatch]);
 
 	// Save draft to localStorage whenever state changes
-	useEffect(() => {
-		try {
-			localStorage.setItem(DRAFT_KEY, JSON.stringify({ step, matchData }));
-		} catch (err) {
-			console.warn('Failed to save draft:', err);
-		}
-	}, [step, matchData]);
-
-	// No longer clear draft on unmount; only clear on success/cancel
-
 	// Handle Escape key to cancel
 	useEffect(() => {
 		const handleKeyDown = (e) => {
-			if (e.key === 'Escape') {
-				if (confirm('Cancel match creation? Any unsaved progress will be lost.')) {
+			if (e.key === 'Escape' && !showProcessing) {
+				if (confirm('Cancel match creation?')) {
 					onCancel();
 				}
 			}
@@ -149,15 +96,9 @@ export default function MatchWizard({ onComplete, onCancel }) {
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [onCancel]);
+	}, [onCancel, showProcessing]);
 
-	const handleStep1Complete = (data) => {
-		setMatchData(data);
-		setStep(2);
-		setError(null);
-	};
-
-	const handleStep2Complete = async (finalData) => {
+	const handleFormSubmit = async (formData) => {
 		try {
 			setError(null);
 
@@ -216,40 +157,53 @@ export default function MatchWizard({ onComplete, onCancel }) {
 
 			const matchPayload = {
 				id,
-				name: finalData.name,
-				left_videos: finalData.left_videos,
-				right_videos: finalData.right_videos,
+				name: formData.name,
+				left_videos: formData.left_videos,
+				right_videos: formData.right_videos,
 				params: defaultParams,
-				left_uniforms: buildUniforms(finalData.leftProfile),
-				right_uniforms: buildUniforms(finalData.rightProfile),
+				left_uniforms: buildUniforms(formData.leftProfile),
+				right_uniforms: buildUniforms(formData.rightProfile),
 				metadata: {
-					left_profile_id: finalData.leftProfile.id,
-					right_profile_id: finalData.rightProfile.id,
+					left_profile_id: formData.leftProfile.id,
+					right_profile_id: formData.rightProfile.id,
 				},
 			};
 
 			const createdMatch = await create(matchPayload);
-			// Clear draft on successful creation
-			localStorage.removeItem(DRAFT_KEY);
 
-			// Store match ID and show processing step
+			// Store match ID and show processing
 			setCreatedMatchId(createdMatch.id);
 			setCreatedMatchData(createdMatch);
-			setStep(3); // New processing step
 			setShowProcessing(true);
 		} catch (err) {
 			setError(err.message || 'Failed to create match');
 		}
 	};
 
+	// Auto-start processing after match is created and ID is set
+	useEffect(() => {
+		if (createdMatchId && showProcessing && !processing.status) {
+			// Only auto-start if we haven't started processing yet
+			const autoStart = async () => {
+				try {
+					await processing.startProcessing();
+					processing.startPolling();
+				} catch (err) {
+					console.error('Failed to auto-start processing:', err);
+					setError(err.message || 'Failed to start processing');
+				}
+			};
+			autoStart();
+		}
+	}, [createdMatchId, showProcessing]);
+
 	const handleStartProcessing = async () => {
 		try {
 			setError(null);
-			// ensure UI knows processing started and polling will begin
 			setShowProcessing(true);
-			// If backend already indicates frames are ready, don't re-trigger transcode; open extractor instead
+
+			// If backend already indicates frames are ready, don't re-trigger transcode
 			if (processing.status && processing.status.processing_step === 'awaiting_frames') {
-				// open extractor will be triggered by effect; ensure polling is active
 				try {
 					processing.startPolling();
 				} catch {
@@ -257,8 +211,8 @@ export default function MatchWizard({ onComplete, onCancel }) {
 				}
 				return null;
 			}
+
 			const res = await processing.startProcessing();
-			// start polling to monitor progress (if hook not already polling)
 			try {
 				processing.startPolling();
 			} catch {
@@ -366,90 +320,30 @@ export default function MatchWizard({ onComplete, onCancel }) {
 			// Fetch the processed match data
 			const match = await getMatch(createdMatchId);
 			// Complete wizard with processed match
-			localStorage.removeItem(DRAFT_KEY);
 			onComplete(match);
 		} catch (err) {
 			console.error('Failed to fetch match:', err);
 			// Fallback: pass just the ID with ready status
-			localStorage.removeItem(DRAFT_KEY);
 			onComplete({ id: createdMatchId, status: 'ready' });
 		}
 	};
 
 	const handleCancel = () => {
-		try {
-			localStorage.removeItem(DRAFT_KEY);
-		} catch (err) {
-			console.warn('Failed to clear draft:', err);
-		}
 		onCancel();
 	};
 
-	const handleBack = () => {
-		setStep(1);
-		setError(null);
-	};
-
 	const isForegroundProcessing =
-		step === 3 &&
 		processing.status &&
 		// Show overlay when calibrating or when extracting but extractor not open
 		(processing.status.status === 'calibrating' || (processing.status.status === 'extracting' && !extractingMatch));
 
 	return (
-		<div className="w-full max-w-4xl space-y-6 relative">
-			{/* Step Progress Indicator */}
-			<StepIndicator
-				currentStep={step}
-				totalSteps={3}
-				steps={['Import Videos', 'Assign Profiles', 'Process Videos']}
-				stepBusy={
-					// busy when on step 3 and processing is running (not ready/error) OR awaiting frames
-					step === 3 &&
-					processing.status &&
-					(processing.status.processing_step === 'awaiting_frames' ||
-						!['ready', 'error'].includes(processing.status.status))
-				}
-			/>
-			{step === 1 && (
-				<VideoImportStep onNext={handleStep1Complete} initialData={matchData} onChange={setMatchData} />
-			)}
-
-			{/* Frame extractor modal (foreground) */}
-			{extractingMatch && (
-				<FrameExtractor
-					videoSrc={extractingMatch.videoUrl}
-					frameTime={100 / 30}
-					leftUniforms={extractingMatch.leftUniforms}
-					rightUniforms={extractingMatch.rightUniforms}
-					onComplete={handleFrameExtractionComplete}
-					onError={handleFrameExtractionError}
-				/>
-			)}
-			{step === 2 && (
-				<ProfileAssignmentStep matchData={matchData} onNext={handleStep2Complete} onBack={handleBack} />
-			)}
-
-			{/* Persistent tagline / status pill */}
-			<div className="flex items-center gap-3">
-				<div className="text-sm font-semibold">{matchData?.name || 'Untitled Match'}</div>
-				<div className="text-xs text-muted-foreground">•</div>
-				<div className="text-xs opacity-80">
-					{createdMatchId && processing.status
-						? `${processing.status.status}${processing.status.processing_step ? ` — ${processing.status.processing_step}` : ''}`
-						: step === 1
-							? 'Import Videos'
-							: step === 2
-								? 'Assign Profiles'
-								: 'Ready to Process'}
-				</div>
-			</div>
-			{step === 3 && (
+		<div className="w-full max-w-6xl space-y-6 relative">
+			{!showProcessing ? (
+				<MatchCreationForm onSubmit={handleFormSubmit} onCancel={handleCancel} />
+			) : (
 				<div className="space-y-4">
-					<h2 className="text-2xl font-bold">Process Videos</h2>
-					<p className="text-muted-foreground">
-						Start video processing to synchronize, stack, and calibrate your cameras automatically.
-					</p>
+					<h2 className="text-2xl font-bold">Processing Match</h2>
 
 					{/* Processing Status */}
 					{processing.status && <ProcessingStatus status={processing.status} />}
@@ -470,7 +364,8 @@ export default function MatchWizard({ onComplete, onCancel }) {
 						) : (
 							<Button disabled>Processing...</Button>
 						)}
-						{/* Manual Open Extractor control (in case auto-open fails) */}
+
+						{/* Manual Open Extractor control */}
 						{createdMatchId && !extractingMatch && createdMatchData && createdMatchData.src && (
 							<Button
 								variant="outline"
@@ -480,11 +375,13 @@ export default function MatchWizard({ onComplete, onCancel }) {
 								Open Extractor
 							</Button>
 						)}
+
 						{extractingMatch && (
 							<Button variant="ghost" disabled>
 								Extractor Open
 							</Button>
 						)}
+
 						<Button variant="ghost" onClick={handleCancel} disabled={isForegroundProcessing}>
 							Cancel
 						</Button>
@@ -527,6 +424,19 @@ export default function MatchWizard({ onComplete, onCancel }) {
 					)}
 				</div>
 			)}
+
+			{/* Frame extractor modal (foreground) */}
+			{extractingMatch && (
+				<FrameExtractor
+					videoSrc={extractingMatch.videoUrl}
+					frameTime={100 / 30}
+					leftUniforms={extractingMatch.leftUniforms}
+					rightUniforms={extractingMatch.rightUniforms}
+					onComplete={handleFrameExtractionComplete}
+					onError={handleFrameExtractionError}
+				/>
+			)}
+
 			{/* Error Alert */}
 			{error && (
 				<Alert variant="destructive">
