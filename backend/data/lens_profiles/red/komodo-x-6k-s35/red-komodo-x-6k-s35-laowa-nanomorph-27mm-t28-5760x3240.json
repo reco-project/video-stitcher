@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-laowa-nanomorph-27mm-t28-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "LAOWA Nanomorph 27mm T2.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4007.4537109020753,
+		"fy": 6036.085894049322,
+		"cx": 2868.0061464173477,
+		"cy": 1739.3103922711264
+	},
+	"distortion_coeffs": [
+		0.3628805807615331,
+		-1.0556793171424117,
+		3.466036741979162,
+		-3.2039997788221237
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_LAOWA Nanomorph 27mm T2.8_6K  1.5x_5k_16by9_5760x3240-30.00fps",
+		"calibrated_by": "Kiwi Tom",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

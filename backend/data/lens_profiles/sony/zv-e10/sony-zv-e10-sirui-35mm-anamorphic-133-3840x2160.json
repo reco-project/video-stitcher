@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sirui-35mm-anamorphic-133-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sirui 35mm anamorphic 1.33",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6730.998324487077,
+		"fy": 8594.074665156382,
+		"cx": 1919.4238257049265,
+		"cy": 929.428037919184
+	},
+	"distortion_coeffs": [
+		0.07625761613289195,
+		3.6712708971277457,
+		-103.04307763783108,
+		744.1310279669224
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sirui 35mm anamorphic 1.33__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Riccardo Covino",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

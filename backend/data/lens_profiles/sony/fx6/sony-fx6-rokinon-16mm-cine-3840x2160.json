@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-rokinon-16mm-cine-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Rokinon 16mm cine",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1754.6885504573536,
+		"fy": 1756.0675341074718,
+		"cx": 1943.1655994415908,
+		"cy": 1101.1378433004415
+	},
+	"distortion_coeffs": [
+		0.2274076495447124,
+		0.16999455996441315,
+		0.017426967173863373,
+		0.020776792335298305
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Rokinon 16mm cine__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Nick",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

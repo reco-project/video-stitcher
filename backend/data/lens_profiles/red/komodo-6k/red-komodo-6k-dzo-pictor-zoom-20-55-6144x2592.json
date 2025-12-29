@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-dzo-pictor-zoom-20-55-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DZO Pictor Zoom 20-55",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4744.935882307073,
+		"fy": 4765.697822824107,
+		"cx": 3051.5077077546707,
+		"cy": 1300.8904154132958
+	},
+	"distortion_coeffs": [
+		0.16484739014859082,
+		0.1830692579974192,
+		-0.22836345610894815,
+		0.5461647751913182
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_DZO Pictor Zoom 20-55_6K 2.4:1_6k_2.37by1_6144x2592-25.00fps",
+		"calibrated_by": "Lukas Weller",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

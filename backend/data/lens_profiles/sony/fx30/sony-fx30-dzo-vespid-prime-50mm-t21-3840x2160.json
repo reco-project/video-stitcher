@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-dzo-vespid-prime-50mm-t21-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "DZO Vespid Prime 50mm T2.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7590.1820262746205,
+		"fy": 7589.176613945369,
+		"cx": 1993.5300662514037,
+		"cy": 1050.8329567773635
+	},
+	"distortion_coeffs": [
+		-0.03279844925736504,
+		0.6527224914615013,
+		29.319521867276556,
+		-566.3436217343791
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_DZO Vespid Prime 50mm T2.1__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Sebastian Garayua",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

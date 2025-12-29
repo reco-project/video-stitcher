@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-asahi-smc-pentax-m-114-50mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Asahi SMC Pentax-M 1:1.4 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8528.376555195497,
+		"fy": 8721.40562773143,
+		"cx": 1604.319911824569,
+		"cy": 281.13514944992755
+	},
+	"distortion_coeffs": [
+		1.7609720611304247,
+		-61.0902329989625,
+		1153.999317480227,
+		-8174.072006092231
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Asahi SMC Pentax-M 1:1.4 50mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "catxi porson",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

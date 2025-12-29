@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leica-elmarit-r-f28-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica Elmarit-R f2.8",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6495.078634326188,
+		"fy": 6495.8206210354565,
+		"cx": 3454.522865380846,
+		"cy": 1754.8391095302782
+	},
+	"distortion_coeffs": [
+		0.21909312997071748,
+		0.5859127016611372,
+		-1.5497695749417102,
+		4.954981594106426
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Leica Elmarit-R f2.8_6K 17:9_6k_1.90by1_6910x3645-25.00fps",
+		"calibrated_by": "Ascaro.tv",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oners-4k-boost-4000x3000",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "4K Boost",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1858.643173640918,
+		"fy": 1857.545016594455,
+		"cx": 1992.7690639282043,
+		"cy": 1480.2871809050268
+	},
+	"distortion_coeffs": [
+		0.09300134746291044,
+		-0.10477321096049594,
+		0.11139671052297365,
+		-0.05002220657512327
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneRS_4K Boost_NO-EIS_4k_4by3_4000x3000-29.97fps",
+		"calibrated_by": "Wahrendorff, Stefan",
+		"original_resolution": "4000x3000",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

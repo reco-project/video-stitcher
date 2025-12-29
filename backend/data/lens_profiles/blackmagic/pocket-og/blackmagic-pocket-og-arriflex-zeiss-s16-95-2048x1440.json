@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-og-arriflex-zeiss-s16-95-2048x1440",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket (OG)",
+	"lens_model": "Arriflex Zeiss S16 9.5",
+	"resolution": {
+		"width": 2048,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1645.4252116064729,
+		"fy": 1643.1409699746885,
+		"cx": 1028.9219931221016,
+		"cy": 701.5869702549171
+	},
+	"distortion_coeffs": [
+		0.14634087679505742,
+		0.2898256090849745,
+		0.020843760699587943,
+		0.30841536550046666
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket (OG)_Arriflex Zeiss S16 9.5__2k_1.42by1_2048x1440-24.00fps",
+		"calibrated_by": "SALOME",
+		"original_resolution": "2048x1440",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

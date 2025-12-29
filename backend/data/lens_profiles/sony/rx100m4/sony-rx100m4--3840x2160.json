@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx100m4--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX100M4",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2868.962394386905,
+		"fy": 2863.6305122388835,
+		"cx": 1993.701500333604,
+		"cy": 1070.3638154343562
+	},
+	"distortion_coeffs": [
+		0.30748528847561146,
+		0.34193230407162784,
+		-0.7794386684759746,
+		0.8087476886643693
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX100M4___4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Logan Colon",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

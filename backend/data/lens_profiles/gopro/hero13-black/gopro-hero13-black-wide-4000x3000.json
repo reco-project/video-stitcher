@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero13-black-wide-4000x3000",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO13 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1957.929799277102,
+		"fy": 1958.925137639761,
+		"cx": 1996.0524760220744,
+		"cy": 1481.9594483452956
+	},
+	"distortion_coeffs": [
+		-0.03809604744860315,
+		0.29231004475788186,
+		-0.3904685068073186,
+		0.185746457710393
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO13 Black_Wide_HB series Macro Lens mod_4k_4by3_4000x3000-25.00fps",
+		"calibrated_by": "Konrad Iturbe",
+		"original_resolution": "4000x3000",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

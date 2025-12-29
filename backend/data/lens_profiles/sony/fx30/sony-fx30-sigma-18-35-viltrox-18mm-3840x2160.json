@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sigma-18-35-viltrox-18mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sigma 18-35 (viltrox 18mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2294.659876677713,
+		"fy": 2291.784648251697,
+		"cx": 1883.8897753260212,
+		"cy": 1079.496135825383
+	},
+	"distortion_coeffs": [
+		0.17993998483907395,
+		0.3548385944616119,
+		-0.6950271394692883,
+		0.854265696910722
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sigma 18-35 (viltrox 18mm)__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "\u0418\u0432\u0430\u043d Ma\u043a\u0442\u0440\u0430\u0445\u0435\u0440",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

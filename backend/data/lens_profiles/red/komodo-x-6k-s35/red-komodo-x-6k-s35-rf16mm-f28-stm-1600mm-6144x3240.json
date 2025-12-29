@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-rf16mm-f28-stm-1600mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "RF16mm F2.8 STM 16.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3810.805573440531,
+		"fy": 3811.504155681941,
+		"cx": 3085.2216347658914,
+		"cy": 1575.145492252773
+	},
+	"distortion_coeffs": [
+		0.15786278583182514,
+		0.093501773133741,
+		-0.1014176323521218,
+		0.13353278552207348
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_RF16mm F2.8 STM 16.00mm_6K 17:9_6k_1.90by1_6144x3240-30.00fps",
+		"calibrated_by": "Ryno",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

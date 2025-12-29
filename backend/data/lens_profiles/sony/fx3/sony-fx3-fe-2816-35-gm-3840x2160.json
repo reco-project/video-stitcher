@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-fe-2816-35-gm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "FE 2.8/16-35 GM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1762.4693390247016,
+		"fy": 1761.2855002240094,
+		"cx": 1904.460226870488,
+		"cy": 1073.2856801128953
+	},
+	"distortion_coeffs": [
+		0.216267043626043,
+		0.23028426245639452,
+		-0.23967570577767175,
+		0.2832607160147663
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_FE 2.8/16-35 GM_16mm_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Ben Gampel",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

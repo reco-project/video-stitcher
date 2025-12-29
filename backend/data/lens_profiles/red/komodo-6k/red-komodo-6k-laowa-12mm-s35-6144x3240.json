@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-12mm-s35-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "LAOWA 12MM S35",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2861.5902294480607,
+		"fy": 2863.036469733765,
+		"cx": 3089.9892654002924,
+		"cy": 1639.3229221675326
+	},
+	"distortion_coeffs": [
+		0.29081817314955644,
+		0.2456587652434018,
+		-0.12533006587806036,
+		0.13097590132528417
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_LAOWA 12MM S35_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Alan Grey",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

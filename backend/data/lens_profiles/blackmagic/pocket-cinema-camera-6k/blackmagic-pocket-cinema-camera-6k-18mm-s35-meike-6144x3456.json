@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-18mm-s35-meike-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "18mm S35 Meike",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4820.643181688395,
+		"fy": 4817.462391365316,
+		"cx": 3121.2826986923883,
+		"cy": 1699.630876910935
+	},
+	"distortion_coeffs": [
+		0.2858236357865319,
+		0.09190747863559312,
+		0.03061727023436535,
+		0.2815549310653965
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_18mm S35 Meike__6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

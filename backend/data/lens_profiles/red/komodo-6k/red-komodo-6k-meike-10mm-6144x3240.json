@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-meike-10mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "MEIKE 10mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2518.17510332199,
+		"fy": 2518.0313497451816,
+		"cx": 3087.2667045802136,
+		"cy": 1609.1379255283086
+	},
+	"distortion_coeffs": [
+		0.3703119866113311,
+		0.1891984293160075,
+		-0.18918248784976432,
+		0.14737708996563628
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_MEIKE 10mm_17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Kisssy",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

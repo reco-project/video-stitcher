@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-tamron-18-200-35-63-di-iii-vc-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tamron 18-200 3.5-6.3 Di III VC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4472.6235495009805,
+		"fy": 4453.083827145817,
+		"cx": 1901.0793009469976,
+		"cy": 1147.041987077002
+	},
+	"distortion_coeffs": [
+		0.3448517640928936,
+		-0.4873522706196335,
+		4.541994769149757,
+		-10.2823337581011
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Tamron 18-200 3.5-6.3 Di III VC_Steadyshot Active_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Jonathan Hite",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

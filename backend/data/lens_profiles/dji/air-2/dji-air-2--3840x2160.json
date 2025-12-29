@@ -1,0 +1,33 @@
+{
+	"id": "dji-air-2--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Air 2",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2551.9075597191045,
+		"fy": 2553.67169795328,
+		"cx": 2036.5891828873669,
+		"cy": 1066.711719977979
+	},
+	"distortion_coeffs": [
+		0.3204171529029857,
+		0.052119323133209855,
+		0.6380913006303717,
+		-0.6652255020335484
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Air 2__Oculus Avis_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "dajo vlieger",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

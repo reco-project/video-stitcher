@@ -1,0 +1,33 @@
+{
+	"id": "insta360-go-2-pov-2688x2688",
+	"camera_brand": "Insta360",
+	"camera_model": "GO 2",
+	"lens_model": "Pov",
+	"resolution": {
+		"width": 2688,
+		"height": 2688
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1327.4531941499963,
+		"fy": 1327.9800914777604,
+		"cx": 1368.5406676979674,
+		"cy": 1330.5416044576918
+	},
+	"distortion_coeffs": [
+		-0.04966469722851003,
+		-0.020347232364734836,
+		0.01639165487860161,
+		-0.0092101678777642
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_GO 2_Pov_NO-EIS_2.5k_1by1_2688x2688-50.00fps",
+		"calibrated_by": "Eddy",
+		"original_resolution": "2688x2688",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

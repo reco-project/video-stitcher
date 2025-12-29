@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-canon-24-105mm-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Canon 24-105mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4419.609554645453,
+		"fy": 4432.325730842579,
+		"cx": 1000.3325198712384,
+		"cy": 488.9652324299746
+	},
+	"distortion_coeffs": [
+		0.29070546211243864,
+		7.945652992157539,
+		-310.77747398365295,
+		3934.5748912937825
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Canon 24-105mm_BRaw 8:1_1080p_16by9_1920x1080-30.00fps",
+		"calibrated_by": "Nuno Meneses",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

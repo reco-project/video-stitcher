@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-panasonic-lumix-g-x-12-35-f28-12mm-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Panasonic Lumix G X 12-35 f2.8 @12mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1312.1335645799525,
+		"fy": 1313.311243428271,
+		"cx": 980.2836779070155,
+		"cy": 546.22055834083
+	},
+	"distortion_coeffs": [
+		0.11361966553882562,
+		0.12859134020620938,
+		-0.17051967888181102,
+		0.4068650910113007
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Panasonic Lumix G X 12-35 f2.8 @12mm_4k Sensor Window_1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Andrew",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

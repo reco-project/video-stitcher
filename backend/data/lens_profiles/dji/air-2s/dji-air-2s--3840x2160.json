@@ -1,0 +1,33 @@
+{
+	"id": "dji-air-2s--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Air 2S",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3544.826716820548,
+		"fy": 3534.326994184358,
+		"cx": 1923.471371533142,
+		"cy": 1095.765488887862
+	},
+	"distortion_coeffs": [
+		0.24897175750438535,
+		0.5816255823424843,
+		-2.6673524010365592,
+		4.638092434659178
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Air 2S__3:2  30fps_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Giuseppe Tomarchio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

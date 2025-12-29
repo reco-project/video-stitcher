@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oners-ultrawide-88-4k-boost-lens-3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "Ultrawide 88 (4K Boost Lens)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2179.018790461283,
+		"fy": 2178.6436997562296,
+		"cx": 1908.466676909833,
+		"cy": 1074.268522903879
+	},
+	"distortion_coeffs": [
+		0.0817469698534198,
+		0.051622962795238224,
+		-0.10623331585569136,
+		0.0834111211686495
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneRS_Ultrawide 88 (4K Boost Lens)_EIS_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "RRec Studio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

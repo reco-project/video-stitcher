@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-7artisans-12mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "7artisans 12mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2136.1590633936653,
+		"fy": 2136.6279168690585,
+		"cx": 1895.049206065312,
+		"cy": 1084.9899943491737
+	},
+	"distortion_coeffs": [
+		0.2605916002322675,
+		0.09450570501364636,
+		0.10252125766965424,
+		0.07164449539655579
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_7artisans 12mm F2.8__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "\u5218 KH",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

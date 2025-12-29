@@ -1,0 +1,33 @@
+{
+	"id": "red-epic-x-canon-zoom-ef-24-105mm-f4l-is-2400mm-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "EPIC-X",
+	"lens_model": "Canon Zoom EF 24-105mm f/4L IS 24.00mm",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4645.700085134969,
+		"fy": 4604.398825387682,
+		"cx": 2617.202034414493,
+		"cy": 1461.773921570329
+	},
+	"distortion_coeffs": [
+		0.19463027717888184,
+		0.17491213327820995,
+		-0.14849691091921385,
+		0.2555104005201739
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_EPIC-X_Canon Zoom EF 24-105mm f/4L IS 24.00mm_FF_5k_1.90by1_5120x2700-25.00fps",
+		"calibrated_by": "Benjamin DUPLAIX",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

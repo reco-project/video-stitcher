@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sigma-18-35-viltrox-35mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Sigma 18-35 VILTROX @ 35mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6053.399727277042,
+		"fy": 6053.522308748675,
+		"cx": 2107.301186311699,
+		"cy": 1089.4930658753142
+	},
+	"distortion_coeffs": [
+		0.33887474958881747,
+		-0.8359827975281541,
+		58.58735253065271,
+		-458.5020930994656
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Sigma 18-35 VILTROX @ 35mm__C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "LEOS",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

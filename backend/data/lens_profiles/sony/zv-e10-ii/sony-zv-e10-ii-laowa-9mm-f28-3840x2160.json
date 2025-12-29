@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-ii-laowa-9mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10 II",
+	"lens_model": "Laowa 9mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1669.6595172133766,
+		"fy": 1669.2365469824815,
+		"cx": 1906.3615526058773,
+		"cy": 1051.172042807449
+	},
+	"distortion_coeffs": [
+		0.32701312669784444,
+		0.15673336122609643,
+		-0.08273017670061013,
+		0.12799193561330313
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10 II_Laowa 9mm f2.8__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "CHUNCHENG",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "dji-mini-2-123-cmos-1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Mini 2",
+	"lens_model": "1/2.3\" CMOS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1684.4147911741163,
+		"fy": 1675.6975997108375,
+		"cx": 938.8047876876072,
+		"cy": 450.2864654252563
+	},
+	"distortion_coeffs": [
+		0.4053507518700045,
+		-0.35539598733434735,
+		1.6860280800095635,
+		-2.1272295592718806
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mini 2_1/2.3\" CMOS_3 axis gimbal 4K_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "chris jones",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

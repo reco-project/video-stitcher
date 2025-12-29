@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-carl-zeiss-jena-ddr-flektogon-2435-mc-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Carl Zeiss Jena DDR Flektogon 2.4/35 MC",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8692.35509660508,
+		"fy": 8682.613946853602,
+		"cx": 3096.995463397755,
+		"cy": 1701.1156815701374
+	},
+	"distortion_coeffs": [
+		0.2168258719277784,
+		1.3284211153297778,
+		-17.83388202734441,
+		98.87932975826904
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Carl Zeiss Jena DDR Flektogon 2.4/35 MC_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Jacob Tovedal",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

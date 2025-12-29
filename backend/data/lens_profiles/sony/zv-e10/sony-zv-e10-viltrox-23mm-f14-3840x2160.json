@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-viltrox-23mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Viltrox 23mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3883.918534524754,
+		"fy": 3877.124734979329,
+		"cx": 1916.8953736726892,
+		"cy": 1081.500566666278
+	},
+	"distortion_coeffs": [
+		0.19070539182826063,
+		1.0138312987737548,
+		-9.678620246029322,
+		35.38077104817809
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Viltrox 23mm f1.4__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Arbeit",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

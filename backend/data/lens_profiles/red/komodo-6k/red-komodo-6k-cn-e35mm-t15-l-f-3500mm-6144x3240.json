@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-cn-e35mm-t15-l-f-3500mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CN-E35mm T1.5 L F 35.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5707.652353426949,
+		"fy": 5719.544977510131,
+		"cx": 3056.762643428548,
+		"cy": 1626.6093945970272
+	},
+	"distortion_coeffs": [
+		0.2507020453924909,
+		-0.10779375261718252,
+		3.7414567371104703,
+		-8.137488893057704
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_CN-E35mm T1.5 L F 35.00mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Bryan Redding",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

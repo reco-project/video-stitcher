@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oner-1-inch-ultrawide-110-4352x2448",
+	"camera_brand": "Insta360",
+	"camera_model": "OneR",
+	"lens_model": "1-inch Ultrawide 110",
+	"resolution": {
+		"width": 4352,
+		"height": 2448
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1799.1463382611498,
+		"fy": 1797.7746389635845,
+		"cx": 2231.610730186095,
+		"cy": 1282.138140069642
+	},
+	"distortion_coeffs": [
+		0.05907497444571286,
+		-0.018367484151265552,
+		0.03764308216196752,
+		-0.026617961174271308
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneR_1-inch Ultrawide 110_PRO mode_C4k_16by9_4352x2448-29.97fps",
+		"calibrated_by": "Pukkaras",
+		"original_resolution": "4352x2448",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

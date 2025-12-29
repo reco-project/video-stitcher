@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero8-black-super-3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO8 Black",
+	"lens_model": "Super",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1412.0345250930943,
+		"fy": 1423.657142960335,
+		"cx": 1444.7047805266532,
+		"cy": 1083.2365287348853
+	},
+	"distortion_coeffs": [
+		-0.018138438089958443,
+		0.1905017167167325,
+		-0.11505210972961513,
+		0.013448109576986448
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO8 Black_Super_HS EIS_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Eddy",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

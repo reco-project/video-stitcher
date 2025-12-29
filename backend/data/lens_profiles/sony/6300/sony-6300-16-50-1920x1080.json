@@ -1,0 +1,33 @@
+{
+	"id": "sony-6300-16-50-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "6300",
+	"lens_model": "16-50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1288.627092163544,
+		"fy": 1286.9463852198796,
+		"cx": 948.6914330138436,
+		"cy": 548.3259519205463
+	},
+	"distortion_coeffs": [
+		0.24700897510180017,
+		0.3517127472725616,
+		-0.43324221613637615,
+		0.6058478436976263
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_6300_16-50__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Sansi' s",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

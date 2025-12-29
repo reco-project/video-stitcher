@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-sirui-24mm-s35-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Sirui 24mm s35",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7068.028089619297,
+		"fy": 8973.164720514802,
+		"cx": 3496.5673150796697,
+		"cy": 1832.1449981854728
+	},
+	"distortion_coeffs": [
+		-0.24696883620092067,
+		4.1839232134710045,
+		-13.43529727460222,
+		18.325063854918803
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Sirui 24mm s35_6K 17:9 1.3x_6k_1.90by1_6910x3645-23.98fps",
+		"calibrated_by": "tim hamlin",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "dji-air-unit-dji-21-mm-f21-1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Air Unit",
+	"lens_model": "DJI 2.1 mm, f/2.1",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 876.3815120162385,
+		"fy": 876.6299291511693,
+		"cx": 960.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		0.022720184113116316,
+		0.02418359717145186,
+		-0.04905559099281671,
+		0.05073274293101314
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Air Unit_DJI 2.1 mm, f/2.1_Wide_1080p_16by9_1920x1080-0.00fps",
+		"calibrated_by": "G42L",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "unknown",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

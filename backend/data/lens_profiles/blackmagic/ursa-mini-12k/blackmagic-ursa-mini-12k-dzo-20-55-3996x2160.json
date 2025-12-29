@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-ursa-mini-12k-dzo-20-55-3996x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Ursa Mini 12k",
+	"lens_model": "DZO 20-55",
+	"resolution": {
+		"width": 3996,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2994.061503985557,
+		"fy": 2926.0437020973827,
+		"cx": 1984.5124746111928,
+		"cy": 1052.9131598489914
+	},
+	"distortion_coeffs": [
+		0.1634608819893299,
+		0.13066921271173632,
+		-0.03613434830141189,
+		0.35767325564164354
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Ursa Mini 12k_DZO 20-55_17:9DCI 12:1_4k_1.85by1_3996x2160-29.97fps",
+		"calibrated_by": "OCTO",
+		"original_resolution": "3996x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

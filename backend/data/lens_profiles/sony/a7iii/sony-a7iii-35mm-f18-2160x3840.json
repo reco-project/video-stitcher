@@ -1,0 +1,33 @@
+{
+	"id": "sony-a7iii-35mm-f18-2160x3840",
+	"camera_brand": "Sony",
+	"camera_model": "A7III",
+	"lens_model": "35mm F1.8",
+	"resolution": {
+		"width": 2160,
+		"height": 3840
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5634.9062409073995,
+		"fy": 5642.46177460859,
+		"cx": 1485.9652606879563,
+		"cy": 1725.3343239483863
+	},
+	"distortion_coeffs": [
+		0.26536906965818463,
+		1.449406520193675,
+		-17.888646503275716,
+		77.6811588361729
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_A7III_35mm F1.8_4k_2k_9by16_2160x3840-23.98fps",
+		"calibrated_by": "Lori",
+		"original_resolution": "2160x3840",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

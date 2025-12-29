@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-sigma-8mm-f35-ex-dg-circular-fisheye-8mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Sigma 8mm f/3.5 EX DG Circular Fisheye 8mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2217.8092633379315,
+		"fy": 2215.856487851559,
+		"cx": 2123.8252156728836,
+		"cy": 1049.2972284618747
+	},
+	"distortion_coeffs": [
+		-0.02323616991647498,
+		0.0012351191091846054,
+		-0.013905189261041909,
+		0.003884885440179312
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Sigma 8mm f/3.5 EX DG Circular Fisheye 8mm_DCI_C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Bean-FPV",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

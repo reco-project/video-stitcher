@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-ef17-40mm-f4l-usm-19mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "EF17-40mm f/4L USM 19mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4046.262594417807,
+		"fy": 4047.742451550641,
+		"cx": 3070.588044371389,
+		"cy": 1651.9775622997151
+	},
+	"distortion_coeffs": [
+		0.23050451163144173,
+		0.10047289900789,
+		0.1207442396076519,
+		-0.025600820146024796
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_EF17-40mm f/4L USM 19mm_6K 17:9_6k_1.90by1_6144x3240-29.97fps",
+		"calibrated_by": "Yeh chia chen",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

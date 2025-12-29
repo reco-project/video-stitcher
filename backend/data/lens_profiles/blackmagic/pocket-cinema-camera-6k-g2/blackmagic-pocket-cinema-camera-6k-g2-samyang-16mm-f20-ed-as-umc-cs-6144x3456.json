@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-g2-samyang-16mm-f20-ed-as-umc-cs-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k G2",
+	"lens_model": "Samyang 16mm f/2.0 ED AS UMC CS",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4152.420815970039,
+		"fy": 4153.8904080949105,
+		"cx": 3101.9060277830786,
+		"cy": 1828.3504497706888
+	},
+	"distortion_coeffs": [
+		0.1850257589668865,
+		1.065470547562557,
+		-5.098359602278065,
+		9.305351942154996
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k G2_Samyang 16mm f/2.0 ED AS UMC CS__6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "HiDrone",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

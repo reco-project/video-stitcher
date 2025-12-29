@@ -1,0 +1,33 @@
+{
+	"id": "dji-pocket-2-freewell-anamorphic-4416x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Pocket 2",
+	"lens_model": "Freewell Anamorphic",
+	"resolution": {
+		"width": 4416,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2615.835654169931,
+		"fy": 2470.7742896283116,
+		"cx": 2177.3001428116067,
+		"cy": 1094.1626591592835
+	},
+	"distortion_coeffs": [
+		0.5361051238201785,
+		-1.520193313651598,
+		2.4738839959774306,
+		-1.2944988277306448
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Pocket 2_Freewell Anamorphic_25 FRS_C4k_2.04by1_4416x2160-25.00fps",
+		"calibrated_by": "\u0410\u043d\u0442\u043e\u043d \u0427\u0435\u043f\u0435\u043b\u044c",
+		"original_resolution": "4416x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

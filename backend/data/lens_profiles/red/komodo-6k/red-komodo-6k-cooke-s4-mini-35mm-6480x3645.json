@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-cooke-s4-mini-35mm-6480x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Cooke S4 Mini 35mm",
+	"resolution": {
+		"width": 6480,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8488.130992050621,
+		"fy": 8489.147329412435,
+		"cx": 3252.8847792854235,
+		"cy": 1727.578594403198
+	},
+	"distortion_coeffs": [
+		0.162135207900874,
+		0.5257557058184172,
+		-5.384468326686467,
+		31.839733738675868
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Cooke S4 Mini 35mm_6K_6k_16by9_6480x3645-23.98fps",
+		"calibrated_by": "Mark Helsel",
+		"original_resolution": "6480x3645",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

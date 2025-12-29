@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sigma-5000mm-14-art-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "sigma 50.00mm 1.4 art",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17876.808686065597,
+		"fy": 17840.589793335974,
+		"cx": 923.198585363254,
+		"cy": 2006.0205297276236
+	},
+	"distortion_coeffs": [
+		0.6139744335701304,
+		-22.232544224630693,
+		720.5100414065487,
+		-7349.784286993243
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_sigma 50.00mm 1.4 art__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Semoun Voronov",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

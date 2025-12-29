@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx100vi--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX100VI",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2857.4432300303997,
+		"fy": 2786.5945325527346,
+		"cx": 1910.829140884338,
+		"cy": 1088.3361649070482
+	},
+	"distortion_coeffs": [
+		0.3168651303346724,
+		0.13119574681894358,
+		0.4932930615748662,
+		-1.164689082437213
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX100VI___4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "MarkG",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

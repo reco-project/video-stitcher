@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-samyang-14mm-t31-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Samyang 14mm T3.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2438.884465522537,
+		"fy": 2436.669247139788,
+		"cx": 1939.9542806693823,
+		"cy": 1094.7165157631866
+	},
+	"distortion_coeffs": [
+		0.17755188775392414,
+		0.22706056732658095,
+		-0.4019944269058092,
+		0.5118334186088196
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Samyang 14mm T3.1__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Coco Shin",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

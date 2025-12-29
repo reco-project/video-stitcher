@@ -1,0 +1,33 @@
+{
+	"id": "dji-dji-fpv-drone-1466-mm-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "DJI FPV Drone",
+	"lens_model": "14.66 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1724.421504051729,
+		"fy": 1723.2049955879922,
+		"cx": 1925.852195338228,
+		"cy": 1069.2459379241136
+	},
+	"distortion_coeffs": [
+		0.049256660755879714,
+		0.25629569196178703,
+		-0.6375284475945864,
+		0.5337350923221869
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_DJI FPV Drone_14.66 mm_1/2.3\" CMOS_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "FAHAD.FPV",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

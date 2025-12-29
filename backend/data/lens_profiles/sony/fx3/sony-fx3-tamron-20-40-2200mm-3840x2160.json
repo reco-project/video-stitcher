@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-tamron-20-40-2200mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Tamron 20-40 @22.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2435.1021725192663,
+		"fy": 2378.3778216568717,
+		"cx": 1915.241577976958,
+		"cy": 1097.1432447611733
+	},
+	"distortion_coeffs": [
+		0.22867080194076644,
+		0.1416956550679091,
+		0.09396472684167448,
+		0.02949773180145471
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Tamron 20-40 @22.00mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Charles",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

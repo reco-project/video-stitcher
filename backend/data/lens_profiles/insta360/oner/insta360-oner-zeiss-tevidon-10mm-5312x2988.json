@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oner-zeiss-tevidon-10mm-5312x2988",
+	"camera_brand": "Insta360",
+	"camera_model": "OneR",
+	"lens_model": "Zeiss Tevidon 10mm",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4389.715298245186,
+		"fy": 4384.5851030932845,
+		"cx": 2635.87881246231,
+		"cy": 1569.3972742917183
+	},
+	"distortion_coeffs": [
+		0.19473207405658743,
+		0.7168177845611649,
+		-4.092090569066362,
+		10.542423155889564
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneR_Zeiss Tevidon 10mm_NO-EIS_5k_16by9_5312x2988-29.97fps",
+		"calibrated_by": "qqq",
+		"original_resolution": "5312x2988",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

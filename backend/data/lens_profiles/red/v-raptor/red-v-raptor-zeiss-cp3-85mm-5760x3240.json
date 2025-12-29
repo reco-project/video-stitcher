@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-zeiss-cp3-85mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR",
+	"lens_model": "ZEISS CP3 85MM",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17557.49607059683,
+		"fy": 17569.66180432879,
+		"cx": 2864.5977622763103,
+		"cy": 1413.8914762769627
+	},
+	"distortion_coeffs": [
+		0.4358032528210876,
+		-7.38618842746957,
+		321.99417648814045,
+		-5073.408199602844
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR_ZEISS CP3 85MM_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "teodor g\u00f6rtz",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

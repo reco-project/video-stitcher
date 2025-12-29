@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-samyang-35mm-t15-6k-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Samyang 35mm T1.5 @6K",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7900.636915703242,
+		"fy": 7896.965767710448,
+		"cx": 3037.6388068319616,
+		"cy": 1657.0695289399796
+	},
+	"distortion_coeffs": [
+		0.18958941188817877,
+		0.33384221749179155,
+		-4.547034379190437,
+		22.572672371831857
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Samyang 35mm T1.5 @6K_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Volki",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

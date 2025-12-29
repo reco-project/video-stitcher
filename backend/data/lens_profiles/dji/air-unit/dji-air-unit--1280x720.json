@@ -1,0 +1,33 @@
+{
+	"id": "dji-air-unit--1280x720",
+	"camera_brand": "DJI",
+	"camera_model": "Air Unit",
+	"lens_model": "",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 580.2469786517647,
+		"fy": 579.706624429074,
+		"cx": 647.1824726861819,
+		"cy": 351.0372168290395
+	},
+	"distortion_coeffs": [
+		0.030342280760628643,
+		-0.0065809024093009955,
+		0.03914432580459308,
+		-0.04619914327633287
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Air Unit___720p_16by9_1280x720-60.00fps",
+		"calibrated_by": "DRONE4IT_FG",
+		"original_resolution": "1280x720",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

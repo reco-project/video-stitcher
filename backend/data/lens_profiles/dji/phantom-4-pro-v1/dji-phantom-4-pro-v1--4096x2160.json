@@ -1,0 +1,33 @@
+{
+	"id": "dji-phantom-4-pro-v1--4096x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Phantom 4 Pro V1",
+	"lens_model": "",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2866.675627188225,
+		"fy": 2863.7606868352445,
+		"cx": 2062.5703945260975,
+		"cy": 1077.7416090889017
+	},
+	"distortion_coeffs": [
+		0.27259194667773345,
+		0.8542647409705306,
+		-3.556747961402619,
+		5.91086323792589
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Phantom 4 Pro V1___C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Aurel FPV",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

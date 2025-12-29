@@ -1,0 +1,33 @@
+{
+	"id": "sony-hdr-cx900e-build-in-lens-zeiss-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HDR-CX900E",
+	"lens_model": "Build-in lens Zeiss",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1633.9565235933408,
+		"fy": 1629.5129315153124,
+		"cx": 959.7397917893136,
+		"cy": 532.3562305570446
+	},
+	"distortion_coeffs": [
+		0.3065846491231115,
+		0.4585949115551412,
+		-1.7378504434751438,
+		3.301496152263641
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_HDR-CX900E_Build-in lens Zeiss__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Matteo Rizzotti",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

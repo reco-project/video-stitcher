@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-canon-50mm-18-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Canon 50mm 1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1838.5738295183123,
+		"fy": 1838.120222266134,
+		"cx": 2012.407558561011,
+		"cy": 1089.9800868353227
+	},
+	"distortion_coeffs": [
+		0.33136133386816335,
+		0.10650476369003184,
+		0.06837113597648144,
+		-0.04578487283213318
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Canon 50mm 1.8_DCI_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Nikolai Chalkidis",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

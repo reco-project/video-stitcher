@@ -1,0 +1,33 @@
+{
+	"id": "sony-dsc-rx10m4--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "DSC-RX10M4",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1306.6162237953424,
+		"fy": 1301.0908105324995,
+		"cx": 967.807582921865,
+		"cy": 529.6493776831397
+	},
+	"distortion_coeffs": [
+		0.32466607573405326,
+		0.1965714215988312,
+		-0.3771973729646684,
+		0.8816031094575144
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_DSC-RX10M4___1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "\u59da\u4e00\u9e4f",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

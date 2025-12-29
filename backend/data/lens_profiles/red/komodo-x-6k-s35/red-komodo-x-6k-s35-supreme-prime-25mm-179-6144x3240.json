@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-supreme-prime-25mm-179-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "supreme prime 25mm 17:9",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5857.188571316896,
+		"fy": 5858.7187107764985,
+		"cx": 3079.626997965725,
+		"cy": 1558.692687291162
+	},
+	"distortion_coeffs": [
+		0.23258766862321303,
+		0.5939799218320242,
+		-1.9050447777313764,
+		2.830098426877945
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_supreme prime 25mm 17:9_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Apple",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

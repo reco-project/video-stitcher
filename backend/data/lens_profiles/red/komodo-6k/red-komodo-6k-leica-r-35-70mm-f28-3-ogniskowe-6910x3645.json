@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leica-r-35-70mm-f28-3-ogniskowe-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 35-70mm F2.8 3 ogniskowe",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6253.894862881686,
+		"fy": 6249.73256678756,
+		"cx": 3439.6993310606417,
+		"cy": 1731.1546527093128
+	},
+	"distortion_coeffs": [
+		0.1263961208184959,
+		0.5509981918655052,
+		-2.7060436713245566,
+		8.524588274911464
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Leica R 35-70mm F2.8 3 ogniskowe_6K 17:9_6k_1.90by1_6910x3645-25.00fps",
+		"calibrated_by": "Ascaro.tv",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

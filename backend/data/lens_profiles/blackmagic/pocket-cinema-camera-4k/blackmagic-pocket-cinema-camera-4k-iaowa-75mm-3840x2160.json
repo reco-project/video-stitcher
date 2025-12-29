@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-iaowa-75mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "IAOWA 7.5mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1668.1260760795692,
+		"fy": 1668.4380019598552,
+		"cx": 1931.965239848878,
+		"cy": 1079.4268620125424
+	},
+	"distortion_coeffs": [
+		0.3504689399015914,
+		0.016108094253641632,
+		0.19195048679628443,
+		-0.09610928425542538
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_IAOWA 7.5mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "McRubens",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

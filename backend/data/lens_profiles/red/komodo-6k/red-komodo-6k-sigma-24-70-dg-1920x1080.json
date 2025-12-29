@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sigma-24-70-dg-1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma 24-70 DG",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1379.1844312300102,
+		"fy": 1378.733030522843,
+		"cx": 960.945477559536,
+		"cy": 532.2703727182054
+	},
+	"distortion_coeffs": [
+		0.20178639062389916,
+		0.18887748755987088,
+		-0.05402239222519947,
+		0.42123587602887774
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sigma 24-70 DG_6k Capture>HD Output_1080p_16by9_1920x1080-23.98fps",
+		"calibrated_by": "Nate Mirizio",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

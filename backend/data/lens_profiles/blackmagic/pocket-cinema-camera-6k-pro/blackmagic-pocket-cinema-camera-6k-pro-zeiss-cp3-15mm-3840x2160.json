@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-zeiss-cp3-15mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Zeiss CP3 15mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2730.2380027829463,
+		"fy": 2761.2499538549496,
+		"cx": 2139.070093710003,
+		"cy": 1099.3735686169755
+	},
+	"distortion_coeffs": [
+		0.32313558484064764,
+		-0.301536893749836,
+		1.8352322973769,
+		-2.4642857693699005
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Zeiss CP3 15mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Shahrukh_Chauhan",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

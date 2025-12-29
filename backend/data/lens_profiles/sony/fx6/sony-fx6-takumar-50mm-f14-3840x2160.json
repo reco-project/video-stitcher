@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-takumar-50mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Takumar 50mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5731.465894004554,
+		"fy": 5734.645556533723,
+		"cx": 1943.005654952147,
+		"cy": 1063.8752308890646
+	},
+	"distortion_coeffs": [
+		0.14773075307769273,
+		0.5962362959559999,
+		-2.376635975300451,
+		13.308769293489224
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Takumar 50mm f1.4__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

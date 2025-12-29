@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-2-pro-hasselblad28mm-1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic 2 Pro",
+	"lens_model": "HASSELBLAD28MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1505.2300706910228,
+		"fy": 1503.9598557129823,
+		"cx": 948.03312737717,
+		"cy": 518.7727027105792
+	},
+	"distortion_coeffs": [
+		0.1514936250206168,
+		0.1863852306258001,
+		-1.2230807610474508,
+		1.8061576056233384
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic 2 Pro_HASSELBLAD28MM__1080p_16by9_1920x1080-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

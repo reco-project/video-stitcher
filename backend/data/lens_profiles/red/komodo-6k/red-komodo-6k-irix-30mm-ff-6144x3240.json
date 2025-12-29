@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-irix-30mm-ff-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Irix 30mm FF",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4934.811607959042,
+		"fy": 4935.280858946761,
+		"cx": 3081.992238812137,
+		"cy": 1612.107534885077
+	},
+	"distortion_coeffs": [
+		0.25223441959799897,
+		0.15239742855732866,
+		0.3968030262940994,
+		-0.019628943951430455
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Irix 30mm FF_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

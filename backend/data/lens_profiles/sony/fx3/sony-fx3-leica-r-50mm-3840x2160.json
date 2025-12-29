@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-leica-r-50mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Leica R 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5858.1633097632,
+		"fy": 5853.279426958501,
+		"cx": 1872.0101665050872,
+		"cy": 1005.44778384594
+	},
+	"distortion_coeffs": [
+		0.22387042050759465,
+		0.46129736906342816,
+		-3.4161475888851256,
+		2.9293842951169182
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Leica R 50mm_f2_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Santiago Ali",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero9-black-max-2704x2028",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO9 Black",
+	"lens_model": "Max",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1133.3879837884385,
+		"fy": 1136.1409746732968,
+		"cx": 1515.1954713824898,
+		"cy": 1014.8335200596508
+	},
+	"distortion_coeffs": [
+		0.1641196011714308,
+		-0.1588582329140537,
+		0.07251348809496178,
+		-0.013014502028194161
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO9 Black_Max_HS EIS_2.7k_4by3_2704x2028-29.97fps",
+		"calibrated_by": "Eddy",
+		"original_resolution": "2704x2028",
+		"calibrated_fps": "29.97",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

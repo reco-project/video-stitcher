@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx10ii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX10II",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1363.200256972104,
+		"fy": 1359.940708065275,
+		"cx": 967.8714078100372,
+		"cy": 533.6896518777689
+	},
+	"distortion_coeffs": [
+		0.3356637567406389,
+		-0.05719705025449337,
+		1.186876363050723,
+		-2.44134795025298
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX10II___1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "wujinsheng",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

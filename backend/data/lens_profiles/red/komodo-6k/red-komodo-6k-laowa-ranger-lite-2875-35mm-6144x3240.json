@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-ranger-lite-2875-35mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa Ranger Lite - 28/75 - 35mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5702.531268510804,
+		"fy": 5702.694730278944,
+		"cx": 3093.5900258518623,
+		"cy": 1596.9586612826154
+	},
+	"distortion_coeffs": [
+		0.20354441015707897,
+		0.4634383754462936,
+		-0.9577310571401556,
+		4.546049030985999
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Laowa Ranger Lite - 28/75 - 35mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

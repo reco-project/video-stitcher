@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-75mm-f28-7artisans-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "7.5mm f2.8 7Artisans",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 703.5805752530547,
+		"fy": 704.3890781238036,
+		"cx": 956.46595571232,
+		"cy": 534.4298537123246
+	},
+	"distortion_coeffs": [
+		0.0163569286610669,
+		-0.0008549326166821558,
+		0.0002969193477304539,
+		2.3218748295966227e-05
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_7.5mm f2.8 7Artisans__1080p_16by9_1920x1080-23.98fps",
+		"calibrated_by": "Zyroz",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

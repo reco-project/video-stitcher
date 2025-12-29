@@ -1,0 +1,33 @@
+{
+	"id": "sony-a7c-zeiss-loxia-35mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "A7C",
+	"lens_model": "Zeiss Loxia 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3915.569367671977,
+		"fy": 3929.527615161892,
+		"cx": 1936.62422576928,
+		"cy": 1042.829904758701
+	},
+	"distortion_coeffs": [
+		0.32030559776892287,
+		-0.25173521818376493,
+		4.827916204743473,
+		-14.826941025805116
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_A7C_Zeiss Loxia 35mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Jakub Vondra",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

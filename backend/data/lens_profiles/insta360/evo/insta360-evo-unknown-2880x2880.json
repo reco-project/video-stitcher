@@ -1,0 +1,33 @@
+{
+	"id": "insta360-evo-unknown-2880x2880",
+	"camera_brand": "Insta360",
+	"camera_model": "EVO",
+	"lens_model": "Unknown",
+	"resolution": {
+		"width": 2880,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 869.1582755977588,
+		"fy": 868.4250488704606,
+		"cx": 1441.3758444705966,
+		"cy": 1422.360054613191
+	},
+	"distortion_coeffs": [
+		-0.0020760214117440147,
+		-0.0030266544909939865,
+		-0.0007369470066610488,
+		-0.0004695878363621481
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_EVO_Unknown_50fpz_2.7k_1by1_2880x2880-29.97fps",
+		"calibrated_by": "Per Hansen",
+		"original_resolution": "2880x2880",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

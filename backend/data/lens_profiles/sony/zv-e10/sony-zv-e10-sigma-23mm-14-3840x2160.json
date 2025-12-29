@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-23mm-14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "SIGMA-23mm-1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4881.815468013877,
+		"fy": 4876.6825460178225,
+		"cx": 1858.6543249052256,
+		"cy": 1109.9316869769193
+	},
+	"distortion_coeffs": [
+		0.20936381469875345,
+		-1.8098878216722627,
+		25.750190552947707,
+		-93.92955883517078
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_SIGMA-23mm-1.4__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "\u8d85",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

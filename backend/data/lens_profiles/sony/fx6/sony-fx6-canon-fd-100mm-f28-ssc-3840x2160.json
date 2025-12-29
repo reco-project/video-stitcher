@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-canon-fd-100mm-f28-ssc-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Canon FD 100mm f2.8 SSC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7610.245100563566,
+		"fy": 7511.262781018208,
+		"cx": 2512.9954212602556,
+		"cy": 1831.492944697001
+	},
+	"distortion_coeffs": [
+		0.4093352200775723,
+		-1.956783725409648,
+		23.175197884941586,
+		-83.4553826086545
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Canon FD 100mm f2.8 SSC__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Holgerson",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

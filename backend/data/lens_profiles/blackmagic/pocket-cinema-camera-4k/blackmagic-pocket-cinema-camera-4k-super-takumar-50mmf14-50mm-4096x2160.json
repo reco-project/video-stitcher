@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-super-takumar-50mmf14-50mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Super Takumar 50mm,f1.4 50mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6950.108046758808,
+		"fy": 6950.2401762135705,
+		"cx": 2117.5823892954845,
+		"cy": 1146.4179633348028
+	},
+	"distortion_coeffs": [
+		0.1957246596805602,
+		-6.504662244341871,
+		120.79232801479348,
+		-638.2588045374566
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Super Takumar 50mm,f1.4 50mm_4k DCI_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Generals at work",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

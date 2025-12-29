@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef50mm-f14-5000mm-6480x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF50mm f/1.4 50.00mm",
+	"resolution": {
+		"width": 6480,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12674.605814237068,
+		"fy": 12679.13600620561,
+		"cx": 3287.620550893764,
+		"cy": 1703.3833871479794
+	},
+	"distortion_coeffs": [
+		0.12266805478358146,
+		2.4502895940366782,
+		-47.76884626504886,
+		315.3849222158809
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF50mm f/1.4 50.00mm_6K_6k_16by9_6480x3645-25.00fps",
+		"calibrated_by": "Matty",
+		"original_resolution": "6480x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

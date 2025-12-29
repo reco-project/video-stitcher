@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-brightstar-10mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "BrightStar 10mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2626.582903396978,
+		"fy": 2620.9982074472064,
+		"cx": 2297.865822098248,
+		"cy": 1368.6529992967028
+	},
+	"distortion_coeffs": [
+		0.06609988917882043,
+		-0.05009137713400566,
+		-0.07527010563228499,
+		0.10429918940221757
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_BrightStar 10mm_100M_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Nabil",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-35mm-t15-ff-017-3500mm-7680x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "35mm T1.5 FF | 017 35.00mm",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7179.492146142223,
+		"fy": 7183.678933416266,
+		"cx": 3918.8606826971113,
+		"cy": 2165.3025214366075
+	},
+	"distortion_coeffs": [
+		0.1862262154142544,
+		1.4036502894689415,
+		-7.9718955295329215,
+		19.563190928688964
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_35mm T1.5 FF | 017 35.00mm_8K_6k_16by9_7680x4320-23.98fps",
+		"calibrated_by": "hooman nematolahi",
+		"original_resolution": "7680x4320",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

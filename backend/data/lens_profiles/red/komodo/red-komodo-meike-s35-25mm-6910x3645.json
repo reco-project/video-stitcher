@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-meike-s35-25mm-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Meike S35 25mm",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6570.229997660257,
+		"fy": 6571.4723953627035,
+		"cx": 3422.4271678005016,
+		"cy": 1815.5168992965375
+	},
+	"distortion_coeffs": [
+		0.25685799520399416,
+		-0.07687935079525149,
+		1.2934397232275618,
+		-2.4755581394847908
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Meike S35 25mm_6K 17:9_6k_1.90by1_6910x3645-25.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

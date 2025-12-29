@@ -1,0 +1,33 @@
+{
+	"id": "red-raven-canon-ef-s-24mm-stm-f28-4608x2160",
+	"camera_brand": "RED",
+	"camera_model": "Raven",
+	"lens_model": "Canon EF S 24mm STM f2.8",
+	"resolution": {
+		"width": 4608,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4622.998585370349,
+		"fy": 4630.5019734513,
+		"cx": 2298.442354794269,
+		"cy": 1021.9891172838574
+	},
+	"distortion_coeffs": [
+		0.23899966124778485,
+		-0.276601236786499,
+		2.628199863722544,
+		-4.89245639167186
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Raven_Canon EF S 24mm STM f2.8__C4k_2.13by1_4608x2160-25.00fps",
+		"calibrated_by": "re4mat0r",
+		"original_resolution": "4608x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

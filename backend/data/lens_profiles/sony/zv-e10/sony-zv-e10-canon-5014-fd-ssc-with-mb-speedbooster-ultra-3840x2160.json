@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-canon-5014-fd-ssc-with-mb-speedbooster-ultra-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Canon 50/1.4 FD SSC with MB SpeedBooster Ultra",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7030.652361348488,
+		"fy": 7063.8842800809825,
+		"cx": 1883.060747260547,
+		"cy": 1152.793465018617
+	},
+	"distortion_coeffs": [
+		0.05579284932766406,
+		-2.1338788858054594,
+		46.240908789131694,
+		-237.05871324169817
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Canon 50/1.4 FD SSC with MB SpeedBooster Ultra__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Gavin Stewart",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-laowa-10mm-mft-t21-cine-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "Laowa 10mm MFT T2.1 Cine",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2236.368262401415,
+		"fy": 2232.101860878922,
+		"cx": 1921.4710014738712,
+		"cy": 1094.0156753819283
+	},
+	"distortion_coeffs": [
+		0.3393210490051785,
+		0.17462461624417572,
+		-0.2331642849718035,
+		0.3758089056706318
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_Laowa 10mm MFT T2.1 Cine__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Peach Films",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-sigma-24-70mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Sigma 24-70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2622.7684971763724,
+		"fy": 2623.5845359716254,
+		"cx": 1913.8210918214245,
+		"cy": 1079.6225744515252
+	},
+	"distortion_coeffs": [
+		0.2108596512713916,
+		-0.05843591289499659,
+		0.5618087580090486,
+		-0.22062891930260023
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Sigma 24-70mm__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

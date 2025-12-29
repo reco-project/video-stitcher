@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-contax-zeiss-35mm-f28-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "Contax Zeiss 35mm f2.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8157.404089348512,
+		"fy": 8157.987848718562,
+		"cx": 2884.5920981618683,
+		"cy": 1564.7675452054757
+	},
+	"distortion_coeffs": [
+		0.2637243922173484,
+		-0.4583989255249325,
+		4.585962976933741,
+		-8.091409769234502
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_Contax Zeiss 35mm f2.8_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Raymond Francisco",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

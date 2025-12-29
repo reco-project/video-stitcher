@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-36mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "36mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6725.782457903441,
+		"fy": 6736.863022364725,
+		"cx": 3143.365635268058,
+		"cy": 1626.7806047263964
+	},
+	"distortion_coeffs": [
+		0.12099267182556364,
+		2.4650628362731184,
+		-17.480425088384557,
+		43.8732769494027
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_36mm__6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Henry Kidman",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

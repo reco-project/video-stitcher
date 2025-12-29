@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-canon-16-35mm-16mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Canon 16-35mm @16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1724.6982785477078,
+		"fy": 1725.6540187386,
+		"cx": 1933.993966480035,
+		"cy": 1074.2994196676568
+	},
+	"distortion_coeffs": [
+		0.23004141220596028,
+		0.19710338942209363,
+		-0.04949886564336562,
+		0.07977260656042078
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Canon 16-35mm @16mm_16mm_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Mauro",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

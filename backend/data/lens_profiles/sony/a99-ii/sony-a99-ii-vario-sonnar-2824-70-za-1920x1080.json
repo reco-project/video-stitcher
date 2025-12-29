@@ -1,0 +1,33 @@
+{
+	"id": "sony-a99-ii-vario-sonnar-2824-70-za-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "A99 II",
+	"lens_model": "vario-sonnar 2,8/24-70 ZA",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1337.818985140735,
+		"fy": 1337.7967013454647,
+		"cx": 945.9318336715648,
+		"cy": 541.9218999539117
+	},
+	"distortion_coeffs": [
+		0.2194503034131335,
+		0.213267973453656,
+		-0.24460165394202613,
+		0.646066953876539
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_A99 II_vario-sonnar 2,8/24-70 ZA__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "ASUS",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

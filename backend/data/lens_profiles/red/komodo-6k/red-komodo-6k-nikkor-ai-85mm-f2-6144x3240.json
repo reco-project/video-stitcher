@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nikkor-ai-85mm-f2-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "NIKKOR AI 85mm f/2",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 20366.552488254973,
+		"fy": 20358.03401961944,
+		"cx": 3078.959982926074,
+		"cy": 1581.3837529122875
+	},
+	"distortion_coeffs": [
+		0.41018217909570026,
+		6.6066779720153805,
+		-631.8600589796876,
+		20912.446233779883
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_NIKKOR AI 85mm f/2_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Jeremy Carroll",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

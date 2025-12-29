@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-dzo-vespid-cyber-35mm-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DZO Vespid Cyber 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9680.816693350547,
+		"fy": 9689.885811251392,
+		"cx": 1878.6162226365605,
+		"cy": 835.1381615606216
+	},
+	"distortion_coeffs": [
+		0.22984816494219687,
+		-1.5471154255909778,
+		-79.93196345505883,
+		1733.4726152427836
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_DZO Vespid Cyber 35mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "John Ingle",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

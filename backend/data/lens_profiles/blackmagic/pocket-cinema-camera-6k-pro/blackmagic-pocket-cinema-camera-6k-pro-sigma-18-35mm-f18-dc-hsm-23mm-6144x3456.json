@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-sigma-18-35mm-f18-dc-hsm-23mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Sigma 18-35mm f/1.8 DC HSM @ 23mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6847.505163880068,
+		"fy": 6832.75840990529,
+		"cx": 3188.5422259785087,
+		"cy": 1751.5137056047963
+	},
+	"distortion_coeffs": [
+		0.3367046156747132,
+		-1.6061175391137916,
+		27.887074228299664,
+		-122.98983986022196
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Sigma 18-35mm f/1.8 DC HSM @ 23mm__6k_16by9_6144x3456-24.00fps",
+		"calibrated_by": "tuck",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

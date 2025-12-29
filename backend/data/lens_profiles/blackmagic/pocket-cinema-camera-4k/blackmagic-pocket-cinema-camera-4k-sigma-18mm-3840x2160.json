@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sigma-18mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Sigma 18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2843.3562833592305,
+		"fy": 2843.3267289373366,
+		"cx": 1879.401045083344,
+		"cy": 1107.6462607103117
+	},
+	"distortion_coeffs": [
+		0.21437329497152868,
+		0.20509286748074557,
+		-0.17292830464183287,
+		0.3442755834100079
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Sigma 18mm_Prores Proxy_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Reto Schmidli",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

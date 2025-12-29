@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-tamron-15-35mm-960x540",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Tamron 15-35mm",
+	"resolution": {
+		"width": 960,
+		"height": 540
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 802.8487898627529,
+		"fy": 792.4159266815626,
+		"cx": 519.9150912100902,
+		"cy": 249.69148688883993
+	},
+	"distortion_coeffs": [
+		0.33372678505211645,
+		0.1238861860117977,
+		0.2367375649696407,
+		-0.23931178276583084
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Tamron 15-35mm_6k_480p_16by9_960x540-25.00fps",
+		"calibrated_by": "hodor zhao",
+		"original_resolution": "960x540",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

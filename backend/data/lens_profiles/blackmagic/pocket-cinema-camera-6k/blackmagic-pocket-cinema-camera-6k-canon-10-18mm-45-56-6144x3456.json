@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-canon-10-18mm-45-56-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Canon 10-18mm 4.5-5.6",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2753.6225598214637,
+		"fy": 2754.502083216161,
+		"cx": 3181.677730402095,
+		"cy": 1609.231819834088
+	},
+	"distortion_coeffs": [
+		0.299261323820262,
+		0.2476829273091229,
+		-0.2020534710029789,
+		0.12133704605049812
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Canon 10-18mm 4.5-5.6_10mm_6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Sebastian K\u00f6ster",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

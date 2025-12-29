@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-laowa-6mm-21-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Laowa 6mm 2.1",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 674.5021689675748,
+		"fy": 674.9377541045442,
+		"cx": 965.0947019755024,
+		"cy": 548.1241324270438
+	},
+	"distortion_coeffs": [
+		0.3244865661155841,
+		0.19372991314420135,
+		-0.08523877186604428,
+		0.10433061188028024
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Laowa 6mm 2.1__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "\u5927\u5e08\u5144",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

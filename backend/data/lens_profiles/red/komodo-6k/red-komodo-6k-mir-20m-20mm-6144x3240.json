@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-mir-20m-20mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Mir 20m 20mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4560.580632121593,
+		"fy": 4563.1459529713775,
+		"cx": 3061.0334396318804,
+		"cy": 1743.913034666538
+	},
+	"distortion_coeffs": [
+		0.17404183765975362,
+		0.5200271749769377,
+		-1.4878318108388369,
+		2.272768737886422
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Mir 20m 20mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Bryan Alejandro Oliveira Echaverry",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

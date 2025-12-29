@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-contax-zeiss-85mm-f14-6144x2560",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Contax Zeiss 85mm f1.4",
+	"resolution": {
+		"width": 6144,
+		"height": 2560
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 340666.08236751857,
+		"fy": 530233.5801025701,
+		"cx": 490.2626532737579,
+		"cy": 1958.303105097784
+	},
+	"distortion_coeffs": [
+		31.216661438489943,
+		-78994.28044878572,
+		97930012.77717116,
+		-29595065269.993137
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Contax Zeiss 85mm f1.4_2.4:1_6k_12by5_6144x2560-24.00fps",
+		"calibrated_by": "Dylan",
+		"original_resolution": "6144x2560",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

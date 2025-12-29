@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-tokina-11-20-t29at-11mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "tokina 11-20 T2.9at 11mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2811.2319761269573,
+		"fy": 2810.103434327538,
+		"cx": 2907.007579424457,
+		"cy": 1574.0233786105252
+	},
+	"distortion_coeffs": [
+		0.32798598342775087,
+		0.09312080191883208,
+		-0.11505744796205276,
+		0.18705204617248428
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_tokina 11-20 T2.9at 11mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Kaan",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-rf24mm-f18-macro-is-stm-2400mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "RF24mm F1.8 MACRO IS STM 24.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5571.3990920409515,
+		"fy": 5574.4876186177335,
+		"cx": 3103.6560710797403,
+		"cy": 1640.05516994768
+	},
+	"distortion_coeffs": [
+		0.13458491433352876,
+		0.165906136936409,
+		-0.6759411273180258,
+		1.37094227993791
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_RF24mm F1.8 MACRO IS STM 24.00mm_6K 17:9_6k_1.90by1_6144x3240-29.97fps",
+		"calibrated_by": "Yeh chia chen",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

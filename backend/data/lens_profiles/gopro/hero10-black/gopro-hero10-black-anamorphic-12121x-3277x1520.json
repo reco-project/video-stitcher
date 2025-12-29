@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero10-black-anamorphic-12121x-3277x1520",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO10 Black",
+	"lens_model": "Anamorphic 1.2121x",
+	"resolution": {
+		"width": 3277,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1339.789759637771,
+		"fy": 1284.019201066945,
+		"cx": 1585.0480840771197,
+		"cy": 762.6564002190105
+	},
+	"distortion_coeffs": [
+		0.2518509935482094,
+		-0.07922691952348376,
+		0.2238255751814688,
+		-0.11352993753875856
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO10 Black_Anamorphic 1.2121x_NO-EIS_2.7k_2.16by1_3277x1520-50.00fps",
+		"calibrated_by": "Mylez Molo",
+		"original_resolution": "3277x1520",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-brightin-star-35mm-f095-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Brightin Star 35mm f0.95",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5906.492079019626,
+		"fy": 5898.76933797771,
+		"cx": 2104.699116468699,
+		"cy": 1015.9091902283274
+	},
+	"distortion_coeffs": [
+		0.04125060556140644,
+		2.7229634092249415,
+		-28.842841776241112,
+		123.40986326557277
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Brightin Star 35mm f0.95__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Yeong Jo Song",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

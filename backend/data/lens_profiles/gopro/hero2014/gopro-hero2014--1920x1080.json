@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero2014--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO2014",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 844.4645397699302,
+		"fy": 843.3793576510649,
+		"cx": 937.824403827804,
+		"cy": 547.9954463796612
+	},
+	"distortion_coeffs": [
+		0.037940638555142264,
+		0.09990858040096516,
+		-0.10395085607704006,
+		0.036012275610338505
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO2014__30_1080p_16by9_1920x1080-29.97fps",
+		"calibrated_by": "Fabio Meazza",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

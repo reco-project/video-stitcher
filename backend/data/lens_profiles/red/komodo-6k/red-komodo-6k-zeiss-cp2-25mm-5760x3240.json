@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-cp2-25mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss CP2 25mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5841.8707988150045,
+		"fy": 5841.001079180447,
+		"cx": 2891.6877217826645,
+		"cy": 1620.1808711681754
+	},
+	"distortion_coeffs": [
+		0.23626860778525097,
+		0.902579454157855,
+		-8.860158046323802,
+		35.341001294265936
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Zeiss CP2 25mm_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Luke Flowers",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

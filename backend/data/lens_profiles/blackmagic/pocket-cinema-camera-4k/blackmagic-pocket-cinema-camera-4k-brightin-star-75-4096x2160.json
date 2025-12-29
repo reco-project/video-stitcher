@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-brightin-star-75-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Brightin Star 7.5",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1783.2200631587864,
+		"fy": 1784.61482095366,
+		"cx": 2061.251754802981,
+		"cy": 1072.8833721343156
+	},
+	"distortion_coeffs": [
+		0.007389537336360051,
+		0.021353002395309705,
+		-0.019865570862918965,
+		0.005878879715307624
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Brightin Star 7.5_C_C4k_1.90by1_4096x2160-59.94fps",
+		"calibrated_by": "\u54b8\u9c7c",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

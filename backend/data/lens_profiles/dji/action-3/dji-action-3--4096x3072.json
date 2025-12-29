@@ -1,0 +1,33 @@
+{
+	"id": "dji-action-3--4096x3072",
+	"camera_brand": "DJI",
+	"camera_model": "Action 3",
+	"lens_model": "",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1175.6644768240697,
+		"fy": 1173.5410965758329,
+		"cx": 2038.5102168481703,
+		"cy": 1530.8297048803922
+	},
+	"distortion_coeffs": [
+		0.43814552791499783,
+		-0.19891403536145957,
+		0.21635447372412497,
+		-0.09312699762810618
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Action 3___C4k_4by3_4096x3072-59.94fps",
+		"calibrated_by": "Atom s",
+		"original_resolution": "4096x3072",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

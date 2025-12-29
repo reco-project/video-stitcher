@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-dzo-vespid-125mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "DZO Vespid 125mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 30295.40177039096,
+		"fy": 30330.38882207946,
+		"cx": 3169.8135311360243,
+		"cy": 1657.2684232075796
+	},
+	"distortion_coeffs": [
+		0.3191148323648187,
+		92.14311423359015,
+		-11443.611222963296,
+		489656.82785945194
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_DZO Vespid 125mm_6K 17:9_6k_1.90by1_6144x3240-30.00fps",
+		"calibrated_by": "Omar Alfadhil",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "insta360-smo-4k-ultrawide-104-3072x2304",
+	"camera_brand": "Insta360",
+	"camera_model": "SMO 4K",
+	"lens_model": "Ultrawide 104",
+	"resolution": {
+		"width": 3072,
+		"height": 2304
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1467.0521763366323,
+		"fy": 1471.227974607339,
+		"cx": 1517.54990706203,
+		"cy": 1131.8248845632518
+	},
+	"distortion_coeffs": [
+		0.00826244019087531,
+		-0.008775690206231947,
+		0.008570341356646787,
+		-0.004120562097299365
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_SMO 4K_Ultrawide 104_NO-EIS_2.7k_4by3_3072x2304-29.97fps",
+		"calibrated_by": "Artem Sushchev",
+		"original_resolution": "3072x2304",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

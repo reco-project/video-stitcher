@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-olympus-m12-50mm-f35-63-12mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "OLYMPUS M.12-50mm F3.5-6.3 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2609.054674543814,
+		"fy": 2580.568918824947,
+		"cx": 2148.307855922512,
+		"cy": 1074.0393235798067
+	},
+	"distortion_coeffs": [
+		0.17410454136597292,
+		0.19180535963932271,
+		-0.5956374609161782,
+		0.5393470264500002
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_OLYMPUS M.12-50mm F3.5-6.3 12mm__C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "SUMGLE",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

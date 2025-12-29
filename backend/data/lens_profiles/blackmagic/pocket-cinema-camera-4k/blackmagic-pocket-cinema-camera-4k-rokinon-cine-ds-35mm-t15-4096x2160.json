@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-rokinon-cine-ds-35mm-t15-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Rokinon Cine Ds 35mm t/1.5",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5840.896362333446,
+		"fy": 5846.621424579704,
+		"cx": 2002.729584044875,
+		"cy": 1122.1671426524958
+	},
+	"distortion_coeffs": [
+		0.12905696439060926,
+		1.333488145687346,
+		-15.0483639492346,
+		71.36144104790034
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Rokinon Cine Ds 35mm t/1.5_With Viltrox Ef-m2 ii Speedbooster_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Thomas Boland",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-samyang-12-f2-af-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Samyang 12 F2 AF",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2412.6527906846613,
+		"fy": 2413.775504127974,
+		"cx": 1975.8222315227115,
+		"cy": 1026.422146399739
+	},
+	"distortion_coeffs": [
+		0.3335652690856806,
+		-0.20840194008007223,
+		0.995021063792944,
+		-0.9503556132077252
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Samyang 12 F2 AF__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "arttiboy",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-af-nikkor-24mm-f28-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "AF NIKKOR 24mm F2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3935.543770150448,
+		"fy": 3932.3988493598586,
+		"cx": 2078.977332035186,
+		"cy": 1049.9431235625389
+	},
+	"distortion_coeffs": [
+		0.1697741130963949,
+		0.6063259156369419,
+		-2.482502378082871,
+		5.378940270955231
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_AF NIKKOR 24mm F2.8__C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "\u7530\u4e2d\u76f4\u4eba",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

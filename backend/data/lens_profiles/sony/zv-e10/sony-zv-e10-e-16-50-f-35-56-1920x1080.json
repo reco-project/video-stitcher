@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-e-16-50-f-35-56-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "E 16-50 f 3.5-5.6",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1565.3189984762034,
+		"fy": 1564.505756473198,
+		"cx": 964.2009658960676,
+		"cy": 579.0125215512412
+	},
+	"distortion_coeffs": [
+		0.31787971154234723,
+		-0.06862439526737261,
+		0.4763805530837953,
+		0.8967103968453389
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_E 16-50 f 3.5-5.6_fps60_1080p_16by9_1920x1080-119.88fps",
+		"calibrated_by": "\u756a\u8304",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "119.880119",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

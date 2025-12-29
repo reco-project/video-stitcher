@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-\u7f8e\u79d135mm-t21-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "\u7f8e\u79d135mm T2.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8295.483473557437,
+		"fy": 8298.857377490356,
+		"cx": 2027.7120431823384,
+		"cy": 1022.8854676315268
+	},
+	"distortion_coeffs": [
+		0.2518809611607533,
+		1.9951303464347752,
+		-110.86444289295534,
+		1325.709547554039
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_\u7f8e\u79d135mm T2.1__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Kei Sun (\u5b59\u5c0f\u94a7)",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

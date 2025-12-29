@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-sirui-50mm-mft-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "SIRUI 50mm MFT",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2688.922665465645,
+		"fy": 3471.947372867144,
+		"cx": 978.56732322844,
+		"cy": 529.840870956643
+	},
+	"distortion_coeffs": [
+		0.004982199500000684,
+		-1.992865464149268,
+		15.334434446989505,
+		-25.063332519073334
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_SIRUI 50mm MFT_Clear zoom x1.2_1080p_16by9_1920x1080-25.00fps",
+		"calibrated_by": "Sanei",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

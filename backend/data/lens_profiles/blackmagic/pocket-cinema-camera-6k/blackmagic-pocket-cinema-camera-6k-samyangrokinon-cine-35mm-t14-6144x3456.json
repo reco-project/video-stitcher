@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-samyangrokinon-cine-35mm-t14-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema camera 6k",
+	"lens_model": "Samyang/Rokinon Cine 35mm t1.4",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9989.624305421534,
+		"fy": 10029.44284098564,
+		"cx": 3110.741805008186,
+		"cy": 1775.3706818402095
+	},
+	"distortion_coeffs": [
+		0.1289861460233956,
+		4.576889012494345,
+		-52.042747539097725,
+		86.2141489871447
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema camera 6k_Samyang/Rokinon Cine 35mm t1.4__6k_16by9_6144x3456-25.00fps",
+		"calibrated_by": "Thomas",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

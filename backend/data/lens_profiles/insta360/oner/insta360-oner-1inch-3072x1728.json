@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oner-1inch-3072x1728",
+	"camera_brand": "Insta360",
+	"camera_model": "oneR",
+	"lens_model": "1inch",
+	"resolution": {
+		"width": 3072,
+		"height": 1728
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1302.6787182629153,
+		"fy": 1302.396783799285,
+		"cx": 1536.0,
+		"cy": 864.0
+	},
+	"distortion_coeffs": [
+		0.04774116682154847,
+		-0.00463083740829996,
+		0.0040870363097360715,
+		-0.00035267566520924966
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_oneR_1inch__2.7k_16by9_3072x1728-0.00fps",
+		"calibrated_by": "Dronotron",
+		"original_resolution": "3072x1728",
+		"calibrated_fps": "unknown",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

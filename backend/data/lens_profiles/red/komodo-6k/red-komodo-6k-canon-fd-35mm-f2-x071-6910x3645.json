@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-fd-35mm-f2-x071-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CANON FD 35mm f2 X0.71",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8613.945642113471,
+		"fy": 8616.99299540643,
+		"cx": 3468.3664546772475,
+		"cy": 1758.8549748557052
+	},
+	"distortion_coeffs": [
+		0.3244275966506822,
+		0.317665416839247,
+		-0.021456941668838388,
+		16.82790669592341
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_CANON FD 35mm f2 X0.71_6K 17:9_6k_1.90by1_6910x3645-25.00fps",
+		"calibrated_by": "MacPro",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

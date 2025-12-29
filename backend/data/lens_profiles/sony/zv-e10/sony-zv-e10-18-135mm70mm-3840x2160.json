@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-18-135mm70mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "18-135mm@70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12108.39176387593,
+		"fy": 12106.014818306638,
+		"cx": 1681.3249954191308,
+		"cy": 951.0291757806448
+	},
+	"distortion_coeffs": [
+		0.5877653602161694,
+		-1.5525447522531053,
+		-125.18485684469252,
+		3006.29821184051
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_18-135mm@70mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Eleven",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

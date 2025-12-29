@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-blackwing-77-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Blackwing 77",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 16753.341719290675,
+		"fy": 16748.045366798724,
+		"cx": 4026.196018584548,
+		"cy": 2019.0586847635043
+	},
+	"distortion_coeffs": [
+		0.27697776847016814,
+		-0.14833076976585563,
+		-12.455926015070697,
+		234.98745053336023
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_Blackwing 77_8K 17:9_8k_1.90by1_8192x4320-23.98fps",
+		"calibrated_by": "Parker Gorecki",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

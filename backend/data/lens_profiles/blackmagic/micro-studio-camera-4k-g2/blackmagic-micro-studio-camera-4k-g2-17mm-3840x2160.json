@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-17mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "17mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3848.15827802663,
+		"fy": 3850.288349617609,
+		"cx": 1857.0147325249495,
+		"cy": 1101.1407643550829
+	},
+	"distortion_coeffs": [
+		0.19529652880082063,
+		0.7643712727349232,
+		-4.5769912445812,
+		11.367176522862026
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_17mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "\u041a\u0438\u0440\u0438\u043b\u043b \u0425\u043b\u0435\u0431\u043d\u0438\u043a\u043e\u0432",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

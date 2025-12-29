@@ -1,0 +1,33 @@
+{
+	"id": "sony-xperia-5-16mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 5",
+	"lens_model": "16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1784.2700695395815,
+		"fy": 1786.977910131953,
+		"cx": 1921.924119997818,
+		"cy": 1112.5423298025692
+	},
+	"distortion_coeffs": [
+		0.2493694046737004,
+		0.6682395362023884,
+		-1.0587514074066964,
+		0.8452271907150244
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_Xperia 5_16mm_uhd_4k_16by9_3840x2160-24.98fps",
+		"calibrated_by": "U0 A1",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.975088",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

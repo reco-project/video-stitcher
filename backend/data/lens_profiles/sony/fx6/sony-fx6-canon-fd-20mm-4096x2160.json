@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-canon-fd-20mm-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Canon FD 20mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2398.341792183199,
+		"fy": 2397.4202804051715,
+		"cx": 2075.3304417512873,
+		"cy": 1058.0001513537795
+	},
+	"distortion_coeffs": [
+		0.3560742732274905,
+		-0.42540462090540343,
+		1.451475089624875,
+		-1.2490227066030073
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Canon FD 20mm__C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "House of FPV",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

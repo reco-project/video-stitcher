@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-samyang-24-70mm-28-24mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Samyang 24-70mm 2.8 (24mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4397.357650475154,
+		"fy": 4371.07105102726,
+		"cx": 1861.4766476857103,
+		"cy": 1101.5106698955203
+	},
+	"distortion_coeffs": [
+		0.2077111954147334,
+		-0.07000246140660829,
+		3.212074965408346,
+		-12.336740517393338
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Samyang 24-70mm 2.8 (24mm)__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Jonathan Peter",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

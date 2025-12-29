@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-laowa-14mm-f4-ffii-rf-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa 14MM F4 FFii RF",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3360.066858057044,
+		"fy": 3359.9630123380716,
+		"cx": 2880.1737550288067,
+		"cy": 1634.989286833121
+	},
+	"distortion_coeffs": [
+		0.345722349565697,
+		0.10036292169743329,
+		0.040560867768413215,
+		0.03970659253412337
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Laowa 14MM F4 FFii RF_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Kim Tang",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

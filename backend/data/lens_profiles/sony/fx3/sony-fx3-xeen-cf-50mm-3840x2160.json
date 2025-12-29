@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-xeen-cf-50mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "XEEN CF 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5700.713378081201,
+		"fy": 5699.34506233226,
+		"cx": 1909.0415473767223,
+		"cy": 1054.8998206198626
+	},
+	"distortion_coeffs": [
+		0.048302251580876726,
+		2.197151548083791,
+		-26.71088276763546,
+		122.9605841262218
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_XEEN CF 50mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Loris Burn",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

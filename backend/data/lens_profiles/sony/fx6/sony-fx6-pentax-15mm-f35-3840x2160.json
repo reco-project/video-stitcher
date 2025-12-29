@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-pentax-15mm-f35-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Pentax 15mm f3.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1705.957435385272,
+		"fy": 1704.4229991518575,
+		"cx": 1926.547836594582,
+		"cy": 1056.8264731185618
+	},
+	"distortion_coeffs": [
+		0.23153228949467997,
+		0.1701856981734991,
+		-0.07361128695277687,
+		0.16644367241414543
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Pentax 15mm f3.5__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

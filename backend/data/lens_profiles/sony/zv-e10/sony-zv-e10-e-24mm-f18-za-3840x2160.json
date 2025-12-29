@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-e-24mm-f18-za-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "E 24mm F1.8 ZA",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3554.8563572839153,
+		"fy": 3555.779140075765,
+		"cx": 1899.2869063875107,
+		"cy": 1004.3730289117852
+	},
+	"distortion_coeffs": [
+		0.3008868759755648,
+		0.5084922842320868,
+		-1.6607125867935797,
+		4.60843248549363
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_E 24mm F1.8 ZA_SS : 1/200 A:Auto ISO: Auto_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Lee Mike",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-helium-8k-sigma-18-3535mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "Helium 8K",
+	"lens_model": "SIGMA 18-35@35mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8625.221764563783,
+		"fy": 8640.8727119622,
+		"cx": 4077.9254594727927,
+		"cy": 2180.800476973399
+	},
+	"distortion_coeffs": [
+		0.37332403099574185,
+		0.9948506714668884,
+		-3.861493306055687,
+		10.22470311650098
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Helium 8K_SIGMA 18-35@35mm_8K_8k_1.90by1_8192x4320-24.00fps",
+		"calibrated_by": "Mateffy Istvan",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

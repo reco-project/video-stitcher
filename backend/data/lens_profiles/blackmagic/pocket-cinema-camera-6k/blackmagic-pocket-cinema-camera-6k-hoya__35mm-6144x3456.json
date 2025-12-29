@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-hoya__35mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Hoya_@_35mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10268.321621014516,
+		"fy": 10281.067191209277,
+		"cx": 3058.589567950223,
+		"cy": 1596.8019867503865
+	},
+	"distortion_coeffs": [
+		0.11392736056170467,
+		2.338324747671215,
+		-34.57047171495163,
+		202.21716609639984
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Hoya_@_35mm_Full 6K_6k_16by9_6144x3456-25.00fps",
+		"calibrated_by": "Ulrich Plank",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

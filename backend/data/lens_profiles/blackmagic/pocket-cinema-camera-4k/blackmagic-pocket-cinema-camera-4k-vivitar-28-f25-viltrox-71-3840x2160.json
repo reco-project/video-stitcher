@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-vivitar-28-f25-viltrox-71-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Vivitar 28 f2.5 Viltrox .71",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4596.186249259269,
+		"fy": 4598.127419564146,
+		"cx": 1891.647195537141,
+		"cy": 1101.597048271275
+	},
+	"distortion_coeffs": [
+		0.18828636968826865,
+		-0.2008102361926748,
+		9.93908257649158,
+		-56.741488836288525
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Vivitar 28 f2.5 Viltrox .71__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Denny Pilot",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

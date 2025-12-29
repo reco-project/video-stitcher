@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-3--5120x2700",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic 3",
+	"lens_model": "",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3614.115335828749,
+		"fy": 3616.4535126553383,
+		"cx": 2567.3092580218467,
+		"cy": 1348.311453618472
+	},
+	"distortion_coeffs": [
+		0.35203700738159943,
+		0.11500132629332167,
+		-0.2437429369803508,
+		0.8613570695850731
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic 3__5.1k_5k_1.90by1_5120x2700-23.98fps",
+		"calibrated_by": "\u9ec3\u67cf\u745c",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

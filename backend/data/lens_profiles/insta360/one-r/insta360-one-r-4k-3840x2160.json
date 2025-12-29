@@ -1,0 +1,33 @@
+{
+	"id": "insta360-one-r-4k-3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "ONE R",
+	"lens_model": "4K",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2406.264737960481,
+		"fy": 2406.465013232215,
+		"cx": 1922.599339791673,
+		"cy": 1063.9178052500158
+	},
+	"distortion_coeffs": [
+		0.1234501805666467,
+		-0.23431803942009247,
+		0.5757839033758996,
+		-0.48429352599460673
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_ONE R_4K__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Teh Zhen Wye",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

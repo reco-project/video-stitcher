@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-fe2824-70gm2-2400mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "FE2.8/24-70GM2 24.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1311.8557370938386,
+		"fy": 1312.4034102457651,
+		"cx": 961.7850175739372,
+		"cy": 540.887520923765
+	},
+	"distortion_coeffs": [
+		0.1849440473683468,
+		0.29588165339345573,
+		-0.4069879576387398,
+		0.6883472358877475
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_FE2.8/24-70GM2 24.00mm__1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "kisssy",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

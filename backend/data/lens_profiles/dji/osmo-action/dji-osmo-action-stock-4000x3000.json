@@ -1,0 +1,33 @@
+{
+	"id": "dji-osmo-action-stock-4000x3000",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action",
+	"lens_model": "stock",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1582.4057431592644,
+		"fy": 1585.5646473402903,
+		"cx": 1965.6166295298735,
+		"cy": 1501.9008288623995
+	},
+	"distortion_coeffs": [
+		0.2292668288100755,
+		0.03215424061028257,
+		-0.03944209986863285,
+		-0.020758138867115025
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Osmo Action_stock_hakuna matata_4k_4by3_4000x3000-29.97fps",
+		"calibrated_by": "Przemys\u0142aw Kuci\u0144ski",
+		"original_resolution": "4000x3000",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-olympus-45mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Olympus 45mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17644.42395883767,
+		"fy": 17477.740043486545,
+		"cx": 2120.6075640427252,
+		"cy": -263.11876881901793
+	},
+	"distortion_coeffs": [
+		-0.8761122479814757,
+		157.39774602889526,
+		-7399.259337664618,
+		128810.84491150184
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Olympus 45mm_4k DCI_C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Luigi Massimo Nuzzaci",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

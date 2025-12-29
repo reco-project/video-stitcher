@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-leica-dg-12-60f28-40-12mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LEICA DG 12-60/F2.8-4.0 12mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2954.385711059841,
+		"fy": 2950.573144179488,
+		"cx": 1903.6974185933568,
+		"cy": 1123.6231725635848
+	},
+	"distortion_coeffs": [
+		0.04875575280963621,
+		0.2910274316607575,
+		-0.57139228040134,
+		0.8974515553852773
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LEICA DG 12-60/F2.8-4.0 12mm__4k_16by9_3840x2160-30.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

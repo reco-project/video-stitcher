@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeisscompact-prime-cp3-18mmt29-2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "ZEISSCompact Prime CP.3 18mm/T2.9",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1432.0369787403306,
+		"fy": 1430.265565290623,
+		"cx": 1021.8493953465918,
+		"cy": 521.4152037502931
+	},
+	"distortion_coeffs": [
+		0.2884641539352952,
+		0.18208607493113327,
+		-0.21459140576106325,
+		0.5181309884758559
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_ZEISSCompact Prime CP.3 18mm/T2.9_Shutter 1/250_2k_1.90by1_2048x1080-24.00fps",
+		"calibrated_by": "",
+		"original_resolution": "2048x1080",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

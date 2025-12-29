@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-canon-fd-28mm-42mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Canon fd 28mm (42mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10672.581979672315,
+		"fy": 10514.877831247442,
+		"cx": 1310.0004235943793,
+		"cy": 1061.2405291232287
+	},
+	"distortion_coeffs": [
+		0.13143161378115342,
+		9.479898435029842,
+		-200.95823669586247,
+		1664.5745748376416
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Canon fd 28mm (42mm)_42 mm_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Matteo Molino",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

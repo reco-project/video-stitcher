@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-viltrox-35mm-f18-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Viltrox 35mm f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3790.594539628127,
+		"fy": 3789.8932041145663,
+		"cx": 1913.495089816836,
+		"cy": 1074.9956137951865
+	},
+	"distortion_coeffs": [
+		0.25513611853198886,
+		0.30982608481954493,
+		0.4296678638837069,
+		0.7413762553303423
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Viltrox 35mm f1.8_60_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Kyle M Fields",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-yn11mm_f18s_da_dsm_wl_240607-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "YN11mm_F1.8S_DA_DSM_WL_240607",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2344.8395662242256,
+		"fy": 2338.324778826597,
+		"cx": 1918.9442073712885,
+		"cy": 1105.0213242439695
+	},
+	"distortion_coeffs": [
+		0.2208580501460806,
+		0.31860833681016226,
+		-0.6644317185862604,
+		0.9403056586427718
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_YN11mm_F1.8S_DA_DSM_WL_240607__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Erick",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

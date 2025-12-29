@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-laowa75-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "laowa7.5",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6225.532561638836,
+		"fy": 6223.832581986369,
+		"cx": 732.8589311753369,
+		"cy": 542.2985404627747
+	},
+	"distortion_coeffs": [
+		0.06340181957630744,
+		-0.2202796398793747,
+		754.425907589619,
+		-19590.904824718313
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_laowa7.5__1080p_16by9_1920x1080-25.00fps",
+		"calibrated_by": "yhy",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

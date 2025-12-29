@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sigma-18-35-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma 18-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2812.2892689807863,
+		"fy": 2812.452308808346,
+		"cx": 1929.0924474399123,
+		"cy": 1116.1911889753126
+	},
+	"distortion_coeffs": [
+		0.2317011080438987,
+		0.13591497524060808,
+		0.12466399979655954,
+		-0.01215099499697975
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sigma 18-35_6K_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "ERIC HAASE",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

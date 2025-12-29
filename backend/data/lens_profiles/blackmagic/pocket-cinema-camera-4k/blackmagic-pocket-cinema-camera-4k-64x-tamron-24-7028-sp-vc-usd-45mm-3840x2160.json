@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-64x-tamron-24-7028-sp-vc-usd-45mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": ".64x Tamron 24-70/2.8 SP VC USD 45mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9291.452369903149,
+		"fy": 9317.881934279147,
+		"cx": 1771.9156898099543,
+		"cy": 1062.8917826091995
+	},
+	"distortion_coeffs": [
+		0.318697803961179,
+		-7.01074935718144,
+		317.54496201069594,
+		-4003.3479746963744
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_.64x Tamron 24-70/2.8 SP VC USD 45mm__4k_16by9_3840x2160-60.00fps",
+		"calibrated_by": "Aaron Hokanson",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

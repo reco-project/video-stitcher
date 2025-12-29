@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-rokinon-12mm-t22-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Rokinon 12mm T2.2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2759.3823887665785,
+		"fy": 2731.8313118823976,
+		"cx": 2061.2858462433096,
+		"cy": 1076.689989197078
+	},
+	"distortion_coeffs": [
+		0.29792206623321077,
+		0.1204494226259018,
+		0.10539117162417937,
+		-0.093502930594951
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Rokinon 12mm T2.2_DCI Prores Proxy8_C4k_1.90by1_4096x2160-23.98fps",
+		"calibrated_by": "Paco FPV",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

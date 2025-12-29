@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-helios-44-2m-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Helios-44 2M",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8182.878912570403,
+		"fy": 8186.70471869706,
+		"cx": 1925.492892831202,
+		"cy": 1042.2578831388782
+	},
+	"distortion_coeffs": [
+		0.11157156248743462,
+		2.086464601702483,
+		-61.72264876389775,
+		821.2108728741393
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Helios-44 2M_Speed Booster Installed_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "carl bonifacio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

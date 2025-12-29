@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-tamron-35-150mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Tamron 35-150mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1907.463403706331,
+		"fy": 1908.4093455741177,
+		"cx": 957.8676062450082,
+		"cy": 533.859840832846
+	},
+	"distortion_coeffs": [
+		0.3289083079969374,
+		-0.07050578728870138,
+		3.730134354068819,
+		-14.070083893496076
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Tamron 35-150mm_XAVC S_1080p_16by9_1920x1080-25.00fps",
+		"calibrated_by": "JustVish Creative Studios",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

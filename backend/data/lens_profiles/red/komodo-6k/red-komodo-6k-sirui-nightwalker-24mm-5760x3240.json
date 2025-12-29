@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sirui-nightwalker-24mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sirui nightwalker 24mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5283.155967664556,
+		"fy": 5283.068319987747,
+		"cx": 2892.8613848910595,
+		"cy": 1597.8107669130482
+	},
+	"distortion_coeffs": [
+		0.16916123660883484,
+		0.026563862750004615,
+		0.5382430232096909,
+		0.2271713731107547
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sirui nightwalker 24mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Teemu Villikka",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

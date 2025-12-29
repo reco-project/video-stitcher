@@ -1,0 +1,33 @@
+{
+	"id": "xiaomi-yi-action-cam\u00e9ra-4k-capteur-sony-imx317-1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi action cam\u00e9ra 4k",
+	"lens_model": "Capteur Sony IMX317",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3136.5424621384245,
+		"fy": 3062.5065126820036,
+		"cx": 1024.0495678123652,
+		"cy": 1304.594816596402
+	},
+	"distortion_coeffs": [
+		0.15118669142762023,
+		0.60373976796446,
+		3.081739911640973,
+		-19.611118808647092
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Xiaomi_Yi action cam\u00e9ra 4k_Capteur Sony IMX317_4k_1080p_16by9_1920x1080-100.00fps",
+		"calibrated_by": "Kilian Komites",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "100.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nikkor-sc-55mm-f12-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Nikkor SC 55mm f/1.2",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13995.326847427668,
+		"fy": 14003.414107611192,
+		"cx": 3499.3748085748653,
+		"cy": 1886.7834130507329
+	},
+	"distortion_coeffs": [
+		0.08784150957221751,
+		2.5793490231846965,
+		-71.95971516203777,
+		622.4935700179999
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Nikkor SC 55mm f/1.2_6K 17:9_6k_1.90by1_6910x3645-24.00fps",
+		"calibrated_by": "Marco Joe Fazio",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

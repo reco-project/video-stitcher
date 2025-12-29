@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-samyang-12mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Samyang 12mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3367.645389585992,
+		"fy": 3363.802363123733,
+		"cx": 3163.661523677672,
+		"cy": 1733.0651868516422
+	},
+	"distortion_coeffs": [
+		0.3169641560904025,
+		0.020182673931600607,
+		0.2639828078043353,
+		-0.14751813315795334
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Samyang 12mm_Sony E-Mount_6k_16by9_6144x3456-23.98fps",
+		"calibrated_by": "Russell Spurlock",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

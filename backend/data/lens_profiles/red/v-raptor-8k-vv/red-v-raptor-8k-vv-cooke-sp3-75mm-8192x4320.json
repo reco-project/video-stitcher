@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-cooke-sp3-75mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Cooke SP3 75mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 23666.784799185512,
+		"fy": 23701.629627248712,
+		"cx": 4086.380624217042,
+		"cy": 2338.879337401725
+	},
+	"distortion_coeffs": [
+		0.325941118538786,
+		34.693734290696234,
+		-1229.1201681671407,
+		13098.593662764397
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_Cooke SP3 75mm_8K 17:9_8k_1.90by1_8192x4320-30.00fps",
+		"calibrated_by": "Omar Alfadhil",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

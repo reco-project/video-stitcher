@@ -1,0 +1,33 @@
+{
+	"id": "dji-mini-2-123-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "MINI 2",
+	"lens_model": "1/2.3\u201d",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3013.5008076895047,
+		"fy": 3014.8282092399454,
+		"cx": 1884.4394155407765,
+		"cy": 1047.130225143412
+	},
+	"distortion_coeffs": [
+		0.37664090019850704,
+		-0.5802208243237638,
+		5.189677236276527,
+		-11.884551510019016
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_MINI 2_1/2.3\u201d_ver.2_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Mat\u011bj Dost\u00e1l",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

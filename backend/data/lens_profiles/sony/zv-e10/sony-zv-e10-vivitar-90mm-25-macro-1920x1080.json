@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-vivitar-90mm-25-macro-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Vivitar 90mm 2.5 Macro",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11737.042297851309,
+		"fy": 11740.281660017814,
+		"cx": 963.6835731889844,
+		"cy": 327.6654293534476
+	},
+	"distortion_coeffs": [
+		0.8002991098975447,
+		-144.26468100678213,
+		31776.99586806142,
+		-2127252.445494211
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Vivitar 90mm 2.5 Macro__1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Chase Smith",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx9-2800mm-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX9",
+	"lens_model": "28.00mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17185.2508825848,
+		"fy": 20180.992283930136,
+		"cx": 1786.3472280083915,
+		"cy": 1109.1989095047168
+	},
+	"distortion_coeffs": [
+		6.734686368782313,
+		-143.9453841563122,
+		36989.13545250777,
+		-2371570.6677544215
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX9_28.00mm_6K FF_C4k_1.90by1_4096x2160-29.97fps",
+		"calibrated_by": "MisakaMAC",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

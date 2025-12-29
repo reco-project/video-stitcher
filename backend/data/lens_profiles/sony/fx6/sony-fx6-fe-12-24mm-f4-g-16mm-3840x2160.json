@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-fe-12-24mm-f4-g-16mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "FE 12-24mm F4 G @16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1717.4677633547765,
+		"fy": 1715.758216254321,
+		"cx": 1914.09266666798,
+		"cy": 1059.8895736088982
+	},
+	"distortion_coeffs": [
+		0.3282797206864835,
+		0.1808769913748071,
+		-0.0014378733119132423,
+		0.04036995078233584
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_FE 12-24mm F4 G @16mm_XAVC-L_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "aeroquads",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

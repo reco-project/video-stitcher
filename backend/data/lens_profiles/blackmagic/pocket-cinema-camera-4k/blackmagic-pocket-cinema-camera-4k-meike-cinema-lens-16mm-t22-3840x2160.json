@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-meike-cinema-lens-16mm-t22-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Meike Cinema lens 16mm T2.2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3444.795507510906,
+		"fy": 3379.814174838074,
+		"cx": 1879.202430497714,
+		"cy": 1116.6437536681196
+	},
+	"distortion_coeffs": [
+		0.24991266889422292,
+		-0.154138932532058,
+		1.553321312043125,
+		-2.9963115833139335
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Meike Cinema lens 16mm T2.2__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Artem Andreev",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

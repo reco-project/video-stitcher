@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-sp29mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "sp29mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6884.264165005808,
+		"fy": 6890.813381622264,
+		"cx": 3083.208124816268,
+		"cy": 1655.0628616461718
+	},
+	"distortion_coeffs": [
+		0.29388999875374605,
+		0.15369574348057816,
+		-0.17732064432261216,
+		1.752920467146721
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_sp29mm_6K 17:9_6k_1.90by1_6144x3240-60.00fps",
+		"calibrated_by": "suzziwang",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

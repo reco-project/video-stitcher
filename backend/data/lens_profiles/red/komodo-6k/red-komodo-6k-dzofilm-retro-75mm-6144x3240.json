@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-dzofilm-retro-75mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DZOFILM Retro 75mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 16781.928053333908,
+		"fy": 16766.53622950348,
+		"cx": 3272.544551790138,
+		"cy": 1649.0022492063054
+	},
+	"distortion_coeffs": [
+		0.19575868327734455,
+		-5.549135186015584,
+		163.80823535446982,
+		-1188.4676522907776
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_DZOFILM Retro 75mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "marlo fokker",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

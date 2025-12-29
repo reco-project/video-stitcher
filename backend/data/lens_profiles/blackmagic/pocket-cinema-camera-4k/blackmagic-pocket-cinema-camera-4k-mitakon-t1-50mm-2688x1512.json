@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-mitakon-t1-50mm-2688x1512",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Mitakon T1 50mm",
+	"resolution": {
+		"width": 2688,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11317.426716685952,
+		"fy": 11320.431976382442,
+		"cx": 1180.0782234382225,
+		"cy": 524.3959962771435
+	},
+	"distortion_coeffs": [
+		-0.6912681383617917,
+		97.04498795023603,
+		-8079.323707092938,
+		251209.8791750163
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Mitakon T1 50mm_120 fps_2.5k_16by9_2688x1512-25.00fps",
+		"calibrated_by": "Filip Saffray",
+		"original_resolution": "2688x1512",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

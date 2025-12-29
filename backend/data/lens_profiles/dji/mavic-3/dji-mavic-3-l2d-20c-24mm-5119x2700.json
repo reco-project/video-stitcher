@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-3-l2d-20c-24mm-5119x2700",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic 3",
+	"lens_model": "L2D-20c 24mm",
+	"resolution": {
+		"width": 5119,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3652.3404714032326,
+		"fy": 3657.254821889763,
+		"cx": 2548.3711559565136,
+		"cy": 1338.7248257752383
+	},
+	"distortion_coeffs": [
+		0.3421651507367583,
+		0.5305355444130901,
+		-1.9199092459534868,
+		2.7796438068729823
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic 3_L2D-20c 24mm__5k_1.90by1_5119x2700-50.00fps",
+		"calibrated_by": "Usuari",
+		"original_resolution": "5119x2700",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

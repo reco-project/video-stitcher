@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-canon-ef-24-70-24-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Canon EF 24-70 (24)",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3606.716297237997,
+		"fy": 3606.352386740666,
+		"cx": 2037.6019711434249,
+		"cy": 1072.1838913967847
+	},
+	"distortion_coeffs": [
+		0.2008642944612828,
+		0.12289818608532949,
+		0.015836672385316948,
+		0.47673494796626487
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Canon EF 24-70 (24)_4k prores_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "vladimir mikhaylov",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

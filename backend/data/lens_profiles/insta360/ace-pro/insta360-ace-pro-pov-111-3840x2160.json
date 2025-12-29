@@ -1,0 +1,33 @@
+{
+	"id": "insta360-ace-pro-pov-111-3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "Ace Pro",
+	"lens_model": "Pov 111",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1342.286204433392,
+		"fy": 1195.452363529638,
+		"cx": 1942.316644257012,
+		"cy": 1074.2715652585457
+	},
+	"distortion_coeffs": [
+		0.03707248958173398,
+		0.034372398085742384,
+		0.23727999570779895,
+		-0.11812715839489672
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_Ace Pro_Pov 111_EIS_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Eet",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

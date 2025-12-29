@@ -1,0 +1,33 @@
+{
+	"id": "sony-fdr-ax53--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FDR-AX53",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1402.498477647959,
+		"fy": 1405.9197618592184,
+		"cx": 958.8926849706654,
+		"cy": 518.1614218571737
+	},
+	"distortion_coeffs": [
+		0.3857652634039625,
+		-0.36463076111893394,
+		2.4625073576040424,
+		-3.969215545549548
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FDR-AX53___1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "yoav fishabne",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

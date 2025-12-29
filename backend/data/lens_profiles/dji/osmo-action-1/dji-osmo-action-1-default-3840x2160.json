@@ -1,0 +1,33 @@
+{
+	"id": "dji-osmo-action-1-default-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action 1",
+	"lens_model": "Default",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1721.6867084550474,
+		"fy": 1721.5975232446417,
+		"cx": 1917.192007902483,
+		"cy": 1060.1313143161815
+	},
+	"distortion_coeffs": [
+		0.19604799623008837,
+		0.04828845642564424,
+		-0.13241233444930037,
+		0.04201179395253942
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Osmo Action 1_Default_Wide angle, No Rocksteady or dewarp_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Austin Tyler",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

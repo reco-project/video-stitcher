@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-canon-ef-24mm-f28-is-usm-24mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Canon EF 24mm f/2.8 IS USM 24mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6531.780340672365,
+		"fy": 6528.958176381585,
+		"cx": 3022.579017824225,
+		"cy": 1720.0461444453929
+	},
+	"distortion_coeffs": [
+		0.19523221434190163,
+		0.7512614277689302,
+		-4.059085102555356,
+		10.28110050168412
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Canon EF 24mm f/2.8 IS USM 24mm_24mm_6k_16by9_6144x3456-30.00fps",
+		"calibrated_by": "manuel",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

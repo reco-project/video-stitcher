@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-fd-50-14-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Canon FD 50 1,4",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12797.881998966026,
+		"fy": 12802.549858341074,
+		"cx": 2902.5227915999526,
+		"cy": 1664.013360979754
+	},
+	"distortion_coeffs": [
+		0.09217978065149372,
+		-6.899847624010252,
+		423.44558859199094,
+		-6179.241451669529
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Canon FD 50 1,4_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "\u0418\u043b\u044c\u044f \u0421\u043c\u0438\u0440\u043d\u043e\u0432",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

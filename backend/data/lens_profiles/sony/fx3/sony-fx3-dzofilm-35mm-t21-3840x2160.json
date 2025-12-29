@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-dzofilm-35mm-t21-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "DZOFILM 35MM T2.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3930.5456771478225,
+		"fy": 3925.057240146484,
+		"cx": 1913.8892063868905,
+		"cy": 1051.7089294052234
+	},
+	"distortion_coeffs": [
+		0.15732560217503988,
+		-0.013679630811024406,
+		0.9119919485303184,
+		2.0829972798185903
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_DZOFILM 35MM T2.1__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Leland Zhou",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

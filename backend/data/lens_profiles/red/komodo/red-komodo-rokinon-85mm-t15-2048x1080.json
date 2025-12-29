@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-rokinon-85mm-t15-2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Rokinon 85mm T1.5",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4702.474580163837,
+		"fy": 4717.699075933177,
+		"cx": 1022.1277975080988,
+		"cy": 530.6323148849837
+	},
+	"distortion_coeffs": [
+		-0.2649218926681523,
+		3.9380753066999015,
+		-26.13897585288194,
+		1144.8067993807742
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Rokinon 85mm T1.5_Prores , 6k 17/9, 40fps_2k_1.90by1_2048x1080-23.98fps",
+		"calibrated_by": "Linas Lang",
+		"original_resolution": "2048x1080",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

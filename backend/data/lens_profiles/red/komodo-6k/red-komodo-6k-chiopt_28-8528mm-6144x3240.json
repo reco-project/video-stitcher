@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-chiopt_28-8528mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CHIOPT_28-85(28mm)",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6601.5458646781735,
+		"fy": 6606.564843306023,
+		"cx": 3097.0479999856675,
+		"cy": 1594.2754699689242
+	},
+	"distortion_coeffs": [
+		0.14575841618610244,
+		0.2564803133776522,
+		-0.8220950046624551,
+		2.239536242150025
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_CHIOPT_28-85(28mm)_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "TarikMiskiv",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

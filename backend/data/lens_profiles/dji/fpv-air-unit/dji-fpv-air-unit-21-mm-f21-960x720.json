@@ -1,0 +1,33 @@
+{
+	"id": "dji-fpv-air-unit-21-mm-f21-960x720",
+	"camera_brand": "DJI",
+	"camera_model": "FPV Air Unit",
+	"lens_model": "2.1 mm, f/2.1",
+	"resolution": {
+		"width": 960,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 446.6154939741723,
+		"fy": 446.8730940361744,
+		"cx": 482.45027934110954,
+		"cy": 364.3820133604467
+	},
+	"distortion_coeffs": [
+		0.023159495400918176,
+		0.011755015455141156,
+		-0.00794775246963634,
+		0.0021108268189099152
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_FPV Air Unit_2.1 mm, f/2.1__480p_4by3_960x720-60.00fps",
+		"calibrated_by": "Stefano Toscano",
+		"original_resolution": "960x720",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

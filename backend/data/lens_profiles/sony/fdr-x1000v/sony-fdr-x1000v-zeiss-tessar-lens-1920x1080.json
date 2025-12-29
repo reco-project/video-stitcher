@@ -1,0 +1,33 @@
+{
+	"id": "sony-fdr-x1000v-zeiss-tessar-lens-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FDR X1000V",
+	"lens_model": "ZEISS\u00ae Tessar\u00ae Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 887.4059115721459,
+		"fy": 888.3364967101852,
+		"cx": 967.5647789110544,
+		"cy": 524.8312942003578
+	},
+	"distortion_coeffs": [
+		-0.03957122447308176,
+		-0.04546255429906653,
+		0.05940668573099548,
+		-0.030341289487240977
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FDR X1000V_ZEISS\u00ae Tessar\u00ae Lens_120\u00b0 HQ Estandar MP4_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Carlos Salazar",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-laowa-11mm-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "LAOWA 11mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1728.8094370722013,
+		"fy": 1728.267836098517,
+		"cx": 2043.4887153475488,
+		"cy": 1083.2310283758572
+	},
+	"distortion_coeffs": [
+		0.3317863511706184,
+		0.11898889554063909,
+		-0.00996927245200621,
+		0.07502310627142839
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_LAOWA 11mm_OPEN GATE ProRes_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "Cai Mckeever-Willis",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

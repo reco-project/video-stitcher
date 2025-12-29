@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-cn-e18-80mm-t44-l-is-kas-s-2300mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CN-E18-80mm T4.4 L IS KAS S 23.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5376.176229185348,
+		"fy": 5374.620750615222,
+		"cx": 2913.798019843723,
+		"cy": 1604.7172977472685
+	},
+	"distortion_coeffs": [
+		0.247327390169732,
+		0.4199577603195469,
+		-0.2906040788784614,
+		1.793779202066973
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_CN-E18-80mm T4.4 L IS KAS S 23.00mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Pavlo Popovych",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

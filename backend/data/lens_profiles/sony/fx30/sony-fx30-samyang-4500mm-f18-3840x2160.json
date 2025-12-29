@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-samyang-4500mm-f18-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Samyang 45.00mm F1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7990.789144933479,
+		"fy": 7975.392836285424,
+		"cx": 1859.759331221425,
+		"cy": 1123.8685595471893
+	},
+	"distortion_coeffs": [
+		0.5339473375785877,
+		-8.282376622544653,
+		213.5650390057088,
+		-1972.0138431038035
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Samyang 45.00mm F1.8__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Anthony Disbrow",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

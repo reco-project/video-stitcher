@@ -1,0 +1,33 @@
+{
+	"id": "sony-ilx-lr1-sony-fe-85mm-f18-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILX-LR1",
+	"lens_model": "Sony FE 85mm F1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9371.57059504172,
+		"fy": 9335.02577057774,
+		"cx": 1967.2296204658037,
+		"cy": 1045.102094712859
+	},
+	"distortion_coeffs": [
+		0.525017079751761,
+		-1.5854910604456507,
+		-7.382074860786943,
+		-484.32001146860466
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ILX-LR1_Sony FE 85mm F1.8_Internal lens distortion compensation OFF_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Joost Tromp",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

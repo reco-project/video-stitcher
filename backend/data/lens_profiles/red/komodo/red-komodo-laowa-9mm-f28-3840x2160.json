@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-laowa-9mm-f28-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa 9mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1407.689661690759,
+		"fy": 1405.8830206868347,
+		"cx": 1935.340935558188,
+		"cy": 1071.685649441186
+	},
+	"distortion_coeffs": [
+		0.3466110023133065,
+		0.09249250193515418,
+		0.10281334509794914,
+		-0.05530697188823247
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Laowa 9mm F2.8__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "iFlight_studio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

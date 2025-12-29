@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0m2-045x-lens-1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "RX0M2",
+	"lens_model": "0.45x lens",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 666.1171483526932,
+		"fy": 664.867095893862,
+		"cx": 654.4281304887814,
+		"cy": 364.12020781284633
+	},
+	"distortion_coeffs": [
+		0.01601609487756508,
+		0.06249479376397761,
+		-0.3088707032722732,
+		0.1631600085271184
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0M2_0.45x lens__720p_16by9_1280x720-25.00fps",
+		"calibrated_by": "CP FPV",
+		"original_resolution": "1280x720",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-leica-m08-summilux-21mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Leica M0.8 Summilux 21mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2366.021065863769,
+		"fy": 2365.786221671244,
+		"cx": 1893.1612629815077,
+		"cy": 1060.1086568482754
+	},
+	"distortion_coeffs": [
+		0.2532751439851843,
+		0.200184575974969,
+		-0.0631631114527265,
+		0.40240803864911145
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Leica M0.8 Summilux 21mm F1.4__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Benoit Finck",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-rf28mm-f28-stm-2800mm-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "RF28mm F2.8 STM 28.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6661.567637755213,
+		"fy": 6657.4744288189695,
+		"cx": 3095.1868134862416,
+		"cy": 1315.819554727849
+	},
+	"distortion_coeffs": [
+		0.22326664874815969,
+		-0.37002774723108256,
+		1.6655408205050974,
+		-2.6377286517369782
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_RF28mm F2.8 STM 28.00mm_6K 2.4:1_6k_2.37by1_6144x2592-50.00fps",
+		"calibrated_by": "Mixer",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

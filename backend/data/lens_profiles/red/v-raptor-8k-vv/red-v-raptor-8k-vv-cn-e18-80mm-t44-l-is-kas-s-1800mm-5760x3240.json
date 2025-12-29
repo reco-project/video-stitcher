@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-cn-e18-80mm-t44-l-is-kas-s-1800mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "CN-E18-80mm T4.4 L IS KAS S 18.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4228.16728813867,
+		"fy": 4233.983772242585,
+		"cx": 2908.520095446815,
+		"cy": 1657.01247206131
+	},
+	"distortion_coeffs": [
+		0.1089860672544989,
+		0.2586880094775008,
+		0.22798373199136365,
+		-0.35354636277085943
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_CN-E18-80mm T4.4 L IS KAS S 18.00mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Tim",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

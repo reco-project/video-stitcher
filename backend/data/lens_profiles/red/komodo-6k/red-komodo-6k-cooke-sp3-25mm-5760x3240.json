@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-cooke-sp3-25mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Cooke SP3 25mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5540.93338651436,
+		"fy": 5539.8193303288745,
+		"cx": 2899.763781667141,
+		"cy": 1559.9700065993147
+	},
+	"distortion_coeffs": [
+		0.2505925246245063,
+		0.2703952877823617,
+		-0.37830162562880215,
+		0.8605280797079055
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Cooke SP3 25mm_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Felix Cervantes",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

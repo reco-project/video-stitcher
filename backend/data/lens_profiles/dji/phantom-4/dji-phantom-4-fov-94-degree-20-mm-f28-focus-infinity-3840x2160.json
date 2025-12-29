@@ -1,0 +1,33 @@
+{
+	"id": "dji-phantom-4-fov-94-degree-20-mm-f28-focus-infinity-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Phantom 4",
+	"lens_model": "FOV 94 degree 20 mm f.2.8 focus infinity",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2711.72834626861,
+		"fy": 2710.1472639638396,
+		"cx": 1922.7701252360496,
+		"cy": 1084.8617391340774
+	},
+	"distortion_coeffs": [
+		0.3238768513848545,
+		0.25744482616200415,
+		-1.313172849104237,
+		3.42245978723494
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Phantom 4_FOV 94 degree 20 mm f.2.8 focus infinity_Default_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Dan Phillips",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oners-5k25-75mm-laowa-mft-5312x2988",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "5k25 7.5mm Laowa MFT",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3200.239396761224,
+		"fy": 3204.379017362121,
+		"cx": 2671.2334976189395,
+		"cy": 1496.636691734751
+	},
+	"distortion_coeffs": [
+		0.32994031789322137,
+		0.07573005968299266,
+		0.10804223819144455,
+		-0.09664311871166588
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneRS_5k25 7.5mm Laowa MFT_NO-EIS_5k_16by9_5312x2988-25.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "5312x2988",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

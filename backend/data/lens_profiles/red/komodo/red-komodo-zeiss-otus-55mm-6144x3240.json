@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-zeiss-otus-55mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "ZEISS OTUS 55mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11827.756591944488,
+		"fy": 11829.704371582033,
+		"cx": 3044.955107626827,
+		"cy": 1677.6885838490707
+	},
+	"distortion_coeffs": [
+		0.25020543639149134,
+		1.6225276378499942,
+		-39.60274060396897,
+		293.2586921061797
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_ZEISS OTUS 55mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Stewart French",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

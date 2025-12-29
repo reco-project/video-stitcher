@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-rokinon-cine-ds-50mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Rokinon cine ds 50mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 39703.22609097329,
+		"fy": 39762.09191675124,
+		"cx": 5401.8830516194275,
+		"cy": 3234.2480164577955
+	},
+	"distortion_coeffs": [
+		0.5226832437852882,
+		-11.29794465387264,
+		-217.48210604154815,
+		9015.631960420464
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Rokinon cine ds 50mm_50mm_6k_16by9_6144x3456-30.00fps",
+		"calibrated_by": "manuel",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

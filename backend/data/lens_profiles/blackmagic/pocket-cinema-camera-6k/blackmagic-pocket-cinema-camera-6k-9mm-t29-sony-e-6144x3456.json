@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-9mm-t29-sony-e-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "9mm T2.9 Sony E",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2408.019802876838,
+		"fy": 2407.7256614578178,
+		"cx": 3110.3253537174887,
+		"cy": 1748.175030688568
+	},
+	"distortion_coeffs": [
+		0.35442963999049876,
+		0.06059982160291072,
+		0.04346601606366529,
+		0.08233684914400245
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_9mm T2.9 Sony E__6k_16by9_6144x3456-30.00fps",
+		"calibrated_by": "Antero Sousa",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

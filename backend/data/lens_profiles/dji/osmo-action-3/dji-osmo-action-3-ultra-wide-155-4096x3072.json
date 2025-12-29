@@ -1,0 +1,33 @@
+{
+	"id": "dji-osmo-action-3-ultra-wide-155-4096x3072",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action 3",
+	"lens_model": "Ultra Wide 155\u00b0",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1629.1985408899104,
+		"fy": 1622.947930867339,
+		"cx": 2040.2124456812296,
+		"cy": 1577.2865342017665
+	},
+	"distortion_coeffs": [
+		0.4798687785997435,
+		-0.4835477382474454,
+		0.6866161800911074,
+		-0.42068584371047535
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Osmo Action 3_Ultra Wide 155\u00b0_4:3_C4k_4by3_4096x3072-59.94fps",
+		"calibrated_by": "Roger Johansen",
+		"original_resolution": "4096x3072",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

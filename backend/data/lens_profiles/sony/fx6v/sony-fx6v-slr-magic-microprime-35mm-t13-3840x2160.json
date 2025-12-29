@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6v-slr-magic-microprime-35mm-t13-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "SLR Magic Microprime 35mm T1.3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4176.655077820004,
+		"fy": 4174.963439313924,
+		"cx": 1938.1387215929055,
+		"cy": 1071.3727288935702
+	},
+	"distortion_coeffs": [
+		0.22493834926158812,
+		0.41708634295538455,
+		-2.028696268017369,
+		5.855591006652278
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6V_SLR Magic Microprime 35mm T1.3__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Jimmy Chow",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-arri-ultra-prime-7680x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-Raptor",
+	"lens_model": "Arri Ultra Prime",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10934.069358080911,
+		"fy": 10933.40507939295,
+		"cx": 3711.6326766090174,
+		"cy": 2222.881759998444
+	},
+	"distortion_coeffs": [
+		0.04354423291875504,
+		-0.7625450022587106,
+		10.246634220657691,
+		-42.68961363434525
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-Raptor_Arri Ultra Prime_8K_6k_16by9_7680x4320-25.00fps",
+		"calibrated_by": "Cassidy Lichtenstein",
+		"original_resolution": "7680x4320",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

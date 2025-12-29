@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-fd-14mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CANON FD 14mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3310.2516846104945,
+		"fy": 3309.8212178427593,
+		"cx": 3142.712006183921,
+		"cy": 1627.5092695798342
+	},
+	"distortion_coeffs": [
+		0.2357692992047401,
+		0.16538883063823187,
+		0.12974237906797464,
+		-0.07401308510729536
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_CANON FD 14mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "BHA ALPHA",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

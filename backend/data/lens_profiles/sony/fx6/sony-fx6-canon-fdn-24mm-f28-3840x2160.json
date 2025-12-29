@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-canon-fdn-24mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Canon FDn 24mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2801.065598484076,
+		"fy": 2803.4626905751124,
+		"cx": 1910.944056168337,
+		"cy": 1064.647529136705
+	},
+	"distortion_coeffs": [
+		0.20492836420164695,
+		0.11491116245325585,
+		0.27671355266010056,
+		-0.02629714744049868
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Canon FDn 24mm f2.8_XAVC-I_4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Holgerson",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-ef16-35mm-f28l-ii-usm-3500mm-6144x3072",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "EF16-35mm f/2.8L II USM 35.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7497.016730497576,
+		"fy": 7497.555010165165,
+		"cx": 3102.951988615442,
+		"cy": 1499.2482902899812
+	},
+	"distortion_coeffs": [
+		0.2977114015526182,
+		0.7957905989178576,
+		-5.220097220265767,
+		19.47312166755197
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_EF16-35mm f/2.8L II USM 35.00mm_6K_6k_2by1_6144x3072-25.00fps",
+		"calibrated_by": "FASTFOKUS",
+		"original_resolution": "6144x3072",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

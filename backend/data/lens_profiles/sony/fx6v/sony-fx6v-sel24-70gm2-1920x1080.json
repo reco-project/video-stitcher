@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6v-sel24-70gm2-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "SEL24-70GM2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1358.855411172599,
+		"fy": 1358.46176364324,
+		"cx": 960.5964022273356,
+		"cy": 542.43913112425
+	},
+	"distortion_coeffs": [
+		0.3061971511662668,
+		0.2542128027650952,
+		-0.4114859339442793,
+		0.6520898140380104
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6V_SEL24-70GM2_CINE-EI FULLHD_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Alessandro Bartoletti",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

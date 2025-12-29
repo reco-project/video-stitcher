@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-dji-15mm-17-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "DJI 15mm 1.7",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3163.047627452257,
+		"fy": 3162.097243993134,
+		"cx": 1931.9791303799,
+		"cy": 1084.4560059205985
+	},
+	"distortion_coeffs": [
+		0.13870654106711772,
+		-0.18875747262713816,
+		0.541680178746231,
+		0.16488101369864172
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_DJI 15mm 1.7__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Geert Claas",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

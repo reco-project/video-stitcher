@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx100v--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX100V",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3077.5783898804502,
+		"fy": 3075.5229670890863,
+		"cx": 1911.3581724557464,
+		"cy": 1081.1713399945224
+	},
+	"distortion_coeffs": [
+		0.3390782701499065,
+		0.05403711879133885,
+		0.6487235451391794,
+		-1.3730429914016586
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX100V___4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "hasee",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

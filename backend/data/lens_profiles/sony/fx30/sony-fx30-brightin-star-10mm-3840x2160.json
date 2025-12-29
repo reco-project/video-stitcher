@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-brightin-star-10mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Brightin Star 10mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1799.7300737011094,
+		"fy": 1795.8828053744028,
+		"cx": 1883.3746374056136,
+		"cy": 1061.4465412815016
+	},
+	"distortion_coeffs": [
+		-0.0026852200371082426,
+		0.002658764416742949,
+		-0.019208579707679217,
+		0.009386555505414082
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Brightin Star 10mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "\u041e\u043b\u0435\u0433 \u042f\u043a\u043e\u0432\u0435\u043d\u043a\u043e",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

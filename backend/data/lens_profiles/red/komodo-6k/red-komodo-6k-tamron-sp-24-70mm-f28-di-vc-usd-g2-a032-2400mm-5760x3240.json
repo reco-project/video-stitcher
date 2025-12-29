@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-tamron-sp-24-70mm-f28-di-vc-usd-g2-a032-2400mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "TAMRON SP 24-70mm F/2.8 Di VC USD G2 A032 24.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5533.2615488176325,
+		"fy": 5533.538098367206,
+		"cx": 2839.667444530819,
+		"cy": 1673.6151109276773
+	},
+	"distortion_coeffs": [
+		0.18323824541016456,
+		0.14962200763337996,
+		-0.21497080869390892,
+		0.9586848685241148
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_TAMRON SP 24-70mm F/2.8 Di VC USD G2 A032 24.00mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "TAW4",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

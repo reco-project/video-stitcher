@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma5014-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma501.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11808.62483893194,
+		"fy": 11678.070236022004,
+		"cx": 1892.4990142857837,
+		"cy": 1129.5563647382078
+	},
+	"distortion_coeffs": [
+		1.7743333290864634,
+		21.514073638947988,
+		-2347.6209096375305,
+		80826.19212487046
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sigma501.4__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "yuhong xiao",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

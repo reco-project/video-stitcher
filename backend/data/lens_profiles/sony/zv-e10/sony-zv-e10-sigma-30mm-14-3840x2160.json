@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-30mm-14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 30mm 1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6228.894617938338,
+		"fy": 6353.755161088749,
+		"cx": 1927.2083766286837,
+		"cy": 917.3663510869724
+	},
+	"distortion_coeffs": [
+		0.3276029796875742,
+		-4.487517222250393,
+		70.48443989898342,
+		-440.0323578004756
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sigma 30mm 1.4__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "SMK. Rishikumaar",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

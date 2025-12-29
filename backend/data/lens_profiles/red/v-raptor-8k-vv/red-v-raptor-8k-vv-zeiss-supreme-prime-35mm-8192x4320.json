@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-zeiss-supreme-prime-35mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Zeiss Supreme Prime 35mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7219.408382558172,
+		"fy": 7212.593692407287,
+		"cx": 4078.872446835945,
+		"cy": 2098.9713249411243
+	},
+	"distortion_coeffs": [
+		0.2378783396693743,
+		0.25417223844276415,
+		-0.8214002416372428,
+		2.3053227623575703
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_Zeiss Supreme Prime 35mm_8K 17:9_8k_1.90by1_8192x4320-23.98fps",
+		"calibrated_by": "Parker Gorecki",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

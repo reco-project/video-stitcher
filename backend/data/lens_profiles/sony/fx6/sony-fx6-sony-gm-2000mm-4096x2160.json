@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sony-gm-2000mm-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sony GM 20.00mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2351.453067532382,
+		"fy": 2351.0064595102735,
+		"cx": 2061.890593548306,
+		"cy": 1088.7165457731876
+	},
+	"distortion_coeffs": [
+		0.31982296743123106,
+		0.15414705236357815,
+		0.02721579748985199,
+		0.03036193546686354
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Sony GM 20.00mm__C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Benoit Finck",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

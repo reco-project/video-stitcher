@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-7artisans-spectrum-50mm-t20-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "7Artisans Spectrum 50mm T2.0",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6625.91951343976,
+		"fy": 6622.944677739733,
+		"cx": 2062.7436960631767,
+		"cy": 1046.6794190677508
+	},
+	"distortion_coeffs": [
+		0.09649651937534516,
+		8.36431531230474,
+		-172.4289387606753,
+		1188.388242201504
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_7Artisans Spectrum 50mm T2.0__C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Volkan S.",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-50fangdou-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "50fangdou",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12621.660121986655,
+		"fy": 12608.00452373777,
+		"cx": 2103.9291102380366,
+		"cy": 956.3339690044068
+	},
+	"distortion_coeffs": [
+		0.4674408174691224,
+		-33.350480936499636,
+		1496.9367409846443,
+		-24258.78145644192
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_50fangdou__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "yjhiend",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

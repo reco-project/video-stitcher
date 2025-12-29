@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oners-1inch-57k-5312x2988",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "1inch 5.7k",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2237.6181144406446,
+		"fy": 2234.4531905656163,
+		"cx": 2704.9857148539127,
+		"cy": 1552.853581248845
+	},
+	"distortion_coeffs": [
+		0.043597355327471346,
+		0.00508816670895629,
+		-0.004125747570969164,
+		0.0015994998980171375
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneRS_1inch 5.7k_NO-EIS_5k_16by9_5312x2988-29.97fps",
+		"calibrated_by": "gzzh",
+		"original_resolution": "5312x2988",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-helios-44m-258-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Helios 44M 2/58",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11071.206878637944,
+		"fy": 10976.001243903322,
+		"cx": 3273.7311571492273,
+		"cy": 1268.854916399472
+	},
+	"distortion_coeffs": [
+		-0.4290573990511565,
+		16.092563810735495,
+		-214.90111902595433,
+		1033.9767103762226
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Helios 44M 2/58__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "tuomas",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

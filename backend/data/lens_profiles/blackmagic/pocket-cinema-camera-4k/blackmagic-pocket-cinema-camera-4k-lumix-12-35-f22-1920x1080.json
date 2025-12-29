@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lumix-12-35-f22-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Lumix 12-35 f2.2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1243.3469202004358,
+		"fy": 1242.7811043410245,
+		"cx": 963.627033052164,
+		"cy": 512.5533022051708
+	},
+	"distortion_coeffs": [
+		0.12766064230049406,
+		-0.1625871280963822,
+		1.1214337302407689,
+		-1.3930644558396614
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Lumix 12-35 f2.2_Proxy_1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Darren Varney",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

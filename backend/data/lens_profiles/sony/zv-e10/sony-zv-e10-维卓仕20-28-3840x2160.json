@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-\u7ef4\u5353\u4ed520-28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "\u7ef4\u5353\u4ed520 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2853.3935604868425,
+		"fy": 2848.8379085310858,
+		"cx": 2178.3967509541985,
+		"cy": 1055.2430404801785
+	},
+	"distortion_coeffs": [
+		0.13629272904723091,
+		0.6539718505416975,
+		-1.1953350779764962,
+		1.4266477266752475
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_\u7ef4\u5353\u4ed520 2.8__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "\u9648\u66e6",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

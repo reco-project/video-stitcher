@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-rokinon-85mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Rokinon 85mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9660.872230747116,
+		"fy": 9654.476352530295,
+		"cx": 1841.4280907672553,
+		"cy": 992.4560474852616
+	},
+	"distortion_coeffs": [
+		0.16172747620885042,
+		12.5443846921281,
+		-442.9301924446196,
+		5513.840362023176
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Rokinon 85mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Misc",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

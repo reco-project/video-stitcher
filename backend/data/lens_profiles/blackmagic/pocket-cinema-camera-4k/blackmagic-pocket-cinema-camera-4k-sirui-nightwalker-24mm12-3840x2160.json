@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sirui-nightwalker-24mm12-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Sirui Nightwalker 24mm/1.2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5244.471814928913,
+		"fy": 5251.675767764479,
+		"cx": 1768.9132057112438,
+		"cy": 970.2219644346618
+	},
+	"distortion_coeffs": [
+		0.14225457474926934,
+		-0.16424386949663236,
+		3.89542306604804,
+		-17.566249845784586
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Sirui Nightwalker 24mm/1.2_RAW_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Clepimedia",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

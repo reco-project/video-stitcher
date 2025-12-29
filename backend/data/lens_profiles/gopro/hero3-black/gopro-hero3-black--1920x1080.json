@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero3-black--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO3 Black",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 870.4147541111195,
+		"fy": 887.3653483220319,
+		"cx": 969.6230640220094,
+		"cy": 518.4885150994905
+	},
+	"distortion_coeffs": [
+		-0.03218535063959764,
+		0.10420049532773788,
+		-0.011362401869314212,
+		-0.037353054022199246
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO3 Black___1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Mohd Naim Mat Ariff",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

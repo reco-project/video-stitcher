@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef35mm-f2-is-usm-3500mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF35mm f/2 IS USM 35.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8031.991841377427,
+		"fy": 8036.399078895553,
+		"cx": 3085.952206293739,
+		"cy": 1616.5366504619028
+	},
+	"distortion_coeffs": [
+		0.26137523063990403,
+		0.04553353577850232,
+		1.918467918170144,
+		-9.6897909563341
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF35mm f/2 IS USM 35.00mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Christian Huthmacher",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

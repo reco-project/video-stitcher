@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-laowa-75mm-960x540",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "Laowa 7.5mm",
+	"resolution": {
+		"width": 960,
+		"height": 540
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 416.9436593297862,
+		"fy": 416.58276684653913,
+		"cx": 467.49931320133845,
+		"cy": 268.199668447216
+	},
+	"distortion_coeffs": [
+		0.3252602279114663,
+		0.0946592686419668,
+		0.012468103564943517,
+		0.05135840782393109
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_Laowa 7.5mm__480p_16by9_960x540-25.00fps",
+		"calibrated_by": "Ioannis koukouzis",
+		"original_resolution": "960x540",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

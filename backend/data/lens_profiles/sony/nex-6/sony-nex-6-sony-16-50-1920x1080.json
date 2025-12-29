@@ -1,0 +1,33 @@
+{
+	"id": "sony-nex-6-sony-16-50-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "Nex 6",
+	"lens_model": "Sony 16-50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1323.0493540526747,
+		"fy": 1320.526231133021,
+		"cx": 970.2995652587948,
+		"cy": 535.9850322248556
+	},
+	"distortion_coeffs": [
+		0.3409240076681198,
+		-0.4802980143656827,
+		3.018047886500203,
+		-4.385971036061619
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_Nex 6_Sony 16-50_srgb_1080p_16by9_1920x1080-23.98fps",
+		"calibrated_by": "Ben Foster",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

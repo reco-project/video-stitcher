@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero11-black-wide-5312x4648",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO11 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 5312,
+		"height": 4648
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2357.117118952398,
+		"fy": 2356.1435657849593,
+		"cx": 2676.846267472544,
+		"cy": 2319.609149363389
+	},
+	"distortion_coeffs": [
+		0.03139553973504779,
+		0.05974110122697331,
+		-0.043366819910340776,
+		0.009924139209409393
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO11 Black_Wide_8by7",
+		"calibrated_by": "Eddy",
+		"original_resolution": "5312x4648",
+		"calibrated_fps": "29.97",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

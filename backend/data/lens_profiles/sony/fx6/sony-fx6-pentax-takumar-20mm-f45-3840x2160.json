@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-pentax-takumar-20mm-f45-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Pentax Takumar 20mm F4.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2188.9491504793637,
+		"fy": 2188.147969236607,
+		"cx": 1904.0023745840656,
+		"cy": 1089.428567359825
+	},
+	"distortion_coeffs": [
+		0.1719305821902658,
+		0.22684928951755512,
+		-0.2628029187854849,
+		0.4066917342554247
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Pentax Takumar 20mm F4.5__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Benoit Finck",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

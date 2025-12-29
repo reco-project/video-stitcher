@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-1800mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "18.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3337.227845696582,
+		"fy": 3332.9546559725836,
+		"cx": 1885.6532418914285,
+		"cy": 1108.8802971771163
+	},
+	"distortion_coeffs": [
+		0.25873027480729544,
+		1.220700686157672,
+		-6.189634903340028,
+		13.0244502606625
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_18.00mm_by @ybouane IG_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "@ybouane",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

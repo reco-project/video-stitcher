@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-tamron-28-75-g2-7500mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Tamron 28-75 G2 75.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12266.160166594153,
+		"fy": 12101.055138556338,
+		"cx": 1953.1938664980487,
+		"cy": 1020.62500280814
+	},
+	"distortion_coeffs": [
+		1.7684197382971518,
+		56.81471471317915,
+		-4076.9379887231585,
+		123379.90643763232
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Tamron 28-75 G2 75.00mm__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "\u963f\u539fRyuan",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "dji-o4--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "O4",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1600.170086171912,
+		"fy": 1605.3309875018936,
+		"cx": 1975.7631086984434,
+		"cy": 1137.4487377699184
+	},
+	"distortion_coeffs": [
+		0.42973494355962705,
+		-0.39821771646108833,
+		-0.028942216148094044,
+		0.10284901823836051
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_O4_Air_Flywoo155_wide_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Andrew C",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

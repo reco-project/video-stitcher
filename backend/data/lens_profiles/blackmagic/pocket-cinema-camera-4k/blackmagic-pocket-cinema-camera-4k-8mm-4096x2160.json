@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-8mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "8mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1601.809656224594,
+		"fy": 1603.801547667534,
+		"cx": 2075.1298712458,
+		"cy": 1120.0306647944512
+	},
+	"distortion_coeffs": [
+		-0.00849864088259568,
+		0.02772474368007663,
+		-0.07488550718532858,
+		0.06784880853270026
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_8mm_4k_C4k_1.90by1_4096x2160-59.94fps",
+		"calibrated_by": "FAHAD FPV",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "59.940063",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-20mm-astrhori-f80-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "20mm AstrHori f8.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2650.762280662364,
+		"fy": 2649.862757329894,
+		"cx": 1869.7363030213896,
+		"cy": 1084.012314542245
+	},
+	"distortion_coeffs": [
+		0.07742507954513102,
+		-0.08953339293066315,
+		0.20470715735467432,
+		-0.18329802407829576
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_20mm AstrHori f8.0__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Jules Berger",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

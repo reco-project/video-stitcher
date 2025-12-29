@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-cinema-camera-6k-canon-ultrasonic-50mm-f14-ef-6048x4032",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "Canon Ultrasonic 50mm F/1.4 EF",
+	"resolution": {
+		"width": 6048,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9626.827748965798,
+		"fy": 9652.544409794124,
+		"cx": 2824.0185229321405,
+		"cy": 1909.7845255497436
+	},
+	"distortion_coeffs": [
+		0.21717643421785435,
+		-1.5079897610698003,
+		13.186588985509188,
+		-33.12116584970533
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Cinema Camera 6K_Canon Ultrasonic 50mm F/1.4 EF_6K_6k_3by2_6048x4032-24.00fps",
+		"calibrated_by": "Ankit Ojha",
+		"original_resolution": "6048x4032",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

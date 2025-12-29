@@ -1,0 +1,33 @@
+{
+	"id": "sony-m3-1-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "M3",
+	"lens_model": "1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2718.9766264757773,
+		"fy": 2717.5138864449823,
+		"cx": 1937.8824069876457,
+		"cy": 1064.8593373550752
+	},
+	"distortion_coeffs": [
+		0.35173864883605044,
+		0.3885629017913958,
+		-0.5115627622056187,
+		-0.016299642109052142
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_M3_1__4k_16by9_3840x2160-29.96fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.964355",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

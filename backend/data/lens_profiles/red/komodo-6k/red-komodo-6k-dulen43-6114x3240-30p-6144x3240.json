@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-dulen43-6114x3240-30p-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DULEN43 6114x3240 30P",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10411.196801172024,
+		"fy": 10415.03777061526,
+		"cx": 3021.1548900258804,
+		"cy": 1626.8007919640193
+	},
+	"distortion_coeffs": [
+		0.2256491237357905,
+		0.5261609593417617,
+		-2.953572972332096,
+		24.72928338337782
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_DULEN43 6114x3240 30P_6K 17:9_6k_1.90by1_6144x3240-30.00fps",
+		"calibrated_by": "Qiangzi",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

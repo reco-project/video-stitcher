@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-16mm-14-x15-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 16mm 1.4 x1.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4016.2624711825433,
+		"fy": 4024.236328065881,
+		"cx": 1872.121835964855,
+		"cy": 1069.150143886214
+	},
+	"distortion_coeffs": [
+		0.1595784092631583,
+		1.7809220289063492,
+		-17.927249155530756,
+		60.469421651556814
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sigma 16mm 1.4 x1.5_Digital Zoom_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Auguste",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

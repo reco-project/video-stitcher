@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-rokinon-20mm-ef-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "ROKINON 20mm (EF)",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3154.782555312982,
+		"fy": 3155.4225702392937,
+		"cx": 2059.5681399648715,
+		"cy": 1038.394467757144
+	},
+	"distortion_coeffs": [
+		0.27263904018153967,
+		-0.14989909126919362,
+		1.3983634613579046,
+		-2.075975115791993
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_ROKINON 20mm (EF)__C4k_1.90by1_4096x2160-23.98fps",
+		"calibrated_by": "Uprooted Pictures",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

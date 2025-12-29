@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-sirui-55mm-t15-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "SIRUI 55MM T.15",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12467.978826769777,
+		"fy": 12467.726300567116,
+		"cx": 3095.7732200978194,
+		"cy": 1605.8162722808618
+	},
+	"distortion_coeffs": [
+		0.6410102404589445,
+		-2.3472417311216685,
+		135.54033162365835,
+		-1664.9645868591886
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_SIRUI 55MM T.15_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Eman Azrin Azhar",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

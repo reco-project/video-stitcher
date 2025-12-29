@@ -1,0 +1,33 @@
+{
+	"id": "red-raptor-leica-r-35mm-4095x2160",
+	"camera_brand": "RED",
+	"camera_model": "Raptor",
+	"lens_model": "Leica R 35mm",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4182.207661234767,
+		"fy": 4182.9550970354385,
+		"cx": 2050.7608612725935,
+		"cy": 1061.687962820025
+	},
+	"distortion_coeffs": [
+		0.2099376693326335,
+		0.22520776028594383,
+		0.25087526686477585,
+		0.350947524647703
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Raptor_Leica R 35mm_7K 17:9_C4k_1.90by1_4095x2160-25.00fps",
+		"calibrated_by": "Adam Mach",
+		"original_resolution": "4095x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

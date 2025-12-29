@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-laowa-9mm-t29-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "Laowa 9mm T2.9",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2099.093005589669,
+		"fy": 2099.904314489698,
+		"cx": 2879.5261669638053,
+		"cy": 1617.0391058006387
+	},
+	"distortion_coeffs": [
+		0.32672015153520534,
+		0.20114505920444264,
+		-0.1792456459084238,
+		0.21380482642351512
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_Laowa 9mm T2.9_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Raymond Francisco",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-carl-zeiss-sonnar-t-e-24mm-f18-za-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Carl Zeiss Sonnar T* E 24mm f1.8 ZA",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4065.216779548565,
+		"fy": 4062.3476811053656,
+		"cx": 1931.2940413390104,
+		"cy": 1102.7556006435502
+	},
+	"distortion_coeffs": [
+		0.3302356292288824,
+		0.27626501450882845,
+		-2.012185188388619,
+		6.258899589420016
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Carl Zeiss Sonnar T* E 24mm f1.8 ZA__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Moore",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef50mm-f18-stm-5000mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF50mm f/1.8 STM 50.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8737.08156120351,
+		"fy": 8735.205274309388,
+		"cx": 3065.389861837933,
+		"cy": 1620.9662107104052
+	},
+	"distortion_coeffs": [
+		0.08297792941797007,
+		2.3119303964357867,
+		-19.021274862358975,
+		84.62088135822555
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF50mm f/1.8 STM 50.00mm_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Visent Media",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

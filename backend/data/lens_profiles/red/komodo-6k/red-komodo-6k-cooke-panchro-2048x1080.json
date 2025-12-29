@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-cooke-panchro-2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Cooke Panchro",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1887.2575856694352,
+		"fy": 1887.5664343687151,
+		"cx": 1018.3231312860198,
+		"cy": 532.9690220692702
+	},
+	"distortion_coeffs": [
+		0.21717803715147813,
+		0.3821137764289447,
+		-1.7528559005004467,
+		3.796570944547853
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Cooke Panchro_25mm T2.8_2k_1.90by1_2048x1080-24.00fps",
+		"calibrated_by": "BHA RENDER MACHINE",
+		"original_resolution": "2048x1080",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

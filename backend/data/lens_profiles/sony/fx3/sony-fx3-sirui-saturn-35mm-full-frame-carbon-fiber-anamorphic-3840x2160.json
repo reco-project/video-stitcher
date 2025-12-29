@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-sirui-saturn-35mm-full-frame-carbon-fiber-anamorphic-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "SIRUI Saturn 35mm Full-frame Carbon Fiber Anamorphic",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2354.7754630751215,
+		"fy": 3732.286240079016,
+		"cx": 1868.6895827499584,
+		"cy": 1046.906954445914
+	},
+	"distortion_coeffs": [
+		0.29823627847257433,
+		-0.47427646213561336,
+		1.5400748752648237,
+		-1.4881013867765327
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_SIRUI Saturn 35mm Full-frame Carbon Fiber Anamorphic_1/328_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Paul Cusack",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

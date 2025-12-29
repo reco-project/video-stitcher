@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-unknown-3500mm-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "unknown 35.00mm",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8840.849475992922,
+		"fy": 8841.03835583598,
+		"cx": 3452.272981461288,
+		"cy": 1786.919758500423
+	},
+	"distortion_coeffs": [
+		0.41698512140600313,
+		0.5856832842937681,
+		0.06244934649697182,
+		1.0952806762865943
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_unknown 35.00mm_6K 17:9_6k_1.90by1_6910x3645-25.00fps",
+		"calibrated_by": "CloudSurfer",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

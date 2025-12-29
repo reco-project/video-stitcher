@@ -1,0 +1,33 @@
+{
+	"id": "xiaomi-yi-22l-action-cam-1600x1200",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi 22l",
+	"lens_model": "action cam",
+	"resolution": {
+		"width": 1600,
+		"height": 1200
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 702.608425017746,
+		"fy": 701.9426461720641,
+		"cx": 803.6816202781849,
+		"cy": 625.9022099980267
+	},
+	"distortion_coeffs": [
+		0.08651353976908815,
+		0.024388422650125655,
+		-0.049176388864297864,
+		0.02015084425956759
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Xiaomi_Yi 22l_action cam_waffle fpv_720p_4by3_1600x1200-50.00fps",
+		"calibrated_by": "mario yosef",
+		"original_resolution": "1600x1200",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

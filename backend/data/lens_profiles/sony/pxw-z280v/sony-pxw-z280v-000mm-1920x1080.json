@@ -1,0 +1,33 @@
+{
+	"id": "sony-pxw-z280v-000mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "PXW-Z280V",
+	"lens_model": "0.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1662.4848703095886,
+		"fy": 1659.4219666730462,
+		"cx": 939.8111694239236,
+		"cy": 539.6757916719132
+	},
+	"distortion_coeffs": [
+		-0.05958520133556153,
+		4.149446915219782,
+		-13.721024771236769,
+		13.716550209148451
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_PXW-Z280V_0.00mm__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "DELL",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

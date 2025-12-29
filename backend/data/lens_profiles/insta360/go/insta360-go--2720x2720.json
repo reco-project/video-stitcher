@@ -1,0 +1,33 @@
+{
+	"id": "insta360-go--2720x2720",
+	"camera_brand": "Insta360",
+	"camera_model": "Go",
+	"lens_model": "",
+	"resolution": {
+		"width": 2720,
+		"height": 2720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 898.028734672711,
+		"fy": 899.0702103510681,
+		"cx": 1360.0,
+		"cy": 1360.0
+	},
+	"distortion_coeffs": [
+		0.0986916135519954,
+		0.0006971280320081906,
+		-0.037586634604174725,
+		0.011019890814234844
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_Go___2.7k_1by1_2720x2720-0.00fps",
+		"calibrated_by": "WizzXFPV",
+		"original_resolution": "2720x2720",
+		"calibrated_fps": "unknown",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-tt-artisans-17mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "TT Artisans 17mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5892.534905083478,
+		"fy": 5893.941409885466,
+		"cx": 3098.975856029536,
+		"cy": 1635.2053145147245
+	},
+	"distortion_coeffs": [
+		0.1766535878175369,
+		0.13396658215018975,
+		-0.831368870416877,
+		4.53952638076052
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_TT Artisans 17mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Thomas Woodson",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-zeiss-cp3-50mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR",
+	"lens_model": "ZEISS CP3 50mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10184.008683877835,
+		"fy": 10185.283630786038,
+		"cx": 4136.101257169086,
+		"cy": 2082.694394857249
+	},
+	"distortion_coeffs": [
+		0.1899943573537428,
+		-0.14089077410875742,
+		1.8206342415689825,
+		-3.0621801169188285
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR_ZEISS CP3 50mm_17/9 R3D_8k_1.90by1_8192x4320-25.00fps",
+		"calibrated_by": "teodor g\u00f6rtz",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

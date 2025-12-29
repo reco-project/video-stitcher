@@ -1,0 +1,33 @@
+{
+	"id": "dji-mini-3-cmos-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "MINI 3",
+	"lens_model": "CMOS",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2785.238819635333,
+		"fy": 2782.404552833965,
+		"cx": 1941.3289662418772,
+		"cy": 1033.1673135303126
+	},
+	"distortion_coeffs": [
+		0.5698862988780982,
+		-1.283821169738951,
+		4.643853695367645,
+		-5.2849590093581105
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_MINI 3_CMOS_1/1,3_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Du\u0161an Nov\u00e1k",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

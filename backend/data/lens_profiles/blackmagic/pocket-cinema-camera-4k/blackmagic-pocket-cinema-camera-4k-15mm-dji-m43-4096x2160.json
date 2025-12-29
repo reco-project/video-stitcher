@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-15mm-dji-m43-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "15mm dji m4/3",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3137.246441000294,
+		"fy": 3139.30544614528,
+		"cx": 2070.4738953397605,
+		"cy": 1091.9583639802531
+	},
+	"distortion_coeffs": [
+		0.12936366163388285,
+		-0.08532208540043415,
+		0.4361058736809684,
+		-0.3132861750437645
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_15mm dji m4/3_ProRes 422 4k_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "Niki tanera",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

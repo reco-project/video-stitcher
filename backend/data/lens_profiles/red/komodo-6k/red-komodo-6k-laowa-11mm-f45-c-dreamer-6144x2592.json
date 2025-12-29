@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-11mm-f45-c-dreamer-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "Komodo 6K",
+	"lens_model": "LAOWA 11mm F4.5 C-Dreamer",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2561.2510631464124,
+		"fy": 2559.723065461555,
+		"cx": 3074.0298204593037,
+		"cy": 1310.15736609638
+	},
+	"distortion_coeffs": [
+		0.31308769473696246,
+		0.11455404960843672,
+		-0.006633379415877894,
+		0.054122900715570105
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Komodo 6K_LAOWA 11mm F4.5 C-Dreamer_2.4:1_6k_2.37by1_6144x2592-50.00fps",
+		"calibrated_by": "Armin Sky",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

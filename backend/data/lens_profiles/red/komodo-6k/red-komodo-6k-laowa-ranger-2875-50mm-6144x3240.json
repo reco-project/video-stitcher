@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-ranger-2875-50mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa Ranger - 28/75 - 50mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8205.362497697533,
+		"fy": 8205.75537971754,
+		"cx": 3099.858466974705,
+		"cy": 1595.0567251878715
+	},
+	"distortion_coeffs": [
+		0.3484736337745392,
+		-0.8726163084817992,
+		19.039826532499696,
+		-50.306936730089376
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Laowa Ranger - 28/75 - 50mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

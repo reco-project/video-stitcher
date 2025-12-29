@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lumix-g-vario-45-150f40-56-45mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LUMIX G VARIO 45-150/F4.0-5.6  45mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9471.588487517212,
+		"fy": 9470.484307135566,
+		"cx": 2038.1995231839528,
+		"cy": 1132.5489408418837
+	},
+	"distortion_coeffs": [
+		0.2484014167912191,
+		-13.245523642784022,
+		1294.1768053331532,
+		-26819.999655554635
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LUMIX G VARIO 45-150/F4.0-5.6  45mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Leigh Emmerson",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fdr-ax43--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FDR-AX43",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2770.5626234215956,
+		"fy": 2770.6644212592983,
+		"cx": 1920.997728020005,
+		"cy": 1085.0905553280438
+	},
+	"distortion_coeffs": [
+		0.3324832492606556,
+		0.2325159836293139,
+		-0.2992007627373779,
+		0.15864880462257036
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FDR-AX43___4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "r.kaffka",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

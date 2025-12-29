@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-tamron2800mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "TAMRON28.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3072.0286857617634,
+		"fy": 3076.027697661147,
+		"cx": 1919.537537828392,
+		"cy": 1065.312256101599
+	},
+	"distortion_coeffs": [
+		0.3152060872129036,
+		0.4000148425969079,
+		-2.7595730095539803,
+		11.367578982370317
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_TAMRON28.00mm__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Kingloong",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

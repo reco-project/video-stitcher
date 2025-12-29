@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sigma-ex-dc-hsm-10-20-f35-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Sigma EX DC HSM 10-20 f/3.5",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1570.0485467230767,
+		"fy": 1567.170155048074,
+		"cx": 2002.2126689060517,
+		"cy": 1114.0145330125515
+	},
+	"distortion_coeffs": [
+		0.2533346161631858,
+		0.2578000604213863,
+		-0.22649860533413563,
+		0.17837262751914096
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Sigma EX DC HSM 10-20 f/3.5_@10mm_C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "Thomas Boland",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

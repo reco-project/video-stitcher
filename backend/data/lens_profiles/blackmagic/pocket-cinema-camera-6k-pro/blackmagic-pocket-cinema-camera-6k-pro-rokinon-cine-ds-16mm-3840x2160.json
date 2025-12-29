@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-rokinon-cine-ds-16mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Rokinon Cine DS 16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2751.831146849249,
+		"fy": 2752.1579482755005,
+		"cx": 1964.4951945168389,
+		"cy": 1039.7254706133092
+	},
+	"distortion_coeffs": [
+		0.2640070965973656,
+		-0.00867454164308335,
+		0.5572850150240128,
+		-0.5047006110463307
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Rokinon Cine DS 16mm__4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "Raul Prado",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

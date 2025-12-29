@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-tamron-70-300-45-63-di-iii-rxd-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tamron 70-300 4.5-6.3 Di III RXD",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 16340.93243698566,
+		"fy": 16193.565391728802,
+		"cx": 2310.130061512792,
+		"cy": 2015.525944481491
+	},
+	"distortion_coeffs": [
+		0.2259212503445292,
+		16.88189563832918,
+		-1426.2595621352912,
+		32208.882351525317
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Tamron 70-300 4.5-6.3 Di III RXD_Intelligent Auto_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Jonathan",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

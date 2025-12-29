@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-ursa-mini-pro-46k-24-105mm-4096x2304",
+	"camera_brand": "Blackmagic",
+	"camera_model": "URSA Mini Pro 4.6k",
+	"lens_model": "24-105mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2304
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4018.644862726369,
+		"fy": 4017.0241493812778,
+		"cx": 2106.5257798817174,
+		"cy": 1216.8492672456882
+	},
+	"distortion_coeffs": [
+		0.1775585504335678,
+		0.5013374868452088,
+		-2.369852449583013,
+		5.160485867864042
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_URSA Mini Pro 4.6k_24-105mm_Prores 422_C4k_16by9_4096x2304-23.98fps",
+		"calibrated_by": "Helena Mckenzie",
+		"original_resolution": "4096x2304",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

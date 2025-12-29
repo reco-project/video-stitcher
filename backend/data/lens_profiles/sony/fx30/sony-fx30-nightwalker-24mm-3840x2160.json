@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-nightwalker-24mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Nightwalker 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3938.7510600909472,
+		"fy": 3939.9205276696794,
+		"cx": 1913.3163250750513,
+		"cy": 1044.4650771007607
+	},
+	"distortion_coeffs": [
+		0.17925807444457226,
+		0.022676511146882933,
+		1.216933252745305,
+		-2.322015691275996
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Nightwalker 24mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "ZAP",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

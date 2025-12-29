@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sigma-30mm-14-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Sigma 30mm 1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6256.668430499722,
+		"fy": 6115.432728364444,
+		"cx": 2042.431649713239,
+		"cy": 1095.9469919454275
+	},
+	"distortion_coeffs": [
+		0.2067342695098403,
+		-0.6601957013365111,
+		5.706447987114547,
+		-22.57538470697997
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Sigma 30mm 1.4_4.7_C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "Justin VanDommelen",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

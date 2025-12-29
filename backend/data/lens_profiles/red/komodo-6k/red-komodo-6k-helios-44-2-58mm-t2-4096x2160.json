@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-helios-44-2-58mm-t2-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Helios 44-2 58MM T2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13667.890685273163,
+		"fy": 13616.057925144058,
+		"cx": 2031.5496603129027,
+		"cy": 794.1531367059372
+	},
+	"distortion_coeffs": [
+		0.374118914084588,
+		6.733884001454117,
+		-884.0030620205924,
+		22155.65828040492
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Helios 44-2 58MM T2_17:9_C4k_1.90by1_4096x2160-23.98fps",
+		"calibrated_by": "Joel Gagne",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

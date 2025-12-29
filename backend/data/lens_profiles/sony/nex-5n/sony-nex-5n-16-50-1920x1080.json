@@ -1,0 +1,33 @@
+{
+	"id": "sony-nex-5n-16-50-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "NEX-5N",
+	"lens_model": "16-50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1270.7777815889162,
+		"fy": 1277.89013462089,
+		"cx": 941.1375431061512,
+		"cy": 544.0661214282972
+	},
+	"distortion_coeffs": [
+		0.3579860540900772,
+		-0.07010099923600718,
+		0.35244505652530367,
+		0.03569178205375906
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_NEX-5N_16-50_1/60_1080p_16by9_1920x1080-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

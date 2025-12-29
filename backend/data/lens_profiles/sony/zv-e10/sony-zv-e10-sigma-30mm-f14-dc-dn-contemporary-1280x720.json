@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-30mm-f14-dc-dn-contemporary-1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "sigma 30mm f1.4 dc dn contemporary",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1784.6915585279814,
+		"fy": 1781.1084575036075,
+		"cx": 649.9553454520444,
+		"cy": 364.5747084318839
+	},
+	"distortion_coeffs": [
+		0.3034862082617853,
+		3.181204241356673,
+		-55.22648302788315,
+		306.1857063294824
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_sigma 30mm f1.4 dc dn contemporary__720p_16by9_1280x720-59.94fps",
+		"calibrated_by": "Leo Lian",
+		"original_resolution": "1280x720",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

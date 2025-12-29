@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-dzofilm-25mm-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DZOFilm 25mm",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5810.799684042036,
+		"fy": 5811.896363685677,
+		"cx": 2552.455741711033,
+		"cy": 1333.7471994459956
+	},
+	"distortion_coeffs": [
+		0.17763988381929544,
+		0.33655263238101724,
+		-1.91684704517481,
+		5.6711692115696195
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_DZOFilm 25mm_17:9_5k_1.90by1_5120x2700-25.00fps",
+		"calibrated_by": "Bazin Arthur",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

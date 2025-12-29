@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-rf24mm-f18-macro-is-stm-2400mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "RF24mm F1.8 MACRO IS STM 24.00mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4987.5921728685435,
+		"fy": 4992.159805913305,
+		"cx": 4104.328334625937,
+		"cy": 2160.052187711899
+	},
+	"distortion_coeffs": [
+		0.1505062350697818,
+		0.04726611019069693,
+		-0.05243676328917047,
+		0.15654235394836225
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_RF24mm F1.8 MACRO IS STM 24.00mm_8K 17:9_8k_1.90by1_8192x4320-29.97fps",
+		"calibrated_by": "Yeh chia chen",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

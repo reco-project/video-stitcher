@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-7artisan-25mm-f18-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "7Artisan 25mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1677.4705147615005,
+		"fy": 1676.1055314998891,
+		"cx": 1035.3319433063791,
+		"cy": 497.4840235513309
+	},
+	"distortion_coeffs": [
+		0.24071043650242455,
+		0.0653494551699346,
+		-1.3340048006634135,
+		4.9765368521894064
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_7Artisan 25mm f1.8__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Zentarus111",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-contax-zeiss-35mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Contax Zeiss 35mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8207.957045371097,
+		"fy": 8204.094715863892,
+		"cx": 2996.6716749502793,
+		"cy": 1531.5535877688696
+	},
+	"distortion_coeffs": [
+		0.2176136457885541,
+		-1.0664600577029977,
+		17.070567699746984,
+		-66.65440410980946
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Contax Zeiss 35mm_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "jim shih",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-tokina-16-28-t3-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Tokina 16-28 T3",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3753.5624137905993,
+		"fy": 3753.0558510916,
+		"cx": 3093.7838453381814,
+		"cy": 1624.9872570495022
+	},
+	"distortion_coeffs": [
+		0.30485101454166746,
+		0.12551105189747733,
+		0.031442896285790646,
+		0.0117714224885946
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Tokina 16-28 T3_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Jacob Tovedal",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-sigma-17-70mm-f28-4-dc-macro-os-hsm-34mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Sigma 17-70mm f/2.8-4 DC Macro OS HSM @ 34mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8561.627304551863,
+		"fy": 8571.377609029754,
+		"cx": 3021.169964825141,
+		"cy": 1865.424277935948
+	},
+	"distortion_coeffs": [
+		0.3683569266502476,
+		0.9124301600937258,
+		0.2745794821299126,
+		-2.553563530307703
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Sigma 17-70mm f/2.8-4 DC Macro OS HSM @ 34mm__6k_16by9_6144x3456-30.00fps",
+		"calibrated_by": "chinam leung",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

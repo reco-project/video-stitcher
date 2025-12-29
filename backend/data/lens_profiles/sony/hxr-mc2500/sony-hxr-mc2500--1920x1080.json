@@ -1,0 +1,33 @@
+{
+	"id": "sony-hxr-mc2500--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HXR MC2500",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1441.3520271198688,
+		"fy": 1440.3484987438785,
+		"cx": 968.9357417096768,
+		"cy": 536.2126393559656
+	},
+	"distortion_coeffs": [
+		0.2431883549390402,
+		2.7022290388525483,
+		-25.595707368467053,
+		87.86766440377852
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_HXR MC2500___1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "User",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

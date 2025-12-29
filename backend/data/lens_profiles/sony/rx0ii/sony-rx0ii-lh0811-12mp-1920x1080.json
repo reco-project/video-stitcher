@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0ii-lh0811-12mp-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "LH0811-12MP",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1535.8852316587615,
+		"fy": 1529.3747049063356,
+		"cx": 984.226403287278,
+		"cy": 538.3593868417576
+	},
+	"distortion_coeffs": [
+		0.1150814279261146,
+		1.5633511934624496,
+		-1.7828145944358011,
+		-0.9192729123321666
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0II_LH0811-12MP_EXPERIMENTAL_1080p_16by9_1920x1080-119.88fps",
+		"calibrated_by": "Nicecrash_22",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "119.880119",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-auto-chinon-f35-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Auto Chinon f=35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5803.143612852885,
+		"fy": 5826.266794204477,
+		"cx": 1988.0695333798044,
+		"cy": 953.317830890862
+	},
+	"distortion_coeffs": [
+		-0.030269618035304195,
+		7.685282418848362,
+		-89.82231663175193,
+		382.0329398556552
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Auto Chinon f=35__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Jo\u00e3o Mendes",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

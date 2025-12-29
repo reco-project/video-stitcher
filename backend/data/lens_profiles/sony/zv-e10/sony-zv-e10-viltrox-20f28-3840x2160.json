@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-viltrox-20f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Viltrox 20F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3631.5809779400065,
+		"fy": 3632.802445385219,
+		"cx": 1936.4250200941565,
+		"cy": 1075.7015761511327
+	},
+	"distortion_coeffs": [
+		0.2440151190101661,
+		-0.05115697183024328,
+		1.0155302823685344,
+		-1.6209394847136087
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Viltrox 20F2.8__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Vu Anh Tung",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

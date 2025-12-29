@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-dzofilm-vespid-prime-ff-25mm-t21-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "DZOFilm Vespid Prime FF 25mm T2.1",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3063.902600004753,
+		"fy": 3062.67233717317,
+		"cx": 2029.416927292226,
+		"cy": 1070.496293630903
+	},
+	"distortion_coeffs": [
+		0.1705063690121303,
+		0.29186952571700014,
+		-0.6852171059847798,
+		1.375043506794066
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_DZOFilm Vespid Prime FF 25mm T2.1_90\u00b0_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Irgend Wer",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

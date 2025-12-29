@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-canon-fd-24mm-f28-ssc-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Canon FD 24mm f2.8 SSC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4384.036309694467,
+		"fy": 4380.620984000515,
+		"cx": 1872.7384008656811,
+		"cy": 1084.879537921948
+	},
+	"distortion_coeffs": [
+		0.2379017469511212,
+		-0.6773320700455686,
+		8.8925275017578,
+		-26.90087509216929
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Canon FD 24mm f2.8 SSC_Zhongyi Lens Turbo II Speedbooster_4k_16by9_3840x2160-30.00fps",
+		"calibrated_by": "Justin Kramer",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

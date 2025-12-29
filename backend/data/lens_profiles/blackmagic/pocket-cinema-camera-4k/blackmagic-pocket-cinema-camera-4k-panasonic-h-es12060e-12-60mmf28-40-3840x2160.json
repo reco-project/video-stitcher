@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-panasonic-h-es12060e-12-60mmf28-40-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Panasonic H-ES12060E 12-60mm/F2.8-4.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2724.8648990656534,
+		"fy": 2718.9037718590216,
+		"cx": 1951.1951362004531,
+		"cy": 1146.7814436544595
+	},
+	"distortion_coeffs": [
+		0.09151901997585898,
+		0.12922423115475712,
+		-0.13941586370843057,
+		0.29098880816689265
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Panasonic H-ES12060E 12-60mm/F2.8-4.0__4k_16by9_3840x2160-30.00fps",
+		"calibrated_by": "Rise FPV",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-irix-cine-t26-15mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "IRIX CINE T2.6 15MM",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3528.702932218904,
+		"fy": 3527.8192984770044,
+		"cx": 2858.8351794353107,
+		"cy": 1613.1431647247653
+	},
+	"distortion_coeffs": [
+		0.2761500103683842,
+		0.3322506342371714,
+		-0.4453189393910348,
+		0.3991257757691858
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_IRIX CINE T2.6 15MM_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Chris Beard",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

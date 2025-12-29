@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oners-leica-1inch-5312x2988",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "Leica 1inch",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2203.579162976104,
+		"fy": 2201.4237926756377,
+		"cx": 2674.0999447743684,
+		"cy": 1567.6606699308568
+	},
+	"distortion_coeffs": [
+		0.04357111947645626,
+		0.0255910538606627,
+		-0.02730320249746175,
+		0.009842225215748703
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneRS_Leica 1inch_NO-EIS_5k_16by9_5312x2988-29.97fps",
+		"calibrated_by": "4FM EZ",
+		"original_resolution": "5312x2988",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

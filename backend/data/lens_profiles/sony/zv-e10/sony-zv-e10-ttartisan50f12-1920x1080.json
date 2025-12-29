@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-ttartisan50f12-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "TTArtisan50f1.2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4421.511121775514,
+		"fy": 4426.9603982808285,
+		"cx": 991.9404569194228,
+		"cy": 587.3117713483712
+	},
+	"distortion_coeffs": [
+		0.3436877146117501,
+		-10.743786255608695,
+		316.0779671752282,
+		-3949.533461250418
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_TTArtisan50f1.2__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "peel stone",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

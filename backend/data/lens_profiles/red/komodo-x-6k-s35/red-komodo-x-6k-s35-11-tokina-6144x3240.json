@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-11-tokina-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "11 tokina",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2587.5278037043977,
+		"fy": 2590.078332416528,
+		"cx": 3092.106111926679,
+		"cy": 1612.7396321261838
+	},
+	"distortion_coeffs": [
+		0.35127695881841264,
+		0.04676062586928703,
+		0.07125657957177474,
+		0.007458648758890704
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_11 tokina_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "darren mccullough",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

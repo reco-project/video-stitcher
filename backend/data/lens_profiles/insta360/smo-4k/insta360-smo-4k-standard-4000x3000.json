@@ -1,0 +1,33 @@
+{
+	"id": "insta360-smo-4k-standard-4000x3000",
+	"camera_brand": "Insta360",
+	"camera_model": "SMO 4K",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1922.067960595483,
+		"fy": 1920.0712376298377,
+		"cx": 1980.773870318704,
+		"cy": 1485.1407588765471
+	},
+	"distortion_coeffs": [
+		0.007970299394145909,
+		-0.002720608059570072,
+		0.0014596175474285151,
+		-0.004220988529049535
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_SMO 4K_Standard_30_4k_4by3_4000x3000-29.97fps",
+		"calibrated_by": "b14ckyy",
+		"original_resolution": "4000x3000",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

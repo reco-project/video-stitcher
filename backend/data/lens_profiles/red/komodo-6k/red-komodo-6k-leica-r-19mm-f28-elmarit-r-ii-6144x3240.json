@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leica-r-19mm-f28-elmarit-r-ii-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 19mm f/2.8 Elmarit-R II",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4358.459034777096,
+		"fy": 4358.084348234235,
+		"cx": 3073.649150976736,
+		"cy": 1620.9078228580404
+	},
+	"distortion_coeffs": [
+		0.23860487243990008,
+		0.16469332480921622,
+		-0.04950932171625475,
+		0.26967745912155555
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Leica R 19mm f/2.8 Elmarit-R II_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "windcine",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

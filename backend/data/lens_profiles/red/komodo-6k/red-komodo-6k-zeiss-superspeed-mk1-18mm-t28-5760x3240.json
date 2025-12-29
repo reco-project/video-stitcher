@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-superspeed-mk1-18mm-t28-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss Superspeed Mk.1 18mm T2.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4173.702494245222,
+		"fy": 4168.892711845978,
+		"cx": 2907.5620788243064,
+		"cy": 1601.2154126305295
+	},
+	"distortion_coeffs": [
+		0.1973879581464096,
+		0.26265328930219184,
+		-0.2239553995021955,
+		0.6269942081643205
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Zeiss Superspeed Mk.1 18mm T2.8_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Yosuke Suga",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

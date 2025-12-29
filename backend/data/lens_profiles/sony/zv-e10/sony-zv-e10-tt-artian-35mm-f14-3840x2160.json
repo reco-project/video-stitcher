@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-tt-artian-35mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "TT Artian 35mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7488.556920032138,
+		"fy": 7504.012654427211,
+		"cx": 2237.0565025972637,
+		"cy": 1193.783341677524
+	},
+	"distortion_coeffs": [
+		0.10146404569897184,
+		3.854548313514852,
+		-88.79301926340212,
+		612.0483417738441
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_TT Artian 35mm F1.4__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "francesco oliva",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

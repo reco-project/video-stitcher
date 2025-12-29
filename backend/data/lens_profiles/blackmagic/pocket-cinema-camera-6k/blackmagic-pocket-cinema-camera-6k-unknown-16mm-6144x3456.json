@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-unknown-16mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Unknown 16mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4235.056775707522,
+		"fy": 4237.303869043406,
+		"cx": 3154.398464051272,
+		"cy": 1695.2548142657738
+	},
+	"distortion_coeffs": [
+		0.3623080840787337,
+		0.028503585234972668,
+		0.05705825696196479,
+		0.1602223061012626
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Unknown 16mm__6k_16by9_6144x3456-23.98fps",
+		"calibrated_by": "Media Services",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "23.976028",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

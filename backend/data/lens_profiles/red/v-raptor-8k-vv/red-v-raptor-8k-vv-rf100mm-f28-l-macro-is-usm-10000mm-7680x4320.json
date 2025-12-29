@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-rf100mm-f28-l-macro-is-usm-10000mm-7680x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "RF100mm F2.8 L MACRO IS USM 100.00mm",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 22020.290082767213,
+		"fy": 22011.008158748347,
+		"cx": 3718.1397175471984,
+		"cy": 2134.38255128371
+	},
+	"distortion_coeffs": [
+		0.26707878766456444,
+		22.03178391687444,
+		-889.3715355073865,
+		13367.395909882456
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_RF100mm F2.8 L MACRO IS USM 100.00mm_8K_6k_16by9_7680x4320-23.98fps",
+		"calibrated_by": "Sean Stewart",
+		"original_resolution": "7680x4320",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

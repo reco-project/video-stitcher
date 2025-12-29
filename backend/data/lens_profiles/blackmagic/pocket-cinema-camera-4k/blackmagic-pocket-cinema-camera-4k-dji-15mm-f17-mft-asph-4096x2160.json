@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-dji-15mm-f17-mft-asph-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "DJI 15mm f/1.7 MFT ASPH",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3246.843523263455,
+		"fy": 3246.3462568776345,
+		"cx": 2067.5428546617304,
+		"cy": 1086.1496910208516
+	},
+	"distortion_coeffs": [
+		0.09710525736739412,
+		0.1469809361244211,
+		-0.5263536612567211,
+		0.8381128844610398
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_DJI 15mm f/1.7 MFT ASPH_DCI f1.7_C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Ferdi Haya",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

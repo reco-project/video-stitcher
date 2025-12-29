@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-atlas-orion-40mmt56-12288x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6k",
+	"lens_model": "Atlas Orion 40mm@T5.6",
+	"resolution": {
+		"width": 12288,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9423.111542447308,
+		"fy": 9455.898643961473,
+		"cx": 6172.54644053113,
+		"cy": 1360.7070704884777
+	},
+	"distortion_coeffs": [
+		0.025531771474625393,
+		1.664908543898774,
+		-6.239458513291049,
+		10.0145708110999
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6k_Atlas Orion 40mm@T5.6_Full 6K 17:9_8k_3.79by1_12288x3240-23.98fps",
+		"calibrated_by": "john",
+		"original_resolution": "12288x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

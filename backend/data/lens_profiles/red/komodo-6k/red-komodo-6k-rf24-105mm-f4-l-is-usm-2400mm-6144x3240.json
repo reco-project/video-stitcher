@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-rf24-105mm-f4-l-is-usm-2400mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "RF24-105mm F4 L IS USM 24.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5660.792323866398,
+		"fy": 5664.00925093962,
+		"cx": 3133.8361413451166,
+		"cy": 1608.8613212422515
+	},
+	"distortion_coeffs": [
+		0.23763734275815784,
+		0.06779670999409566,
+		0.09202771123782294,
+		0.6430704938559733
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_RF24-105mm F4 L IS USM 24.00mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Lasse Parkkila",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

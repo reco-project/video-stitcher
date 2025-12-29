@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6v-1600mm-on-fe-c-16-35mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "16.00mm on FE C 16-35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1743.4267879631943,
+		"fy": 1743.5019009043706,
+		"cx": 1934.7462755501713,
+		"cy": 1067.540082890753
+	},
+	"distortion_coeffs": [
+		0.32430387591254656,
+		0.057891164377351194,
+		0.24951946435693123,
+		-0.12634803693120794
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6V_16.00mm on FE C 16-35mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "NEXT ATTENTION GmbH",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

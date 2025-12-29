@@ -1,0 +1,33 @@
+{
+	"id": "dji-osmopocket3-20mm-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "OsmoPocket3",
+	"lens_model": "20mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2230.268630484569,
+		"fy": 2229.6681233583563,
+		"cx": 1929.362193788254,
+		"cy": 1095.6092933768598
+	},
+	"distortion_coeffs": [
+		0.6192772199897081,
+		-0.818281856211543,
+		1.1973896254473912,
+		-0.2778435675052529
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_OsmoPocket3_20mm__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "\u8463\u4fca\u826f",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

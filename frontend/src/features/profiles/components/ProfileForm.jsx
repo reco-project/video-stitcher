@@ -122,7 +122,7 @@ export default function ProfileForm({ profile, onSubmit, onCancel }) {
 	};
 
 	return (
-		<form onSubmit={handleSubmit} className="w-full p-4 border rounded bg-white space-y-4">
+		<form onSubmit={handleSubmit} className="w-full p-4 border rounded bg-background space-y-4">
 			<h3 className="text-lg font-bold">{profile ? 'Edit Profile' : 'Create New Profile'}</h3>
 
 			{errors.length > 0 && (
@@ -142,7 +142,7 @@ export default function ProfileForm({ profile, onSubmit, onCancel }) {
 				{profile && (
 					<div>
 						<Label htmlFor="profile-id">Profile ID</Label>
-						<Input id="profile-id" type="text" value={profile.id} disabled className="bg-gray-100" />
+						<Input id="profile-id" type="text" value={profile.id} disabled className="bg-muted" />
 						<p className="text-xs text-muted-foreground mt-1">ID cannot be changed when editing</p>
 					</div>
 				)}

@@ -1,0 +1,33 @@
+{
+	"id": "dji-mini-2-4k-30-fps--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "mini 2 4K 30 fps",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3013.0697125662527,
+		"fy": 3002.012656933579,
+		"cx": 1928.06412452699,
+		"cy": 1036.504858830158
+	},
+	"distortion_coeffs": [
+		0.2517851445507729,
+		1.2413593891717367,
+		-5.3644679148958305,
+		8.661448397633361
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_mini 2 4K 30 fps___4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Stefano",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-canon-ef-11-24mm-f4l-usm-11mm-2880x1512",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Canon EF 11-24mm f/4L USM 11mm",
+	"resolution": {
+		"width": 2880,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3023.5579126011935,
+		"fy": 3031.8774277261086,
+		"cx": 1505.6382540852628,
+		"cy": 705.7029500529562
+	},
+	"distortion_coeffs": [
+		0.2758267497376466,
+		1.1131520018546208,
+		-7.726252406406584,
+		20.566330825743893
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Canon EF 11-24mm f/4L USM 11mm__2.7k_1.90by1_2880x1512-23.98fps",
+		"calibrated_by": "Daniel Cabrera Zepeda",
+		"original_resolution": "2880x1512",
+		"calibrated_fps": "23.976028",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

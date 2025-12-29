@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-carl-zeiss-planar-1450-hft-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Carl Zeiss Planar 1.4/50 HFT",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12173.669035033854,
+		"fy": 12186.813477763792,
+		"cx": 2856.5584122434643,
+		"cy": 1693.167930740841
+	},
+	"distortion_coeffs": [
+		0.15624259164527862,
+		4.038185986637407,
+		-136.82668624190129,
+		1492.63528596024
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Carl Zeiss Planar 1.4/50 HFT_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Jacob Tovedal",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

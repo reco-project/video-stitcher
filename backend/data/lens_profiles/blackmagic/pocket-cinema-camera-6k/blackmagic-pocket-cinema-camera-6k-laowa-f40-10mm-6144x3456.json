@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-laowa-f40-10mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Laowa f4.0 10mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2748.4338821677884,
+		"fy": 2755.9872058274254,
+		"cx": 3133.175711140942,
+		"cy": 1745.8910966342733
+	},
+	"distortion_coeffs": [
+		0.34016857611726187,
+		-0.09742194033322785,
+		0.4288753976159021,
+		-0.17060595574594248
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Laowa f4.0 10mm__6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Devon Spittle",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

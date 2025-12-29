@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-canon-fd-85mm-f18-ssc-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Canon FD 85mm f1.8 S.S.C",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9372.36868752648,
+		"fy": 9425.962986134406,
+		"cx": 1987.1976084364624,
+		"cy": 1049.407477108383
+	},
+	"distortion_coeffs": [
+		0.7115470552287941,
+		-7.1766583790708225,
+		161.2432129095989,
+		-1232.02593766171
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Canon FD 85mm f1.8 S.S.C__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Leon H\u00fcgli",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-mitakon-speedmaster-35mm-t1-with-sirui-125-anamorphic-adapter-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "mitakon speedmaster 35mm t1 with sirui 1.25 anamorphic adapter",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6397.528065875067,
+		"fy": 8148.087676334165,
+		"cx": 2931.789183359304,
+		"cy": 1501.737011047285
+	},
+	"distortion_coeffs": [
+		0.2047710033505534,
+		-2.694215432241187,
+		12.055257972358662,
+		-22.178746070473466
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_mitakon speedmaster 35mm t1 with sirui 1.25 anamorphic adapter_6K 17:9 1.25x_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "John Towner",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

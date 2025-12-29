@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-tokina-atx-i-11-20-f28-2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Tokina ATX-i 11-20 F/2.8",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1212.100572216008,
+		"fy": 1212.1359595701397,
+		"cx": 1030.09768604208,
+		"cy": 560.8204642507426
+	},
+	"distortion_coeffs": [
+		0.3601764609818534,
+		0.003694500109169924,
+		0.3726674023164252,
+		-0.41077886132773034
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Tokina ATX-i 11-20 F/2.8_2.41:1_2k_1.90by1_2048x1080-23.98fps",
+		"calibrated_by": "Mario AV",
+		"original_resolution": "2048x1080",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

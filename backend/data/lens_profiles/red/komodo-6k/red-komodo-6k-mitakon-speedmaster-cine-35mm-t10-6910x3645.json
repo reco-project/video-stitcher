@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-mitakon-speedmaster-cine-35mm-t10-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Mitakon Speedmaster Cine 35mm T1.0",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9161.01098575924,
+		"fy": 9156.88626590794,
+		"cx": 3448.8455249111475,
+		"cy": 1788.8733360351473
+	},
+	"distortion_coeffs": [
+		0.002793525235480657,
+		3.525808154727517,
+		-40.10731478074107,
+		194.4335873947395
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Mitakon Speedmaster Cine 35mm T1.0_6K 17:9_6k_1.90by1_6910x3645-25.00fps",
+		"calibrated_by": "Florian Koch",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

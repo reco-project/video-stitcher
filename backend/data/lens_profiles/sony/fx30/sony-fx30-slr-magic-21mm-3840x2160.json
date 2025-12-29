@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-slr-magic-21mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "SLR MAgic 21mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3716.340690906986,
+		"fy": 3714.237596544054,
+		"cx": 1868.4344029704612,
+		"cy": 1053.3070293516423
+	},
+	"distortion_coeffs": [
+		0.23169373070429977,
+		0.32752628710762643,
+		-0.6456369247614617,
+		-0.09168570514160924
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_SLR MAgic 21mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Andrew",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

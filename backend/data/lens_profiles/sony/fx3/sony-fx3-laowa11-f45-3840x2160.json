@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-laowa11-f45-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "laowa11 f4.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1218.8723009675236,
+		"fy": 1219.2854793162733,
+		"cx": 1914.717896851252,
+		"cy": 1075.7681183043594
+	},
+	"distortion_coeffs": [
+		0.31135645517471194,
+		0.187357044816346,
+		-0.1272728483434388,
+		0.14344999786679866
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_laowa11 f4.5__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "\u96f7\u77f3Mac studio display",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-raven-fish-eye-takumar-17mm-f14-4608x2160",
+	"camera_brand": "RED",
+	"camera_model": "Raven",
+	"lens_model": "Fish-eye-Takumar 17mm f1/4",
+	"resolution": {
+		"width": 4608,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3362.239868594199,
+		"fy": 3362.7970515428897,
+		"cx": 2332.626455221321,
+		"cy": 1096.8604090377532
+	},
+	"distortion_coeffs": [
+		-0.03043956485741318,
+		0.11109974715335776,
+		-0.45596864533172105,
+		0.49679309703694263
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Raven_Fish-eye-Takumar 17mm f1/4__C4k_2.13by1_4608x2160-25.00fps",
+		"calibrated_by": "re4mat0r",
+		"original_resolution": "4608x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

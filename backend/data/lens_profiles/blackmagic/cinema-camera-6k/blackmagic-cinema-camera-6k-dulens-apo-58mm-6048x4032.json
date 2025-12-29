@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-cinema-camera-6k-dulens-apo-58mm-6048x4032",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "Dulens APO 58mm",
+	"resolution": {
+		"width": 6048,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10244.820477715422,
+		"fy": 10245.965202207946,
+		"cx": 3011.698984958336,
+		"cy": 2180.5947111242003
+	},
+	"distortion_coeffs": [
+		0.2085171379283108,
+		0.647491510145557,
+		-1.0895021154445297,
+		-53.24089096508554
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Cinema Camera 6K_Dulens APO 58mm__6k_3by2_6048x4032-23.98fps",
+		"calibrated_by": "Jordan Dudek",
+		"original_resolution": "6048x4032",
+		"calibrated_fps": "23.976028",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

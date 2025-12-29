@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-laowa-33-095-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "laowa 33 0.95",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4625.391414191576,
+		"fy": 4623.7399524585135,
+		"cx": 1892.1247079411753,
+		"cy": 1115.9232326047147
+	},
+	"distortion_coeffs": [
+		0.20652206603181175,
+		1.403723687908166,
+		-14.554280427035634,
+		59.42573007108353
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_laowa 33 0.95__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

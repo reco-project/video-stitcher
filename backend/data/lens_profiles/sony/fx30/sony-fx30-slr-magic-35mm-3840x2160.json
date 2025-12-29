@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-slr-magic-35mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "SLR Magic 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6363.020653764282,
+		"fy": 6353.585904882978,
+		"cx": 1928.2441841411105,
+		"cy": 1028.2675676961942
+	},
+	"distortion_coeffs": [
+		0.20497074002074467,
+		2.6841539258479843,
+		-66.62665102638715,
+		490.614588677254
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_SLR Magic 35mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Andrew",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

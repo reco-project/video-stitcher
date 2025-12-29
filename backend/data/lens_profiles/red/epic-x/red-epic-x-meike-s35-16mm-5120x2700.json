@@ -1,0 +1,33 @@
+{
+	"id": "red-epic-x-meike-s35-16mm-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "EPIC-X",
+	"lens_model": "Meike S35 16mm",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3253.4413699924316,
+		"fy": 3255.2911901799416,
+		"cx": 2564.781501080897,
+		"cy": 1407.815545267437
+	},
+	"distortion_coeffs": [
+		0.2853860119884098,
+		0.0851295923350554,
+		0.25615788710838877,
+		-0.33225315406885175
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_EPIC-X_Meike S35 16mm_FF_5k_1.90by1_5120x2700-50.00fps",
+		"calibrated_by": "Max Wo",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

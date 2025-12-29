@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-ef24-70mm-f28l-ii-usm-2400mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "EF24-70mm f/2.8L II USM 24.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5451.7793645794345,
+		"fy": 5454.2926115973705,
+		"cx": 3057.892460563078,
+		"cy": 1634.6871360420696
+	},
+	"distortion_coeffs": [
+		0.2103973605281606,
+		0.1359688194303793,
+		-0.02649268686254084,
+		0.43485797682223465
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_EF24-70mm f/2.8L II USM 24.00mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "FASTFOKUS",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

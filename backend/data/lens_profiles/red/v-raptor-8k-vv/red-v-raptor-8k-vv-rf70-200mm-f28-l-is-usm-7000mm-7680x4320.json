@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-rf70-200mm-f28-l-is-usm-7000mm-7680x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "RF70-200mm F2.8 L IS USM 70.00mm",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14129.672909470148,
+		"fy": 14157.186934630605,
+		"cx": 3673.389929436487,
+		"cy": 2267.3038315735453
+	},
+	"distortion_coeffs": [
+		0.056388054459892416,
+		0.5490828210030847,
+		-5.597451813028886,
+		45.84476721605163
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_RF70-200mm F2.8 L IS USM 70.00mm_8K_6k_16by9_7680x4320-23.98fps",
+		"calibrated_by": "Sean Stewart",
+		"original_resolution": "7680x4320",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

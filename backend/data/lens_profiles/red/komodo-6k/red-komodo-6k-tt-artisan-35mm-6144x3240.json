@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-tt-artisan-35mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "TT ARTISAN 35mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8229.255550223741,
+		"fy": 8231.728432245049,
+		"cx": 3066.027358703033,
+		"cy": 1598.434527766291
+	},
+	"distortion_coeffs": [
+		0.09448529511294192,
+		1.543684143860263,
+		-12.752015785019813,
+		51.99921477489738
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_TT ARTISAN 35mm_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Andreas Varsakopoulos",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

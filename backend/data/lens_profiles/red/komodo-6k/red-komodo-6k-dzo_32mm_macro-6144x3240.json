@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-dzo_32mm_macro-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DZO_32mm_MACRO",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7634.674137751039,
+		"fy": 7634.594894067589,
+		"cx": 3035.863336665599,
+		"cy": 1589.8340830967338
+	},
+	"distortion_coeffs": [
+		0.22219319788532285,
+		0.13431942379264342,
+		1.4246975868357628,
+		-4.337183596922611
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_DZO_32mm_MACRO_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Yann Besset",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

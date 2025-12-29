@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-15mm-t21-cine-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa 15mm T2.1 Cine",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3546.231363228203,
+		"fy": 3545.61478498565,
+		"cx": 3078.0312192251204,
+		"cy": 1603.6124231144174
+	},
+	"distortion_coeffs": [
+		0.31817506979966337,
+		0.13692034554480373,
+		-0.042677581685095854,
+		0.1550717895278376
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Laowa 15mm T2.1 Cine_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Viktor Mauren",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

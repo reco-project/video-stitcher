@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-canon-ef-40mm-f28-stm-40mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Canon EF 40mm f/2.8 STM 40mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9660.273727956695,
+		"fy": 9637.928148428162,
+		"cx": 2752.204346952251,
+		"cy": 1637.4104063433576
+	},
+	"distortion_coeffs": [
+		0.25936772814744113,
+		-0.9614033060408752,
+		15.628767352384951,
+		-59.88908704446131
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Canon EF 40mm f/2.8 STM 40mm_40mm_6k_16by9_6144x3456-30.00fps",
+		"calibrated_by": "manuel",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

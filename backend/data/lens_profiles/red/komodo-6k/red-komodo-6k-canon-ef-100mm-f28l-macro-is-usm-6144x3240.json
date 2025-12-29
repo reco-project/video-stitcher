@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-ef-100mm-f28l-macro-is-usm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Canon EF 100mm f/2.8L Macro IS USM",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 21578.687585877364,
+		"fy": 21587.61425642256,
+		"cx": 2972.4129704623333,
+		"cy": 1473.3565120899498
+	},
+	"distortion_coeffs": [
+		0.21265498045743175,
+		-8.112539338764854,
+		1116.1824522013362,
+		-39696.10506015612
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Canon EF 100mm f/2.8L Macro IS USM_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "SCAN2FX",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

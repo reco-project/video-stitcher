@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-efs-10-18mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "EFS 10-18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1717.6089541847812,
+		"fy": 1716.488260597608,
+		"cx": 1935.4376412395552,
+		"cy": 1076.285452710993
+	},
+	"distortion_coeffs": [
+		0.33958588440839665,
+		0.10407136116406322,
+		0.05523634299230009,
+		-0.03751549947767079
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_EFS 10-18mm_10mm_4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "Antero Sousa",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

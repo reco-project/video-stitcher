@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-viltrox-85mm-18-ii-fe-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Viltrox 85mm 1.8 II FE",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6796.553979906464,
+		"fy": 6770.775032712299,
+		"cx": 1002.417587760107,
+		"cy": 547.1527848451115
+	},
+	"distortion_coeffs": [
+		1.0933041817621216,
+		-44.06051474384209,
+		2293.9760913208097,
+		-36330.207102945125
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Viltrox 85mm 1.8 II FE_50m_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Cesar Amaral",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

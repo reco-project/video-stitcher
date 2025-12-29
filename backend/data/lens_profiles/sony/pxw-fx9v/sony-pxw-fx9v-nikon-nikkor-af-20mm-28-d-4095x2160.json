@@ -1,0 +1,33 @@
+{
+	"id": "sony-pxw-fx9v-nikon-nikkor-af-20mm-28-d-4095x2160",
+	"camera_brand": "Sony",
+	"camera_model": "PXW-FX9V",
+	"lens_model": "Nikon Nikkor AF 20mm 2.8 D",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2860.95376576742,
+		"fy": 2807.145137639673,
+		"cx": 2073.0203378296824,
+		"cy": 1086.549515427792
+	},
+	"distortion_coeffs": [
+		0.20623203924631955,
+		0.18978431547523905,
+		-0.11222903608915208,
+		0.39438094464955314
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_PXW-FX9V_Nikon Nikkor AF 20mm 2.8 D_FFCrop_C4k_1.90by1_4095x2160-24.00fps",
+		"calibrated_by": "Chad McClarnon",
+		"original_resolution": "4095x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

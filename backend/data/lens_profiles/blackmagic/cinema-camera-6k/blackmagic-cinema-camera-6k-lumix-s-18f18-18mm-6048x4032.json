@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-cinema-camera-6k-lumix-s-18f18-18mm-6048x4032",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "LUMIX S 18/F1.8 18mm",
+	"resolution": {
+		"width": 6048,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3117.570437375333,
+		"fy": 3117.7893492253793,
+		"cx": 2978.871362967678,
+		"cy": 1994.3698051585511
+	},
+	"distortion_coeffs": [
+		0.1733316385220377,
+		0.1621526743857882,
+		-0.1396951671368745,
+		0.22341833570853223
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Cinema Camera 6K_LUMIX S 18/F1.8 18mm__6k_3by2_6048x4032-29.97fps",
+		"calibrated_by": "Mike Rivera",
+		"original_resolution": "6048x4032",
+		"calibrated_fps": "29.970032",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-laowa-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "laowa",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1512.2608967534186,
+		"fy": 1512.7089147472698,
+		"cx": 1925.1923900614136,
+		"cy": 1075.6097928141153
+	},
+	"distortion_coeffs": [
+		0.33690368329484105,
+		0.15847196540208588,
+		-0.1914051908431896,
+		0.368471213970141
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_laowa_9mm_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Ka kei Leung",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-tokina-11-20-atx-i-11-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6k",
+	"lens_model": "Tokina 11-20 atx-i @11",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2569.5902393716874,
+		"fy": 2569.8494263093185,
+		"cx": 3061.5130751199295,
+		"cy": 1626.8147405652487
+	},
+	"distortion_coeffs": [
+		0.33823956641793645,
+		0.06031703979956438,
+		-0.024795799469837856,
+		0.03378315765732521
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6k_Tokina 11-20 atx-i @11_Full Sensor_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Florian Koch",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

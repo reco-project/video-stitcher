@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-atlas-orion-100mmt56-12288x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Atlas Orion 100mm@T5.6",
+	"resolution": {
+		"width": 12288,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 21138.109077341353,
+		"fy": 21152.329430283662,
+		"cx": 7852.193728614907,
+		"cy": 1575.7524954572482
+	},
+	"distortion_coeffs": [
+		-0.15831519882090897,
+		2.8245769226472115,
+		-6.195420047602585,
+		-27.186759339158208
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Atlas Orion 100mm@T5.6_6K 17-9_8k_3.79by1_12288x3240-23.98fps",
+		"calibrated_by": "SCAN2FX",
+		"original_resolution": "12288x3240",
+		"calibrated_fps": "23.976",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

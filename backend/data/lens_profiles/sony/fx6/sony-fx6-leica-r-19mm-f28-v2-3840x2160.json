@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-leica-r-19mm-f28-v2-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Leica R 19mm f2.8 v2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2152.8087288366587,
+		"fy": 2152.7619570068405,
+		"cx": 1939.983471947858,
+		"cy": 1097.0407086228547
+	},
+	"distortion_coeffs": [
+		0.1932610087897577,
+		0.175279507821712,
+		-0.13457548107956005,
+		0.34818393514841095
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Leica R 19mm f2.8 v2__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

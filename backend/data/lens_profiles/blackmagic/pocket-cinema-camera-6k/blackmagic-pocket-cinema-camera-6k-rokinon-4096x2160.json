@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-rokinon-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Rokinon",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3275.689113610311,
+		"fy": 3197.5908058472623,
+		"cx": 2029.6488844160535,
+		"cy": 1076.573005423691
+	},
+	"distortion_coeffs": [
+		0.2149245881963085,
+		0.34149947002288716,
+		-0.5144982483342286,
+		0.5915958937324017
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Rokinon_Prores_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Michael Armstrong",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

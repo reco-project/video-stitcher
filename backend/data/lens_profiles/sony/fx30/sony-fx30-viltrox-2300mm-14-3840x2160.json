@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-viltrox-2300mm-14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "viltrox 23.00mm 1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3850.1488573125976,
+		"fy": 3847.8047853189046,
+		"cx": 1966.4321497630967,
+		"cy": 1139.1575900289004
+	},
+	"distortion_coeffs": [
+		0.21767279480839277,
+		-0.38761648860323633,
+		4.338311396096507,
+		-9.337360434171044
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_viltrox 23.00mm 1.4_stabilization standard_4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "@samiebuka",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-64x-ef24-105mm-f4l-is-ii-usm-22mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": ".64x EF24-105mm f/4L IS II USM 22mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1321.659541330194,
+		"fy": 1321.1408199769212,
+		"cx": 1995.501108074312,
+		"cy": 1060.626439667098
+	},
+	"distortion_coeffs": [
+		0.28018914006828144,
+		0.2709936896833314,
+		-0.18209734970628355,
+		0.17133081538052303
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_.64x EF24-105mm f/4L IS II USM 22mm__C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "matt",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

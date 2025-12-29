@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-slrmagic-25mm-t095-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "SLRMAGIC 25MM T0.95",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6016.52827021961,
+		"fy": 6015.778955910623,
+		"cx": 2121.861487042787,
+		"cy": 1064.0086454237924
+	},
+	"distortion_coeffs": [
+		0.11141623252764504,
+		1.3283191247753712,
+		-19.187889867046874,
+		121.4272303684464
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_SLRMAGIC 25MM T0.95__C4k_1.90by1_4096x2160-30.00fps",
+		"calibrated_by": "Klaus",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

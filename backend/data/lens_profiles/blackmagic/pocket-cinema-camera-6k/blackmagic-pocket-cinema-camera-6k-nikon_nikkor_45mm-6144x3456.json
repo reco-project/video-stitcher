@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-nikon_nikkor_45mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Nikon_Nikkor_45mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12052.296617544334,
+		"fy": 12076.81931729816,
+		"cx": 2875.6837809063354,
+		"cy": 1702.9471281650822
+	},
+	"distortion_coeffs": [
+		0.20234173692587396,
+		1.6163076724781853,
+		-19.197489507574275,
+		116.79850468269586
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Nikon_Nikkor_45mm__6k_16by9_6144x3456-24.00fps",
+		"calibrated_by": "Yoshio Kitagawa",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

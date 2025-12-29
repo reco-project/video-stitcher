@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-voigtlander-21mm-f35-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Voigtlander 21mm f/3.5",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5759.51305011114,
+		"fy": 5769.110283138017,
+		"cx": 3209.201116849433,
+		"cy": 1744.583853563381
+	},
+	"distortion_coeffs": [
+		0.3240027232909186,
+		-0.33006499946955364,
+		2.2155616169704206,
+		-3.1059888701988334
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Voigtlander 21mm f/3.5_/ f5.6_6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Devon Spittle",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

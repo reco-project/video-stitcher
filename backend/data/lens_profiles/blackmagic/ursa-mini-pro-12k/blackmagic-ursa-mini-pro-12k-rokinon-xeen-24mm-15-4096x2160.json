@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-ursa-mini-pro-12k-rokinon-xeen-24mm-15-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "URSA Mini Pro 12K",
+	"lens_model": "Rokinon xeen 24mm 1.5",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3909.4298721283153,
+		"fy": 3907.8022866308634,
+		"cx": 2078.709484849426,
+		"cy": 1093.670493067477
+	},
+	"distortion_coeffs": [
+		0.27971368771328353,
+		-1.1021447619627796,
+		12.20402252218684,
+		-38.875277226790864
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_URSA Mini Pro 12K_Rokinon xeen 24mm 1.5__C4k_1.90by1_4096x2160-30.00fps",
+		"calibrated_by": "Jorge Flores",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

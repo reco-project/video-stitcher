@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-roki-20-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "roki 20",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4705.633178979688,
+		"fy": 4704.694857387745,
+		"cx": 3123.066074596987,
+		"cy": 1598.037542415089
+	},
+	"distortion_coeffs": [
+		0.22974275972363997,
+		0.4167603827077148,
+		-1.407177684957175,
+		2.336235799678233
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_roki 20_6K 17:9_6k_1.90by1_6144x3240-60.00fps",
+		"calibrated_by": "Jakson Zappitelli",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

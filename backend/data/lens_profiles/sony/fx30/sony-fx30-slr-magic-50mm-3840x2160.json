@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-slr-magic-50mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "SLR Magic 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11658.264671205116,
+		"fy": 11656.946799418998,
+		"cx": 1862.866107402117,
+		"cy": 1010.0465436365566
+	},
+	"distortion_coeffs": [
+		-0.08520874819916606,
+		65.53612321545066,
+		-5148.27304770061,
+		127440.0266614328
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_SLR Magic 50mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Andrew",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

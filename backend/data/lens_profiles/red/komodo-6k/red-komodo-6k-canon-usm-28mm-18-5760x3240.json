@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-usm-28mm-18-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "canon usm 28mm 1.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7823.8379846891185,
+		"fy": 7760.462382435234,
+		"cx": 2935.2818122176704,
+		"cy": 1700.24469115038
+	},
+	"distortion_coeffs": [
+		0.29062658718041195,
+		0.5324242796904384,
+		-6.900708685375698,
+		39.851185857314775
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_canon usm 28mm 1.8_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Pedro Gusman",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

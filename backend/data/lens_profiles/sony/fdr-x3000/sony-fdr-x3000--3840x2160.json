@@ -1,0 +1,33 @@
+{
+	"id": "sony-fdr-x3000--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FDR-X3000",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1638.73694409602,
+		"fy": 1635.876049555812,
+		"cx": 1935.7582980315576,
+		"cy": 1090.5484660289735
+	},
+	"distortion_coeffs": [
+		0.13259328876448503,
+		0.10932398566674084,
+		-0.06649491878837724,
+		0.04038940153165511
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FDR-X3000___4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "\u0410\u043d\u0442\u043e\u043d",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

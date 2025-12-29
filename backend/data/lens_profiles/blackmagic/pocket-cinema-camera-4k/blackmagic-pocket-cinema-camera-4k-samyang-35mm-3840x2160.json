@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-samyang-35mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Samyang 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5438.268156120991,
+		"fy": 5441.647012444619,
+		"cx": 1821.03081369731,
+		"cy": 1100.1609484045566
+	},
+	"distortion_coeffs": [
+		0.2669955840960063,
+		-2.2343972308302735,
+		29.84577593587448,
+		-116.6771611540451
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Samyang 35mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Clepimedia",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

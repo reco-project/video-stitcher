@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-3-classic-wide-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic 3 Classic",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2387.994180975857,
+		"fy": 2387.5786268051306,
+		"cx": 1897.379014696476,
+		"cy": 1066.1775013375589
+	},
+	"distortion_coeffs": [
+		0.17841966077100266,
+		0.013760386277035326,
+		-0.3547906892241173,
+		0.3748002591904108
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic 3 Classic_Wide_Normal_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "stuart jennett",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

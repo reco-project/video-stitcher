@@ -1,0 +1,33 @@
+{
+	"id": "xiaomi-mijia-4k-32mm-f28-3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mijia 4k",
+	"lens_model": "3.2mm f/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1991.447803849226,
+		"fy": 1990.9283765377363,
+		"cx": 1924.2928528981336,
+		"cy": 1078.7697738927004
+	},
+	"distortion_coeffs": [
+		0.3672440026714257,
+		0.031052771539042363,
+		0.22447948214865096,
+		-0.04684947994010268
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Xiaomi_Mijia 4k_3.2mm f/2.8__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "viktor",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

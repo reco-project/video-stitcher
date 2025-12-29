@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-17mm-laowa-cine-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "17mm Laowa Cine",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3664.5056065634,
+		"fy": 3770.174123987648,
+		"cx": 1934.0126411555184,
+		"cy": 1111.078554533599
+	},
+	"distortion_coeffs": [
+		0.16926698962776043,
+		0.5317133661344581,
+		-2.326557342462281,
+		5.131224968570082
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_17mm Laowa Cine_DCI_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "MacPro",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

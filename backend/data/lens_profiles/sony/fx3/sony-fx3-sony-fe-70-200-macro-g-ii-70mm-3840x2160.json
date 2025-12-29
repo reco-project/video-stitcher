@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-sony-fe-70-200-macro-g-ii-70mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Sony FE 70-200 Macro G II @70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8470.628740977641,
+		"fy": 8488.620731377909,
+		"cx": 2078.798485968064,
+		"cy": 1061.9092539758258
+	},
+	"distortion_coeffs": [
+		0.4012840323047837,
+		4.612891441622106,
+		-145.85799552015956,
+		1222.5076175300137
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Sony FE 70-200 Macro G II @70mm__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Igor Kasyanyuk",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-20-35-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "20-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3415.338767975987,
+		"fy": 3415.169497219933,
+		"cx": 1926.0980613926008,
+		"cy": 1117.5549696409398
+	},
+	"distortion_coeffs": [
+		0.18364567366762236,
+		0.4725147218122262,
+		-2.368654253470158,
+		4.797434233826634
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_20-35_20mm_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "J\u00e9r\u00e9mie Levy",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

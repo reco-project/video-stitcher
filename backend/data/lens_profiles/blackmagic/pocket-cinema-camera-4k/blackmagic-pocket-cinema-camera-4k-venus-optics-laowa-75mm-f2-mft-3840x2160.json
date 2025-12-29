@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-venus-optics-laowa-75mm-f2-mft-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Venus Optics Laowa 7.5mm f/2 MFT",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1640.710761654229,
+		"fy": 1641.339303860516,
+		"cx": 1895.843167719995,
+		"cy": 1124.3381544861809
+	},
+	"distortion_coeffs": [
+		0.33947741908090767,
+		0.041949905543298346,
+		0.11573453352723267,
+		-0.012724176873189242
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Venus Optics Laowa 7.5mm f/2 MFT_Rolling shutter correction included_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Oleg Stelmakh",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

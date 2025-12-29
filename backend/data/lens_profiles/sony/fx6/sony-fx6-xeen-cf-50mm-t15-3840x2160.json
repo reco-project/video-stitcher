@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-xeen-cf-50mm-t15-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "XEEN CF 50mm T1.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5668.129365262234,
+		"fy": 5668.362860383485,
+		"cx": 1966.101179636601,
+		"cy": 1115.073167083587
+	},
+	"distortion_coeffs": [
+		0.11636923404327568,
+		-0.4766227346420931,
+		8.790949954894412,
+		-41.98696359351606
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_XEEN CF 50mm T1.5__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Produktion",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

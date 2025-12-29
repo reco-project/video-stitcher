@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-nisi-25mm-athena-prime-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "NiSi 25mm ATHENA PRIME",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5741.2129422381,
+		"fy": 5739.082316428279,
+		"cx": 3080.778328965194,
+		"cy": 1618.1500512433824
+	},
+	"distortion_coeffs": [
+		0.26036937976423546,
+		0.394492762714836,
+		-1.1787753920795838,
+		0.601498636726312
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_NiSi 25mm ATHENA PRIME_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Tincan Motion",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-rf35mm-f18-macro-is-stm-3500mm-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "RF35mm F1.8 MACRO IS STM 35.00mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8461.989744177206,
+		"fy": 8441.579234282082,
+		"cx": 2011.812598868293,
+		"cy": 937.6684401790708
+	},
+	"distortion_coeffs": [
+		0.1286041160819764,
+		7.888781962822537,
+		-220.77245502471607,
+		2012.932196300125
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_RF35mm F1.8 MACRO IS STM 35.00mm_17:9_C4k_1.90by1_4096x2160-23.98fps",
+		"calibrated_by": "Joel Gagne",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

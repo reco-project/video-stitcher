@@ -42,6 +42,20 @@ export async function deleteProfile(profileId) {
 }
 
 /**
+ * Toggle favorite status for a lens profile
+ */
+export async function toggleFavorite(profileId, isFavorite) {
+	return api.patch(`/profiles/${profileId}/favorite`, { is_favorite: isFavorite });
+}
+
+/**
+ * List all favorite profiles
+ */
+export async function listFavoriteProfiles() {
+	return api.get('/profiles/favorites/list');
+}
+
+/**
  * List all camera brands
  */
 export async function listBrands() {

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-ef-40mm-f28-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Canon EF 40mm f/2.8",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10059.24703158987,
+		"fy": 10071.271629687955,
+		"cx": 3494.0509287849613,
+		"cy": 1924.5193910019188
+	},
+	"distortion_coeffs": [
+		0.18782882742241708,
+		1.2953325862715317,
+		-10.269461157019933,
+		36.70457728928145
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Canon EF 40mm f/2.8_6K 17:9_6k_1.90by1_6910x3645-24.00fps",
+		"calibrated_by": "Marco Joe Fazio",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

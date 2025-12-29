@@ -1,0 +1,33 @@
+{
+	"id": "sony-xa75--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "XA75",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3543.6250933600586,
+		"fy": 3550.332091482887,
+		"cx": 922.632915090088,
+		"cy": 515.1857339903399
+	},
+	"distortion_coeffs": [
+		0.4890641285311217,
+		3.39733154960122,
+		-82.60483869174692,
+		678.2178408565755
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_XA75___1080p_16by9_1920x1080-25.00fps",
+		"calibrated_by": "wade hunt",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

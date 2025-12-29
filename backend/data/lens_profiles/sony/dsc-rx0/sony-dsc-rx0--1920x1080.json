@@ -1,0 +1,33 @@
+{
+	"id": "sony-dsc-rx0--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "DSC-RX0",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1269.0865201702925,
+		"fy": 1260.7174949701705,
+		"cx": 901.4199397905718,
+		"cy": 431.8827356334475
+	},
+	"distortion_coeffs": [
+		0.332778537432594,
+		0.33057026674184997,
+		-1.13699847057249,
+		1.7884135228196187
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_DSC-RX0___1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

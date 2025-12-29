@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oners-leica-1-ultrawide-80-3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "Leica 1\" Ultrawide 80",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2577.5349713279443,
+		"fy": 2517.779408518873,
+		"cx": 1976.7195452669228,
+		"cy": 1068.6352197480487
+	},
+	"distortion_coeffs": [
+		0.08801960300408355,
+		0.02751978871187268,
+		-0.1572911913491967,
+		0.30757497822969765
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneRS_Leica 1\" Ultrawide 80_EIS_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Yeppa FpV",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

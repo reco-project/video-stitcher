@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-dzo-film-25mm-vespid-prime-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "DZO Film 25mm Vespid Prime",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5922.994109097922,
+		"fy": 5921.870761614267,
+		"cx": 3060.2305105629703,
+		"cy": 1597.0036754047528
+	},
+	"distortion_coeffs": [
+		0.1866128215241915,
+		0.16453595418305175,
+		-0.175828191618506,
+		0.9578675711257106
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_DZO Film 25mm Vespid Prime_6K 17:9_6k_1.90by1_6144x3240-59.94fps",
+		"calibrated_by": "Greg Newland",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

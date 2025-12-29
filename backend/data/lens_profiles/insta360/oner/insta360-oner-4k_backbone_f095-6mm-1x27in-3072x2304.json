@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oner-4k_backbone_f095-6mm-1x27in-3072x2304",
+	"camera_brand": "Insta360",
+	"camera_model": "OneR",
+	"lens_model": "4K_Backbone_F0.95-6mm-1x2.7in",
+	"resolution": {
+		"width": 3072,
+		"height": 2304
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3092.0901833843923,
+		"fy": 3090.4019285904524,
+		"cx": 1306.525247053452,
+		"cy": 1135.0558741247962
+	},
+	"distortion_coeffs": [
+		-0.2784931132782831,
+		0.6335844070652191,
+		-1.557434685022196,
+		1.6284940318211565
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneR_4K_Backbone_F0.95-6mm-1x2.7in_NO-EIS_2.7k_4by3_3072x2304-24.00fps",
+		"calibrated_by": "Chris",
+		"original_resolution": "3072x2304",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

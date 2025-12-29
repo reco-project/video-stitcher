@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0ii-f4c0498c-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "f4c0498c",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2166.131652456737,
+		"fy": 2184.9585240025754,
+		"cx": 1960.2845152426332,
+		"cy": 1146.4580584658522
+	},
+	"distortion_coeffs": [
+		0.3087803170378548,
+		0.3432503294548932,
+		-1.1792190789512298,
+		1.314879326618741
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0II_f4c0498c_30p 100mbps 0.6x lens_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Turner Hall",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

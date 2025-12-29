@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-laowa-cd-dreamer-mft-10mm-f20-10mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LAOWA C&D-Dreamer MFT 10mm F2.0 10mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2151.239348067345,
+		"fy": 2150.615315178675,
+		"cx": 1997.867773730499,
+		"cy": 1075.1627224543065
+	},
+	"distortion_coeffs": [
+		0.2989934072565281,
+		1.176078536889889,
+		-8.257961795290003,
+		21.238903286353537
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LAOWA C&D-Dreamer MFT 10mm F2.0 10mm__C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "\u0410\u0440\u0442\u0443\u0440 \u0415\u0444\u0440\u0435\u043c\u043e\u0432",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

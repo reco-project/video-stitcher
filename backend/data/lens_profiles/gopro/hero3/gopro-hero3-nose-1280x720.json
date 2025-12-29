@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero3-nose-1280x720",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO3",
+	"lens_model": "NOSE",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 616.4000467256803,
+		"fy": 613.6801178854877,
+		"cx": 669.7050325639142,
+		"cy": 354.0182846721047
+	},
+	"distortion_coeffs": [
+		0.005898806255046761,
+		-0.003581702358796485,
+		0.0023138302839446267,
+		0.0017919722898424753
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO3_NOSE_Principiante_720p_16by9_1280x720-59.94fps",
+		"calibrated_by": "Martin Miguel",
+		"original_resolution": "1280x720",
+		"calibrated_fps": "59.940067",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

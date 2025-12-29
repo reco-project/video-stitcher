@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-tamron-sp-35mm-f14-di-usd-f045-3500mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "TAMRON SP 35mm F/1.4 Di USD F045 35.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8018.273231724684,
+		"fy": 8020.326812785241,
+		"cx": 3070.1262470964994,
+		"cy": 1644.5790569131884
+	},
+	"distortion_coeffs": [
+		0.290602014189858,
+		-0.6326944877098252,
+		10.077392852332824,
+		-42.24995764385285
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_TAMRON SP 35mm F/1.4 Di USD F045 35.00mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "\u9646\u987e\u660a",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

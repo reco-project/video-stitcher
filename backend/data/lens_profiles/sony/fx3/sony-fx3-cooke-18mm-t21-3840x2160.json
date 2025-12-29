@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-cooke-18mm-t21-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Cooke 18mm T2.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2065.468718665592,
+		"fy": 2063.9089840644847,
+		"cx": 1917.6393192898047,
+		"cy": 1064.0330433913546
+	},
+	"distortion_coeffs": [
+		0.17251074972730504,
+		0.4381790634303951,
+		-1.040240817187067,
+		1.6855599370397198
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Cooke 18mm T2.1__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Andr\u00e9 Jung",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

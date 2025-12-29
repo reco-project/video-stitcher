@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sirui-35mm-f18-anamorphic-133x-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Sirui 35mm f/1.8 Anamorphic 1.33x",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5955.024945317961,
+		"fy": 5766.948428267346,
+		"cx": 2140.7635657532924,
+		"cy": 891.2550093123003
+	},
+	"distortion_coeffs": [
+		0.4519976670947889,
+		-6.7192685268987065,
+		57.134164306331286,
+		-128.7020308442088
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Sirui 35mm f/1.8 Anamorphic 1.33x__4k_16by9_3840x2160-60.00fps",
+		"calibrated_by": "CD",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

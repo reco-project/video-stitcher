@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-nikon18105-105mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "nikon18105-105mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17157.871192606366,
+		"fy": 17611.266944081883,
+		"cx": 2059.801289185815,
+		"cy": 1044.7367367620477
+	},
+	"distortion_coeffs": [
+		1.5018199153373797,
+		60.76030789715436,
+		-3712.979070635443,
+		89921.79831337975
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_nikon18105-105mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

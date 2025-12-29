@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-canon-ef-85mm-f18-usm-85mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Canon EF 85mm f/1.8 USM 85mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 23445.24169560558,
+		"fy": 23404.56289124192,
+		"cx": 3150.1069152131195,
+		"cy": 1772.6672463138516
+	},
+	"distortion_coeffs": [
+		-0.12275980604601332,
+		120.30917219385078,
+		-10779.795156356771,
+		330198.2550617634
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Canon EF 85mm f/1.8 USM 85mm__6k_16by9_6144x3456-23.98fps",
+		"calibrated_by": "Media Services",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "23.976028",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

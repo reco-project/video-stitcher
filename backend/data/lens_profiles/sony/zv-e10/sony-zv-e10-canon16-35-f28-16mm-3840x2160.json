@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-canon16-35-f28-16mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Canon16-35 F2.8 (16MM)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1910.195143053899,
+		"fy": 1913.5125445989,
+		"cx": 1914.0299382830667,
+		"cy": 1136.4680187395911
+	},
+	"distortion_coeffs": [
+		0.17761226700420035,
+		0.19346720115520552,
+		-0.13503991860681722,
+		0.15943707892917547
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Canon16-35 F2.8 (16MM)_viltrox ef-e ii_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Leo Lian",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

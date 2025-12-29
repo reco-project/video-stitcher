@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-laowa-nanomorph-27mm-9720x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa Nanomorph 27mm",
+	"resolution": {
+		"width": 9720,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7316.548072799233,
+		"fy": 7342.744560401597,
+		"cx": 4896.20655142861,
+		"cy": 1776.4850674540342
+	},
+	"distortion_coeffs": [
+		0.3522264904754741,
+		-0.1707910702750995,
+		0.15130830208266358,
+		1.5068820413982005
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Laowa Nanomorph 27mm_6K  1.5x_8k_8by3_9720x3645-24.00fps",
+		"calibrated_by": "PedroBraulio Alvarez",
+		"original_resolution": "9720x3645",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

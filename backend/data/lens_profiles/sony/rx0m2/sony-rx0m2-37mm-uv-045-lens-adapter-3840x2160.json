@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0m2-37mm-uv-045-lens-adapter-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0M2",
+	"lens_model": "37mm UV& 0.45 lens adapter",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1151.1479170935436,
+		"fy": 1149.8935452532146,
+		"cx": 1941.7431506241448,
+		"cy": 1099.219434282333
+	},
+	"distortion_coeffs": [
+		0.2280457557809757,
+		0.06408515645041855,
+		-0.005042251517859126,
+		-0.023425248652778136
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0M2_37mm UV& 0.45 lens adapter__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "\u674e\u4e49",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

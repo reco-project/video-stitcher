@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-laowa-10-mm-f4-cookie-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Laowa 10 mm f4 cookie",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1702.7898578354652,
+		"fy": 1703.671333743932,
+		"cx": 1930.154442719716,
+		"cy": 1067.962433596805
+	},
+	"distortion_coeffs": [
+		0.3149903529584969,
+		0.11663651534538298,
+		0.004228672434646406,
+		0.11336277326691592
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Laowa 10 mm f4 cookie__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Pablowskee",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

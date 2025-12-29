@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nikon-nikkor-ais-85mm-f14-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Nikon Nikkor AIS 85mm F/1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 20441.828031113557,
+		"fy": 20431.420265049637,
+		"cx": 2135.81682317035,
+		"cy": 1348.650508233205
+	},
+	"distortion_coeffs": [
+		0.70814715658784,
+		-231.7785786405315,
+		31487.347581189275,
+		-1445550.0752909365
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Nikon Nikkor AIS 85mm F/1.4__4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "Ryan Ivy",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

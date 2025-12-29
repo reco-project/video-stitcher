@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-meike-25mm-f22-2688x1512",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Meike 25mm f2.2",
+	"resolution": {
+		"width": 2688,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5248.024998914075,
+		"fy": 5235.188619289515,
+		"cx": 1490.9120480022368,
+		"cy": 760.1742955689263
+	},
+	"distortion_coeffs": [
+		0.24499595011220288,
+		1.4502325366989506,
+		-22.913137102645234,
+		143.66300841842602
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Meike 25mm f2.2_16:9_2.5k_16by9_2688x1512-25.00fps",
+		"calibrated_by": "DiWhite",
+		"original_resolution": "2688x1512",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

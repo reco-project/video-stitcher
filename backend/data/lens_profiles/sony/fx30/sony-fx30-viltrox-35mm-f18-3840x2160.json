@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-viltrox-35mm-f18-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Viltrox 35mm f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6765.05341380142,
+		"fy": 6772.3976190236845,
+		"cx": 1980.6671087175064,
+		"cy": 1156.2956066118163
+	},
+	"distortion_coeffs": [
+		0.1667450909853734,
+		7.004574224751032,
+		-128.8054866493684,
+		777.486717340809
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Viltrox 35mm f1.8_60_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Kyle M Fields",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

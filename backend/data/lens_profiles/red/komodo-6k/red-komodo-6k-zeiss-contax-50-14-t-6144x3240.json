@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-contax-50-14-t-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss Contax 50 1.4 T*",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8325.339966166415,
+		"fy": 8327.057833005447,
+		"cx": 3083.132276637371,
+		"cy": 1566.8473246509116
+	},
+	"distortion_coeffs": [
+		0.13805339611793846,
+		0.6270273307830942,
+		-1.9763547483267896,
+		17.218726280775723
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Zeiss Contax 50 1.4 T*_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "cru",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

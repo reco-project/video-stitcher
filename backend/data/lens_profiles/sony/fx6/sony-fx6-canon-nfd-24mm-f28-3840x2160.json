@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-canon-nfd-24mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Canon nFD 24mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2735.7448846597304,
+		"fy": 2736.345969297026,
+		"cx": 1918.1501304561748,
+		"cy": 1068.9103053251447
+	},
+	"distortion_coeffs": [
+		0.207221974313049,
+		0.2561249853723396,
+		-0.3771687495930088,
+		0.853593697312667
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Canon nFD 24mm f2.8__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

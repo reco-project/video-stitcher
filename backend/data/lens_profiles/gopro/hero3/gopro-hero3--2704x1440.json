@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero3--2704x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "Hero3",
+	"lens_model": "",
+	"resolution": {
+		"width": 2704,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1131.3620072930366,
+		"fy": 1132.9552652969692,
+		"cx": 1279.0132113977384,
+		"cy": 705.8371739204537
+	},
+	"distortion_coeffs": [
+		-0.008390717691043034,
+		0.12446624217624122,
+		-0.1038081129191855,
+		0.04722115495627953
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_Hero3___2.7k_1.88by1_2704x1440-23.98fps",
+		"calibrated_by": "\u0412\u043b\u0430\u0434\u0438\u0441\u043b\u0430\u0432 \u041a\u0438\u0441\u0435\u043b\u0451\u0432",
+		"original_resolution": "2704x1440",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

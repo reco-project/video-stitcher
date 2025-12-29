@@ -1,0 +1,33 @@
+{
+	"id": "xiaomi-yi-2k--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi 2K",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 834.9848926948944,
+		"fy": 841.179855398276,
+		"cx": 972.9963315279527,
+		"cy": 570.2780072858964
+	},
+	"distortion_coeffs": [
+		0.09777965687125578,
+		-0.0169243618422478,
+		0.015913810360911995,
+		-0.014913612499743526
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Xiaomi_Yi 2K___1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "JEAN FPV",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

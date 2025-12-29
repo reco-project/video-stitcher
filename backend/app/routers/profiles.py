@@ -162,3 +162,45 @@ def delete_profile(profile_id: str, store: LensProfileStore = Depends(get_store)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Profile with ID '{profile_id}' not found")
     return None
+
+
+@router.patch("/{profile_id}/favorite", response_model=Dict)
+def toggle_favorite(profile_id: str, is_favorite: bool = Body(..., embed=True), store: LensProfileStore = Depends(get_store)):
+    """
+    Toggle favorite status for a lens profile.
+
+    Args:
+        profile_id: ID of profile to update
+        is_favorite: New favorite status
+
+    Returns:
+        Updated profile dictionary
+
+    Raises:
+        404: Profile not found
+    """
+    profile = store.get_by_id(profile_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Profile with ID '{profile_id}' not found")
+    
+    # Update favorite status
+    profile["is_favorite"] = is_favorite
+    
+    try:
+        updated = store.update(profile_id, profile)
+        return updated
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/favorites/list", response_model=List[Dict])
+def list_favorite_profiles(store: LensProfileStore = Depends(get_store)):
+    """
+    List all favorite profiles.
+
+    Returns:
+        List of favorite profile dictionaries
+    """
+    all_profiles = store.list_all()
+    favorites = [p for p in all_profiles if p.get("is_favorite", False)]
+    return favorites

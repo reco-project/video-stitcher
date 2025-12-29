@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-35mm-meike-mft-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "35mm Meike MFT",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7592.31768378002,
+		"fy": 7590.956132615847,
+		"cx": 2119.301687648549,
+		"cy": 1079.7528625190064
+	},
+	"distortion_coeffs": [
+		0.20256306821047937,
+		-2.401920848677996,
+		55.200666669221015,
+		-377.9233946469011
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_35mm Meike MFT_DCI_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

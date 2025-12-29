@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-helios-44-kmz-silver-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Helios 44 KMZ Silver",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9600.60742028403,
+		"fy": 9605.57092079657,
+		"cx": 3088.677948345349,
+		"cy": 1261.615690881577
+	},
+	"distortion_coeffs": [
+		0.3134275848936005,
+		0.15776150333524971,
+		12.927898364834716,
+		-43.73580522994279
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Helios 44 KMZ Silver_6K 2.4:1_6k_2.37by1_6144x2592-23.98fps",
+		"calibrated_by": "",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

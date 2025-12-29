@@ -1,0 +1,33 @@
+{
+	"id": "red-epic-arri-b-speed-25mm-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "EPIC",
+	"lens_model": "ARRI B SPEED 25MM",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4863.621604116615,
+		"fy": 4856.799326133932,
+		"cx": 2588.577790664935,
+		"cy": 1355.958043793525
+	},
+	"distortion_coeffs": [
+		0.21575200066242864,
+		-0.1293671950340206,
+		1.5264170088100626,
+		-1.4852832897139512
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_EPIC_ARRI B SPEED 25MM__5k_1.90by1_5120x2700-24.00fps",
+		"calibrated_by": "David Pou",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

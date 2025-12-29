@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-slr-magic-8mm-f40-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "SLR Magic 8mm f4.0",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1873.6610734244068,
+		"fy": 1875.4318032340443,
+		"cx": 2053.204928306078,
+		"cy": 1115.081524547041
+	},
+	"distortion_coeffs": [
+		0.2555835187344363,
+		0.18827904524524072,
+		-0.04254077297764069,
+		0.07174709429661735
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_SLR Magic 8mm f4.0__C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "Cameron Goldberg",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-7artisans-35mm-095-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "7Artisans 35mm 0.95",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6362.3819453029055,
+		"fy": 6362.063596366187,
+		"cx": 1945.9707520945444,
+		"cy": 1014.855801963953
+	},
+	"distortion_coeffs": [
+		0.14800485347310594,
+		0.357775416802277,
+		-2.8236378744499513,
+		23.58028156706433
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_7Artisans 35mm 0.95__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Isaac Quezada",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

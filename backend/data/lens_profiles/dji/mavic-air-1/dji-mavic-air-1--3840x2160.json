@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-air-1--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic Air 1",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2955.2684690640363,
+		"fy": 2956.150761107557,
+		"cx": 1940.583967650892,
+		"cy": 1029.7781680800665
+	},
+	"distortion_coeffs": [
+		0.7178570495860691,
+		-1.6796677088727274,
+		2.4442093075235385,
+		-0.2336566351028317
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic Air 1___4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Daivison Cardoso",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

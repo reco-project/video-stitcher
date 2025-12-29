@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-porst-35mm-f18-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Porst 35mm f/1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5053.983495303216,
+		"fy": 5063.202454938452,
+		"cx": 1817.5554296372836,
+		"cy": 1027.1642243816948
+	},
+	"distortion_coeffs": [
+		0.16391066181826278,
+		-0.5490522015627193,
+		9.452288228093249,
+		-49.41383199797352
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Porst 35mm f/1.8__4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "Tirnovean Teodor",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

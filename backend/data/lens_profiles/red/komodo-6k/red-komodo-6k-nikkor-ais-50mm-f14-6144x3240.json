@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nikkor-ais-50mm-f14-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "NIKKOR AIS 50mm f/1.4",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12114.645537226215,
+		"fy": 12112.483024953912,
+		"cx": 3039.2085776493836,
+		"cy": 1540.9776807434205
+	},
+	"distortion_coeffs": [
+		0.12057924378273914,
+		4.239798435288671,
+		-84.50207247189175,
+		599.4950289227428
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_NIKKOR AIS 50mm f/1.4_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Jeremy Carroll",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

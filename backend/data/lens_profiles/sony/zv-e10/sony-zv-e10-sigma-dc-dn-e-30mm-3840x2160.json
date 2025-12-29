@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-dc-dn-e-30mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma DC DN E 30mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4759.573986854538,
+		"fy": 4789.242984278154,
+		"cx": 1301.0718256378902,
+		"cy": 474.0782160928589
+	},
+	"distortion_coeffs": [
+		0.4235931574372174,
+		-1.6162164824152834,
+		9.357765696528215,
+		-18.688796006718828
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sigma DC DN E 30mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "B2",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

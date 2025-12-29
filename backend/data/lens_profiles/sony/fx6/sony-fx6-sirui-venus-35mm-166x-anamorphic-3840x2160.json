@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sirui-venus-35mm-166x-anamorphic-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sirui Venus 35mm 1.66x anamorphic",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2412.4337095153255,
+		"fy": 3790.752559176188,
+		"cx": 1819.4069938738028,
+		"cy": 1025.0949236021029
+	},
+	"distortion_coeffs": [
+		0.3589797842880479,
+		-1.1092196444645182,
+		3.725772384622005,
+		-0.6243442861080171
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Sirui Venus 35mm 1.66x anamorphic__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Luis Reidl",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

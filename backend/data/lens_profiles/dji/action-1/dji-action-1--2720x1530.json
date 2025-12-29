@@ -1,0 +1,33 @@
+{
+	"id": "dji-action-1--2720x1530",
+	"camera_brand": "DJI",
+	"camera_model": "Action 1",
+	"lens_model": "",
+	"resolution": {
+		"width": 2720,
+		"height": 1530
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1203.2848806978118,
+		"fy": 1202.6061247645562,
+		"cx": 1365.2935033829165,
+		"cy": 774.2744232380496
+	},
+	"distortion_coeffs": [
+		0.19062055969436867,
+		0.12104087378870326,
+		-0.2278310597025695,
+		0.08183123109482589
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Action 1___2.7k_16by9_2720x1530-29.97fps",
+		"calibrated_by": "xisang",
+		"original_resolution": "2720x1530",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

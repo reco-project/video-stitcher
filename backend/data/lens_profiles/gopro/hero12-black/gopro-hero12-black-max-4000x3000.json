@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero12-black-max-4000x3000",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO12 Black",
+	"lens_model": "Max",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1405.6324241830823,
+		"fy": 1407.178668317966,
+		"cx": 1999.694505176878,
+		"cy": 1494.589697590448
+	},
+	"distortion_coeffs": [
+		0.14056289258997645,
+		-0.10320400861002443,
+		0.06107494469909745,
+		-0.013704090606533052
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO12 Black_Max_Superview_4k_4by3_4000x3000-23.98fps",
+		"calibrated_by": "Nicholas Federoff",
+		"original_resolution": "4000x3000",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

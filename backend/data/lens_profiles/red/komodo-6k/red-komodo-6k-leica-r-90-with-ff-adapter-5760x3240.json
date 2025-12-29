@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leica-r-90-with-ff-adapter-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 90 with FF Adapter",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15784.271058139277,
+		"fy": 15725.145149530445,
+		"cx": 2822.8464301338845,
+		"cy": 1400.9000006246276
+	},
+	"distortion_coeffs": [
+		0.4238104385110552,
+		-3.401260720024281,
+		345.64719723776665,
+		-4901.056130329631
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Leica R 90 with FF Adapter_6K_5k_16by9_5760x3240-24.00fps",
+		"calibrated_by": "Mark Helsel",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

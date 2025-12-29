@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-laowa-14-mm-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "LAOWA 14 mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1700.401287967998,
+		"fy": 1700.836642446346,
+		"cx": 2057.0933554232392,
+		"cy": 1087.957905691527
+	},
+	"distortion_coeffs": [
+		0.3177060749477505,
+		0.15005192292185562,
+		-0.0475158626197241,
+		0.09515945518266232
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_LAOWA 14 mm_DCI  4096 x   XAVC I Shutter 1/100_C4k_1.90by1_4096x2160-29.97fps",
+		"calibrated_by": "Manuel Diaz Ruiz",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

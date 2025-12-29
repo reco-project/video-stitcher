@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-dzofilm-21mm-t21-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "DZOFILM 21mm T2.1",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7074.2908000969055,
+		"fy": 7028.990903990735,
+		"cx": 3280.2413691548063,
+		"cy": 1751.3002182093248
+	},
+	"distortion_coeffs": [
+		0.060444970706124174,
+		1.9309489845582335,
+		-7.320157186127144,
+		13.367996862676224
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_DZOFILM 21mm T2.1__6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Shawn",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

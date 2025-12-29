@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-leica-dg-summilux-15f17-15mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LEICA DG SUMMILUX 15/F1.7  15mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3245.326518295155,
+		"fy": 3245.9831002913465,
+		"cx": 2066.960632028269,
+		"cy": 1080.644868766933
+	},
+	"distortion_coeffs": [
+		0.12004745002306912,
+		-0.08788715989230736,
+		0.4864596149933251,
+		-0.392450898763108
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LEICA DG SUMMILUX 15/F1.7  15mm__C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx100iv--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX100IV",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2814.546741078173,
+		"fy": 2809.668321770852,
+		"cx": 1841.424618523121,
+		"cy": 1047.1225503690664
+	},
+	"distortion_coeffs": [
+		0.34002135058457433,
+		-0.03542642068688049,
+		0.8123889621732941,
+		-1.1390461502858498
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX100IV___4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "20201218",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

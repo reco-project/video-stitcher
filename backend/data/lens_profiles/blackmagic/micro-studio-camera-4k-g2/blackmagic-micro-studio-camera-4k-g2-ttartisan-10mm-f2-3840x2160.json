@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-ttartisan-10mm-f2-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "TTArtisan 10mm f/2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2310.9532334522255,
+		"fy": 2316.515092834039,
+		"cx": 1901.8283708166737,
+		"cy": 1038.462452131279
+	},
+	"distortion_coeffs": [
+		0.32103699463347407,
+		0.2807387328350642,
+		-0.4718141824925109,
+		0.5398180836922728
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_TTArtisan 10mm f/2_f/8_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Bence P\u00f3czak",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

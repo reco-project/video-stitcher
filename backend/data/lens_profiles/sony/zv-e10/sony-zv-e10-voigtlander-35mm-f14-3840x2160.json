@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-voigtlander-35mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Voigtlander 35mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5541.802155997644,
+		"fy": 5551.899199252634,
+		"cx": 1965.6536363843095,
+		"cy": 950.6460437009928
+	},
+	"distortion_coeffs": [
+		0.3546873418281151,
+		-0.5275303604578283,
+		-10.847089526303527,
+		180.3743731945863
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Voigtlander 35mm f1.4__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Heiko Dirk Ruth",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

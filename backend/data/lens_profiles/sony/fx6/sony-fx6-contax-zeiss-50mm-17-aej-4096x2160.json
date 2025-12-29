@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-contax-zeiss-50mm-17-aej-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Contax Zeiss 50mm 1.7 AEJ",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6363.944353692846,
+		"fy": 6369.861136681516,
+		"cx": 2008.0539462250824,
+		"cy": 1162.041524248095
+	},
+	"distortion_coeffs": [
+		0.19452536632782677,
+		-0.0522277542395103,
+		-5.173978282827772,
+		45.43027228560619
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Contax Zeiss 50mm 1.7 AEJ_DCI 4k_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Meurig",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

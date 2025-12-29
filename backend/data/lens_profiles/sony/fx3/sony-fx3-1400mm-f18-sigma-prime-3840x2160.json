@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-1400mm-f18-sigma-prime-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "14.00mm f1.8 Sigma prime",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1516.0107379332412,
+		"fy": 1515.7672054052232,
+		"cx": 1931.9416810801151,
+		"cy": 1076.205572792059
+	},
+	"distortion_coeffs": [
+		0.3150826998337481,
+		0.17104358852653517,
+		0.06907231000843313,
+		-0.05743924982242717
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_14.00mm f1.8 Sigma prime_25fps_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Alex",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

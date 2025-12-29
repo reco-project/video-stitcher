@@ -1,0 +1,33 @@
+{
+	"id": "red-raven-super-multi-coated-takumar-35mm-f2-4608x2160",
+	"camera_brand": "RED",
+	"camera_model": "Raven",
+	"lens_model": "Super-Multi-Coated Takumar 35mm f2",
+	"resolution": {
+		"width": 4608,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6355.3294918473175,
+		"fy": 6359.983754723604,
+		"cx": 2279.62184012466,
+		"cy": 932.654122710964
+	},
+	"distortion_coeffs": [
+		0.35405651287838624,
+		-2.598982901929056,
+		31.01278038158869,
+		-129.15419161359858
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Raven_Super-Multi-Coated Takumar 35mm f2__C4k_2.13by1_4608x2160-25.00fps",
+		"calibrated_by": "John",
+		"original_resolution": "4608x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

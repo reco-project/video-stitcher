@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lumix-g-25f17-26mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LUMIX G 25/F1.7 26mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5717.694817779934,
+		"fy": 5722.532183237554,
+		"cx": 1988.8625585790037,
+		"cy": 1061.8571151937915
+	},
+	"distortion_coeffs": [
+		0.11756781118570114,
+		2.253394865874206,
+		-50.13075924751666,
+		287.2485326919958
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LUMIX G 25/F1.7 26mm__4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "E Honda",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

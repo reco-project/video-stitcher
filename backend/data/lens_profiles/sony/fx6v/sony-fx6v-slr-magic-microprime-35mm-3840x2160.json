@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6v-slr-magic-microprime-35mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "SLR Magic microprime 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4239.674943643959,
+		"fy": 4238.67941493732,
+		"cx": 1922.799021718292,
+		"cy": 1064.1465039668003
+	},
+	"distortion_coeffs": [
+		0.2016932329364783,
+		1.3629127229739348,
+		-13.459556832669165,
+		49.61949085732231
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6V_SLR Magic microprime 35mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Jimmy Chow",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

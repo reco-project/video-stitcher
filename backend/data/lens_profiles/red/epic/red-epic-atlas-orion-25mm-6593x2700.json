@@ -1,0 +1,33 @@
+{
+	"id": "red-epic-atlas-orion-25mm-6593x2700",
+	"camera_brand": "RED",
+	"camera_model": "EPIC",
+	"lens_model": "ATLAS ORION 25MM",
+	"resolution": {
+		"width": 6593,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4570.643845272135,
+		"fy": 4583.717893633749,
+		"cx": 3343.767446294458,
+		"cy": 1391.923661701726
+	},
+	"distortion_coeffs": [
+		0.09304912875073693,
+		-0.2753951908696312,
+		0.6264542364389739,
+		-0.4652082766092606
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_EPIC_ATLAS ORION 25MM__6k_2.44by1_6593x2700-24.00fps",
+		"calibrated_by": "David Pou",
+		"original_resolution": "6593x2700",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-7artisans-35mm-f095-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "7Artisans 35MM F0.95",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6424.380201361355,
+		"fy": 6418.7873502588745,
+		"cx": 1874.429551092456,
+		"cy": 1059.6566558049271
+	},
+	"distortion_coeffs": [
+		0.12029676056026202,
+		-0.897736098607368,
+		22.285010820885223,
+		-109.18804619735812
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_7Artisans 35MM F0.95__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Z",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

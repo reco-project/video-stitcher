@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-25mm-ff-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "25mm FF",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6528.1280376022005,
+		"fy": 6531.36526236445,
+		"cx": 3459.9904894542797,
+		"cy": 1801.312027221052
+	},
+	"distortion_coeffs": [
+		0.23922854472031804,
+		0.6452507167568949,
+		-2.7447804489131458,
+		6.191889044186624
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_25mm FF_6K 17:9_6k_1.90by1_6910x3645-24.00fps",
+		"calibrated_by": "baby_shoe",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

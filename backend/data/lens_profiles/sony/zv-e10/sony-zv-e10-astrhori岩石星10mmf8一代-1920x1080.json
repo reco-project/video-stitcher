@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-astrhori\u5ca9\u77f3\u661f10mmf8\u4e00\u4ee3-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "AstrHori\u5ca9\u77f3\u661f10mmF8\u4e00\u4ee3",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1017.5068893499569,
+		"fy": 993.7569756404736,
+		"cx": 962.8825445988782,
+		"cy": 533.8507961055641
+	},
+	"distortion_coeffs": [
+		0.05382615332925568,
+		0.07294318962300042,
+		-0.1743140630568893,
+		0.11645227049887302
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_AstrHori\u5ca9\u77f3\u661f10mmF8\u4e00\u4ee3_60_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "\u7a0b\u529f",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero5-black-wide-1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO5 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 838.2836454352489,
+		"fy": 838.6428929774673,
+		"cx": 965.2583531322576,
+		"cy": 720.2489641372711
+	},
+	"distortion_coeffs": [
+		0.061632139597364334,
+		-0.012401789619082814,
+		0.018789269571589412,
+		-0.007590667191068966
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO5 Black_Wide_NO-EIS_1440p_4by3_1920x1440-80.00fps",
+		"calibrated_by": "Andrea",
+		"original_resolution": "1920x1440",
+		"calibrated_fps": "80.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

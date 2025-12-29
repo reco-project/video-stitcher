@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-dzo-vespid-cyber-21mm-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DZO Vespid Cyber 21mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4612.589492675806,
+		"fy": 4610.90484780371,
+		"cx": 1888.1711096744816,
+		"cy": 1054.461308942768
+	},
+	"distortion_coeffs": [
+		0.16008377576423496,
+		0.99486449928953,
+		-7.4585632853837724,
+		22.0655166233286
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_DZO Vespid Cyber 21mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "John Ingle",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

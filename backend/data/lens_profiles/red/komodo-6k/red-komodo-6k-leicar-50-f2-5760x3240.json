@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leicar-50-f2-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "leicaR 50 F2",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8327.935342813242,
+		"fy": 8327.456765566494,
+		"cx": 2947.7105633040233,
+		"cy": 1632.7713215625183
+	},
+	"distortion_coeffs": [
+		0.1287527510982464,
+		3.6027396801198295,
+		-41.495093780620245,
+		179.4941664407213
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_leicaR 50 F2_6K_5k_16by9_5760x3240-30.00fps",
+		"calibrated_by": "\u4e54\u8001\u677f",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lumix-20mm-133-anamorphic-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Lumix 20mm 1.33 Anamorphic",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3488.5126613763937,
+		"fy": 4203.741993146902,
+		"cx": 2034.0475341004333,
+		"cy": 1043.5875180703472
+	},
+	"distortion_coeffs": [
+		0.025640145645687864,
+		0.1200606230954029,
+		-0.27844740932400036,
+		0.34335096692426736
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Lumix 20mm 1.33 Anamorphic_4k DCI 24_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Blackbug Digital",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

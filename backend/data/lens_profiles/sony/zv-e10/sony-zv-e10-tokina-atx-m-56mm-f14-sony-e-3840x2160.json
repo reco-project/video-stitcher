@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-tokina-atx-m-56mm-f14-sony-e-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tokina ATX-m 56mm F1.4 Sony E",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10129.580825119816,
+		"fy": 10040.54954610131,
+		"cx": 2000.6292805016092,
+		"cy": 1276.7455828367597
+	},
+	"distortion_coeffs": [
+		0.5699169328427617,
+		-20.88266498338152,
+		1253.2315770375644,
+		-22655.87449560516
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Tokina ATX-m 56mm F1.4 Sony E_1/50 Shutter_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Commander",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

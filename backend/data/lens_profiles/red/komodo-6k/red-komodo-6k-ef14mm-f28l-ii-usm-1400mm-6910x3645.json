@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef14mm-f28l-ii-usm-1400mm-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF14mm f/2.8L II USM 14.00mm",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3689.928470525556,
+		"fy": 3660.1432353853625,
+		"cx": 3402.5401222370256,
+		"cy": 1794.8454219494645
+	},
+	"distortion_coeffs": [
+		0.29855356266082655,
+		0.16062568348930614,
+		-0.00181929919685182,
+		0.06731306001947371
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF14mm f/2.8L II USM 14.00mm_6K 17:9_6k_1.90by1_6910x3645-23.98fps",
+		"calibrated_by": "Dennis Trushechkin",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

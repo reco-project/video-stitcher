@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-tamron-28-75-f28-2800mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Tamron 28-75 f2.8 @28.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3115.802518881226,
+		"fy": 3116.079523385868,
+		"cx": 1919.6432263511444,
+		"cy": 1095.9604389232857
+	},
+	"distortion_coeffs": [
+		0.3356585158696056,
+		0.04172278160591908,
+		0.5411720608402685,
+		-0.8359547763792488
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Tamron 28-75 f2.8 @28.00mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Benjamin Furtlehner",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

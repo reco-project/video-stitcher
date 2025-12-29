@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-brighten-stars-55mm-fe-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Brighten Stars 55mm FE",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11888.2475218107,
+		"fy": 11927.19820738954,
+		"cx": 2399.7358013172716,
+		"cy": 781.014406327689
+	},
+	"distortion_coeffs": [
+		-0.1305319601624372,
+		49.706521170252536,
+		-2600.2827173783826,
+		49667.52866261513
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Brighten Stars 55mm FE__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "GUILHERME MARTINELLI",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

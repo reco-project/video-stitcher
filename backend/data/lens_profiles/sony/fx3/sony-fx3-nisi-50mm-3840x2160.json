@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-nisi-50mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "nisi 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5545.961564425441,
+		"fy": 5550.287472087993,
+		"cx": 1888.7039182748304,
+		"cy": 1101.8877060945706
+	},
+	"distortion_coeffs": [
+		0.16654302248951916,
+		1.2498419394092988,
+		-14.699874071766365,
+		70.72046052878525
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_nisi 50mm_50mm T1.9_4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "\u6731\u5e86\u7965",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-c4k-nokton-105-mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera C4K",
+	"lens_model": "Nokton 10.5 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2391.580585662914,
+		"fy": 2391.121568959467,
+		"cx": 1898.6432604636077,
+		"cy": 1100.4360073543594
+	},
+	"distortion_coeffs": [
+		0.25492049767085895,
+		0.4120738739879776,
+		-0.7749090177317841,
+		0.8613010299932429
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera C4K_Nokton 10.5 mm_Porres 422_4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "sorin baluta",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

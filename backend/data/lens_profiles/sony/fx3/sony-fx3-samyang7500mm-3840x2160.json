@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-samyang7500mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "samyang75.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14786.532052367238,
+		"fy": 14811.04434928195,
+		"cx": 1831.960599450944,
+		"cy": 1078.6463299534755
+	},
+	"distortion_coeffs": [
+		0.9101418782308024,
+		105.14952848104544,
+		-16424.929734231115,
+		844251.9091949231
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_samyang75.00mm_50\u5e27_4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "version",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

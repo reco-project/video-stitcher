@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-25mm_sp3cooke-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "25mm_sp3cooke",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2897.4891321294635,
+		"fy": 2899.8075753662,
+		"cx": 2032.3294429572825,
+		"cy": 1109.9199658293244
+	},
+	"distortion_coeffs": [
+		0.26509893229127185,
+		0.20977371879073375,
+		-0.10468792394901597,
+		0.6018067309953311
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_25mm_sp3cooke__C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "STAGE UNREAL",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

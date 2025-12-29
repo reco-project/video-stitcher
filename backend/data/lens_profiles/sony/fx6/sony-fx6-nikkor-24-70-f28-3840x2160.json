@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-nikkor-24-70-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Nikkor 24-70 f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5810.600710484394,
+		"fy": 5810.460137097834,
+		"cx": 1990.1944344361548,
+		"cy": 1125.1078775340038
+	},
+	"distortion_coeffs": [
+		0.40118151885160863,
+		2.143106228569452,
+		-6.507325519529988,
+		-98.9315817136235
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Nikkor 24-70 f2.8_50mm_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "alejandro ram\u00edrez",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

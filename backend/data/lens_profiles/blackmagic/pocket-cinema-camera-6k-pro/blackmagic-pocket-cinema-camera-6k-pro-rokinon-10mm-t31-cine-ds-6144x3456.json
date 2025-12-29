@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-rokinon-10mm-t31-cine-ds-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Rokinon 10mm T3.1 Cine DS",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2799.71409591309,
+		"fy": 2800.4340661248693,
+		"cx": 3134.9381352781365,
+		"cy": 1767.0988276766989
+	},
+	"distortion_coeffs": [
+		0.22672230137140784,
+		0.43375877649668354,
+		-0.6701460393554605,
+		0.5134693400419033
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Rokinon 10mm T3.1 Cine DS_6K_6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Gudjon Jonsson",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

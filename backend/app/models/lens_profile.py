@@ -31,6 +31,7 @@ class LensProfileModel(BaseModel):
 
     # Optional fields
     lens_model: Optional[str] = Field(None, description="Lens mode (e.g., Linear, Wide)")
+    is_favorite: Optional[bool] = Field(False, description="User-marked favorite profile")
     metadata: Optional[dict] = Field(
         None, description="Optional provenance info (calibrated_by, calibration_date, notes)"
     )

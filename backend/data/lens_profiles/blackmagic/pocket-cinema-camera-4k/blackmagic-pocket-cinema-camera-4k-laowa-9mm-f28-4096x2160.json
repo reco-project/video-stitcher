@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-laowa-9mm-f28-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "laowa 9mm f2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1897.6995089864663,
+		"fy": 1902.2603311732296,
+		"cx": 2062.3759833889653,
+		"cy": 1100.6550424603336
+	},
+	"distortion_coeffs": [
+		0.4514802273207314,
+		-0.5876872106176837,
+		1.815244878085508,
+		-1.6419296484004209
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_laowa 9mm f2.8_DCI_C4k_1.90by1_4096x2160-29.97fps",
+		"calibrated_by": "SongSul",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

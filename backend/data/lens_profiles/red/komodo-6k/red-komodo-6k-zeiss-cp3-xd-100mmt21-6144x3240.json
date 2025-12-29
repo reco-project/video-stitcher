@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-cp3-xd-100mmt21-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss CP.3 XD 100mm/T2.1",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14008.81788203916,
+		"fy": 14073.263921349895,
+		"cx": 2876.0983847556495,
+		"cy": -220.6652919891629
+	},
+	"distortion_coeffs": [
+		0.41847216736908016,
+		-3.9384915462127057,
+		56.89773615101246,
+		-276.60277181883157
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Zeiss CP.3 XD 100mm/T2.1_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "SCAN2FX",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

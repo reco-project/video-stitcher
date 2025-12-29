@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-laowa-mft-75mm-f20-7mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Laowa MFT 7.5mm F2.0 7mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1721.3899427600506,
+		"fy": 1723.4823941471311,
+		"cx": 2089.0057094615963,
+		"cy": 1073.2807345277167
+	},
+	"distortion_coeffs": [
+		0.3236790977399589,
+		0.1256831565715297,
+		-0.10822334782173872,
+		0.16403987472352807
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Laowa MFT 7.5mm F2.0 7mm_DCI  180deg_C4k_1.90by1_4096x2160-30.00fps",
+		"calibrated_by": "RRec Studio",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

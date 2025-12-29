@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-sirui-night-walker-t12-55mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "SIRUI Night Walker T1.2  55mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13793.750739575353,
+		"fy": 13794.000118333684,
+		"cx": 2938.731422204289,
+		"cy": 1616.1231460763142
+	},
+	"distortion_coeffs": [
+		0.7379826088713031,
+		3.4300840679360296,
+		-33.442781464216544,
+		20.02069588290343
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_SIRUI Night Walker T1.2  55mm_6K_5k_16by9_5760x3240-50.00fps",
+		"calibrated_by": "\u6539\u4e8c",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

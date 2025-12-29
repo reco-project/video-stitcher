@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-rf14-35mm-f4-l-is-usm-1800mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "RF14-35mm F4 L IS USM @ 18.00mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3625.439440350708,
+		"fy": 3541.7565471654943,
+		"cx": 4105.00780344884,
+		"cy": 2137.8738290471856
+	},
+	"distortion_coeffs": [
+		0.2650952478604503,
+		0.07407757029448518,
+		0.1216434875034139,
+		-0.016823031019459825
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_RF14-35mm F4 L IS USM @ 18.00mm_8K 17:9_8k_1.90by1_8192x4320-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

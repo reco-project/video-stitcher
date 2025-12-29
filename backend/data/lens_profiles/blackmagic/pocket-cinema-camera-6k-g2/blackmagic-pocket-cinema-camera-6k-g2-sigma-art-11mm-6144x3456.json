@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-g2-sigma-art-11mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K G2",
+	"lens_model": "Sigma art 11mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2962.265296819293,
+		"fy": 2960.090574186023,
+		"cx": 3071.164079012723,
+		"cy": 1772.5130392157785
+	},
+	"distortion_coeffs": [
+		0.3055811810172784,
+		0.22055196948405523,
+		-0.2603122252475338,
+		0.21626644881844745
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K G2_Sigma art 11mm__6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "HiDrone",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

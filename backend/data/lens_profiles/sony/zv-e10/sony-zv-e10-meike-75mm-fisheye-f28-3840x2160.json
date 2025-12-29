@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-meike-75mm-fisheye-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "MEIKE 7.5mm FishEye F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1688.1375036742877,
+		"fy": 1685.1743865114563,
+		"cx": 1871.7711205604976,
+		"cy": 1103.9295194845758
+	},
+	"distortion_coeffs": [
+		0.01824261760162779,
+		-0.033312790859687615,
+		0.03690145493011915,
+		-0.013539110687707008
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_MEIKE 7.5mm FishEye F2.8__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "jung sungho",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

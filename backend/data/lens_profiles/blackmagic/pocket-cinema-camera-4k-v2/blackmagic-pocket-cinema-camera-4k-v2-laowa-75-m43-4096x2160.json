@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-v2-laowa-75-m43-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K V2",
+	"lens_model": "Laowa 7.5 M43",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1686.3848483062611,
+		"fy": 1687.8794640990825,
+		"cx": 2050.7116530767025,
+		"cy": 1078.6903565240814
+	},
+	"distortion_coeffs": [
+		0.31268906994160695,
+		0.15243798100763856,
+		-0.0972889962160592,
+		0.12230026473176844
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K V2_Laowa 7.5 M43__C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Hsu Jung-Hsiang",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

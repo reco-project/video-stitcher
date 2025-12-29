@@ -1,0 +1,33 @@
+{
+	"id": "sony-ilx-lr1-laowa-11mm-f45-c-dreamer-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILX-LR1",
+	"lens_model": "Laowa 11mm F4.5 C-Dreamer",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1515.877011247603,
+		"fy": 1515.5067779949472,
+		"cx": 1918.0348640550403,
+		"cy": 1067.3730106781277
+	},
+	"distortion_coeffs": [
+		0.3229835069540877,
+		0.12383588604763876,
+		-0.043049509237838415,
+		0.09851328032223795
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ILX-LR1_Laowa 11mm F4.5 C-Dreamer_Internal lens distortion compensation OFF_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Joost Tromp",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

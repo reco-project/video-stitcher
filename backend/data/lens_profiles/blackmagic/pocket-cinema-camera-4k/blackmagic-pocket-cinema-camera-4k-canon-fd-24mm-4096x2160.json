@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-canon-fd-24mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Canon FD 24mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5082.959035873504,
+		"fy": 5084.329581585975,
+		"cx": 1960.3295219204128,
+		"cy": 1042.0333246497369
+	},
+	"distortion_coeffs": [
+		0.20305061578109695,
+		0.4565257690045549,
+		-2.9454999643134103,
+		11.146968362311044
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Canon FD 24mm_4k_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Vlad Ush",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

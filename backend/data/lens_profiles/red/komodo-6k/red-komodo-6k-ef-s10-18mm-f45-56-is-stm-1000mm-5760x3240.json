@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef-s10-18mm-f45-56-is-stm-1000mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF-S10-18mm f/4.5-5.6 IS STM 10.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2343.7526255717057,
+		"fy": 2343.282817972502,
+		"cx": 2866.471785353523,
+		"cy": 1567.8125813725912
+	},
+	"distortion_coeffs": [
+		0.31888232892280416,
+		0.15630581356655696,
+		-0.048742675223460714,
+		0.0341102868828476
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF-S10-18mm f/4.5-5.6 IS STM 10.00mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Este",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

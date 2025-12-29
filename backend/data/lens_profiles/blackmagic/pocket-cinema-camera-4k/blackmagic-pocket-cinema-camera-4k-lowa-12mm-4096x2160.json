@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lowa-12mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Lowa 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1821.312866511316,
+		"fy": 1820.6875119934668,
+		"cx": 2014.3442292598777,
+		"cy": 1104.8673329734015
+	},
+	"distortion_coeffs": [
+		0.2816975931664506,
+		0.23843613557018695,
+		-0.14289948883264306,
+		0.14608821584393705
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Lowa 12mm_PRO RES LT_C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Nuno Meneses",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

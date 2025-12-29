@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sirui-saturn-35-mm-t29-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sirui Saturn 35 mm T2.9",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4021.7567126395247,
+		"fy": 6315.656027549155,
+		"cx": 2191.28788883078,
+		"cy": 880.571132071394
+	},
+	"distortion_coeffs": [
+		0.2182468784007082,
+		1.0936483553563938,
+		-9.593271808346794,
+		24.603089837746857
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sirui Saturn 35 mm T2.9_FX30_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "Damian Abreu",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

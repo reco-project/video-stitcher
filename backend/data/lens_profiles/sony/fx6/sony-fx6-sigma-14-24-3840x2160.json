@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sigma-14-24-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sigma 14-24",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1536.5553247978837,
+		"fy": 1537.4000602592428,
+		"cx": 1918.9258737908697,
+		"cy": 1085.2834438020154
+	},
+	"distortion_coeffs": [
+		0.33551648001227063,
+		0.12933064725693685,
+		0.06688666531332013,
+		0.024615023026419068
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Sigma 14-24_14mm focallength_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Lukas Hauser",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

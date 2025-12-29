@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero10-black-wide-5332x3000",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO10 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 5332,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2232.677808081465,
+		"fy": 1944.1060003437572,
+		"cx": 2704.4743107516047,
+		"cy": 1535.3747470628298
+	},
+	"distortion_coeffs": [
+		-0.01442208677344372,
+		-0.05774822408364,
+		0.07149918077435106,
+		-0.036486519305791866
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO10 Black_Wide_neewer anamorphic wide_5k_16by9_5332x3000-50.00fps",
+		"calibrated_by": "Simone Locci",
+		"original_resolution": "5332x3000",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

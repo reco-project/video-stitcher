@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sony-gm-3500mm-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sony GM 35.00mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4234.431834171483,
+		"fy": 4233.522771906213,
+		"cx": 2070.7286943827226,
+		"cy": 1092.4844768292037
+	},
+	"distortion_coeffs": [
+		0.34310802501132187,
+		0.107723777873426,
+		-0.4442869997447024,
+		2.020282994911074
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Sony GM 35.00mm__C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Benoit Finck",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

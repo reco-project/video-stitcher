@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-tt-artisan-35mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "TT Artisan 35mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 29183.85301996475,
+		"fy": 29996.16023477412,
+		"cx": 2321.3872714744425,
+		"cy": 1192.4396399386485
+	},
+	"distortion_coeffs": [
+		4.33124564650456,
+		-1572.5832408637216,
+		324272.6351808508,
+		-24600151.7430033
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_TT Artisan 35mm F1.4__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "francesco oliva",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sirui-35mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Sirui 35mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7371.482509147061,
+		"fy": 7372.445889440269,
+		"cx": 2109.2140882071662,
+		"cy": 1156.9286489173585
+	},
+	"distortion_coeffs": [
+		0.2827191370060303,
+		-1.1017571872724152,
+		19.246485313201337,
+		-67.09488074190196
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Sirui 35mm_ProRes 422_C4k_1.90by1_4096x2160-29.97fps",
+		"calibrated_by": "Legacy Mediaworks",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

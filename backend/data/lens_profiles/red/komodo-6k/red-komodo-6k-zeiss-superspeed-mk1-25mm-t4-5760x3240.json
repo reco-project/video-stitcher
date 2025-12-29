@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-superspeed-mk1-25mm-t4-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "ZEISS SUPERSPEED MK1 25mm T4",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5838.725386850998,
+		"fy": 5832.592465335081,
+		"cx": 2894.391958677448,
+		"cy": 1584.396263674592
+	},
+	"distortion_coeffs": [
+		0.18308351554458943,
+		0.256870999063331,
+		-0.23292261435271236,
+		0.7668770786382584
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_ZEISS SUPERSPEED MK1 25mm T4_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Yosuke Suga",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

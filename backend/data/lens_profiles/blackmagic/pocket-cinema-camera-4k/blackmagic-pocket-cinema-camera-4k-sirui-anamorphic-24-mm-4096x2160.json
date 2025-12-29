@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sirui-anamorphic-24-mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "SIRUI ANAMORPHIC 24 mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3858.409293009994,
+		"fy": 4962.614192115027,
+		"cx": 2069.0414407788235,
+		"cy": 1068.117782911679
+	},
+	"distortion_coeffs": [
+		0.23796901914871468,
+		-2.3894863880331347,
+		31.563542921558348,
+		-124.81421952780325
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_SIRUI ANAMORPHIC 24 mm__C4k_1.90by1_4096x2160-23.98fps",
+		"calibrated_by": "Luciano Vigueras",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-helios-58mm-f2-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Helios 58mm F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7906.028302710959,
+		"fy": 7919.710126849044,
+		"cx": 1928.6875594810367,
+		"cy": 1002.7068160594072
+	},
+	"distortion_coeffs": [
+		0.06686671389947484,
+		5.706532959192324,
+		-119.91434817401992,
+		1061.0927131047445
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Helios 58mm F2_Speed Booster Installed_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "carl bonifacio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

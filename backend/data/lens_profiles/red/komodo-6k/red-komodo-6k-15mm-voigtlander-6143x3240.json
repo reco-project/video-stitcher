@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-15mm-voigtlander-6143x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "15mm Voigtlander",
+	"resolution": {
+		"width": 6143,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3553.4925607233204,
+		"fy": 3552.192259814579,
+		"cx": 3061.6673783226843,
+		"cy": 1618.7405917581198
+	},
+	"distortion_coeffs": [
+		0.30624910558095303,
+		0.18214255081015737,
+		-0.11482813259367056,
+		0.18329615182921136
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_15mm Voigtlander_6K 17:9_6k_1.90by1_6143x3240-30.00fps",
+		"calibrated_by": "NikoFilmz",
+		"original_resolution": "6143x3240",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-panasonic-12-25mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Panasonic 12-25mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2127.9220142211243,
+		"fy": 2143.962496666971,
+		"cx": 2025.9081180333444,
+		"cy": 1089.7780637968317
+	},
+	"distortion_coeffs": [
+		0.19070781360418207,
+		0.049236866858421095,
+		-0.1973482071693612,
+		0.3163392774231361
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Panasonic 12-25mm_60fps_C4k_1.90by1_4096x2160-55.90fps",
+		"calibrated_by": "Joshua Stalheim",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "55.895626",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

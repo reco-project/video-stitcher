@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-minolta-af-50mm-75mm-crop-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Minolta AF 50mm (75mm crop) f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9174.423541450002,
+		"fy": 9166.075742327645,
+		"cx": 1354.3590749762866,
+		"cy": 1180.728447744109
+	},
+	"distortion_coeffs": [
+		0.19202758913261225,
+		-10.535452055328664,
+		306.01392777055963,
+		-2725.585282457505
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Minolta AF 50mm (75mm crop) f1.4_f1.4_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "CGBOOK",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

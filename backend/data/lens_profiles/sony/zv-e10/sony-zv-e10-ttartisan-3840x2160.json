@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-ttartisan-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "TTArtisan",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8672.696462307871,
+		"fy": 8701.34827205034,
+		"cx": 1439.23972356437,
+		"cy": 1295.5789112044104
+	},
+	"distortion_coeffs": [
+		0.10486616829543303,
+		4.2822775690075074,
+		-85.36687658832741,
+		514.2181231199154
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_TTArtisan__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "peel stone",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-cp2-35mm-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss CP2 35mm",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8263.260107877115,
+		"fy": 8264.670623669916,
+		"cx": 2537.3243049439197,
+		"cy": 1384.5518462369655
+	},
+	"distortion_coeffs": [
+		0.21805969182107188,
+		1.3363540365439694,
+		-19.58083921047761,
+		102.33400433180528
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Zeiss CP2 35mm_17:9_5k_1.90by1_5120x2700-23.98fps",
+		"calibrated_by": "Queen",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

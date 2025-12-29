@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leica-r-35mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 35mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8098.314411340083,
+		"fy": 8101.467434816611,
+		"cx": 2884.2020216985993,
+		"cy": 1603.5635380021424
+	},
+	"distortion_coeffs": [
+		0.26296988173549196,
+		0.15330733785922163,
+		-1.6299941471114736,
+		12.671303553384895
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Leica R 35mm_6K_5k_16by9_5760x3240-24.00fps",
+		"calibrated_by": "Mark Helsel",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sony-sigma-24mm-f14-dg-dn-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "SONY (SIGMA 24mm F1.4 DG DN)",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2886.333295276104,
+		"fy": 2886.526433810219,
+		"cx": 2058.1212071595996,
+		"cy": 1048.5833149996704
+	},
+	"distortion_coeffs": [
+		0.2959744736583852,
+		0.4681954594728097,
+		-1.4589379541733716,
+		2.2657029260053636
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_SONY (SIGMA 24mm F1.4 DG DN)__C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Vyasa",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

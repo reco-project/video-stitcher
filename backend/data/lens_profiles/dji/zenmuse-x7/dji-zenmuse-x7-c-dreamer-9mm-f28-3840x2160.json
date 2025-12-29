@@ -1,0 +1,33 @@
+{
+	"id": "dji-zenmuse-x7-c-dreamer-9mm-f28-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "ZENMUSE X7",
+	"lens_model": "C-Dreamer 9mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1557.5782802105318,
+		"fy": 1555.714587511182,
+		"cx": 1919.553192165228,
+		"cy": 1140.4364206796718
+	},
+	"distortion_coeffs": [
+		0.3172569645617381,
+		0.22578177697956897,
+		-0.17104013193281226,
+		0.1783299908701999
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_ZENMUSE X7_C-Dreamer 9mm F2.8__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "liuxinliang",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

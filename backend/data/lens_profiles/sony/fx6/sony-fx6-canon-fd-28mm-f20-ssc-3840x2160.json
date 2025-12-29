@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-canon-fd-28mm-f20-ssc-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "CANON FD 28mm f2.0 SSC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3070.3362708647996,
+		"fy": 3073.651885073985,
+		"cx": 1938.440352346188,
+		"cy": 1086.9081614399197
+	},
+	"distortion_coeffs": [
+		0.20564128314335609,
+		0.39849293250361817,
+		-1.2512709185075634,
+		2.5735954178954525
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_CANON FD 28mm f2.0 SSC__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Holgerson",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

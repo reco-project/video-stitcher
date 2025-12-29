@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-rokinon-8mm-t38-8mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Rokinon 8mm T/3.8 8mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2286.292568131801,
+		"fy": 2277.8550126694013,
+		"cx": 3191.98098297446,
+		"cy": 1709.7247705759132
+	},
+	"distortion_coeffs": [
+		0.01571235311058449,
+		0.022150482782276965,
+		-0.009685592209466597,
+		0.003266232372685835
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Rokinon 8mm T/3.8 8mm__6k_16by9_6144x3456-23.98fps",
+		"calibrated_by": "Jeremiah",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "23.976028",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

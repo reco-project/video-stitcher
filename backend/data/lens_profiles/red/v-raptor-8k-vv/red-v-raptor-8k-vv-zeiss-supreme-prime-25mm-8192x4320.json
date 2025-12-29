@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-zeiss-supreme-prime-25mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Zeiss Supreme Prime 25mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5217.131556102208,
+		"fy": 5214.119176418138,
+		"cx": 4082.119570064,
+		"cy": 2101.0401479846746
+	},
+	"distortion_coeffs": [
+		0.2822875763831893,
+		0.05755240146574842,
+		0.20534611304540257,
+		-0.1214404438579166
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_Zeiss Supreme Prime 25mm_8K 17:9_8k_1.90by1_8192x4320-23.98fps",
+		"calibrated_by": "Parker Gorecki",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

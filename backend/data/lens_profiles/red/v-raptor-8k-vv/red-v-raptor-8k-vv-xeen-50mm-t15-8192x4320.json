@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-xeen-50mm-t15-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "XEEN 50mm T1.5",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10670.307865525812,
+		"fy": 10670.769010319911,
+		"cx": 4036.7156668185503,
+		"cy": 2164.079959272098
+	},
+	"distortion_coeffs": [
+		-0.000401557368748184,
+		3.78881084569522,
+		-38.18367668491282,
+		135.60033148797706
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_XEEN 50mm T1.5_8K 17:9_8k_1.90by1_8192x4320-25.00fps",
+		"calibrated_by": "Daniel Boist",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

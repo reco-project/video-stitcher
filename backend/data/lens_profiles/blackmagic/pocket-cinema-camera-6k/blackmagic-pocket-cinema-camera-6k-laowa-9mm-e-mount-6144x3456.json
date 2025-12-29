@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-laowa-9mm-e-mount-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Laowa 9mm E Mount",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2461.88569080545,
+		"fy": 2462.0426273480734,
+		"cx": 3116.14554833243,
+		"cy": 1746.8844720689128
+	},
+	"distortion_coeffs": [
+		0.34882897498716786,
+		0.06416465939765233,
+		0.06075249198764621,
+		0.07265342807086991
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Laowa 9mm E Mount_HaloRC Naked 6K-E_6k_16by9_6144x3456-29.97fps",
+		"calibrated_by": "Chris Bludz Olah",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "29.970032",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

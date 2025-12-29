@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sirui-35mm-ff16x-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "SIRUI 35MM FF1.6X",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1716.9337740255933,
+		"fy": 2736.7380136097977,
+		"cx": 1773.0623735744764,
+		"cy": 956.654809357296
+	},
+	"distortion_coeffs": [
+		0.30693693487327434,
+		0.07018070828433139,
+		-0.1088710829502139,
+		0.23507607418267837
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_SIRUI 35MM FF1.6X__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Duane Grey",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

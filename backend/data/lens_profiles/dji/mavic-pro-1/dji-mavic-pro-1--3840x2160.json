@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-pro-1--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic Pro 1",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3046.676968267668,
+		"fy": 3036.9805567262815,
+		"cx": 1933.3368482080396,
+		"cy": 1102.4368041108291
+	},
+	"distortion_coeffs": [
+		0.8859697214894449,
+		-5.8619549586973205,
+		26.955459674604754,
+		-42.95030565421423
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic Pro 1___4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Marcelo Saviski",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

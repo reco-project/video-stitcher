@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-40mm-f14-dg-hsm-art-018-4000mm-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "40mm F1.4 DG HSM | Art 018 40.00mm",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6588.372244934592,
+		"fy": 6569.827607566516,
+		"cx": 2574.5158817809956,
+		"cy": 1319.94988396345
+	},
+	"distortion_coeffs": [
+		0.2063199531075768,
+		2.011719558813269,
+		-22.64985733816196,
+		103.04102172184714
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_40mm F1.4 DG HSM | Art 018 40.00mm_17:9_5k_1.90by1_5120x2700-59.94fps",
+		"calibrated_by": "satoh",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

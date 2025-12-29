@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leica-r-70-z-35-70mm-f35-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 70 z 35-70mm F3.5",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12438.4058804932,
+		"fy": 12435.2125850658,
+		"cx": 3461.04500089016,
+		"cy": 1754.2030201578427
+	},
+	"distortion_coeffs": [
+		0.39151714163548545,
+		2.174459044320628,
+		-5.137225056192326,
+		125.06494811213852
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Leica R 70 z 35-70mm F3.5_6K 17:9_6k_1.90by1_6910x3645-25.00fps",
+		"calibrated_by": "Ascaro.tv",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

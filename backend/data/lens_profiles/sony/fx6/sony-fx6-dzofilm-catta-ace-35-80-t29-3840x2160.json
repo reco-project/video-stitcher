@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-dzofilm-catta-ace-35-80-t29-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "DZOFilm Catta Ace 35-80 T2.9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3946.1782293428887,
+		"fy": 3945.336962251493,
+		"cx": 1945.0879195551224,
+		"cy": 1062.9570388621023
+	},
+	"distortion_coeffs": [
+		0.10868312342096732,
+		0.5883649873160643,
+		-3.690790537383072,
+		12.20783185744898
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_DZOFilm Catta Ace 35-80 T2.9__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Mitch Osborne",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

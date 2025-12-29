@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sirui-23-mm-f12-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sirui 23 mm f1.2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4275.02702924055,
+		"fy": 4275.599222881337,
+		"cx": 1799.9998836918428,
+		"cy": 1095.090475130393
+	},
+	"distortion_coeffs": [
+		0.14173518845095295,
+		-0.41086891763771566,
+		6.780019488927743,
+		-20.07552340699676
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sirui 23 mm f1.2__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "WALRUS",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

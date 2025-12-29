@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0ii-b3b1bf80-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "b3b1bf80",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1854.2109442305,
+		"fy": 1853.3805708231755,
+		"cx": 1927.34382761993,
+		"cy": 1079.159840975257
+	},
+	"distortion_coeffs": [
+		0.1491622132393844,
+		0.4580189180011035,
+		-0.7104443362145123,
+		0.4629227962276983
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0II_b3b1bf80_with 0.6x zomei lens_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Dronotron",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

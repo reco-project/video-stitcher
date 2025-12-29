@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sigma-1600mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sigma 16.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2769.378243207366,
+		"fy": 2768.8835243501403,
+		"cx": 1890.5826428591056,
+		"cy": 1061.9112537754174
+	},
+	"distortion_coeffs": [
+		0.3059340026086567,
+		0.3242238747279311,
+		-0.6527503633348458,
+		0.8913454742111943
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sigma 16.00mm__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "carl bonifacio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

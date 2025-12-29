@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sigma-35mm-f14-dg-hsm-art-012-3500mm-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma 35mm F1.4 DG HSM | Art 012 35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7781.254532943769,
+		"fy": 7719.014332687937,
+		"cx": 1916.2299196614404,
+		"cy": 1071.936154621152
+	},
+	"distortion_coeffs": [
+		0.1924341589108026,
+		6.631691943735232,
+		-189.94260947172472,
+		1813.9646487445991
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sigma 35mm F1.4 DG HSM | Art 012 35.00mm__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Dennis Trushechkin",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

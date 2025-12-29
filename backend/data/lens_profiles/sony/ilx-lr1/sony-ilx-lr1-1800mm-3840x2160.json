@@ -1,0 +1,33 @@
+{
+	"id": "sony-ilx-lr1-1800mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILX-LR1",
+	"lens_model": "18.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2484.085052563216,
+		"fy": 2484.755577908437,
+		"cx": 1899.7517815234917,
+		"cy": 1090.5414667973942
+	},
+	"distortion_coeffs": [
+		0.23723448983340967,
+		0.18824962152587477,
+		-0.13036391486852342,
+		0.32083020536057955
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ILX-LR1_18.00mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "miron",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-sigma-t15-ff-20mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Sigma T1.5 FF 20mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4117.763435976045,
+		"fy": 4122.48026242151,
+		"cx": 4079.151651540161,
+		"cy": 2152.969649236681
+	},
+	"distortion_coeffs": [
+		0.3177984460322679,
+		0.10871297054127146,
+		-0.0811818074177141,
+		0.17776223738467353
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_Sigma T1.5 FF 20mm_8K 17:9_8k_1.90by1_8192x4320-30.00fps",
+		"calibrated_by": "Omar Alfadhil",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

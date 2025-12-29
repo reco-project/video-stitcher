@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-air-2--2688x1512",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic Air 2",
+	"lens_model": "",
+	"resolution": {
+		"width": 2688,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1273.9471994895544,
+		"fy": 1277.8250241731123,
+		"cx": 1295.5390362045302,
+		"cy": 697.0286436917831
+	},
+	"distortion_coeffs": [
+		0.3478290157497584,
+		0.009975642770350988,
+		0.3926990605198323,
+		-0.21616878515385937
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic Air 2__2.7k_2.5k_16by9_2688x1512-25.00fps",
+		"calibrated_by": "Czmielik",
+		"original_resolution": "2688x1512",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

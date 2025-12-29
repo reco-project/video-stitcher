@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-artisan-55mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "artisan 55mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 16060.43550848793,
+		"fy": 16240.25212794127,
+		"cx": 2091.1750111806305,
+		"cy": 900.1163618629375
+	},
+	"distortion_coeffs": [
+		0.6693393768434514,
+		-123.94397232929572,
+		7221.395740636976,
+		-159694.77468921684
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_artisan 55mm f1.4_30fps_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "nanxfu",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

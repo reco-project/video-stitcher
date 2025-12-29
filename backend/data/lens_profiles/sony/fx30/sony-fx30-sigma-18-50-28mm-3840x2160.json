@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sigma-18-50-28mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sigma 18-50 @ 28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4788.206227568258,
+		"fy": 4790.624246294778,
+		"cx": 1926.6613953781343,
+		"cy": 1033.6278303377187
+	},
+	"distortion_coeffs": [
+		0.30648823099064954,
+		0.7380846938160456,
+		-3.879227630346175,
+		20.78199238128634
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sigma 18-50 @ 28mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Alessandro Artini",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sigma-135mm-f18-dg-hsm-art-lens-for-canon-ef-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma 135mm f/1.8 DG HSM Art Lens for Canon EF",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 33297.28383013373,
+		"fy": 33518.45252500198,
+		"cx": 3835.07072129142,
+		"cy": 1677.1080813344329
+	},
+	"distortion_coeffs": [
+		1.1185528795429678,
+		-89.46567977333777,
+		8359.87576217567,
+		-325970.69310446153
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sigma 135mm f/1.8 DG HSM Art Lens for Canon EF_6K 17-9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "SCAN2FX",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

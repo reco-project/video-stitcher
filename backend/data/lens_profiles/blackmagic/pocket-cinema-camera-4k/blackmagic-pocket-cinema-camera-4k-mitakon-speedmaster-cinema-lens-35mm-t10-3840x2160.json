@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-mitakon-speedmaster-cinema-lens-35mm-t10-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Mitakon Speedmaster Cinema Lens 35mm T1.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9027.99728664563,
+		"fy": 9056.949783292695,
+		"cx": 1909.2091409674472,
+		"cy": 1154.1899794459623
+	},
+	"distortion_coeffs": [
+		-0.025496459710737343,
+		7.071011260908796,
+		-149.9831348189253,
+		1313.995051341838
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Mitakon Speedmaster Cinema Lens 35mm T1.0__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Oleksandr M\u00fcller",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

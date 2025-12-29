@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-carl-zeiss-jenna-f18-50mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Carl Zeiss Jenna f1.8 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5680.700655314114,
+		"fy": 5679.100535321918,
+		"cx": 1910.011283190905,
+		"cy": 1026.1446817311278
+	},
+	"distortion_coeffs": [
+		0.3075710733673299,
+		-2.1589393468488134,
+		27.538180830409065,
+		-126.23838141092176
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Carl Zeiss Jenna f1.8 50mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Tom Leonard",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

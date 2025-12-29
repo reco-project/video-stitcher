@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero4-silver--1280x960",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4 Silver",
+	"lens_model": "",
+	"resolution": {
+		"width": 1280,
+		"height": 960
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 551.4268344185175,
+		"fy": 550.7172135021948,
+		"cx": 641.3945470183043,
+		"cy": 470.13669233335304
+	},
+	"distortion_coeffs": [
+		0.06165322681803106,
+		0.012212602957858485,
+		-0.005201177308041351,
+		0.0005037979228844557
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO4 Silver___720p_4by3_1280x960-59.94fps",
+		"calibrated_by": "GABRIEL",
+		"original_resolution": "1280x960",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

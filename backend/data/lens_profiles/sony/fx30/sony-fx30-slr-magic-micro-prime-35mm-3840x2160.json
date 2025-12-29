@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-slr-magic-micro-prime-35mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "SLR Magic Micro Prime 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5842.576271026767,
+		"fy": 5839.614826369959,
+		"cx": 1999.3184484698097,
+		"cy": 1097.7026825238502
+	},
+	"distortion_coeffs": [
+		0.2368385503650993,
+		0.6534967274024498,
+		-10.57929482146107,
+		56.179342532674184
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_SLR Magic Micro Prime 35mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Andrew",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

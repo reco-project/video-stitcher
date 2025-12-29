@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-super-speeed-mk1-18mm-t4-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "ZEISS SUPER SPEEED MK1 18mm T4",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4133.001873261567,
+		"fy": 4130.2470472417135,
+		"cx": 2933.4897995783012,
+		"cy": 1590.7121839123042
+	},
+	"distortion_coeffs": [
+		0.20138735980262337,
+		0.24796574852979497,
+		-0.29794048763507985,
+		0.7555168761802925
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_ZEISS SUPER SPEEED MK1 18mm T4_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Yosuke Suga",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

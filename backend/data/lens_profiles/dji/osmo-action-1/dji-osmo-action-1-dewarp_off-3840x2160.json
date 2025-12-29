@@ -1,0 +1,33 @@
+{
+	"id": "dji-osmo-action-1-dewarp_off-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action 1",
+	"lens_model": "Dewarp_OFF",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1703.8951029243551,
+		"fy": 1703.5886769954675,
+		"cx": 1950.8722577950375,
+		"cy": 1102.9691474367926
+	},
+	"distortion_coeffs": [
+		0.20073230956978075,
+		0.06043983308338289,
+		-0.155116667196817,
+		0.05459470031675882
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Osmo Action 1_Dewarp_OFF__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "jung sungho",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

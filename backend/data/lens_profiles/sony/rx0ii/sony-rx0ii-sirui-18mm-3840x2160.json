@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0ii-sirui-18mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "Sirui 18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1997.63554946791,
+		"fy": 1994.636998025033,
+		"cx": 1949.9440152661728,
+		"cy": 1082.8965982016064
+	},
+	"distortion_coeffs": [
+		0.2902579651954079,
+		0.7904490478227488,
+		-1.337090954687021,
+		1.1956667774606555
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0II_Sirui 18mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Jakob Funke",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

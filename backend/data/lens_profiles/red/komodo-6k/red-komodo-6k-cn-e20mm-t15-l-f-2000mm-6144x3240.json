@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-cn-e20mm-t15-l-f-2000mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CN-E20mm T1.5 L F 20.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3376.345730853407,
+		"fy": 3385.165146005034,
+		"cx": 3098.762400130655,
+		"cy": 1620.557648070013
+	},
+	"distortion_coeffs": [
+		0.24613140065408853,
+		0.3592567515282196,
+		-0.5563593791389001,
+		0.649316684156199
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_CN-E20mm T1.5 L F 20.00mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Bryan Redding",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

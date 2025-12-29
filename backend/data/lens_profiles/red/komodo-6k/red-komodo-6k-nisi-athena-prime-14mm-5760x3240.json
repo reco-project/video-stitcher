@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nisi-athena-prime-14mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Nisi Athena Prime 14mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3228.1748651313565,
+		"fy": 3228.784611873689,
+		"cx": 2892.824643206241,
+		"cy": 1620.1168596669388
+	},
+	"distortion_coeffs": [
+		0.32511614138670597,
+		0.1419488394383561,
+		-0.05208168547608727,
+		0.07198220252694103
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Nisi Athena Prime 14mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "Luca Weissenbacher",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

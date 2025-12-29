@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-ziess-milvus-3500mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "ziess milvus 35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6103.565592501819,
+		"fy": 6095.216834750008,
+		"cx": 1875.4116882487108,
+		"cy": 1106.6654099843631
+	},
+	"distortion_coeffs": [
+		0.3229402598124098,
+		-3.414318055148674,
+		72.20795964867008,
+		-444.30645965833367
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_ziess milvus 35.00mm_a_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "almog dahan",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

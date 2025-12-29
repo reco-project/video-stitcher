@@ -1,0 +1,33 @@
+{
+	"id": "sony-xperia-5-iv-24mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 5 IV",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3666.896768089847,
+		"fy": 3664.117089908359,
+		"cx": 1943.3021854305025,
+		"cy": 1149.7714279341662
+	},
+	"distortion_coeffs": [
+		0.4707903954282677,
+		-1.4712675539402569,
+		8.288196190621193,
+		-14.245343926178911
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_Xperia 5 IV_24mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "U0 A1",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.002434",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

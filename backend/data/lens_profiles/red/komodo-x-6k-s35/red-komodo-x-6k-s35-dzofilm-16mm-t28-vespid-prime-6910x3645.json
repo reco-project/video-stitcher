@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-dzofilm-16mm-t28-vespid-prime-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "DZOFILM 16mm T2.8 VESPID Prime",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4355.97193453956,
+		"fy": 4356.762682551614,
+		"cx": 3525.5522019243285,
+		"cy": 1805.9377121626944
+	},
+	"distortion_coeffs": [
+		0.2723685080149541,
+		0.20459959685503692,
+		-0.24734053149706675,
+		0.42216193990167566
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_DZOFILM 16mm T2.8 VESPID Prime_6K 17:9_6k_1.90by1_6910x3645-24.00fps",
+		"calibrated_by": "Fabio Reichmuth",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

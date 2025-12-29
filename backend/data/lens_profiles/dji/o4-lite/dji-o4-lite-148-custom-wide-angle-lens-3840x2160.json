@@ -1,0 +1,33 @@
+{
+	"id": "dji-o4-lite-148-custom-wide-angle-lens-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "O4 Lite",
+	"lens_model": "148\u00b0 Custom Wide Angle Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1771.316933835465,
+		"fy": 1758.96383452484,
+		"cx": 1925.3518845506735,
+		"cy": 1095.4206985133849
+	},
+	"distortion_coeffs": [
+		0.12870475990992125,
+		0.015395044940806563,
+		-0.16113344747008773,
+		0.09118483863114767
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_O4 Lite_O4 Wide lens_normal_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Other",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

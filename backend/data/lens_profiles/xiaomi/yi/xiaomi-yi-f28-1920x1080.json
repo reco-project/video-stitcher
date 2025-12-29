@@ -1,0 +1,33 @@
+{
+	"id": "xiaomi-yi-f28-1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi",
+	"lens_model": "F/2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 386.979895682637,
+		"fy": 401.865776889623,
+		"cx": 985.0900698126378,
+		"cy": 465.0145801803728
+	},
+	"distortion_coeffs": [
+		0.31804886281251793,
+		0.12439537600445782,
+		-0.01484821767983556,
+		0.05245217052163498
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Xiaomi_Yi_F/2.8_16MPx_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Danik",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

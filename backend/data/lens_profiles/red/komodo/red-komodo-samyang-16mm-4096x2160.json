@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-samyang-16mm-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "SAMYANG 16mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3796.931219881747,
+		"fy": 3798.3574401350697,
+		"cx": 2059.05295587951,
+		"cy": 1082.5454588820717
+	},
+	"distortion_coeffs": [
+		0.2869576701613222,
+		0.014250257092830268,
+		0.5669557700945113,
+		-0.8511819363638068
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_SAMYANG 16mm_17:9_C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Nathan Birrien",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

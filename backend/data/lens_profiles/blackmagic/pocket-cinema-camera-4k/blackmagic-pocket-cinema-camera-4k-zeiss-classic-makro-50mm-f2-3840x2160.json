@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-zeiss-classic-makro-50mm-f2-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "zeiss Classic makro 50mm f2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7568.820242490697,
+		"fy": 7570.115847423303,
+		"cx": 1770.930121609122,
+		"cy": 1032.8093097009069
+	},
+	"distortion_coeffs": [
+		0.08957359742125554,
+		2.585983637379998,
+		-72.61344594580596,
+		717.604176980929
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_zeiss Classic makro 50mm f2__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Alistair Lili",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

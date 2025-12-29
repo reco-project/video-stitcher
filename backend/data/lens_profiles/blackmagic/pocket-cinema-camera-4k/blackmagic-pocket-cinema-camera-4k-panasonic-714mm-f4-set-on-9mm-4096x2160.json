@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-panasonic-714mm-f4-set-on-9mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Panasonic 7/14mm f4 set on 9mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1948.8043321532873,
+		"fy": 1969.841144995078,
+		"cx": 2082.6015753722713,
+		"cy": 1076.035835111146
+	},
+	"distortion_coeffs": [
+		0.25254195948732117,
+		0.15809419534810612,
+		-0.12091563649790003,
+		0.25927916883085794
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Panasonic 7/14mm f4 set on 9mm_ProRes 422 lens at 9mm_C4k_1.90by1_4096x2160-23.98fps",
+		"calibrated_by": "@andres.umpierrez",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

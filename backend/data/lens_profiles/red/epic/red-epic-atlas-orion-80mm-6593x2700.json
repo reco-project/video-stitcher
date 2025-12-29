@@ -1,0 +1,33 @@
+{
+	"id": "red-epic-atlas-orion-80mm-6593x2700",
+	"camera_brand": "RED",
+	"camera_model": "EPIC",
+	"lens_model": "ATLAS ORION 80MM",
+	"resolution": {
+		"width": 6593,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17039.884568509548,
+		"fy": 17054.563326838266,
+		"cx": 2194.4749179885093,
+		"cy": 2430.3137196107236
+	},
+	"distortion_coeffs": [
+		0.25451269980633573,
+		2.738232212383453,
+		-37.61083352792976,
+		203.69989330544735
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_EPIC_ATLAS ORION 80MM__6k_2.44by1_6593x2700-24.00fps",
+		"calibrated_by": "David Pou",
+		"original_resolution": "6593x2700",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

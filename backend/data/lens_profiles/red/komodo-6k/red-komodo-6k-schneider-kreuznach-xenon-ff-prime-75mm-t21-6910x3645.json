@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-schneider-kreuznach-xenon-ff-prime-75mm-t21-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Schneider-Kreuznach Xenon FF-Prime 75mm T2.1",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 18511.54116134289,
+		"fy": 18501.867024547555,
+		"cx": 3975.545695837277,
+		"cy": 2031.7938500104833
+	},
+	"distortion_coeffs": [
+		0.2118094657510494,
+		0.23095366702033007,
+		-14.486827084516484,
+		222.32426488533935
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Schneider-Kreuznach Xenon FF-Prime 75mm T2.1_6K 17:9_6k_1.90by1_6910x3645-24.00fps",
+		"calibrated_by": "Marco Joe Fazio",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

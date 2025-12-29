@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-rokinon-cine-ed-as-umc-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Rokinon CINE ED AS UMC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3772.973506367784,
+		"fy": 3773.633679088982,
+		"cx": 1879.029512294045,
+		"cy": 1031.351880518287
+	},
+	"distortion_coeffs": [
+		0.21155309678353176,
+		0.8147843272817744,
+		-2.334147122075237,
+		2.61449349449757
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Rokinon CINE ED AS UMC_XAVC S_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Max Molina",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

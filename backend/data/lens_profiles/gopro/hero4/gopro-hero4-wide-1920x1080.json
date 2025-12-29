@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero4-wide-1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "Hero4",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 820.1805003050279,
+		"fy": 801.788012191947,
+		"cx": 960.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		0.129082232264075,
+		-0.02198715676071333,
+		-0.04348505944666127,
+		0.03091593253082981
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_Hero4_Wide_60 fps_1080p_16by9_1920x1080-0.00fps",
+		"calibrated_by": "Nicola",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "unknown",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

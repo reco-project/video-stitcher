@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-samyang-16mm-t-26-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Samyang 16mm T 2.6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1801.108802097309,
+		"fy": 1800.7497503662512,
+		"cx": 1921.65659503956,
+		"cy": 1079.5808861396167
+	},
+	"distortion_coeffs": [
+		0.25698628022217884,
+		0.25099545173082793,
+		-0.25378994859628573,
+		0.2308691996973037
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Samyang 16mm T 2.6__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Julian Rojas",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

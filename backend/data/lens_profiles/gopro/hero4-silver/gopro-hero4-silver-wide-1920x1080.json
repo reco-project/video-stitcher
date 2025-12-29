@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero4-silver-wide-1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4 Silver",
+	"lens_model": "WIDE",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 746.5755863037589,
+		"fy": 750.0029716094996,
+		"cx": 943.9682570062176,
+		"cy": 519.0518812710993
+	},
+	"distortion_coeffs": [
+		0.12503394514076366,
+		0.02178564037685769,
+		0.014326390915132605,
+		-0.03609716706144253
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO4 Silver_WIDE_AUTO_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Awal Ramadan",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

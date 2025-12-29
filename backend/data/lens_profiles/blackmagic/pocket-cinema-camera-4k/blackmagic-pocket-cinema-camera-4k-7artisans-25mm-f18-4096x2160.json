@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-7artisans-25mm-f18-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "7Artisans 25mm F1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5575.902370235803,
+		"fy": 5549.1354893569915,
+		"cx": 2125.131889866007,
+		"cy": 1080.9179771644244
+	},
+	"distortion_coeffs": [
+		0.10755124888432754,
+		4.517576634139366,
+		-84.66967572473145,
+		565.113136189328
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_7Artisans 25mm F1.8_DCI_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Migu",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

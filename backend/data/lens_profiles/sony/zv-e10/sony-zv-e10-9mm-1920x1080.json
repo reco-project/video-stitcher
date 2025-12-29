@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-9mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "9mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 760.430403459388,
+		"fy": 760.9212603583238,
+		"cx": 959.6168119907196,
+		"cy": 537.0660568446007
+	},
+	"distortion_coeffs": [
+		0.32680202550147675,
+		0.18424723615495064,
+		-0.09431697035906456,
+		0.14306561403309348
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_9mm_60_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "\u987e\u9038\u9a8f",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

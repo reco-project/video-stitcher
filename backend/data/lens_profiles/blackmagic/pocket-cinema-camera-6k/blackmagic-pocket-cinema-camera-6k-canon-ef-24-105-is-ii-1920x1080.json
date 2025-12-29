@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-canon-ef-24-105-is-ii-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Canon EF 24-105 IS II",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4624.858585628239,
+		"fy": 4653.636455700017,
+		"cx": 985.7798900833116,
+		"cy": 211.09615642434716
+	},
+	"distortion_coeffs": [
+		0.3504009860849629,
+		-0.8024493465318052,
+		-23.200411121751703,
+		662.4923897696256
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Canon EF 24-105 IS II_2.8K/30_1080p_16by9_1920x1080-30.00fps",
+		"calibrated_by": "24-105/2.8K v1",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sigma-24-70-dg-dn-24mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sigma 24-70 DG DN (@ 24mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4419.758206991792,
+		"fy": 4421.300902394066,
+		"cx": 1958.644269150443,
+		"cy": 1066.9887188038697
+	},
+	"distortion_coeffs": [
+		0.2970286357453315,
+		0.6711366225446146,
+		-4.521654113525707,
+		13.167248392106334
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sigma 24-70 DG DN (@ 24mm)_h.265, 23.976_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "JT Clark",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

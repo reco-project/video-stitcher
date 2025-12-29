@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-tokina-sd-11-16mm-f28-if-dx-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket cinema Camera 6K",
+	"lens_model": "Tokina SD 11-16mm f2.8 (IF) DX",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1876.3858423706931,
+		"fy": 1876.392234410279,
+		"cx": 2001.1587097472816,
+		"cy": 1092.55333400155
+	},
+	"distortion_coeffs": [
+		0.3497117302198906,
+		-0.010752320351477667,
+		0.19405054789909731,
+		-0.10181759926907603
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket cinema Camera 6K_Tokina SD 11-16mm f2.8 (IF) DX_11mm_4k_16by9_3840x2160-30.00fps",
+		"calibrated_by": "Catalog",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

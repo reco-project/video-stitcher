@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef40mm-f28-stm-with-metabones-speedbooster-071x-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF40mm f/2.8 STM with Metabones Speedbooster 0.71x",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6321.534467458932,
+		"fy": 6254.824354500726,
+		"cx": 3091.4772872105445,
+		"cy": 1679.8590001929504
+	},
+	"distortion_coeffs": [
+		0.15630450792199838,
+		0.5960510213794956,
+		-2.2010642582011126,
+		7.518740561005501
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF40mm f/2.8 STM with Metabones Speedbooster 0.71x_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Accelerator",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sigma-8mm-16mm-8mm-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6k",
+	"lens_model": "Sigma 8mm-16mm @8mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1345.405723596419,
+		"fy": 1345.108652056741,
+		"cx": 2029.914311412363,
+		"cy": 1078.9516710288008
+	},
+	"distortion_coeffs": [
+		0.3264656842527578,
+		0.4393353204143948,
+		-0.5804067116678474,
+		0.3437105031391644
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6k_Sigma 8mm-16mm @8mm_4k 17 by 9_C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "Florian Koch",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

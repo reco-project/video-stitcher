@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-samyang-14mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Samyang 14mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1506.8738768812202,
+		"fy": 1507.2341913282112,
+		"cx": 1913.4854611262524,
+		"cy": 1063.058846242677
+	},
+	"distortion_coeffs": [
+		0.18210492112614832,
+		0.1433228998800345,
+		-0.09830614765610211,
+		0.15012018217486503
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Samyang 14mm f2.8__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Shrey Gupta",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

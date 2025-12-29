@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-7artisans-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "7artisans",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1588.6401762434882,
+		"fy": 1588.1182383211126,
+		"cx": 1906.1322578385411,
+		"cy": 1087.1666144382386
+	},
+	"distortion_coeffs": [
+		0.3756955476978081,
+		0.13385219065178505,
+		-0.10164405958096072,
+		0.1500854352370466
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_7artisans_XAVCS-I_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Keisuke Samba",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-laowa-9mm-f28-zero-d-6144x2560",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Laowa 9mm f/2.8 Zero-D",
+	"resolution": {
+		"width": 6144,
+		"height": 2560
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2421.4262773420446,
+		"fy": 2422.405923197312,
+		"cx": 3148.300642329511,
+		"cy": 1343.8699655330893
+	},
+	"distortion_coeffs": [
+		0.3506834557980094,
+		0.042879876050535615,
+		0.1688034598560593,
+		-0.05456928822455226
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Laowa 9mm f/2.8 Zero-D__6k_12by5_6144x2560-50.00fps",
+		"calibrated_by": "Yan S",
+		"original_resolution": "6144x2560",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

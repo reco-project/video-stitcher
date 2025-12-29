@@ -1,0 +1,33 @@
+{
+	"id": "xiaomi-yi-action--1600x1200",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi Action",
+	"lens_model": "",
+	"resolution": {
+		"width": 1600,
+		"height": 1200
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 693.1320027094646,
+		"fy": 692.2537358945419,
+		"cx": 771.5089006721178,
+		"cy": 596.3889247094079
+	},
+	"distortion_coeffs": [
+		0.09822674640253432,
+		-0.027610656648767464,
+		0.026176636855170743,
+		-0.014028294130788975
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Xiaomi_Yi Action___720p_4by3_1600x1200-59.94fps",
+		"calibrated_by": "lataliana",
+		"original_resolution": "1600x1200",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

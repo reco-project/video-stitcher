@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-ef-s-24mm-f28-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Canon EF-S 24mm f/2.8",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6276.36644601782,
+		"fy": 6278.288721660815,
+		"cx": 3507.6541166494258,
+		"cy": 1850.962999042333
+	},
+	"distortion_coeffs": [
+		0.19169260854367945,
+		0.3200944901844703,
+		-0.902210911183045,
+		2.1920374360919026
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Canon EF-S 24mm f/2.8_6K 17:9_6k_1.90by1_6910x3645-24.00fps",
+		"calibrated_by": "Marco Joe Fazio",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

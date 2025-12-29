@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-2-pro-hassleblad-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic 2 Pro",
+	"lens_model": "Hassleblad",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1466.355770493724,
+		"fy": 1468.7600715145668,
+		"cx": 1924.305308500789,
+		"cy": 1205.6284201013889
+	},
+	"distortion_coeffs": [
+		0.3140037256068925,
+		0.2611748264909778,
+		-0.2167529154322938,
+		0.22072344215766052
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic 2 Pro_Hassleblad__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Big Daddy",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

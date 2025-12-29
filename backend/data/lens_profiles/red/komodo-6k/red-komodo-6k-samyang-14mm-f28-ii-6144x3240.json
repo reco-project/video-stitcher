@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-samyang-14mm-f28-ii-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Samyang 14mm f2.8 II",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3229.4123505059806,
+		"fy": 3230.417546468575,
+		"cx": 3063.071945470687,
+		"cy": 1605.6352883757845
+	},
+	"distortion_coeffs": [
+		0.1942440465134794,
+		0.11605449170688165,
+		-0.05929187945977066,
+		0.15339930864655205
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Samyang 14mm f2.8 II_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Tomi Stenqvist",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

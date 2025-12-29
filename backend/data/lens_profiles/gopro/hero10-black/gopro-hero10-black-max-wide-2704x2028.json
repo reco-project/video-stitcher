@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero10-black-max-wide-2704x2028",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO10 Black",
+	"lens_model": "Max Wide",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1104.4847107978171,
+		"fy": 1105.3749757731632,
+		"cx": 1345.2341839693331,
+		"cy": 1012.9991611444856
+	},
+	"distortion_coeffs": [
+		0.1539648673990897,
+		-0.1331168383923948,
+		0.09342280918611016,
+		-0.026135942021447377
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO10 Black_Max Wide_NO-EIS_2.7k_4by3_2704x2028-59.94fps",
+		"calibrated_by": "Liam Bristow-Hanna",
+		"original_resolution": "2704x2028",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

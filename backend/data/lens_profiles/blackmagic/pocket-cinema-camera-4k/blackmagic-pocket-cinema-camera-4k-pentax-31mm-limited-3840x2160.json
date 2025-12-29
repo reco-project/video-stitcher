@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-pentax-31mm-limited-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Pentax 31mm limited",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5807.685772183917,
+		"fy": 5808.797471537311,
+		"cx": 1916.4403483819488,
+		"cy": 1051.6753270589363
+	},
+	"distortion_coeffs": [
+		0.22808401312576285,
+		0.5553309582411436,
+		-4.219273867456363,
+		11.054141549857688
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Pentax 31mm limited_at f2.8_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Igor",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-olympus-12mm-f20-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Olympus 12mm F2.0",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2644.5277952456386,
+		"fy": 2649.46514465531,
+		"cx": 2020.3919793957864,
+		"cy": 1120.2698757082624
+	},
+	"distortion_coeffs": [
+		0.2209853747140913,
+		-0.08080825420562744,
+		0.28167901741624213,
+		-0.25411155043404376
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Olympus 12mm F2.0_DCI_C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Pim Bijl",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

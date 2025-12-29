@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-panasonic-lumix-14mm-f25-pancake-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "Panasonic LUMIX 14mm F2.5 Pancake",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3157.804586567023,
+		"fy": 3156.9445873106606,
+		"cx": 1886.090826261406,
+		"cy": 1050.7223628292754
+	},
+	"distortion_coeffs": [
+		0.12491762726649153,
+		-0.08773656712357054,
+		0.5614798717567081,
+		-0.7326459203422468
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_Panasonic LUMIX 14mm F2.5 Pancake__4k_16by9_3840x2160-60.00fps",
+		"calibrated_by": "Stefan Bechtel",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

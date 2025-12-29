@@ -1,0 +1,33 @@
+{
+	"id": "red-dsmc2-gemini-5k-s35-ef-l-16-35f4is-3500mm-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "DSMC2 GEMINI 5K S35",
+	"lens_model": "ef l 16-35f4is @35.00mm",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5712.84459995873,
+		"fy": 5720.29298564713,
+		"cx": 2590.6041229064745,
+		"cy": 1344.6504203543925
+	},
+	"distortion_coeffs": [
+		0.287899666901336,
+		2.121743910958133,
+		-15.250500203391775,
+		40.31001878083976
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_DSMC2 GEMINI 5K S35_ef l 16-35f4is @35.00mm_FF_5k_1.90by1_5120x2700-25.00fps",
+		"calibrated_by": "STRIX17",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

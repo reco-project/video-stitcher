@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-olympus-mzuiko-9mm-f80-body-cap-fisheye-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "Olympus M.ZUIKO 9mm F8,0 Body Cap Fisheye",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1999.9435116086024,
+		"fy": 1998.4281668222209,
+		"cx": 1915.860545929463,
+		"cy": 1076.1225216290902
+	},
+	"distortion_coeffs": [
+		0.011180951800212844,
+		-0.031468451798697464,
+		0.04372639890686765,
+		-0.022122214873410463
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_Olympus M.ZUIKO 9mm F8,0 Body Cap Fisheye__4k_16by9_3840x2160-60.00fps",
+		"calibrated_by": "Stefan Bechtel",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

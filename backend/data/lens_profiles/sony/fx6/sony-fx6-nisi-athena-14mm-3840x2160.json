@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-nisi-athena-14mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Nisi Athena 14mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1556.6074074504847,
+		"fy": 1563.9365309091186,
+		"cx": 1939.2963857684877,
+		"cy": 1061.029453288346
+	},
+	"distortion_coeffs": [
+		0.29042548006277763,
+		0.4161515472997244,
+		-0.8968518318903692,
+		0.9920211470676424
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Nisi Athena 14mm_23.98_4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Sam Davies",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

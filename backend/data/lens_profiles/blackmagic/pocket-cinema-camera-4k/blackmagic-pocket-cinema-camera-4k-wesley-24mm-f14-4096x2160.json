@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-wesley-24mm-f14-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "WESLEY 24MM F1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5761.517044014693,
+		"fy": 5700.9815403882185,
+		"cx": 2005.2846797315567,
+		"cy": 1043.964268447074
+	},
+	"distortion_coeffs": [
+		0.09412516624232913,
+		1.921558602977932,
+		-29.64089879683609,
+		113.49698865044036
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_WESLEY 24MM F1.4__C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "SUMGLE",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

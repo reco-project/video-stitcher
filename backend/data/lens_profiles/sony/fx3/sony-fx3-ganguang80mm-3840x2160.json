@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-ganguang80mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "ganguang80mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8945.400520338279,
+		"fy": 8956.159900103892,
+		"cx": 1925.4841734723063,
+		"cy": 1075.4981802931493
+	},
+	"distortion_coeffs": [
+		0.774750304612519,
+		-37.37723635694691,
+		908.9110158657642,
+		-9052.79931432615
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_ganguang80mm_1/320_4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Herman",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

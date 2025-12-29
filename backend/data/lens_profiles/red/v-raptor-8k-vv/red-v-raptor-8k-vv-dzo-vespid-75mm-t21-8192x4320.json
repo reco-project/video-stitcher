@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-dzo-vespid-75mm-t21-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "DZO Vespid 75mm T2.1",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14525.795790300266,
+		"fy": 14541.0622139092,
+		"cx": 4096.231953643496,
+		"cy": 2012.2663523020897
+	},
+	"distortion_coeffs": [
+		0.05665770206071616,
+		5.706526957495895,
+		-85.32050463620914,
+		542.802601206689
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_DZO Vespid 75mm T2.1_8K 17:9_8k_1.90by1_8192x4320-30.00fps",
+		"calibrated_by": "Omar Alfadhil",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

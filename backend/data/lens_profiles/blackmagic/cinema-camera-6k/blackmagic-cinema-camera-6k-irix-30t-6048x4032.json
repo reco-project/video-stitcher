@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-cinema-camera-6k-irix-30t-6048x4032",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "IRIX 30T",
+	"resolution": {
+		"width": 6048,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4757.783996383305,
+		"fy": 4746.415795190319,
+		"cx": 3113.2136584802483,
+		"cy": 2037.7199864635772
+	},
+	"distortion_coeffs": [
+		0.25471563044355044,
+		0.3154529796942522,
+		-0.6214720964098457,
+		1.2190654554669775
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Cinema Camera 6K_IRIX 30T__6k_3by2_6048x4032-30.00fps",
+		"calibrated_by": "NAIF ALJOHANI",
+		"original_resolution": "6048x4032",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

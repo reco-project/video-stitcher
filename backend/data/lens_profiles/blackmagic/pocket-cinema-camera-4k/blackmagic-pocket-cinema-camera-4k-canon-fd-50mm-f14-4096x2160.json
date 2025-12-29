@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-canon-fd-50mm-f14-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Canon FD 50mm f1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9161.200847569007,
+		"fy": 9157.44548802102,
+		"cx": 2048.7007857683416,
+		"cy": 923.9565355080108
+	},
+	"distortion_coeffs": [
+		0.1450025878421052,
+		-1.493088760206549,
+		35.56728755086383,
+		-20.019614819387535
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Canon FD 50mm f1.4_Zhongyi Lens Turbo II Speedbooster_C4k_1.90by1_4096x2160-30.00fps",
+		"calibrated_by": "Justin Kramer",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

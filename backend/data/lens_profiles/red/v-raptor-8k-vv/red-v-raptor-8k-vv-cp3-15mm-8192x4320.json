@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-cp3-15mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "CP3 15mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3040.5644657463763,
+		"fy": 3040.7694902564817,
+		"cx": 4082.8779062139615,
+		"cy": 2173.128319008411
+	},
+	"distortion_coeffs": [
+		0.28908745417401827,
+		0.16748292812338048,
+		-0.029861135199591632,
+		0.06636289571101117
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_CP3 15mm_8K 17:9_8k_1.90by1_8192x4320-25.00fps",
+		"calibrated_by": "Christoph Maleh",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

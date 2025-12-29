@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sirui-35mm-4096x1716",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sirui 35mm",
+	"resolution": {
+		"width": 4096,
+		"height": 1716
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 42289.43256008483,
+		"fy": 44054.13191860795,
+		"cx": 2032.601601919586,
+		"cy": 742.9507259200485
+	},
+	"distortion_coeffs": [
+		36.85823134582642,
+		-7629.309243265799,
+		-2470869.579349524,
+		1584790567.648659
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sirui 35mm__C4k_2.39by1_4096x1716-23.98fps",
+		"calibrated_by": "David Renna",
+		"original_resolution": "4096x1716",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sirui-nightwalker-24mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sirui Nightwalker 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4152.803782376582,
+		"fy": 4149.178090057311,
+		"cx": 1945.723947943676,
+		"cy": 1082.1525704726862
+	},
+	"distortion_coeffs": [
+		0.09563759601795348,
+		1.6033334089047155,
+		-12.629205191682727,
+		39.147216850782954
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sirui Nightwalker 24mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "rvdris -",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

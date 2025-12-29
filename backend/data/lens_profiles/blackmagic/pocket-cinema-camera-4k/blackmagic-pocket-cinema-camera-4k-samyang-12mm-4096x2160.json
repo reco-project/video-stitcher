@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-samyang-12mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Samyang 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2779.908992095786,
+		"fy": 2785.533407818293,
+		"cx": 2078.318321863597,
+		"cy": 1065.5235383830698
+	},
+	"distortion_coeffs": [
+		0.288110434846257,
+		0.2921390048559415,
+		-0.40720056641172586,
+		0.4292500106658627
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Samyang 12mm__C4k_1.90by1_4096x2160-59.94fps",
+		"calibrated_by": "Br\u00e1ulio Lorenzo",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "59.940063",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

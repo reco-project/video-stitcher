@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lumix-g-14f25-14mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LUMIX G 14/F2.5  14mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3167.694191622684,
+		"fy": 3091.583717421652,
+		"cx": 2061.4538268708393,
+		"cy": 1033.3316931062036
+	},
+	"distortion_coeffs": [
+		0.06170703104272589,
+		0.5612584939287161,
+		-2.069176455717363,
+		2.9677032872164792
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LUMIX G 14/F2.5  14mm__C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Bruno Mendes Gouvea",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

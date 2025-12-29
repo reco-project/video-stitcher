@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sony-24-105-g-at-105mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sony 24-105 G at 105mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17818.67797625393,
+		"fy": 17878.314576573426,
+		"cx": 1970.058760619673,
+		"cy": 1169.5231478409082
+	},
+	"distortion_coeffs": [
+		1.353404556817988,
+		130.96008323732167,
+		-17939.64588553768,
+		777740.8872704287
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sony 24-105 G at 105mm_60_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Kyle M Fields",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

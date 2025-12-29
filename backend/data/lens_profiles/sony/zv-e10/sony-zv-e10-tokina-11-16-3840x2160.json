@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-tokina-11-16-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tokina 11-16",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2727.1079181361097,
+		"fy": 2723.2627219120445,
+		"cx": 1947.469012962803,
+		"cy": 1095.4548033026167
+	},
+	"distortion_coeffs": [
+		0.3515207577426919,
+		-0.02166108784379162,
+		0.3134665069493369,
+		-0.25613223616106184
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Tokina 11-16_11mm_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Pablo Urba",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

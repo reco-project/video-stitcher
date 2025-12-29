@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-fzolimf-75mm-t21-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "FZOLIMF 75mm T2.1",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 27420.338022983808,
+		"fy": 27632.638240160108,
+		"cx": 1683.1809932292038,
+		"cy": 1611.1392400478678
+	},
+	"distortion_coeffs": [
+		0.5663978667060119,
+		-94.9726689340892,
+		12659.570239186593,
+		-627709.8955221123
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_FZOLIMF 75mm T2.1_6K_C4k_1.90by1_4096x2160-30.00fps",
+		"calibrated_by": "\u5c1a\u6587",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

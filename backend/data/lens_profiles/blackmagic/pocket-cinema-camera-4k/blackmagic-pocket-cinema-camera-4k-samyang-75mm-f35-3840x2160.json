@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-samyang-75mm-f35-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "samyang 7.5mm f3.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1620.2946828340157,
+		"fy": 1606.1547440974618,
+		"cx": 1945.527539610837,
+		"cy": 1071.59784588292
+	},
+	"distortion_coeffs": [
+		-0.016130250438085744,
+		0.00402386359019895,
+		-0.007121784192827504,
+		0.001587313350558851
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_samyang 7.5mm f3.5__4k_16by9_3840x2160-60.00fps",
+		"calibrated_by": "SUMGLE",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

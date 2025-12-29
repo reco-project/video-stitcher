@@ -1,0 +1,34 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-24mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2696.0709962194906,
+		"fy": 2697.5470602828677,
+		"cx": 1888.9030545098224,
+		"cy": 1092.5047767380925
+	},
+	"distortion_coeffs": [
+		0.05640352789476693,
+		0.04093191305359554,
+		-0.18801419478841605,
+		0.20503728243833244
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_24mm__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Jules Berger",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}
+}

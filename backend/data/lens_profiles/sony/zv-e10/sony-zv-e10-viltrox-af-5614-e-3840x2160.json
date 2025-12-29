@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-viltrox-af-5614-e-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Viltrox AF 56/1.4 E",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 24738.154636952524,
+		"fy": 25139.492376714632,
+		"cx": 1990.8624766884177,
+		"cy": 1109.1033506029569
+	},
+	"distortion_coeffs": [
+		5.352277724491954,
+		-990.67197999136,
+		284539.4020694488,
+		-27473239.470326778
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Viltrox AF 56/1.4 E__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Matheus Velloso de Oliveira Gomes",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

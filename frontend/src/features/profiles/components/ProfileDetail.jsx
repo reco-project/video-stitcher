@@ -1,17 +1,36 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useProfile } from '../hooks/useProfiles';
+import { toggleFavorite } from '../api/profiles';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { normalizeProfile } from '@/lib/normalize';
 
-export default function ProfileDetail({ profileId, onEdit, onDelete }) {
-	const { profile, loading, error } = useProfile(profileId);
+export default function ProfileDetail({ profileId, onEdit, onDelete, onFavoriteToggle }) {
+	const { profile, loading, error, refetch } = useProfile(profileId);
+	const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+	const handleToggleFavorite = async () => {
+		if (!profile) return;
+		setFavoriteLoading(true);
+		try {
+			await toggleFavorite(profile.id, !profile.is_favorite);
+			await refetch();
+			if (onFavoriteToggle) onFavoriteToggle();
+		} catch (err) {
+			console.error('Failed to toggle favorite:', err);
+		} finally {
+			setFavoriteLoading(false);
+		}
+	};
 
 	if (!profileId) return <div className="text-muted-foreground">Select a profile to view details</div>;
 	if (loading) return <div>Loading...</div>;
 	if (error) return <div className="text-red-700">Error: {error}</div>;
 	if (!profile) return null;
+
+	const normalized = normalizeProfile(profile);
 
 	return (
 		<Card className="w-full">
@@ -20,6 +39,11 @@ export default function ProfileDetail({ profileId, onEdit, onDelete }) {
 					<div className="space-y-1">
 						<CardTitle>Profile Details</CardTitle>
 						<div className="flex gap-2">
+							{profile.is_favorite && (
+								<Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">
+									⭐ Favorite
+								</Badge>
+							)}
 							{profile.metadata?.is_custom && <Badge variant="default">Custom Profile</Badge>}
 							{profile.metadata?.source === 'Gyroflow lens_profiles' && (
 								<Badge variant="secondary">Gyroflow Official</Badge>
@@ -27,6 +51,14 @@ export default function ProfileDetail({ profileId, onEdit, onDelete }) {
 						</div>
 					</div>
 					<div className="flex gap-2">
+						<Button
+							size="sm"
+							variant={profile.is_favorite ? 'outline' : 'default'}
+							onClick={handleToggleFavorite}
+							disabled={favoriteLoading}
+						>
+							{favoriteLoading ? '...' : profile.is_favorite ? '★ Unfavorite' : '☆ Favorite'}
+						</Button>
 						<Button size="sm" onClick={() => onEdit && onEdit(profile)}>
 							Edit
 						</Button>
@@ -47,7 +79,7 @@ export default function ProfileDetail({ profileId, onEdit, onDelete }) {
 				<div>
 					<label className="text-sm font-semibold text-muted-foreground">Camera</label>
 					<div>
-						{profile.camera_brand} {profile.camera_model}
+						{normalized.camera_brand} {normalized.camera_model}
 					</div>
 				</div>
 

@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0ii-beastgrip-06x-wide-angle-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "BeastGrip 0.6X Wide Angle",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1584.302625115103,
+		"fy": 1579.6597324664258,
+		"cx": 1939.9683576800576,
+		"cy": 1041.9021126675989
+	},
+	"distortion_coeffs": [
+		0.2208298238273754,
+		0.1912175425339493,
+		-0.29248468171069175,
+		0.21877679675728487
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0II_BeastGrip 0.6X Wide Angle_Puluz 37mm Adapter_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Straw Hat Sam",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-cinema-camera-6k-sigma-28-70mm-f28-dg-dn-contemporary-021-70mm-6048x4032",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "Sigma 28-70mm F2.8 DG DN | Contemporary 021 70mm",
+	"resolution": {
+		"width": 6048,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4799.750408116386,
+		"fy": 4797.703172884008,
+		"cx": 2988.6905211755675,
+		"cy": 1966.6957708594057
+	},
+	"distortion_coeffs": [
+		0.2058025037535925,
+		-0.6028100454596539,
+		3.500758755545118,
+		-4.888171565206782
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Cinema Camera 6K_Sigma 28-70mm F2.8 DG DN | Contemporary 021 70mm__6k_3by2_6048x4032-30.00fps",
+		"calibrated_by": "Jesse Ercole",
+		"original_resolution": "6048x4032",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

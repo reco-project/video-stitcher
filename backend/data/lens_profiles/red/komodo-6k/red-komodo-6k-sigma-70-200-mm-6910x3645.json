@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sigma-70-200-mm-6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma 70-200 mm",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 19839.1545829125,
+		"fy": 19692.115467912976,
+		"cx": 3845.486019389238,
+		"cy": 1677.1111778982454
+	},
+	"distortion_coeffs": [
+		0.13212855778275592,
+		-5.047606498777965,
+		210.00999797299835,
+		-2523.889650568656
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sigma 70-200 mm_6K 17:9_6k_1.90by1_6910x3645-23.98fps",
+		"calibrated_by": "Dennis Trushechkin",
+		"original_resolution": "6910x3645",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

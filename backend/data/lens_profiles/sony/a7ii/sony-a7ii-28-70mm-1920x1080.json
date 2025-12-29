@@ -1,0 +1,33 @@
+{
+	"id": "sony-a7ii-28-70mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "A7II",
+	"lens_model": "28-70mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1558.2832263814764,
+		"fy": 1557.399244655115,
+		"cx": 962.8096051775894,
+		"cy": 546.0962105821885
+	},
+	"distortion_coeffs": [
+		0.2943988869872119,
+		0.9754626087085108,
+		-10.712526135413604,
+		38.995041000591705
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_A7II_28-70mm__1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Antonio Alonso",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

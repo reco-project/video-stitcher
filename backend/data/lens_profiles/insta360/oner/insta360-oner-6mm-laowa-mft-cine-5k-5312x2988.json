@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oner-6mm-laowa-mft-cine-5k-5312x2988",
+	"camera_brand": "Insta360",
+	"camera_model": "OneR",
+	"lens_model": "6mm Laowa MFT Cine 5k",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2578.0777319955832,
+		"fy": 2579.9659644453077,
+		"cx": 2687.367505311011,
+		"cy": 1536.234246384773
+	},
+	"distortion_coeffs": [
+		0.34341586871898616,
+		0.0126671568991439,
+		0.47336084460419087,
+		-0.45906618291347306
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneR_6mm Laowa MFT Cine 5k_NO-EIS_5k_16by9_5312x2988-25.00fps",
+		"calibrated_by": "Shikijo",
+		"original_resolution": "5312x2988",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

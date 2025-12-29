@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sony-1500mm-g-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sony 15.00mm G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2609.2549206437225,
+		"fy": 2525.422235160283,
+		"cx": 1910.7825251376912,
+		"cy": 1052.265075059805
+	},
+	"distortion_coeffs": [
+		0.31976124052160193,
+		0.2034918214214321,
+		-0.3253820968059847,
+		0.6504706946293981
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sony 15.00mm G__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Skanda",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

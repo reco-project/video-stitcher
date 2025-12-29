@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-original-sigma-18-35-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera Original",
+	"lens_model": "sigma 18-35",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1651.2080822313346,
+		"fy": 1650.7472841528213,
+		"cx": 939.6545000161854,
+		"cy": 508.17732744736105
+	},
+	"distortion_coeffs": [
+		0.18844428588884649,
+		0.16334855036470958,
+		0.12052273502790392,
+		-0.10591861510907025
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera Original_sigma 18-35_18 mm_1080p_16by9_1920x1080-30.00fps",
+		"calibrated_by": "Lucas Pannatier",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

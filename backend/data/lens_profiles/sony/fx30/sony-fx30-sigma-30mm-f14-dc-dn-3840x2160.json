@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sigma-30mm-f14-dc-dn-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sigma 30mm F1.4 DC DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5541.897338988008,
+		"fy": 5537.079912623397,
+		"cx": 1991.810722804556,
+		"cy": 1043.7323407061835
+	},
+	"distortion_coeffs": [
+		0.2864726453559706,
+		2.6201770082302382,
+		-29.285600998499305,
+		123.05713011132652
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Sigma 30mm F1.4 DC DN__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "DerFetzer",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

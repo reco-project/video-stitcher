@@ -1,0 +1,33 @@
+{
+	"id": "dji-osmo-pocket-none-1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Pocket",
+	"lens_model": "none",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1471.1471007228888,
+		"fy": 1471.3690057562949,
+		"cx": 952.8766111959678,
+		"cy": 549.1716153947083
+	},
+	"distortion_coeffs": [
+		0.3400205145623184,
+		1.6141025988657547,
+		-10.918752086650514,
+		23.787265402109263
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Osmo Pocket_none_automatic_1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "cryandsmile",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

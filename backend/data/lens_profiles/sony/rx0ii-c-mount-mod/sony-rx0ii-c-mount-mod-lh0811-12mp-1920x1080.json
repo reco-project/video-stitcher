@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0ii-c-mount-mod-lh0811-12mp-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II-C-Mount-MOD",
+	"lens_model": "LH0811-12MP",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1244.4116706187122,
+		"fy": 1238.9304633087283,
+		"cx": 958.9783802412932,
+		"cy": 516.5172313099569
+	},
+	"distortion_coeffs": [
+		-0.08546975636505058,
+		1.969584373047133,
+		-3.3782785685797396,
+		2.1886217756117343
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0II-C-Mount-MOD_LH0811-12MP_EXPERIMENTAL_1080p_16by9_1920x1080-119.88fps",
+		"calibrated_by": "Nicecrash_22",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "119.880119",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

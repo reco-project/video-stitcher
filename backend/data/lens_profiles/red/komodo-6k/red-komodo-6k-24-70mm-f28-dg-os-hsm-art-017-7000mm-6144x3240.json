@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-24-70mm-f28-dg-os-hsm-art-017-7000mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "24-70mm F2.8 DG OS HSM | Art 017 70.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9609.435815694638,
+		"fy": 9594.907554338506,
+		"cx": 3089.239636039422,
+		"cy": 1653.46952035475
+	},
+	"distortion_coeffs": [
+		0.2689298349817163,
+		1.5847276122120246,
+		-8.651570556599633,
+		66.69058808818878
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_24-70mm F2.8 DG OS HSM | Art 017 70.00mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "satoh",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

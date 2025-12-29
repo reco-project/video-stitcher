@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-canon-16mm-28-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Canon 16mm 2.8",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3837.447337843455,
+		"fy": 3838.552169587465,
+		"cx": 3072.2865810361086,
+		"cy": 1618.8134104030494
+	},
+	"distortion_coeffs": [
+		0.16387539000115753,
+		0.04134438409826667,
+		0.03966992957316306,
+		-0.013899189322722253
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Canon 16mm 2.8_23.96 R3D_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Clayton Simoncic",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

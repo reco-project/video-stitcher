@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-rokinon-14mm-ds-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Rokinon 14mm ds",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3267.9711678812555,
+		"fy": 3267.633982641492,
+		"cx": 3081.7610875242112,
+		"cy": 1587.7189159960783
+	},
+	"distortion_coeffs": [
+		0.20855183907128447,
+		-0.011844712317180846,
+		0.24182504346281436,
+		-0.08973227578860911
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Rokinon 14mm ds__6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Julio Lopez",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

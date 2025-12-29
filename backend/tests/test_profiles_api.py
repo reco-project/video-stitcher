@@ -28,10 +28,10 @@ def test_list_all_profiles():
 
 def test_get_profile_by_id():
     """Test GET /api/profiles/{id} - Get specific profile"""
-    response = client.get("/api/profiles/gopro-hero10black-linear-3840x2160")
+    response = client.get("/api/profiles/gopro-hero10-black-linear-3840x2160")
     assert response.status_code == 200
     profile = response.json()
-    assert profile['id'] == 'gopro-hero10black-linear-3840x2160'
+    assert profile['id'] == 'gopro-hero10-black-linear-3840x2160'
     assert profile['camera_brand'] == 'GoPro'
     assert profile['camera_model'] == 'HERO10 Black'
 

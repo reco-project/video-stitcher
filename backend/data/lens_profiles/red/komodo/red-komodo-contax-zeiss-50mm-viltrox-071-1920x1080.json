@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-contax-zeiss-50mm-viltrox-071-1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Contax Zeiss 50mm Viltrox 0.71",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2898.526145162611,
+		"fy": 2898.9913281355794,
+		"cx": 954.6000800461048,
+		"cy": 528.5526994535919
+	},
+	"distortion_coeffs": [
+		-0.038817664933381374,
+		0.8480396388694749,
+		-4.967527930162098,
+		37.19543697576715
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Contax Zeiss 50mm Viltrox 0.71__1080p_16by9_1920x1080-23.98fps",
+		"calibrated_by": "Christopher Neal",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

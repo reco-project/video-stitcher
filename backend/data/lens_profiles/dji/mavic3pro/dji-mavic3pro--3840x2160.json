@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic3pro--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic3Pro",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2733.4480758333552,
+		"fy": 2733.3566997076036,
+		"cx": 1931.463313126729,
+		"cy": 1061.0440625282863
+	},
+	"distortion_coeffs": [
+		0.3540626957683622,
+		0.23429645980379096,
+		-1.0393073748502106,
+		2.280100996807395
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic3Pro___4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "\u89c2\u609fMac mini 01",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

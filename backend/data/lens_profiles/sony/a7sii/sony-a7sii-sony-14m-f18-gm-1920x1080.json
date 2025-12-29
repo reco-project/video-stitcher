@@ -1,0 +1,33 @@
+{
+	"id": "sony-a7sii-sony-14m-f18-gm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "A7sII",
+	"lens_model": "Sony 14m f1.8 GM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 662.4826144380147,
+		"fy": 662.9313149432438,
+		"cx": 958.8295200527318,
+		"cy": 540.1977735009078
+	},
+	"distortion_coeffs": [
+		0.3035048201243362,
+		0.2016294700143436,
+		-0.12468646955626073,
+		0.1239921720676004
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_A7sII_Sony 14m f1.8 GM__1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Zen Savona",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

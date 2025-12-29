@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-ttartisan-aps-c-10mm-f20-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "TTArtisan APS-C 10mm f2.0",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2358.63171162912,
+		"fy": 2359.1238254265677,
+		"cx": 2017.0073830550057,
+		"cy": 1106.7956804630537
+	},
+	"distortion_coeffs": [
+		0.31049618035395465,
+		0.26979368418358196,
+		-0.20150305339476543,
+		-0.01992602919083811
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_TTArtisan APS-C 10mm f2.0_c4k_C4k_1.90by1_4096x2160-29.97fps",
+		"calibrated_by": "Daniel Williams",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

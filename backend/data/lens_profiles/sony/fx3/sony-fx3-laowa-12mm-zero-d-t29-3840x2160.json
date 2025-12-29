@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-laowa-12mm-zero-d-t29-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Laowa 12mm Zero-D T2.9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1447.152250812934,
+		"fy": 1445.0137677185703,
+		"cx": 1902.3626940054417,
+		"cy": 1088.817047007509
+	},
+	"distortion_coeffs": [
+		0.30913096607911733,
+		0.19866117507215056,
+		-0.005908124204841999,
+		0.02251893254666444
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Laowa 12mm Zero-D T2.9_12mm T5.6_4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Luca Schroeder",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-contax-zeiss-35mm-viltrox-071x-1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Contax Zeiss 35mm Viltrox 0.71x",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2000.360266665751,
+		"fy": 2000.3608909169477,
+		"cx": 951.363432978747,
+		"cy": 531.7200709661412
+	},
+	"distortion_coeffs": [
+		0.11314404837415232,
+		0.7067320488400619,
+		-4.163743365655073,
+		14.40331223049148
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_Contax Zeiss 35mm Viltrox 0.71x__1080p_16by9_1920x1080-23.98fps",
+		"calibrated_by": "Christopher Neal",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

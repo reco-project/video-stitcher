@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-samyang-ef-24mm-f14-6480x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Samyang EF 24mm f1.4",
+	"resolution": {
+		"width": 6480,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6588.3591576519475,
+		"fy": 6589.319147708144,
+		"cx": 3234.642038940841,
+		"cy": 1816.419342171656
+	},
+	"distortion_coeffs": [
+		0.24517613697446564,
+		0.2708907045578131,
+		-1.4607108719623,
+		4.764737764805138
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Samyang EF 24mm f1.4_6K_6k_16by9_6480x3645-23.98fps",
+		"calibrated_by": "Bo",
+		"original_resolution": "6480x3645",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

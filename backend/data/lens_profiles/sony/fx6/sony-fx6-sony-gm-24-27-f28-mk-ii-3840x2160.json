@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sony-gm-24-27-f28-mk-ii-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sony GM 24-27 F2.8 Mk II",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3070.6527426290454,
+		"fy": 3074.310221776503,
+		"cx": 1910.520888206633,
+		"cy": 1091.0398241038924
+	},
+	"distortion_coeffs": [
+		0.3201998673185821,
+		0.013857089363628576,
+		0.8178199396916715,
+		-1.3557686748432642
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Sony GM 24-27 F2.8 Mk II_24 mm focal length_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Juri Verstappen",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

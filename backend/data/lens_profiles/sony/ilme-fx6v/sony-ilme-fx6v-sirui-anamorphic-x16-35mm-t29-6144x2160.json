@@ -1,0 +1,33 @@
+{
+	"id": "sony-ilme-fx6v-sirui-anamorphic-x16-35mm-t29-6144x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILME-FX6V",
+	"lens_model": "SIRUI ANAMORPHIC x1.6 35mm T2.9",
+	"resolution": {
+		"width": 6144,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3759.5770907949304,
+		"fy": 3723.2844782090915,
+		"cx": 3046.636250243252,
+		"cy": 1062.8204286101366
+	},
+	"distortion_coeffs": [
+		0.31888707492369084,
+		-0.6701465289271974,
+		2.292147091039214,
+		-2.2359542069568406
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ILME-FX6V___6k_2.84by1_6144x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "6144x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

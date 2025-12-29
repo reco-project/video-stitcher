@@ -1,0 +1,33 @@
+{
+	"id": "sony-hdr-as100v-zeiss-tessar-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HDR-AS100V",
+	"lens_model": "ZEISS\u00ae Tessar\u00ae",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1214.3831265046497,
+		"fy": 1215.5011811338818,
+		"cx": 897.0560147305962,
+		"cy": 528.6510811353356
+	},
+	"distortion_coeffs": [
+		-0.096205570936769,
+		0.0063578181004650125,
+		-0.002066983157098494,
+		0.000730918911488101
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_HDR-AS100V_ZEISS\u00ae Tessar\u00ae__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "AlexandrK04 AlexandrK04",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

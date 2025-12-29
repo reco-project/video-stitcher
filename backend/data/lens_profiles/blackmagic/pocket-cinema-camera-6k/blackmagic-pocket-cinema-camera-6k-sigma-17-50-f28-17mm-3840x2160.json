@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-sigma-17-50-f28-17mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "SIGMA 17-50 F2.8 17mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2735.12066887588,
+		"fy": 2733.204083052154,
+		"cx": 2091.085828034271,
+		"cy": 1095.074520329988
+	},
+	"distortion_coeffs": [
+		0.17770898621620615,
+		0.2756314360700789,
+		-0.5266669979124972,
+		0.7425539010122915
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_SIGMA 17-50 F2.8 17mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

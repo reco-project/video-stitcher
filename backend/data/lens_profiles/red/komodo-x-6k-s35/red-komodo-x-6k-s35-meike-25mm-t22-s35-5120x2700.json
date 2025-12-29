@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-meike-25mm-t22-s35-5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "Meike 25mm t2.2 s35",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5737.768899051376,
+		"fy": 5738.298076969815,
+		"cx": 2572.3342167564456,
+		"cy": 1348.4141951557103
+	},
+	"distortion_coeffs": [
+		0.24366698083733823,
+		0.020017501656704375,
+		1.8636419144733756,
+		-6.238171591748128
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_Meike 25mm t2.2 s35_17:9_5k_1.90by1_5120x2700-23.98fps",
+		"calibrated_by": "lucas gibbons",
+		"original_resolution": "5120x2700",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

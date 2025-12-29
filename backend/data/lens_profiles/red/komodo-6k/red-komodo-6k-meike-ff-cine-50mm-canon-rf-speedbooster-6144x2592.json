@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-meike-ff-cine-50mm-canon-rf-speedbooster-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Meike FF Cine 50mm, Canon RF Speedbooster",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8191.96888580638,
+		"fy": 8198.86927417717,
+		"cx": 3054.5921412382363,
+		"cy": 1319.9613485590771
+	},
+	"distortion_coeffs": [
+		0.1406505513996701,
+		2.0409944597694323,
+		-14.133717679882604,
+		53.381328736940205
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Meike FF Cine 50mm, Canon RF Speedbooster_6K 2.4:1_6k_2.37by1_6144x2592-25.00fps",
+		"calibrated_by": "Miko\u0142aj Szczepka",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

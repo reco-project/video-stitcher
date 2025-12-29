@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0-35mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX0",
+	"lens_model": "35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5376.779583159163,
+		"fy": 5408.572850708371,
+		"cx": 962.5746090010518,
+		"cy": 543.7788125962107
+	},
+	"distortion_coeffs": [
+		-1.493703607859365,
+		240.62229949409289,
+		-6518.887826557154,
+		47404.357665038726
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0_35mm__1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "\u674e\u6cd3\u6f2a",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

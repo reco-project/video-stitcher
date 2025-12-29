@@ -1,0 +1,33 @@
+{
+	"id": "red-raven-super-multi-coated-takumar-135mm-f25-4608x2160",
+	"camera_brand": "RED",
+	"camera_model": "Raven",
+	"lens_model": "Super-Multi-Coated Takumar 135mm f2.5",
+	"resolution": {
+		"width": 4608,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 248377.824074813,
+		"fy": 249802.48791985665,
+		"cx": 2365.019033156672,
+		"cy": 1584.909057487026
+	},
+	"distortion_coeffs": [
+		86.8313569887461,
+		-340649.74115114246,
+		817645290.48578,
+		-626493787642.365
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Raven_Super-Multi-Coated Takumar 135mm f2.5__C4k_2.13by1_4608x2160-25.00fps",
+		"calibrated_by": "re4mat0r",
+		"original_resolution": "4608x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

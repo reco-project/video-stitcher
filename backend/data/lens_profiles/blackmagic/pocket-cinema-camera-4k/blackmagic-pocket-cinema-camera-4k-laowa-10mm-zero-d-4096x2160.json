@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-laowa-10mm-zero-d-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Laowa 10mm Zero-D",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2157.1118529509904,
+		"fy": 2154.3837127266147,
+		"cx": 2038.0554292904567,
+		"cy": 1115.18589177006
+	},
+	"distortion_coeffs": [
+		0.3335713038551747,
+		0.20398086499270893,
+		-0.1537930913679493,
+		0.19593591200487936
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_Laowa 10mm Zero-D_4k Braw DCI 5:1_C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "DirkFPV",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

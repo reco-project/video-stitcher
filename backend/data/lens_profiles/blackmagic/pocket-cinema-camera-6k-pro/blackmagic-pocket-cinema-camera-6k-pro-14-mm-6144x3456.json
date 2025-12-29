@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-14-mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "14 mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3946.134361331235,
+		"fy": 3851.054608437224,
+		"cx": 3102.0223181708284,
+		"cy": 1832.6841761514772
+	},
+	"distortion_coeffs": [
+		0.18450634397578128,
+		0.05472640858324481,
+		0.246772745205724,
+		-0.17008576276236836
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_14 mm__6k_16by9_6144x3456-23.98fps",
+		"calibrated_by": "Craig",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

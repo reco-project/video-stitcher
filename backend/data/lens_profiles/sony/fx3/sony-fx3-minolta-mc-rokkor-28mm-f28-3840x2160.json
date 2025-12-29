@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-minolta-mc-rokkor-28mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "minolta MC Rokkor 28mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3144.655194851516,
+		"fy": 3146.9644377728314,
+		"cx": 1931.5753892807325,
+		"cy": 1076.8167057281223
+	},
+	"distortion_coeffs": [
+		0.2719204763511862,
+		-0.11443725181152674,
+		1.2844803670425582,
+		-1.5922930118729353
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_minolta MC Rokkor 28mm f2.8__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Joshua Schumacher",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

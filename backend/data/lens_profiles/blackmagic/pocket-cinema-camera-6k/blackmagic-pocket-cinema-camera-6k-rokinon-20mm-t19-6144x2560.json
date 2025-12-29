@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-rokinon-20mm-t19-6144x2560",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Rokinon 20mm T1.9",
+	"resolution": {
+		"width": 6144,
+		"height": 2560
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5598.142176493145,
+		"fy": 5596.112374779735,
+		"cx": 3046.115969547566,
+		"cy": 1280.6519414185718
+	},
+	"distortion_coeffs": [
+		0.2997857611074391,
+		-0.4084931469721744,
+		3.837892583430051,
+		-7.815239149383394
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Rokinon 20mm T1.9_6K 2.4:1_6k_12by5_6144x2560-29.97fps",
+		"calibrated_by": "Chad Miller",
+		"original_resolution": "6144x2560",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

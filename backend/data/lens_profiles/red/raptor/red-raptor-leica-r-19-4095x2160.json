@@ -1,0 +1,33 @@
+{
+	"id": "red-raptor-leica-r-19-4095x2160",
+	"camera_brand": "RED",
+	"camera_model": "Raptor",
+	"lens_model": "Leica R 19",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2197.750406719229,
+		"fy": 2199.2793532038713,
+		"cx": 2062.288484470294,
+		"cy": 1062.2841366674368
+	},
+	"distortion_coeffs": [
+		0.22315975034864213,
+		0.22118711229523785,
+		-0.19578419894357876,
+		0.38466976693833543
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Raptor_Leica R 19_7K 17:9_C4k_1.90by1_4095x2160-25.00fps",
+		"calibrated_by": "Adam Mach",
+		"original_resolution": "4095x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

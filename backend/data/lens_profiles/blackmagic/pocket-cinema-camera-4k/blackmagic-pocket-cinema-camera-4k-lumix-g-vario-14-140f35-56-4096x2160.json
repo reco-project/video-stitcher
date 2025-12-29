@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lumix-g-vario-14-140f35-56-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LUMIX G VARIO 14-140/F3.5-5.6 ",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3124.150264480407,
+		"fy": 3124.4687163280637,
+		"cx": 2045.10734289686,
+		"cy": 1049.5378639518326
+	},
+	"distortion_coeffs": [
+		0.0871191818379219,
+		-0.04641936950462134,
+		0.4839677997533702,
+		-0.4342316834983375
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LUMIX G VARIO 14-140/F3.5-5.6 _14mm_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "cslyfpv",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

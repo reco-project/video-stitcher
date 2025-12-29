@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-viltrox-2000mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Viltrox 20.00mm F/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2295.3925748655665,
+		"fy": 2295.0828341733145,
+		"cx": 1918.935243345971,
+		"cy": 1071.6861941611828
+	},
+	"distortion_coeffs": [
+		0.23103222827631065,
+		0.4447591893129492,
+		-1.184056183022435,
+		1.6892927064416672
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Viltrox 20.00mm F/2.8__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Julian Rojas",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

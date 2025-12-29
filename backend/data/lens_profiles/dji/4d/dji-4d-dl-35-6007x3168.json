@@ -1,0 +1,33 @@
+{
+	"id": "dji-4d-dl-35-6007x3168",
+	"camera_brand": "DJI",
+	"camera_model": "4D",
+	"lens_model": "DL 35",
+	"resolution": {
+		"width": 6007,
+		"height": 3168
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6136.962107074917,
+		"fy": 6147.120385803201,
+		"cx": 3067.881517967134,
+		"cy": 1526.8537794540891
+	},
+	"distortion_coeffs": [
+		0.3129894929494978,
+		0.3771966196004791,
+		-1.085933077734177,
+		2.0712896186475853
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_4D_DL 35__6k_1.90by1_6007x3168-24.00fps",
+		"calibrated_by": "Daniel ilabaca",
+		"original_resolution": "6007x3168",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

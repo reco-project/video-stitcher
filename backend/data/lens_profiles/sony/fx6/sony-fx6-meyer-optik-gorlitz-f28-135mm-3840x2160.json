@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-meyer-optik-gorlitz-f28-135mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Meyer-Optik Gorlitz f2.8 135mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15437.408861548964,
+		"fy": 15393.492415815555,
+		"cx": 1954.6678763409216,
+		"cy": 970.5341107717476
+	},
+	"distortion_coeffs": [
+		0.5808635379722342,
+		111.32727036733392,
+		-16056.675341395803,
+		750091.0046477594
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Meyer-Optik Gorlitz f2.8 135mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Tom Leonard",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-cn-e14mm-t31-l-f-1400mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CN-E14mm T3.1 L F 14.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2281.3542948833574,
+		"fy": 2282.2495539003617,
+		"cx": 3048.0388667007132,
+		"cy": 1630.7006706338732
+	},
+	"distortion_coeffs": [
+		0.2855142850820649,
+		0.19411440227008447,
+		-0.07659312926383427,
+		0.11615799722574768
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_CN-E14mm T3.1 L F 14.00mm_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "Bryan Redding",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

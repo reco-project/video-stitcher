@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-9mm-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa 9mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2098.2019336367352,
+		"fy": 2099.364306187091,
+		"cx": 2065.374574098553,
+		"cy": 1085.492711385921
+	},
+	"distortion_coeffs": [
+		0.33739857502728376,
+		0.18019189124288112,
+		-0.18671307743912935,
+		0.2660141870239305
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Laowa 9mm_17:9_C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "Nick Riley",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

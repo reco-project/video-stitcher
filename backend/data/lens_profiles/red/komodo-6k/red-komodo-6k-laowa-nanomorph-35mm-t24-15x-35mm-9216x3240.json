@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-nanomorph-35mm-t24-15x-35mm-9216x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6k",
+	"lens_model": "Laowa Nanomorph 35mm T2.4 1.5x 35mm",
+	"resolution": {
+		"width": 9216,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10551.979574522113,
+		"fy": 10572.727422499793,
+		"cx": 4215.863596181895,
+		"cy": 1090.3573399397417
+	},
+	"distortion_coeffs": [
+		0.4543014193475655,
+		-2.185469455591323,
+		33.63361667146464,
+		-125.280889848855
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6k_Laowa Nanomorph 35mm T2.4 1.5x 35mm_6K 17:9_8k_2.84by1_9216x3240-23.98fps",
+		"calibrated_by": "SCAN2FX",
+		"original_resolution": "9216x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

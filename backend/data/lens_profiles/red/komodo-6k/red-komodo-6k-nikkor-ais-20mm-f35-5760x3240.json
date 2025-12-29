@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nikkor-ais-20mm-f35-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "NIKKOR AIS 20mm f/3.5",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4784.78614403324,
+		"fy": 4786.055263264905,
+		"cx": 2900.78303006474,
+		"cy": 1574.6603287726189
+	},
+	"distortion_coeffs": [
+		0.173902424456307,
+		0.5488936841953672,
+		-1.2823486614774269,
+		1.7664623366261905
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_NIKKOR AIS 20mm f/3.5_6K_5k_16by9_5760x3240-24.00fps",
+		"calibrated_by": "Jeremy Carroll",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

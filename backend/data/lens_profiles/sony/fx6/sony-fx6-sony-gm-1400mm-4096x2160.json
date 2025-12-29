@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sony-gm-1400mm-4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sony GM 14.00mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1748.9886872357129,
+		"fy": 1748.8129316131844,
+		"cx": 2067.1511215438213,
+		"cy": 1095.7846434621686
+	},
+	"distortion_coeffs": [
+		0.3405233798654409,
+		0.10971861570343196,
+		0.09865767049472551,
+		-0.0017863862592717432
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Sony GM 14.00mm__C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Benoit Finck",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

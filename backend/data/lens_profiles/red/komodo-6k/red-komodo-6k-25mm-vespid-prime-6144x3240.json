@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-25mm-vespid-prime-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "25MM VESPID PRIME",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5788.278057136403,
+		"fy": 5789.600391540559,
+		"cx": 3107.3780201173963,
+		"cy": 1599.6943984792138
+	},
+	"distortion_coeffs": [
+		0.11123341299351514,
+		1.7149717625879006,
+		-14.994575519482954,
+		48.98769775880969
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_25MM VESPID PRIME_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Alan Grey",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

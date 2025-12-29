@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-meike-mini-35mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Meike Mini 35mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7670.817851689287,
+		"fy": 7662.909833655344,
+		"cx": 2892.4667533068273,
+		"cy": 1637.069555810663
+	},
+	"distortion_coeffs": [
+		0.12228214396194038,
+		1.6430310248561226,
+		-15.308469204535694,
+		52.63098677424538
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Meike Mini 35mm_6K_5k_16by9_5760x3240-24.00fps",
+		"calibrated_by": "EMO DECHEV",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

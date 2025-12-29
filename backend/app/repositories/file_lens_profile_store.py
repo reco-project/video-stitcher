@@ -8,11 +8,14 @@ Design notes:
 - Filesystem is an index, not source of truth (JSON content is authoritative)
 - get_by_id() derives path directly (no scanning for performance)
 - Scanning is only used for discovery operations (list_all, list_brands, etc.)
+- Caching is used to avoid repeated filesystem scans for large profile sets
 """
 
 import json
 from pathlib import Path
 from typing import List, Dict, Optional
+from functools import lru_cache
+from datetime import datetime
 
 from app.repositories.lens_profile_store import LensProfileStore
 from app.models.lens_profile import LensProfileModel
@@ -31,6 +34,9 @@ class FileLensProfileStore(LensProfileStore):
         """
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self._cache = None
+        self._cache_time = None
+        self._cache_ttl = 300  # 5 minutes cache TTL
 
     def _validate_profile(self, profile_dict: Dict) -> Dict:
         """
@@ -88,8 +94,15 @@ class FileLensProfileStore(LensProfileStore):
         except json.JSONDecodeError as e:
             raise ValueError(f"Malformed JSON in {path}: {str(e)}")
 
-    def list_all(self) -> List[Dict]:
-        """Return all profiles by scanning filesystem."""
+    def _is_cache_valid(self) -> bool:
+        """Check if cache is still valid based on TTL."""
+        if self._cache is None or self._cache_time is None:
+            return False
+        elapsed = (datetime.now() - self._cache_time).total_seconds()
+        return elapsed < self._cache_ttl
+
+    def _load_all_profiles(self) -> List[Dict]:
+        """Internal method to load all profiles from filesystem."""
         profiles = []
 
         # Walk entire directory tree looking for .json files
@@ -102,6 +115,21 @@ class FileLensProfileStore(LensProfileStore):
                 continue
 
         return profiles
+
+    def _invalidate_cache(self):
+        """Invalidate the cache (called on create/update/delete)."""
+        self._cache = None
+        self._cache_time = None
+
+    def list_all(self) -> List[Dict]:
+        """Return all profiles (cached for performance with large profile sets)."""
+        if self._is_cache_valid():
+            return self._cache
+
+        # Cache miss or expired - reload
+        self._cache = self._load_all_profiles()
+        self._cache_time = datetime.now()
+        return self._cache
 
     def get_by_id(self, profile_id: str) -> Optional[Dict]:
         """
@@ -203,6 +231,9 @@ class FileLensProfileStore(LensProfileStore):
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(validated_profile, f, indent=2, ensure_ascii=False)
 
+        # Invalidate cache
+        self._invalidate_cache()
+
         return validated_profile
 
     def update(self, profile_id: str, profile: Dict) -> Dict:
@@ -250,6 +281,9 @@ class FileLensProfileStore(LensProfileStore):
         with open(new_path, "w", encoding="utf-8") as f:
             json.dump(validated_profile, f, indent=2, ensure_ascii=False)
 
+        # Invalidate cache
+        self._invalidate_cache()
+
         return validated_profile
 
     def delete(self, profile_id: str) -> bool:
@@ -273,6 +307,9 @@ class FileLensProfileStore(LensProfileStore):
                     except OSError:
                         pass  # Directory not empty, that's fine
 
+                    # Invalidate cache
+                    self._invalidate_cache()
+
                     return True
             except (ValueError, KeyError):
                 continue
@@ -283,31 +320,41 @@ class FileLensProfileStore(LensProfileStore):
         """
         Return unique camera brands from all profiles.
 
-        Returns brands in original casing from profiles (not slugs).
+        Returns brands with normalized casing (deduplicates case variants).
+        Uses the first occurrence's casing for each unique brand.
         """
-        brands = set()
+        brands_map = {}  # lowercase -> original case
 
         for profile in self.list_all():
             if "camera_brand" in profile:
-                brands.add(profile["camera_brand"])
+                brand = profile["camera_brand"]
+                brand_lower = brand.lower()
+                # Keep first occurrence's casing
+                if brand_lower not in brands_map:
+                    brands_map[brand_lower] = brand
 
-        return sorted(list(brands))
+        return sorted(brands_map.values())
 
     def list_models(self, brand: str) -> List[str]:
         """
         Return models for given brand.
 
-        Matches brand case-insensitively, returns models in original casing.
+        Matches brand case-insensitively, returns models with normalized casing.
+        Uses the first occurrence's casing for each unique model.
         """
-        models = set()
+        models_map = {}  # lowercase -> original case
         brand_lower = brand.lower()
 
         for profile in self.list_all():
             profile_brand = profile.get("camera_brand", "")
             if profile_brand.lower() == brand_lower:
-                models.add(profile["camera_model"])
+                model = profile["camera_model"]
+                model_lower = model.lower()
+                # Keep first occurrence's casing
+                if model_lower not in models_map:
+                    models_map[model_lower] = model
 
-        return sorted(list(models))
+        return sorted(models_map.values())
 
     def list_by_brand_model(self, brand: str, model: str) -> List[Dict]:
         """

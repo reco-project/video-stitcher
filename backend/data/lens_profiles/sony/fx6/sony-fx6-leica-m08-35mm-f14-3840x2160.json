@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-leica-m08-35mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Leica M0.8 35mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6498.511464553996,
+		"fy": 6513.885259872066,
+		"cx": 1916.2374896998392,
+		"cy": 1076.4253274612724
+	},
+	"distortion_coeffs": [
+		0.06487799801012703,
+		-0.33903968020167724,
+		28.415752751979294,
+		-187.19332813512267
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Leica M0.8 35mm F1.4__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Benoit Finck",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

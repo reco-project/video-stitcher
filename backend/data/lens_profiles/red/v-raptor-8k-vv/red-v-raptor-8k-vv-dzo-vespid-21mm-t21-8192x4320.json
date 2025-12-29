@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-dzo-vespid-21mm-t21-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "DZO Vespid 21mm T2.1",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4357.394180823553,
+		"fy": 4361.588133372631,
+		"cx": 4073.236764153347,
+		"cy": 2153.544340070338
+	},
+	"distortion_coeffs": [
+		0.22202976251266696,
+		0.1660133614506398,
+		-0.0008760282110058647,
+		0.30111404860434826
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_DZO Vespid 21mm T2.1_8K 17:9_8k_1.90by1_8192x4320-30.00fps",
+		"calibrated_by": "Omar Alfadhil",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

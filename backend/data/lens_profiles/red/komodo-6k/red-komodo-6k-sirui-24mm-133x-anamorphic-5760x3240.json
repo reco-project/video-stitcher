@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sirui-24mm-133x-anamorphic-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sirui 24mm 1,33x Anamorphic",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11406.593592163315,
+		"fy": 14398.978591165913,
+		"cx": 2581.671047104865,
+		"cy": 1363.2771932682688
+	},
+	"distortion_coeffs": [
+		0.4417055418429489,
+		17.898669099062765,
+		-315.42488809195083,
+		2160.733911059492
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sirui 24mm 1,33x Anamorphic_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "GEE",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

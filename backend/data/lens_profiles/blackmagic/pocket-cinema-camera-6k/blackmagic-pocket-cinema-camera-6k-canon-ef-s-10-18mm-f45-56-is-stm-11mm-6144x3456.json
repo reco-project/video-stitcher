@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-canon-ef-s-10-18mm-f45-56-is-stm-11mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Canon EF-S 10-18mm f/4.5-5.6 IS STM 11mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3053.254956260902,
+		"fy": 3048.4794746094412,
+		"cx": 3134.202603037251,
+		"cy": 1663.283581565316
+	},
+	"distortion_coeffs": [
+		0.31655825018053907,
+		0.2095436077155735,
+		-0.19238858640691808,
+		0.17687003259470474
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Canon EF-S 10-18mm f/4.5-5.6 IS STM 11mm_Braw_6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Bean-FPV",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-nikon_nikkor_16mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Nikon_Nikkor_16mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4155.555274664899,
+		"fy": 4161.74722368049,
+		"cx": 3075.849959511043,
+		"cy": 1736.611870299123
+	},
+	"distortion_coeffs": [
+		-0.02484956197557233,
+		0.0321703981726072,
+		-0.1414032884114374,
+		0.1418275048136904
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K_Nikon_Nikkor_16mm_6K_6k_16by9_6144x3456-24.00fps",
+		"calibrated_by": "Yoshio Kitagawa",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

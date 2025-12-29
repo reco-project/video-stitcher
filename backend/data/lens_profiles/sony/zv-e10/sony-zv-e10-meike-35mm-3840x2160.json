@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-meike-35mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Meike 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11118.862973857464,
+		"fy": 11106.007262194553,
+		"cx": 1849.847793764827,
+		"cy": 1665.419925570245
+	},
+	"distortion_coeffs": [
+		0.34652145578262944,
+		-10.03354949127992,
+		329.52601581914547,
+		-1897.6192652251589
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Meike 35mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Hoang",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

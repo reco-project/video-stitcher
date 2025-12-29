@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-laowa-15mm-f2-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "laowa 15mm F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1676.758986867491,
+		"fy": 1676.501942876637,
+		"cx": 1932.2698422590493,
+		"cy": 1085.0919976303933
+	},
+	"distortion_coeffs": [
+		0.29833139389940194,
+		0.270297158530018,
+		-0.45829174290075775,
+		0.6350364188737425
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_laowa 15mm F2__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "zhao Felix",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

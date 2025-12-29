@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-laowa-9-mm-zerod-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "LAOWA 9 mm ZeroD",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1424.331099288551,
+		"fy": 1424.3409444855083,
+		"cx": 2049.6783564928523,
+		"cy": 1087.1463930666323
+	},
+	"distortion_coeffs": [
+		0.3547130014488882,
+		0.10453407012226218,
+		0.010496140180764436,
+		0.09241466442017147
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_LAOWA 9 mm ZeroD_6K, 17:9, , Prores 422 HQ_C4k_1.90by1_4096x2160-30.00fps",
+		"calibrated_by": "Lenovo",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

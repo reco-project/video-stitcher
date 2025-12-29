@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-panasonic-leica-10-25-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Panasonic Leica 10-25",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2306.3726582832855,
+		"fy": 2305.671703243613,
+		"cx": 1988.2588711001356,
+		"cy": 1070.8147642194604
+	},
+	"distortion_coeffs": [
+		0.19204038121300032,
+		0.11905776562684696,
+		-0.07696017875772755,
+		0.10748232419152225
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Panasonic Leica 10-25_ProRes HQ Ultra HD_4k_16by9_3840x2160-30.00fps",
+		"calibrated_by": "user",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nikon-ais-35mm-14-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Nikon AIS 35mm 1.4",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6093.099812177185,
+		"fy": 6092.722473164982,
+		"cx": 3040.1849940759066,
+		"cy": 1311.3203354244254
+	},
+	"distortion_coeffs": [
+		-0.014785735420714496,
+		6.370693192572114,
+		-77.08863578081656,
+		339.054980093869
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Nikon AIS 35mm 1.4_6K 2.4:1_6k_2.37by1_6144x2592-25.00fps",
+		"calibrated_by": "Felix M\u00fcller",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sigma-16mm-f14-dc-dn-c-017-16mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "SIGMA 16mm F1.4 DC DN | C 017 16mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3574.380113173556,
+		"fy": 3571.7000780242815,
+		"cx": 2094.647363067122,
+		"cy": 1024.6457913585914
+	},
+	"distortion_coeffs": [
+		0.18227085959500533,
+		0.9545067847300388,
+		-6.467783676277643,
+		16.679206425693927
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_SIGMA 16mm F1.4 DC DN | C 017 16mm__C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "D",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

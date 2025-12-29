@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-sirui-35mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "sirui 35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2981.0149963236504,
+		"fy": 2978.6462789861735,
+		"cx": 962.121366791738,
+		"cy": 531.6241841292091
+	},
+	"distortion_coeffs": [
+		0.23195996880601255,
+		2.4887692015599203,
+		-29.079564504753737,
+		158.32817787739486
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_sirui 35mm__1080p_16by9_1920x1080-29.97fps",
+		"calibrated_by": "\u5f20\u8fea\u7fd4",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

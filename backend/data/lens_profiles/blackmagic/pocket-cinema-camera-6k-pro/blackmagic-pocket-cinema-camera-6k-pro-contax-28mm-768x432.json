@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-contax-28mm-768x432",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "contax 28mm",
+	"resolution": {
+		"width": 768,
+		"height": 432
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 948.7461937271024,
+		"fy": 926.4026456568278,
+		"cx": 386.9157670958252,
+		"cy": 209.7801787603765
+	},
+	"distortion_coeffs": [
+		0.21724450527900507,
+		0.620885096476826,
+		-3.9839731559942098,
+		11.440278121665012
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_contax 28mm__480p_16by9_768x432-24.00fps",
+		"calibrated_by": "Max Olsson",
+		"original_resolution": "768x432",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

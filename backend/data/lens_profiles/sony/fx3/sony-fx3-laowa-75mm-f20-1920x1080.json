@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-laowa-75mm-f20-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "laowa 7.5mm F2,0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 634.8149280812617,
+		"fy": 634.9650964218338,
+		"cx": 952.1985158901352,
+		"cy": 534.2118285404894
+	},
+	"distortion_coeffs": [
+		0.3320935657543503,
+		0.08163955639835348,
+		0.025612736270951827,
+		0.049190022523757315
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_laowa 7.5mm F2,0__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "\u96f7\u77f3Mac studio display",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

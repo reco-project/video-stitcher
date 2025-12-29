@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-sigma-50mm-14-ex-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma 50mm 1.4 EX",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10741.47052764016,
+		"fy": 10743.423547730265,
+		"cx": 3232.81515426516,
+		"cy": 1485.7866870996584
+	},
+	"distortion_coeffs": [
+		0.1493835202397472,
+		1.962838435849348,
+		-38.32236150459718,
+		279.737792167189
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Sigma 50mm 1.4 EX_6K HQ R3D_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Derek Frampton Davis",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

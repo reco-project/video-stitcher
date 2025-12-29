@@ -1,0 +1,33 @@
+{
+	"id": "gopro-session-4--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "Session 4",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 849.6112359894471,
+		"fy": 848.9789215714624,
+		"cx": 957.354759276763,
+		"cy": 537.3228504862695
+	},
+	"distortion_coeffs": [
+		0.10262654926546742,
+		-0.04295081770886932,
+		0.013404687262933325,
+		-0.002556546972008738
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_Session 4___1080p_16by9_1920x1080-29.97fps",
+		"calibrated_by": "Oleksandr",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

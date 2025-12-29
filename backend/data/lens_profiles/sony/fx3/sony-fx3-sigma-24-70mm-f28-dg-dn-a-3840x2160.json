@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-sigma-24-70mm-f28-dg-dn-a-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Sigma 24-70mm f/2.8 DG DN | A",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7897.105572668185,
+		"fy": 7887.166732673529,
+		"cx": 1922.44860498583,
+		"cy": 1079.598417430871
+	},
+	"distortion_coeffs": [
+		0.4545279108004509,
+		8.13315489777219,
+		-167.37526325373446,
+		1403.1046766179109
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Sigma 24-70mm f/2.8 DG DN | A_70mm_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Dustin Niles",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

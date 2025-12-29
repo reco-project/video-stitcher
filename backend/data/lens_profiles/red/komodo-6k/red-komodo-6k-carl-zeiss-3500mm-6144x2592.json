@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-carl-zeiss-3500mm-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Carl Zeiss 35.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8273.891097377973,
+		"fy": 8273.008412066863,
+		"cx": 3078.6988514541044,
+		"cy": 1301.197553207724
+	},
+	"distortion_coeffs": [
+		0.24368508838742936,
+		0.26535549427741356,
+		-2.4823830431154503,
+		16.94885470359785
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Carl Zeiss 35.00mm_6K 2.4:1_6k_2.37by1_6144x2592-25.00fps",
+		"calibrated_by": "Ethan",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

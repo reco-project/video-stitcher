@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-canon-fd-50mm-speed-boosted-14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Canon FD 50mm Speed Boosted 1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9562.852420160816,
+		"fy": 9572.593410265305,
+		"cx": 1882.645860308785,
+		"cy": 1209.1922842639913
+	},
+	"distortion_coeffs": [
+		0.1371953278800564,
+		0.6777930130686216,
+		83.47609803938083,
+		-2438.6864253972612
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Canon FD 50mm Speed Boosted 1.4__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "carl bonifacio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

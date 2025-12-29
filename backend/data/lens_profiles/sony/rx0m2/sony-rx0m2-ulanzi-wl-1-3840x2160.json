@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx0m2-ulanzi-wl-1-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0M2",
+	"lens_model": "Ulanzi wl-1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2166.97040731012,
+		"fy": 2166.5426100431946,
+		"cx": 1908.07742417831,
+		"cy": 1085.2188868156218
+	},
+	"distortion_coeffs": [
+		0.16601312728812512,
+		0.4119382983324424,
+		-0.9965385705756592,
+		0.7934741256764376
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX0M2_Ulanzi wl-1__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "c\u00e9dric CHANGARNIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

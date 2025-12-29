@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-dzo-vespid-21mm-768x432",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "DZO Vespid 21mm",
+	"resolution": {
+		"width": 768,
+		"height": 432
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 713.5110848030278,
+		"fy": 696.2309674415002,
+		"cx": 392.8594739558987,
+		"cy": 206.8070424099604
+	},
+	"distortion_coeffs": [
+		0.1857078659181049,
+		0.5619377428310519,
+		-1.9316974898758443,
+		3.5353325898499923
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_DZO Vespid 21mm__480p_16by9_768x432-24.00fps",
+		"calibrated_by": "Max Olsson",
+		"original_resolution": "768x432",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

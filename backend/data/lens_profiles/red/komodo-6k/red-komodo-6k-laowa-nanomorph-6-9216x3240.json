@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-laowa-nanomorph-6-9216x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa Nanomorph 6",
+	"resolution": {
+		"width": 9216,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11925.37616180611,
+		"fy": 12228.711477295685,
+		"cx": 6063.343487977281,
+		"cy": 1188.53951339627
+	},
+	"distortion_coeffs": [
+		0.7407953759317282,
+		-7.748348658025194,
+		51.47526928612552,
+		-122.84970040174132
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Laowa Nanomorph 6__8k_2.84by1_9216x3240-25.00fps",
+		"calibrated_by": "le daim",
+		"original_resolution": "9216x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

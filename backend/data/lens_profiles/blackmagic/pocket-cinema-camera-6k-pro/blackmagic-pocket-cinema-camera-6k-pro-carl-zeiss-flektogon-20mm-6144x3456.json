@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-carl-zeiss-flektogon-20mm-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Carl Zeiss Flektogon 20mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5394.738801958455,
+		"fy": 5397.687102386039,
+		"cx": 3010.843452691749,
+		"cy": 1699.88022332271
+	},
+	"distortion_coeffs": [
+		0.1815224222583287,
+		0.952729696266941,
+		-4.549157572909115,
+		9.536911711163397
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Carl Zeiss Flektogon 20mm_20mm_6k_16by9_6144x3456-30.00fps",
+		"calibrated_by": "manuel",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

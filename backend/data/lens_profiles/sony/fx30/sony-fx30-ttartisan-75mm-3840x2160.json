@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-ttartisan-75mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "TTartisan 7.5mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1669.0896870255042,
+		"fy": 1668.9582074754555,
+		"cx": 1876.634612978405,
+		"cy": 1079.5650865091566
+	},
+	"distortion_coeffs": [
+		0.007009175959518399,
+		-0.006994728057938332,
+		-0.02071879885751167,
+		0.01881003266791363
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_TTartisan 7.5mm__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "ono",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

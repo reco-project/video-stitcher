@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero10-black-linear-4650x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO10 Black",
+	"lens_model": "Linear",
+	"resolution": {
+		"width": 4650,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1896.0693946897647,
+		"fy": 1811.5526840287928,
+		"cx": 2390.9533641423895,
+		"cy": 1124.18279730002
+	},
+	"distortion_coeffs": [
+		0.2591051090457669,
+		-0.013833214342009494,
+		0.13743030662077202,
+		-0.08546081153711846
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO10 Black_Linear_1.21x Neewer Anamorphic Lens_C4k_2.15by1_4650x2160-50.00fps",
+		"calibrated_by": "Mylez Molo",
+		"original_resolution": "4650x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

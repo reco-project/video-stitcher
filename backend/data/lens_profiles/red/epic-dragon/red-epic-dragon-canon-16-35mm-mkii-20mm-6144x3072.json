@@ -1,0 +1,33 @@
+{
+	"id": "red-epic-dragon-canon-16-35mm-mkii-20mm-6144x3072",
+	"camera_brand": "RED",
+	"camera_model": "EPIC DRAGON",
+	"lens_model": "CANON 16-35mm Mkii (20mm)",
+	"resolution": {
+		"width": 6144,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6919.1947933401025,
+		"fy": 6906.207081577577,
+		"cx": 3024.3008153330993,
+		"cy": 1627.4372905713662
+	},
+	"distortion_coeffs": [
+		0.35309218686253874,
+		-0.051871452240782254,
+		2.2349786940200467,
+		-2.5749836025872
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_EPIC DRAGON_CANON 16-35mm Mkii (20mm)_6K WS 85p_6k_2by1_6144x3072-23.98fps",
+		"calibrated_by": "Brent Barrie",
+		"original_resolution": "6144x3072",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

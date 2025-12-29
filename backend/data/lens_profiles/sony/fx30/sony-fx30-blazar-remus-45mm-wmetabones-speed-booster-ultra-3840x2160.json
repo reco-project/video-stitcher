@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-blazar-remus-45mm-wmetabones-speed-booster-ultra-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Blazar Remus 45mm w/Metabones Speed Booster Ultra",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4619.677858342455,
+		"fy": 6959.904456223904,
+		"cx": 1949.606222043024,
+		"cy": 1076.5116840157932
+	},
+	"distortion_coeffs": [
+		0.1386535528790964,
+		-17.133440600120085,
+		220.55776474510117,
+		-639.9866681541602
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_Blazar Remus 45mm w/Metabones Speed Booster Ultra__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "thomas",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

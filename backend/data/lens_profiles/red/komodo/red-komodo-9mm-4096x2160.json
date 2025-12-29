@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-9mm-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "9mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1421.3399568457503,
+		"fy": 1420.477060512411,
+		"cx": 2047.633197257944,
+		"cy": 1078.922553067972
+	},
+	"distortion_coeffs": [
+		0.32976246091282374,
+		0.14859824057361598,
+		-0.0769149181647841,
+		0.12555734422571155
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_9mm_ProRes_C4k_1.90by1_4096x2160-29.97fps",
+		"calibrated_by": "Sebastian Schieren",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

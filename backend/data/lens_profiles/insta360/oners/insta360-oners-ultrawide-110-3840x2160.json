@@ -1,0 +1,33 @@
+{
+	"id": "insta360-oners-ultrawide-110-3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "Ultrawide 110",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2152.9102417519503,
+		"fy": 2152.1934993547416,
+		"cx": 1934.383000421292,
+		"cy": 1092.0703621780226
+	},
+	"distortion_coeffs": [
+		0.10916853484988488,
+		-0.061427582193124566,
+		0.18683756893964143,
+		-0.2614690616084439
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_OneRS_Ultrawide 110_EIS_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "benoit",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef-s24mm-f28-stm-2400mm-3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF-S24mm f/2.8 STM 24.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5917.978024764754,
+		"fy": 5918.311346215344,
+		"cx": 1964.243878310301,
+		"cy": 1044.5486255082792
+	},
+	"distortion_coeffs": [
+		0.12803981143857848,
+		2.9742530826587608,
+		-43.44150114421798,
+		227.68231600459396
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF-S24mm f/2.8 STM 24.00mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Ben",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

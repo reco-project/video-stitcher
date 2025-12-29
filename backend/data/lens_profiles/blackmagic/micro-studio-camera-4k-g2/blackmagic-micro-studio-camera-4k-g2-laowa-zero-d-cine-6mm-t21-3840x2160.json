@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-laowa-zero-d-cine-6mm-t21-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4k G2",
+	"lens_model": "Laowa Zero-D Cine 6mm T2.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1355.477200612548,
+		"fy": 1355.929049693046,
+		"cx": 1906.7160999602668,
+		"cy": 1101.6891766690592
+	},
+	"distortion_coeffs": [
+		0.3179180166616605,
+		0.19375171126924337,
+		-0.07073968982598845,
+		0.08200278750499926
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4k G2_Laowa Zero-D Cine 6mm T2.1__4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "Christopher C. Clark",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

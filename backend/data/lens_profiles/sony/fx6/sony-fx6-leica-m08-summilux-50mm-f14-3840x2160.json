@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-leica-m08-summilux-50mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Leica M0.8 Summilux 50mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6192.6730499343175,
+		"fy": 6187.361264202765,
+		"cx": 1949.7785211329217,
+		"cy": 1188.7287005594776
+	},
+	"distortion_coeffs": [
+		0.3629081077676331,
+		-1.4927073094119383,
+		25.161612646274698,
+		-132.7285409236908
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Leica M0.8 Summilux 50mm F1.4__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Benoit Finck",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

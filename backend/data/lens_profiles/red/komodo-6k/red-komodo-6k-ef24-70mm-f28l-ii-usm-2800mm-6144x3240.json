@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-ef24-70mm-f28l-ii-usm-2800mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF24-70mm f/2.8L II USM 28.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3934.951952278782,
+		"fy": 3936.97661360165,
+		"cx": 3078.744117447439,
+		"cy": 1577.1718310579538
+	},
+	"distortion_coeffs": [
+		0.2487323635470683,
+		-0.029519853979393943,
+		0.6018496836112699,
+		-0.5265678225875893
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_EF24-70mm f/2.8L II USM 28.00mm_6K 17:9_6k_1.90by1_6144x3240-25.00fps",
+		"calibrated_by": "Linas Lang",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

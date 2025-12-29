@@ -1,0 +1,33 @@
+{
+	"id": "sony-hxr-nx100-moren-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HXR-NX100",
+	"lens_model": "moren",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1537.6715887600533,
+		"fy": 1534.9593991309553,
+		"cx": 960.0202716076412,
+		"cy": 539.1270725541572
+	},
+	"distortion_coeffs": [
+		0.31557680237837604,
+		0.7220055528849111,
+		-6.693108333707415,
+		21.84706163094385
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_HXR-NX100_moren_zhengchang_1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Lgf",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

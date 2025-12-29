@@ -1,0 +1,33 @@
+{
+	"id": "dji-air-air-1440x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Air",
+	"lens_model": "Air",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 681.0391482785608,
+		"fy": 681.080755833085,
+		"cx": 709.5744194370052,
+		"cy": 514.359866182746
+	},
+	"distortion_coeffs": [
+		0.021553365383525133,
+		0.01113865896239001,
+		-0.010224625950745816,
+		0.0032143313290456765
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Air_Air__720p_4by3_1440x1080-60.00fps",
+		"calibrated_by": "Tom DeMoulin",
+		"original_resolution": "1440x1080",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

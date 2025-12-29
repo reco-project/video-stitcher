@@ -1,0 +1,33 @@
+{
+	"id": "insta360-one-r-1-inch-wide-f32-144mm-5312x2988",
+	"camera_brand": "Insta360",
+	"camera_model": "ONE R",
+	"lens_model": "1-inch Wide F3.2 14.4mm",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2205.437777636217,
+		"fy": 2204.180856195559,
+		"cx": 2749.8232275076193,
+		"cy": 1567.7503586584646
+	},
+	"distortion_coeffs": [
+		0.07391553765593643,
+		-0.033415292042406515,
+		0.036749857403262025,
+		-0.012264295345917548
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_ONE R_1-inch Wide F3.2 14.4mm_NO-EIS_5k_16by9_5312x2988-29.97fps",
+		"calibrated_by": "George Marshall",
+		"original_resolution": "5312x2988",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

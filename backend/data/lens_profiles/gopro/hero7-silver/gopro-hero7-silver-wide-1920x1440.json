@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero7-silver-wide-1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO7 Silver",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 933.7928607493828,
+		"fy": 933.4205916006592,
+		"cx": 962.8810402708092,
+		"cy": 727.1728807889606
+	},
+	"distortion_coeffs": [
+		0.11724538866825056,
+		-0.03919344210408709,
+		0.008027060289277577,
+		-0.0017817886615850388
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO7 Silver_Wide_auto_1440p_4by3_1920x1440-25.00fps",
+		"calibrated_by": "Convex",
+		"original_resolution": "1920x1440",
+		"calibrated_fps": "25.000011",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

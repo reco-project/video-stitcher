@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-15mm-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "15mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1611.204646040682,
+		"fy": 1607.674586313375,
+		"cx": 960.1641412443144,
+		"cy": 549.0079290147548
+	},
+	"distortion_coeffs": [
+		0.10269049856213688,
+		0.023200651862733436,
+		0.24583556078846389,
+		-0.38012603553792024
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_15mm__1080p_16by9_1920x1080-60.00fps",
+		"calibrated_by": "osama alghilani",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

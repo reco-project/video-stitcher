@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero7-black-wide-2704x2028",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO7 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1197.041334951092,
+		"fy": 1182.752897262359,
+		"cx": 1349.4370856783191,
+		"cy": 1025.1685584704828
+	},
+	"distortion_coeffs": [
+		0.05827443538968104,
+		-0.0029671598592464284,
+		0.009366464805740474,
+		-0.004149144010135564
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO7 Black_Wide__2.7k_4by3_2704x2028-59.94fps",
+		"calibrated_by": "sven",
+		"original_resolution": "2704x2028",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

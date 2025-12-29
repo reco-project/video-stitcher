@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-18-35mm-f18-dc-hsm-art-013-1800mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "18-35mm F1.8 DC HSM | Art 013 18.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4201.460858400159,
+		"fy": 4200.599862601923,
+		"cx": 2888.942142710407,
+		"cy": 1628.768938516872
+	},
+	"distortion_coeffs": [
+		0.22231763714091893,
+		0.20873892595909635,
+		-0.16050968790964584,
+		0.3836585300666447
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_18-35mm F1.8 DC HSM | Art 013 18.00mm_6K_5k_16by9_5760x3240-25.00fps",
+		"calibrated_by": "TAW4",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

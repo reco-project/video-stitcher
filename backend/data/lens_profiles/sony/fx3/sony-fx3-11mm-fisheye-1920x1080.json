@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-11mm-fisheye-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "11mm Fisheye",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 946.8773421876824,
+		"fy": 949.478160339157,
+		"cx": 947.9541407219286,
+		"cy": 547.4613964445425
+	},
+	"distortion_coeffs": [
+		-0.0863045310566934,
+		-0.015775462391934045,
+		0.020795511853175595,
+		-0.007228302984777713
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_11mm Fisheye__1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Julio Lopez",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

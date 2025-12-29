@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-pentax-50mm-f12-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Pentax 50mm f1.2",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 18924.010567508467,
+		"fy": 18835.649257036537,
+		"cx": 2937.6457787671475,
+		"cy": 2901.52792449418
+	},
+	"distortion_coeffs": [
+		-0.3450482566918409,
+		57.791706457614616,
+		-2986.514210600603,
+		56576.06988166948
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6K Pro_Pentax 50mm f1.2__6k_16by9_6144x3456-24.00fps",
+		"calibrated_by": "tuck",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

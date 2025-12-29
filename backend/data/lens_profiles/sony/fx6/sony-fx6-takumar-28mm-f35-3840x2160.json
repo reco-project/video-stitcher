@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-takumar-28mm-f35-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Takumar 28mm f3.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3132.927006610996,
+		"fy": 3136.6362911562655,
+		"cx": 1921.637092026087,
+		"cy": 1105.6391999347516
+	},
+	"distortion_coeffs": [
+		0.2079520303124894,
+		0.22977551139953825,
+		-0.18407627618803224,
+		0.6466064567511296
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Takumar 28mm f3.5__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

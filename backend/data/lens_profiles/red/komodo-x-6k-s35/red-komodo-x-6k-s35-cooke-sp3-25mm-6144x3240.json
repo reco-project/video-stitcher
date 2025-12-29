@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-x-6k-s35-cooke-sp3-25mm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "cooke sp3 25mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5724.816260143246,
+		"fy": 5720.877347038768,
+		"cx": 3096.1196796014337,
+		"cy": 1582.3353234002018
+	},
+	"distortion_coeffs": [
+		0.2632922082313305,
+		0.2458851573449112,
+		-0.7744252418862257,
+		2.699609424973782
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO-X 6K S35_cooke sp3 25mm_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "manoj paramahamsa",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-leica-dg-summilux-9f17-9mm-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "LEICA DG SUMMILUX 9/F1.7 9mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2044.891165363784,
+		"fy": 2045.3921165759784,
+		"cx": 1917.729094977084,
+		"cy": 1064.6484811441812
+	},
+	"distortion_coeffs": [
+		0.2302915140867929,
+		0.052684938204146395,
+		0.016722841693544627,
+		0.06935041340902695
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_LEICA DG SUMMILUX 9/F1.7 9mm__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Shun Ueno",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976028",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

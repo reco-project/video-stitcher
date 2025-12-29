@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-slr-magic-25mm-t095-hyperprime-cine-iii-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "SLR Magic 25mm T0.95 Hyperprime Cine III",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6116.456780946775,
+		"fy": 6156.528414280946,
+		"cx": 2020.482709766282,
+		"cy": 996.5985980288076
+	},
+	"distortion_coeffs": [
+		0.4304958874333568,
+		-4.990176587688464,
+		33.68897374001605,
+		-66.99858156199528
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_SLR Magic 25mm T0.95 Hyperprime Cine III__C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "ufhy",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

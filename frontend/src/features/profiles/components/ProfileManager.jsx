@@ -87,7 +87,7 @@ export default function ProfileManager() {
 			) : (
 				<div className="grid md:grid-cols-2 gap-4">
 					<div>
-						<ProfileBrowser onSelect={handleSelectProfile} />
+						<ProfileBrowser onSelect={handleSelectProfile} selectedProfileId={selectedProfileId} />
 					</div>
 					<div>
 						<ProfileDetail profileId={selectedProfileId} onEdit={handleEdit} onDelete={handleDelete} />

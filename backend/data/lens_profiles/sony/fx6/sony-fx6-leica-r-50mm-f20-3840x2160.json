@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-leica-r-50mm-f20-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Leica R 50mm f2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6083.2365291697615,
+		"fy": 6091.5069170734105,
+		"cx": 1895.2834111105456,
+		"cy": 1062.7695146557169
+	},
+	"distortion_coeffs": [
+		0.19347887200437971,
+		1.2014308952733344,
+		-11.134664057158975,
+		45.04630239055881
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Leica R 50mm f2.0__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

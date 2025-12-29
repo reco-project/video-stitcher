@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-56mm-dc-dn-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 56mm DC DN f/1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10190.69943914574,
+		"fy": 10153.106016141042,
+		"cx": 1896.1686444928023,
+		"cy": 925.5672328437852
+	},
+	"distortion_coeffs": [
+		0.41362656783050766,
+		-4.803855171041434,
+		280.36402817524413,
+		-3280.3253196925343
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sigma 56mm DC DN f/1.4__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Felix Rotter-McCartney",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

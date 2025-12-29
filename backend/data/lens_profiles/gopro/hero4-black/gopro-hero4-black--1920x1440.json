@@ -1,0 +1,33 @@
+{
+	"id": "gopro-hero4-black--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4 Black",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 866.7964101607914,
+		"fy": 867.7544689076435,
+		"cx": 955.0133703382452,
+		"cy": 732.1608321060648
+	},
+	"distortion_coeffs": [
+		0.05067001664057574,
+		-0.03716856176686879,
+		0.14211407405242552,
+		-0.14884047477737158
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "GoPro_HERO4 Black___1440p_4by3_1920x1440-50.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "1920x1440",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

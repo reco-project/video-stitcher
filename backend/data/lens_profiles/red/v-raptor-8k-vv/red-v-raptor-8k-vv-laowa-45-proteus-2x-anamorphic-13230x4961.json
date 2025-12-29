@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-laowa-45-proteus-2x-anamorphic-13230x4961",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Laowa 45 proteus 2x anamorphic",
+	"resolution": {
+		"width": 13230,
+		"height": 4961
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 30890.57441359223,
+		"fy": 32146.681299405365,
+		"cx": -4768.753417648004,
+		"cy": -3902.5310227275663
+	},
+	"distortion_coeffs": [
+		-0.5578526546102954,
+		3.2955561893236163,
+		-8.459343086713965,
+		8.769692881499907
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_Laowa 45 proteus 2x anamorphic_7K  2x_8k_2.67by1_13230x4961-25.00fps",
+		"calibrated_by": "teodor g\u00f6rtz",
+		"original_resolution": "13230x4961",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

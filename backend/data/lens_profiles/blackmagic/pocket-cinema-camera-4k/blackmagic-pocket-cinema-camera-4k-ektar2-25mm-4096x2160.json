@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-ektar2-25mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Ektar2 25mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6630.050890068462,
+		"fy": 6683.280107717323,
+		"cx": 2161.9765403240676,
+		"cy": 1288.2503000323566
+	},
+	"distortion_coeffs": [
+		0.836021103208808,
+		-12.261836458314194,
+		132.69105075910534,
+		-570.8597820159353
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Ektar2 25mm__C4k_1.90by1_4096x2160-25.00fps",
+		"calibrated_by": "Somerley Ha",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

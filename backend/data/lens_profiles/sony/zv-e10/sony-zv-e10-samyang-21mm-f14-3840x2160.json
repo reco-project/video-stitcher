@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-samyang-21mm-f14-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Samyang 21mm f1/4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4149.404051441359,
+		"fy": 4145.571885356011,
+		"cx": 1937.5052479009455,
+		"cy": 1096.388452881428
+	},
+	"distortion_coeffs": [
+		0.29365142947238904,
+		0.10602195703935433,
+		0.8549973790155356,
+		-1.0753667785804528
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Samyang 21mm f1/4__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Oleg M80",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

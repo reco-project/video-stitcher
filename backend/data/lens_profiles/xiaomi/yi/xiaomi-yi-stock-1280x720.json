@@ -1,0 +1,33 @@
+{
+	"id": "xiaomi-yi-stock-1280x720",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi",
+	"lens_model": "Stock",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 557.079285458893,
+		"fy": 559.1552530482121,
+		"cx": 658.7423352216989,
+		"cy": 492.62279800750736
+	},
+	"distortion_coeffs": [
+		0.4445864442755786,
+		0.04621966648453142,
+		0.2728115069735085,
+		-0.003432424605492803
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Xiaomi_Yi_Stock_auto_720p_16by9_1280x720-59.94fps",
+		"calibrated_by": "alex",
+		"original_resolution": "1280x720",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

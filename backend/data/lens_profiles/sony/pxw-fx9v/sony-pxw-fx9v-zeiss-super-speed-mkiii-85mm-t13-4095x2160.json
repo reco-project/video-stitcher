@@ -1,0 +1,33 @@
+{
+	"id": "sony-pxw-fx9v-zeiss-super-speed-mkiii-85mm-t13-4095x2160",
+	"camera_brand": "Sony",
+	"camera_model": "PXW-FX9V",
+	"lens_model": "Zeiss Super Speed MkIII 85mm t1.3",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12717.144668300072,
+		"fy": 12701.323280204582,
+		"cx": 2927.243788168015,
+		"cy": 1106.1434804283804
+	},
+	"distortion_coeffs": [
+		-0.05014475883335013,
+		-0.32662571647657823,
+		91.01529044365536,
+		-1228.1759863444563
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_PXW-FX9V_Zeiss Super Speed MkIII 85mm t1.3__C4k_1.90by1_4095x2160-24.00fps",
+		"calibrated_by": "Chad McClarnon",
+		"original_resolution": "4095x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

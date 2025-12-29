@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx3-zeiss-15mm-29t-cp3-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Zeiss 15mm 2.9T CP.3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1658.600053762065,
+		"fy": 1657.5258176404016,
+		"cx": 1900.8099102629308,
+		"cy": 1076.5002695330866
+	},
+	"distortion_coeffs": [
+		0.26012659668262433,
+		0.3038058401278188,
+		-0.32533626951517713,
+		0.2432009115370666
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX3_Zeiss 15mm 2.9T CP.3__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Julio Lopez",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

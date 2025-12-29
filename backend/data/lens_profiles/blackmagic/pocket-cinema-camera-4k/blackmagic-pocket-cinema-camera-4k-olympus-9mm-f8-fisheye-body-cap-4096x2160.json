@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-olympus-9mm-f8-fisheye-body-cap-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Olympus 9mm f8 Fisheye Body Cap",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2012.2385177520036,
+		"fy": 2012.561727142414,
+		"cx": 2078.0708246921213,
+		"cy": 1074.5422302927368
+	},
+	"distortion_coeffs": [
+		0.01151651172474395,
+		-0.01719029620785971,
+		0.01248023111478168,
+		-0.004953813556456636
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Olympus 9mm f8 Fisheye Body Cap__C4k_1.90by1_4096x2160-59.94fps",
+		"calibrated_by": "Sandros94",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "59.940063",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

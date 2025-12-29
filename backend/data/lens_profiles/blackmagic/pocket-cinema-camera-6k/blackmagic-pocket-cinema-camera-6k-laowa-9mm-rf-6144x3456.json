@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-laowa-9mm-rf-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Laowa 9mm RF",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2478.166443267424,
+		"fy": 2472.938759246097,
+		"cx": 3065.761176729368,
+		"cy": 1763.5322295324886
+	},
+	"distortion_coeffs": [
+		0.35401206797867213,
+		0.07051408920337542,
+		0.0913928008710621,
+		0.04774356998344973
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Laowa 9mm RF_T2.9 & \u221e_6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "S1W.ca",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

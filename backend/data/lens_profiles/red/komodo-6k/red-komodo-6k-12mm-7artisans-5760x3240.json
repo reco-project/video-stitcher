@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-12mm-7artisans-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "12mm 7Artisans",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2835.133931119733,
+		"fy": 2835.3732920947486,
+		"cx": 2901.805761943506,
+		"cy": 1612.8168351941863
+	},
+	"distortion_coeffs": [
+		0.2510003342964054,
+		0.14079105468861566,
+		0.02965679209405856,
+		0.1378881660575335
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_12mm 7Artisans_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "VidMuze Editor iMac Pro",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

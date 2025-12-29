@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-superspeed-mk1-t4-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss SuperSpeed Mk.1 T4",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4194.622768524875,
+		"fy": 4193.268191533132,
+		"cx": 2895.191327551353,
+		"cy": 1589.2119056077238
+	},
+	"distortion_coeffs": [
+		0.19735096068987015,
+		0.28732972607588825,
+		-0.3557295781652566,
+		0.8054175670874043
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Zeiss SuperSpeed Mk.1 T4_6K_5k_16by9_5760x3240-23.98fps",
+		"calibrated_by": "Yosuke Suga",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

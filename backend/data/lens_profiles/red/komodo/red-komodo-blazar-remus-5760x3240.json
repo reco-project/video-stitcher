@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-blazar-remus-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "BLAZAR REMUS",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6256.450109551067,
+		"fy": 9281.005239623424,
+		"cx": 2968.434466360666,
+		"cy": 1052.525480712942
+	},
+	"distortion_coeffs": [
+		0.19658376845035103,
+		-1.5610075303181006,
+		1.6043145771658007,
+		3.8971865516895847
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO_BLAZAR REMUS_1.5X ANAMORPHIC_5k_16by9_5760x3240-24.00fps",
+		"calibrated_by": "MGAPHOTO",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

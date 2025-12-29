@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-yonguno-50mm-f18-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Yonguno 50mm f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9847.040502500806,
+		"fy": 9928.314527231105,
+		"cx": 1804.7711395626216,
+		"cy": 544.0891033765455
+	},
+	"distortion_coeffs": [
+		0.40399054877849366,
+		-10.333753570981138,
+		238.73206743156143,
+		-1875.621116648177
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Yonguno 50mm f1.8__4k_16by9_3840x2160-23.98fps",
+		"calibrated_by": "Nico",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

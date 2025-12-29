@@ -1,0 +1,33 @@
+{
+	"id": "dji-mavic-air-2s-4k--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic Air 2s 4k",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2533.866883889366,
+		"fy": 2534.763163924593,
+		"cx": 1913.4416242965765,
+		"cy": 1076.2380127137496
+	},
+	"distortion_coeffs": [
+		0.31810699288713656,
+		-0.30612483647375366,
+		0.9427788952457627,
+		-0.2178481009756567
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mavic Air 2s 4k___4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Michal \u010eur\u00edk",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

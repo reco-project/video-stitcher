@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-sirui-24mm-mft-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "sirui 24mm mft",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6084.337068723145,
+		"fy": 7918.535879897396,
+		"cx": 3523.451753696993,
+		"cy": 1946.6107877830495
+	},
+	"distortion_coeffs": [
+		0.5538268211677656,
+		-1.8824171138973016,
+		5.635330814677288,
+		-5.050394997888848
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_sirui 24mm mft__C4k_1.90by1_4096x2160-30.00fps",
+		"calibrated_by": "Chad Rank",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

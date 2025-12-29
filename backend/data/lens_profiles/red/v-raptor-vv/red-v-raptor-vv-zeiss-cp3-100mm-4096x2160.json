@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-vv-zeiss-cp3-100mm-4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR VV",
+	"lens_model": "ZEISS CP.3 100MM",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10273.27953023938,
+		"fy": 10238.920283413629,
+		"cx": 1794.4386004093187,
+		"cy": 894.533282603434
+	},
+	"distortion_coeffs": [
+		0.400472673553254,
+		-3.466386210942633,
+		124.49925527704336,
+		-1437.036408688864
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR VV_ZEISS CP.3 100MM_8K PRORES_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Alex",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "dji-mini2-fov83-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mini2",
+	"lens_model": "FOV83",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2866.5623457206925,
+		"fy": 2836.294148715731,
+		"cx": 1894.6561734942493,
+		"cy": 1065.3844146934664
+	},
+	"distortion_coeffs": [
+		0.34628723181472676,
+		-0.0826788962552403,
+		0.4083689279219956,
+		-0.04068703128746228
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mini2_FOV83_24mm_4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "Arturs Tihonovs",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

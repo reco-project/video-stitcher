@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2-laowa-6mm-f20-zerod-mft-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "Laowa 6mm f/2.0 ZeroD MFT",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1361.837408107047,
+		"fy": 1361.2168640217592,
+		"cx": 1917.5374290846064,
+		"cy": 1098.338411543523
+	},
+	"distortion_coeffs": [
+		0.3385171637590136,
+		0.14427076002381103,
+		0.015441766739440626,
+		0.0480084606084148
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Micro Studio Camera 4K G2_Laowa 6mm f/2.0 ZeroD MFT__4k_16by9_3840x2160-24.00fps",
+		"calibrated_by": "Nomad Aerial",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

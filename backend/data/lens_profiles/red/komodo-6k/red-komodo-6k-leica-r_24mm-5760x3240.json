@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-leica-r_24mm-5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R_24mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5623.110356522065,
+		"fy": 5622.806864182522,
+		"cx": 2883.9370970190407,
+		"cy": 1660.626797928102
+	},
+	"distortion_coeffs": [
+		0.25876206763605913,
+		-0.1349205961195487,
+		1.9822786285850376,
+		-3.622932918529379
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Leica R_24mm_6K_5k_16by9_5760x3240-24.00fps",
+		"calibrated_by": "Mark Helsel",
+		"original_resolution": "5760x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

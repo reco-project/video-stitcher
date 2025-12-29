@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-nikon-ai-28mm-f2-6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Nikon AI 28mm f2",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4673.431054203219,
+		"fy": 4674.4003778525575,
+		"cx": 3080.9067251919123,
+		"cy": 1227.491517816096
+	},
+	"distortion_coeffs": [
+		0.2376865668747352,
+		-0.039136163398899027,
+		1.3261237014230958,
+		-1.538129292118884
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Nikon AI 28mm f2_6K 2.4:1_6k_2.37by1_6144x2592-25.00fps",
+		"calibrated_by": "Felix M\u00fcller",
+		"original_resolution": "6144x2592",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

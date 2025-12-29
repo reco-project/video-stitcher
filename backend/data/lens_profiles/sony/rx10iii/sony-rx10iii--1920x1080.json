@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx10iii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX10III",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1384.8432149871428,
+		"fy": 1378.2490926667754,
+		"cx": 966.3065482600996,
+		"cy": 548.5902973495017
+	},
+	"distortion_coeffs": [
+		0.3162708395767733,
+		0.27836428569532257,
+		-0.4552649770932146,
+		0.5660107731120633
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX10III___1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "hay chhan",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

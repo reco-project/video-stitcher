@@ -1,0 +1,33 @@
+{
+	"id": "dji-mini-3-pro--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mini 3 Pro",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2668.7332552654875,
+		"fy": 2670.5952458578154,
+		"cx": 1947.2053654231731,
+		"cy": 1097.8742289805498
+	},
+	"distortion_coeffs": [
+		0.55551778303888,
+		-1.5849422125550288,
+		5.842709321088308,
+		-6.847141538976152
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mini 3 Pro___4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "slavek 1",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

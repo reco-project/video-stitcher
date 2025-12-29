@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-ef-85mm-f14l-is-usm-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Canon EF 85mm f/1.4L IS USM",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 18326.909419839547,
+		"fy": 18334.23623269878,
+		"cx": 3036.521794793772,
+		"cy": 1648.2365517827027
+	},
+	"distortion_coeffs": [
+		0.4698367487141757,
+		-7.469893492700993,
+		395.99602134722466,
+		-5487.931510584174
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Canon EF 85mm f/1.4L IS USM_6K 17:9_6k_1.90by1_6144x3240-23.98fps",
+		"calibrated_by": "SCAN2FX",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "23.976025",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

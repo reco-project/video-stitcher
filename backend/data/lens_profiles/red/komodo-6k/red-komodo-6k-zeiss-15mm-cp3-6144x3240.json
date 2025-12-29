@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-zeiss-15mm-cp3-6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss 15mm cp.3",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3467.022468325108,
+		"fy": 3465.7002429535955,
+		"cx": 3090.96687401988,
+		"cy": 1585.8907254913602
+	},
+	"distortion_coeffs": [
+		0.2071236253102062,
+		0.905854867218554,
+		-3.029425132052952,
+		4.204941278435325
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Zeiss 15mm cp.3_6K 17:9_6k_1.90by1_6144x3240-24.00fps",
+		"calibrated_by": "Julio Lopez",
+		"original_resolution": "6144x3240",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

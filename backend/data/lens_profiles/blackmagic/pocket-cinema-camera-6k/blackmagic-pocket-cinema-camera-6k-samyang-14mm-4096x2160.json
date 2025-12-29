@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-samyang-14mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "samyang 14mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2703.0111342503274,
+		"fy": 2681.684202588262,
+		"cx": 2128.1447378599905,
+		"cy": 1086.6750344402258
+	},
+	"distortion_coeffs": [
+		0.1956776964490594,
+		0.06969710157968544,
+		0.19022805780272545,
+		-0.1840311337123479
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_samyang 14mm_ProRes_C4k_1.90by1_4096x2160-50.00fps",
+		"calibrated_by": "Camille Audibert",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

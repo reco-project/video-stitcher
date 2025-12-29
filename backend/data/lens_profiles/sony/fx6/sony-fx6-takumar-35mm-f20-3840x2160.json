@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-takumar-35mm-f20-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Takumar 35mm f2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4137.494687391772,
+		"fy": 4128.426442529257,
+		"cx": 1918.7273520656877,
+		"cy": 1067.6186400087574
+	},
+	"distortion_coeffs": [
+		0.17266330790847925,
+		1.1269873175927494,
+		-7.052823357674781,
+		18.99877948137015
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Takumar 35mm f2.0__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Brieuc LE MERCIER",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": true,
+		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

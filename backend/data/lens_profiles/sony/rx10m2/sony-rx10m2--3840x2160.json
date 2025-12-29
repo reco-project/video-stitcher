@@ -1,0 +1,33 @@
+{
+	"id": "sony-rx10m2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX10M2",
+	"lens_model": "",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2836.6321408890626,
+		"fy": 2835.7386624332767,
+		"cx": 1904.9025318473,
+		"cy": 1055.6466457033316
+	},
+	"distortion_coeffs": [
+		0.33044479982303376,
+		0.27777057299018004,
+		-0.8667107245856606,
+		1.5876078016443602
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_RX10M2___4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

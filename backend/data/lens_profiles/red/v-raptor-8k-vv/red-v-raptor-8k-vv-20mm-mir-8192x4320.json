@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-20mm-mir-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "20mm MIR",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4085.1375565597673,
+		"fy": 4084.7760120020785,
+		"cx": 4021.4792876633583,
+		"cy": 2221.971707320077
+	},
+	"distortion_coeffs": [
+		0.18372832347414875,
+		0.2820732462362926,
+		-0.3358952787464205,
+		0.43372156501408454
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_20mm MIR_8K 17:9_8k_1.90by1_8192x4320-29.97fps",
+		"calibrated_by": "Bryan Oliveira",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

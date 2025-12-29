@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-lumix-g-vario-12-35f28-19mm-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LUMIX G VARIO 12-35/F2.8  19mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4244.883316594759,
+		"fy": 4257.021274101334,
+		"cx": 1940.0822388015831,
+		"cy": 1077.6937621109907
+	},
+	"distortion_coeffs": [
+		0.28480552365018336,
+		-0.6796050061498844,
+		5.809907209168281,
+		-11.95147195013868
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4K_LUMIX G VARIO 12-35/F2.8  19mm__C4k_1.90by1_4096x2160-60.00fps",
+		"calibrated_by": "Kevin Bolz",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "60.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

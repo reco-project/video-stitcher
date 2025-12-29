@@ -1,0 +1,33 @@
+{
+	"id": "insta360-one-x2-ultrawide-148-2880x2880",
+	"camera_brand": "Insta360",
+	"camera_model": "ONE X2",
+	"lens_model": "Ultrawide 148",
+	"resolution": {
+		"width": 2880,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 540.2795386575723,
+		"fy": 540.5326551000614,
+		"cx": 1444.3003736812125,
+		"cy": 1443.7974976965074
+	},
+	"distortion_coeffs": [
+		0.2206843377577173,
+		0.0590585156653012,
+		-0.029721897988288205,
+		0.012502406067622467
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Insta360_ONE X2_Ultrawide 148_NO-EIS_2.7k_1by1_2880x2880-50.00fps",
+		"calibrated_by": "felix barjou",
+		"original_resolution": "2880x2880",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

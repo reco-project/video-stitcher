@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-19mm-f28-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "sigma 19mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3241.3498219679545,
+		"fy": 3238.8426701828416,
+		"cx": 1912.4746230617088,
+		"cy": 1040.674093168547
+	},
+	"distortion_coeffs": [
+		0.20319197191028077,
+		0.20403836779939036,
+		0.1956766353150228,
+		0.01580635131408325
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_sigma 19mm f2.8_25Fps_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

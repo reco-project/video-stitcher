@@ -1,0 +1,33 @@
+{
+	"id": "dji-phantom-3-advanced--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Phantom 3 Advanced",
+	"lens_model": "",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 899.0844442727857,
+		"fy": 897.7267138911286,
+		"cx": 927.1659308202536,
+		"cy": 565.6351943887004
+	},
+	"distortion_coeffs": [
+		0.3261039534742823,
+		0.14162281912498442,
+		0.06512405861609548,
+		0.049876540251496806
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Phantom 3 Advanced___1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "Taylor Brandl",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

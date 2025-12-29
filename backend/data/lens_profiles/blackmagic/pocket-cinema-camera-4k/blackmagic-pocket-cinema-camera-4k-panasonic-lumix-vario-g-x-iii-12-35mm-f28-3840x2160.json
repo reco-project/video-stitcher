@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-panasonic-lumix-vario-g-x-iii-12-35mm-f28-3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Panasonic Lumix Vario G X III 12-35mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3015.026306611519,
+		"fy": 3029.0298451159674,
+		"cx": 2050.9418924158717,
+		"cy": 1067.138966112433
+	},
+	"distortion_coeffs": [
+		0.12247641416863356,
+		0.5509221034214612,
+		-1.918339908852963,
+		3.1012422083257234
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_Panasonic Lumix Vario G X III 12-35mm f2.8__4k_16by9_3840x2160-50.00fps",
+		"calibrated_by": "Andrew",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

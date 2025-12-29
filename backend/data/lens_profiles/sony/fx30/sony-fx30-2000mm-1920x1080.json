@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx30-2000mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "20.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2439.855799346661,
+		"fy": 2438.8081758893486,
+		"cx": 950.7083380332846,
+		"cy": 507.27590525337007
+	},
+	"distortion_coeffs": [
+		0.5446526819321462,
+		0.21634935656351112,
+		4.466378631125392,
+		-16.006705559523603
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX30_20.00mm_Tamron 11-20mm @20mm_1080p_16by9_1920x1080-29.97fps",
+		"calibrated_by": "Anthony Wong",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

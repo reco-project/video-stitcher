@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-yongnuo-50mm-1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Yongnuo 50MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4417.493346996459,
+		"fy": 4435.6596062583585,
+		"cx": 984.8500305373312,
+		"cy": 476.01827422432234
+	},
+	"distortion_coeffs": [
+		0.40093712215394367,
+		10.494707185924096,
+		-250.6844813187788,
+		1954.6817229151443
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Yongnuo 50MM__1080p_16by9_1920x1080-59.94fps",
+		"calibrated_by": "\u674e\u5b87\u946b",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

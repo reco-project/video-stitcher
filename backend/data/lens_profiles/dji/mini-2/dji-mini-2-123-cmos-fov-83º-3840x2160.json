@@ -1,0 +1,33 @@
+{
+	"id": "dji-mini-2-123-cmos-fov-83\u00ba-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mini 2",
+	"lens_model": "1/2.3\" CMOS FOV: 83\u00ba",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3265.718589462536,
+		"fy": 3267.472536773341,
+		"cx": 1951.310966187346,
+		"cy": 1080.508057760617
+	},
+	"distortion_coeffs": [
+		0.28139231789316715,
+		0.8266764182699201,
+		-3.123076529250705,
+		4.243737921782416
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_Mini 2_1/2.3\" CMOS FOV: 83\u00ba_2K 25f_4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "Benicio",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

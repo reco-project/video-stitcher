@@ -1,0 +1,33 @@
+{
+	"id": "red-v-raptor-8k-vv-rf24-105mm-f4-l-is-usm-5000mm-8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "RF24-105mm F4 L IS USM @ 50.00mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10257.776556165682,
+		"fy": 10020.457366246725,
+		"cx": 4122.262455429347,
+		"cy": 2147.765267272472
+	},
+	"distortion_coeffs": [
+		0.4376092510562497,
+		0.8807992509879531,
+		-4.696548898615729,
+		25.259813547241144
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_V-RAPTOR 8K VV_RF24-105mm F4 L IS USM @ 50.00mm_8K 17:9_8k_1.90by1_8192x4320-25.00fps",
+		"calibrated_by": "Administrator",
+		"original_resolution": "8192x4320",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

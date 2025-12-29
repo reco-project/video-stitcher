@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6v-leica-elmarit-r-35mm-4095x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "Leica Elmarit- R 35mm",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4285.216021818769,
+		"fy": 4286.327616478248,
+		"cx": 2067.7406425440195,
+		"cy": 1026.4482912872036
+	},
+	"distortion_coeffs": [
+		0.22365517081434083,
+		0.7476752775252574,
+		-3.9048627702354626,
+		10.223466407438671
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6V_Leica Elmarit- R 35mm__C4k_1.90by1_4095x2160-25.00fps",
+		"calibrated_by": "Jakub Urbanski",
+		"original_resolution": "4095x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

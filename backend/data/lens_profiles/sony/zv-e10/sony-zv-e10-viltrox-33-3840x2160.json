@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-viltrox-33-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Viltrox 33",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 33959.357759453465,
+		"fy": 56419.164121494345,
+		"cx": 1390.0940018809897,
+		"cy": 1072.7929524623771
+	},
+	"distortion_coeffs": [
+		5.666506930489,
+		-947.2404480174416,
+		870310.5740483118,
+		-284350874.59516674
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Viltrox 33__4k_16by9_3840x2160-29.97fps",
+		"calibrated_by": "\u767d\u8336\u6e05\u6b22\u65e0\u7410\u4e8b",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "29.97003",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

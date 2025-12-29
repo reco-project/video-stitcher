@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-h-x015-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "H-X015",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1450.5788162068388,
+		"fy": 1450.5669130763831,
+		"cx": 985.9296760363968,
+		"cy": 556.4553907175979
+	},
+	"distortion_coeffs": [
+		0.1627019896439858,
+		-0.17047199991866674,
+		0.7855199312985643,
+		-0.8472258104959093
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_H-X015__1080p_16by9_1920x1080-50.00fps",
+		"calibrated_by": "Jonas Klein",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

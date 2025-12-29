@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-tamron-17-70-f28-b070-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tamron 17-70 F2.8 B070",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2470.227826300431,
+		"fy": 2470.2268385756433,
+		"cx": 2016.0889759020104,
+		"cy": 1081.1503808888797
+	},
+	"distortion_coeffs": [
+		0.2743351438622753,
+		0.4811202258084821,
+		-0.946013295651198,
+		1.0580999180429962
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Tamron 17-70 F2.8 B070__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "jjj3271",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

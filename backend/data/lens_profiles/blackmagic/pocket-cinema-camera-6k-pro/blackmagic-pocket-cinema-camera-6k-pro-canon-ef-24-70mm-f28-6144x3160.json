@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro-canon-ef-24-70mm-f28-6144x3160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k Pro",
+	"lens_model": "Canon EF 24-70mm f2.8",
+	"resolution": {
+		"width": 6144,
+		"height": 3160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5811.087182508824,
+		"fy": 5818.262498404777,
+		"cx": 3085.3901030417137,
+		"cy": 1550.1711619730795
+	},
+	"distortion_coeffs": [
+		0.19786947891304724,
+		0.5099956187517928,
+		-5.643622154976253,
+		21.17572201123273
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k Pro_Canon EF 24-70mm f2.8_@24mm_6k_1.94by1_6144x3160-24.00fps",
+		"calibrated_by": "SANLEGA",
+		"original_resolution": "6144x3160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

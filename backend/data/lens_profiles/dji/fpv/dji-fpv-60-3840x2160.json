@@ -1,0 +1,33 @@
+{
+	"id": "dji-fpv-60-3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "FPV",
+	"lens_model": "60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1915.176969854366,
+		"fy": 1915.9955287212044,
+		"cx": 1921.58364577774,
+		"cy": 1091.137830065462
+	},
+	"distortion_coeffs": [
+		0.09093383633193304,
+		0.005271946976218555,
+		-0.02234171437505471,
+		0.007713429725521914
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "DJI_FPV_60__4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Xavier Tirado",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

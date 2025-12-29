@@ -1,0 +1,33 @@
+{
+	"id": "sony-zv-e10-sigma-70-300-14-56-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 70-300 1.4-5,6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 119665.60547134223,
+		"fy": 132935.45208558394,
+		"cx": 1463.9524710390222,
+		"cy": 999.4422664013488
+	},
+	"distortion_coeffs": [
+		22.107924531589735,
+		-7982.423932734651,
+		226391569.0537943,
+		-529097682726.10486
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_ZV-E10_Sigma 70-300 1.4-5,6__4k_16by9_3840x2160-25.00fps",
+		"calibrated_by": "CGBOOK",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

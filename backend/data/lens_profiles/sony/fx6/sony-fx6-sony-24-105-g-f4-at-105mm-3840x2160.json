@@ -1,0 +1,33 @@
+{
+	"id": "sony-fx6-sony-24-105-g-f4-at-105mm-3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sony 24-105 G f4 at 105mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11420.242541484711,
+		"fy": 11424.474861438865,
+		"cx": 1953.5808996644812,
+		"cy": 1240.829675120309
+	},
+	"distortion_coeffs": [
+		0.18620915113398415,
+		6.977162397683515,
+		-218.74129786109972,
+		3092.019214699018
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Sony_FX6_Sony 24-105 G f4 at 105mm_60_4k_16by9_3840x2160-59.94fps",
+		"calibrated_by": "Kyle M Fields",
+		"original_resolution": "3840x2160",
+		"calibrated_fps": "59.94006",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

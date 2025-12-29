@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-laowa-ffii-14mm-f40-cd-dreamer-6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Laowa FFii 14mm F4.0 C&D-Dreamer",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3883.1075424120095,
+		"fy": 3884.1519708186975,
+		"cx": 3099.219532403849,
+		"cy": 1810.5431592487084
+	},
+	"distortion_coeffs": [
+		0.33890698137829134,
+		0.17891544117065675,
+		-0.19720603768426148,
+		0.32394616784878705
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 6k_Laowa FFii 14mm F4.0 C&D-Dreamer_Sony E mount_6k_16by9_6144x3456-50.00fps",
+		"calibrated_by": "Kim Tang",
+		"original_resolution": "6144x3456",
+		"calibrated_fps": "50.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k-ttartisan-25mm-133-anamorphic-4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "TTartisan 25mm 1.33 Anamorphic",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4199.922061788247,
+		"fy": 5212.356858682273,
+		"cx": 1901.8085205931964,
+		"cy": 1167.264722826751
+	},
+	"distortion_coeffs": [
+		0.11782004213817958,
+		-0.061465705253485735,
+		-0.24829351861904753,
+		3.838527560577445
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera 4k_TTartisan 25mm 1.33 Anamorphic_90deg_C4k_1.90by1_4096x2160-24.00fps",
+		"calibrated_by": "Blackbug Digital",
+		"original_resolution": "4096x2160",
+		"calibrated_fps": "24.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

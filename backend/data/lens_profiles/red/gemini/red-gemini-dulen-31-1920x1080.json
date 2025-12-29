@@ -1,0 +1,33 @@
+{
+	"id": "red-gemini-dulen-31-1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "Gemini",
+	"lens_model": "Dulen 31",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1746.486095558083,
+		"fy": 1746.3067961221832,
+		"cx": 951.9081664034694,
+		"cy": 491.03085015611583
+	},
+	"distortion_coeffs": [
+		0.06441342132075174,
+		2.6560003006205046,
+		-14.125832379128887,
+		29.06291981254722
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_Gemini_Dulen 31_50fps_1080p_16by9_1920x1080-25.00fps",
+		"calibrated_by": "Rene Siciliano",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

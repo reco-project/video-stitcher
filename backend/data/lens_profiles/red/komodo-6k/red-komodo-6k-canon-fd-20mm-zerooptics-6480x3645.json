@@ -1,0 +1,33 @@
+{
+	"id": "red-komodo-6k-canon-fd-20mm-zerooptics-6480x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Canon FD 20mm ZEROOptics",
+	"resolution": {
+		"width": 6480,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5291.265528215174,
+		"fy": 5288.7008010219815,
+		"cx": 3277.802680986955,
+		"cy": 1847.106268468944
+	},
+	"distortion_coeffs": [
+		0.20116929664572764,
+		0.5378111416676011,
+		-1.5352265047271034,
+		2.2418866402045836
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "RED_KOMODO 6K_Canon FD 20mm ZEROOptics_6K_6k_16by9_6480x3645-25.00fps",
+		"calibrated_by": "Angelo Felchle / CINEQUADS",
+		"original_resolution": "6480x3645",
+		"calibrated_fps": "25.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}

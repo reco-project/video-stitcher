@@ -1,0 +1,33 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-laowa-9-mm-f28-1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera",
+	"lens_model": "Laowa 9 mm, F2,8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1410.6002892102133,
+		"fy": 1412.6587037099791,
+		"cx": 990.5495957456884,
+		"cy": 556.6115410770885
+	},
+	"distortion_coeffs": [
+		0.35966688375279815,
+		-0.06019061416585669,
+		0.8633535644085811,
+		-1.4355918954907398
+	],
+	"metadata": {
+		"source": "Gyroflow lens_profiles",
+		"source_file": "Blackmagic_Pocket Cinema Camera_Laowa 9 mm, F2,8_ISO400 Shutter120_1080p_16by9_1920x1080-30.00fps",
+		"calibrated_by": "Stefan Bechtel",
+		"original_resolution": "1920x1080",
+		"calibrated_fps": "30.0",
+		"official": false,
+		"notes": "Gyroflow calibration. Fisheye distortion model.",
+		"license": "CC0 1.0 Universal"
+	}
+}
