@@ -64,6 +64,42 @@ _Note: Just found out about [Webcodecs](https://developer.chrome.com/docs/web-pl
 
 ---
 
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** 20+ and npm
+- **Python** 3.9+ (3.11+ recommended)
+- **FFmpeg** installed and available in PATH
+
+### Installation
+
+1. Clone the repository:
+
+    ```bash
+    git clone https://github.com/reco-project/video-stitcher.git
+    cd video-stitcher
+    ```
+
+2. Install all dependencies:
+
+    ```bash
+    npm run setup
+    ```
+
+3. Run the development environment:
+    ```bash
+    npm run dev
+    ```
+
+The app will start with:
+
+- Frontend dev server (Vite)
+- Backend API server (FastAPI)
+- Electron desktop app
+
+---
+
 ## Development Progress
 
 All core functionality already exists in a private repository.  
@@ -80,7 +116,7 @@ The following steps mainly involve refactoring and integration work before the p
 - [x] Add multi-step match wizard UI with validation
 - [x] Establish proper data organization and documentation
 - [x] Integrate backend video processing pipeline (transcoding + calibration)
-- [ ] Design and implement enhanced UI/UX improvements
+- [x] Design and implement enhanced UI/UX improvements
 - [ ] Prepare and publish beta release
 
 ---

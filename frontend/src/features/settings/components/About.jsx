@@ -137,7 +137,7 @@ export default function About() {
 			<Card>
 				<CardContent className="pt-6">
 					<div className="text-center text-sm text-muted-foreground">
-						<p>Version 0.1.0-beta</p>
+						<p>Version 0.1.0</p>
 						<p className="mt-1">
 							Made with <Heart className="h-3 w-3 inline text-red-500" /> by the RECO team
 						</p>
