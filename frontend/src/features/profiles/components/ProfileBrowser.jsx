@@ -4,9 +4,9 @@ import { listFavoriteProfiles } from '../api/profiles';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Search, Camera, Package, Star } from 'lucide-react';
+import { Search, Package, Star } from 'lucide-react';
 import { sortBrands, sortModels, normalizeProfile } from '@/lib/normalize';
 
 export default function ProfileBrowser({ onSelect, selectedProfileId }) {

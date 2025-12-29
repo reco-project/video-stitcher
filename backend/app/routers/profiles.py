@@ -165,7 +165,9 @@ def delete_profile(profile_id: str, store: LensProfileStore = Depends(get_store)
 
 
 @router.patch("/{profile_id}/favorite", response_model=Dict)
-def toggle_favorite(profile_id: str, is_favorite: bool = Body(..., embed=True), store: LensProfileStore = Depends(get_store)):
+def toggle_favorite(
+    profile_id: str, is_favorite: bool = Body(..., embed=True), store: LensProfileStore = Depends(get_store)
+):
     """
     Toggle favorite status for a lens profile.
 
@@ -182,10 +184,10 @@ def toggle_favorite(profile_id: str, is_favorite: bool = Body(..., embed=True), 
     profile = store.get_by_id(profile_id)
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Profile with ID '{profile_id}' not found")
-    
+
     # Update favorite status
     profile["is_favorite"] = is_favorite
-    
+
     try:
         updated = store.update(profile_id, profile)
         return updated
