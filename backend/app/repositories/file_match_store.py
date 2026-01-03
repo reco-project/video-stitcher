@@ -95,7 +95,7 @@ class FileMatchStore(MatchStore):
 
     def list_all(self) -> List[Dict]:
         """
-        Return all matches by scanning filesystem.
+        Return all matches by scanning filesystem, validated and normalized.
 
         Returns:
             List of all match dictionaries
@@ -105,6 +105,8 @@ class FileMatchStore(MatchStore):
         for json_file in self.base_path.glob("*.json"):
             try:
                 match = self._load_match_file(json_file)
+                # Validate and normalize using Pydantic model
+                match = self._validate_match(match)
                 matches.append(match)
             except (ValueError, KeyError):
                 # Skip malformed files
@@ -114,7 +116,7 @@ class FileMatchStore(MatchStore):
 
     def get_by_id(self, match_id: str) -> Optional[Dict]:
         """
-        Get match by ID.
+        Get match by ID, validated and normalized.
 
         Args:
             match_id: Unique match identifier
@@ -128,7 +130,9 @@ class FileMatchStore(MatchStore):
             return None
 
         try:
-            return self._load_match_file(path)
+            match = self._load_match_file(path)
+            # Validate and normalize using Pydantic model
+            return self._validate_match(match)
         except ValueError:
             return None
 

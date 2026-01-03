@@ -15,6 +15,8 @@ import { CameraProvider, useCameraControls } from '../stores/cameraContext';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { ChevronDown } from 'lucide-react';
+import DualVideoTest from './DualVideoTest.jsx';
+import { Switch } from '@/components/ui/switch';
 
 const ViewerErrorFallback = ({ error, resetErrorBoundary }) => {
 	return (
@@ -99,6 +101,7 @@ const Viewer = ({ selectedMatch }) => {
 	const [pitchRange, setPitchRange] = useState(20);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
+	const [useDualVideoMode, setUseDualVideoMode] = useState(false); // rVFC prototype toggle
 	const saveTimeoutRef = React.useRef(null);
 
 	useEffect(() => {
@@ -229,6 +232,23 @@ const Viewer = ({ selectedMatch }) => {
 				{/* Expandable Content */}
 				{isExpanded && (
 					<div className="border-t px-3 py-4 space-y-4 bg-muted/20">
+						{/* Prototype Toggle */}
+						<div className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded">
+							<div className="flex-1">
+								<Label htmlFor="dual-video-mode" className="text-xs font-medium cursor-pointer">
+									🧪 Dual Video Mode (rVFC Prototype)
+								</Label>
+								<p className="text-xs text-muted-foreground mt-0.5">
+									Test requestVideoFrameCallback sync (requires separate video files)
+								</p>
+							</div>
+							<Switch
+								id="dual-video-mode"
+								checked={useDualVideoMode}
+								onCheckedChange={setUseDualVideoMode}
+							/>
+						</div>
+
 						{/* Info Text */}
 						<p className="text-xs text-muted-foreground">
 							Adjust your preferred viewing range. Changes are saved automatically.
@@ -269,26 +289,33 @@ const Viewer = ({ selectedMatch }) => {
 				)}
 			</div>
 
-			{/* 3D Viewer - Takes full width of parent */}
-			<ErrorBoundary FallbackComponent={ViewerErrorFallback}>
-				<CameraProvider>
-					<CameraControlsWrapper yawRange={yawRange} pitchRange={pitchRange}>
-						<VideoPlayerContainer>
-							<Canvas
-								camera={{
-									position: [cameraAxisOffset, 0, cameraAxisOffset],
-									fov: defaultFOV,
-									near: 0.01,
-									far: 5,
-								}}
-							>
-								<Controls />
-								<VideoPanorama />
-							</Canvas>
-						</VideoPlayerContainer>
-					</CameraControlsWrapper>
-				</CameraProvider>
-			</ErrorBoundary>
+			{/* Dual Video Test Mode */}
+			{useDualVideoMode ? (
+				<div className="w-full max-w-6xl">
+					<DualVideoTest match={selectedMatch} />
+				</div>
+			) : (
+				/* 3D Viewer - Takes full width of parent */
+				<ErrorBoundary FallbackComponent={ViewerErrorFallback}>
+					<CameraProvider>
+						<CameraControlsWrapper yawRange={yawRange} pitchRange={pitchRange}>
+							<VideoPlayerContainer>
+								<Canvas
+									camera={{
+										position: [cameraAxisOffset, 0, cameraAxisOffset],
+										fov: defaultFOV,
+										near: 0.01,
+										far: 5,
+									}}
+								>
+									<Controls />
+									<VideoPanorama />
+								</Canvas>
+							</VideoPlayerContainer>
+						</CameraControlsWrapper>
+					</CameraProvider>
+				</ErrorBoundary>
+			)}
 		</div>
 	);
 };
