@@ -195,6 +195,19 @@ def toggle_favorite(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.get("/favorites/ids", response_model=List[str])
+def list_favorite_ids(store: LensProfileStore = Depends(get_store)):
+    """
+    List IDs of favorite profiles (fast).
+
+    Returns:
+        List of favorite profile IDs
+    """
+    all_profiles = store.list_all()
+    favorite_ids = [p["id"] for p in all_profiles if p.get("is_favorite", False)]
+    return favorite_ids
+
+
 @router.get("/favorites/list", response_model=List[Dict])
 def list_favorite_profiles(store: LensProfileStore = Depends(get_store)):
     """

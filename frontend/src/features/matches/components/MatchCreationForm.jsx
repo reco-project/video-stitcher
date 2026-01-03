@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Video, Camera, Star, ArrowRight, Trash2, GripVertical } from 'lucide-react';
 import { useBrands, useModels, useProfilesByBrandModel } from '@/features/profiles/hooks/useProfiles';
-import { listFavoriteProfiles } from '@/features/profiles/api/profiles';
+import { listFavoriteIds, listFavoriteProfiles } from '@/features/profiles/api/profiles';
 import { sortBrands, sortModels } from '@/lib/normalize';
 
 const DRAFT_KEY = 'matchCreationDraft';
@@ -58,8 +58,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 	const [rightModel, setRightModel] = useState(draft?.rightModel || '');
 	const [rightProfileId, setRightProfileId] = useState(draft?.rightProfileId || '');
 
-	// Favorites
-	const [favoriteProfiles, setFavoriteProfiles] = useState([]);
+	// Favorites - cache IDs in localStorage for instant mode switching
 	const [loadingFavorites, setLoadingFavorites] = useState(false);
 
 	const [error, setError] = useState(null);
@@ -74,6 +73,9 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 	const { brands: rawBrandsRight } = useBrands();
 	const { models: rawModelsRight } = useModels(rightBrand);
 	const { profiles: rawProfilesRight } = useProfilesByBrandModel(rightBrand, rightModel);
+
+	// Store actual favorite profile data (fetched on demand)
+	const [favoriteProfiles, setFavoriteProfiles] = useState([]);
 
 	// Sort and normalize
 	const brandsLeft = sortBrands(rawBrandsLeft);
@@ -126,14 +128,24 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 		rightProfileId,
 	]);
 
-	// Load favorites when toggled
+	// Load favorite IDs and profiles when toggled
 	useEffect(() => {
 		if (showLeftFavorites || showRightFavorites) {
 			setLoadingFavorites(true);
-			listFavoriteProfiles()
-				.then(setFavoriteProfiles)
+
+			// First, quickly get IDs (cached for instant mode switching)
+			listFavoriteIds()
+				.then((ids) => {
+					localStorage.setItem('favoriteProfileIds', JSON.stringify(ids));
+
+					// Then fetch full profile data for the dropdown
+					return listFavoriteProfiles();
+				})
+				.then((profiles) => {
+					setFavoriteProfiles(profiles);
+				})
 				.catch((err) => {
-					console.error('Failed to load favorite profiles:', err);
+					console.error('Failed to load favorites:', err);
 					setError('Failed to load favorite profiles');
 				})
 				.finally(() => setLoadingFavorites(false));

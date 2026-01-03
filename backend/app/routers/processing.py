@@ -17,11 +17,12 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from app.utils.logger import get_logger
 from app.repositories.match_store import MatchStore
 from app.repositories.file_match_store import FileMatchStore
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter(prefix="/matches", tags=["processing"])
 
 # Match store path
@@ -115,14 +116,63 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
         def _transcode_background():
             import os
             import tempfile
+            import time
 
             temp_dir = os.path.join("temp", match_id)
             os.makedirs(temp_dir, exist_ok=True)
+            
+            # Throttle progress updates to avoid socket buffer exhaustion
+            last_update_time = [0]  # Use list to allow modification in nested function
+            
+            def update_progress(progress_info):
+                """Update match with transcoding progress (throttled to max 2 updates/sec)."""
+                try:
+                    # Throttle: only update every 500ms for encoding stage
+                    current_time = time.time()
+                    stage = progress_info.get('stage', 'transcoding')
+                    
+                    if stage == 'encoding':
+                        if current_time - last_update_time[0] < 0.5:
+                            return  # Skip this update
+                        last_update_time[0] = current_time
+                    
+                    current_match = match_store.get_by_id(match_id)
+                    if not current_match:
+                        return
+                    
+                    # Update based on stage
+                    if stage == 'audio_extraction':
+                        current_match['processing_message'] = progress_info.get('message', 'Extracting audio...')
+                    elif stage == 'audio_sync':
+                        current_match['processing_message'] = progress_info.get('message', 'Syncing audio...')
+                    elif stage == 'encoding':
+                        # Detailed encoding progress
+                        fps = progress_info.get('fps', 0)
+                        speed = progress_info.get('speed', '0')
+                        progress_percent = progress_info.get('progress_percent', 0)
+                        current_time = progress_info.get('current_time', 0)
+                        total_duration = progress_info.get('total_duration', 0)
+                        encoder = progress_info.get('encoder', 'h264')
+                        
+                        current_match['processing_message'] = f"Encoding video ({encoder})..."
+                        current_match['transcode_progress'] = round(progress_percent, 1)
+                        current_match['transcode_fps'] = round(fps, 1)
+                        current_match['transcode_speed'] = speed
+                        current_match['transcode_current_time'] = round(current_time, 1)
+                        current_match['transcode_total_duration'] = round(total_duration, 1)
+                        
+                        # Store offset if provided
+                        if 'offset_seconds' in progress_info:
+                            current_match['offset_seconds'] = progress_info['offset_seconds']
+                    
+                    match_store.update(match_id, current_match)
+                except Exception as e:
+                    logger.warning(f"Failed to update progress for {match_id}: {e}")
 
             try:
                 output_video_path = os.path.join("data/videos", f"{match_id}.mp4")
                 stacked_path, offset = transcode_and_stack(
-                    left_video_path, right_video_path, output_video_path, temp_dir
+                    left_video_path, right_video_path, output_video_path, temp_dir, progress_callback=update_progress
                 )
 
                 # Extract preview frame from the stacked video

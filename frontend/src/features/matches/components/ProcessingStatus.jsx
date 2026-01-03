@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 /**
  * Component to display match processing status with better UX
  */
-export default function ProcessingStatus({ status }) {
+export default function ProcessingStatus({ status, onComplete }) {
 	const [showDetails, setShowDetails] = React.useState(false);
 	const [now, setNow] = useState(Date.now());
 
@@ -20,6 +20,11 @@ export default function ProcessingStatus({ status }) {
 
 	// Determine progress percentage based on step or explicit fields returned from backend
 	const getProgress = () => {
+		// Use transcoding progress if available
+		if (status.status === 'transcoding' && typeof status.transcode_progress === 'number') {
+			return Math.round(status.transcode_progress);
+		}
+
 		if (typeof status.progress_percent === 'number') return Math.round(status.progress_percent);
 		if (typeof status.processing_percent === 'number') return Math.round(status.processing_percent);
 		if (typeof status.step_progress === 'number') return Math.round(status.step_progress);
@@ -60,6 +65,19 @@ export default function ProcessingStatus({ status }) {
 	};
 
 	const estimateRemainingSeconds = (elapsed, percent, fps, framesInfo) => {
+		// For transcoding, use time-based estimate if available
+		if (status.status === 'transcoding' && status.transcode_current_time && status.transcode_total_duration) {
+			const remaining = status.transcode_total_duration - status.transcode_current_time;
+			// Adjust by speed if available
+			if (status.transcode_speed) {
+				const speed = parseFloat(status.transcode_speed);
+				if (speed > 0) {
+					return remaining / speed;
+				}
+			}
+			return remaining;
+		}
+
 		// Prefer frame-based estimate when fps & frames info available
 		if (
 			fps &&
@@ -183,70 +201,150 @@ export default function ProcessingStatus({ status }) {
 					<div className="font-semibold mb-1">{config.title}</div>
 					<div className="text-sm opacity-90 mb-3">
 						{config.message}
+						{/* Show inline transcoding details */}
+						{status.status === 'transcoding' && status.transcode_fps && (
+							<div className="text-xs mt-1 opacity-80">
+								{status.transcode_fps} FPS
+								{status.transcode_speed && ` • ${status.transcode_speed}x speed`}
+								{status.transcode_current_time != null && status.transcode_total_duration != null && (
+									<>
+										{' '}
+										• {formatDuration(status.transcode_current_time)} /{' '}
+										{formatDuration(status.transcode_total_duration)}
+									</>
+								)}
+							</div>
+						)}
 						{config.errorCode && (
 							<div className="text-xs mt-1 opacity-70">Error code: {config.errorCode}</div>
 						)}
 					</div>
 
+					{/* Completion button for ready status */}
+					{status.status === 'ready' && onComplete && (
+						<div className="mt-3">
+							<Button onClick={onComplete} size="lg" className="w-full">
+								View Match
+							</Button>
+						</div>
+					)}
+
 					{/* Progress bar for active processing */}
 					{isProcessing && (
 						<div className="mb-3">
 							<div className="flex justify-between items-center mb-1">
-								<span className="text-xs font-medium opacity-70">Overall Progress</span>
+								<span className="text-xs font-medium opacity-70">Progress</span>
 								<span className="text-xs opacity-70">{progress}%</span>
 							</div>
 							<Progress value={progress} className="h-2" />
 						</div>
 					)}
 
-					{/* Detailed metrics: fps, frames, audio sync, elapsed/remaining */}
-					<div className="text-xs opacity-80 space-y-1 mt-2">
-						{fps && (
-							<div>
-								Transcoding FPS: <span className="font-medium">{fps}</span>
-							</div>
-						)}
-						{framesInfo.processed != null && framesInfo.total != null && (
-							<div>
-								Frames: <span className="font-medium">{framesInfo.processed}</span> /{' '}
-								<span className="font-medium">{framesInfo.total}</span>
-							</div>
-						)}
-						{status.audio_sync && (
-							<div>
-								Audio Sync:{' '}
-								<span className="font-medium">{status.audio_sync.status || status.audio_sync}</span>
-								{status.audio_sync.progress != null
-									? ` — ${Math.round(status.audio_sync.progress)}%`
-									: ''}
-							</div>
-						)}
-						{elapsed != null && (
-							<div>
-								Elapsed: <span className="font-medium">{formatDuration(elapsed)}</span>
-								{remaining != null && (
+					{/* Show elapsed time for processing */}
+					{isProcessing && elapsed != null && (
+						<div className="text-xs opacity-70 mb-2">
+							Elapsed: {formatDuration(elapsed)}
+							{remaining != null && <> • Est. remaining: {formatDuration(remaining)}</>}
+						</div>
+					)}
+
+					{/* Technical details - collapsed by default */}
+					{isProcessing && (fps || framesInfo.processed != null || status.transcode_fps) && (
+						<div className="mt-2">
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setShowDetails(!showDetails)}
+								className="gap-1 h-7 text-xs p-0"
+							>
+								{showDetails ? (
 									<>
-										{' '}
-										— Remaining: <span className="font-medium">{formatDuration(remaining)}</span>
+										<ChevronUp className="h-3 w-3" />
+										Hide Details
+									</>
+								) : (
+									<>
+										<ChevronDown className="h-3 w-3" />
+										Show Technical Details
 									</>
 								)}
-							</div>
-						)}
-					</div>
+							</Button>
 
-					{/* Timestamps */}
-					<div className="space-y-1">
-						{status.processing_started_at && status.status !== 'pending' && (
-							<div className="text-xs opacity-60">
-								Started: {new Date(status.processing_started_at).toLocaleString()}
-							</div>
-						)}
-						{status.processing_completed_at && (
-							<div className="text-xs opacity-60">
-								Completed: {new Date(status.processing_completed_at).toLocaleString()}
-							</div>
-						)}
-					</div>
+							{showDetails && (
+								<div className="mt-2 p-2 bg-muted/50 rounded border text-xs space-y-1">
+									{/* Transcoding-specific details */}
+									{status.status === 'transcoding' && (
+										<>
+											{status.transcode_fps && (
+												<div>
+													Encoding Speed:{' '}
+													<span className="font-medium">{status.transcode_fps} FPS</span>
+													{status.transcode_speed && (
+														<span className="ml-2 opacity-70">
+															({status.transcode_speed}x realtime)
+														</span>
+													)}
+												</div>
+											)}
+											{status.transcode_current_time != null &&
+												status.transcode_total_duration != null && (
+													<div>
+														Video Progress:{' '}
+														<span className="font-medium">
+															{formatDuration(status.transcode_current_time)}
+														</span>{' '}
+														/{' '}
+														<span className="font-medium">
+															{formatDuration(status.transcode_total_duration)}
+														</span>
+													</div>
+												)}
+											{status.offset_seconds != null && (
+												<div>
+													Audio Sync Offset:{' '}
+													<span className="font-medium">{status.offset_seconds}s</span>
+												</div>
+											)}
+										</>
+									)}
+
+									{/* Calibration-specific details */}
+									{status.status === 'calibrating' && (
+										<>
+											{fps && (
+												<div>
+													Processing FPS: <span className="font-medium">{fps}</span>
+												</div>
+											)}
+											{framesInfo.processed != null && framesInfo.total != null && (
+												<div>
+													Frames: <span className="font-medium">{framesInfo.processed}</span>{' '}
+													/ <span className="font-medium">{framesInfo.total}</span>
+												</div>
+											)}
+										</>
+									)}
+
+									{status.audio_sync && (
+										<div>
+											Audio Sync:{' '}
+											<span className="font-medium">
+												{status.audio_sync.status || status.audio_sync}
+											</span>
+											{status.audio_sync.progress != null
+												? ` — ${Math.round(status.audio_sync.progress)}%`
+												: ''}
+										</div>
+									)}
+									{status.processing_started_at && (
+										<div className="opacity-60 pt-1">
+											Started: {new Date(status.processing_started_at).toLocaleString()}
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+					)}
 
 					{/* Show detailed error logs for errors */}
 					{status.status === 'error' && status.error_message && (
@@ -260,12 +358,12 @@ export default function ProcessingStatus({ status }) {
 								{showDetails ? (
 									<>
 										<ChevronUp className="h-3 w-3" />
-										Hide Details
+										Hide Error
 									</>
 								) : (
 									<>
 										<ChevronDown className="h-3 w-3" />
-										Show Error Details
+										Show Error
 									</>
 								)}
 							</Button>

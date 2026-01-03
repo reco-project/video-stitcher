@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.utils.logger import get_logger, configure_uvicorn_logging, info
 from app.repositories.file_lens_profile_store import FileLensProfileStore
 from app.repositories.lens_profile_store import LensProfileStore
 from app.repositories.file_match_store import FileMatchStore
@@ -12,6 +13,13 @@ from app.repositories.match_store import MatchStore
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
+
+# Initialize logging
+logger = get_logger(__name__)
+configure_uvicorn_logging()
+info("=" * 60)
+info("VIDEO STITCHER BACKEND STARTING")
+info("=" * 60)
 
 # Initialize lens profile store
 PROFILES_DIR = Path(__file__).parent.parent / "data" / "lens_profiles"
@@ -47,6 +55,7 @@ app.add_middleware(
 )
 
 # Register routers with dependency override
+logger.info("Registering API routers...")
 app.include_router(profiles_router.router, prefix="/api", tags=["profiles"])
 app.dependency_overrides[profiles_router.get_store] = get_profile_store
 
@@ -59,6 +68,7 @@ app.include_router(processing_router.router, prefix="/api", tags=["processing"])
 # Ensure the videos directory exists
 VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/videos", StaticFiles(directory=str(VIDEOS_DIR)), name="videos")
+logger.info(f"Static files mounted at /videos -> {VIDEOS_DIR}")
 
 
 @app.get("/")
@@ -68,6 +78,8 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
+    logger.debug("Health check requested")
+    return {"status": "ok"}
     return {"status": "healthy"}
 
 
