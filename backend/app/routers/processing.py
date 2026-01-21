@@ -28,6 +28,10 @@ router = APIRouter(prefix="/matches", tags=["processing"])
 # Match store path
 MATCHES_DIR = Path(__file__).parent.parent.parent / "data" / "matches"
 
+# In-memory cache for live progress updates (avoids excessive disk I/O)
+# Structure: {match_id: {transcode_fps, transcode_speed, transcode_progress, ...}}
+_progress_cache = {}
+
 
 def get_store() -> MatchStore:
     """Dependency injection for match store."""
@@ -52,15 +56,30 @@ async def get_processing_status(match_id: str, match_store: MatchStore = Depends
     if not match_data:
         raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
 
-    return {
+    # Build response from disk data
+    response = {
         "match_id": match_id,
         "status": match_data.get("status", "pending"),
         "processing_step": match_data.get("processing_step"),
+        "processing_message": match_data.get("processing_message"),
         "error_code": match_data.get("error_code"),
         "error_message": match_data.get("error_message"),
         "processing_started_at": match_data.get("processing_started_at"),
         "processing_completed_at": match_data.get("processing_completed_at"),
+        # Transcoding progress fields from disk (final values)
+        "transcode_progress": match_data.get("transcode_progress"),
+        "transcode_fps": match_data.get("transcode_fps"),
+        "transcode_speed": match_data.get("transcode_speed"),
+        "transcode_current_time": match_data.get("transcode_current_time"),
+        "transcode_total_duration": match_data.get("transcode_total_duration"),
     }
+
+    # Override with live in-memory progress if available (for active transcoding)
+    # This ensures we show live FPS/progress during encoding even if disk is out of sync
+    if match_id in _progress_cache:
+        response.update(_progress_cache[match_id])
+
+    return JSONResponse(content=response)
 
 
 @router.post("/{match_id}/transcode")
@@ -120,54 +139,50 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
 
             temp_dir = os.path.join("temp", match_id)
             os.makedirs(temp_dir, exist_ok=True)
-            
-            # Throttle progress updates to avoid socket buffer exhaustion
-            last_update_time = [0]  # Use list to allow modification in nested function
-            
+
             def update_progress(progress_info):
-                """Update match with transcoding progress (throttled to max 2 updates/sec)."""
+                """Update in-memory progress cache (no disk I/O during encoding)."""
                 try:
-                    # Throttle: only update every 500ms for encoding stage
-                    current_time = time.time()
                     stage = progress_info.get('stage', 'transcoding')
-                    
-                    if stage == 'encoding':
-                        if current_time - last_update_time[0] < 0.5:
-                            return  # Skip this update
-                        last_update_time[0] = current_time
-                    
-                    current_match = match_store.get_by_id(match_id)
-                    if not current_match:
-                        return
-                    
+
+                    # Initialize cache entry if needed
+                    if match_id not in _progress_cache:
+                        _progress_cache[match_id] = {}
+
                     # Update based on stage
                     if stage == 'audio_extraction':
-                        current_match['processing_message'] = progress_info.get('message', 'Extracting audio...')
+                        _progress_cache[match_id]['processing_message'] = progress_info.get(
+                            'message', 'Extracting audio...'
+                        )
                     elif stage == 'audio_sync':
-                        current_match['processing_message'] = progress_info.get('message', 'Syncing audio...')
+                        _progress_cache[match_id]['processing_message'] = progress_info.get(
+                            'message', 'Syncing audio...'
+                        )
                     elif stage == 'encoding':
-                        # Detailed encoding progress
+                        # Detailed encoding progress - stored in memory only
                         fps = progress_info.get('fps', 0)
                         speed = progress_info.get('speed', '0')
                         progress_percent = progress_info.get('progress_percent', 0)
                         current_time = progress_info.get('current_time', 0)
                         total_duration = progress_info.get('total_duration', 0)
                         encoder = progress_info.get('encoder', 'h264')
-                        
-                        current_match['processing_message'] = f"Encoding video ({encoder})..."
-                        current_match['transcode_progress'] = round(progress_percent, 1)
-                        current_match['transcode_fps'] = round(fps, 1)
-                        current_match['transcode_speed'] = speed
-                        current_match['transcode_current_time'] = round(current_time, 1)
-                        current_match['transcode_total_duration'] = round(total_duration, 1)
-                        
-                        # Store offset if provided
+
+                        _progress_cache[match_id].update(
+                            {
+                                'processing_message': f"Encoding video ({encoder})...",
+                                'transcode_progress': float(round(progress_percent, 1)),
+                                'transcode_fps': float(round(fps, 1)),
+                                'transcode_speed': str(speed),
+                                'transcode_current_time': float(round(current_time, 1)),
+                                'transcode_total_duration': float(round(total_duration, 1)),
+                            }
+                        )
+
+                        # Store offset if provided (convert numpy types to Python native)
                         if 'offset_seconds' in progress_info:
-                            current_match['offset_seconds'] = progress_info['offset_seconds']
-                    
-                    match_store.update(match_id, current_match)
+                            _progress_cache[match_id]['offset_seconds'] = float(progress_info['offset_seconds'])
                 except Exception as e:
-                    logger.warning(f"Failed to update progress for {match_id}: {e}")
+                    logger.warning(f"Failed to update progress cache for {match_id}: {e}")
 
             try:
                 output_video_path = os.path.join("data/videos", f"{match_id}.mp4")
@@ -186,13 +201,29 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                     logger.warning(f"Failed to generate preview for {match_id}: {e}")
                     # Continue even if preview generation fails - not critical
 
-                # Update match with video path
+                # Get final progress values from cache before clearing
+                final_progress = _progress_cache.get(match_id, {})
+
+                # Update match with video path and final progress
                 match_data["src"] = f"videos/{match_id}.mp4"
                 match_data["offset_seconds"] = round(offset, 2)
                 match_data["status"] = "pending"  # Ready for frontend processing
                 match_data["processing_step"] = "awaiting_frames"
                 match_data["processing_message"] = "Video ready, awaiting frame extraction"
+
+                # Persist final transcode metrics to disk
+                if final_progress:
+                    match_data["transcode_progress"] = final_progress.get('transcode_progress')
+                    match_data["transcode_fps"] = final_progress.get('transcode_fps')
+                    match_data["transcode_speed"] = final_progress.get('transcode_speed')
+                    match_data["transcode_current_time"] = final_progress.get('transcode_current_time')
+                    match_data["transcode_total_duration"] = final_progress.get('transcode_total_duration')
+
                 match_store.update(match_id, match_data)
+
+                # Clear progress cache
+                if match_id in _progress_cache:
+                    del _progress_cache[match_id]
 
             except Exception as e:
                 logger.error(f"Transcoding failed for {match_id}: {e}", exc_info=True)
@@ -200,6 +231,10 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 match_data["error_message"] = str(e)
                 match_data["processing_step"] = None
                 match_store.update(match_id, match_data)
+
+                # Clear progress cache
+                if match_id in _progress_cache:
+                    del _progress_cache[match_id]
 
         thread = threading.Thread(target=_transcode_background, daemon=True)
         thread.start()

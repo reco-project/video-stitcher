@@ -91,6 +91,14 @@ class MatchModel(BaseModel):
     processing_message: Optional[str] = Field(None, description="Detailed processing progress message")
     viewed: bool = Field(default=False, description="Whether the match has been viewed in the viewer")
 
+    # Transcoding progress fields
+    transcode_progress: Optional[float] = Field(None, description="Transcoding progress percentage (0-100)")
+    transcode_fps: Optional[float] = Field(None, description="Current transcoding FPS")
+    transcode_speed: Optional[str] = Field(None, description="Current transcoding speed (e.g., '14.2x')")
+    transcode_current_time: Optional[float] = Field(None, description="Current time position in seconds")
+    transcode_total_duration: Optional[float] = Field(None, description="Total video duration in seconds")
+    offset_seconds: Optional[float] = Field(None, description="Audio sync offset in seconds")
+
     @field_validator("id")
     @classmethod
     def validate_id(cls, v: str) -> str:

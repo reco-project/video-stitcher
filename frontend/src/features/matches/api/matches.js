@@ -171,6 +171,13 @@ export async function getMatchStatus(matchId) {
 		error_message: raw.error_message || raw.error || raw.detail || null,
 		error_code: raw.error_code || raw.code || null,
 
+		// transcoding progress fields (from in-memory cache)
+		transcode_progress: raw.transcode_progress || null,
+		transcode_fps: raw.transcode_fps || null,
+		transcode_speed: raw.transcode_speed || null,
+		transcode_current_time: raw.transcode_current_time || null,
+		transcode_total_duration: raw.transcode_total_duration || null,
+
 		// include original payload for any extra fields
 		_raw: raw,
 	};

@@ -46,7 +46,7 @@ class FileMatchStore(MatchStore):
         """
         try:
             model = MatchModel(**match_dict)
-            return model.model_dump()
+            return model.model_dump(exclude_none=False)
         except Exception as e:
             raise ValueError(f"Match validation failed: {str(e)}")
 

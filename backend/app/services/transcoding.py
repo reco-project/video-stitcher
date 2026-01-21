@@ -90,7 +90,7 @@ def transcode_and_stack(
         if progress_callback:
             progress_callback({'stage': 'audio_extraction', 'message': 'Extracting audio from left video...'})
         _extract_audio(video1_path, audio1_path)
-        
+
         if progress_callback:
             progress_callback({'stage': 'audio_extraction', 'message': 'Extracting audio from right video...'})
         _extract_audio(video2_path, audio2_path)
@@ -99,9 +99,11 @@ def transcode_and_stack(
         if progress_callback:
             progress_callback({'stage': 'audio_sync', 'message': 'Computing audio synchronization...'})
         offset = _compute_offset(audio1_path, audio2_path)
-        
+
         if progress_callback:
-            progress_callback({'stage': 'encoding', 'message': 'Encoding stacked video...', 'offset_seconds': round(offset, 2)})
+            progress_callback(
+                {'stage': 'encoding', 'message': 'Encoding stacked video...', 'offset_seconds': round(offset, 2)}
+            )
 
         # Stack videos with computed offset
         _stack_videos(video1_path, video2_path, offset, output_path, progress_callback)
@@ -261,7 +263,7 @@ def _stack_videos(
     progress_callback=None,
 ) -> None:
     """Stack two videos vertically with audio sync offset.
-    
+
     Args:
         video1_path: Path to first video
         video2_path: Path to second video
@@ -326,10 +328,13 @@ def _stack_videos(
             total_duration = _get_video_duration(video1_path)
             frame_rate = _get_video_fps(video1_path)
             total_frames = int(total_duration * frame_rate) if frame_rate > 0 else 0
-            
+
             print(f"[TRANSCODE] Video: {total_duration:.2f}s @ {frame_rate:.2f} fps = ~{total_frames} frames")
-            logger.info(f"Video duration detected: {total_duration:.2f}s @ {frame_rate:.2f} fps = ~{total_frames} frames")
-            
+            logger.info(
+                f"Video duration detected: {total_duration:.2f}s @ {frame_rate:.2f} fps = ~{total_frames} frames"
+            )
+            logger.info("Will attempt using " + enc)
+
             # Run FFmpeg with progress monitoring
             process = subprocess.Popen(
                 cmd,
@@ -339,46 +344,41 @@ def _stack_videos(
                 bufsize=1,
                 universal_newlines=True,
             )
-            
+
             # Read stderr in a separate thread to prevent blocking
             import threading
+
             stderr_lines = []
+
             def read_stderr():
                 for line in process.stderr:
                     stderr_lines.append(line)
-            
+
             stderr_thread = threading.Thread(target=read_stderr, daemon=True)
             stderr_thread.start()
-            
+
             # Parse progress output in real-time from stdout
             progress_data = {}
             progress_count = 0
             last_frame_count = 0
-            print(f"[TRANSCODE] Starting to parse FFmpeg progress output...")
-            logger.info(f"Starting to parse FFmpeg progress output...")
-            
+
             for line in process.stdout:
                 line = line.strip()
-                
+
                 if '=' in line:
                     key, value = line.split('=', 1)
                     progress_data[key] = value
-                    
+
                     # When we get 'progress' key, we have a complete progress update
                     if key == 'progress':
                         progress_count += 1
-                        
-                        # Log raw progress data for first update
-                        if progress_count == 1:
-                            print(f"[TRANSCODE] First progress data: {progress_data}")
-                            logger.info(f"First progress data: {progress_data}")
-                        
+
                         if progress_callback and (total_duration > 0 or total_frames > 0):
                             try:
                                 # Extract frame count - this is usually reliable
                                 frame_str = progress_data.get('frame', '0')
                                 current_frame = int(frame_str) if frame_str.isdigit() else 0
-                                
+
                                 # Calculate progress based on frames if available
                                 if total_frames > 0 and current_frame > 0:
                                     progress_percent = min(100, (current_frame / total_frames) * 100)
@@ -388,45 +388,46 @@ def _stack_videos(
                                     out_time_ms = progress_data.get('out_time_ms', 'N/A')
                                     if out_time_ms != 'N/A' and out_time_ms.replace('.', '').isdigit():
                                         current_time = float(out_time_ms) / 1000.0
-                                        progress_percent = min(100, (current_time / total_duration) * 100) if total_duration > 0 else 0
+                                        progress_percent = (
+                                            min(100, (current_time / total_duration) * 100) if total_duration > 0 else 0
+                                        )
                                     else:
                                         current_time = 0
                                         progress_percent = 0
-                                
+
                                 # Extract FPS and speed - these show encoding performance
                                 fps_str = progress_data.get('fps', '0.00')
-                                encoding_fps = float(fps_str) if fps_str != 'N/A' and fps_str.replace('.', '').isdigit() else 0.0
-                                
+                                encoding_fps = (
+                                    float(fps_str) if fps_str != 'N/A' and fps_str.replace('.', '').isdigit() else 0.0
+                                )
+
                                 speed = progress_data.get('speed', '0x')
                                 if speed == 'N/A':
                                     speed = '0x'
                                 speed = speed.rstrip('x')
-                                
+
                                 bitrate = progress_data.get('bitrate', '0')
                                 if bitrate == 'N/A':
                                     bitrate = '0kbits/s'
-                                
+
                                 # Only send updates with meaningful progress or first few updates
                                 if current_frame != last_frame_count or progress_count <= 3:
                                     last_frame_count = current_frame
-                                    
-                                    # Log updates for debugging
-                                    if progress_count <= 3 or progress_count % 50 == 0:
-                                        print(f"[TRANSCODE] Progress #{progress_count}: frame {current_frame}/{total_frames} ({progress_percent:.1f}%) - {encoding_fps:.1f} fps - {speed}x speed")
-                                        logger.info(f"FFmpeg progress #{progress_count}: frame {current_frame}/{total_frames} ({progress_percent:.1f}%) - {encoding_fps:.1f} fps - {speed}x speed")
-                                    
-                                    progress_callback({
-                                        'stage': 'encoding',
-                                        'progress_percent': round(progress_percent, 1),
-                                        'current_time': round(current_time, 1),
-                                        'total_duration': round(total_duration, 1),
-                                        'fps': round(encoding_fps, 1),
-                                        'speed': speed,
-                                        'frame': str(current_frame),
-                                        'total_frames': str(total_frames),
-                                        'bitrate': bitrate,
-                                        'encoder': enc,
-                                    })
+
+                                    progress_callback(
+                                        {
+                                            'stage': 'encoding',
+                                            'progress_percent': round(progress_percent, 1),
+                                            'current_time': round(current_time, 1),
+                                            'total_duration': round(total_duration, 1),
+                                            'fps': round(encoding_fps, 1),
+                                            'speed': speed,
+                                            'frame': str(current_frame),
+                                            'total_frames': str(total_frames),
+                                            'bitrate': bitrate,
+                                            'encoder': enc,
+                                        }
+                                    )
                             except (ValueError, ZeroDivisionError) as e:
                                 if progress_count <= 3:
                                     print(f"[TRANSCODE] Parse error: {e}")
@@ -437,16 +438,16 @@ def _stack_videos(
                         elif total_duration <= 0:
                             print(f"[TRANSCODE] WARNING: Invalid total_duration: {total_duration}")
                             logger.warning(f"Invalid total_duration: {total_duration}")
-                        
+
                         progress_data = {}  # Reset for next update
-            
+
             print(f"[TRANSCODE] Encoding complete. Total progress updates: {progress_count}")
             logger.info(f"FFmpeg encoding complete. Total progress updates: {progress_count}")
-            
+
             # Wait for process to complete
             process.wait(timeout=3600)
             stderr_thread.join(timeout=5)
-            
+
             if process.returncode != 0:
                 stderr = ''.join(stderr_lines)
                 raise subprocess.CalledProcessError(process.returncode, cmd, stderr=stderr)

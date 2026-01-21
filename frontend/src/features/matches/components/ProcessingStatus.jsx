@@ -201,24 +201,36 @@ export default function ProcessingStatus({ status, onComplete }) {
 					<div className="font-semibold mb-1">{config.title}</div>
 					<div className="text-sm opacity-90 mb-3">
 						{config.message}
-						{/* Show inline transcoding details */}
-						{status.status === 'transcoding' && status.transcode_fps && (
-							<div className="text-xs mt-1 opacity-80">
-								{status.transcode_fps} FPS
-								{status.transcode_speed && ` • ${status.transcode_speed}x speed`}
-								{status.transcode_current_time != null && status.transcode_total_duration != null && (
-									<>
-										{' '}
-										• {formatDuration(status.transcode_current_time)} /{' '}
-										{formatDuration(status.transcode_total_duration)}
-									</>
-								)}
-							</div>
-						)}
 						{config.errorCode && (
 							<div className="text-xs mt-1 opacity-70">Error code: {config.errorCode}</div>
 						)}
 					</div>
+					
+					{/* Show transcoding metrics when available (during or just after transcoding) */}
+					{status.transcode_fps != null && status.transcode_fps > 0 && (
+						<div className="text-xs opacity-80 mb-3 space-y-1">
+							<div className="flex items-center gap-4">
+								<div>
+									<span className="opacity-70">Encoding: </span>
+									<span className="font-mono font-semibold">{status.transcode_fps} FPS</span>
+								</div>
+								{status.transcode_speed && (
+									<div>
+										<span className="opacity-70">•</span>
+										<span className="font-mono font-semibold ml-1">{status.transcode_speed}x speed</span>
+									</div>
+								)}
+							</div>
+							{/* Show video position when available */}
+							{status.transcode_current_time != null &&
+								status.transcode_total_duration != null &&
+								status.transcode_total_duration > 0 && (
+									<div className="opacity-70">
+										Video position: {formatDuration(status.transcode_current_time)} / {formatDuration(status.transcode_total_duration)}
+									</div>
+								)}
+						</div>
+					)}
 
 					{/* Completion button for ready status */}
 					{status.status === 'ready' && onComplete && (
@@ -245,104 +257,6 @@ export default function ProcessingStatus({ status, onComplete }) {
 						<div className="text-xs opacity-70 mb-2">
 							Elapsed: {formatDuration(elapsed)}
 							{remaining != null && <> • Est. remaining: {formatDuration(remaining)}</>}
-						</div>
-					)}
-
-					{/* Technical details - collapsed by default */}
-					{isProcessing && (fps || framesInfo.processed != null || status.transcode_fps) && (
-						<div className="mt-2">
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => setShowDetails(!showDetails)}
-								className="gap-1 h-7 text-xs p-0"
-							>
-								{showDetails ? (
-									<>
-										<ChevronUp className="h-3 w-3" />
-										Hide Details
-									</>
-								) : (
-									<>
-										<ChevronDown className="h-3 w-3" />
-										Show Technical Details
-									</>
-								)}
-							</Button>
-
-							{showDetails && (
-								<div className="mt-2 p-2 bg-muted/50 rounded border text-xs space-y-1">
-									{/* Transcoding-specific details */}
-									{status.status === 'transcoding' && (
-										<>
-											{status.transcode_fps && (
-												<div>
-													Encoding Speed:{' '}
-													<span className="font-medium">{status.transcode_fps} FPS</span>
-													{status.transcode_speed && (
-														<span className="ml-2 opacity-70">
-															({status.transcode_speed}x realtime)
-														</span>
-													)}
-												</div>
-											)}
-											{status.transcode_current_time != null &&
-												status.transcode_total_duration != null && (
-													<div>
-														Video Progress:{' '}
-														<span className="font-medium">
-															{formatDuration(status.transcode_current_time)}
-														</span>{' '}
-														/{' '}
-														<span className="font-medium">
-															{formatDuration(status.transcode_total_duration)}
-														</span>
-													</div>
-												)}
-											{status.offset_seconds != null && (
-												<div>
-													Audio Sync Offset:{' '}
-													<span className="font-medium">{status.offset_seconds}s</span>
-												</div>
-											)}
-										</>
-									)}
-
-									{/* Calibration-specific details */}
-									{status.status === 'calibrating' && (
-										<>
-											{fps && (
-												<div>
-													Processing FPS: <span className="font-medium">{fps}</span>
-												</div>
-											)}
-											{framesInfo.processed != null && framesInfo.total != null && (
-												<div>
-													Frames: <span className="font-medium">{framesInfo.processed}</span>{' '}
-													/ <span className="font-medium">{framesInfo.total}</span>
-												</div>
-											)}
-										</>
-									)}
-
-									{status.audio_sync && (
-										<div>
-											Audio Sync:{' '}
-											<span className="font-medium">
-												{status.audio_sync.status || status.audio_sync}
-											</span>
-											{status.audio_sync.progress != null
-												? ` — ${Math.round(status.audio_sync.progress)}%`
-												: ''}
-										</div>
-									)}
-									{status.processing_started_at && (
-										<div className="opacity-60 pt-1">
-											Started: {new Date(status.processing_started_at).toLocaleString()}
-										</div>
-									)}
-								</div>
-							)}
 						</div>
 					)}
 
