@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 
 /**
  * Component to display match processing status with better UX
@@ -205,10 +206,35 @@ export default function ProcessingStatus({ status, onComplete }) {
 							<div className="text-xs mt-1 opacity-70">Error code: {config.errorCode}</div>
 						)}
 					</div>
-					
-					{/* Show transcoding metrics when available (during or just after transcoding) */}
+
+					{/* Show encoder info and transcoding metrics when available */}
 					{status.transcode_fps != null && status.transcode_fps > 0 && (
 						<div className="text-xs opacity-80 mb-3 space-y-1">
+							{/* Encoder badge (info only, no action during transcoding) */}
+							{status.transcode_encoder && (
+								<div className="flex items-center gap-2 mb-2">
+									<Badge
+										variant={status.transcode_encoder === 'libx264' ? 'secondary' : 'default'}
+										className="gap-1"
+										title={
+											status.transcode_encoder === 'libx264'
+												? 'Software encoding'
+												: 'Hardware-accelerated encoding'
+										}
+									>
+										<Zap className="h-3 w-3" />
+										{status.transcode_encoder === 'libx264'
+											? 'CPU Encoder'
+											: status.transcode_encoder === 'h264_nvenc'
+												? 'NVIDIA GPU'
+												: status.transcode_encoder === 'h264_qsv'
+													? 'Intel GPU'
+													: status.transcode_encoder === 'h264_amf'
+														? 'AMD GPU'
+														: status.transcode_encoder}
+									</Badge>
+								</div>
+							)}
 							<div className="flex items-center gap-4">
 								<div>
 									<span className="opacity-70">Encoding: </span>
@@ -217,7 +243,9 @@ export default function ProcessingStatus({ status, onComplete }) {
 								{status.transcode_speed && (
 									<div>
 										<span className="opacity-70">•</span>
-										<span className="font-mono font-semibold ml-1">{status.transcode_speed}x speed</span>
+										<span className="font-mono font-semibold ml-1">
+											{status.transcode_speed}x speed
+										</span>
 									</div>
 								)}
 							</div>
@@ -226,7 +254,8 @@ export default function ProcessingStatus({ status, onComplete }) {
 								status.transcode_total_duration != null &&
 								status.transcode_total_duration > 0 && (
 									<div className="opacity-70">
-										Video position: {formatDuration(status.transcode_current_time)} / {formatDuration(status.transcode_total_duration)}
+										Video position: {formatDuration(status.transcode_current_time)} /{' '}
+										{formatDuration(status.transcode_total_duration)}
 									</div>
 								)}
 						</div>

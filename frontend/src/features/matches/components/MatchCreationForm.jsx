@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Video, Camera, Star, ArrowRight, Trash2, GripVertical } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Video, Camera, Star, ArrowRight, Trash2, GripVertical, Zap, Settings2 } from 'lucide-react';
 import { useBrands, useModels, useProfilesByBrandModel } from '@/features/profiles/hooks/useProfiles';
 import { listFavoriteIds, listFavoriteProfiles } from '@/features/profiles/api/profiles';
+import { getEncoderSettings } from '@/features/settings/api/settings';
 import { sortBrands, sortModels } from '@/lib/normalize';
 
 const DRAFT_KEY = 'matchCreationDraft';
@@ -76,6 +79,10 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 
 	// Store actual favorite profile data (fetched on demand)
 	const [favoriteProfiles, setFavoriteProfiles] = useState([]);
+
+	// Encoder info
+	const [encoderInfo, setEncoderInfo] = useState(null);
+	const [loadingEncoder, setLoadingEncoder] = useState(true);
 
 	// Sort and normalize
 	const brandsLeft = sortBrands(rawBrandsLeft);
@@ -151,6 +158,20 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 				.finally(() => setLoadingFavorites(false));
 		}
 	}, [showLeftFavorites, showRightFavorites]);
+
+	// Load encoder settings on mount
+	useEffect(() => {
+		getEncoderSettings()
+			.then((info) => {
+				setEncoderInfo(info);
+			})
+			.catch((err) => {
+				console.error('Failed to load encoder settings:', err);
+			})
+			.finally(() => {
+				setLoadingEncoder(false);
+			});
+	}, []);
 
 	const loadMetadata = useCallback(async (filePath, side, index) => {
 		if (!filePath || !window.electronAPI?.getFileMetadata) return;
@@ -890,6 +911,40 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 					</CardContent>
 				</Card>
 			</div>
+
+			{/* Encoder Information */}
+			{!loadingEncoder && encoderInfo && (
+				<Alert className="bg-muted/50">
+					<Zap className="h-4 w-4" />
+					<AlertDescription>
+						<div className="flex items-center justify-between gap-4">
+							<div className="flex-1">
+								<div className="font-semibold mb-1">Video Encoder</div>
+								<div className="text-sm flex items-center gap-2 flex-wrap">
+									<span>Will use:</span>
+									<Badge
+										variant={encoderInfo.current_encoder === 'libx264' ? 'secondary' : 'default'}
+										classname="gap-1"
+									>
+										{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
+									</Badge>
+									{encoderInfo.current_encoder === 'libx264' && (
+										<span className="text-muted-foreground text-xs">
+											(Slower - GPU encoding available)
+										</span>
+									)}
+								</div>
+							</div>
+							<Link to="/profiles?tab=settings">
+								<Button variant="outline" size="sm" className="gap-2">
+									<Settings2 className="h-3 w-3" />
+									Change
+								</Button>
+							</Link>
+						</div>
+					</AlertDescription>
+				</Alert>
+			)}
 
 			{/* Action Buttons */}
 			<div className="flex justify-between items-center pt-4">

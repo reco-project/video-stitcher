@@ -177,6 +177,7 @@ export async function getMatchStatus(matchId) {
 		transcode_speed: raw.transcode_speed || null,
 		transcode_current_time: raw.transcode_current_time || null,
 		transcode_total_duration: raw.transcode_total_duration || null,
+		transcode_encoder: raw.transcode_encoder || raw.encoder || null,
 
 		// include original payload for any extra fields
 		_raw: raw,

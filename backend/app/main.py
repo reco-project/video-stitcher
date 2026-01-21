@@ -13,6 +13,7 @@ from app.repositories.match_store import MatchStore
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
+import app.routers.settings as settings_router
 
 # Initialize logging
 logger = get_logger(__name__)
@@ -63,6 +64,8 @@ app.include_router(matches_router.router, prefix="/api", tags=["matches"])
 app.dependency_overrides[matches_router.get_store] = get_match_store
 
 app.include_router(processing_router.router, prefix="/api", tags=["processing"])
+
+app.include_router(settings_router.router, prefix="/api", tags=["settings"])
 
 # Mount static files for video serving
 # Ensure the videos directory exists

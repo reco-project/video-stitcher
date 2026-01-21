@@ -10,11 +10,12 @@ import subprocess
 import uuid
 import shutil
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import numpy as np
 import soundfile as sf
 from scipy.signal import correlate
 from app.utils.logger import get_logger
+from app.config import get_settings
 
 logger = get_logger(__name__)
 
@@ -224,34 +225,73 @@ def _get_video_fps(video_path: str) -> float:
     return 30.0  # Default fallback
 
 
+def _get_available_encoders() -> List[str]:
+    """
+    Get list of available GPU encoders on this system.
+    Actually tests each encoder to ensure hardware is present.
+
+    Returns:
+        List of available encoder names
+    """
+    encoders = ["h264_nvenc", "h264_qsv", "h264_amf"]
+    available = []
+
+    for enc in encoders:
+        # Test if encoder actually works by trying to initialize it
+        # Generate a tiny 1-frame test video (256x256 minimum for hardware encoders)
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1", "-c:v", enc, "-f", "null", "-"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+
+            # If the command succeeded, the encoder is available
+            if result.returncode == 0:
+                available.append(enc)
+                logger.info(f"Encoder {enc} is available and working")
+            else:
+                logger.debug(f"Encoder {enc} failed test: {result.stderr[:200]}")
+
+        except subprocess.SubprocessError as e:
+            logger.debug(f"Encoder {enc} test error: {e}")
+            pass
+
+    return available
+
+
 def _detect_gpu_encoder() -> str:
     """
-    Detect available GPU encoder.
+    Detect available GPU encoder based on user settings.
 
     Returns:
         Encoder name (h264_nvenc, h264_qsv, h264_amf, or libx264)
     """
-    encoders = {"h264_nvenc": "NVIDIA", "h264_qsv": "Intel", "h264_amf": "AMD"}
+    settings = get_settings()
+    encoder_pref = settings.encoder
 
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=5,
-        )
+    # If user specified a specific encoder, try to use it
+    if encoder_pref != "auto":
+        available = _get_available_encoders()
+        if encoder_pref in available:
+            logger.info(f"Using user-preferred encoder: {encoder_pref}")
+            return encoder_pref
+        elif encoder_pref == "libx264":
+            logger.info("Using CPU encoder (libx264) as per user preference")
+            return "libx264"
+        else:
+            logger.warning(f"Preferred encoder {encoder_pref} not available, falling back to auto-detect")
 
-        available = [enc for enc in encoders if enc in result.stdout]
+    # Auto-detect: Prefer NVIDIA > Intel > AMD
+    available = _get_available_encoders()
+    for enc in ["h264_nvenc", "h264_qsv", "h264_amf"]:
+        if enc in available:
+            logger.info(f"Auto-detected encoder: {enc}")
+            return enc
 
-        # Prefer NVIDIA > Intel > AMD
-        for enc in ["h264_nvenc", "h264_qsv", "h264_amf"]:
-            if enc in available:
-                return enc
-
-    except subprocess.SubprocessError:
-        pass
-
+    logger.info("No GPU encoder available, using CPU encoder (libx264)")
     return "libx264"
 
 

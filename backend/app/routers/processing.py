@@ -175,6 +175,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                                 'transcode_speed': str(speed),
                                 'transcode_current_time': float(round(current_time, 1)),
                                 'transcode_total_duration': float(round(total_duration, 1)),
+                                'transcode_encoder': encoder,
                             }
                         )
 
