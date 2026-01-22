@@ -48,6 +48,8 @@ def transcode_and_stack(
     output_path: str,
     temp_dir: Optional[str] = None,
     progress_callback=None,
+    cancellation_check=None,
+    process_callback=None,
 ) -> Tuple[str, float]:
     """
     Synchronize and stack two videos vertically.
@@ -58,6 +60,8 @@ def transcode_and_stack(
         output_path: Path for output stacked video
         temp_dir: Optional temporary directory (auto-created if None)
         progress_callback: Optional callback function(dict) for progress updates
+        cancellation_check: Optional callback function() -> bool to check if cancelled
+        process_callback: Optional callback function(pid: int) to receive FFmpeg PID
 
     Returns:
         Tuple of (output_path, offset_seconds)
@@ -107,7 +111,9 @@ def transcode_and_stack(
             )
 
         # Stack videos with computed offset
-        _stack_videos(video1_path, video2_path, offset, output_path, progress_callback)
+        _stack_videos(
+            video1_path, video2_path, offset, output_path, progress_callback, cancellation_check, process_callback
+        )
 
         return output_path, offset
 
@@ -301,6 +307,8 @@ def _stack_videos(
     offset: float,
     output_path: str,
     progress_callback=None,
+    cancellation_check=None,
+    process_callback=None,
 ) -> None:
     """Stack two videos vertically with audio sync offset.
 
@@ -310,6 +318,8 @@ def _stack_videos(
         offset: Audio sync offset in seconds
         output_path: Path for output video
         progress_callback: Optional callback function(dict) for progress updates
+        cancellation_check: Optional callback function() -> bool to check if cancelled
+        process_callback: Optional callback function(pid: int) to receive FFmpeg PID
     """
     offset_str = f"{offset:.2f}"
     encoder = _detect_gpu_encoder()
@@ -381,12 +391,18 @@ def _stack_videos(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1,
+                bufsize=0,  # Unbuffered for immediate output
                 universal_newlines=True,
             )
-
+            # Store process PID for direct termination if needed
+            if process_callback:
+                process_callback(process.pid)
+                print(f"[TRANSCODE] FFmpeg process started with PID: {process.pid}")
+                logger.info(f"FFmpeg process started with PID: {process.pid}")
             # Read stderr in a separate thread to prevent blocking
             import threading
+            import select
+            import sys
 
             stderr_lines = []
 
@@ -397,12 +413,37 @@ def _stack_videos(
             stderr_thread = threading.Thread(target=read_stderr, daemon=True)
             stderr_thread.start()
 
-            # Parse progress output in real-time from stdout
+            # Parse progress output in real-time from stdout with cancellation checks
             progress_data = {}
             progress_count = 0
             last_frame_count = 0
 
-            for line in process.stdout:
+            # Use select for non-blocking reads with timeout (Unix only)
+            # On Windows, fall back to blocking reads
+            use_select = sys.platform != 'win32'
+
+            while process.poll() is None:
+                # Check for cancellation even if no data available
+                if cancellation_check and cancellation_check():
+                    logger.info("Transcoding cancelled, terminating FFmpeg process")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        logger.warning("FFmpeg did not terminate gracefully, killing process")
+                        process.kill()
+                    raise RuntimeError("Transcoding cancelled by user")
+
+                # Read available data with timeout
+                if use_select:
+                    ready, _, _ = select.select([process.stdout], [], [], 0.5)
+                    if not ready:
+                        continue  # Timeout - loop back to check cancellation
+
+                line = process.stdout.readline()
+                if not line:
+                    continue
+
                 line = line.strip()
 
                 if '=' in line:
@@ -420,8 +461,9 @@ def _stack_videos(
                                 current_frame = int(frame_str) if frame_str.isdigit() else 0
 
                                 # Calculate progress based on frames if available
+                                # Cap at 95% to leave room for calibration step
                                 if total_frames > 0 and current_frame > 0:
-                                    progress_percent = min(100, (current_frame / total_frames) * 100)
+                                    progress_percent = min(95, (current_frame / total_frames) * 95)
                                     current_time = current_frame / frame_rate if frame_rate > 0 else 0
                                 else:
                                     # Fallback to time-based if we have it
@@ -429,7 +471,7 @@ def _stack_videos(
                                     if out_time_ms != 'N/A' and out_time_ms.replace('.', '').isdigit():
                                         current_time = float(out_time_ms) / 1000.0
                                         progress_percent = (
-                                            min(100, (current_time / total_duration) * 100) if total_duration > 0 else 0
+                                            min(95, (current_time / total_duration) * 95) if total_duration > 0 else 0
                                         )
                                     else:
                                         current_time = 0

@@ -4,9 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMatches, useMatchMutations } from '../hooks/useMatches';
 import MatchCard from './MatchCard';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Play } from 'lucide-react';
 
-export default function MatchList({ onSelectMatch, onCreateNew }) {
+export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessing }) {
 	const { matches, loading, error, refetch } = useMatches();
 	const { delete: deleteMatch } = useMatchMutations();
 	const [deleteError, setDeleteError] = React.useState(null);
@@ -86,6 +86,13 @@ export default function MatchList({ onSelectMatch, onCreateNew }) {
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 						{displayMatches.map((match) => {
 							const isReady = match.status === 'ready';
+							const isCancelled = match.processing_message?.toLowerCase().includes('cancelled');
+							const isError = match.status === 'error' || isCancelled;
+							const isProcessing = ['transcoding', 'calibrating'].includes(match.status);
+							const isAwaitingFrames =
+								match.status === 'pending' &&
+								match.processing_step === 'awaiting_frames' &&
+								!isCancelled;
 							const isDeleting = deletingId === match.id;
 
 							return (
@@ -101,15 +108,54 @@ export default function MatchList({ onSelectMatch, onCreateNew }) {
 
 										{/* Action buttons */}
 										<div className="flex gap-2 border-t pt-3">
-											<Button
-												onClick={() => onSelectMatch(match)}
-												disabled={!isReady}
-												variant={isReady ? 'default' : 'outline'}
-												size="sm"
-												className="flex-1"
-											>
-												{isReady ? 'View' : 'Incomplete'}
-											</Button>
+											{isReady ? (
+												<Button
+													onClick={() => onSelectMatch(match)}
+													variant="default"
+													size="sm"
+													className="flex-1"
+												>
+													View
+												</Button>
+											) : isError ? (
+												<Button
+													onClick={() => onResumeProcessing && onResumeProcessing(match)}
+													variant="destructive"
+													size="sm"
+													className="flex-1"
+												>
+													Retry
+												</Button>
+											) : isProcessing ? (
+												<Button
+													onClick={() => onResumeProcessing && onResumeProcessing(match)}
+													variant="default"
+													size="sm"
+													className="flex-1 gap-2"
+												>
+													<Play className="h-3 w-3" />
+													See Progress
+												</Button>
+											) : isAwaitingFrames ? (
+												<Button
+													onClick={() => onResumeProcessing && onResumeProcessing(match)}
+													variant="default"
+													size="sm"
+													className="flex-1"
+												>
+													Calibrate
+												</Button>
+											) : (
+												<Button
+													onClick={() => onSelectMatch(match)}
+													disabled
+													variant="outline"
+													size="sm"
+													className="flex-1"
+												>
+													Incomplete
+												</Button>
+											)}
 											<Button
 												onClick={(e) => {
 													e.stopPropagation();

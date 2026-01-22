@@ -129,6 +129,13 @@ export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameB
 }
 
 /**
+ * Cancel ongoing processing for a match
+ */
+export async function cancelProcessing(matchId) {
+	return api.post(`/matches/${matchId}/cancel`);
+}
+
+/**
  * Get processing status of a match
  */
 export async function getMatchStatus(matchId) {

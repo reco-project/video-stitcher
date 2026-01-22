@@ -455,6 +455,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 						onChange={(e) => setName(e.target.value)}
 						placeholder="e.g., Concert 2025-12-29"
 						className="text-lg"
+						autoFocus={false}
 					/>
 				</CardContent>
 			</Card>
@@ -924,7 +925,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 									<span>Will use:</span>
 									<Badge
 										variant={encoderInfo.current_encoder === 'libx264' ? 'secondary' : 'default'}
-										classname="gap-1"
+										className="gap-1"
 									>
 										{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
 									</Badge>

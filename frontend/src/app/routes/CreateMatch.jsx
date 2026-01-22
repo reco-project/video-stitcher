@@ -6,13 +6,8 @@ export default function CreateMatch() {
 	const navigate = useNavigate();
 
 	const handleWizardComplete = async (newMatch) => {
-		// Auto-navigate to viewer if match is ready, otherwise show list
-		if (newMatch.status === 'ready' && newMatch.params) {
-			navigate(`/viewer/${newMatch.id}`);
-		} else {
-			// Show match list for incomplete matches
-			navigate('/');
-		}
+		// Always navigate to processing page after creating match
+		navigate(`/processing/${newMatch.id}`);
 	};
 
 	const handleCancel = () => {

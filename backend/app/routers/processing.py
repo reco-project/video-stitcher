@@ -32,6 +32,12 @@ MATCHES_DIR = Path(__file__).parent.parent.parent / "data" / "matches"
 # Structure: {match_id: {transcode_fps, transcode_speed, transcode_progress, ...}}
 _progress_cache = {}
 
+# Track cancellation requests
+_cancellation_flags = {}
+
+# Track FFmpeg process PIDs for direct termination
+_ffmpeg_processes = {}
+
 
 def get_store() -> MatchStore:
     """Dependency injection for match store."""
@@ -82,6 +88,76 @@ async def get_processing_status(match_id: str, match_store: MatchStore = Depends
     return JSONResponse(content=response)
 
 
+@router.post("/{match_id}/cancel")
+async def cancel_processing(match_id: str, match_store: MatchStore = Depends(get_store)):
+    """
+    Cancel ongoing processing for a match.
+
+    Args:
+        match_id: Match identifier
+        match_store: Match store dependency
+
+    Returns:
+        Success message
+
+    Raises:
+        404: Match not found
+    """
+    match_data = match_store.get_by_id(match_id)
+    if not match_data:
+        raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
+
+    # Set cancellation flag
+    _cancellation_flags[match_id] = True
+    logger.info(f"Cancellation requested for match {match_id}")
+
+    # Kill FFmpeg process directly if running
+    if match_id in _ffmpeg_processes:
+        import signal
+
+        pid = _ffmpeg_processes[match_id]
+        logger.info(f"Attempting to kill FFmpeg process with PID: {pid}")
+        try:
+            import os
+
+            os.kill(pid, signal.SIGTERM)
+            logger.info(f"Sent SIGTERM to FFmpeg process {pid}")
+            # Give it a moment to terminate
+            import time
+
+            time.sleep(0.5)
+            # If still alive, force kill
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.info(f"Sent SIGKILL to FFmpeg process {pid}")
+            except ProcessLookupError:
+                logger.info(f"FFmpeg process {pid} already terminated")
+        except ProcessLookupError:
+            logger.info(f"FFmpeg process {pid} not found")
+        except Exception as e:
+            logger.warning(f"Failed to kill FFmpeg process {pid}: {e}")
+        finally:
+            # Remove PID from tracking dict if it still exists
+            if match_id in _ffmpeg_processes:
+                del _ffmpeg_processes[match_id]
+    else:
+        logger.info(f"No FFmpeg process found for match {match_id}")
+
+    # Update match status to reflect cancellation
+    current_status = match_data.get("status")
+    if current_status in ["transcoding", "calibrating"]:
+        match_data["status"] = "pending"
+        match_data["processing_step"] = None
+        match_data["processing_message"] = "Processing cancelled by user"
+        match_store.update(match_id, match_data)
+
+    # Clear progress cache
+    if match_id in _progress_cache:
+        del _progress_cache[match_id]
+
+    return {"message": "Processing cancelled", "match_id": match_id}
+
+
 @router.post("/{match_id}/transcode")
 async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depends(get_store)):
     """
@@ -127,8 +203,11 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
     # Update match status
     match_data["status"] = "transcoding"
     match_data["processing_step"] = "transcoding"
-    match_data["processing_message"] = "Syncing and stacking videos..."
+    match_data["processing_message"] = "Preparing to sync and stack videos..."
     match_store.update(match_id, match_data)
+
+    # Initialize progress cache with starting message
+    _progress_cache[match_id] = {'processing_message': 'Starting transcoding process...'}
 
     try:
         # Transcode in background thread
@@ -136,6 +215,15 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
             import os
             import tempfile
             import time
+
+            # Create a fresh store instance for the background thread
+            bg_store = get_store()
+
+            # Re-fetch match data to ensure we have the latest version
+            bg_match_data = bg_store.get_by_id(match_id)
+            if not bg_match_data:
+                logger.error(f"Match {match_id} not found in background thread")
+                return
 
             temp_dir = os.path.join("temp", match_id)
             os.makedirs(temp_dir, exist_ok=True)
@@ -187,9 +275,56 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
 
             try:
                 output_video_path = os.path.join("data/videos", f"{match_id}.mp4")
+
+                # Check for cancellation before starting
+                if _cancellation_flags.get(match_id, False):
+                    logger.info(f"Transcoding cancelled before start for {match_id}")
+                    bg_match_data["status"] = "pending"
+                    bg_match_data["processing_step"] = None
+                    bg_match_data["processing_message"] = "Processing cancelled"
+                    bg_store.update(match_id, bg_match_data)
+                    if match_id in _progress_cache:
+                        del _progress_cache[match_id]
+                    if match_id in _cancellation_flags:
+                        del _cancellation_flags[match_id]
+                    return
+
+                # Cancellation checker function
+                def is_cancelled():
+                    cancelled = _cancellation_flags.get(match_id, False)
+                    if cancelled:
+                        logger.info(f"Cancellation flag detected for {match_id}")
+                    return cancelled
+
+                # Store process info callback
+                def store_process_pid(pid):
+                    _ffmpeg_processes[match_id] = pid
+                    logger.info(f"Stored FFmpeg PID {pid} for match {match_id}")
+
                 stacked_path, offset = transcode_and_stack(
-                    left_video_path, right_video_path, output_video_path, temp_dir, progress_callback=update_progress
+                    left_video_path,
+                    right_video_path,
+                    output_video_path,
+                    temp_dir,
+                    progress_callback=update_progress,
+                    cancellation_check=is_cancelled,
+                    process_callback=store_process_pid,
                 )
+
+                # Check for cancellation after transcoding
+                if _cancellation_flags.get(match_id, False):
+                    logger.info(f"Transcoding cancelled after completion for {match_id}")
+                    bg_match_data["status"] = "pending"
+                    bg_match_data["processing_step"] = None
+                    bg_match_data["processing_message"] = "Processing cancelled"
+                    bg_store.update(match_id, bg_match_data)
+                    if match_id in _progress_cache:
+                        del _progress_cache[match_id]
+                    if match_id in _cancellation_flags:
+                        del _cancellation_flags[match_id]
+                    if match_id in _ffmpeg_processes:
+                        del _ffmpeg_processes[match_id]
+                    return
 
                 # Extract preview frame from the stacked video
                 try:
@@ -206,36 +341,68 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 final_progress = _progress_cache.get(match_id, {})
 
                 # Update match with video path and final progress
-                match_data["src"] = f"videos/{match_id}.mp4"
-                match_data["offset_seconds"] = round(offset, 2)
-                match_data["status"] = "pending"  # Ready for frontend processing
-                match_data["processing_step"] = "awaiting_frames"
-                match_data["processing_message"] = "Video ready, awaiting frame extraction"
+                bg_match_data["src"] = f"videos/{match_id}.mp4"
+                bg_match_data["offset_seconds"] = round(offset, 2)
+                bg_match_data["status"] = "pending"  # Ready for frontend processing
+                bg_match_data["processing_step"] = "awaiting_frames"
+                bg_match_data["processing_message"] = "Video ready, awaiting frame extraction"
 
                 # Persist final transcode metrics to disk
                 if final_progress:
-                    match_data["transcode_progress"] = final_progress.get('transcode_progress')
-                    match_data["transcode_fps"] = final_progress.get('transcode_fps')
-                    match_data["transcode_speed"] = final_progress.get('transcode_speed')
-                    match_data["transcode_current_time"] = final_progress.get('transcode_current_time')
-                    match_data["transcode_total_duration"] = final_progress.get('transcode_total_duration')
+                    bg_match_data["transcode_progress"] = final_progress.get('transcode_progress')
+                    bg_match_data["transcode_fps"] = final_progress.get('transcode_fps')
+                    bg_match_data["transcode_speed"] = final_progress.get('transcode_speed')
+                    bg_match_data["transcode_current_time"] = final_progress.get('transcode_current_time')
+                    bg_match_data["transcode_total_duration"] = final_progress.get('transcode_total_duration')
 
-                match_store.update(match_id, match_data)
+                bg_store.update(match_id, bg_match_data)
 
-                # Clear progress cache
+                # Clear progress cache, cancellation flag, and PID tracking
                 if match_id in _progress_cache:
                     del _progress_cache[match_id]
+                if match_id in _cancellation_flags:
+                    del _cancellation_flags[match_id]
+                if match_id in _ffmpeg_processes:
+                    del _ffmpeg_processes[match_id]
+
+            except RuntimeError as e:
+                # Check if this is a cancellation error
+                if "cancelled" in str(e).lower():
+                    logger.info(f"Transcoding cancelled for {match_id}: {e}")
+                    bg_match_data["status"] = "pending"
+                    bg_match_data["processing_step"] = None
+                    bg_match_data["processing_message"] = "Processing cancelled"
+                    bg_store.update(match_id, bg_match_data)
+                else:
+                    # Other runtime errors
+                    logger.error(f"Transcoding failed for {match_id}: {e}", exc_info=True)
+                    bg_match_data["status"] = "error"
+                    bg_match_data["error_message"] = str(e)
+                    bg_match_data["processing_step"] = None
+                    bg_store.update(match_id, bg_match_data)
+
+                # Clear progress cache and cancellation flag
+                if match_id in _progress_cache:
+                    del _progress_cache[match_id]
+                if match_id in _cancellation_flags:
+                    del _cancellation_flags[match_id]
+                if match_id in _ffmpeg_processes:
+                    del _ffmpeg_processes[match_id]
 
             except Exception as e:
                 logger.error(f"Transcoding failed for {match_id}: {e}", exc_info=True)
-                match_data["status"] = "error"
-                match_data["error_message"] = str(e)
-                match_data["processing_step"] = None
-                match_store.update(match_id, match_data)
+                bg_match_data["status"] = "error"
+                bg_match_data["error_message"] = str(e)
+                bg_match_data["processing_step"] = None
+                bg_store.update(match_id, bg_match_data)
 
-                # Clear progress cache
+                # Clear progress cache and cancellation flag
                 if match_id in _progress_cache:
                     del _progress_cache[match_id]
+                if match_id in _cancellation_flags:
+                    del _cancellation_flags[match_id]
+                if match_id in _ffmpeg_processes:
+                    del _ffmpeg_processes[match_id]
 
         thread = threading.Thread(target=_transcode_background, daemon=True)
         thread.start()

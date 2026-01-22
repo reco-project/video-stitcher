@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MatchListComponent from '@/features/matches/components/MatchList';
 import { useMatchMutations } from '@/features/matches/hooks/useMatches';
+import { processMatch } from '@/features/matches/api/matches';
 import legacyMatches from '@/data/matches.js';
 
 const LEGACY_LOADED_KEY = 'legacyMatchesLoaded';
@@ -49,11 +50,26 @@ export default function MatchList() {
 		navigate('/create');
 	};
 
+	const handleResumeProcessing = async (match) => {
+		// Start processing, then navigate to the processing page
+		try {
+			await processMatch(match.id);
+		} catch (err) {
+			console.error('Failed to start processing:', err);
+			// Navigate anyway so user can see error and retry
+		}
+		navigate(`/processing/${match.id}`);
+	};
+
 	return (
 		<div className="w-full h-full flex flex-col items-center justify-start px-6 py-6">
 			<div className="w-full max-w-6xl">
 				<div className="mt-6 flex justify-center">
-					<MatchListComponent onSelectMatch={handleSelectMatch} onCreateNew={handleCreateNew} />
+					<MatchListComponent
+						onSelectMatch={handleSelectMatch}
+						onCreateNew={handleCreateNew}
+						onResumeProcessing={handleResumeProcessing}
+					/>
 				</div>
 			</div>
 		</div>

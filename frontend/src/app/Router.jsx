@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router-dom';
 import AppLayout from './AppLayout';
 import MatchList from './routes/MatchList';
 import CreateMatch from './routes/CreateMatch';
+import ProcessingMatch from './routes/ProcessingMatch';
 import MatchViewer from './routes/MatchViewer';
 import Profiles from './routes/Profiles';
 import NotFound from './routes/NotFound';
@@ -23,6 +24,11 @@ const paths = {
 		pattern: '/create',
 		build: () => '/create',
 		title: 'Create Match',
+	},
+	processing: {
+		pattern: '/processing/:id',
+		build: (id) => `/processing/${id}`,
+		title: 'Processing',
 	},
 	viewer: {
 		pattern: '/viewer/:id',
@@ -49,6 +55,7 @@ export const useNavigateTo = () => {
 	return {
 		toHome: () => navigate(paths.home.build()),
 		toCreate: () => navigate(paths.create.build()),
+		toProcessing: (id) => navigate(paths.processing.build(id)),
 		toViewer: (id) => navigate(paths.viewer.build(id)),
 		toProfiles: () => navigate(paths.profiles.build()),
 	};
@@ -68,6 +75,14 @@ const router = createBrowserRouter([
 		element: (
 			<AppLayout>
 				<CreateMatch />
+			</AppLayout>
+		),
+	},
+	{
+		path: paths.processing.pattern,
+		element: (
+			<AppLayout>
+				<ProcessingMatch />
 			</AppLayout>
 		),
 	},
