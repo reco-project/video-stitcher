@@ -301,6 +301,13 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                     _ffmpeg_processes[match_id] = pid
                     logger.info(f"Stored FFmpeg PID {pid} for match {match_id}")
 
+                # Get quality settings from match (convert to dict if needed)
+                quality_settings = None
+                if bg_match_data.get("quality_settings"):
+                    quality_settings = bg_match_data["quality_settings"]
+                    if hasattr(quality_settings, "dict"):
+                        quality_settings = quality_settings.dict()
+
                 stacked_path, offset = transcode_and_stack(
                     left_video_path,
                     right_video_path,
@@ -309,6 +316,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                     progress_callback=update_progress,
                     cancellation_check=is_cancelled,
                     process_callback=store_process_pid,
+                    quality_settings=quality_settings,
                 )
 
                 # Check for cancellation after transcoding

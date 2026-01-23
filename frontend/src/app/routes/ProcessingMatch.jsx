@@ -75,6 +75,9 @@ export default function ProcessingMatch() {
 				if (extractionOpenedIds.current.has(matchId)) return;
 				extractionOpenedIds.current.add(matchId);
 
+				// Stop polling while extracting frames
+				processing.stopPolling();
+
 				// Reload match data to get the video src
 				let match = matchData;
 				if (!match || !match.src) {

@@ -84,6 +84,13 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 	const [encoderInfo, setEncoderInfo] = useState(null);
 	const [loadingEncoder, setLoadingEncoder] = useState(true);
 
+	// Quality settings
+	const [qualityPreset, setQualityPreset] = useState(draft?.qualityPreset || '1080p');
+	const [customBitrate, setCustomBitrate] = useState(draft?.customBitrate || '30M');
+	const [customPreset, setCustomPreset] = useState(draft?.customPreset || 'medium');
+	const [customResolution, setCustomResolution] = useState(draft?.customResolution || '1080p');
+	const [customUseGpuDecode, setCustomUseGpuDecode] = useState(draft?.customUseGpuDecode !== false);
+
 	// Sort and normalize
 	const brandsLeft = sortBrands(rawBrandsLeft);
 	const modelsLeft = sortModels(rawModelsLeft);
@@ -116,6 +123,11 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 				rightBrand,
 				rightModel,
 				rightProfileId,
+				qualityPreset,
+				customBitrate,
+				customPreset,
+				customResolution,
+				customUseGpuDecode,
 			};
 			saveDraft(draftData);
 		}, 500); // Debounce by 500ms
@@ -133,6 +145,11 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 		rightBrand,
 		rightModel,
 		rightProfileId,
+		qualityPreset,
+		customBitrate,
+		customPreset,
+		customResolution,
+		customUseGpuDecode,
 	]);
 
 	// Load favorite IDs and profiles when toggled
@@ -398,12 +415,26 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 		setError(null);
 
 		try {
+			// Build quality settings object based on preset or custom values
+			const qualitySettings = qualityPreset === 'custom' ? {
+				preset: qualityPreset,
+				quality_mode: 'bitrate',
+				codec: 'h264',
+				bitrate: customBitrate,
+				speed_preset: customPreset,
+				resolution: customResolution,
+				use_gpu_decode: customUseGpuDecode,
+			} : {
+				preset: qualityPreset,
+			};
+
 			await onSubmit({
 				name: name.trim(),
 				left_videos: validLeftPaths.map((path) => ({ path, profile_id: leftProfileId })),
 				right_videos: validRightPaths.map((path) => ({ path, profile_id: rightProfileId })),
 				leftProfile,
 				rightProfile,
+				qualitySettings,
 			});
 			// Clear draft on successful submission
 			try {
@@ -946,6 +977,135 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 					</AlertDescription>
 				</Alert>
 			)}
+
+			{/* Quality Settings */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Processing Quality</CardTitle>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					{/* Quality Preset Dropdown */}
+					<div className="space-y-2">
+						<Label>Quality Preset</Label>
+						<Select value={qualityPreset} onValueChange={setQualityPreset}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="720p">720p HD</SelectItem>
+								<SelectItem value="1080p">1080p Full HD (Recommended)</SelectItem>
+								<SelectItem value="1440p">1440p QHD</SelectItem>
+								<SelectItem value="custom">⚙️ Custom</SelectItem>
+							</SelectContent>
+						</Select>
+						{/* Preset Description */}
+						{qualityPreset === '720p' && (
+							<div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+								<div className="font-medium mb-1">720p HD</div>
+								<div>30 Mbps • 1280x1440 stacked</div>
+								<div className="text-xs mt-1">Good for quick previews and testing</div>
+							</div>
+						)}
+						{qualityPreset === '1080p' && (
+							<div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+								<div className="font-medium mb-1">1080p Full HD (Recommended)</div>
+								<div>50 Mbps • 1920x2160 stacked</div>
+								<div className="text-xs mt-1">Balanced quality and file size</div>
+							</div>
+						)}
+						{qualityPreset === '1440p' && (
+							<div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+								<div className="font-medium mb-1">1440p QHD</div>
+								<div>70 Mbps • 2560x2880 stacked</div>
+								<div className="text-xs mt-1">High quality for detailed calibration</div>
+							</div>
+						)}
+						{qualityPreset === 'custom' && (
+							<div className="space-y-3 border-t pt-3 mt-2">
+								{/* Bitrate */}
+								<div className="space-y-2">
+									<Label className="text-sm">Bitrate</Label>
+									<Select value={customBitrate} onValueChange={setCustomBitrate}>
+										<SelectTrigger className="h-9">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="20M">20 Mbps (Low)</SelectItem>
+											<SelectItem value="30M">30 Mbps (Medium)</SelectItem>
+											<SelectItem value="40M">40 Mbps (High)</SelectItem>
+											<SelectItem value="50M">50 Mbps (Very High)</SelectItem>
+											<SelectItem value="70M">70 Mbps (Ultra)</SelectItem>
+											<SelectItem value="90M">90 Mbps (4K)</SelectItem>
+											<SelectItem value="120M">120 Mbps (Max)</SelectItem>
+										</SelectContent>
+									</Select>
+									<div className="text-xs text-muted-foreground">
+										Higher = better quality, larger file
+									</div>
+								</div>
+								{/* Speed Preset */}
+								<div className="space-y-2">
+									<Label className="text-sm">Speed Preset</Label>
+									<Select value={customPreset} onValueChange={setCustomPreset}>
+										<SelectTrigger className="h-9">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="ultrafast">Ultra Fast</SelectItem>
+											<SelectItem value="superfast">Super Fast</SelectItem>
+											<SelectItem value="veryfast">Very Fast</SelectItem>
+											<SelectItem value="faster">Faster</SelectItem>
+											<SelectItem value="fast">Fast</SelectItem>
+											<SelectItem value="medium">Medium</SelectItem>
+											<SelectItem value="slow">Slow</SelectItem>
+											<SelectItem value="slower">Slower</SelectItem>
+										</SelectContent>
+									</Select>
+									<div className="text-xs text-muted-foreground">
+										Faster = quicker encoding, less compression
+									</div>
+								</div>
+								{/* Resolution */}
+								<div className="space-y-2">
+									<Label className="text-sm">Output Resolution</Label>
+									<Select value={customResolution} onValueChange={setCustomResolution}>
+										<SelectTrigger className="h-9">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="720p">720p (1280x1440 stacked)</SelectItem>
+											<SelectItem value="1080p">1080p (1920x2160 stacked)</SelectItem>
+											<SelectItem value="1440p">1440p (2560x2880 stacked)</SelectItem>
+											<SelectItem value="4k">4K (3840x4320 stacked) - H.265 recommended</SelectItem>
+										</SelectContent>
+									</Select>
+									<div className="text-xs text-muted-foreground">
+										Higher = better quality, larger file, slower processing
+									</div>
+								</div>
+								{/* GPU Decode */}
+								<div className="space-y-2">
+									<div className="flex items-center gap-2">
+										<input
+											type="checkbox"
+											id="gpu-decode"
+											checked={customUseGpuDecode}
+											onChange={(e) => setCustomUseGpuDecode(e.target.checked)}
+											className="w-4 h-4 rounded"
+										/>
+										<Label htmlFor="gpu-decode" className="text-sm cursor-pointer">
+											Use GPU decoding
+										</Label>
+									</div>
+									<div className="text-xs text-muted-foreground">
+										May be faster or slower depending on your hardware
+									</div>
+								</div>
+							</div>
+						)}
+					</div>
+				</CardContent>
+			</Card>
 
 			{/* Action Buttons */}
 			<div className="flex justify-between items-center pt-4">

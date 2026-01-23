@@ -27,6 +27,24 @@ ProcessingStep = Literal[
 ]
 
 
+class QualitySettings(BaseModel):
+    """Video quality settings for transcoding."""
+
+    preset: Literal["fast", "standard", "high", "custom"] = Field(default="standard", description="Quality preset")
+    codec: Optional[Literal["h264", "h265"]] = Field(None, description="Video codec")
+    quality_mode: Optional[Literal["crf", "bitrate"]] = Field("crf", description="Quality control mode")
+    crf: Optional[int] = Field(None, description="Constant Rate Factor (15-28, lower = better quality)")
+    bitrate: Optional[str] = Field(None, description="Target bitrate (e.g., '30M', '50M')")
+    speed_preset: Optional[
+        Literal["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower"]
+    ] = Field(None, description="FFmpeg speed preset")
+    resolution: Optional[Literal["720p", "1080p", "1440p", "4k"]] = Field(
+        "1080p", description="Output resolution (2x stacked)"
+    )
+    use_gpu_decode: Optional[bool] = Field(True, description="Use GPU hardware acceleration for video decoding")
+    use_lanczos: Optional[bool] = Field(True, description="Use Lanczos scaling filter (higher quality)")
+
+
 class VideoInput(BaseModel):
     """Video file input with lens profile."""
 
@@ -98,6 +116,9 @@ class MatchModel(BaseModel):
     transcode_current_time: Optional[float] = Field(None, description="Current time position in seconds")
     transcode_total_duration: Optional[float] = Field(None, description="Total video duration in seconds")
     offset_seconds: Optional[float] = Field(None, description="Audio sync offset in seconds")
+
+    # Quality settings
+    quality_settings: Optional[QualitySettings] = Field(None, description="Video quality settings for transcoding")
 
     @field_validator("id")
     @classmethod

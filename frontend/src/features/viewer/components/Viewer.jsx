@@ -229,10 +229,81 @@ const Viewer = ({ selectedMatch }) => {
 				{/* Expandable Content */}
 				{isExpanded && (
 					<div className="border-t px-3 py-4 space-y-4 bg-muted/20">
-						{/* Info Text */}
-						<p className="text-xs text-muted-foreground">
-							Adjust your preferred viewing range. Changes are saved automatically.
-						</p>
+						{/* Match Info Grid */}
+						<div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+							<div>
+								<span className="text-muted-foreground">Match ID:</span>
+								<span className="ml-2 font-mono">{selectedMatch.id}</span>
+							</div>
+							<div>
+								<span className="text-muted-foreground">Created:</span>
+								<span className="ml-2">
+									{new Date(selectedMatch.created_at).toLocaleDateString()}
+								</span>
+							</div>
+							{selectedMatch.offset_seconds !== undefined && selectedMatch.offset_seconds !== null && (
+								<div>
+									<span className="text-muted-foreground">Audio Offset:</span>
+									<span className="ml-2">{selectedMatch.offset_seconds.toFixed(3)}s</span>
+								</div>
+							)}
+							{selectedMatch.num_matches && (
+								<div>
+									<span className="text-muted-foreground">Feature Matches:</span>
+									<span className="ml-2">{selectedMatch.num_matches}</span>
+								</div>
+							)}
+						</div>
+
+						{/* Quality Settings */}
+						{selectedMatch.quality_settings && (
+							<div className="border-t pt-3">
+								<h4 className="text-xs font-semibold mb-2">Processing Quality</h4>
+								<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+									<div>
+										<span className="text-muted-foreground">Preset:</span>
+										<span className="ml-2 capitalize">{selectedMatch.quality_settings.preset}</span>
+									</div>
+									{selectedMatch.quality_settings.codec && (
+										<div>
+											<span className="text-muted-foreground">Codec:</span>
+											<span className="ml-2 uppercase">{selectedMatch.quality_settings.codec}</span>
+										</div>
+									)}
+									{selectedMatch.quality_settings.crf !== undefined && selectedMatch.quality_settings.crf !== null && (
+										<div>
+											<span className="text-muted-foreground">CRF:</span>
+											<span className="ml-2">{selectedMatch.quality_settings.crf}</span>
+										</div>
+									)}
+									{selectedMatch.quality_settings.bitrate && (
+										<div>
+											<span className="text-muted-foreground">Bitrate:</span>
+											<span className="ml-2">{selectedMatch.quality_settings.bitrate}</span>
+										</div>
+									)}
+									{selectedMatch.quality_settings.speed_preset && (
+										<div>
+											<span className="text-muted-foreground">Speed:</span>
+											<span className="ml-2 capitalize">{selectedMatch.quality_settings.speed_preset}</span>
+										</div>
+									)}
+									{selectedMatch.quality_settings.use_gpu_decode !== undefined && (
+										<div>
+											<span className="text-muted-foreground">GPU Decode:</span>
+											<span className="ml-2">{selectedMatch.quality_settings.use_gpu_decode ? 'Enabled' : 'Disabled'}</span>
+										</div>
+									)}
+								</div>
+							</div>
+						)}
+
+						{/* Divider */}
+						<div className="border-t pt-3">
+							<p className="text-xs text-muted-foreground mb-3">
+								Adjust your preferred viewing range. Changes are saved automatically.
+							</p>
+						</div>
 
 						{/* Horizontal Panning */}
 						<div>

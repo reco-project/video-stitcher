@@ -77,6 +77,7 @@ export default function MatchWizard({ onComplete, onCancel }) {
 					left_profile_id: formData.leftProfile.id,
 					right_profile_id: formData.rightProfile.id,
 				},
+				quality_settings: formData.qualitySettings,
 			};
 
 			const createdMatch = await create(matchPayload);

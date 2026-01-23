@@ -28,6 +28,66 @@ ERROR_MESSAGES = {
     "STACKING_FAILED": "Failed to stack videos",
 }
 
+# Quality preset definitions
+QUALITY_PRESETS = {
+    "720p": {
+        "bitrate": "30M",
+        "speed_preset": "medium",
+        "resolution": "720p",
+    },
+    "1080p": {
+        "bitrate": "50M",
+        "speed_preset": "medium",
+        "resolution": "1080p",
+    },
+    "1440p": {
+        "bitrate": "70M",
+        "speed_preset": "medium",
+        "resolution": "1440p",
+    },
+}
+
+
+def _get_encoding_params(quality_settings):
+    """Get encoding parameters from quality settings.
+
+    Args:
+        quality_settings: Dict or None with quality settings
+
+    Returns:
+        Tuple of (quality_mode, quality_value, speed_preset, codec_base, resolution_preset)
+        quality_mode: Always 'bitrate' (simplified)
+        quality_value: bitrate string
+        resolution_preset: Resolution string (720p/1080p/1440p/4k)
+    """
+    # Default values (1080p preset) - always bitrate mode with h264
+    quality_mode = "bitrate"
+    quality_value = "50M"
+    speed_preset = "medium"
+    codec_base = "h264"
+    resolution_preset = "1080p"
+
+    if not quality_settings:
+        return quality_mode, quality_value, speed_preset, codec_base, resolution_preset
+
+    preset = quality_settings.get("preset", "1080p")
+
+    if preset == "custom":
+        # Use custom values - always bitrate mode with h264
+        quality_mode = "bitrate"
+        quality_value = quality_settings.get("bitrate", "50M")
+        speed_preset = quality_settings.get("speed_preset", "medium")
+        codec_base = "h264"
+        resolution_preset = quality_settings.get("resolution", "1080p")
+    else:
+        # Use preset
+        preset_config = QUALITY_PRESETS.get(preset, QUALITY_PRESETS["1080p"])
+        quality_value = preset_config["bitrate"]
+        speed_preset = preset_config["speed_preset"]
+        resolution_preset = preset_config.get("resolution", "1080p")
+
+    return quality_mode, quality_value, speed_preset, codec_base, resolution_preset
+
 
 def check_ffmpeg() -> None:
     """
@@ -50,6 +110,7 @@ def transcode_and_stack(
     progress_callback=None,
     cancellation_check=None,
     process_callback=None,
+    quality_settings=None,
 ) -> Tuple[str, float]:
     """
     Synchronize and stack two videos vertically.
@@ -62,6 +123,7 @@ def transcode_and_stack(
         progress_callback: Optional callback function(dict) for progress updates
         cancellation_check: Optional callback function() -> bool to check if cancelled
         process_callback: Optional callback function(pid: int) to receive FFmpeg PID
+        quality_settings: Optional dict with quality settings (preset, codec, crf, bitrate, speed_preset, use_gpu_decode)
 
     Returns:
         Tuple of (output_path, offset_seconds)
@@ -112,7 +174,14 @@ def transcode_and_stack(
 
         # Stack videos with computed offset
         _stack_videos(
-            video1_path, video2_path, offset, output_path, progress_callback, cancellation_check, process_callback
+            video1_path,
+            video2_path,
+            offset,
+            output_path,
+            progress_callback,
+            cancellation_check,
+            process_callback,
+            quality_settings,
         )
 
         return output_path, offset
@@ -301,6 +370,65 @@ def _detect_gpu_encoder() -> str:
     return "libx264"
 
 
+def _map_preset_for_encoder(speed_preset, encoder):
+    """Map software encoder presets to hardware encoder presets.
+
+    Args:
+        speed_preset: Software preset (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower)
+        encoder: Encoder name (h264_nvenc, hevc_nvenc, h264_qsv, etc.)
+
+    Returns:
+        Mapped preset suitable for the encoder
+    """
+    # Software encoders (libx264, libx265) use the preset as-is
+    if encoder.startswith("lib"):
+        return speed_preset
+
+    # NVENC (NVIDIA) preset mapping
+    if "_nvenc" in encoder:
+        nvenc_map = {
+            "ultrafast": "p1",
+            "superfast": "p2",
+            "veryfast": "p3",
+            "faster": "p4",
+            "fast": "p5",
+            "medium": "p6",
+            "slow": "p7",
+            "slower": "p7",
+        }
+        return nvenc_map.get(speed_preset, "p6")
+
+    # QSV (Intel) preset mapping
+    if "_qsv" in encoder:
+        qsv_map = {
+            "ultrafast": "veryfast",
+            "superfast": "veryfast",
+            "veryfast": "veryfast",
+            "faster": "faster",
+            "fast": "fast",
+            "medium": "medium",
+            "slow": "slow",
+            "slower": "slower",
+        }
+        return qsv_map.get(speed_preset, "medium")
+
+    # AMF (AMD) preset mapping
+    if "_amf" in encoder:
+        amf_map = {
+            "ultrafast": "speed",
+            "superfast": "speed",
+            "veryfast": "speed",
+            "faster": "balanced",
+            "fast": "balanced",
+            "medium": "balanced",
+            "slow": "quality",
+            "slower": "quality",
+        }
+        return amf_map.get(speed_preset, "balanced")
+
+    return speed_preset
+
+
 def _stack_videos(
     video1_path: str,
     video2_path: str,
@@ -309,6 +437,7 @@ def _stack_videos(
     progress_callback=None,
     cancellation_check=None,
     process_callback=None,
+    quality_settings=None,
 ) -> None:
     """Stack two videos vertically with audio sync offset.
 
@@ -320,17 +449,49 @@ def _stack_videos(
         progress_callback: Optional callback function(dict) for progress updates
         cancellation_check: Optional callback function() -> bool to check if cancelled
         process_callback: Optional callback function(pid: int) to receive FFmpeg PID
+        quality_settings: Optional dict with quality settings
     """
     offset_str = f"{offset:.2f}"
     encoder = _detect_gpu_encoder()
 
+    # Get encoding parameters from quality settings (returns resolution_preset now)
+    quality_mode, quality_value, speed_preset, codec_base, resolution_preset = _get_encoding_params(quality_settings)
+
+    # Check if GPU decoding should be used (default: True)
+    use_gpu_decode = True
+    if quality_settings and "use_gpu_decode" in quality_settings:
+        use_gpu_decode = quality_settings.get("use_gpu_decode", True)
+
+    # Map resolution preset to actual dimensions (2x stacked vertically)
+    resolution_map = {
+        "720p": "1280:1440",  # 1280x720 * 2 vertically
+        "1080p": "1920:2160",  # 1920x1080 * 2 vertically
+        "1440p": "2560:2880",  # 2560x1440 * 2 vertically
+        "4k": "3840:4320",  # 3840x2160 * 2 vertically
+    }
+    resolution = resolution_map.get(resolution_preset, "1920:2160")
+    # Use bicubic (default) - Lanczos removed
+    scale_filter = f"scale={resolution}"
+
     # Ensure output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Try with detected encoder first, fallback to libx264 if it fails
-    encoders_to_try = [encoder] if encoder != "libx264" else ["libx264"]
-    if encoder != "libx264":
-        encoders_to_try.append("libx264")  # Always have software fallback
+    # Map codec_base to actual encoder (h264/h265)
+    if codec_base == "h265":
+        # Try HEVC encoders
+        if encoder.endswith("nvenc"):
+            encoders_to_try = ["hevc_nvenc", "libx265"]
+        elif encoder.endswith("qsv"):
+            encoders_to_try = ["hevc_qsv", "libx265"]
+        elif encoder.endswith("amf"):
+            encoders_to_try = ["hevc_amf", "libx265"]
+        else:
+            encoders_to_try = ["libx265"]
+    else:
+        # Use H.264 (default behavior)
+        encoders_to_try = [encoder] if encoder != "libx264" else ["libx264"]
+        if encoder != "libx264":
+            encoders_to_try.append("libx264")  # Always have software fallback
 
     last_error = None
 
@@ -342,36 +503,69 @@ def _stack_videos(
             except OSError:
                 pass
 
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-progress",
-            "pipe:1",
-            "-loglevel",
-            "error",
-            "-i",
-            video1_path,
-            "-itsoffset",
-            offset_str,
-            "-i",
-            video2_path,
-            "-filter_complex",
-            "[0:v][1:v]vstack=inputs=2[vout];[vout]scale=1920:2160[vscaled]",
-            "-map",
-            "[vscaled]",
-            "-c:v",
-            enc,
-            "-preset",
-            "fast",
-            "-b:v",
-            "30M",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            "-shortest",
-            output_path,
-        ]
+        # Determine hardware acceleration for decoding
+        hwaccel_args = []
+        if use_gpu_decode:
+            if enc.endswith("_nvenc"):
+                hwaccel_args = ["-hwaccel", "cuda"]
+            elif enc.endswith("_qsv"):
+                hwaccel_args = ["-hwaccel", "qsv"]
+            elif enc.endswith("_amf"):
+                hwaccel_args = ["-hwaccel", "auto"]
+
+        # Map preset to encoder-specific preset
+        mapped_preset = _map_preset_for_encoder(speed_preset, enc)
+
+        cmd = (
+            [
+                "ffmpeg",
+                "-y",
+            ]
+            + hwaccel_args
+            + [
+                "-progress",
+                "pipe:1",
+                "-loglevel",
+                "error",
+                "-i",
+                video1_path,
+            ]
+            + hwaccel_args
+            + [
+                "-itsoffset",
+                offset_str,
+                "-i",
+                video2_path,
+                "-filter_complex",
+                f"[0:v][1:v]vstack=inputs=2[vout];[vout]{scale_filter}[vscaled]",
+                "-map",
+                "[vscaled]",
+                "-c:v",
+                enc,
+                "-preset",
+                mapped_preset,
+            ]
+        )
+
+        # Add quality control (CRF or bitrate)
+        if quality_mode == "bitrate":
+            cmd.extend(["-b:v", str(quality_value)])
+        else:
+            cmd.extend(["-crf", str(quality_value)])
+
+        cmd.extend(
+            [
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                "-shortest",
+                output_path,
+            ]
+        )
+
+        # Log the FFmpeg command
+        logger.info(f"FFmpeg command: {' '.join(cmd)}")
 
         try:
             # Get total duration and frame rate for progress calculation
