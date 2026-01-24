@@ -4,25 +4,17 @@ import { useMatchMutations } from '../hooks/useMatches';
 import { processMatch } from '../api/matches';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-export default function MatchWizard({ onComplete, onCancel }) {
+export default function MatchWizard({ onComplete, onCancel, initialMatch }) {
 	const [error, setError] = useState(null);
-	const { create } = useMatchMutations();
+	const { create, update } = useMatchMutations();
+	const isEditMode = !!initialMatch;
 
-	const handleFormSubmit = async (formData) => {
+	const handleFormSubmit = async (formData, startProcessing = true) => {
 		try {
 			setError(null);
 
 			// Generate unique ID from timestamp
 			const id = `match-${Date.now()}`;
-
-			// Default calibration params - user can adjust later
-			const defaultParams = {
-				cameraAxisOffset: 0.23,
-				intersect: 0.55,
-				zRx: 0.0,
-				xTy: 0.0,
-				xRz: 0.0,
-			};
 
 			// Build uniforms from profile data
 			const buildUniforms = (profile) => {
@@ -66,50 +58,69 @@ export default function MatchWizard({ onComplete, onCancel }) {
 			};
 
 			const matchPayload = {
-				id,
-				name: formData.name,
-				left_videos: formData.left_videos,
-				right_videos: formData.right_videos,
-				params: defaultParams,
-				left_uniforms: buildUniforms(formData.leftProfile),
-				right_uniforms: buildUniforms(formData.rightProfile),
-				metadata: {
-					left_profile_id: formData.leftProfile.id,
-					right_profile_id: formData.rightProfile.id,
-				},
-				quality_settings: formData.qualitySettings,
-			};
+			id: isEditMode ? initialMatch.id : id,
+			name: formData.name,
+			left_videos: formData.left_videos,
+			right_videos: formData.right_videos,
+			// params will be set after calibration completes
+			left_uniforms: buildUniforms(formData.leftProfile),
+			right_uniforms: buildUniforms(formData.rightProfile),
+			metadata: {
+				left_profile_id: formData.leftProfile.id,
+				right_profile_id: formData.rightProfile.id,
+			},
+			quality_settings: formData.qualitySettings,
+		// Only reset processing state when editing if we're going to reprocess
+		...(isEditMode && startProcessing && {
+			processing: {
+				status: 'pending',
+				step: null,
+				message: null,
+				error_message: null,
+				error_code: null
+			}
+		})
+	};
 
-			const createdMatch = await create(matchPayload);
-			
-			// Start processing immediately after creation
+	const savedMatch = isEditMode 
+		? await update(initialMatch.id, matchPayload)
+		: await create(matchPayload);
+		
+		// Start processing if requested
+		if (startProcessing) {
 			try {
-				await processMatch(createdMatch.id);
+				await processMatch(savedMatch.id);
 			} catch (err) {
 				console.error('Failed to start processing:', err);
-				// Continue to processing page even if start fails - user can retry
+				// Continue even if start fails - user can retry
 			}
-			
-			onComplete(createdMatch);
-		} catch (err) {
-			setError(err.message || 'Failed to create match');
 		}
-	};
+		
+		onComplete(savedMatch, startProcessing);
+	} catch (err) {
+		setError(err.message || 'Failed to create match');
+	}
+};
 
-	const handleCancel = () => {
-		onCancel();
-	};
+const handleCancel = () => {
+	onCancel();
+};
 
-	return (
-		<div className="w-full max-w-6xl space-y-6 relative">
-			<MatchCreationForm onSubmit={handleFormSubmit} onCancel={handleCancel} />
-
-			{/* Error Alert */}
-			{error && (
-				<Alert variant="destructive">
-					<AlertDescription>{error}</AlertDescription>
-				</Alert>
-			)}
-		</div>
-	);
+return (
+	<div className="w-full max-w-6xl space-y-6 relative pb-12">
+		{/* Error Alert - Fixed at top for visibility */}
+		{error && (
+			<Alert variant="destructive" className="sticky top-4 z-50 shadow-lg">
+				<AlertDescription className="font-medium">{error}</AlertDescription>
+			</Alert>
+		)}
+		
+		<MatchCreationForm 
+			onSubmit={handleFormSubmit} 
+			onCancel={handleCancel} 
+			error={error}
+			initialData={initialMatch}
+		/>
+	</div>
+);
 }

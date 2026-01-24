@@ -81,17 +81,17 @@ class TestFileMatchStore:
         """Test creating a new match."""
         created = store.create(sample_match)
 
-        assert created["id"] == sample_match["id"]
-        assert created["name"] == sample_match["name"]
-        assert len(created["left_videos"]) == 1
-        assert len(created["right_videos"]) == 1
-        assert "created_at" in created  # Auto-generated timestamp
+        assert created.id == sample_match["id"]
+        assert created.name == sample_match["name"]
+        assert len(created.left_videos) == 1
+        assert len(created.right_videos) == 1
+        assert created.created_at is not None  # Auto-generated timestamp
 
     def test_create_match_with_src(self, store, sample_match_with_src):
         """Test creating match with src URL."""
         created = store.create(sample_match_with_src)
 
-        assert created["src"] == sample_match_with_src["src"]
+        assert created.src == sample_match_with_src["src"]
 
     def test_create_duplicate_raises_error(self, store, sample_match):
         """Test creating duplicate match raises ValueError."""
@@ -117,8 +117,8 @@ class TestFileMatchStore:
         retrieved = store.get_by_id(sample_match["id"])
 
         assert retrieved is not None
-        assert retrieved["id"] == sample_match["id"]
-        assert retrieved["name"] == sample_match["name"]
+        assert retrieved.id == sample_match["id"]
+        assert retrieved.name == sample_match["name"]
 
     def test_get_by_id_nonexistent(self, store):
         """Test retrieving non-existent match returns None."""
@@ -142,8 +142,8 @@ class TestFileMatchStore:
         all_matches = store.list_all()
 
         assert len(all_matches) == 2
-        assert any(m["id"] == "match-1" for m in all_matches)
-        assert any(m["id"] == "match-2" for m in all_matches)
+        assert any(m.id == "match-1" for m in all_matches)
+        assert any(m.id == "match-2" for m in all_matches)
 
     def test_list_all_empty(self, store):
         """Test listing matches when none exist."""
@@ -162,13 +162,13 @@ class TestFileMatchStore:
 
         updated = store.update(sample_match["id"], updated_data)
 
-        assert updated["name"] == "Updated Match Name"
-        assert updated["src"] == "https://storage.example.com/updated.mp4"
-        assert updated["params"]["intersect"] == 0.6
+        assert updated.name == "Updated Match Name"
+        assert updated.src == "https://storage.example.com/updated.mp4"
+        assert updated.params["intersect"] == 0.6
 
         # Verify persistence
         retrieved = store.get_by_id(sample_match["id"])
-        assert retrieved["name"] == "Updated Match Name"
+        assert retrieved.name == "Updated Match Name"
 
     def test_update_nonexistent_raises_error(self, store, sample_match):
         """Test updating non-existent match raises ValueError."""
@@ -212,7 +212,7 @@ class TestFileMatchStore:
         retrieved = new_store.get_by_id(sample_match["id"])
 
         assert retrieved is not None
-        assert retrieved["id"] == sample_match["id"]
+        assert retrieved.id == sample_match["id"]
 
     def test_multiple_videos(self, store, sample_match):
         """Test match with multiple videos per camera."""
@@ -230,8 +230,8 @@ class TestFileMatchStore:
 
         created = store.create(multi_video_match)
 
-        assert len(created["left_videos"]) == 3
-        assert len(created["right_videos"]) == 2
+        assert len(created.left_videos) == 3
+        assert len(created.right_videos) == 2
 
     def test_optional_fields(self, store, sample_match):
         """Test match creation with optional fields."""
@@ -262,18 +262,6 @@ class TestFileMatchStore:
 
         created = store.create(minimal_match)
 
-        assert created["name"] is None  # Optional field not provided
-        assert created["src"] is None  # Optional field not provided
-        assert "created_at" in created
-
-    def test_legacy_label_field(self, store, sample_match):
-        """Test match with legacy label field."""
-        legacy_match = sample_match.copy()
-        legacy_match["label"] = "Legacy Label"
-
-        created = store.create(legacy_match)
-
-        assert created["label"] == "Legacy Label"
-
-        retrieved = store.get_by_id(legacy_match["id"])
-        assert retrieved["label"] == "Legacy Label"
+        assert created.name is None  # Optional field not provided
+        assert created.src is None  # Optional field not provided
+        assert created.created_at is not None

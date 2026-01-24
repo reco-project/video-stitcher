@@ -50,8 +50,18 @@ export default function MatchList() {
 		navigate('/create');
 	};
 
+	const handleEditMatch = (match) => {
+		navigate(`/edit/${match.id}`);
+	};
+
 	const handleResumeProcessing = async (match) => {
-		// Start processing, then navigate to the processing page
+		// If awaiting frames or already processing, just navigate - don't restart
+		if (match.processing_step === 'awaiting_frames' || ['transcoding', 'calibrating'].includes(match.status)) {
+			navigate(`/processing/${match.id}`);
+			return;
+		}
+
+		// Only start processing if pending (not yet started)
 		try {
 			await processMatch(match.id);
 		} catch (err) {
@@ -62,13 +72,14 @@ export default function MatchList() {
 	};
 
 	return (
-		<div className="w-full h-full flex flex-col items-center justify-start px-6 py-6">
+		<div className="w-full h-full flex flex-col items-center justify-start px-6 py-6 pb-12">
 			<div className="w-full max-w-6xl">
 				<div className="mt-6 flex justify-center">
 					<MatchListComponent
 						onSelectMatch={handleSelectMatch}
 						onCreateNew={handleCreateNew}
 						onResumeProcessing={handleResumeProcessing}
+						onEditMatch={handleEditMatch}
 					/>
 				</div>
 			</div>

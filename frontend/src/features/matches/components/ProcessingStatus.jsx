@@ -190,7 +190,6 @@ export default function ProcessingStatus({ status, onComplete }) {
 			case 'feature_matching':
 				return 'Analyzing camera features and finding matches...';
 			case 'optimizing':
-			case 'position_optimization':
 				return 'Computing optimal camera positions and alignment...';
 			default:
 				return 'Running camera calibration...';

@@ -41,9 +41,24 @@ export default function MatchCard({ match, onSelect, className }) {
 			setPreviewLoading(false);
 			setPreviewUrl(null);
 		}
-	}, [match.src, match.status]);
+	}, [match.src, match.status, match.id]);
 
 	const getStatusBadge = (status, viewed) => {
+		// Check if match is actually complete (has all required data)
+		const hasRequiredData = match.src && match.params && match.left_uniforms && match.right_uniforms;
+		// Match is ready if status says so, OR if it has all data AND isn't awaiting frames
+		const isActuallyReady = status === 'ready' || (hasRequiredData && match.processing_step !== 'awaiting_frames');
+		
+		// If it has all data and isn't waiting for frames, treat as ready
+		if (isActuallyReady) {
+			return !viewed ? (
+				<Badge variant="default" className="gap-1 bg-green-500">
+					<CheckCircle className="h-3 w-3" />
+					Ready
+				</Badge>
+			) : null;
+		}
+		
 		switch (status) {
 			case 'pending':
 				return (
@@ -66,14 +81,6 @@ export default function MatchCard({ match, onSelect, className }) {
 						Calibrating
 					</Badge>
 				);
-			case 'ready':
-				// Only show "Ready" badge if not yet viewed
-				return !viewed ? (
-					<Badge variant="default" className="gap-1 bg-green-500">
-						<CheckCircle className="h-3 w-3" />
-						Ready
-					</Badge>
-				) : null;
 			case 'error':
 				return (
 					<Badge variant="destructive" className="gap-1">

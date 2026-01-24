@@ -15,4 +15,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	getFileMetadata: (filePath) => ipcRenderer.invoke('file:getMetadata', filePath),
 	// Open URL in default browser
 	openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+	// Set processing state to prevent accidental close
+	setProcessingState: (isProcessing, origin) =>
+		ipcRenderer.invoke('app:setProcessingState', isProcessing, origin),
+	// Confirm cancelling processing (used by Processing page)
+	confirmCancelProcessing: () => ipcRenderer.invoke('app:confirmCancelProcessing'),
 });

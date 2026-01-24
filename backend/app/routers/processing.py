@@ -5,10 +5,12 @@ Handles the /matches/{id}/process endpoint that orchestrates
 transcoding, calibration, and position optimization.
 """
 
-import logging
 import threading
 import base64
 import io
+import os
+import signal
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, File, UploadFile, Form
@@ -62,28 +64,51 @@ async def get_processing_status(match_id: str, match_store: MatchStore = Depends
     if not match_data:
         raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
 
-    # Build response from disk data
+    # Detect stale processing state (app was quit/crashed during processing)
+    # If status is active but no cache entry exists, the process was interrupted
+    active_statuses = ["transcoding", "calibrating"]
+    if match_data.processing and match_data.processing.status in active_statuses:
+        if match_id not in _progress_cache and match_id not in _ffmpeg_processes:
+            # Processing was interrupted - reset to error state
+            logger.warning(f"Detected stale processing state for {match_id}, status was {match_data.processing.status}")
+            match_data.update_processing(
+                status="error",
+                step=None,
+                message="Processing interrupted (app was closed)",
+                error_code="INTERRUPTED",
+                error_message="Processing was interrupted. Please retry.",
+            )
+            match_store.update(match_id, match_data.model_dump(exclude_none=False))
+
+    # Return nested structure directly
     response = {
         "match_id": match_id,
-        "status": match_data.get("status", "pending"),
-        "processing_step": match_data.get("processing_step"),
-        "processing_message": match_data.get("processing_message"),
-        "error_code": match_data.get("error_code"),
-        "error_message": match_data.get("error_message"),
-        "processing_started_at": match_data.get("processing_started_at"),
-        "processing_completed_at": match_data.get("processing_completed_at"),
-        # Transcoding progress fields from disk (final values)
-        "transcode_progress": match_data.get("transcode_progress"),
-        "transcode_fps": match_data.get("transcode_fps"),
-        "transcode_speed": match_data.get("transcode_speed"),
-        "transcode_current_time": match_data.get("transcode_current_time"),
-        "transcode_total_duration": match_data.get("transcode_total_duration"),
+        "processing": match_data.processing.model_dump(exclude_none=False) if match_data.processing else {},
+        "transcode": match_data.transcode.model_dump(exclude_none=False) if match_data.transcode else None,
     }
 
-    # Override with live in-memory progress if available (for active transcoding)
-    # This ensures we show live FPS/progress during encoding even if disk is out of sync
+    # Merge live progress from cache if available
     if match_id in _progress_cache:
-        response.update(_progress_cache[match_id])
+        cache = _progress_cache[match_id]
+
+        # Update processing.message from cache
+        if "processing_message" in cache:
+            response["processing"]["message"] = cache["processing_message"]
+
+        # Update transcode fields from cache
+        cache_to_response = {
+            "transcode_progress": "progress",
+            "transcode_fps": "fps",
+            "transcode_speed": "speed",
+            "transcode_current_time": "current_time",
+            "transcode_total_duration": "total_duration",
+        }
+
+        for cache_key, response_key in cache_to_response.items():
+            if cache_key in cache:
+                if response["transcode"] is None:
+                    response["transcode"] = {}
+                response["transcode"][response_key] = cache[cache_key]
 
     return JSONResponse(content=response)
 
@@ -113,43 +138,31 @@ async def cancel_processing(match_id: str, match_store: MatchStore = Depends(get
 
     # Kill FFmpeg process directly if running
     if match_id in _ffmpeg_processes:
-        import signal
-
         pid = _ffmpeg_processes[match_id]
-        logger.info(f"Attempting to kill FFmpeg process with PID: {pid}")
         try:
-            import os
-
             os.kill(pid, signal.SIGTERM)
             logger.info(f"Sent SIGTERM to FFmpeg process {pid}")
-            # Give it a moment to terminate
-            import time
-
             time.sleep(0.5)
-            # If still alive, force kill
+
+            # Check if still alive, only then send SIGKILL
             try:
+                os.kill(pid, 0)  # Check if process exists
                 os.kill(pid, signal.SIGKILL)
-                logger.info(f"Sent SIGKILL to FFmpeg process {pid}")
+                logger.info(f"Process still alive, sent SIGKILL to {pid}")
             except ProcessLookupError:
-                logger.info(f"FFmpeg process {pid} already terminated")
+                logger.info(f"FFmpeg process {pid} terminated cleanly")
         except ProcessLookupError:
             logger.info(f"FFmpeg process {pid} not found")
         except Exception as e:
             logger.warning(f"Failed to kill FFmpeg process {pid}: {e}")
         finally:
-            # Remove PID from tracking dict if it still exists
-            if match_id in _ffmpeg_processes:
-                del _ffmpeg_processes[match_id]
-    else:
-        logger.info(f"No FFmpeg process found for match {match_id}")
+            _ffmpeg_processes.pop(match_id, None)
 
     # Update match status to reflect cancellation
-    current_status = match_data.get("status")
+    current_status = match_data.get_status()
     if current_status in ["transcoding", "calibrating"]:
-        match_data["status"] = "pending"
-        match_data["processing_step"] = None
-        match_data["processing_message"] = "Processing cancelled by user"
-        match_store.update(match_id, match_data)
+        match_data.update_processing(status="pending", step=None, message="Processing cancelled by user")
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
     # Clear progress cache
     if match_id in _progress_cache:
@@ -184,15 +197,15 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
         raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
 
     # Validate match has videos
-    left_videos = match_data.get("left_videos", [])
-    right_videos = match_data.get("right_videos", [])
+    left_videos = match_data.left_videos
+    right_videos = match_data.right_videos
 
     if not left_videos or not right_videos:
         raise HTTPException(status_code=400, detail="Match must have at least one left and one right video")
 
     # Get first video from each side
-    left_video_path = left_videos[0]["path"]
-    right_video_path = right_videos[0]["path"]
+    left_video_path = left_videos[0].path
+    right_video_path = right_videos[0].path
 
     # Check FFmpeg
     try:
@@ -201,10 +214,19 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
         raise HTTPException(status_code=500, detail=f"FFmpeg not available: {e}")
 
     # Update match status
-    match_data["status"] = "transcoding"
-    match_data["processing_step"] = "transcoding"
-    match_data["processing_message"] = "Preparing to sync and stack videos..."
-    match_store.update(match_id, match_data)
+    from datetime import datetime, timezone
+
+    try:
+        match_data.update_processing(
+            status="transcoding",
+            step="transcoding",
+            message="Preparing to sync and stack videos...",
+            started_at=datetime.now(timezone.utc).isoformat(),
+        )
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
+    except Exception as e:
+        logger.error(f"Failed to update match status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to initialize transcoding: {str(e)}")
 
     # Initialize progress cache with starting message
     _progress_cache[match_id] = {'processing_message': 'Starting transcoding process...'}
@@ -279,10 +301,8 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 # Check for cancellation before starting
                 if _cancellation_flags.get(match_id, False):
                     logger.info(f"Transcoding cancelled before start for {match_id}")
-                    bg_match_data["status"] = "pending"
-                    bg_match_data["processing_step"] = None
-                    bg_match_data["processing_message"] = "Processing cancelled"
-                    bg_store.update(match_id, bg_match_data)
+                    bg_match_data.update_processing(status="pending", step=None, message="Processing cancelled")
+                    bg_store.update(match_id, bg_match_data.model_dump(exclude_none=False))
                     if match_id in _progress_cache:
                         del _progress_cache[match_id]
                     if match_id in _cancellation_flags:
@@ -303,10 +323,11 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
 
                 # Get quality settings from match (convert to dict if needed)
                 quality_settings = None
-                if bg_match_data.get("quality_settings"):
-                    quality_settings = bg_match_data["quality_settings"]
-                    if hasattr(quality_settings, "dict"):
-                        quality_settings = quality_settings.dict()
+                if bg_match_data.quality_settings:
+                    quality_settings = bg_match_data.quality_settings.model_dump(exclude_none=False)
+                    logger.info(f"Using quality settings from match data: {quality_settings}")
+                else:
+                    logger.warning(f"No quality_settings found in match data for {match_id}")
 
                 stacked_path, offset = transcode_and_stack(
                     left_video_path,
@@ -322,10 +343,8 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 # Check for cancellation after transcoding
                 if _cancellation_flags.get(match_id, False):
                     logger.info(f"Transcoding cancelled after completion for {match_id}")
-                    bg_match_data["status"] = "pending"
-                    bg_match_data["processing_step"] = None
-                    bg_match_data["processing_message"] = "Processing cancelled"
-                    bg_store.update(match_id, bg_match_data)
+                    bg_match_data.update_processing(status="pending", step=None, message="Processing cancelled")
+                    bg_store.update(match_id, bg_match_data.model_dump(exclude_none=False))
                     if match_id in _progress_cache:
                         del _progress_cache[match_id]
                     if match_id in _cancellation_flags:
@@ -347,23 +366,44 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
 
                 # Get final progress values from cache before clearing
                 final_progress = _progress_cache.get(match_id, {})
+                logger.info(f"Final progress cache for {match_id}: {final_progress}")
 
                 # Update match with video path and final progress
-                bg_match_data["src"] = f"videos/{match_id}.mp4"
-                bg_match_data["offset_seconds"] = round(offset, 2)
-                bg_match_data["status"] = "pending"  # Ready for frontend processing
-                bg_match_data["processing_step"] = "awaiting_frames"
-                bg_match_data["processing_message"] = "Video ready, awaiting frame extraction"
+                from datetime import datetime, timezone
 
-                # Persist final transcode metrics to disk
-                if final_progress:
-                    bg_match_data["transcode_progress"] = final_progress.get('transcode_progress')
-                    bg_match_data["transcode_fps"] = final_progress.get('transcode_fps')
-                    bg_match_data["transcode_speed"] = final_progress.get('transcode_speed')
-                    bg_match_data["transcode_current_time"] = final_progress.get('transcode_current_time')
-                    bg_match_data["transcode_total_duration"] = final_progress.get('transcode_total_duration')
+                bg_match_data.src = f"videos/{match_id}.mp4"
 
-                bg_store.update(match_id, bg_match_data)
+                # Update processing status
+                bg_match_data.update_processing(
+                    status="pending",
+                    step="awaiting_frames",
+                    message="Video ready, awaiting frame extraction",
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                )
+
+                # Persist final transcode metrics using nested structure
+                bg_match_data.update_transcode(
+                    progress=final_progress.get('transcode_progress'),
+                    fps=final_progress.get('transcode_fps'),
+                    speed=final_progress.get('transcode_speed'),
+                    current_time=final_progress.get('transcode_current_time'),
+                    total_duration=final_progress.get('transcode_total_duration'),
+                    offset_seconds=round(offset, 2),
+                )
+                logger.info(
+                    f"Saved transcode metrics - fps: {bg_match_data.get_transcode_fps()}, progress: {bg_match_data.transcode.progress if bg_match_data.transcode else None}"
+                )
+
+                # Persist quality settings used for this transcode
+                if quality_settings:
+                    from app.models.match import QualitySettings
+
+                    bg_match_data.quality_settings = QualitySettings(**quality_settings)
+                    logger.info(f"Saved quality settings: {quality_settings}")
+                else:
+                    logger.warning(f"No quality settings to save for {match_id}")
+
+                bg_store.update(match_id, bg_match_data.model_dump(exclude_none=False))
 
                 # Clear progress cache, cancellation flag, and PID tracking
                 if match_id in _progress_cache:
@@ -377,17 +417,13 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 # Check if this is a cancellation error
                 if "cancelled" in str(e).lower():
                     logger.info(f"Transcoding cancelled for {match_id}: {e}")
-                    bg_match_data["status"] = "pending"
-                    bg_match_data["processing_step"] = None
-                    bg_match_data["processing_message"] = "Processing cancelled"
-                    bg_store.update(match_id, bg_match_data)
+                    bg_match_data.update_processing(status="pending", step=None, message="Processing cancelled")
+                    bg_store.update(match_id, bg_match_data.model_dump(exclude_none=False))
                 else:
                     # Other runtime errors
                     logger.error(f"Transcoding failed for {match_id}: {e}", exc_info=True)
-                    bg_match_data["status"] = "error"
-                    bg_match_data["error_message"] = str(e)
-                    bg_match_data["processing_step"] = None
-                    bg_store.update(match_id, bg_match_data)
+                    bg_match_data.update_processing(status="error", step=None, error_message=str(e))
+                    bg_store.update(match_id, bg_match_data.model_dump(exclude_none=False))
 
                 # Clear progress cache and cancellation flag
                 if match_id in _progress_cache:
@@ -399,10 +435,8 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
 
             except Exception as e:
                 logger.error(f"Transcoding failed for {match_id}: {e}", exc_info=True)
-                bg_match_data["status"] = "error"
-                bg_match_data["error_message"] = str(e)
-                bg_match_data["processing_step"] = None
-                bg_store.update(match_id, bg_match_data)
+                bg_match_data.update_processing(status="error", step=None, error_message=str(e))
+                bg_store.update(match_id, bg_match_data.model_dump(exclude_none=False))
 
                 # Clear progress cache and cancellation flag
                 if match_id in _progress_cache:
@@ -490,10 +524,10 @@ async def process_match_with_frames(
         logger.info(f"Decoded images: left={img_left.shape}, right={img_right.shape}")
 
         # Update match status
-        match_data["status"] = "calibrating"
-        match_data["processing_step"] = "feature_matching"
-        match_data["processing_message"] = "Matching features in warped frames..."
-        match_store.update(match_id, match_data)
+        match_data.update_processing(
+            status="calibrating", step="feature_matching", message="Matching features in warped frames..."
+        )
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
         # Step 1: Match features
         match_result = match_features(img_left, img_right)
@@ -558,25 +592,32 @@ async def process_match_with_frames(
             logger.warning(f"Failed to create feature matching visualization: {viz_error}")
 
         # Update status
-        match_data["processing_step"] = "optimizing"
-        match_data["processing_message"] = f"Found {match_result['num_matches']} features, optimizing..."
-        match_store.update(match_id, match_data)
+        match_data.update_processing(
+            step="optimizing", message=f"Found {match_result['num_matches']} features, optimizing..."
+        )
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
         # Step 2: Optimize camera positions
         # Note: Swap left/right to match viewer's coordinate system
         params = optimize_position(match_result["right_points"], match_result["left_points"])
 
         # Update match with results
-        match_data["status"] = "ready"
-        match_data["params"] = params
-        match_data["num_matches"] = match_result["num_matches"]
-        match_data["confidence"] = match_result["confidence"]
-        match_data["processing_step"] = "complete"
-        match_data["processing_message"] = "Processing complete"
-        match_data["processing_completed_at"] = datetime.now(timezone.utc).isoformat()
-        match_data["error_code"] = None
-        match_data["error_message"] = None
-        match_store.update(match_id, match_data)
+        from datetime import datetime, timezone
+
+        match_data.params = params
+        match_data.num_matches = match_result["num_matches"]
+        match_data.confidence = match_result["confidence"]
+
+        # Update processing info
+        match_data.update_processing(
+            status="ready", step="complete", message="Processing complete", error_code=None, error_message=None
+        )
+
+        # Don't overwrite processing_completed_at if it was already set during transcoding
+        if match_data.processing and not match_data.processing.completed_at:
+            match_data.update_processing(completed_at=datetime.now(timezone.utc).isoformat())
+
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
         return {
             "success": True,
@@ -587,17 +628,13 @@ async def process_match_with_frames(
 
     except ValueError as e:
         # Feature matching or optimization error
-        match_data["status"] = "error"
-        match_data["error_message"] = str(e)
-        match_data["processing_step"] = None
-        match_store.update(match_id, match_data)
+        match_data.update_processing(status="error", step=None, error_message=str(e))
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
         # Unexpected error
         logger.error(f"Error processing frames for match {match_id}: {e}", exc_info=True)
-        match_data["status"] = "error"
-        match_data["error_message"] = "Failed to process frames"
-        match_data["processing_step"] = None
-        match_store.update(match_id, match_data)
+        match_data.update_processing(status="error", step=None, error_message="Failed to process frames")
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
         raise HTTPException(status_code=500, detail="Internal processing error")

@@ -1,9 +1,11 @@
 # backend/app/main.py
 
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import uvicorn
 
 from app.utils.logger import get_logger, configure_uvicorn_logging, info
 from app.repositories.file_lens_profile_store import FileLensProfileStore
@@ -44,7 +46,44 @@ def get_match_store() -> MatchStore:
     return match_store
 
 
-app = FastAPI(title="Video Stitcher Backend")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    # Startup: Check for stale processing states and inconsistent status
+    try:
+        logger.info("Checking for stale processing states...")
+        matches = match_store.list_all()
+        active_statuses = ["transcoding", "calibrating"]
+        stale_count = 0
+
+        for match in matches:
+            # Fix stale processing states (interrupted during transcoding/calibrating)
+            if match.processing and match.processing.status in active_statuses:
+                logger.warning(f"Found stale processing state for match {match.id}: status={match.processing.status}")
+                match.update_processing(
+                    status="error",
+                    step=None,
+                    message="Processing interrupted (app was closed)",
+                    error_code="INTERRUPTED",
+                    error_message="Processing was interrupted. Please retry.",
+                )
+                match_store.update(match.id, match.model_dump(exclude_none=False))
+                stale_count += 1
+
+        if stale_count > 0:
+            logger.info(f"Reset {stale_count} stale processing state(s)")
+        else:
+            logger.info("No stale processing states found")
+    except Exception as e:
+        logger.error(f"Error checking stale processing states: {e}", exc_info=True)
+
+    yield
+
+    # Shutdown (if needed)
+    logger.info("Application shutting down")
+
+
+app = FastAPI(title="Video Stitcher Backend", lifespan=lifespan)
 
 # Allow requests from Electron frontend
 app.add_middleware(
@@ -83,10 +122,7 @@ async def root():
 async def health_check():
     logger.debug("Health check requested")
     return {"status": "ok"}
-    return {"status": "healthy"}
 
 
 if __name__ == "__main__":
-    import uvicorn
-
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

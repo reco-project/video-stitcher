@@ -4,37 +4,72 @@
 
 import { api } from '@/lib/api';
 
+/**
+ * Shared helper to extract nested fields from backend response
+ * Backend returns: { processing: {...}, transcode: {...} }
+ */
+function extractNestedFields(raw) {
+	const processing = raw.processing || {};
+	const transcode = raw.transcode || {};
+	return { processing, transcode };
+}
+
+/**
+ * Normalize backend response to consistent flat structure
+ * Handles both match objects and status responses
+ */
 function normalizeMatch(raw) {
 	if (!raw) return null;
+	
+	const { processing, transcode } = extractNestedFields(raw);
+	
 	return {
-		id: raw.id || raw.match_id || raw._id || null,
-		name: raw.name || raw.label || raw.title || '',
-		src: raw.src || raw.video || raw.source || null,
-		status: raw.status || raw.state || raw.phase || 'pending',
-		processing_step: raw.processing_step || raw.step || raw.stage || raw.processingStage || null,
-		processing_message: raw.processing_message || raw.message || raw.detail || null,
-		progress_percent:
-			typeof raw.progress_percent === 'number'
-				? raw.progress_percent
-				: typeof raw.processing_percent === 'number'
-					? raw.processing_percent
-					: typeof raw.progress === 'number'
-						? raw.progress
-						: null,
-		fps: raw.fps || (raw.metrics && raw.metrics.fps) || null,
-		frames_processed:
-			raw.frames_processed || (raw.metrics && raw.metrics.frames_processed) || raw.processed_frames || null,
-		frames_total: raw.frames_total || (raw.metrics && raw.metrics.frames_total) || raw.total_frames || null,
-		audio_sync: raw.audio_sync || (raw.metrics && raw.metrics.audio_sync) || raw.audio || null,
-		processing_started_at: raw.processing_started_at || raw.started_at || raw.start_time || null,
-		processing_completed_at: raw.processing_completed_at || raw.completed_at || raw.end_time || null,
-		error_message: raw.error_message || raw.error || raw.detail || null,
-		error_code: raw.error_code || raw.code || null,
+		// Core fields
+		id: raw.id || null,
+		name: raw.name || '',
+		src: raw.src || null,
+		created_at: raw.created_at || null,
+		
+		// Video inputs
+		left_videos: raw.left_videos || null,
+		right_videos: raw.right_videos || null,
+		
+		// Processing fields
+		status: processing.status || 'pending',
+		processing_step: processing.step || null,
+		processing_message: processing.message || null,
+		processing_started_at: processing.started_at || null,
+		processing_completed_at: processing.completed_at || null,
+		
+		// Error fields
+		error_message: processing.error_message || null,
+		error_code: processing.error_code || null,
+		
+		// Transcode fields
+		fps: transcode.fps || null,
+		transcode_progress: transcode.progress || null,
+		transcode_fps: transcode.fps || null,
+		transcode_speed: transcode.speed || null,
+		transcode_current_time: transcode.current_time || null,
+		transcode_total_duration: transcode.total_duration || null,
+		transcode_encoder: transcode.encoder || null,
+		
+		// Progress (use transcode progress if available)
+		progress_percent: transcode.progress || null,
+		
+		// Match-specific fields
 		left_uniforms: raw.left_uniforms || null,
 		right_uniforms: raw.right_uniforms || null,
 		params: raw.params || null,
 		num_matches: raw.num_matches || null,
 		confidence: raw.confidence || null,
+		
+		// Metadata and settings
+		metadata: raw.metadata || null,
+		quality_settings: raw.quality_settings || null,
+		viewed: raw.viewed || false,
+		
+		// Keep raw for special cases
 		_raw: raw,
 	};
 }
@@ -86,14 +121,6 @@ export async function processMatch(matchId) {
 }
 
 /**
- * Start transcoding only (no calibration)
- * @deprecated Use processMatch instead - same endpoint
- */
-export async function transcodeMatch(matchId) {
-	return api.post(`/matches/${matchId}/transcode`);
-}
-
-/**
  * Process match with pre-warped frames from frontend
  */
 export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameBlob) {
@@ -139,56 +166,6 @@ export async function cancelProcessing(matchId) {
  * Get processing status of a match
  */
 export async function getMatchStatus(matchId) {
-	// Fetch raw status and normalize common backend alias fields so the
-	// frontend can rely on a consistent shape.
 	const raw = await api.get(`/matches/${matchId}/status`);
-
-	const normalized = {
-		// canonical fields
-		status: raw.status || raw.state || raw.phase || 'pending',
-		processing_step: raw.processing_step || raw.step || raw.stage || raw.processingStage || null,
-		processing_message: raw.processing_message || raw.message || raw.detail || null,
-
-		// progress hints (percent)
-		progress_percent:
-			typeof raw.progress_percent === 'number'
-				? raw.progress_percent
-				: typeof raw.processing_percent === 'number'
-					? raw.processing_percent
-					: typeof raw.progress === 'number'
-						? raw.progress
-						: typeof raw.step_progress === 'number'
-							? raw.step_progress
-							: null,
-
-		// fps and frame counters
-		fps: raw.fps || (raw.metrics && raw.metrics.fps) || raw.transcode_fps || null,
-		frames_processed:
-			raw.frames_processed || (raw.metrics && raw.metrics.frames_processed) || raw.processed_frames || null,
-		frames_total: raw.frames_total || (raw.metrics && raw.metrics.frames_total) || raw.total_frames || null,
-
-		// audio sync info (may be a string or object)
-		audio_sync: raw.audio_sync || (raw.metrics && raw.metrics.audio_sync) || raw.audio || null,
-
-		// timestamps
-		processing_started_at: raw.processing_started_at || raw.started_at || raw.start_time || null,
-		processing_completed_at: raw.processing_completed_at || raw.completed_at || raw.end_time || null,
-
-		// error info
-		error_message: raw.error_message || raw.error || raw.detail || null,
-		error_code: raw.error_code || raw.code || null,
-
-		// transcoding progress fields (from in-memory cache)
-		transcode_progress: raw.transcode_progress || null,
-		transcode_fps: raw.transcode_fps || null,
-		transcode_speed: raw.transcode_speed || null,
-		transcode_current_time: raw.transcode_current_time || null,
-		transcode_total_duration: raw.transcode_total_duration || null,
-		transcode_encoder: raw.transcode_encoder || raw.encoder || null,
-
-		// include original payload for any extra fields
-		_raw: raw,
-	};
-
-	return normalized;
+	return normalizeMatch(raw);
 }

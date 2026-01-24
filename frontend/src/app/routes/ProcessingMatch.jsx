@@ -29,6 +29,16 @@ export default function ProcessingMatch() {
 		autoPoll: true,
 	});
 
+	// Update processing state when status changes
+	useEffect(() => {
+		const isActive = !!(processing.status && 
+			!['ready', 'error'].includes(processing.status.status));
+		
+		if (window.electronAPI?.setProcessingState) {
+			window.electronAPI.setProcessingState(isActive, 'ProcessingMatch');
+		}
+	}, [processing.status]);
+
 	// Load match data
 	useEffect(() => {
 		const loadMatch = async () => {
@@ -49,6 +59,7 @@ export default function ProcessingMatch() {
 			loadMatch();
 		}
 	}, [matchId]);
+
 
 	// Auto-complete when processing finishes
 	useEffect(() => {
@@ -152,9 +163,16 @@ export default function ProcessingMatch() {
 	};
 
 	const handleCancel = async () => {
-		if (!confirm('Are you sure you want to cancel processing? This will stop the current transcoding operation.')) {
-			return;
+		let shouldCancel = false;
+		if (window.electronAPI?.confirmCancelProcessing) {
+			shouldCancel = await window.electronAPI.confirmCancelProcessing();
+		} else {
+			shouldCancel = confirm(
+				'Are you sure you want to cancel processing? This will stop the current transcoding operation.'
+			);
 		}
+
+		if (!shouldCancel) return;
 
 		try {
 			processing.stopPolling();

@@ -28,65 +28,27 @@ ERROR_MESSAGES = {
     "STACKING_FAILED": "Failed to stack videos",
 }
 
-# Quality preset definitions
-QUALITY_PRESETS = {
-    "720p": {
-        "bitrate": "30M",
-        "speed_preset": "medium",
-        "resolution": "720p",
-    },
-    "1080p": {
-        "bitrate": "50M",
-        "speed_preset": "medium",
-        "resolution": "1080p",
-    },
-    "1440p": {
-        "bitrate": "70M",
-        "speed_preset": "medium",
-        "resolution": "1440p",
-    },
-}
-
 
 def _get_encoding_params(quality_settings):
     """Get encoding parameters from quality settings.
 
     Args:
-        quality_settings: Dict or None with quality settings
+        quality_settings: Dict with quality settings from frontend
 
     Returns:
-        Tuple of (quality_mode, quality_value, speed_preset, codec_base, resolution_preset)
-        quality_mode: Always 'bitrate' (simplified)
-        quality_value: bitrate string
-        resolution_preset: Resolution string (720p/1080p/1440p/4k)
+        Tuple of (bitrate, speed_preset, resolution)
     """
-    # Default values (1080p preset) - always bitrate mode with h264
-    quality_mode = "bitrate"
-    quality_value = "50M"
+    # Default values if no quality settings provided
+    bitrate = "50M"
     speed_preset = "medium"
-    codec_base = "h264"
-    resolution_preset = "1080p"
+    resolution = "1080p"
 
-    if not quality_settings:
-        return quality_mode, quality_value, speed_preset, codec_base, resolution_preset
-
-    preset = quality_settings.get("preset", "1080p")
-
-    if preset == "custom":
-        # Use custom values - always bitrate mode with h264
-        quality_mode = "bitrate"
-        quality_value = quality_settings.get("bitrate", "50M")
+    if quality_settings:
+        bitrate = quality_settings.get("bitrate", "50M")
         speed_preset = quality_settings.get("speed_preset", "medium")
-        codec_base = "h264"
-        resolution_preset = quality_settings.get("resolution", "1080p")
-    else:
-        # Use preset
-        preset_config = QUALITY_PRESETS.get(preset, QUALITY_PRESETS["1080p"])
-        quality_value = preset_config["bitrate"]
-        speed_preset = preset_config["speed_preset"]
-        resolution_preset = preset_config.get("resolution", "1080p")
+        resolution = quality_settings.get("resolution", "1080p")
 
-    return quality_mode, quality_value, speed_preset, codec_base, resolution_preset
+    return bitrate, speed_preset, resolution
 
 
 def check_ffmpeg() -> None:
@@ -228,7 +190,11 @@ def _compute_offset(audio1_path: str, audio2_path: str) -> float:
     Compute time offset between two audio files using cross-correlation.
 
     Returns:
-        Offset in seconds (positive if audio2 should be delayed)
+        Offset in seconds.
+
+        Sign convention (as used by `_stack_videos`):
+        - offset > 0 means audio2 starts later than audio1 (audio1 is "early")
+        - offset < 0 means audio1 starts later than audio2 (audio2 is "early")
     """
     try:
         a1, sr1 = sf.read(audio1_path)
@@ -298,6 +264,30 @@ def _get_video_fps(video_path: str) -> float:
     except (subprocess.SubprocessError, ValueError):
         pass
     return 30.0  # Default fallback
+
+
+def _get_video_resolution(video_path: str) -> tuple[int, int]:
+    """Get video resolution (width, height) using ffprobe."""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0:s=x",
+            video_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            w_str, h_str = result.stdout.strip().split("x", 1)
+            return int(w_str), int(h_str)
+    except (subprocess.SubprocessError, ValueError):
+        pass
+    return 0, 0
 
 
 def _get_available_encoders() -> List[str]:
@@ -454,44 +444,66 @@ def _stack_videos(
     offset_str = f"{offset:.2f}"
     encoder = _detect_gpu_encoder()
 
-    # Get encoding parameters from quality settings (returns resolution_preset now)
-    quality_mode, quality_value, speed_preset, codec_base, resolution_preset = _get_encoding_params(quality_settings)
+    # Get encoding parameters from quality settings (simplified - no presets/CRF/lanczos)
+    bitrate, speed_preset, resolution_preset = _get_encoding_params(quality_settings)
+
+    # Debug logging
+    logger.info(f"Quality settings received: {quality_settings}")
+    logger.info(f"Parsed encoding params - bitrate: {bitrate}, speed: {speed_preset}, resolution: {resolution_preset}")
 
     # Check if GPU decoding should be used (default: True)
     use_gpu_decode = True
     if quality_settings and "use_gpu_decode" in quality_settings:
         use_gpu_decode = quality_settings.get("use_gpu_decode", True)
 
-    # Map resolution preset to actual dimensions (2x stacked vertically)
-    resolution_map = {
-        "720p": "1280:1440",  # 1280x720 * 2 vertically
-        "1080p": "1920:2160",  # 1920x1080 * 2 vertically
-        "1440p": "2560:2880",  # 2560x1440 * 2 vertically
-        "4k": "3840:4320",  # 3840x2160 * 2 vertically
+    # Map resolution preset to dimensions for each individual video (before stacking)
+    # These are the dimensions each video will be scaled to before vertical stacking
+    single_video_resolution_map = {
+        "720p": "1280:720",  # Each video scaled to 720p
+        "1080p": "1920:1080",  # Each video scaled to 1080p
+        "1440p": "2560:1440",  # Each video scaled to 1440p
+        "4k": "3840:2160",  # Each video scaled to 4K
     }
-    resolution = resolution_map.get(resolution_preset, "1920:2160")
-    # Use bicubic (default) - Lanczos removed
-    scale_filter = f"scale={resolution}"
+    single_resolution = single_video_resolution_map.get(resolution_preset, "1920:1080")
+
+    # If both inputs are already the same resolution, skip scaling entirely (faster path).
+    # Otherwise, scale each input individually to the requested preset resolution.
+    v1_w, v1_h = _get_video_resolution(video1_path)
+    v2_w, v2_h = _get_video_resolution(video2_path)
+    inputs_same_resolution = v1_w > 0 and v1_h > 0 and v1_w == v2_w and v1_h == v2_h
+
+    # IMPORTANT: vstack defaults to extending to the longest input.
+    # Using shortest=1 ensures the output ends at the overlap (intersection).
+    if inputs_same_resolution:
+        logger.info(
+            "Using fast stack path (no scaling): inputs=%sx%s, preset_target=%s",
+            v1_w,
+            v1_h,
+            single_resolution,
+        )
+        filter_complex = f"[0:v][1:v]vstack=inputs=2:shortest=1[vout]"
+    else:
+        logger.info(
+            "Using scale+stack path: input1=%sx%s input2=%sx%s target=%s",
+            v1_w,
+            v1_h,
+            v2_w,
+            v2_h,
+            single_resolution,
+        )
+        filter_complex = (
+            f"[0:v]scale={single_resolution}[v0];"
+            f"[1:v]scale={single_resolution}[v1];"
+            f"[v0][v1]vstack=inputs=2:shortest=1[vout]"
+        )
 
     # Ensure output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Map codec_base to actual encoder (h264/h265)
-    if codec_base == "h265":
-        # Try HEVC encoders
-        if encoder.endswith("nvenc"):
-            encoders_to_try = ["hevc_nvenc", "libx265"]
-        elif encoder.endswith("qsv"):
-            encoders_to_try = ["hevc_qsv", "libx265"]
-        elif encoder.endswith("amf"):
-            encoders_to_try = ["hevc_amf", "libx265"]
-        else:
-            encoders_to_try = ["libx265"]
-    else:
-        # Use H.264 (default behavior)
-        encoders_to_try = [encoder] if encoder != "libx264" else ["libx264"]
-        if encoder != "libx264":
-            encoders_to_try.append("libx264")  # Always have software fallback
+    # Always use H.264 with detected encoder (NVENC/QSV/AMF or software fallback)
+    encoders_to_try = [encoder] if encoder != "libx264" else ["libx264"]
+    if encoder != "libx264":
+        encoders_to_try.append("libx264")  # Always have software fallback
 
     last_error = None
 
@@ -516,6 +528,25 @@ def _stack_videos(
         # Map preset to encoder-specific preset
         mapped_preset = _map_preset_for_encoder(speed_preset, enc)
 
+        # Calculate trim points to only encode when both videos are playing
+        # When offset > 0: video2 starts later, so trim the beginning of video1
+        # When offset < 0: video1 starts later, so trim the beginning of video2
+        video1_trim = max(0, offset)  # Trim from start of video1 if offset positive
+        video2_trim = max(0, -offset)  # Trim from start of video2 if offset negative
+
+        # Build input arguments with trimming
+        input_args = []
+
+        # Video 1 input with optional trim
+        if video1_trim > 0:
+            input_args.extend(["-ss", f"{video1_trim:.3f}"])
+        input_args.extend(["-i", video1_path])
+
+        # Video 2 input with optional trim (no itsoffset needed since we trimmed)
+        if video2_trim > 0:
+            input_args.extend(["-ss", f"{video2_trim:.3f}"])
+        input_args.extend(["-i", video2_path])
+
         cmd = (
             [
                 "ffmpeg",
@@ -527,31 +558,28 @@ def _stack_videos(
                 "pipe:1",
                 "-loglevel",
                 "error",
-                "-i",
-                video1_path,
             ]
-            + hwaccel_args
+            + input_args
             + [
-                "-itsoffset",
-                offset_str,
-                "-i",
-                video2_path,
                 "-filter_complex",
-                f"[0:v][1:v]vstack=inputs=2[vout];[vout]{scale_filter}[vscaled]",
+                filter_complex,
                 "-map",
-                "[vscaled]",
+                "[vout]",
+                "-map",
+                "0:a?",  # Map audio from first input if available
                 "-c:v",
                 enc,
                 "-preset",
                 mapped_preset,
+                "-c:a",
+                "aac",  # Encode audio as AAC
+                "-b:a",
+                "192k",  # 192 kbps audio bitrate
             ]
         )
 
-        # Add quality control (CRF or bitrate)
-        if quality_mode == "bitrate":
-            cmd.extend(["-b:v", str(quality_value)])
-        else:
-            cmd.extend(["-crf", str(quality_value)])
+        # Add bitrate control (simplified - always bitrate mode)
+        cmd.extend(["-b:v", bitrate])
 
         cmd.extend(
             [
@@ -601,8 +629,9 @@ def _stack_videos(
             stderr_lines = []
 
             def read_stderr():
-                for line in process.stderr:
-                    stderr_lines.append(line)
+                if process.stderr:
+                    for line in process.stderr:
+                        stderr_lines.append(line)
 
             stderr_thread = threading.Thread(target=read_stderr, daemon=True)
             stderr_thread.start()
@@ -682,9 +711,9 @@ def _stack_videos(
                                     speed = '0x'
                                 speed = speed.rstrip('x')
 
-                                bitrate = progress_data.get('bitrate', '0')
-                                if bitrate == 'N/A':
-                                    bitrate = '0kbits/s'
+                                current_bitrate = progress_data.get('bitrate', '0')
+                                if current_bitrate == 'N/A':
+                                    current_bitrate = '0kbits/s'
 
                                 # Only send updates with meaningful progress or first few updates
                                 if current_frame != last_frame_count or progress_count <= 3:
@@ -700,7 +729,7 @@ def _stack_videos(
                                             'speed': speed,
                                             'frame': str(current_frame),
                                             'total_frames': str(total_frames),
-                                            'bitrate': bitrate,
+                                            'bitrate': current_bitrate,
                                             'encoder': enc,
                                         }
                                     )
@@ -740,16 +769,17 @@ def _stack_videos(
             return  # Success!
         except subprocess.CalledProcessError as e:
             last_error = e
-            stderr = e.stderr if e.stderr else ""
+            stderr = e.stderr if e.stderr else "No error output captured"
             print(f"Encoding with {enc} failed: {stderr}")
+            logger.error(f"FFmpeg encoding failed with {enc}: {stderr}")
 
             # If this was a hardware encoder and it failed, try software
             if enc != "libx264":
                 print(f"Falling back to software encoding (libx264)...")
                 continue
             else:
-                # Software encoding also failed, raise the error
-                raise RuntimeError(f"Video stacking failed: {e}") from e
+                # Software encoding also failed, raise the error with stderr
+                raise RuntimeError(f"Video stacking failed: {e}\nFFmpeg stderr: {stderr}") from e
         except subprocess.TimeoutExpired as e:
             raise RuntimeError(f"Video stacking timed out after 1 hour: {e}") from e
 

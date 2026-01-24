@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/components/ui/toast';
 import { Video, Camera, Star, ArrowRight, Trash2, GripVertical, Zap, Settings2 } from 'lucide-react';
 import { useBrands, useModels, useProfilesByBrandModel } from '@/features/profiles/hooks/useProfiles';
 import { listFavoriteIds, listFavoriteProfiles } from '@/features/profiles/api/profiles';
@@ -35,6 +35,7 @@ const saveDraft = (data) => {
 
 export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 	const draft = loadDraft();
+	const { showToast } = useToast();
 	const [name, setName] = useState(initialData?.name || draft?.name || '');
 
 	// Video paths
@@ -61,10 +62,44 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 	const [rightModel, setRightModel] = useState(draft?.rightModel || '');
 	const [rightProfileId, setRightProfileId] = useState(draft?.rightProfileId || '');
 
+	// Initialize profiles from initialData when editing
+	useEffect(() => {
+		if (initialData) {
+			const leftProfileFromData = initialData.left_videos?.[0]?.profile_id || initialData.metadata?.left_profile_id || '';
+			const rightProfileFromData = initialData.right_videos?.[0]?.profile_id || initialData.metadata?.right_profile_id || '';
+			
+			// Fetch full profile data to get camera_brand and camera_model
+			if (leftProfileFromData) {
+				fetch(`${window.BACKEND_URL || 'http://localhost:8000'}/api/profiles/${leftProfileFromData}`)
+					.then(res => res.json())
+					.then(profile => {
+						if (profile && profile.camera_brand && profile.camera_model) {
+							setLeftBrand(profile.camera_brand);
+							setLeftModel(profile.camera_model);
+							setLeftProfileId(leftProfileFromData);
+						}
+					})
+					.catch(err => console.error('Failed to load left profile:', err));
+			}
+			
+			if (rightProfileFromData) {
+				fetch(`${window.BACKEND_URL || 'http://localhost:8000'}/api/profiles/${rightProfileFromData}`)
+					.then(res => res.json())
+					.then(profile => {
+						if (profile && profile.camera_brand && profile.camera_model) {
+							setRightBrand(profile.camera_brand);
+							setRightModel(profile.camera_model);
+							setRightProfileId(rightProfileFromData);
+						}
+					})
+					.catch(err => console.error('Failed to load right profile:', err));
+			}
+		}
+	}, [initialData]);
+
 	// Favorites - cache IDs in localStorage for instant mode switching
 	const [loadingFavorites, setLoadingFavorites] = useState(false);
 
-	const [error, setError] = useState(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	// Hooks for left side
@@ -85,11 +120,21 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 	const [loadingEncoder, setLoadingEncoder] = useState(true);
 
 	// Quality settings
-	const [qualityPreset, setQualityPreset] = useState(draft?.qualityPreset || '1080p');
-	const [customBitrate, setCustomBitrate] = useState(draft?.customBitrate || '30M');
-	const [customPreset, setCustomPreset] = useState(draft?.customPreset || 'medium');
-	const [customResolution, setCustomResolution] = useState(draft?.customResolution || '1080p');
-	const [customUseGpuDecode, setCustomUseGpuDecode] = useState(draft?.customUseGpuDecode !== false);
+	const [qualityPreset, setQualityPreset] = useState(
+		initialData?.quality_settings?.preset || draft?.qualityPreset || '1080p'
+	);
+	const [customBitrate, setCustomBitrate] = useState(
+		initialData?.quality_settings?.custom?.bitrate || draft?.customBitrate || '30M'
+	);
+	const [customPreset, setCustomPreset] = useState(
+		initialData?.quality_settings?.custom?.preset || draft?.customPreset || 'medium'
+	);
+	const [customResolution, setCustomResolution] = useState(
+		initialData?.quality_settings?.custom?.resolution || draft?.customResolution || '1080p'
+	);
+	const [customUseGpuDecode, setCustomUseGpuDecode] = useState(
+		initialData?.quality_settings?.custom?.use_gpu_decode ?? draft?.customUseGpuDecode ?? true
+	);
 
 	// Sort and normalize
 	const brandsLeft = sortBrands(rawBrandsLeft);
@@ -170,7 +215,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 				})
 				.catch((err) => {
 					console.error('Failed to load favorites:', err);
-					setError('Failed to load favorite profiles');
+					showToast({ message: 'Failed to load favorite profiles', type: 'error' });
 				})
 				.finally(() => setLoadingFavorites(false));
 		}
@@ -257,10 +302,9 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 					setRightVideoPaths(newPaths);
 					loadMetadata(filePath, side, index);
 				}
-				setError(null);
 			}
 		} catch (err) {
-			setError(err.message);
+			showToast({ message: err.message, type: 'error' });
 		}
 	};
 
@@ -353,7 +397,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 
 	const handleCopyFromLeft = () => {
 		if (!leftProfileId) {
-			setError('Please select a left profile first');
+			showToast({ message: 'Please select a left profile first', type: 'error' });
 			return;
 		}
 		setRightProfileId(leftProfileId);
@@ -364,13 +408,12 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 			setRightBrand(leftBrand);
 			setRightModel(leftModel);
 		}
-		setError(null);
 	};
 
-	const handleSubmit = async () => {
+	const handleSubmit = async (startProcessing = true) => {
 		// Validation
 		if (!name.trim()) {
-			setError('Please enter a match name');
+			showToast({ message: 'Please enter a match name', type: 'error' });
 			return;
 		}
 
@@ -378,22 +421,22 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 		const validRightPaths = rightVideoPaths.filter((p) => p.trim());
 
 		if (validLeftPaths.length === 0) {
-			setError('Please select at least one left camera video');
+			showToast({ message: 'Please select at least one left camera video', type: 'error' });
 			return;
 		}
 
 		if (validRightPaths.length === 0) {
-			setError('Please select at least one right camera video');
+			showToast({ message: 'Please select at least one right camera video', type: 'error' });
 			return;
 		}
 
 		if (!leftProfileId) {
-			setError('Please select a lens profile for the left camera');
+			showToast({ message: 'Please select a lens profile for the left camera', type: 'error' });
 			return;
 		}
 
 		if (!rightProfileId) {
-			setError('Please select a lens profile for the right camera');
+			showToast({ message: 'Please select a lens profile for the right camera', type: 'error' });
 			return;
 		}
 
@@ -407,25 +450,33 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 			: profilesRight.find((p) => p.id === rightProfileId);
 
 		if (!leftProfile || !rightProfile) {
-			setError('Selected profiles not found');
+			showToast({ message: 'Selected profiles not found', type: 'error' });
 			return;
 		}
 
 		setIsSubmitting(true);
-		setError(null);
 
 		try {
-			// Build quality settings object based on preset or custom values
+			// Preset to bitrate mapping (frontend handles all preset logic)
+			const presetToBitrate = {
+				'720p': '30M',
+				'1080p': '50M',
+				'1440p': '70M',
+			};
+
+			// Build quality settings - always send full settings (backend has no preset logic)
 			const qualitySettings = qualityPreset === 'custom' ? {
-				preset: qualityPreset,
-				quality_mode: 'bitrate',
-				codec: 'h264',
+				preset: 'custom',
 				bitrate: customBitrate,
 				speed_preset: customPreset,
 				resolution: customResolution,
 				use_gpu_decode: customUseGpuDecode,
 			} : {
 				preset: qualityPreset,
+				bitrate: presetToBitrate[qualityPreset] || '50M',
+				speed_preset: 'veryfast',
+				resolution: qualityPreset, // Use preset name as resolution
+				use_gpu_decode: false,
 			};
 
 			await onSubmit({
@@ -435,7 +486,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 				leftProfile,
 				rightProfile,
 				qualitySettings,
-			});
+			}, startProcessing);
 			// Clear draft on successful submission
 			try {
 				localStorage.removeItem(DRAFT_KEY);
@@ -443,8 +494,9 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 				console.warn('Failed to clear draft:', err);
 			}
 		} catch (err) {
-			setError(err.message || 'Failed to create match');
+			showToast({ message: err.message || 'Failed to create match', type: 'error' });
 			setIsSubmitting(false);
+			throw err; // Re-throw so MatchWizard can catch it
 		}
 	};
 
@@ -468,11 +520,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 				</p>
 			</div>
 
-			{error && (
-				<Alert variant="destructive">
-					<AlertDescription>{error}</AlertDescription>
-				</Alert>
-			)}
+
 
 			{/* Match Name */}
 			<Card>
@@ -944,40 +992,6 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 				</Card>
 			</div>
 
-			{/* Encoder Information */}
-			{!loadingEncoder && encoderInfo && (
-				<Alert className="bg-muted/50">
-					<Zap className="h-4 w-4" />
-					<AlertDescription>
-						<div className="flex items-center justify-between gap-4">
-							<div className="flex-1">
-								<div className="font-semibold mb-1">Video Encoder</div>
-								<div className="text-sm flex items-center gap-2 flex-wrap">
-									<span>Will use:</span>
-									<Badge
-										variant={encoderInfo.current_encoder === 'libx264' ? 'secondary' : 'default'}
-										className="gap-1"
-									>
-										{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
-									</Badge>
-									{encoderInfo.current_encoder === 'libx264' && (
-										<span className="text-muted-foreground text-xs">
-											(Slower - GPU encoding available)
-										</span>
-									)}
-								</div>
-							</div>
-							<Link to="/profiles?tab=settings">
-								<Button variant="outline" size="sm" className="gap-2">
-									<Settings2 className="h-3 w-3" />
-									Change
-								</Button>
-							</Link>
-						</div>
-					</AlertDescription>
-				</Alert>
-			)}
-
 			{/* Quality Settings */}
 			<Card>
 				<CardHeader>
@@ -1035,7 +1049,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 											<SelectItem value="40M">40 Mbps (High)</SelectItem>
 											<SelectItem value="50M">50 Mbps (Very High)</SelectItem>
 											<SelectItem value="70M">70 Mbps (Ultra)</SelectItem>
-											<SelectItem value="90M">90 Mbps (4K)</SelectItem>
+											<SelectItem value="90M">90 Mbps (Extreme)</SelectItem>
 											<SelectItem value="120M">120 Mbps (Max)</SelectItem>
 										</SelectContent>
 									</Select>
@@ -1104,17 +1118,76 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 							</div>
 						)}
 					</div>
-				</CardContent>
-			</Card>
 
-			{/* Action Buttons */}
-			<div className="flex justify-between items-center pt-4">
+				{/* Encoder Information */}
+				<div className="border-t pt-4 mt-4">
+					<div className="flex items-center justify-between gap-4">
+						<div className="flex items-center gap-3 flex-1">
+							<Zap className="h-4 w-4" />
+							<div className="flex items-center gap-2 flex-wrap text-sm">
+								<span className="font-semibold">Video Encoder:</span>
+								{loadingEncoder ? (
+									<span className="text-muted-foreground">Loading...</span>
+								) : encoderInfo ? (
+									<>
+										<Badge
+											variant={encoderInfo.current_encoder === 'libx264' ? 'secondary' : 'default'}
+											className="gap-1"
+										>
+											{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
+										</Badge>
+										{encoderInfo.current_encoder === 'libx264' && (
+											<span className="text-muted-foreground text-xs">
+												(Slower - GPU encoding available)
+											</span>
+										)}
+									</>
+								) : (
+									<span className="text-muted-foreground">Unknown</span>
+								)}
+							</div>
+						</div>
+						<Link to="/profiles?tab=settings#encoder">
+							<Button variant="outline" size="sm" className="gap-2">
+								<Settings2 className="h-3 w-3" />
+								Change
+							</Button>
+						</Link>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+
+		{/* Action Buttons */}
+		<div className="flex justify-between items-center pt-4">
 				<Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
 					Cancel
 				</Button>
-				<Button onClick={handleSubmit} disabled={isSubmitting} size="lg" className="px-8">
-					{isSubmitting ? 'Creating Match...' : 'Create & Start Processing'}
-				</Button>
+				{initialData ? (
+					<div className="flex gap-2">
+						<Button 
+							onClick={() => handleSubmit(false)} 
+							disabled={isSubmitting} 
+							variant="outline"
+							size="lg" 
+							className="px-8"
+						>
+							{isSubmitting ? 'Saving...' : 'Save'}
+						</Button>
+						<Button 
+							onClick={() => handleSubmit(true)} 
+							disabled={isSubmitting} 
+							size="lg" 
+							className="px-8"
+						>
+							{isSubmitting ? 'Processing...' : 'Save & Process'}
+						</Button>
+					</div>
+				) : (
+					<Button onClick={() => handleSubmit(true)} disabled={isSubmitting} size="lg" className="px-8">
+						{isSubmitting ? 'Creating...' : 'Create & Process'}
+					</Button>
+				)}
 			</div>
 		</div>
 	);

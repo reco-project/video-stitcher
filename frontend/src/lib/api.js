@@ -13,7 +13,6 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
 	(response) => {
-		console.log('API response:', response);
 		return response.data;
 	},
 	(error) => {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useViewerStore } from '../stores/store.js';
 import { Canvas } from '@react-three/fiber';
 import fisheyeShader from '../shaders/fisheye.js';
@@ -15,6 +15,7 @@ import { CameraProvider, useCameraControls } from '../stores/cameraContext';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { ChevronDown } from 'lucide-react';
+import { getProcessingDuration, getTranscodeMetrics, getQualitySettings } from '@/lib/matchHelpers.js';
 
 const ViewerErrorFallback = ({ error, resetErrorBoundary }) => {
 	return (
@@ -109,7 +110,15 @@ const Viewer = ({ selectedMatch }) => {
 	useEffect(() => {
 		if (selectedMatch && selectedMatch.id && !selectedMatch.viewed) {
 			try {
-				updateMatch(selectedMatch.id, { ...selectedMatch, viewed: true });
+				// Update backend - only send the viewed field
+				updateMatch(selectedMatch.id, { id: selectedMatch.id, viewed: true });
+				
+				// Update localStorage for MatchCard badge
+				const viewedMatches = JSON.parse(localStorage.getItem('viewedMatches') || '[]');
+				if (!viewedMatches.includes(selectedMatch.id)) {
+					viewedMatches.push(selectedMatch.id);
+					localStorage.setItem('viewedMatches', JSON.stringify(viewedMatches));
+				}
 			} catch (err) {
 				console.warn('Failed to mark match as viewed:', err);
 			}
@@ -117,48 +126,79 @@ const Viewer = ({ selectedMatch }) => {
 	}, [selectedMatch?.id]);
 
 	// Load panning ranges from match metadata if available
+	// Track initial load to prevent reset after save
+	const initialLoadRef = useRef(true);
+	const lastLoadedMatchIdRef = useRef(null);
+
 	useEffect(() => {
-		if (selectedMatch?.metadata?.panningRanges) {
-			setYawRange(selectedMatch.metadata.panningRanges.yaw || 140);
-			setPitchRange(selectedMatch.metadata.panningRanges.pitch || 20);
+		// Load ranges when match changes or when component mounts with a match
+		if (selectedMatch?.id) {
+			// Check if we need to load (new match ID or component just mounted)
+			const needsLoad = selectedMatch.id !== lastLoadedMatchIdRef.current;
+			
+			if (needsLoad) {
+				if (selectedMatch?.metadata?.panningRanges) {
+					setYawRange(selectedMatch.metadata.panningRanges.yaw || 140);
+					setPitchRange(selectedMatch.metadata.panningRanges.pitch || 20);
+				} else {
+					// Reset to defaults if no saved ranges
+					setYawRange(140);
+					setPitchRange(20);
+				}
+				lastLoadedMatchIdRef.current = selectedMatch.id;
+			}
+			// After first load, mark as not initial
+			initialLoadRef.current = false;
 		}
-	}, [selectedMatch?.id]);
+
+		// Cleanup: reset refs when component unmounts so ranges reload on remount
+		return () => {
+			lastLoadedMatchIdRef.current = null;
+			initialLoadRef.current = true;
+		};
+	}, [selectedMatch?.id, selectedMatch?.metadata?.panningRanges]);
 
 	// Auto-save panning ranges with debouncing
 	useEffect(() => {
+		// Don't save on initial load or if no match selected
+		if (!selectedMatch?.id || initialLoadRef.current) return;
+
+		// Skip save if values are the same as stored (prevents save on load)
+		if (
+			selectedMatch.metadata?.panningRanges?.yaw === yawRange &&
+			selectedMatch.metadata?.panningRanges?.pitch === pitchRange
+		) {
+			return;
+		}
+
 		// Clear existing timeout
 		if (saveTimeoutRef.current) {
 			clearTimeout(saveTimeoutRef.current);
 		}
 
 		// Set new timeout for debounced save
-		saveTimeoutRef.current = setTimeout(() => {
-			const handleAutoSave = async () => {
-				try {
-					setSaveStatus('saving');
-					const updatedMatch = {
-						...selectedMatch,
-						metadata: {
-							...selectedMatch.metadata,
-							panningRanges: {
-								yaw: yawRange,
-								pitch: pitchRange,
-							},
+		saveTimeoutRef.current = setTimeout(async () => {
+			try {
+				setSaveStatus('saving');
+				// Only send the metadata field being updated
+				const updatedMatch = {
+					id: selectedMatch.id,
+					metadata: {
+						...selectedMatch.metadata,
+						panningRanges: {
+							yaw: yawRange,
+							pitch: pitchRange,
 						},
-					};
-					await updateMatch(selectedMatch.id, updatedMatch);
-					setSaveStatus('success');
-					// Clear success message after 2 seconds
-					setTimeout(() => setSaveStatus(null), 2000);
-				} catch (err) {
-					console.warn('Failed to auto-save panning ranges:', err);
-					setSaveStatus('error');
-					setTimeout(() => setSaveStatus(null), 3000);
-				}
-			};
-
-			if (selectedMatch?.id) {
-				handleAutoSave();
+					},
+				};
+				await updateMatch(selectedMatch.id, updatedMatch);
+				setSaveStatus('success');
+				// Clear success message after 2 seconds
+				setTimeout(() => setSaveStatus(null), 2000);
+			} catch (err) {
+				console.warn('Failed to auto-save panning ranges:', err);
+				setSaveStatus('error');
+				setTimeout(() => setSaveStatus(null), 3000);
 			}
 		}, 1000); // Debounce for 1 second
 
@@ -167,7 +207,7 @@ const Viewer = ({ selectedMatch }) => {
 				clearTimeout(saveTimeoutRef.current);
 			}
 		};
-	}, [yawRange, pitchRange, selectedMatch?.id]);
+	}, [yawRange, pitchRange, selectedMatch]);
 
 	// Show friendly message for unprocessed matches
 	if (!selectedMatch?.params || !selectedMatch?.left_uniforms || !selectedMatch?.right_uniforms) {
@@ -201,7 +241,28 @@ const Viewer = ({ selectedMatch }) => {
 	const cameraAxisOffset = selectedMatch.params.cameraAxisOffset;
 
 	return (
-		<div className="w-full flex flex-col items-center gap-2">
+		<div className="w-full flex flex-col items-center gap-4 px-4 py-4">
+			{/* 3D Viewer - Takes full width of parent */}
+			<ErrorBoundary FallbackComponent={ViewerErrorFallback}>
+				<CameraProvider>
+					<CameraControlsWrapper yawRange={yawRange} pitchRange={pitchRange}>
+						<VideoPlayerContainer>
+							<Canvas
+								camera={{
+									position: [cameraAxisOffset, 0, cameraAxisOffset],
+									fov: defaultFOV,
+									near: 0.01,
+									far: 5,
+								}}
+							>
+								<Controls />
+								<VideoPanorama />
+							</Canvas>
+						</VideoPlayerContainer>
+					</CameraControlsWrapper>
+				</CameraProvider>
+			</ErrorBoundary>
+
 			{/* Minimizable Info Panel */}
 			<div className="w-full max-w-6xl bg-card border rounded-lg overflow-hidden">
 				{/* Header - Always Visible */}
@@ -238,65 +299,107 @@ const Viewer = ({ selectedMatch }) => {
 							<div>
 								<span className="text-muted-foreground">Created:</span>
 								<span className="ml-2">
-									{new Date(selectedMatch.created_at).toLocaleDateString()}
+									{selectedMatch.created_at ? new Date(selectedMatch.created_at).toLocaleDateString() : 'N/A'}
 								</span>
 							</div>
-							{selectedMatch.offset_seconds !== undefined && selectedMatch.offset_seconds !== null && (
-								<div>
-									<span className="text-muted-foreground">Audio Offset:</span>
-									<span className="ml-2">{selectedMatch.offset_seconds.toFixed(3)}s</span>
+							{selectedMatch.left_videos && selectedMatch.left_videos[0]?.profile_id && (
+							<div className="col-span-2">
+								<span className="text-muted-foreground">Left Profile:</span>
+								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.left_videos[0].profile_id}</span>
+							</div>
+						)}
+						{selectedMatch.right_videos && selectedMatch.right_videos[0]?.profile_id && (
+							<div className="col-span-2">
+								<span className="text-muted-foreground">Right Profile:</span>
+								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.right_videos[0].profile_id}</span>
+							</div>
+						)}
+						{!selectedMatch.left_videos?.[0]?.profile_id && selectedMatch.metadata?.left_profile_id && (
+							<div className="col-span-2">
+								<span className="text-muted-foreground">Left Profile:</span>
+								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.metadata.left_profile_id}</span>
+							</div>
+						)}
+						{!selectedMatch.right_videos?.[0]?.profile_id && selectedMatch.metadata?.right_profile_id && (
+							<div className="col-span-2">
+								<span className="text-muted-foreground">Right Profile:</span>
+								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.metadata.right_profile_id}</span>
 								</div>
 							)}
+							{(() => {
+								const metrics = getTranscodeMetrics(selectedMatch);
+								return metrics.offsetSeconds !== undefined && metrics.offsetSeconds !== null && (
+									<div>
+										<span className="text-muted-foreground">Audio Offset:</span>
+										<span className="ml-2">{metrics.offsetSeconds.toFixed(3)}s</span>
+									</div>
+								);
+							})()}
 							{selectedMatch.num_matches && (
 								<div>
 									<span className="text-muted-foreground">Feature Matches:</span>
 									<span className="ml-2">{selectedMatch.num_matches}</span>
 								</div>
 							)}
-						</div>
-
-						{/* Quality Settings */}
-						{selectedMatch.quality_settings && (
-							<div className="border-t pt-3">
-								<h4 className="text-xs font-semibold mb-2">Processing Quality</h4>
-								<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-									<div>
-										<span className="text-muted-foreground">Preset:</span>
-										<span className="ml-2 capitalize">{selectedMatch.quality_settings.preset}</span>
-									</div>
-									{selectedMatch.quality_settings.codec && (
-										<div>
-											<span className="text-muted-foreground">Codec:</span>
-											<span className="ml-2 uppercase">{selectedMatch.quality_settings.codec}</span>
-										</div>
-									)}
-									{selectedMatch.quality_settings.crf !== undefined && selectedMatch.quality_settings.crf !== null && (
-										<div>
-											<span className="text-muted-foreground">CRF:</span>
-											<span className="ml-2">{selectedMatch.quality_settings.crf}</span>
-										</div>
-									)}
-									{selectedMatch.quality_settings.bitrate && (
-										<div>
-											<span className="text-muted-foreground">Bitrate:</span>
-											<span className="ml-2">{selectedMatch.quality_settings.bitrate}</span>
-										</div>
-									)}
-									{selectedMatch.quality_settings.speed_preset && (
-										<div>
-											<span className="text-muted-foreground">Speed:</span>
-											<span className="ml-2 capitalize">{selectedMatch.quality_settings.speed_preset}</span>
-										</div>
-									)}
-									{selectedMatch.quality_settings.use_gpu_decode !== undefined && (
-										<div>
-											<span className="text-muted-foreground">GPU Decode:</span>
-											<span className="ml-2">{selectedMatch.quality_settings.use_gpu_decode ? 'Enabled' : 'Disabled'}</span>
-										</div>
-									)}
+						{(() => {
+							const duration = getProcessingDuration(selectedMatch);
+							return duration && (
+								<div>
+									<span className="text-muted-foreground">Processing Time:</span>
+									<span className="ml-2">{duration.toFixed(1)}s</span>
 								</div>
+							);
+						})()}
+						{(() => {
+							const metrics = getTranscodeMetrics(selectedMatch);
+							return metrics.fps && (
+								<div>
+									<span className="text-muted-foreground">Transcode FPS:</span>
+									<span className="ml-2">{metrics.fps.toFixed(1)} fps</span>
+								</div>
+							);
+						})()}
+				</div>
+
+				{/* Quality Settings */}
+				{(() => {
+					const qualitySettings = getQualitySettings(selectedMatch);
+					return qualitySettings && (
+						<div className="border-t pt-3">
+							<h4 className="text-xs font-semibold mb-2">Processing Quality</h4>
+							<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+								<div>
+									<span className="text-muted-foreground">Preset:</span>
+									<span className="ml-2 capitalize">{qualitySettings.preset}</span>
+								</div>
+								{qualitySettings.resolution && (
+									<div>
+										<span className="text-muted-foreground">Resolution:</span>
+										<span className="ml-2">{qualitySettings.resolution}</span>
+									</div>
+								)}
+								{qualitySettings.bitrate && (
+									<div>
+										<span className="text-muted-foreground">Bitrate:</span>
+										<span className="ml-2">{qualitySettings.bitrate}</span>
+									</div>
+								)}
+								{qualitySettings.speed_preset && (
+									<div>
+										<span className="text-muted-foreground">Speed:</span>
+										<span className="ml-2 capitalize">{qualitySettings.speed_preset}</span>
+									</div>
+								)}
+								{qualitySettings.use_gpu_decode !== undefined && (
+									<div>
+										<span className="text-muted-foreground">GPU Decode:</span>
+										<span className="ml-2">{qualitySettings.use_gpu_decode ? 'Enabled' : 'Disabled'}</span>
+									</div>
+								)}
 							</div>
-						)}
+						</div>
+					);
+				})()}
 
 						{/* Divider */}
 						<div className="border-t pt-3">
@@ -339,27 +442,6 @@ const Viewer = ({ selectedMatch }) => {
 					</div>
 				)}
 			</div>
-
-			{/* 3D Viewer - Takes full width of parent */}
-			<ErrorBoundary FallbackComponent={ViewerErrorFallback}>
-				<CameraProvider>
-					<CameraControlsWrapper yawRange={yawRange} pitchRange={pitchRange}>
-						<VideoPlayerContainer>
-							<Canvas
-								camera={{
-									position: [cameraAxisOffset, 0, cameraAxisOffset],
-									fov: defaultFOV,
-									near: 0.01,
-									far: 5,
-								}}
-							>
-								<Controls />
-								<VideoPanorama />
-							</Canvas>
-						</VideoPlayerContainer>
-					</CameraControlsWrapper>
-				</CameraProvider>
-			</ErrorBoundary>
 		</div>
 	);
 };
