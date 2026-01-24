@@ -65,34 +65,36 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 	// Initialize profiles from initialData when editing
 	useEffect(() => {
 		if (initialData) {
-			const leftProfileFromData = initialData.left_videos?.[0]?.profile_id || initialData.metadata?.left_profile_id || '';
-			const rightProfileFromData = initialData.right_videos?.[0]?.profile_id || initialData.metadata?.right_profile_id || '';
-			
+			const leftProfileFromData =
+				initialData.left_videos?.[0]?.profile_id || initialData.metadata?.left_profile_id || '';
+			const rightProfileFromData =
+				initialData.right_videos?.[0]?.profile_id || initialData.metadata?.right_profile_id || '';
+
 			// Fetch full profile data to get camera_brand and camera_model
 			if (leftProfileFromData) {
 				fetch(`${window.BACKEND_URL || 'http://localhost:8000'}/api/profiles/${leftProfileFromData}`)
-					.then(res => res.json())
-					.then(profile => {
+					.then((res) => res.json())
+					.then((profile) => {
 						if (profile && profile.camera_brand && profile.camera_model) {
 							setLeftBrand(profile.camera_brand);
 							setLeftModel(profile.camera_model);
 							setLeftProfileId(leftProfileFromData);
 						}
 					})
-					.catch(err => console.error('Failed to load left profile:', err));
+					.catch((err) => console.error('Failed to load left profile:', err));
 			}
-			
+
 			if (rightProfileFromData) {
 				fetch(`${window.BACKEND_URL || 'http://localhost:8000'}/api/profiles/${rightProfileFromData}`)
-					.then(res => res.json())
-					.then(profile => {
+					.then((res) => res.json())
+					.then((profile) => {
 						if (profile && profile.camera_brand && profile.camera_model) {
 							setRightBrand(profile.camera_brand);
 							setRightModel(profile.camera_model);
 							setRightProfileId(rightProfileFromData);
 						}
 					})
-					.catch(err => console.error('Failed to load right profile:', err));
+					.catch((err) => console.error('Failed to load right profile:', err));
 			}
 		}
 	}, [initialData]);
@@ -465,28 +467,34 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 			};
 
 			// Build quality settings - always send full settings (backend has no preset logic)
-			const qualitySettings = qualityPreset === 'custom' ? {
-				preset: 'custom',
-				bitrate: customBitrate,
-				speed_preset: customPreset,
-				resolution: customResolution,
-				use_gpu_decode: customUseGpuDecode,
-			} : {
-				preset: qualityPreset,
-				bitrate: presetToBitrate[qualityPreset] || '50M',
-				speed_preset: 'veryfast',
-				resolution: qualityPreset, // Use preset name as resolution
-				use_gpu_decode: false,
-			};
+			const qualitySettings =
+				qualityPreset === 'custom'
+					? {
+							preset: 'custom',
+							bitrate: customBitrate,
+							speed_preset: customPreset,
+							resolution: customResolution,
+							use_gpu_decode: customUseGpuDecode,
+						}
+					: {
+							preset: qualityPreset,
+							bitrate: presetToBitrate[qualityPreset] || '50M',
+							speed_preset: 'veryfast',
+							resolution: qualityPreset, // Use preset name as resolution
+							use_gpu_decode: false,
+						};
 
-			await onSubmit({
-				name: name.trim(),
-				left_videos: validLeftPaths.map((path) => ({ path, profile_id: leftProfileId })),
-				right_videos: validRightPaths.map((path) => ({ path, profile_id: rightProfileId })),
-				leftProfile,
-				rightProfile,
-				qualitySettings,
-			}, startProcessing);
+			await onSubmit(
+				{
+					name: name.trim(),
+					left_videos: validLeftPaths.map((path) => ({ path, profile_id: leftProfileId })),
+					right_videos: validRightPaths.map((path) => ({ path, profile_id: rightProfileId })),
+					leftProfile,
+					rightProfile,
+					qualitySettings,
+				},
+				startProcessing
+			);
 			// Clear draft on successful submission
 			try {
 				localStorage.removeItem(DRAFT_KEY);
@@ -519,8 +527,6 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 					Configure your match by selecting videos and assigning lens profiles for both cameras.
 				</p>
 			</div>
-
-
 
 			{/* Match Name */}
 			<Card>
@@ -1090,7 +1096,9 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 											<SelectItem value="720p">720p (1280x1440 stacked)</SelectItem>
 											<SelectItem value="1080p">1080p (1920x2160 stacked)</SelectItem>
 											<SelectItem value="1440p">1440p (2560x2880 stacked)</SelectItem>
-											<SelectItem value="4k">4K (3840x4320 stacked) - H.265 recommended</SelectItem>
+											<SelectItem value="4k">
+												4K (3840x4320 stacked) - H.265 recommended
+											</SelectItem>
 										</SelectContent>
 									</Select>
 									<div className="text-xs text-muted-foreground">
@@ -1119,67 +1127,64 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 						)}
 					</div>
 
-				{/* Encoder Information */}
-				<div className="border-t pt-4 mt-4">
-					<div className="flex items-center justify-between gap-4">
-						<div className="flex items-center gap-3 flex-1">
-							<Zap className="h-4 w-4" />
-							<div className="flex items-center gap-2 flex-wrap text-sm">
-								<span className="font-semibold">Video Encoder:</span>
-								{loadingEncoder ? (
-									<span className="text-muted-foreground">Loading...</span>
-								) : encoderInfo ? (
-									<>
-										<Badge
-											variant={encoderInfo.current_encoder === 'libx264' ? 'secondary' : 'default'}
-											className="gap-1"
-										>
-											{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
-										</Badge>
-										{encoderInfo.current_encoder === 'libx264' && (
-											<span className="text-muted-foreground text-xs">
-												(Slower - GPU encoding available)
-											</span>
-										)}
-									</>
-								) : (
-									<span className="text-muted-foreground">Unknown</span>
-								)}
+					{/* Encoder Information */}
+					<div className="border-t pt-4 mt-4">
+						<div className="flex items-center justify-between gap-4">
+							<div className="flex items-center gap-3 flex-1">
+								<Zap className="h-4 w-4" />
+								<div className="flex items-center gap-2 flex-wrap text-sm">
+									<span className="font-semibold">Video Encoder:</span>
+									{loadingEncoder ? (
+										<span className="text-muted-foreground">Loading...</span>
+									) : encoderInfo ? (
+										<>
+											<Badge
+												variant={
+													encoderInfo.current_encoder === 'libx264' ? 'secondary' : 'default'
+												}
+												className="gap-1"
+											>
+												{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
+											</Badge>
+											{encoderInfo.current_encoder === 'libx264' && (
+												<span className="text-muted-foreground text-xs">
+													(Slower - GPU encoding available)
+												</span>
+											)}
+										</>
+									) : (
+										<span className="text-muted-foreground">Unknown</span>
+									)}
+								</div>
 							</div>
+							<Link to="/profiles?tab=settings#encoder">
+								<Button variant="outline" size="sm" className="gap-2">
+									<Settings2 className="h-3 w-3" />
+									Change
+								</Button>
+							</Link>
 						</div>
-						<Link to="/profiles?tab=settings#encoder">
-							<Button variant="outline" size="sm" className="gap-2">
-								<Settings2 className="h-3 w-3" />
-								Change
-							</Button>
-						</Link>
 					</div>
-				</div>
-			</CardContent>
-		</Card>
+				</CardContent>
+			</Card>
 
-		{/* Action Buttons */}
-		<div className="flex justify-between items-center pt-4">
+			{/* Action Buttons */}
+			<div className="flex justify-between items-center pt-4">
 				<Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
 					Cancel
 				</Button>
 				{initialData ? (
 					<div className="flex gap-2">
-						<Button 
-							onClick={() => handleSubmit(false)} 
-							disabled={isSubmitting} 
+						<Button
+							onClick={() => handleSubmit(false)}
+							disabled={isSubmitting}
 							variant="outline"
-							size="lg" 
+							size="lg"
 							className="px-8"
 						>
 							{isSubmitting ? 'Saving...' : 'Save'}
 						</Button>
-						<Button 
-							onClick={() => handleSubmit(true)} 
-							disabled={isSubmitting} 
-							size="lg" 
-							className="px-8"
-						>
+						<Button onClick={() => handleSubmit(true)} disabled={isSubmitting} size="lg" className="px-8">
 							{isSubmitting ? 'Processing...' : 'Save & Process'}
 						</Button>
 					</div>

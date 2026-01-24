@@ -48,7 +48,7 @@ export default function MatchCard({ match, onSelect, className }) {
 		const hasRequiredData = match.src && match.params && match.left_uniforms && match.right_uniforms;
 		// Match is ready if status says so, OR if it has all data AND isn't awaiting frames
 		const isActuallyReady = status === 'ready' || (hasRequiredData && match.processing_step !== 'awaiting_frames');
-		
+
 		// If it has all data and isn't waiting for frames, treat as ready
 		if (isActuallyReady) {
 			return !viewed ? (
@@ -58,7 +58,7 @@ export default function MatchCard({ match, onSelect, className }) {
 				</Badge>
 			) : null;
 		}
-		
+
 		switch (status) {
 			case 'pending':
 				return (

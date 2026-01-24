@@ -112,7 +112,7 @@ const Viewer = ({ selectedMatch }) => {
 			try {
 				// Update backend - only send the viewed field
 				updateMatch(selectedMatch.id, { id: selectedMatch.id, viewed: true });
-				
+
 				// Update localStorage for MatchCard badge
 				const viewedMatches = JSON.parse(localStorage.getItem('viewedMatches') || '[]');
 				if (!viewedMatches.includes(selectedMatch.id)) {
@@ -135,7 +135,7 @@ const Viewer = ({ selectedMatch }) => {
 		if (selectedMatch?.id) {
 			// Check if we need to load (new match ID or component just mounted)
 			const needsLoad = selectedMatch.id !== lastLoadedMatchIdRef.current;
-			
+
 			if (needsLoad) {
 				if (selectedMatch?.metadata?.panningRanges) {
 					setYawRange(selectedMatch.metadata.panningRanges.yaw || 140);
@@ -299,40 +299,54 @@ const Viewer = ({ selectedMatch }) => {
 							<div>
 								<span className="text-muted-foreground">Created:</span>
 								<span className="ml-2">
-									{selectedMatch.created_at ? new Date(selectedMatch.created_at).toLocaleDateString() : 'N/A'}
+									{selectedMatch.created_at
+										? new Date(selectedMatch.created_at).toLocaleDateString()
+										: 'N/A'}
 								</span>
 							</div>
 							{selectedMatch.left_videos && selectedMatch.left_videos[0]?.profile_id && (
-							<div className="col-span-2">
-								<span className="text-muted-foreground">Left Profile:</span>
-								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.left_videos[0].profile_id}</span>
-							</div>
-						)}
-						{selectedMatch.right_videos && selectedMatch.right_videos[0]?.profile_id && (
-							<div className="col-span-2">
-								<span className="text-muted-foreground">Right Profile:</span>
-								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.right_videos[0].profile_id}</span>
-							</div>
-						)}
-						{!selectedMatch.left_videos?.[0]?.profile_id && selectedMatch.metadata?.left_profile_id && (
-							<div className="col-span-2">
-								<span className="text-muted-foreground">Left Profile:</span>
-								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.metadata.left_profile_id}</span>
-							</div>
-						)}
-						{!selectedMatch.right_videos?.[0]?.profile_id && selectedMatch.metadata?.right_profile_id && (
-							<div className="col-span-2">
-								<span className="text-muted-foreground">Right Profile:</span>
-								<span className="ml-2 font-mono text-[10px] break-all">{selectedMatch.metadata.right_profile_id}</span>
+								<div className="col-span-2">
+									<span className="text-muted-foreground">Left Profile:</span>
+									<span className="ml-2 font-mono text-[10px] break-all">
+										{selectedMatch.left_videos[0].profile_id}
+									</span>
 								</div>
 							)}
+							{selectedMatch.right_videos && selectedMatch.right_videos[0]?.profile_id && (
+								<div className="col-span-2">
+									<span className="text-muted-foreground">Right Profile:</span>
+									<span className="ml-2 font-mono text-[10px] break-all">
+										{selectedMatch.right_videos[0].profile_id}
+									</span>
+								</div>
+							)}
+							{!selectedMatch.left_videos?.[0]?.profile_id && selectedMatch.metadata?.left_profile_id && (
+								<div className="col-span-2">
+									<span className="text-muted-foreground">Left Profile:</span>
+									<span className="ml-2 font-mono text-[10px] break-all">
+										{selectedMatch.metadata.left_profile_id}
+									</span>
+								</div>
+							)}
+							{!selectedMatch.right_videos?.[0]?.profile_id &&
+								selectedMatch.metadata?.right_profile_id && (
+									<div className="col-span-2">
+										<span className="text-muted-foreground">Right Profile:</span>
+										<span className="ml-2 font-mono text-[10px] break-all">
+											{selectedMatch.metadata.right_profile_id}
+										</span>
+									</div>
+								)}
 							{(() => {
 								const metrics = getTranscodeMetrics(selectedMatch);
-								return metrics.offsetSeconds !== undefined && metrics.offsetSeconds !== null && (
-									<div>
-										<span className="text-muted-foreground">Audio Offset:</span>
-										<span className="ml-2">{metrics.offsetSeconds.toFixed(3)}s</span>
-									</div>
+								return (
+									metrics.offsetSeconds !== undefined &&
+									metrics.offsetSeconds !== null && (
+										<div>
+											<span className="text-muted-foreground">Audio Offset:</span>
+											<span className="ml-2">{metrics.offsetSeconds.toFixed(3)}s</span>
+										</div>
+									)
 								);
 							})()}
 							{selectedMatch.num_matches && (
@@ -341,65 +355,75 @@ const Viewer = ({ selectedMatch }) => {
 									<span className="ml-2">{selectedMatch.num_matches}</span>
 								</div>
 							)}
-						{(() => {
-							const duration = getProcessingDuration(selectedMatch);
-							return duration && (
-								<div>
-									<span className="text-muted-foreground">Processing Time:</span>
-									<span className="ml-2">{duration.toFixed(1)}s</span>
-								</div>
-							);
-						})()}
-						{(() => {
-							const metrics = getTranscodeMetrics(selectedMatch);
-							return metrics.fps && (
-								<div>
-									<span className="text-muted-foreground">Transcode FPS:</span>
-									<span className="ml-2">{metrics.fps.toFixed(1)} fps</span>
-								</div>
-							);
-						})()}
-				</div>
-
-				{/* Quality Settings */}
-				{(() => {
-					const qualitySettings = getQualitySettings(selectedMatch);
-					return qualitySettings && (
-						<div className="border-t pt-3">
-							<h4 className="text-xs font-semibold mb-2">Processing Quality</h4>
-							<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-								<div>
-									<span className="text-muted-foreground">Preset:</span>
-									<span className="ml-2 capitalize">{qualitySettings.preset}</span>
-								</div>
-								{qualitySettings.resolution && (
-									<div>
-										<span className="text-muted-foreground">Resolution:</span>
-										<span className="ml-2">{qualitySettings.resolution}</span>
-									</div>
-								)}
-								{qualitySettings.bitrate && (
-									<div>
-										<span className="text-muted-foreground">Bitrate:</span>
-										<span className="ml-2">{qualitySettings.bitrate}</span>
-									</div>
-								)}
-								{qualitySettings.speed_preset && (
-									<div>
-										<span className="text-muted-foreground">Speed:</span>
-										<span className="ml-2 capitalize">{qualitySettings.speed_preset}</span>
-									</div>
-								)}
-								{qualitySettings.use_gpu_decode !== undefined && (
-									<div>
-										<span className="text-muted-foreground">GPU Decode:</span>
-										<span className="ml-2">{qualitySettings.use_gpu_decode ? 'Enabled' : 'Disabled'}</span>
-									</div>
-								)}
-							</div>
+							{(() => {
+								const duration = getProcessingDuration(selectedMatch);
+								return (
+									duration && (
+										<div>
+											<span className="text-muted-foreground">Processing Time:</span>
+											<span className="ml-2">{duration.toFixed(1)}s</span>
+										</div>
+									)
+								);
+							})()}
+							{(() => {
+								const metrics = getTranscodeMetrics(selectedMatch);
+								return (
+									metrics.fps && (
+										<div>
+											<span className="text-muted-foreground">Transcode FPS:</span>
+											<span className="ml-2">{metrics.fps.toFixed(1)} fps</span>
+										</div>
+									)
+								);
+							})()}
 						</div>
-					);
-				})()}
+
+						{/* Quality Settings */}
+						{(() => {
+							const qualitySettings = getQualitySettings(selectedMatch);
+							return (
+								qualitySettings && (
+									<div className="border-t pt-3">
+										<h4 className="text-xs font-semibold mb-2">Processing Quality</h4>
+										<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+											<div>
+												<span className="text-muted-foreground">Preset:</span>
+												<span className="ml-2 capitalize">{qualitySettings.preset}</span>
+											</div>
+											{qualitySettings.resolution && (
+												<div>
+													<span className="text-muted-foreground">Resolution:</span>
+													<span className="ml-2">{qualitySettings.resolution}</span>
+												</div>
+											)}
+											{qualitySettings.bitrate && (
+												<div>
+													<span className="text-muted-foreground">Bitrate:</span>
+													<span className="ml-2">{qualitySettings.bitrate}</span>
+												</div>
+											)}
+											{qualitySettings.speed_preset && (
+												<div>
+													<span className="text-muted-foreground">Speed:</span>
+													<span className="ml-2 capitalize">
+														{qualitySettings.speed_preset}
+													</span>
+												</div>
+											)}
+											{qualitySettings.use_gpu_decode !== undefined && (
+												<div>
+													<span className="text-muted-foreground">GPU Decode:</span>
+													<span className="ml-2">
+														{qualitySettings.use_gpu_decode ? 'Enabled' : 'Disabled'}
+													</span>
+												</div>
+											)}
+										</div>
+									</div>
+								)
+							);
+						})()}
 
 						{/* Divider */}
 						<div className="border-t pt-3">

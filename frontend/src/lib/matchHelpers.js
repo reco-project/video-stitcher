@@ -47,7 +47,7 @@ export function getQualitySettings(match) {
 export function getProcessingDuration(match) {
 	const { startedAt, completedAt } = getProcessingTimes(match);
 	if (!startedAt || !completedAt) return null;
-	
+
 	try {
 		const duration = (new Date(completedAt) - new Date(startedAt)) / 1000;
 		return duration > 0 ? duration : null;

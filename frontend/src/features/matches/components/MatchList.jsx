@@ -87,9 +87,12 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 						{displayMatches.map((match) => {
 							// Check if match is complete by looking at both status and required fields
 							// This handles legacy matches that have data but status wasn't updated
-							const hasRequiredData = match.src && match.params && match.left_uniforms && match.right_uniforms;
+							const hasRequiredData =
+								match.src && match.params && match.left_uniforms && match.right_uniforms;
 							// Match is ready if status says so, OR if it has all data AND isn't awaiting frames
-							const isReady = match.status === 'ready' || (hasRequiredData && match.processing_step !== 'awaiting_frames');
+							const isReady =
+								match.status === 'ready' ||
+								(hasRequiredData && match.processing_step !== 'awaiting_frames');
 							const isCancelled = match.processing_message?.toLowerCase().includes('cancelled');
 							const isError = match.status === 'error' || isCancelled;
 							const isProcessing = ['transcoding', 'calibrating'].includes(match.status);
@@ -100,10 +103,7 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 								!hasRequiredData; // Don't show awaiting frames if match is actually complete
 							// Match is ready to process if pending with no step and no src (newly created)
 							const isReadyToProcess =
-								match.status === 'pending' &&
-								!match.processing_step &&
-								!match.src &&
-								!isCancelled;
+								match.status === 'pending' && !match.processing_step && !match.src && !isCancelled;
 							const isDeleting = deletingId === match.id;
 
 							return (

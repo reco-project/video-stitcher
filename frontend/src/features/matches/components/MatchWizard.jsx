@@ -58,69 +58,68 @@ export default function MatchWizard({ onComplete, onCancel, initialMatch }) {
 			};
 
 			const matchPayload = {
-			id: isEditMode ? initialMatch.id : id,
-			name: formData.name,
-			left_videos: formData.left_videos,
-			right_videos: formData.right_videos,
-			// params will be set after calibration completes
-			left_uniforms: buildUniforms(formData.leftProfile),
-			right_uniforms: buildUniforms(formData.rightProfile),
-			metadata: {
-				left_profile_id: formData.leftProfile.id,
-				right_profile_id: formData.rightProfile.id,
-			},
-			quality_settings: formData.qualitySettings,
-		// Only reset processing state when editing if we're going to reprocess
-		...(isEditMode && startProcessing && {
-			processing: {
-				status: 'pending',
-				step: null,
-				message: null,
-				error_message: null,
-				error_code: null
+				id: isEditMode ? initialMatch.id : id,
+				name: formData.name,
+				left_videos: formData.left_videos,
+				right_videos: formData.right_videos,
+				// params will be set after calibration completes
+				left_uniforms: buildUniforms(formData.leftProfile),
+				right_uniforms: buildUniforms(formData.rightProfile),
+				metadata: {
+					left_profile_id: formData.leftProfile.id,
+					right_profile_id: formData.rightProfile.id,
+				},
+				quality_settings: formData.qualitySettings,
+				// Only reset processing state when editing if we're going to reprocess
+				...(isEditMode &&
+					startProcessing && {
+						processing: {
+							status: 'pending',
+							step: null,
+							message: null,
+							error_message: null,
+							error_code: null,
+						},
+					}),
+			};
+
+			const savedMatch = isEditMode ? await update(initialMatch.id, matchPayload) : await create(matchPayload);
+
+			// Start processing if requested
+			if (startProcessing) {
+				try {
+					await processMatch(savedMatch.id);
+				} catch (err) {
+					console.error('Failed to start processing:', err);
+					// Continue even if start fails - user can retry
+				}
 			}
-		})
+
+			onComplete(savedMatch, startProcessing);
+		} catch (err) {
+			setError(err.message || 'Failed to create match');
+		}
 	};
 
-	const savedMatch = isEditMode 
-		? await update(initialMatch.id, matchPayload)
-		: await create(matchPayload);
-		
-		// Start processing if requested
-		if (startProcessing) {
-			try {
-				await processMatch(savedMatch.id);
-			} catch (err) {
-				console.error('Failed to start processing:', err);
-				// Continue even if start fails - user can retry
-			}
-		}
-		
-		onComplete(savedMatch, startProcessing);
-	} catch (err) {
-		setError(err.message || 'Failed to create match');
-	}
-};
+	const handleCancel = () => {
+		onCancel();
+	};
 
-const handleCancel = () => {
-	onCancel();
-};
+	return (
+		<div className="w-full max-w-6xl space-y-6 relative pb-12">
+			{/* Error Alert - Fixed at top for visibility */}
+			{error && (
+				<Alert variant="destructive" className="sticky top-4 z-50 shadow-lg">
+					<AlertDescription className="font-medium">{error}</AlertDescription>
+				</Alert>
+			)}
 
-return (
-	<div className="w-full max-w-6xl space-y-6 relative pb-12">
-		{/* Error Alert - Fixed at top for visibility */}
-		{error && (
-			<Alert variant="destructive" className="sticky top-4 z-50 shadow-lg">
-				<AlertDescription className="font-medium">{error}</AlertDescription>
-			</Alert>
-		)}
-		
-		<MatchCreationForm 
-			onSubmit={handleFormSubmit} 
-			onCancel={handleCancel} 
-			error={error}
-			initialData={initialMatch}
-		/>
-	</div>
-);
+			<MatchCreationForm
+				onSubmit={handleFormSubmit}
+				onCancel={handleCancel}
+				error={error}
+				initialData={initialMatch}
+			/>
+		</div>
+	);
 }

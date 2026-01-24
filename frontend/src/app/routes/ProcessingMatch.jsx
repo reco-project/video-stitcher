@@ -31,9 +31,8 @@ export default function ProcessingMatch() {
 
 	// Update processing state when status changes
 	useEffect(() => {
-		const isActive = !!(processing.status && 
-			!['ready', 'error'].includes(processing.status.status));
-		
+		const isActive = !!(processing.status && !['ready', 'error'].includes(processing.status.status));
+
 		if (window.electronAPI?.setProcessingState) {
 			window.electronAPI.setProcessingState(isActive, 'ProcessingMatch');
 		}
@@ -59,7 +58,6 @@ export default function ProcessingMatch() {
 			loadMatch();
 		}
 	}, [matchId]);
-
 
 	// Auto-complete when processing finishes
 	useEffect(() => {
@@ -242,15 +240,13 @@ export default function ProcessingMatch() {
 				{/* Always show progress - either real or optimistic */}
 				<ProcessingStatus
 					status={
-						!processing.status || 
-						processing.status.status === 'pending' ||
-						!processing.status.status
+						!processing.status || processing.status.status === 'pending' || !processing.status.status
 							? {
 									status: 'transcoding',
 									processing_step: 'transcoding',
-								processing_message: 'Starting video processing...',
+									processing_message: 'Starting video processing...',
 									progress_percent: 0,
-							  }
+								}
 							: processing.status
 					}
 					onComplete={handleProcessingComplete}

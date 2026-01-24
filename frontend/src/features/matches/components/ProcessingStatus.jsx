@@ -32,7 +32,7 @@ export default function ProcessingStatus({ status, onComplete }) {
 
 		// For transcoding status without specific progress, return 0 to show progress bar
 		if (status.status === 'transcoding') return 0;
-		
+
 		// Calibrating is near the end of processing
 		if (status.status === 'calibrating') return 95;
 

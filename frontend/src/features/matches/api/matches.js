@@ -20,31 +20,31 @@ function extractNestedFields(raw) {
  */
 function normalizeMatch(raw) {
 	if (!raw) return null;
-	
+
 	const { processing, transcode } = extractNestedFields(raw);
-	
+
 	return {
 		// Core fields
 		id: raw.id || null,
 		name: raw.name || '',
 		src: raw.src || null,
 		created_at: raw.created_at || null,
-		
+
 		// Video inputs
 		left_videos: raw.left_videos || null,
 		right_videos: raw.right_videos || null,
-		
+
 		// Processing fields
 		status: processing.status || 'pending',
 		processing_step: processing.step || null,
 		processing_message: processing.message || null,
 		processing_started_at: processing.started_at || null,
 		processing_completed_at: processing.completed_at || null,
-		
+
 		// Error fields
 		error_message: processing.error_message || null,
 		error_code: processing.error_code || null,
-		
+
 		// Transcode fields
 		fps: transcode.fps || null,
 		transcode_progress: transcode.progress || null,
@@ -53,22 +53,22 @@ function normalizeMatch(raw) {
 		transcode_current_time: transcode.current_time || null,
 		transcode_total_duration: transcode.total_duration || null,
 		transcode_encoder: transcode.encoder || null,
-		
+
 		// Progress (use transcode progress if available)
 		progress_percent: transcode.progress || null,
-		
+
 		// Match-specific fields
 		left_uniforms: raw.left_uniforms || null,
 		right_uniforms: raw.right_uniforms || null,
 		params: raw.params || null,
 		num_matches: raw.num_matches || null,
 		confidence: raw.confidence || null,
-		
+
 		// Metadata and settings
 		metadata: raw.metadata || null,
 		quality_settings: raw.quality_settings || null,
 		viewed: raw.viewed || false,
-		
+
 		// Keep raw for special cases
 		_raw: raw,
 	};

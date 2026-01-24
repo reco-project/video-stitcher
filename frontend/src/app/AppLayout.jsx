@@ -31,21 +31,21 @@ export default function AppLayout({ children }) {
 			wasOnProcessingPageRef.current = true;
 			return;
 		}
-		
+
 		// If we just left the processing page, don't check immediately
 		// Let the regular polling (every 15s) handle it when matches refresh
 		const justLeftProcessingPage = wasOnProcessingPageRef.current && !isOnProcessingPage;
-		
+
 		if (justLeftProcessingPage) {
 			wasOnProcessingPageRef.current = false;
 			return; // Skip check, wait for next polling cycle
 		}
-		
+
 		// Check if any match is actively processing
-		const hasActiveProcessing = matches.some((match) => 
-			match.status === 'transcoding' || match.status === 'calibrating'
+		const hasActiveProcessing = matches.some(
+			(match) => match.status === 'transcoding' || match.status === 'calibrating'
 		);
-		
+
 		// Only set to false when no processing detected
 		if (!hasActiveProcessing && window.electronAPI?.setProcessingState) {
 			window.electronAPI.setProcessingState(false, 'AppLayout:polling');
