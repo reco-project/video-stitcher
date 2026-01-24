@@ -51,7 +51,7 @@ export function getProcessingDuration(match) {
 	try {
 		const duration = (new Date(completedAt) - new Date(startedAt)) / 1000;
 		return duration > 0 ? duration : null;
-	} catch (e) {
+	} catch {
 		return null;
 	}
 }

@@ -166,25 +166,6 @@ export default function ProcessingStatus({ status, onComplete }) {
 		}
 	};
 
-	const getStepTitle = (step) => {
-		switch (step) {
-			case 'initializing':
-				return 'Starting';
-			case 'transcoding':
-				return 'Syncing Videos';
-			case 'extracting_frame':
-				return 'Extracting Frames';
-			case 'feature_matching':
-				return 'Analyzing Features';
-			case 'optimizing':
-				return 'Optimizing';
-			case 'complete':
-				return 'Complete';
-			default:
-				return 'Processing';
-		}
-	};
-
 	const getCalibrationMessage = (step) => {
 		switch (step) {
 			case 'feature_matching':
