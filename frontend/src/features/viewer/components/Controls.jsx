@@ -14,7 +14,7 @@ const Controls = () => {
 	const isInvertedPitch = true;
 	const panSensitivity = 0.005; // adjust pan speed
 	const zoomSensitivity = 0.05; // adjust zoom speed
-	const minFov = 30;
+	const minFov = 15;
 	const maxFov = 75;
 
 	/* Quaternions and vectors reused for performance, right? */

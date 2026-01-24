@@ -3,10 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMatches, useMatchMutations } from '../hooks/useMatches';
+import { Pencil, Plus, Trash2, Play, RotateCcw } from 'lucide-react';
 import MatchCard from './MatchCard';
-import { Plus, Trash2 } from 'lucide-react';
 
-export default function MatchList({ onSelectMatch, onCreateNew }) {
+export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessing, onEditMatch }) {
 	const { matches, loading, error, refetch } = useMatches();
 	const { delete: deleteMatch } = useMatchMutations();
 	const [deleteError, setDeleteError] = React.useState(null);
@@ -56,7 +56,7 @@ export default function MatchList({ onSelectMatch, onCreateNew }) {
 	}
 
 	return (
-		<Card className="w-full max-w-4xl">
+		<Card className="w-full max-w-4xl mb-12">
 			<CardHeader>
 				<div className="flex justify-between items-center">
 					<CardTitle>Saved Matches</CardTitle>
@@ -85,7 +85,25 @@ export default function MatchList({ onSelectMatch, onCreateNew }) {
 				) : (
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 						{displayMatches.map((match) => {
-							const isReady = match.status === 'ready';
+							// Check if match is complete by looking at both status and required fields
+							// This handles legacy matches that have data but status wasn't updated
+							const hasRequiredData =
+								match.src && match.params && match.left_uniforms && match.right_uniforms;
+							// Match is ready if status says so, OR if it has all data AND isn't awaiting frames
+							const isReady =
+								match.status === 'ready' ||
+								(hasRequiredData && match.processing_step !== 'awaiting_frames');
+							const isCancelled = match.processing_message?.toLowerCase().includes('cancelled');
+							const isError = match.status === 'error' || isCancelled;
+							const isProcessing = ['transcoding', 'calibrating'].includes(match.status);
+							const isAwaitingFrames =
+								match.status === 'pending' &&
+								match.processing_step === 'awaiting_frames' &&
+								!isCancelled &&
+								!hasRequiredData; // Don't show awaiting frames if match is actually complete
+							// Match is ready to process if pending with no step and no src (newly created)
+							const isReadyToProcess =
+								match.status === 'pending' && !match.processing_step && !match.src && !isCancelled;
 							const isDeleting = deletingId === match.id;
 
 							return (
@@ -101,15 +119,87 @@ export default function MatchList({ onSelectMatch, onCreateNew }) {
 
 										{/* Action buttons */}
 										<div className="flex gap-2 border-t pt-3">
-											<Button
-												onClick={() => onSelectMatch(match)}
-												disabled={!isReady}
-												variant={isReady ? 'default' : 'outline'}
-												size="sm"
-												className="flex-1"
-											>
-												{isReady ? 'View' : 'Incomplete'}
-											</Button>
+											{isReady ? (
+												<Button
+													onClick={() => onSelectMatch(match)}
+													variant="default"
+													size="sm"
+													className="flex-1"
+												>
+													View
+												</Button>
+											) : isError ? (
+												<>
+													<Button
+														onClick={() => onResumeProcessing && onResumeProcessing(match)}
+														variant="destructive"
+														size="sm"
+														className="flex-1 gap-2"
+													>
+														<RotateCcw className="h-3 w-3" />
+														Retry
+													</Button>
+													<Button
+														onClick={() => onEditMatch && onEditMatch(match)}
+														variant="outline"
+														size="sm"
+														className="flex-1 gap-2"
+													>
+														<Pencil className="h-3 w-3" />
+														Edit
+													</Button>
+												</>
+											) : isProcessing ? (
+												<Button
+													onClick={() => onResumeProcessing && onResumeProcessing(match)}
+													variant="default"
+													size="sm"
+													className="flex-1 gap-2"
+												>
+													<Play className="h-3 w-3" />
+													See Progress
+												</Button>
+											) : isAwaitingFrames ? (
+												<Button
+													onClick={() => onResumeProcessing && onResumeProcessing(match)}
+													variant="default"
+													size="sm"
+													className="flex-1"
+												>
+													Calibrate
+												</Button>
+											) : isReadyToProcess ? (
+												<>
+													<Button
+														onClick={() => onResumeProcessing && onResumeProcessing(match)}
+														variant="default"
+														size="sm"
+														className="flex-1 gap-2"
+													>
+														<Play className="h-3 w-3" />
+														Process
+													</Button>
+													<Button
+														onClick={() => onEditMatch && onEditMatch(match)}
+														variant="outline"
+														size="sm"
+														className="flex-1 gap-2"
+													>
+														<Pencil className="h-3 w-3" />
+														Edit
+													</Button>
+												</>
+											) : (
+												<Button
+													onClick={() => onSelectMatch(match)}
+													disabled
+													variant="outline"
+													size="sm"
+													className="flex-1"
+												>
+													Incomplete
+												</Button>
+											)}
 											<Button
 												onClick={(e) => {
 													e.stopPropagation();

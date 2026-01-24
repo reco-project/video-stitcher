@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 
 /**
  * Component to display match processing status with better UX
  */
-export default function ProcessingStatus({ status }) {
+export default function ProcessingStatus({ status, onComplete }) {
 	const [showDetails, setShowDetails] = React.useState(false);
 	const [now, setNow] = useState(Date.now());
 
@@ -20,9 +21,20 @@ export default function ProcessingStatus({ status }) {
 
 	// Determine progress percentage based on step or explicit fields returned from backend
 	const getProgress = () => {
+		// Use transcoding progress if available
+		if (status.status === 'transcoding' && typeof status.transcode_progress === 'number') {
+			return Math.round(status.transcode_progress);
+		}
+
 		if (typeof status.progress_percent === 'number') return Math.round(status.progress_percent);
 		if (typeof status.processing_percent === 'number') return Math.round(status.processing_percent);
 		if (typeof status.step_progress === 'number') return Math.round(status.step_progress);
+
+		// For transcoding status without specific progress, return 0 to show progress bar
+		if (status.status === 'transcoding') return 0;
+
+		// Calibrating is near the end of processing
+		if (status.status === 'calibrating') return 95;
 
 		const steps = ['initializing', 'transcoding', 'extracting_frame', 'feature_matching', 'optimizing', 'complete'];
 		const stepIndex = steps.indexOf(status.processing_step || '');
@@ -60,6 +72,19 @@ export default function ProcessingStatus({ status }) {
 	};
 
 	const estimateRemainingSeconds = (elapsed, percent, fps, framesInfo) => {
+		// For transcoding, use time-based estimate if available
+		if (status.status === 'transcoding' && status.transcode_current_time && status.transcode_total_duration) {
+			const remaining = status.transcode_total_duration - status.transcode_current_time;
+			// Adjust by speed if available
+			if (status.transcode_speed) {
+				const speed = parseFloat(status.transcode_speed);
+				if (speed > 0) {
+					return remaining / speed;
+				}
+			}
+			return remaining;
+		}
+
 		// Prefer frame-based estimate when fps & frames info available
 		if (
 			fps &&
@@ -93,8 +118,8 @@ export default function ProcessingStatus({ status }) {
 					icon: Loader2,
 					variant: 'default',
 					color: 'text-blue-500',
-					title: getStepTitle(status.processing_step),
-					message: status.processing_message || 'Synchronizing audio and stacking videos...',
+					title: 'Syncing Videos',
+					message: status.processing_message || 'Synchronizing audio and encoding side-by-side video...',
 					animated: true,
 					bgClass: 'bg-blue-50 dark:bg-blue-950',
 				};
@@ -103,7 +128,7 @@ export default function ProcessingStatus({ status }) {
 					icon: Loader2,
 					variant: 'default',
 					color: 'text-blue-500',
-					title: getStepTitle(status.processing_step),
+					title: 'Calibrating Cameras',
 					message: status.processing_message || getCalibrationMessage(status.processing_step),
 					animated: true,
 					bgClass: 'bg-blue-50 dark:bg-blue-950',
@@ -128,38 +153,27 @@ export default function ProcessingStatus({ status }) {
 					bgClass: 'bg-red-50 dark:bg-red-950',
 				};
 			default:
-				return null;
-		}
-	};
-
-	const getStepTitle = (step) => {
-		switch (step) {
-			case 'initializing':
-				return 'Initializing';
-			case 'transcoding':
-				return 'Syncing Videos';
-			case 'extracting_frame':
-				return 'Extracting Frame';
-			case 'feature_matching':
-				return 'Matching Features';
-			case 'optimizing':
-				return 'Optimizing Calibration';
-			case 'complete':
-				return 'Complete';
-			default:
-				return 'Processing';
+				// Fallback for any unknown status - treat as processing
+				return {
+					icon: Loader2,
+					variant: 'default',
+					color: 'text-blue-500',
+					title: 'Processing',
+					message: status.processing_message || status.message || 'Processing...',
+					animated: true,
+					bgClass: 'bg-blue-50 dark:bg-blue-950',
+				};
 		}
 	};
 
 	const getCalibrationMessage = (step) => {
 		switch (step) {
 			case 'feature_matching':
-				return 'Detecting and matching features...';
+				return 'Analyzing camera features and finding matches...';
 			case 'optimizing':
-			case 'position_optimization':
-				return 'Optimizing camera positions...';
+				return 'Computing optimal camera positions and alignment...';
 			default:
-				return 'Calibrating cameras...';
+				return 'Running camera calibration...';
 		}
 	};
 
@@ -188,65 +202,105 @@ export default function ProcessingStatus({ status }) {
 						)}
 					</div>
 
-					{/* Progress bar for active processing */}
+					{/* Progress bar for active processing - show immediately after message */}
 					{isProcessing && (
 						<div className="mb-3">
 							<div className="flex justify-between items-center mb-1">
-								<span className="text-xs font-medium opacity-70">Overall Progress</span>
+								<span className="text-xs font-medium opacity-70">Progress</span>
 								<span className="text-xs opacity-70">{progress}%</span>
 							</div>
-							<Progress value={progress} className="h-2" />
+							<Progress value={progress || 0} className="h-2" />
 						</div>
 					)}
 
-					{/* Detailed metrics: fps, frames, audio sync, elapsed/remaining */}
-					<div className="text-xs opacity-80 space-y-1 mt-2">
-						{fps && (
-							<div>
-								Transcoding FPS: <span className="font-medium">{fps}</span>
-							</div>
-						)}
-						{framesInfo.processed != null && framesInfo.total != null && (
-							<div>
-								Frames: <span className="font-medium">{framesInfo.processed}</span> /{' '}
-								<span className="font-medium">{framesInfo.total}</span>
-							</div>
-						)}
-						{status.audio_sync && (
-							<div>
-								Audio Sync:{' '}
-								<span className="font-medium">{status.audio_sync.status || status.audio_sync}</span>
-								{status.audio_sync.progress != null
-									? ` — ${Math.round(status.audio_sync.progress)}%`
-									: ''}
-							</div>
-						)}
-						{elapsed != null && (
-							<div>
-								Elapsed: <span className="font-medium">{formatDuration(elapsed)}</span>
-								{remaining != null && (
-									<>
-										{' '}
-										— Remaining: <span className="font-medium">{formatDuration(remaining)}</span>
-									</>
+					{/* Show encoder info and transcoding metrics when available */}
+					{status.transcode_fps != null && status.transcode_fps > 0 && (
+						<div className="text-xs opacity-80 mb-3 space-y-1">
+							{/* Encoder badge (info only, no action during transcoding) */}
+							{status.transcode_encoder && (
+								<div className="flex items-center gap-2 mb-2">
+									<Badge
+										variant={status.transcode_encoder === 'libx264' ? 'secondary' : 'default'}
+										className="gap-1"
+										title={
+											status.transcode_encoder === 'libx264'
+												? 'Software encoding'
+												: 'Hardware-accelerated encoding'
+										}
+									>
+										<Zap className="h-3 w-3" />
+										{status.transcode_encoder === 'libx264'
+											? 'CPU Encoder'
+											: status.transcode_encoder === 'h264_nvenc'
+												? 'NVIDIA GPU'
+												: status.transcode_encoder === 'h264_qsv'
+													? 'Intel GPU'
+													: status.transcode_encoder === 'h264_amf'
+														? 'AMD GPU'
+														: status.transcode_encoder}
+									</Badge>
+								</div>
+							)}
+							<div className="flex items-center gap-4">
+								<div>
+									<span className="opacity-70">Encoding: </span>
+									<span className="font-mono font-semibold">{status.transcode_fps} FPS</span>
+								</div>
+								{status.transcode_speed && (
+									<div>
+										<span className="opacity-70">•</span>
+										<span className="font-mono font-semibold ml-1">
+											{status.transcode_speed}x speed
+										</span>
+									</div>
 								)}
+								{status.status === 'transcoding' &&
+									status.transcode_current_time &&
+									status.transcode_total_duration && (
+										<div>
+											<span className="opacity-70">•</span>
+											<span className="font-mono font-semibold ml-1">
+												{(() => {
+													const remaining =
+														status.transcode_total_duration - status.transcode_current_time;
+													const speed = parseFloat(status.transcode_speed || 1);
+													const estimatedSec = remaining / speed;
+													const mins = Math.floor(estimatedSec / 60);
+													const secs = Math.floor(estimatedSec % 60);
+													return `~${mins}:${secs.toString().padStart(2, '0')} left`;
+												})()}
+											</span>
+										</div>
+									)}
 							</div>
-						)}
-					</div>
+							{/* Show video position when available */}
+							{status.transcode_current_time != null &&
+								status.transcode_total_duration != null &&
+								status.transcode_total_duration > 0 && (
+									<div className="opacity-70">
+										Video position: {formatDuration(status.transcode_current_time)} /{' '}
+										{formatDuration(status.transcode_total_duration)}
+									</div>
+								)}
+						</div>
+					)}
 
-					{/* Timestamps */}
-					<div className="space-y-1">
-						{status.processing_started_at && status.status !== 'pending' && (
-							<div className="text-xs opacity-60">
-								Started: {new Date(status.processing_started_at).toLocaleString()}
-							</div>
-						)}
-						{status.processing_completed_at && (
-							<div className="text-xs opacity-60">
-								Completed: {new Date(status.processing_completed_at).toLocaleString()}
-							</div>
-						)}
-					</div>
+					{/* Completion button for ready status */}
+					{status.status === 'ready' && onComplete && (
+						<div className="mt-3">
+							<Button onClick={onComplete} size="lg" className="w-full">
+								View Match
+							</Button>
+						</div>
+					)}
+
+					{/* Show elapsed time for processing */}
+					{isProcessing && elapsed != null && (
+						<div className="text-xs opacity-70 mb-2">
+							Elapsed: {formatDuration(elapsed)}
+							{remaining != null && <> • Est. remaining: {formatDuration(remaining)}</>}
+						</div>
+					)}
 
 					{/* Show detailed error logs for errors */}
 					{status.status === 'error' && status.error_message && (
@@ -260,12 +314,12 @@ export default function ProcessingStatus({ status }) {
 								{showDetails ? (
 									<>
 										<ChevronUp className="h-3 w-3" />
-										Hide Details
+										Hide Error
 									</>
 								) : (
 									<>
 										<ChevronDown className="h-3 w-3" />
-										Show Error Details
+										Show Error
 									</>
 								)}
 							</Button>

@@ -34,3 +34,7 @@ Thumbs.db
 # Project artifacts
 media/
 static/
+
+# Logs
+logs/
+*.log

@@ -49,6 +49,13 @@ export async function toggleFavorite(profileId, isFavorite) {
 }
 
 /**
+ * List IDs of favorite profiles (fast)
+ */
+export async function listFavoriteIds() {
+	return api.get('/profiles/favorites/ids');
+}
+
+/**
  * List all favorite profiles
  */
 export async function listFavoriteProfiles() {

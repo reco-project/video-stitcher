@@ -1,10 +1,13 @@
 # backend/app/main.py
 
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import uvicorn
 
+from app.utils.logger import get_logger, configure_uvicorn_logging, info
 from app.repositories.file_lens_profile_store import FileLensProfileStore
 from app.repositories.lens_profile_store import LensProfileStore
 from app.repositories.file_match_store import FileMatchStore
@@ -12,6 +15,14 @@ from app.repositories.match_store import MatchStore
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
+import app.routers.settings as settings_router
+
+# Initialize logging
+logger = get_logger(__name__)
+configure_uvicorn_logging()
+info("=" * 60)
+info("VIDEO STITCHER BACKEND STARTING")
+info("=" * 60)
 
 # Initialize lens profile store
 PROFILES_DIR = Path(__file__).parent.parent / "data" / "lens_profiles"
@@ -35,7 +46,44 @@ def get_match_store() -> MatchStore:
     return match_store
 
 
-app = FastAPI(title="Video Stitcher Backend")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    # Startup: Check for stale processing states and inconsistent status
+    try:
+        logger.info("Checking for stale processing states...")
+        matches = match_store.list_all()
+        active_statuses = ["transcoding", "calibrating"]
+        stale_count = 0
+
+        for match in matches:
+            # Fix stale processing states (interrupted during transcoding/calibrating)
+            if match.processing and match.processing.status in active_statuses:
+                logger.warning(f"Found stale processing state for match {match.id}: status={match.processing.status}")
+                match.update_processing(
+                    status="error",
+                    step=None,
+                    message="Processing interrupted (app was closed)",
+                    error_code="INTERRUPTED",
+                    error_message="Processing was interrupted. Please retry.",
+                )
+                match_store.update(match.id, match.model_dump(exclude_none=False))
+                stale_count += 1
+
+        if stale_count > 0:
+            logger.info(f"Reset {stale_count} stale processing state(s)")
+        else:
+            logger.info("No stale processing states found")
+    except Exception as e:
+        logger.error(f"Error checking stale processing states: {e}", exc_info=True)
+
+    yield
+
+    # Shutdown (if needed)
+    logger.info("Application shutting down")
+
+
+app = FastAPI(title="Video Stitcher Backend", lifespan=lifespan)
 
 # Allow requests from Electron frontend
 app.add_middleware(
@@ -47,6 +95,7 @@ app.add_middleware(
 )
 
 # Register routers with dependency override
+logger.info("Registering API routers...")
 app.include_router(profiles_router.router, prefix="/api", tags=["profiles"])
 app.dependency_overrides[profiles_router.get_store] = get_profile_store
 
@@ -55,10 +104,13 @@ app.dependency_overrides[matches_router.get_store] = get_match_store
 
 app.include_router(processing_router.router, prefix="/api", tags=["processing"])
 
+app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+
 # Mount static files for video serving
 # Ensure the videos directory exists
 VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/videos", StaticFiles(directory=str(VIDEOS_DIR)), name="videos")
+logger.info(f"Static files mounted at /videos -> {VIDEOS_DIR}")
 
 
 @app.get("/")
@@ -68,10 +120,9 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy"}
+    logger.debug("Health check requested")
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
-    import uvicorn
-
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

@@ -35,7 +35,7 @@ def sample_match():
 
 
 def test_create_match_with_default_status(store):
-    """Test that new matches default to 'pending' status."""
+    """Test that new matches default to 'pending' status in nested structure."""
     match = {
         "id": "match-status-test",
         "name": "Status Test Match",
@@ -44,59 +44,69 @@ def test_create_match_with_default_status(store):
     }
 
     created = store.create(match)
-    assert created["status"] == "pending"
-    assert created["error_code"] is None
-    assert created["error_message"] is None
-    assert created["processing_step"] is None
+    # Check nested structure
+    assert created.processing.status == "pending"
+    assert created.processing.error_code is None
+    assert created.processing.error_message is None
+    assert created.processing.step is None
 
 
 def test_update_match_to_transcoding(store, sample_match):
     """Test updating match status to transcoding."""
-    store.create(sample_match)
+    created = store.create(sample_match)
 
-    sample_match["status"] = "transcoding"
-    sample_match["processing_step"] = "transcoding"
-    sample_match["processing_started_at"] = "2025-01-01T00:00:00Z"
+    # Update using model method
+    created.update_processing(
+        status="transcoding",
+        step="transcoding",
+        started_at="2025-01-01T00:00:00Z",
+    )
 
-    updated = store.update(sample_match["id"], sample_match)
+    updated = store.update(created.id, created.model_dump(exclude_none=False))
 
-    assert updated["status"] == "transcoding"
-    assert updated["processing_step"] == "transcoding"
-    assert updated["processing_started_at"] == "2025-01-01T00:00:00Z"
+    assert updated.processing.status == "transcoding"
+    assert updated.processing.step == "transcoding"
+    assert updated.processing.started_at == "2025-01-01T00:00:00Z"
 
 
 def test_update_match_to_error_state(store, sample_match):
     """Test updating match to error state."""
-    store.create(sample_match)
+    created = store.create(sample_match)
 
-    sample_match["status"] = "error"
-    sample_match["error_code"] = "TRANSCODING_FAILED"
-    sample_match["error_message"] = "Failed to sync videos"
-    sample_match["processing_completed_at"] = "2025-01-01T00:10:00Z"
+    # Update using model method
+    created.update_processing(
+        status="error",
+        step=None,
+        completed_at="2025-01-01T00:10:00Z",
+        error_code="TRANSCODING_FAILED",
+        error_message="Failed to sync videos",
+    )
 
-    updated = store.update(sample_match["id"], sample_match)
+    updated = store.update(created.id, created.model_dump(exclude_none=False))
 
-    assert updated["status"] == "error"
-    assert updated["error_code"] == "TRANSCODING_FAILED"
-    assert updated["error_message"] == "Failed to sync videos"
-    assert updated["processing_completed_at"] == "2025-01-01T00:10:00Z"
+    assert updated.processing.status == "error"
+    assert updated.processing.error_code == "TRANSCODING_FAILED"
+    assert updated.processing.error_message == "Failed to sync videos"
+    assert updated.processing.completed_at == "2025-01-01T00:10:00Z"
 
 
 def test_update_match_to_ready(store, sample_match):
     """Test updating match to ready state with src."""
-    store.create(sample_match)
+    created = store.create(sample_match)
 
-    sample_match["status"] = "ready"
-    sample_match["src"] = "videos/match-test-123.mp4"
-    sample_match["processing_completed_at"] = "2025-01-01T00:15:00Z"
-    sample_match["processing_step"] = None
+    created.src = "videos/match-test-123.mp4"
+    created.update_processing(
+        status="ready",
+        step=None,
+        completed_at="2025-01-01T00:15:00Z",
+    )
 
-    updated = store.update(sample_match["id"], sample_match)
+    updated = store.update(created.id, created.model_dump(exclude_none=False))
 
-    assert updated["status"] == "ready"
-    assert updated["src"] == "videos/match-test-123.mp4"
-    assert updated["processing_completed_at"] == "2025-01-01T00:15:00Z"
-    assert updated["processing_step"] is None
+    assert updated.processing.status == "ready"
+    assert updated.src == "videos/match-test-123.mp4"
+    assert updated.processing.completed_at == "2025-01-01T00:15:00Z"
+    assert updated.processing.step is None
 
 
 def test_create_match_with_explicit_status(store):
@@ -104,31 +114,41 @@ def test_create_match_with_explicit_status(store):
     match = {
         "id": "match-explicit-status",
         "name": "Explicit Status",
-        "status": "ready",
         "left_videos": [{"path": "/test/left.mp4"}],
         "right_videos": [{"path": "/test/right.mp4"}],
         "src": "videos/existing.mp4",
+        "processing": {
+            "status": "ready",
+            "step": None,
+            "message": None,
+            "started_at": None,
+            "completed_at": None,
+            "error_code": None,
+            "error_message": None,
+        },
     }
 
     created = store.create(match)
-    assert created["status"] == "ready"
-    assert created["src"] == "videos/existing.mp4"
+    assert created.processing.status == "ready"
+    assert created.src == "videos/existing.mp4"
 
 
 def test_processing_fields_persist_across_reload(store, temp_matches_dir, sample_match):
     """Test that processing fields persist when reloading from disk."""
-    store.create(sample_match)
+    created = store.create(sample_match)
 
-    # Update with processing fields
-    sample_match["status"] = "calibrating"
-    sample_match["processing_step"] = "feature_matching"
-    sample_match["processing_started_at"] = "2025-01-01T00:00:00Z"
-    store.update(sample_match["id"], sample_match)
+    # Update with nested processing fields
+    created.update_processing(
+        status="calibrating",
+        step="feature_matching",
+        started_at="2025-01-01T00:00:00Z",
+    )
+    store.update(created.id, created.model_dump(exclude_none=False))
 
     # Create new store instance (simulates app restart)
     new_store = FileMatchStore(base_path=str(temp_matches_dir))
-    loaded = new_store.get_by_id(sample_match["id"])
+    loaded = new_store.get_by_id(created.id)
 
-    assert loaded["status"] == "calibrating"
-    assert loaded["processing_step"] == "feature_matching"
-    assert loaded["processing_started_at"] == "2025-01-01T00:00:00Z"
+    assert loaded.processing.status == "calibrating"
+    assert loaded.processing.step == "feature_matching"
+    assert loaded.processing.started_at == "2025-01-01T00:00:00Z"

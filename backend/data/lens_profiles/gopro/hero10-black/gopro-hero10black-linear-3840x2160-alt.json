@@ -20,7 +20,7 @@
     0.02994442
   ],
   "lens_model": "Linear (Alternative Calibration)",
-  "is_favorite": true,
+  "is_favorite": false,
   "metadata": {
     "source": "Custom calibration",
     "notes": "Alternative calibration values that produce good results in viewer. Lower focal lengths and different distortion coefficients compared to official Gyroflow profile.",

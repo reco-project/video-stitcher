@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSettings } from '@/hooks/useSettings';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -7,10 +7,45 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, RotateCcw, Settings2, Database, Bug } from 'lucide-react';
+import { Trash2, RotateCcw, Settings2, Database, Bug, Cpu, Zap } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getEncoderSettings, updateEncoderSettings } from '../api/settings';
 
 export default function AppSettings() {
 	const { settings, updateSetting, resetSettings } = useSettings();
+	const [encoderInfo, setEncoderInfo] = useState(null);
+	const [loading, setLoading] = useState(true);
+	const [saving, setSaving] = useState(false);
+
+	// Load encoder settings on mount
+	useEffect(() => {
+		loadEncoderSettings();
+	}, []);
+
+	const loadEncoderSettings = async () => {
+		try {
+			setLoading(true);
+			const info = await getEncoderSettings();
+			setEncoderInfo(info);
+		} catch (err) {
+			console.error('Failed to load encoder settings:', err);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleEncoderChange = async (newEncoder) => {
+		try {
+			setSaving(true);
+			await updateEncoderSettings(newEncoder);
+			setEncoderInfo((prev) => ({ ...prev, current_encoder: newEncoder }));
+		} catch (err) {
+			console.error('Failed to update encoder:', err);
+			alert(`Failed to update encoder: ${err.message}`);
+		} finally {
+			setSaving(false);
+		}
+	};
 
 	const handleClearStorage = (key, label) => {
 		try {
@@ -28,6 +63,74 @@ export default function AppSettings() {
 
 	return (
 		<div className="space-y-6">
+			{/* GPU Encoder Settings */}
+			<Card>
+				<CardHeader>
+					<div className="flex items-center gap-2">
+						<Zap className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>GPU Acceleration</CardTitle>
+					</div>
+					<CardDescription>Configure video encoding hardware acceleration</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					{loading ? (
+						<div className="text-sm text-muted-foreground">Loading encoder settings...</div>
+					) : encoderInfo ? (
+						<>
+							<div className="space-y-2">
+								<Label htmlFor="encoder-select">Video Encoder</Label>
+								<Select
+									value={encoderInfo.current_encoder}
+									onValueChange={handleEncoderChange}
+									disabled={saving}
+								>
+									<SelectTrigger id="encoder-select">
+										<SelectValue>
+											{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
+										</SelectValue>
+									</SelectTrigger>
+									<SelectContent>
+										{encoderInfo.available_encoders.map((encoder) => (
+											<SelectItem key={encoder} value={encoder}>
+												{encoderInfo.encoder_descriptions[encoder]}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<p className="text-xs text-muted-foreground">
+									{encoderInfo.current_encoder === 'auto'
+										? 'Automatically chooses: NVIDIA > Intel > AMD > CPU'
+										: encoderInfo.current_encoder === 'libx264'
+											? 'Software encoding (slower, compatible with all systems)'
+											: 'Hardware-accelerated encoding (faster, requires compatible GPU)'}
+								</p>
+							</div>
+
+							{encoderInfo.available_encoders.length > 2 && (
+								<>
+									<Separator />
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Available Hardware Encoders</Label>
+										<div className="flex flex-wrap gap-2">
+											{encoderInfo.available_encoders
+												.filter((enc) => enc !== 'auto' && enc !== 'libx264')
+												.map((encoder) => (
+													<Badge key={encoder} variant="secondary" className="text-xs">
+														<Cpu className="h-3 w-3 mr-1" />
+														{encoderInfo.encoder_descriptions[encoder]}
+													</Badge>
+												))}
+										</div>
+									</div>
+								</>
+							)}
+						</>
+					) : (
+						<div className="text-sm text-destructive">Failed to load encoder settings</div>
+					)}
+				</CardContent>
+			</Card>
+
 			{/* Developer Settings */}
 			<Card>
 				<CardHeader>

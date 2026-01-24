@@ -9,11 +9,11 @@ import { processMatch, getMatchStatus } from '../api/matches';
  * Hook to start and monitor match processing
  * @param {string} matchId - Match ID to process
  * @param {object} options - Configuration options
- * @param {number} options.pollInterval - Status polling interval in ms (default: 2000)
+ * @param {number} options.pollInterval - Status polling interval in ms (default: 1000)
  * @param {boolean} options.autoPoll - Start polling automatically (default: false)
  */
 export function useMatchProcessing(matchId, options = {}) {
-	const { pollInterval = 2000, autoPoll = false } = options;
+	const { pollInterval = 1000, autoPoll = false } = options;
 
 	const [status, setStatus] = useState(null);
 	const [loading, setLoading] = useState(false);

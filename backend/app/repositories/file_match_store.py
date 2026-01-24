@@ -12,7 +12,7 @@ Design notes:
 
 import json
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Optional
 
 from app.models.match import MatchModel
 from app.repositories.match_store import MatchStore
@@ -31,25 +31,6 @@ class FileMatchStore(MatchStore):
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
 
-    def _validate_match(self, match_dict: Dict) -> Dict:
-        """
-        Validate match using Pydantic model.
-
-        Args:
-            match_dict: Match dictionary to validate
-
-        Returns:
-            Validated match dictionary with defaults applied
-
-        Raises:
-            ValueError: If validation fails
-        """
-        try:
-            model = MatchModel(**match_dict)
-            return model.model_dump()
-        except Exception as e:
-            raise ValueError(f"Match validation failed: {str(e)}")
-
     def _get_file_path(self, match_id: str) -> Path:
         """
         Get filesystem path for a match.
@@ -62,7 +43,7 @@ class FileMatchStore(MatchStore):
         """
         return self.base_path / f"{match_id}.json"
 
-    def _load_match_file(self, path: Path) -> Dict:
+    def _load_match_file(self, path: Path) -> MatchModel:
         """
         Load match from JSON file.
 
@@ -70,35 +51,36 @@ class FileMatchStore(MatchStore):
             path: Path to match JSON file
 
         Returns:
-            Match dictionary
+            Match model instance
 
         Raises:
             ValueError: If JSON is malformed
         """
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                return MatchModel(**data)
         except json.JSONDecodeError as e:
             raise ValueError(f"Malformed JSON in {path}: {str(e)}")
 
-    def _save_match_file(self, path: Path, match_dict: Dict) -> None:
+    def _save_match_file(self, path: Path, match: MatchModel) -> None:
         """
         Save match to JSON file.
 
         Args:
             path: Path to match JSON file
-            match_dict: Match dictionary to save
+            match: Match model to save
         """
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(match_dict, f, indent=2, ensure_ascii=False)
+            json.dump(match.model_dump(exclude_none=False), f, indent=2, ensure_ascii=False)
 
-    def list_all(self) -> List[Dict]:
+    def list_all(self) -> List[MatchModel]:
         """
         Return all matches by scanning filesystem.
 
         Returns:
-            List of all match dictionaries
+            List of all match model instances
         """
         matches = []
 
@@ -112,7 +94,7 @@ class FileMatchStore(MatchStore):
 
         return matches
 
-    def get_by_id(self, match_id: str) -> Optional[Dict]:
+    def get_by_id(self, match_id: str) -> Optional[MatchModel]:
         """
         Get match by ID.
 
@@ -120,7 +102,7 @@ class FileMatchStore(MatchStore):
             match_id: Unique match identifier
 
         Returns:
-            Match dictionary or None if not found
+            Match model or None if not found
         """
         path = self._get_file_path(match_id)
 
@@ -132,7 +114,7 @@ class FileMatchStore(MatchStore):
         except ValueError:
             return None
 
-    def create(self, match_dict: Dict) -> Dict:
+    def create(self, match_dict: dict) -> MatchModel:
         """
         Create a new match.
 
@@ -140,14 +122,14 @@ class FileMatchStore(MatchStore):
             match_dict: Match data to create
 
         Returns:
-            Created match dictionary with defaults applied
+            Created match model with defaults applied
 
         Raises:
             ValueError: If match already exists or validation fails
         """
-        # Validate and apply defaults
-        validated = self._validate_match(match_dict)
-        match_id = validated["id"]
+        # Validate and create model
+        match = MatchModel(**match_dict)
+        match_id = match.id
 
         # Check if already exists
         path = self._get_file_path(match_id)
@@ -155,11 +137,11 @@ class FileMatchStore(MatchStore):
             raise ValueError(f"Match with ID '{match_id}' already exists")
 
         # Save to file
-        self._save_match_file(path, validated)
+        self._save_match_file(path, match)
 
-        return validated
+        return match
 
-    def update(self, match_id: str, match_dict: Dict) -> Dict:
+    def update(self, match_id: str, match_dict: dict) -> MatchModel:
         """
         Update an existing match.
 
@@ -168,7 +150,7 @@ class FileMatchStore(MatchStore):
             match_dict: New match data
 
         Returns:
-            Updated match dictionary
+            Updated match model
 
         Raises:
             ValueError: If match not found or validation fails
@@ -181,13 +163,13 @@ class FileMatchStore(MatchStore):
         # Ensure ID consistency
         match_dict["id"] = match_id
 
-        # Validate and apply defaults
-        validated = self._validate_match(match_dict)
+        # Validate and create model
+        match = MatchModel(**match_dict)
 
         # Save to file
-        self._save_match_file(path, validated)
+        self._save_match_file(path, match)
 
-        return validated
+        return match
 
     def delete(self, match_id: str) -> bool:
         """

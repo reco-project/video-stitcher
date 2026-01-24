@@ -15,6 +15,10 @@ const __dirname = dirname(__filename);
 
 const devServerUrl = 'http://localhost:5173';
 
+// Track active processing states
+let activeProcessing = false;
+let lastLoggedState = false;
+
 // Function to check if Vite dev server is running
 async function viteDevServerRunning(url = 'http://localhost:5173') {
 	try {
@@ -35,6 +39,31 @@ const createWindow = () => {
 		webPreferences: {
 			preload: join(__dirname, 'preload.js'),
 		},
+	});
+
+	// Prevent window close if processing is active
+	mainWindow.on('close', async (event) => {
+		console.log('[Electron] Close event triggered. activeProcessing:', activeProcessing);
+		if (activeProcessing) {
+			event.preventDefault();
+
+			const response = await dialog.showMessageBox(mainWindow, {
+				type: 'warning',
+				buttons: ['Keep processing', 'Quit app'],
+				defaultId: 0,
+				cancelId: 0,
+				title: 'Processing in Progress',
+				message: 'Video processing is currently active',
+				detail: 'Closing the app will interrupt the current processing operation. You will need to restart it.\n\nAre you sure you want to quit?',
+			});
+
+			if (response.response === 1) {
+				// User clicked "Quit app"
+				activeProcessing = false;
+				mainWindow.destroy();
+			}
+			// Otherwise do nothing (cancel close)
+		}
 	});
 
 	// and load the index.html of the app.
@@ -149,6 +178,34 @@ ipcMain.handle('shell:openExternal', async (event, url) => {
 		console.error('Failed to open external URL:', error);
 		return false;
 	}
+});
+
+// Confirm cancelling processing (renderer-triggered).
+// Kept in main process so we can control button order consistently within the app.
+ipcMain.handle('app:confirmCancelProcessing', async (event) => {
+	const parentWindow = BrowserWindow.fromWebContents(event.sender);
+	const response = await dialog.showMessageBox(parentWindow, {
+		type: 'warning',
+		buttons: ['Keep processing', 'Cancel processing'],
+		defaultId: 0,
+		cancelId: 0,
+		title: 'Cancel Processing',
+		message: 'Are you sure you want to cancel processing?',
+		detail: 'This will stop the current transcoding operation.',
+	});
+
+	return response.response === 1;
+});
+
+// IPC handler to set processing state
+ipcMain.handle('app:setProcessingState', async (event, isProcessing, origin = 'unknown') => {
+	activeProcessing = isProcessing;
+	// Only log on state changes
+	if (isProcessing !== lastLoggedState) {
+		console.log(`[Electron] Processing state changed: ${isProcessing} (from: ${origin})`);
+		lastLoggedState = isProcessing;
+	}
+	return true;
 });
 
 // Helper function to format file size
