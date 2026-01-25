@@ -22,15 +22,26 @@ export default function TelemetryConsentDialog() {
 	const [isOpen, setIsOpen] = useState(false);
 	const [includeSystemInfo, setIncludeSystemInfo] = useState(true);
 	const [showDetails, setShowDetails] = useState(false);
+	const [hasBeenShown, setHasBeenShown] = useState(false);
 
 	useEffect(() => {
-		// Show dialog if user hasn't been prompted yet
-		if (!loading && settings && !settings.telemetryPromptShown) {
+		// Show dialog if user hasn't been prompted yet (check only once when loaded)
+		if (!loading && settings && !settings.telemetryPromptShown && !hasBeenShown) {
 			setIsOpen(true);
+			setHasBeenShown(true);
 		}
-	}, [loading, settings]);
+	}, [loading, settings.telemetryPromptShown, hasBeenShown]);
 
 	const handleAccept = async () => {
+		// Batch all updates together
+		if (window.electronAPI?.writeSettings) {
+			await window.electronAPI.writeSettings({
+				...settings,
+				telemetryEnabled: true,
+				telemetryIncludeSystemInfo: includeSystemInfo,
+				telemetryPromptShown: true,
+			});
+		}
 		updateSetting('telemetryEnabled', true);
 		updateSetting('telemetryIncludeSystemInfo', includeSystemInfo);
 		updateSetting('telemetryPromptShown', true);
@@ -38,6 +49,14 @@ export default function TelemetryConsentDialog() {
 	};
 
 	const handleDecline = async () => {
+		// Batch all updates together
+		if (window.electronAPI?.writeSettings) {
+			await window.electronAPI.writeSettings({
+				...settings,
+				telemetryEnabled: false,
+				telemetryPromptShown: true,
+			});
+		}
 		updateSetting('telemetryEnabled', false);
 		updateSetting('telemetryPromptShown', true);
 		setIsOpen(false);

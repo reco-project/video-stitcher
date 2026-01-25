@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, RotateCcw, Settings2, Database, Bug, ChevronDown, ChevronUp, FolderOpen } from 'lucide-react';
+import { Trash2, RotateCcw, Settings2, Database, Bug, ChevronDown, ChevronUp, FolderOpen, RefreshCw } from 'lucide-react';
 import { getEncoderSettings, updateEncoderSettings } from '@/features/settings/api/settings';
 
 export default function AppSettings() {
@@ -64,6 +64,19 @@ export default function AppSettings() {
 		} catch (err) {
 			alert(`Failed to clear ${label}: ${err.message}`);
 		}
+	};
+
+	const handleClearUserData = async () => {
+		if (!window.electronAPI?.clearUserDataFolder) {
+			alert('This feature is only available in the desktop app');
+			return;
+		}
+
+		const result = await window.electronAPI.clearUserDataFolder();
+		if (!result.ok && !result.cancelled) {
+			alert(`Failed to clear user data: ${result.error || 'Unknown error'}`);
+		}
+		// If successful, the app will quit automatically
 	};
 
 	return (
@@ -213,76 +226,6 @@ export default function AppSettings() {
 						/>
 					</div>
 
-					<div className="flex items-center justify-between">
-						<div className="flex-1">
-						<Label className="text-base">Local storage</Label>
-						<p className="text-sm text-muted-foreground">
-							All events are saved locally on your machine. You can view the files anytime.
-							</p>
-						</div>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={async () => {
-								if (window.electronAPI?.telemetryOpenFolder) {
-									await window.electronAPI.telemetryOpenFolder();
-								} else {
-									alert('Telemetry folder is only available in the desktop app.');
-								}
-							}}
-						>
-							Open folder
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={async () => {
-								if (!window.electronAPI?.telemetryDeleteLocal) return;
-								
-								if (!confirm('Delete all local telemetry data? This cannot be undone.\n\nTo delete online telemetry, please email the developer.')) {
-									return;
-								}
-
-								try {
-									const res = await window.electronAPI.telemetryDeleteLocal();
-									if (res.ok) {
-										alert('Local telemetry data deleted successfully.');
-									} else {
-										alert(`Failed to delete: ${res.error || 'Unknown error'}`);
-									}
-								} catch (err) {
-									alert(`Failed to delete: ${err?.message || 'Unknown error'}`);
-								}
-							}}
-						>
-							Delete local data
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={async () => {
-								if (!window.electronAPI?.telemetryResetClientId) return;
-								
-								if (!confirm('Reset client ID? A new anonymous ID will be generated.\n\nThis is useful if you want to start fresh with a new identity.')) {
-									return;
-								}
-
-								try {
-									const res = await window.electronAPI.telemetryResetClientId();
-									if (res.ok) {
-										alert(`Client ID reset successfully.\n\nNew ID: ${res.client_id}`);
-									} else {
-										alert(`Failed to reset: ${res.error || 'Unknown error'}`);
-									}
-								} catch (err) {
-									alert(`Failed to reset: ${err?.message || 'Unknown error'}`);
-								}
-							}}
-						>
-							Reset client ID
-						</Button>
-					</div>
-
 					<div className="flex items-center justify-between space-x-4">
 						<div className="flex-1 space-y-1">
 							<Label htmlFor="telemetry-auto-upload" className="text-base cursor-pointer">
@@ -312,7 +255,7 @@ export default function AppSettings() {
 					</div>
 
 					<div className="space-y-2">
-					<Label htmlFor="telemetry-endpoint">Endpoint URL</Label>
+					<Label htmlFor="telemetry-endpoint" className="text-base">Endpoint URL</Label>
 					<p className="text-xs text-muted-foreground">
 						Remote server endpoint for telemetry uploads.
 					</p>
@@ -367,6 +310,81 @@ export default function AppSettings() {
 								: `Upload failed: ${telemetryUploadStatus.error || 'Unknown error'}`}
 						</p>
 					)}
+				</div>
+
+				<Separator />
+
+				<div className="space-y-2">
+					<Label className="text-base">Local storage</Label>
+					<p className="text-sm text-muted-foreground">
+						All events are saved locally on your machine. You can view the files anytime.
+					</p>
+					<div className="flex gap-2 flex-wrap">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={async () => {
+								if (window.electronAPI?.telemetryOpenFolder) {
+									await window.electronAPI.telemetryOpenFolder();
+								} else {
+									alert('Telemetry folder is only available in the desktop app.');
+								}
+							}}
+						>
+							<FolderOpen className="h-3 w-3 mr-2" />
+							Open folder
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={async () => {
+								if (!window.electronAPI?.telemetryDeleteLocal) return;
+								
+								if (!confirm('Delete all local telemetry data? This cannot be undone.\n\nTo delete online telemetry, please email the developer.')) {
+									return;
+								}
+
+								try {
+									const res = await window.electronAPI.telemetryDeleteLocal();
+									if (res.ok) {
+										alert('Local telemetry data deleted successfully.');
+									} else {
+										alert(`Failed to delete: ${res.error || 'Unknown error'}`);
+									}
+								} catch (err) {
+									alert(`Failed to delete: ${err?.message || 'Unknown error'}`);
+								}
+							}}
+						>
+							<Trash2 className="h-3 w-3 mr-2" />
+							Delete local telemetry
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={async () => {
+								if (!window.electronAPI?.telemetryResetClientId) return;
+								
+								if (!confirm('Reset client ID? A new anonymous ID will be generated.\n\nThis is useful if you want to start fresh with a new identity.')) {
+									return;
+								}
+
+								try {
+									const res = await window.electronAPI.telemetryResetClientId();
+									if (res.ok) {
+										alert(`Client ID reset successfully.\n\nNew ID: ${res.client_id}`);
+									} else {
+										alert(`Failed to reset: ${res.error || 'Unknown error'}`);
+									}
+								} catch (err) {
+									alert(`Failed to reset: ${err?.message || 'Unknown error'}`);
+								}
+							}}
+						>
+							<RefreshCw className="h-3 w-3 mr-2" />
+							Reset client ID
+						</Button>
+					</div>
 				</div>
 			</CardContent>
 			</Card>
@@ -496,18 +514,38 @@ export default function AppSettings() {
 					<div className="flex items-center justify-between">
 						<div className="flex-1">
 							<div className="flex items-center gap-2">
-								<Label className="text-base text-destructive">Clear All Data</Label>
+								<Label className="text-base text-destructive">Clear UI Cache</Label>
 								<Badge variant="destructive" className="text-xs">
 									Destructive
 								</Badge>
 							</div>
 							<p className="text-sm text-muted-foreground">
-								Remove all localStorage data and reload application
+								Clear browser cache and UI state (drafts, viewing history). Does not delete matches, videos, or settings.
 							</p>
 						</div>
-						<Button variant="destructive" size="sm" onClick={() => handleClearStorage('all', 'All data')}>
+						<Button variant="destructive" size="sm" onClick={() => handleClearStorage('all', 'UI cache')}>
 							<Trash2 className="h-4 w-4 mr-2" />
-							Clear All
+							Clear Cache
+						</Button>
+					</div>
+
+					<Separator />
+
+					<div className="flex items-center justify-between">
+						<div className="flex-1">
+							<div className="flex items-center gap-2">
+								<Label className="text-base text-destructive">Delete All User Data</Label>
+								<Badge variant="destructive" className="text-xs font-bold">
+									NUCLEAR OPTION
+								</Badge>
+							</div>
+							<p className="text-sm text-muted-foreground">
+								Permanently delete ALL data: matches, videos, settings, telemetry, logs. App will quit. Cannot be undone.
+							</p>
+						</div>
+						<Button variant="destructive" size="sm" onClick={handleClearUserData}>
+							<Trash2 className="h-4 w-4 mr-2" />
+							Delete Everything
 						</Button>
 					</div>
 				</CardContent>

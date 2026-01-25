@@ -5,7 +5,7 @@ import { trackTelemetryEvent } from '@/lib/telemetry';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
-import TelemetryConsentDialog from '@/components/TelemetryConsentDialog';
+import TelemetryConsentDialog from './components/TelemetryConsentDialog';
 
 /**
  * AppLayout wraps all pages with persistent header and sidebar navigation

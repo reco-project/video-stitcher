@@ -5,7 +5,8 @@
  */
 
 import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { dialog } from 'electron';
 
 const defaultSettings = {
     debugMode: false,
@@ -61,6 +62,64 @@ export function registerSettingsIpc({ ipcMain, app, shell }) {
             return { ok: true };
         } catch (err) {
             return { ok: false, error: err?.message || 'Failed to open folder' };
+        }
+    });
+
+    ipcMain.handle('settings:clearUserDataFolder', async (event) => {
+        try {
+            const userDataPath = app.getPath('userData');
+
+            // Show confirmation dialog
+            const result = await dialog.showMessageBox({
+                type: 'warning',
+                buttons: ['Cancel', 'Delete Everything'],
+                defaultId: 0,
+                cancelId: 0,
+                title: 'Clear All User Data',
+                message: 'This will permanently delete ALL data',
+                detail: 'This includes:\n• All matches and videos\n• All settings and preferences\n• All telemetry data\n• All logs and temporary files\n\nThe application will quit after deletion. This cannot be undone.\n\nAre you absolutely sure?',
+            });
+
+            if (result.response !== 1) {
+                return { ok: false, cancelled: true };
+            }
+
+            console.log('[Settings] Clearing user data folder:', userDataPath);
+
+            // Delete the userData folder contents
+            // We do this by deleting everything except Electron's internal files
+            try {
+                const { readdirSync, statSync } = await import('node:fs');
+                const contents = readdirSync(userDataPath);
+
+                // Delete all our custom directories/files
+                const itemsToDelete = contents.filter(item =>
+                    !item.startsWith('.')  // Keep hidden files (Electron internals)
+                    && item !== 'Crashpad'  // Keep Electron crash reporter
+                    && item !== 'GPUCache'  // Keep GPU cache
+                );
+
+                for (const item of itemsToDelete) {
+                    const itemPath = join(userDataPath, item);
+                    console.log('[Settings] Deleting:', itemPath);
+                    rmSync(itemPath, { recursive: true, force: true });
+                }
+
+                console.log('[Settings] User data cleared successfully');
+            } catch (deleteErr) {
+                console.error('[Settings] Error during deletion:', deleteErr);
+                return { ok: false, error: deleteErr.message };
+            }
+
+            // Quit the app after a short delay
+            setTimeout(() => {
+                app.quit();
+            }, 500);
+
+            return { ok: true };
+        } catch (err) {
+            console.error('[Settings] Error clearing user data:', err);
+            return { ok: false, error: err?.message || 'Failed to clear user data' };
         }
     });
 

@@ -10,13 +10,9 @@ import { cn } from '@/lib/cn';
 export default function MatchCard({ match, onSelect, className }) {
 	const [previewUrl, setPreviewUrl] = useState(null);
 	const [previewLoading, setPreviewLoading] = useState(true);
-	const [viewed, setViewed] = useState(false);
 
-	// Check if match has been viewed
-	useEffect(() => {
-		const viewedMatches = JSON.parse(localStorage.getItem('viewedMatches') || '[]');
-		setViewed(viewedMatches.includes(match.id));
-	}, [match.id]);
+	// Use viewed state from backend match model (already includes localStorage sync from Viewer)
+	const viewed = match.viewed || false;
 
 	// Try to load preview image after transcoding
 	useEffect(() => {

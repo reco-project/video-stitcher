@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'url';
+import { spawn } from 'node:child_process';
+import { platform } from 'node:os';
 import started from 'electron-squirrel-startup';
 import { registerTelemetryIpc } from './telemetry.js';
 import { registerTelemetryUploadIpc } from './telemetry_uploader.js';
@@ -23,6 +25,9 @@ const devServerUrl = 'http://localhost:5173';
 let activeProcessing = false;
 let lastLoggedState = false;
 
+// Backend process management
+let backendProcess = null;
+
 // Function to check if Vite dev server is running
 async function viteDevServerRunning(url = 'http://localhost:5173') {
 	try {
@@ -35,6 +40,84 @@ async function viteDevServerRunning(url = 'http://localhost:5173') {
 }
 
 const isDev = await viteDevServerRunning();
+
+// Wait for backend to be ready
+async function waitForBackend(maxAttempts = 30, delayMs = 1000) {
+	console.log('[Backend] Waiting for backend to be ready...');
+
+	for (let i = 0; i < maxAttempts; i++) {
+		try {
+			const response = await fetchImpl('http://127.0.0.1:8000/api/health');
+			if (response.ok) {
+				console.log('[Backend] Backend is ready!');
+				return true;
+			}
+		} catch (error) {
+			// Backend not ready yet, continue waiting
+		}
+
+		await new Promise(resolve => setTimeout(resolve, delayMs));
+	}
+
+	console.error('[Backend] Backend failed to start within timeout');
+	return false;
+}
+
+// Start backend process
+function startBackend() {
+	if (backendProcess) {
+		console.log('[Backend] Process already running');
+		return;
+	}
+
+	const isWin = platform() === 'win32';
+
+	// In development, use workspace root paths
+	// In production, use paths relative to app resources
+	const workspaceRoot = isDev
+		? join(__dirname, '..')
+		: join(__dirname, '..', '..');
+
+	const pythonPath = isWin
+		? join(workspaceRoot, 'backend', 'venv', 'Scripts', 'python.exe')
+		: join(workspaceRoot, 'backend', 'venv', 'bin', 'python');
+
+	const backendDir = join(workspaceRoot, 'backend');
+	const userDataPath = app.getPath('userData');
+
+	console.log('[Backend] Starting Python backend...');
+	console.log('[Backend] Python path:', pythonPath);
+	console.log('[Backend] Backend dir:', backendDir);
+	console.log('[Backend] User data path:', userDataPath);
+
+	backendProcess = spawn(pythonPath, ['-m', 'app.main'], {
+		cwd: backendDir,
+		env: {
+			...process.env,
+			USER_DATA_PATH: userDataPath,
+		},
+		stdio: 'inherit',
+	});
+
+	backendProcess.on('error', (error) => {
+		console.error('[Backend] Failed to start:', error);
+		backendProcess = null;
+	});
+
+	backendProcess.on('exit', (code, signal) => {
+		console.log(`[Backend] Process exited with code ${code}, signal ${signal}`);
+		backendProcess = null;
+	});
+}
+
+// Stop backend process
+function stopBackend() {
+	if (backendProcess) {
+		console.log('[Backend] Stopping process...');
+		backendProcess.kill();
+		backendProcess = null;
+	}
+}
 
 const createWindow = () => {
 	// Create the browser window.
@@ -85,13 +168,27 @@ const createWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
 	// Register settings IPC (file-based).
 	registerSettingsIpc({ ipcMain, app, shell });
 	// Register local-first telemetry IPC handlers (opt-in, no uploading).
 	registerTelemetryIpc({ ipcMain, app, shell });
 	// Optional telemetry upload IPC (manual trigger; reads ONLY telemetry files).
 	registerTelemetryUploadIpc({ ipcMain, app });
+
+	// Start backend (always, including dev mode)
+	startBackend();
+
+	// Wait for backend to be ready before creating window
+	const backendReady = await waitForBackend();
+	if (!backendReady) {
+		dialog.showErrorBox(
+			'Backend Failed to Start',
+			'The backend server failed to start. Please check the logs and try again.'
+		);
+		app.quit();
+		return;
+	}
 
 	createWindow();
 
@@ -109,8 +206,14 @@ app.whenReady().then(() => {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
 	if (process.platform !== 'darwin') {
+		stopBackend();
 		app.quit();
 	}
+});
+
+// Clean up backend on app quit
+app.on('before-quit', () => {
+	stopBackend();
 });
 
 // In this file you can include the rest of your app's specific main process

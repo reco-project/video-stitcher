@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	updateSetting: (key, value) => ipcRenderer.invoke('settings:write', { [key]: value }),
 	getEncoderInfo: () => ipcRenderer.invoke('settings:getEncoderInfo'),
 	openUserDataFolder: () => ipcRenderer.invoke('settings:openUserDataFolder'),
+	clearUserDataFolder: () => ipcRenderer.invoke('settings:clearUserDataFolder'),
 	// Set processing state to prevent accidental close
 	setProcessingState: (isProcessing, origin) =>
 		ipcRenderer.invoke('app:setProcessingState', isProcessing, origin),

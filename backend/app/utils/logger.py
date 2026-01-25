@@ -10,14 +10,28 @@ from pathlib import Path
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
+# Import centralized data paths
+# Note: This creates a circular import risk, so we import at function level if needed
+# or rely on LOGS_DIR being set up first by data_paths module
 
-# Create logs directory
-LOGS_DIR = Path("logs")
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Log file paths
-APP_LOG = LOGS_DIR / "app.log"
-ERROR_LOG = LOGS_DIR / "error.log"
+def get_logs_dir():
+    """Get logs directory, using data_paths if available."""
+    try:
+        from app.data_paths import LOGS_DIR
+
+        return LOGS_DIR
+    except ImportError:
+        # Fallback for tests or standalone usage
+        logs_dir = Path("logs")
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        return logs_dir
+
+
+# Log file paths (evaluated lazily)
+def get_log_paths():
+    logs_dir = get_logs_dir()
+    return logs_dir / "app.log", logs_dir / "error.log"
 
 
 def setup_logger(name: str = "app", level: int = logging.INFO) -> logging.Logger:
@@ -45,6 +59,9 @@ def setup_logger(name: str = "app", level: int = logging.INFO) -> logging.Logger
     console_handler.setLevel(level)
     console_format = logging.Formatter(fmt='[%(levelname)s] %(name)s: %(message)s', datefmt='%H:%M:%S')
     console_handler.setFormatter(console_format)
+
+    # Get log paths
+    APP_LOG, ERROR_LOG = get_log_paths()
 
     # File handler for all logs (rotating, max 10MB, keep 5 backups)
     file_handler = RotatingFileHandler(APP_LOG, maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8')  # 10MB

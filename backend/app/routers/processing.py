@@ -22,13 +22,11 @@ import numpy as np
 from app.utils.logger import get_logger
 from app.repositories.match_store import MatchStore
 from app.repositories.file_match_store import FileMatchStore
+from app.data_paths import MATCHES_DIR, VIDEOS_DIR, TEMP_DIR
 
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/matches", tags=["processing"])
-
-# Match store path
-MATCHES_DIR = Path(__file__).parent.parent.parent / "data" / "matches"
 
 # In-memory cache for live progress updates (avoids excessive disk I/O)
 # Structure: {match_id: {transcode_fps, transcode_speed, transcode_progress, ...}}
@@ -296,7 +294,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                     logger.warning(f"Failed to update progress cache for {match_id}: {e}")
 
             try:
-                output_video_path = os.path.join("data/videos", f"{match_id}.mp4")
+                output_video_path = str(VIDEOS_DIR / f"{match_id}.mp4")
 
                 # Check for cancellation before starting
                 if _cancellation_flags.get(match_id, False):
@@ -357,7 +355,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 try:
                     from app.services.transcoding import extract_preview_frame
 
-                    preview_path = os.path.join("data/videos", f"{match_id}_preview.jpg")
+                    preview_path = str(VIDEOS_DIR / f"{match_id}_preview.jpg")
                     extract_preview_frame(stacked_path, preview_path, timestamp=1.0)
                     logger.info(f"Preview generated for {match_id} at {preview_path}")
                 except Exception as e:
