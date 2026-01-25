@@ -1,51 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSettings } from '@/hooks/useSettings';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, RotateCcw, Settings2, Database, Bug, Cpu, Zap } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getEncoderSettings, updateEncoderSettings } from '../api/settings';
+import { Trash2, RotateCcw, Settings2, Database, Bug, ChevronDown, ChevronUp, FolderOpen } from 'lucide-react';
+import { getEncoderSettings, updateEncoderSettings } from '@/features/settings/api/settings';
 
 export default function AppSettings() {
 	const { settings, updateSetting, resetSettings } = useSettings();
 	const [encoderInfo, setEncoderInfo] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [saving, setSaving] = useState(false);
+	const [loadingEncoderInfo, setLoadingEncoderInfo] = useState(false);
+	const [encoderError, setEncoderError] = useState(null);
+	const [updatingEncoder, setUpdatingEncoder] = useState(false);
+	const [telemetryUploadStatus, setTelemetryUploadStatus] = useState(null);
+	const [telemetryUploading, setTelemetryUploading] = useState(false);
+	const [showTelemetryDetails, setShowTelemetryDetails] = useState(false);
 
-	// Load encoder settings on mount
-	useEffect(() => {
-		loadEncoderSettings();
-	}, []);
-
-	const loadEncoderSettings = async () => {
+	const loadEncoderInfo = async () => {
+		setLoadingEncoderInfo(true);
+		setEncoderError(null);
 		try {
-			setLoading(true);
 			const info = await getEncoderSettings();
 			setEncoderInfo(info);
 		} catch (err) {
-			console.error('Failed to load encoder settings:', err);
+			setEncoderError(err?.message || 'Failed to load encoder settings');
 		} finally {
-			setLoading(false);
+			setLoadingEncoderInfo(false);
 		}
 	};
 
-	const handleEncoderChange = async (newEncoder) => {
+	const handleEncoderChange = async (encoder) => {
+		if (!encoder) return;
+		setUpdatingEncoder(true);
+		setEncoderError(null);
 		try {
-			setSaving(true);
-			await updateEncoderSettings(newEncoder);
-			setEncoderInfo((prev) => ({ ...prev, current_encoder: newEncoder }));
+			await updateEncoderSettings(encoder);
+			await loadEncoderInfo();
 		} catch (err) {
-			console.error('Failed to update encoder:', err);
-			alert(`Failed to update encoder: ${err.message}`);
+			setEncoderError(err?.message || 'Failed to update encoder settings');
 		} finally {
-			setSaving(false);
+			setUpdatingEncoder(false);
 		}
 	};
+
+	useEffect(() => {
+		loadEncoderInfo();
+	}, []);
 
 	const handleClearStorage = (key, label) => {
 		try {
@@ -63,72 +68,307 @@ export default function AppSettings() {
 
 	return (
 		<div className="space-y-6">
-			{/* GPU Encoder Settings */}
+			{/* Encoder Settings */}
+			<Card id="encoder">
+				<CardHeader>
+					<div className="flex items-center gap-2">
+						<Settings2 className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>Encoder</CardTitle>
+					</div>
+					<CardDescription>
+						Choose which encoder FFmpeg should prefer for transcoding. "Auto" picks the best available.
+					</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div className="flex items-center justify-between gap-3">
+						<div className="space-y-1">
+							<Label className="text-base">Preferred encoder</Label>
+							<p className="text-sm text-muted-foreground">
+								Stored in the backend settings. Hardware options only appear if available.
+							</p>
+						</div>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={loadEncoderInfo}
+							disabled={loadingEncoderInfo || updatingEncoder}
+						>
+							Refresh
+						</Button>
+					</div>
+
+					<div className="flex items-center gap-2">
+						<Select
+							value={encoderInfo?.current_encoder || ''}
+							onValueChange={handleEncoderChange}
+							disabled={!encoderInfo || loadingEncoderInfo || updatingEncoder}
+						>
+							<SelectTrigger className="w-full max-w-sm">
+								<SelectValue placeholder={loadingEncoderInfo ? 'Loading…' : 'Select encoder'} />
+							</SelectTrigger>
+							<SelectContent>
+								{encoderInfo?.available_encoders?.map((enc) => (
+									<SelectItem key={enc} value={enc}>
+										{encoderInfo?.encoder_descriptions?.[enc] || enc}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+
+						{encoderInfo?.current_encoder && (
+							<Badge variant={encoderInfo.current_encoder === 'libx264' ? 'secondary' : 'default'}>
+								{encoderInfo.current_encoder}
+							</Badge>
+						)}
+					</div>
+
+					{encoderInfo?.current_encoder && (
+						<p className="text-xs text-muted-foreground">
+							{encoderInfo?.encoder_descriptions?.[encoderInfo.current_encoder]}
+						</p>
+					)}
+
+					{encoderError && <p className="text-sm text-destructive">{encoderError}</p>}
+				</CardContent>
+			</Card>
+
+			{/* Telemetry */}
 			<Card>
 				<CardHeader>
 					<div className="flex items-center gap-2">
-						<Zap className="h-5 w-5 text-muted-foreground" />
-						<CardTitle>GPU Acceleration</CardTitle>
+						<Database className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>Telemetry</CardTitle>
 					</div>
-					<CardDescription>Configure video encoding hardware acceleration</CardDescription>
+					<CardDescription>
+						Optional anonymous usage data to help improve the app. No personal data or file content collected.
+					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-4">
-					{loading ? (
-						<div className="text-sm text-muted-foreground">Loading encoder settings...</div>
-					) : encoderInfo ? (
-						<>
-							<div className="space-y-2">
-								<Label htmlFor="encoder-select">Video Encoder</Label>
-								<Select
-									value={encoderInfo.current_encoder}
-									onValueChange={handleEncoderChange}
-									disabled={saving}
-								>
-									<SelectTrigger id="encoder-select">
-										<SelectValue>
-											{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
-										</SelectValue>
-									</SelectTrigger>
-									<SelectContent>
-										{encoderInfo.available_encoders.map((encoder) => (
-											<SelectItem key={encoder} value={encoder}>
-												{encoderInfo.encoder_descriptions[encoder]}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-								<p className="text-xs text-muted-foreground">
-									{encoderInfo.current_encoder === 'auto'
-										? 'Automatically chooses: NVIDIA > Intel > AMD > CPU'
-										: encoderInfo.current_encoder === 'libx264'
-											? 'Software encoding (slower, compatible with all systems)'
-											: 'Hardware-accelerated encoding (faster, requires compatible GPU)'}
-								</p>
-							</div>
+				<CardContent className="space-y-6">
+					<button
+						onClick={() => setShowTelemetryDetails(!showTelemetryDetails)}
+						className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+					>
+						{showTelemetryDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+						{showTelemetryDetails ? 'Hide details' : 'What data is collected?'}
+					</button>
 
-							{encoderInfo.available_encoders.length > 2 && (
-								<>
-									<Separator />
-									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Available Hardware Encoders</Label>
-										<div className="flex flex-wrap gap-2">
-											{encoderInfo.available_encoders
-												.filter((enc) => enc !== 'auto' && enc !== 'libx264')
-												.map((encoder) => (
-													<Badge key={encoder} variant="secondary" className="text-xs">
-														<Cpu className="h-3 w-3 mr-1" />
-														{encoderInfo.encoder_descriptions[encoder]}
-													</Badge>
-												))}
-										</div>
-									</div>
-								</>
-							)}
-						</>
-					) : (
-						<div className="text-sm text-destructive">Failed to load encoder settings</div>
+					{showTelemetryDetails && (
+						<div className="space-y-2 text-sm pb-4">
+							<div className="bg-muted/50 p-3 rounded-md space-y-2">
+								<p className="font-medium">What we collect:</p>
+								<ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
+									<li>Feature usage (pages visited, buttons clicked)</li>
+									<li>Performance metrics (processing times, errors)</li>
+									<li>Basic system info (OS, hardware) — optional</li>
+								</ul>
+							</div>
+							<div className="bg-green-500/10 border border-green-500/20 p-3 rounded-md">
+								<p className="font-medium text-green-700 dark:text-green-400 mb-1">
+									🔒 Privacy-first
+								</p>
+								<ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
+									<li>Anonymous, no tracking</li>
+									<li>Never sold or shared</li>
+									<li>Stored locally, optional upload</li>
+								</ul>
+							</div>
+						</div>
 					)}
-				</CardContent>
+					<div className="flex items-center justify-between space-x-4">
+						<div className="flex-1 space-y-1">
+							<Label htmlFor="telemetry-enabled" className="text-base cursor-pointer">
+							Enable telemetry
+						</Label>
+						<p className="text-sm text-muted-foreground">
+							Collect anonymous usage data locally (e.g., app_open, match_created, errors).
+							</p>
+						</div>
+						<Switch
+							id="telemetry-enabled"
+							checked={!!settings.telemetryEnabled}
+							onCheckedChange={(checked) => {
+								updateSetting('telemetryEnabled', checked);
+								if (!checked) {
+									updateSetting('telemetryIncludeSystemInfo', false);
+									updateSetting('telemetryAutoUpload', false);
+								}
+							}}
+						/>
+					</div>
+
+					<div className="flex items-center justify-between space-x-4">
+						<div className="flex-1 space-y-1">
+							<Label htmlFor="telemetry-system" className="text-base cursor-pointer">
+							Include system info
+						</Label>
+						<p className="text-sm text-muted-foreground">
+							Add OS, CPU, RAM, and GPU info to help diagnose hardware-specific issues.
+							</p>
+						</div>
+						<Switch
+							id="telemetry-system"
+							disabled={!settings.telemetryEnabled}
+							checked={!!settings.telemetryIncludeSystemInfo}
+							onCheckedChange={(checked) => updateSetting('telemetryIncludeSystemInfo', checked)}
+						/>
+					</div>
+
+					<div className="flex items-center justify-between">
+						<div className="flex-1">
+						<Label className="text-base">Local storage</Label>
+						<p className="text-sm text-muted-foreground">
+							All events are saved locally on your machine. You can view the files anytime.
+							</p>
+						</div>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={async () => {
+								if (window.electronAPI?.telemetryOpenFolder) {
+									await window.electronAPI.telemetryOpenFolder();
+								} else {
+									alert('Telemetry folder is only available in the desktop app.');
+								}
+							}}
+						>
+							Open folder
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={async () => {
+								if (!window.electronAPI?.telemetryDeleteLocal) return;
+								
+								if (!confirm('Delete all local telemetry data? This cannot be undone.\n\nTo delete online telemetry, please email the developer.')) {
+									return;
+								}
+
+								try {
+									const res = await window.electronAPI.telemetryDeleteLocal();
+									if (res.ok) {
+										alert('Local telemetry data deleted successfully.');
+									} else {
+										alert(`Failed to delete: ${res.error || 'Unknown error'}`);
+									}
+								} catch (err) {
+									alert(`Failed to delete: ${err?.message || 'Unknown error'}`);
+								}
+							}}
+						>
+							Delete local data
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={async () => {
+								if (!window.electronAPI?.telemetryResetClientId) return;
+								
+								if (!confirm('Reset client ID? A new anonymous ID will be generated.\n\nThis is useful if you want to start fresh with a new identity.')) {
+									return;
+								}
+
+								try {
+									const res = await window.electronAPI.telemetryResetClientId();
+									if (res.ok) {
+										alert(`Client ID reset successfully.\n\nNew ID: ${res.client_id}`);
+									} else {
+										alert(`Failed to reset: ${res.error || 'Unknown error'}`);
+									}
+								} catch (err) {
+									alert(`Failed to reset: ${err?.message || 'Unknown error'}`);
+								}
+							}}
+						>
+							Reset client ID
+						</Button>
+					</div>
+
+					<div className="flex items-center justify-between space-x-4">
+						<div className="flex-1 space-y-1">
+							<Label htmlFor="telemetry-auto-upload" className="text-base cursor-pointer">
+								Automatic upload
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								Automatically upload telemetry data to the remote endpoint every 5 minutes.
+							</p>
+						</div>
+						<Switch
+							id="telemetry-auto-upload"
+							checked={settings.telemetryAutoUpload}
+						onCheckedChange={async (checked) => {
+							updateSetting('telemetryAutoUpload', checked);
+							if (checked && window.electronAPI?.telemetryUploadNow && settings.telemetryEndpointUrl) {
+								try {
+									await window.electronAPI.telemetryUploadNow({
+										endpointUrl: settings.telemetryEndpointUrl,
+									});
+								} catch (err) {
+									console.error('Auto-upload activation upload failed:', err);
+								}
+							}
+						}}
+							disabled={!settings.telemetryEnabled || !settings.telemetryEndpointUrl?.trim()}
+						/>
+					</div>
+
+					<div className="space-y-2">
+					<Label htmlFor="telemetry-endpoint">Endpoint URL</Label>
+					<p className="text-xs text-muted-foreground">
+						Remote server endpoint for telemetry uploads.
+					</p>
+					<div className="flex gap-2">
+						<Input
+							id="telemetry-endpoint"
+							type="url"
+							value={settings.telemetryEndpointUrl}
+							onChange={(e) => updateSetting('telemetryEndpointUrl', e.target.value)}
+							placeholder="https://your-domain.com/telemetry"
+							className="font-mono text-sm"
+							disabled={!settings.telemetryEnabled}
+						/>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={
+								!settings.telemetryEnabled ||
+								telemetryUploading ||
+								!settings.telemetryEndpointUrl?.trim()
+							}
+							onClick={async () => {
+								setTelemetryUploadStatus(null);
+								if (!window.electronAPI?.telemetryUploadNow) {
+									setTelemetryUploadStatus({
+										ok: false,
+										error: 'Upload is only available in the desktop app.',
+									});
+									return;
+								}
+
+								setTelemetryUploading(true);
+								try {
+									const res = await window.electronAPI.telemetryUploadNow({
+										endpointUrl: settings.telemetryEndpointUrl,
+									});
+									setTelemetryUploadStatus(res);
+								} catch (err) {
+									setTelemetryUploadStatus({ ok: false, error: err?.message || 'Upload failed' });
+								} finally {
+									setTelemetryUploading(false);
+								}
+							}}
+						>
+							{telemetryUploading ? 'Uploading…' : 'Upload manually'}
+						</Button>
+					</div>
+					{telemetryUploadStatus && (
+						<p className="text-xs">
+							{telemetryUploadStatus.ok
+								? `Uploaded ${telemetryUploadStatus.sent || 0} line(s). Remaining: ${telemetryUploadStatus.remaining_lines ?? 0}.`
+								: `Upload failed: ${telemetryUploadStatus.error || 'Unknown error'}`}
+						</p>
+					)}
+				</div>
+			</CardContent>
 			</Card>
 
 			{/* Developer Settings */}
@@ -194,7 +434,6 @@ export default function AppSettings() {
 				</CardContent>
 			</Card>
 
-			{/* Storage Management */}
 			<Card>
 				<CardHeader>
 					<div className="flex items-center gap-2">
@@ -223,16 +462,19 @@ export default function AppSettings() {
 
 					<div className="flex items-center justify-between">
 						<div className="flex-1">
-							<Label className="text-base">Clear Legacy Match Flag</Label>
-							<p className="text-sm text-muted-foreground">Force reload legacy matches on next launch</p>
+							<Label className="text-base">User Data Folder</Label>
+							<p className="text-sm text-muted-foreground">Open the folder containing all app data and settings</p>
 						</div>
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={() => handleClearStorage('legacyMatchesLoaded', 'Legacy match flag')}
+							onClick={async () => {
+								if (!window.electronAPI?.openUserDataFolder) return;
+								await window.electronAPI.openUserDataFolder();
+							}}
 						>
-							<Trash2 className="h-4 w-4 mr-2" />
-							Clear
+							<FolderOpen className="h-4 w-4 mr-2" />
+							Open folder
 						</Button>
 					</div>
 

@@ -1,9 +1,13 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import fetch from 'node-fetch';
 import { fileURLToPath } from 'url';
 import started from 'electron-squirrel-startup';
+import { registerTelemetryIpc } from './telemetry.js';
+import { registerTelemetryUploadIpc } from './telemetry_uploader.js';
+import { registerSettingsIpc } from './settings.js';
+
+const fetchImpl = globalThis.fetch;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -22,7 +26,8 @@ let lastLoggedState = false;
 // Function to check if Vite dev server is running
 async function viteDevServerRunning(url = 'http://localhost:5173') {
 	try {
-		const res = await fetch(url);
+		if (typeof fetchImpl !== 'function') return false;
+		const res = await fetchImpl(url);
 		return res.ok;
 	} catch {
 		return false;
@@ -81,6 +86,13 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+	// Register settings IPC (file-based).
+	registerSettingsIpc({ ipcMain, app, shell });
+	// Register local-first telemetry IPC handlers (opt-in, no uploading).
+	registerTelemetryIpc({ ipcMain, app, shell });
+	// Optional telemetry upload IPC (manual trigger; reads ONLY telemetry files).
+	registerTelemetryUploadIpc({ ipcMain, app });
+
 	createWindow();
 
 	// On OS X it's common to re-create a window in the app when the

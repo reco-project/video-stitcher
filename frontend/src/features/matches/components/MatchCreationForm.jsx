@@ -1147,9 +1147,7 @@ export default function MatchCreationForm({ onSubmit, onCancel, initialData }) {
 												{encoderInfo.encoder_descriptions[encoderInfo.current_encoder]}
 											</Badge>
 											{encoderInfo.current_encoder === 'libx264' && (
-												<span className="text-muted-foreground text-xs">
-													(Slower - GPU encoding available)
-												</span>
+												<span className="text-muted-foreground text-xs">(Slower)</span>
 											)}
 										</>
 									) : (

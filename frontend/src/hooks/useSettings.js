@@ -1,33 +1,39 @@
 import { useState, useEffect } from 'react';
 
-const SETTINGS_KEY = 'app-settings';
-
 const defaultSettings = {
 	debugMode: false,
 	apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
+	telemetryEnabled: false,
+	telemetryIncludeSystemInfo: false,
+	telemetryEndpointUrl: 'https://telemetry.reco-project.org/telemetry',
+	telemetryAutoUpload: false,
+	telemetryPromptShown: false,
 };
 
 /**
  * Hook to manage application-wide settings
- * Settings are persisted to localStorage
+ * Settings are persisted to userData/settings.json via IPC
  */
 export function useSettings() {
-	const [settings, setSettings] = useState(() => {
-		try {
-			const saved = localStorage.getItem(SETTINGS_KEY);
-			return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
-		} catch {
-			return defaultSettings;
-		}
-	});
+	const [settings, setSettings] = useState(defaultSettings);
+	const [loaded, setLoaded] = useState(false);
 
 	useEffect(() => {
-		try {
-			localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-		} catch (err) {
-			console.warn('Failed to save settings:', err);
+		if (window.electronAPI?.readSettings) {
+			window.electronAPI.readSettings().then((s) => {
+				setSettings(s);
+				setLoaded(true);
+			});
+		} else {
+			setLoaded(true);
 		}
-	}, [settings]);
+	}, []);
+
+	useEffect(() => {
+		if (loaded && window.electronAPI?.writeSettings) {
+			window.electronAPI.writeSettings(settings);
+		}
+	}, [settings, loaded]);
 
 	const updateSetting = (key, value) => {
 		setSettings((prev) => ({ ...prev, [key]: value }));
@@ -41,37 +47,6 @@ export function useSettings() {
 		settings,
 		updateSetting,
 		resetSettings,
+		loading: !loaded,
 	};
-}
-
-/**
- * Get current API base URL from settings
- */
-export function getApiBaseUrl() {
-	try {
-		const saved = localStorage.getItem(SETTINGS_KEY);
-		if (saved) {
-			const settings = JSON.parse(saved);
-			return settings.apiBaseUrl || defaultSettings.apiBaseUrl;
-		}
-	} catch {
-		// Ignore
-	}
-	return defaultSettings.apiBaseUrl;
-}
-
-/**
- * Check if debug mode is enabled
- */
-export function isDebugMode() {
-	try {
-		const saved = localStorage.getItem(SETTINGS_KEY);
-		if (saved) {
-			const settings = JSON.parse(saved);
-			return settings.debugMode || false;
-		}
-	} catch {
-		// Ignore
-	}
-	return false;
 }

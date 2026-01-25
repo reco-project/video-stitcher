@@ -7,7 +7,7 @@ import FrameExtractor from '@/features/viewer/components/FrameExtractor';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { getApiBaseUrl } from '@/hooks/useSettings';
+import { useSettings } from '@/hooks/useSettings';
 
 /**
  * ProcessingMatch page - shows processing status for a match
@@ -17,6 +17,7 @@ export default function ProcessingMatch() {
 	const { id: matchId } = useParams();
 	const navigate = useNavigate();
 	const { showToast } = useToast();
+	const { settings } = useSettings();
 
 	const [matchData, setMatchData] = React.useState(null);
 	const [loading, setLoading] = React.useState(true);
@@ -100,7 +101,7 @@ export default function ProcessingMatch() {
 				}
 
 				if (match && match.src) {
-					const apiBaseUrl = getApiBaseUrl();
+					const apiBaseUrl = settings.apiBaseUrl;
 					const baseUrl = apiBaseUrl.replace('/api', '');
 					const videoUrl = `${baseUrl}/${match.src}`;
 

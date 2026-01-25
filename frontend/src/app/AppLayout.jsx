@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMatches } from '@/features/matches/hooks/useMatches';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import StatusBar from '@/components/StatusBar';
+import TelemetryConsentDialog from '@/components/TelemetryConsentDialog';
 
 /**
  * AppLayout wraps all pages with persistent header and sidebar navigation
@@ -23,6 +25,11 @@ export default function AppLayout({ children }) {
 
 		return () => clearInterval(interval);
 	}, [refetch]);
+
+	// Telemetry: app open (opt-in)
+	useEffect(() => {
+		trackTelemetryEvent('app_open');
+	}, []);
 
 	// Manage processing state based on matches and location
 	useEffect(() => {
@@ -65,6 +72,9 @@ export default function AppLayout({ children }) {
 
 			{/* Status Bar (always visible) */}
 			<StatusBar />
+
+			{/* First-run telemetry consent */}
+			<TelemetryConsentDialog />
 		</div>
 	);
 }
