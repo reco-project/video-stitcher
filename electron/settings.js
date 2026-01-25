@@ -10,6 +10,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 const defaultSettings = {
     debugMode: false,
     apiBaseUrl: 'http://127.0.0.1:8000/api',
+    encoderPreference: 'auto',
     telemetryEnabled: false,
     telemetryIncludeSystemInfo: false,
     telemetryEndpointUrl: 'https://telemetry.reco-project.org/telemetry',
@@ -60,6 +61,27 @@ export function registerSettingsIpc({ ipcMain, app, shell }) {
             return { ok: true };
         } catch (err) {
             return { ok: false, error: err?.message || 'Failed to open folder' };
+        }
+    });
+
+    ipcMain.handle('settings:getEncoderInfo', async () => {
+        try {
+            const settings = readSettings(app);
+            // Query backend for available encoders
+            const apiBaseUrl = settings.apiBaseUrl || 'http://127.0.0.1:8000/api';
+            const response = await fetch(`${apiBaseUrl}/settings/encoders`);
+            if (!response.ok) {
+                throw new Error('Failed to get encoder info from backend');
+            }
+            const backendInfo = await response.json();
+            return {
+                ok: true,
+                current_encoder: settings.encoderPreference || 'auto',
+                available_encoders: backendInfo.available_encoders || ['auto', 'libx264'],
+                encoder_descriptions: backendInfo.encoder_descriptions || {},
+            };
+        } catch (err) {
+            return { ok: false, error: err?.message || 'Failed to get encoder info' };
         }
     });
 }

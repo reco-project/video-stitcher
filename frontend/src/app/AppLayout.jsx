@@ -4,7 +4,7 @@ import { useMatches } from '@/features/matches/hooks/useMatches';
 import { trackTelemetryEvent } from '@/lib/telemetry';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import StatusBar from '@/components/StatusBar';
+import StatusBar from './components/StatusBar';
 import TelemetryConsentDialog from '@/components/TelemetryConsentDialog';
 
 /**

@@ -13,8 +13,10 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 	const [deletingId, setDeletingId] = React.useState(null);
 	const [optimisticDeletes, setOptimisticDeletes] = React.useState(new Set());
 
-	// Filter out optimistically deleted matches
-	const displayMatches = matches.filter((m) => !optimisticDeletes.has(m.id));
+	// Filter out optimistically deleted matches and sort by most recent (ID descending)
+	const displayMatches = matches
+		.filter((m) => !optimisticDeletes.has(m.id))
+		.sort((a, b) => b.id.localeCompare(a.id));
 
 	// Clear optimistic deletes when matches update (after refetch)
 	React.useEffect(() => {
