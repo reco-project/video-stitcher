@@ -201,19 +201,92 @@ def _normalize_to_plane_coords(pts: np.ndarray, img_w: int, img_h: int, plane_w:
     return np.stack([x_plane, y_plane], axis=1)
 
 
+def _grass_mask(bgr: np.ndarray) -> np.ndarray:
+    """
+    Create a mask for grass/green areas in the image.
+    Uses HSV color space to identify green-ish pixels, avoiding very dark/bright areas.
+    """
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    H, S, V = cv2.split(hsv)
+    # Green-ish pixels (broad range) + avoid very dark/very bright
+    mask = (H >= 30) & (H <= 95) & (S >= 35) & (V >= 25) & (V <= 245)
+    mask = mask.astype(np.uint8) * 255
+    # Morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    return mask
+
+
+def _sky_mask(bgr: np.ndarray) -> np.ndarray:
+    """
+    Create a mask for sky/blue areas in the image.
+    Uses HSV color space to identify blue-ish pixels (sky), avoiding very dark areas.
+    """
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    H, S, V = cv2.split(hsv)
+    # Blue sky pixels: hue around 100-130 (blue range), moderate saturation, bright
+    mask = (H >= 95) & (H <= 135) & (S >= 20) & (S <= 180) & (V >= 100) & (V <= 255)
+    mask = mask.astype(np.uint8) * 255
+    # Morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    return mask
+
+
+def _combined_mask(bgr: np.ndarray) -> np.ndarray:
+    """
+    Create a combined mask for color-rich areas (grass + sky).
+    Falls back to excluding very dark/bright pixels if not enough grass/sky found.
+    """
+    grass = _grass_mask(bgr)
+    sky = _sky_mask(bgr)
+    combined = cv2.bitwise_or(grass, sky)
+
+    # If combined mask is too small, use all pixels except very dark/bright
+    if combined.sum() < 3000 * 255:
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        V = hsv[:, :, 2]
+        # Exclude very dark and very bright pixels
+        combined = ((V >= 20) & (V <= 240)).astype(np.uint8) * 255
+
+    return combined
+
+
+def _lab_mean_std(bgr: np.ndarray, mask: np.ndarray) -> tuple:
+    """
+    Compute mean and std of LAB color space for masked region.
+    Falls back to full image if mask is too small.
+
+    Uses OpenCV LAB range: L: 0-255, a: 0-255, b: 0-255 (128 is neutral for a/b)
+    This matches the user's working Python script exactly.
+    """
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    m = mask.astype(bool)
+    if m.sum() < 3000:  # Fallback if mask is too small
+        m = np.ones(mask.shape, dtype=bool)
+    pixels = lab[m]
+    mean = pixels.mean(axis=0)
+    std = pixels.std(axis=0) + 1e-6  # Avoid division by zero
+    return mean, std
+
+
 def compute_color_correction(img_left: np.ndarray, img_right: np.ndarray) -> Dict[str, Dict[str, Any]]:
     """
-    Compute color correction parameters to match colors between two cameras.
+    Compute color correction parameters using Reinhard color transfer in LAB space.
 
-    Uses histogram analysis in HSV space to better match colors like grass.
-    Focuses on the overlapping regions and computes per-channel corrections.
+    This method analyzes the overlapping regions between cameras and computes
+    LAB color space statistics to enable Reinhard-style color transfer.
+    The right image will be transformed to match the left image's colors.
 
     Args:
         img_left: Left camera image (BGR format)
         img_right: Right camera image (BGR format)
 
     Returns:
-        Dictionary with 'left' and 'right' color correction params
+        Dictionary with 'left' and 'right' color correction params including
+        LAB mean/std for Reinhard transfer
     """
     if img_left is None or img_right is None:
         return _default_color_correction()
@@ -222,100 +295,63 @@ def compute_color_correction(img_left: np.ndarray, img_right: np.ndarray) -> Dic
         h, w = img_left.shape[:2]
 
         # Extract overlapping regions (right 30% of left, left 30% of right)
-        # Smaller overlap for more accurate matching
-        overlap_left = img_left[:, int(w * 0.7) :, :]
-        overlap_right = img_right[:, : int(w * 0.3), :]
+        overlap_pct = 0.30
+        overlap_left = img_left[:, int(w * (1 - overlap_pct)) :, :]
+        overlap_right = img_right[:, : int(w * overlap_pct), :]
 
         # Ensure same size
         min_w = min(overlap_left.shape[1], overlap_right.shape[1])
         overlap_left = overlap_left[:, :min_w, :]
         overlap_right = overlap_right[:, :min_w, :]
 
-        # Convert to HSV for better color analysis
-        hsv_left = cv2.cvtColor(overlap_left, cv2.COLOR_BGR2HSV).astype(np.float32)
-        hsv_right = cv2.cvtColor(overlap_right, cv2.COLOR_BGR2HSV).astype(np.float32)
+        # Create combined masks (grass + sky) for balanced color sampling
+        mask_left = _combined_mask(overlap_left)
+        mask_right = _combined_mask(overlap_right)
 
-        # Also work in RGB for color balance
-        rgb_left = cv2.cvtColor(overlap_left, cv2.COLOR_BGR2RGB).astype(np.float32)
-        rgb_right = cv2.cvtColor(overlap_right, cv2.COLOR_BGR2RGB).astype(np.float32)
+        # Compute LAB statistics from overlap regions
+        # Target: left image colors (right will match left)
+        tgt_mean, tgt_std = _lab_mean_std(overlap_left, mask_left)
+        src_mean, src_std = _lab_mean_std(overlap_right, mask_right)
 
-        # Compute per-channel statistics using percentiles (more robust than mean)
-        def channel_stats(img):
-            """Get median and IQR for each channel."""
-            medians = np.median(img, axis=(0, 1))
-            p25 = np.percentile(img, 25, axis=(0, 1))
-            p75 = np.percentile(img, 75, axis=(0, 1))
-            return medians, p75 - p25  # median, interquartile range
+        # Reinhard transfer parameters for right image:
+        # transformed = (pixel - src_mean) / src_std * tgt_std + tgt_mean
+        # This can be rewritten as: transformed = pixel * scale + offset
+        # where scale = tgt_std / src_std and offset = tgt_mean - src_mean * scale
+        scale = tgt_std / src_std
+        offset = tgt_mean - src_mean * scale
 
-        # HSV statistics
-        hsv_med_left, hsv_iqr_left = channel_stats(hsv_left)
-        hsv_med_right, hsv_iqr_right = channel_stats(hsv_right)
-
-        # RGB statistics for color balance
-        rgb_med_left, _ = channel_stats(rgb_left)
-        rgb_med_right, _ = channel_stats(rgb_right)
-
-        # Target: midpoint between both cameras
-        hsv_med_target = (hsv_med_left + hsv_med_right) / 2
-        rgb_med_target = (rgb_med_left + rgb_med_right) / 2
-
-        # Brightness correction from V channel (0-255 range)
-        # Normalize to our -0.5 to 0.5 range
-        v_diff_left = (hsv_med_target[2] - hsv_med_left[2]) / 255.0
-        v_diff_right = (hsv_med_target[2] - hsv_med_right[2]) / 255.0
-        brightness_left = float(np.clip(v_diff_left, -0.3, 0.3))
-        brightness_right = float(np.clip(v_diff_right, -0.3, 0.3))
-
-        # Saturation from S channel (0-255 range)
-        # Convert to multiplier (1.0 = no change)
-        s_left = max(hsv_med_left[1], 1.0)
-        s_right = max(hsv_med_right[1], 1.0)
-        s_target = max(hsv_med_target[1], 1.0)
-        saturation_left = float(np.clip(s_target / s_left, 0.7, 1.4))
-        saturation_right = float(np.clip(s_target / s_right, 0.7, 1.4))
-
-        # Contrast from V channel spread (IQR)
-        v_iqr_left = max(hsv_iqr_left[2], 1.0)
-        v_iqr_right = max(hsv_iqr_right[2], 1.0)
-        v_iqr_target = (v_iqr_left + v_iqr_right) / 2
-        contrast_left = float(np.clip(v_iqr_target / v_iqr_left, 0.8, 1.2))
-        contrast_right = float(np.clip(v_iqr_target / v_iqr_right, 0.8, 1.2))
-
-        # Color balance from RGB channels
-        # Compute ratio to reach target, then normalize so green stays at 1.0
-        rgb_med_left = np.maximum(rgb_med_left, 1.0)
-        rgb_med_right = np.maximum(rgb_med_right, 1.0)
-
-        cb_left = rgb_med_target / rgb_med_left
-        cb_right = rgb_med_target / rgb_med_right
-
-        # Normalize around green channel (index 1) to preserve overall brightness
-        cb_left = cb_left / cb_left[1]
-        cb_right = cb_right / cb_right[1]
-
-        # Clamp to reasonable range
-        cb_left = np.clip(cb_left, 0.85, 1.15).tolist()
-        cb_right = np.clip(cb_right, 0.85, 1.15).tolist()
-
-        # Temperature: derived from blue/red balance
-        # Positive = warmer (more red), negative = cooler (more blue)
-        temp_left = float(np.clip((cb_left[0] - cb_left[2]) * 0.5, -0.2, 0.2))
-        temp_right = float(np.clip((cb_right[0] - cb_right[2]) * 0.5, -0.2, 0.2))
+        # Log mask coverage for debugging
+        mask_left_pct = mask_left.sum() / 255 / mask_left.size * 100
+        mask_right_pct = mask_right.sum() / 255 / mask_right.size * 100
+        print(f"LAB Color Correction Debug:")
+        print(f"  Mask coverage: left={mask_left_pct:.1f}%, right={mask_right_pct:.1f}%")
+        print(f"  Target (left) mean: L={tgt_mean[0]:.1f}, a={tgt_mean[1]:.1f}, b={tgt_mean[2]:.1f}")
+        print(f"  Source (right) mean: L={src_mean[0]:.1f}, a={src_mean[1]:.1f}, b={src_mean[2]:.1f}")
+        print(f"  Computed scale: L={scale[0]:.3f}, a={scale[1]:.3f}, b={scale[2]:.3f}")
+        print(f"  Computed offset: L={offset[0]:.1f}, a={offset[1]:.1f}, b={offset[2]:.1f}")
 
         return {
             'left': {
-                'brightness': round(brightness_left, 4),
-                'contrast': round(contrast_left, 4),
-                'saturation': round(saturation_left, 4),
-                'colorBalance': [round(c, 4) for c in cb_left],
-                'temperature': round(temp_left, 4),
+                # Left stays unchanged (neutral)
+                'brightness': 0.0,
+                'contrast': 1.0,
+                'saturation': 1.0,
+                'colorBalance': [1.0, 1.0, 1.0],
+                'temperature': 0.0,
+                # LAB Reinhard params (identity transform)
+                'labScale': [1.0, 1.0, 1.0],
+                'labOffset': [0.0, 0.0, 0.0],
             },
             'right': {
-                'brightness': round(brightness_right, 4),
-                'contrast': round(contrast_right, 4),
-                'saturation': round(saturation_right, 4),
-                'colorBalance': [round(c, 4) for c in cb_right],
-                'temperature': round(temp_right, 4),
+                # Keep legacy params for backward compatibility
+                'brightness': 0.0,
+                'contrast': 1.0,
+                'saturation': 1.0,
+                'colorBalance': [1.0, 1.0, 1.0],
+                'temperature': 0.0,
+                # LAB Reinhard params for color transfer
+                'labScale': [round(float(s), 6) for s in scale],
+                'labOffset': [round(float(o), 6) for o in offset],
             },
         }
 
@@ -332,5 +368,7 @@ def _default_color_correction() -> Dict[str, Dict[str, Any]]:
         'saturation': 1,
         'colorBalance': [1, 1, 1],
         'temperature': 0,
+        'labScale': [1.0, 1.0, 1.0],
+        'labOffset': [0.0, 0.0, 0.0],
     }
     return {'left': default.copy(), 'right': default.copy()}

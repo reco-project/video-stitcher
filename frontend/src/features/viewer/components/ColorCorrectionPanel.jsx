@@ -215,14 +215,19 @@ export function DualColorCorrectionPanel({ leftValues, rightValues, onLeftChange
 		setAutoLoading(true);
 		try {
 			// Get current video time when button is clicked
-			const currentTime = videoRef?.current?.currentTime || 0;
+			// videoRef can be either a ref object (with .current) or the element directly
+			const videoElement = videoRef?.current ?? videoRef;
+			const currentTime = videoElement?.currentTime || 0;
+			console.log('Auto color correction at time:', currentTime);
 			const result = await autoColorCorrection(matchId, currentTime);
+			console.log('Auto color correction result:', result);
 			if (result?.colorCorrection) {
 				if (result.colorCorrection.left) {
-					onLeftChange(result.colorCorrection.left);
+					// Merge with defaults to ensure all fields are present
+					onLeftChange({ ...DEFAULT_COLOR_CORRECTION, ...result.colorCorrection.left });
 				}
 				if (result.colorCorrection.right) {
-					onRightChange(result.colorCorrection.right);
+					onRightChange({ ...DEFAULT_COLOR_CORRECTION, ...result.colorCorrection.right });
 				}
 			}
 		} catch (err) {

@@ -7,6 +7,9 @@ export const DEFAULT_COLOR_CORRECTION = {
 	saturation: 1,
 	colorBalance: [1, 1, 1], // RGB gains
 	temperature: 0,
+	// LAB-based Reinhard transfer (identity = no change)
+	labScale: [1, 1, 1],
+	labOffset: [0, 0, 0],
 };
 
 // Consideration: This function may be useless if we already store uniforms in the expected format.
@@ -33,6 +36,14 @@ export function formatUniforms(u, texture, colorCorrection = {}) {
 	// Merge with defaults
 	const cc = { ...DEFAULT_COLOR_CORRECTION, ...colorCorrection };
 
+	// Debug: log LAB values being applied
+	if (cc.labScale && cc.labOffset) {
+		const isIdentity = cc.labScale.every(v => v === 1) && cc.labOffset.every(v => v === 0);
+		if (!isIdentity) {
+			console.log('Applying LAB color correction:', { labScale: cc.labScale, labOffset: cc.labOffset });
+		}
+	}
+
 	const width = u.width;
 	const height = u.height;
 	return {
@@ -42,7 +53,10 @@ export function formatUniforms(u, texture, colorCorrection = {}) {
 		cx: { value: u.cx / width },
 		cy: { value: u.cy / height },
 		d: { value: new THREE.Vector4(...u.d) },
-		// Color correction uniforms
+		// LAB-based Reinhard color transfer uniforms (primary)
+		labScale: { value: new THREE.Vector3(...(cc.labScale || [1, 1, 1])) },
+		labOffset: { value: new THREE.Vector3(...(cc.labOffset || [0, 0, 0])) },
+		// Legacy color correction uniforms (for backward compatibility)
 		brightness: { value: cc.brightness },
 		contrast: { value: cc.contrast },
 		saturation: { value: cc.saturation },
