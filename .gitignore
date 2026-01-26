@@ -1,1 +1,25 @@
 node_modules/
+
+# Build outputs
+out/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+backend/temp/
+backend/logs/
+backend/data/videos/
+backend/data/matches/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log

@@ -1,5 +1,0 @@
-# Ignore all temporary files
-*
-
-# Keep this .gitignore file
-!.gitignore

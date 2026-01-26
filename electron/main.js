@@ -84,18 +84,36 @@ function startBackend() {
 
 	// In development, use workspace root paths
 	// In production, use paths relative to app resources
-	const workspaceRoot = isDev
-		? join(__dirname, '..')
-		: join(__dirname, '..', '..');
+	let backendDir;
+	let pythonPath;
 
-	const pythonPath = isWin
-		? join(workspaceRoot, 'backend', 'venv', 'Scripts', 'python.exe')
-		: join(workspaceRoot, 'backend', 'venv', 'bin', 'python');
+	if (isDev) {
+		// Development: backend is at workspace root
+		const workspaceRoot = join(__dirname, '..');
+		backendDir = join(workspaceRoot, 'backend');
+		pythonPath = isWin
+			? join(backendDir, 'venv', 'Scripts', 'python.exe')
+			: join(backendDir, 'venv', 'bin', 'python');
+	} else {
+		// Production: backend is at app/backend (no asar with Vite plugin)
+		// or at app.asar.unpacked/backend if asar is enabled
+		const appPath = app.getAppPath();
+		const unpackedPath = appPath + '.unpacked';
 
-	const backendDir = join(workspaceRoot, 'backend');
+		// Check if unpacked exists (asar mode) or use app path directly
+		backendDir = existsSync(join(unpackedPath, 'backend'))
+			? join(unpackedPath, 'backend')
+			: join(appPath, 'backend');
+
+		pythonPath = isWin
+			? join(backendDir, 'venv', 'Scripts', 'python.exe')
+			: join(backendDir, 'venv', 'bin', 'python');
+	}
+
 	const userDataPath = app.getPath('userData');
 
 	console.log('[Backend] Starting Python backend...');
+	console.log('[Backend] isDev:', isDev);
 	console.log('[Backend] Python path:', pythonPath);
 	console.log('[Backend] Backend dir:', backendDir);
 	console.log('[Backend] User data path:', userDataPath);
@@ -231,7 +249,8 @@ const createWindow = () => {
 	if (isDev) {
 		mainWindow.loadURL(devServerUrl);
 	} else {
-		mainWindow.loadFile(join(__dirname, '../frontend/dist/index.html'));
+		// Load the built frontend from frontend/dist
+		mainWindow.loadFile(join(app.getAppPath(), 'frontend', 'dist', 'index.html'));
 	}
 
 	// Open the DevTools.

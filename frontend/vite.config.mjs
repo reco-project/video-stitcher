@@ -5,4 +5,5 @@ import jsConfigPaths from 'vite-jsconfig-paths';
 
 export default defineConfig({
 	plugins: [react(), tailwindcss(), jsConfigPaths()],
+	base: './', // Use relative paths for Electron compatibility
 });

@@ -12,8 +12,8 @@
 		"frontend-dev": "cd frontend && npm run dev",
 		"frontend-build": "cd frontend && npm run build",
 		"electron-dev": "electron-forge start",
-		"electron-package": "electron-forge package",
-		"electron-make": "electron-forge make",
+		"electron-package": "npm run frontend-build && electron-forge package",
+		"electron-make": "npm run frontend-build && electron-forge make",
 		"electron-publish": "electron-forge publish",
 		"dev": "node scripts/dev.js",
 		"dev:base": "concurrently -k \"npm:frontend-dev\" \"npm:electron-dev\"",
@@ -54,6 +54,7 @@
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
 		"electron": "38.2.1",
+		"fs-extra": "^11.3.3",
 		"rimraf": "^6.1.0"
 	},
 	"dependencies": {
