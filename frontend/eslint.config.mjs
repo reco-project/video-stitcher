@@ -37,7 +37,7 @@ export default defineConfig([
     },
     rules: {
       "react/prop-types": "off",
-      "react/no-unknown-property": ["error", { ignore: ["position", "rotation", "args", "uniforms"] }],
+      "react/no-unknown-property": ["error", { ignore: ["position", "rotation", "args", "uniforms", "renderOrder", "transparent", "depthWrite"] }],
       "import/no-unresolved": "off", // TODO: Too generic, but I don't want to deal with these errors now
       "import/named": "off", // TODO: Too generic, but I don't want to deal with these errors now
       "import/no-restricted-paths": [

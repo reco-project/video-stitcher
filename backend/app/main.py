@@ -12,6 +12,8 @@ from app.repositories.file_lens_profile_store import FileLensProfileStore
 from app.repositories.lens_profile_store import LensProfileStore
 from app.repositories.file_match_store import FileMatchStore
 from app.repositories.match_store import MatchStore
+from app.data_paths import PROFILES_DIR, MATCHES_DIR, VIDEOS_DIR
+import asyncio
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
@@ -25,15 +27,13 @@ info("VIDEO STITCHER BACKEND STARTING")
 info("=" * 60)
 
 # Initialize lens profile store
-PROFILES_DIR = Path(__file__).parent.parent / "data" / "lens_profiles"
 profile_store = FileLensProfileStore(str(PROFILES_DIR))
 
 # Initialize match store (file-based, persistent)
-MATCHES_DIR = Path(__file__).parent.parent / "data" / "matches"
 match_store = FileMatchStore(str(MATCHES_DIR))
 
 # Videos directory for static file serving
-VIDEOS_DIR = Path(__file__).parent.parent / "data" / "videos"
+# (Already created by data_paths module)
 
 
 def get_profile_store() -> LensProfileStore:

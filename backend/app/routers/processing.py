@@ -22,13 +22,11 @@ import numpy as np
 from app.utils.logger import get_logger
 from app.repositories.match_store import MatchStore
 from app.repositories.file_match_store import FileMatchStore
+from app.data_paths import MATCHES_DIR, VIDEOS_DIR, TEMP_DIR
 
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/matches", tags=["processing"])
-
-# Match store path
-MATCHES_DIR = Path(__file__).parent.parent.parent / "data" / "matches"
 
 # In-memory cache for live progress updates (avoids excessive disk I/O)
 # Structure: {match_id: {transcode_fps, transcode_speed, transcode_progress, ...}}
@@ -189,7 +187,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
         404: Match not found
         400: Match validation failed
     """
-    from app.services.transcoding import transcode_and_stack, check_ffmpeg
+    from app.services.transcoding import transcode_and_stack_multiple, check_ffmpeg
 
     # Get match
     match_data = match_store.get_by_id(match_id)
@@ -203,9 +201,13 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
     if not left_videos or not right_videos:
         raise HTTPException(status_code=400, detail="Match must have at least one left and one right video")
 
-    # Get first video from each side
-    left_video_path = left_videos[0].path
-    right_video_path = right_videos[0].path
+    # Extract paths from video objects
+    left_video_paths = [v.path for v in left_videos]
+    right_video_paths = [v.path for v in right_videos]
+
+    logger.info(
+        f"Processing match {match_id} with {len(left_video_paths)} left videos and {len(right_video_paths)} right videos"
+    )
 
     # Check FFmpeg
     try:
@@ -217,10 +219,15 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
     from datetime import datetime, timezone
 
     try:
+        # Determine initial message based on video counts
+        initial_message = "Preparing to sync and stack videos..."
+        if len(left_video_paths) > 1 or len(right_video_paths) > 1:
+            initial_message = f"Preparing to concatenate and process videos ({len(left_video_paths)} left, {len(right_video_paths)} right)..."
+
         match_data.update_processing(
             status="transcoding",
             step="transcoding",
-            message="Preparing to sync and stack videos...",
+            message=initial_message,
             started_at=datetime.now(timezone.utc).isoformat(),
         )
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
@@ -229,7 +236,11 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
         raise HTTPException(status_code=500, detail=f"Failed to initialize transcoding: {str(e)}")
 
     # Initialize progress cache with starting message
-    _progress_cache[match_id] = {'processing_message': 'Starting transcoding process...'}
+    _progress_cache[match_id] = {
+        'processing_message': 'Starting transcoding process...',
+        'left_video_count': len(left_video_paths),
+        'right_video_count': len(right_video_paths),
+    }
 
     try:
         # Transcode in background thread
@@ -260,14 +271,25 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                         _progress_cache[match_id] = {}
 
                     # Update based on stage
-                    if stage == 'audio_extraction':
+                    if stage == 'concatenation':
+                        concat_side = progress_info.get('concat_side', '')
+                        concat_count = progress_info.get('concat_count', 0)
+                        _progress_cache[match_id]['processing_message'] = progress_info.get(
+                            'message', f'Concatenating {concat_side} videos...'
+                        )
+                        _progress_cache[match_id]['current_stage'] = 'concatenation'
+                        if concat_side:
+                            _progress_cache[match_id][f'concat_{concat_side}_count'] = concat_count
+                    elif stage == 'audio_extraction':
                         _progress_cache[match_id]['processing_message'] = progress_info.get(
                             'message', 'Extracting audio...'
                         )
+                        _progress_cache[match_id]['current_stage'] = 'audio_extraction'
                     elif stage == 'audio_sync':
                         _progress_cache[match_id]['processing_message'] = progress_info.get(
                             'message', 'Syncing audio...'
                         )
+                        _progress_cache[match_id]['current_stage'] = 'audio_sync'
                     elif stage == 'encoding':
                         # Detailed encoding progress - stored in memory only
                         fps = progress_info.get('fps', 0)
@@ -280,6 +302,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                         _progress_cache[match_id].update(
                             {
                                 'processing_message': f"Encoding video ({encoder})...",
+                                'current_stage': 'encoding',
                                 'transcode_progress': float(round(progress_percent, 1)),
                                 'transcode_fps': float(round(fps, 1)),
                                 'transcode_speed': str(speed),
@@ -296,7 +319,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                     logger.warning(f"Failed to update progress cache for {match_id}: {e}")
 
             try:
-                output_video_path = os.path.join("data/videos", f"{match_id}.mp4")
+                output_video_path = str(VIDEOS_DIR / f"{match_id}.mp4")
 
                 # Check for cancellation before starting
                 if _cancellation_flags.get(match_id, False):
@@ -329,9 +352,10 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 else:
                     logger.warning(f"No quality_settings found in match data for {match_id}")
 
-                stacked_path, offset = transcode_and_stack(
-                    left_video_path,
-                    right_video_path,
+                # Use the new multi-video function
+                stacked_path, offset = transcode_and_stack_multiple(
+                    left_video_paths,
+                    right_video_paths,
                     output_video_path,
                     temp_dir,
                     progress_callback=update_progress,
@@ -357,7 +381,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 try:
                     from app.services.transcoding import extract_preview_frame
 
-                    preview_path = os.path.join("data/videos", f"{match_id}_preview.jpg")
+                    preview_path = str(VIDEOS_DIR / f"{match_id}_preview.jpg")
                     extract_preview_frame(stacked_path, preview_path, timestamp=1.0)
                     logger.info(f"Preview generated for {match_id} at {preview_path}")
                 except Exception as e:
@@ -461,6 +485,7 @@ async def process_match_with_frames(
     match_id: str,
     left_frame: UploadFile = File(...),
     right_frame: UploadFile = File(...),
+    debug_mode: bool = Form(False),
     match_store: MatchStore = Depends(get_store),
 ):
     """
@@ -490,6 +515,13 @@ async def process_match_with_frames(
     if not match_data:
         raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
 
+    # Save original status in case calibration fails (so we can restore it)
+    original_status = match_data.processing.status if match_data.processing else None
+
+    # Track timing for debug mode
+    timing = {} if debug_mode else None
+    start_time = time.time() if debug_mode else None
+
     try:
         # Read uploaded images
         left_bytes = await left_frame.read()
@@ -497,20 +529,34 @@ async def process_match_with_frames(
 
         logger.info(f"Received frames: left={len(left_bytes)} bytes, right={len(right_bytes)} bytes")
 
-        # Save frames for debugging
-        import os
+        if debug_mode:
+            timing['frame_upload'] = time.time() - start_time
+            logger.info(f"[DEBUG] Frame upload took {timing['frame_upload']:.3f}s")
 
-        debug_dir = os.path.join("temp", match_id, "debug_frames")
-        os.makedirs(debug_dir, exist_ok=True)
+        # Save frames for debugging (only if debug mode enabled)
+        if debug_mode:
+            import os
+            from datetime import datetime
 
-        with open(os.path.join(debug_dir, "left_received.png"), "wb") as f:
-            f.write(left_bytes)
-        with open(os.path.join(debug_dir, "right_received.png"), "wb") as f:
-            f.write(right_bytes)
+            debug_start = time.time()
 
-        logger.info(f"Debug frames saved to: {debug_dir}")
+            # Use timestamp to avoid overwriting previous debug images
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            debug_dir = os.path.join(TEMP_DIR, match_id, "debug_frames")
+            os.makedirs(debug_dir, exist_ok=True)
+
+            with open(os.path.join(debug_dir, f"left_received_{timestamp}.png"), "wb") as f:
+                f.write(left_bytes)
+            with open(os.path.join(debug_dir, f"right_received_{timestamp}.png"), "wb") as f:
+                f.write(right_bytes)
+
+            timing['debug_frame_save'] = time.time() - debug_start
+            timing['debug_timestamp'] = timestamp  # Store for later use
+            logger.info(f"[DEBUG] Debug frames saved to: {debug_dir} (took {timing['debug_frame_save']:.3f}s)")
 
         # Convert to numpy arrays
+        decode_start = time.time() if debug_mode else None
         left_np = np.frombuffer(left_bytes, dtype=np.uint8)
         right_np = np.frombuffer(right_bytes, dtype=np.uint8)
 
@@ -521,6 +567,10 @@ async def process_match_with_frames(
         if img_left is None or img_right is None:
             raise HTTPException(status_code=400, detail="Failed to decode image data")
 
+        if debug_mode:
+            timing['image_decode'] = time.time() - decode_start
+            logger.info(f"[DEBUG] Image decode took {timing['image_decode']:.3f}s")
+
         logger.info(f"Decoded images: left={img_left.shape}, right={img_right.shape}")
 
         # Update match status
@@ -530,66 +580,94 @@ async def process_match_with_frames(
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
         # Step 1: Match features
-        match_result = match_features(img_left, img_right)
-
-        # Debug: Draw feature matches visualization
+        feature_start = time.time() if debug_mode else None
+        calibration_failed = False
+        calibration_error = None
         try:
-            # Resize images for visualization
-            h, w = img_left.shape[:2]
-            target_w = 1920
-            scale = target_w / w
+            match_result = match_features(img_left, img_right)
+        except ValueError as e:
+            # Feature matching failed - use default params
+            calibration_failed = True
+            calibration_error = str(e)
+            logger.warning(f"Feature matching failed for {match_id}: {e}. Using default calibration.")
+            match_result = {
+                "left_points": [],
+                "right_points": [],
+                "num_matches": 0,
+                "confidence": 0.0,
+            }
+        if debug_mode:
+            timing['feature_matching'] = time.time() - feature_start
+            logger.info(
+                f"[DEBUG] Feature matching took {timing['feature_matching']:.3f}s, found {len(match_result.get('left_points', []))} matches"
+            )
 
-            img_left_vis = cv2.resize(img_left, (int(w * scale), int(h * scale)))
-            img_right_vis = cv2.resize(img_right, (int(w * scale), int(h * scale)))
+        # Debug: Draw feature matches visualization (only if debug mode enabled)
+        if debug_mode:
+            from datetime import datetime
 
-            # Get points from match result (they're in normalized plane coords)
-            left_points = np.array(match_result["left_points"])
-            right_points = np.array(match_result["right_points"])
+            viz_start = time.time()
+            try:
+                # Resize images for visualization
+                h, w = img_left.shape[:2]
+                target_w = 1920
+                scale = target_w / w
 
-            # Convert back to image coordinates for visualization
-            img_h, img_w = img_left_vis.shape[:2]
-            plane_w = 1.0
-            plane_h = plane_w * (img_h / img_w)
+                img_left_vis = cv2.resize(img_left, (int(w * scale), int(h * scale)))
+                img_right_vis = cv2.resize(img_right, (int(w * scale), int(h * scale)))
 
-            # Reverse the normalization
-            left_pts_img = np.zeros_like(left_points)
-            left_pts_img[:, 0] = (left_points[:, 0] / plane_w + 0.5) * img_w
-            left_pts_img[:, 1] = (left_points[:, 1] / plane_h + 0.5) * img_h
+                # Get points from match result (they're in normalized plane coords)
+                left_points = np.array(match_result["left_points"])
+                right_points = np.array(match_result["right_points"])
 
-            right_pts_img = np.zeros_like(right_points)
-            right_pts_img[:, 0] = (right_points[:, 0] / plane_w + 0.5) * img_w
-            right_pts_img[:, 1] = (right_points[:, 1] / plane_h + 0.5) * img_h
+                # Convert back to image coordinates for visualization
+                img_h, img_w = img_left_vis.shape[:2]
+                plane_w = 1.0
+                plane_h = plane_w * (img_h / img_w)
 
-            # Draw matches on concatenated image
-            vis_height = max(img_left_vis.shape[0], img_right_vis.shape[0])
-            vis_img = np.zeros((vis_height, img_left_vis.shape[1] + img_right_vis.shape[1], 3), dtype=np.uint8)
-            vis_img[: img_left_vis.shape[0], : img_left_vis.shape[1]] = img_left_vis
-            vis_img[: img_right_vis.shape[0], img_left_vis.shape[1] :] = img_right_vis
+                # Reverse the normalization
+                left_pts_img = np.zeros_like(left_points)
+                left_pts_img[:, 0] = (left_points[:, 0] / plane_w + 0.5) * img_w
+                left_pts_img[:, 1] = (left_points[:, 1] / plane_h + 0.5) * img_h
 
-            # Draw lines between matched points
-            offset = img_left_vis.shape[1]
-            for i in range(len(left_pts_img)):
-                pt1 = tuple(left_pts_img[i].astype(int))
-                pt2 = tuple((right_pts_img[i] + [offset, 0]).astype(int))
+                right_pts_img = np.zeros_like(right_points)
+                right_pts_img[:, 0] = (right_points[:, 0] / plane_w + 0.5) * img_w
+                right_pts_img[:, 1] = (right_points[:, 1] / plane_h + 0.5) * img_h
 
-                # Draw circles at keypoints
-                cv2.circle(vis_img, pt1, 5, (0, 255, 0), 2)
-                cv2.circle(vis_img, pt2, 5, (0, 255, 0), 2)
+                # Draw matches on concatenated image
+                vis_height = max(img_left_vis.shape[0], img_right_vis.shape[0])
+                vis_img = np.zeros((vis_height, img_left_vis.shape[1] + img_right_vis.shape[1], 3), dtype=np.uint8)
+                vis_img[: img_left_vis.shape[0], : img_left_vis.shape[1]] = img_left_vis
+                vis_img[: img_right_vis.shape[0], img_left_vis.shape[1] :] = img_right_vis
 
-                # Draw line connecting them
-                cv2.line(vis_img, pt1, pt2, (255, 0, 255), 1)
+                # Draw lines between matched points
+                offset = img_left_vis.shape[1]
+                for i in range(len(left_pts_img)):
+                    pt1 = tuple(left_pts_img[i].astype(int))
+                    pt2 = tuple((right_pts_img[i] + [offset, 0]).astype(int))
 
-            # Add text overlay
-            text = f"Matches: {match_result['num_matches']} | Confidence: {match_result['confidence']:.2%}"
-            cv2.putText(vis_img, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
+                    # Draw circles at keypoints
+                    cv2.circle(vis_img, pt1, 5, (0, 255, 0), 2)
+                    cv2.circle(vis_img, pt2, 5, (0, 255, 0), 2)
 
-            # Save visualization
-            vis_path = os.path.join(debug_dir, "feature_matches.png")
-            cv2.imwrite(vis_path, vis_img)
-            logger.info(f"Feature matching visualization saved to: {vis_path}")
+                    # Draw line connecting them
+                    cv2.line(vis_img, pt1, pt2, (255, 0, 255), 1)
 
-        except Exception as viz_error:
-            logger.warning(f"Failed to create feature matching visualization: {viz_error}")
+                # Add text overlay
+                text = f"Matches: {match_result['num_matches']} | Confidence: {match_result['confidence']:.2%}"
+                cv2.putText(vis_img, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
+
+                # Save visualization with timestamp
+                debug_timestamp = timing.get('debug_timestamp', datetime.now().strftime("%Y%m%d_%H%M%S"))
+                vis_path = os.path.join(TEMP_DIR, match_id, "debug_frames", f"feature_matches_{debug_timestamp}.png")
+                cv2.imwrite(vis_path, vis_img)
+                timing['visualization'] = time.time() - viz_start
+                logger.info(
+                    f"[DEBUG] Feature matching visualization saved to: {vis_path} (took {timing['visualization']:.3f}s)"
+                )
+
+            except Exception as viz_error:
+                logger.warning(f"Failed to create feature matching visualization: {viz_error}")
 
         # Update status
         match_data.update_processing(
@@ -597,34 +675,81 @@ async def process_match_with_frames(
         )
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
-        # Step 2: Optimize camera positions
-        # Note: Swap left/right to match viewer's coordinate system
-        params = optimize_position(match_result["right_points"], match_result["left_points"])
+        # Step 2: Optimize camera positions (or use defaults if calibration failed)
+        opt_start = time.time() if debug_mode else None
+        if calibration_failed:
+            # Use default params when calibration fails
+            params = {
+                "intersect": 0.5,
+                "xTy": 0.0,
+                "zRx": 0.0,
+                "xRz": 0.0,
+            }
+            logger.info(f"Using default calibration params for {match_id} due to: {calibration_error}")
+        else:
+            # Note: Swap left/right to match viewer's coordinate system
+            params = optimize_position(match_result["right_points"], match_result["left_points"])
+        if debug_mode:
+            timing['optimization'] = time.time() - opt_start
+            logger.info(f"[DEBUG] Position optimization took {timing['optimization']:.3f}s")
 
         # Update match with results
         from datetime import datetime, timezone
 
-        match_data.params = params
-        match_data.num_matches = match_result["num_matches"]
-        match_data.confidence = match_result["confidence"]
+        # Only update params and status if calibration succeeded
+        # If calibration failed, keep existing params and status completely unchanged
+        if not calibration_failed:
+            match_data.params = params
+            match_data.num_matches = match_result["num_matches"]
+            match_data.confidence = match_result["confidence"]
+            match_data.update_processing(
+                status="ready", step="complete", message="Processing complete", error_code=None, error_message=None
+            )
 
-        # Update processing info
-        match_data.update_processing(
-            status="ready", step="complete", message="Processing complete", error_code=None, error_message=None
-        )
+            # Don't overwrite processing_completed_at if it was already set during transcoding
+            if match_data.processing and not match_data.processing.completed_at:
+                match_data.update_processing(completed_at=datetime.now(timezone.utc).isoformat())
 
-        # Don't overwrite processing_completed_at if it was already set during transcoding
-        if match_data.processing and not match_data.processing.completed_at:
-            match_data.update_processing(completed_at=datetime.now(timezone.utc).isoformat())
+            match_store.update(match_id, match_data.model_dump(exclude_none=False))
+        else:
+            # Restore the original status (we changed it to "calibrating" earlier)
+            # This ensures the match stays in its previous state (e.g., "ready" with existing params)
+            if original_status:
+                match_data.update_processing(status=original_status)
+                match_store.update(match_id, match_data.model_dump(exclude_none=False))
+            logger.info(f"Calibration failed for {match_id}, restored original status: {original_status}")
 
-        match_store.update(match_id, match_data.model_dump(exclude_none=False))
+        if debug_mode:
+            timing['total'] = time.time() - start_time
+            logger.info(f"[DEBUG] Total processing time: {timing['total']:.3f}s")
 
-        return {
+        response = {
             "success": True,
+            "calibration_failed": calibration_failed,
+            "calibration_error": calibration_error,
             "params": params,
             "num_matches": match_result["num_matches"],
             "confidence": match_result["confidence"],
         }
+
+        # Include timing data in response when debug mode is enabled
+        if debug_mode and timing:
+            response["debug"] = {
+                "timing": timing,
+                "timing_breakdown": {
+                    "frame_upload": f"{timing.get('frame_upload', 0):.3f}s",
+                    "debug_frame_save": (
+                        f"{timing.get('debug_frame_save', 0):.3f}s" if timing.get('debug_frame_save') else None
+                    ),
+                    "image_decode": f"{timing.get('image_decode', 0):.3f}s",
+                    "feature_matching": f"{timing.get('feature_matching', 0):.3f}s",
+                    "visualization": f"{timing.get('visualization', 0):.3f}s" if timing.get('visualization') else None,
+                    "optimization": f"{timing.get('optimization', 0):.3f}s",
+                    "total": f"{timing.get('total', 0):.3f}s",
+                },
+            }
+
+        return response
 
     except ValueError as e:
         # Feature matching or optimization error
@@ -638,3 +763,84 @@ async def process_match_with_frames(
         match_data.update_processing(status="error", step=None, error_message="Failed to process frames")
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
         raise HTTPException(status_code=500, detail="Internal processing error")
+
+
+@router.post("/{match_id}/auto-color-correction")
+async def auto_color_correction(
+    match_id: str,
+    time_seconds: float = Form(0.0),
+    match_store: MatchStore = Depends(get_store),
+):
+    """
+    Automatically compute color correction from the transcoded video at a specific timestamp.
+
+    Extracts a frame from the stacked video, splits it into left/right, and computes
+    color correction parameters to match colors between cameras.
+
+    Args:
+        match_id: Match identifier
+        time_seconds: Timestamp in seconds to extract frame from (default: 0)
+        match_store: Match store dependency
+
+    Returns:
+        Computed color correction parameters for both cameras
+    """
+    from app.services.feature_matching import compute_color_correction
+
+    # Get match
+    match_data = match_store.get_by_id(match_id)
+    if not match_data:
+        raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
+
+    # Check if video exists
+    if not match_data.src:
+        raise HTTPException(status_code=400, detail="Match has no transcoded video")
+
+    video_path = VIDEOS_DIR / match_data.src.replace("videos/", "")
+    if not video_path.exists():
+        raise HTTPException(status_code=400, detail=f"Video file not found: {video_path}")
+
+    try:
+        # Open video and seek to timestamp
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            raise HTTPException(status_code=500, detail="Failed to open video file")
+
+        # Seek to requested time
+        cap.set(cv2.CAP_PROP_POS_MSEC, time_seconds * 1000)
+
+        ret, frame = cap.read()
+        cap.release()
+
+        if not ret or frame is None:
+            raise HTTPException(status_code=400, detail="Failed to read frame from video")
+
+        # Split stacked frame into left (top) and right (bottom)
+        h, w = frame.shape[:2]
+        half_h = h // 2
+        img_left = frame[:half_h, :, :]
+        img_right = frame[half_h:, :, :]
+
+        logger.info(f"Extracted frame at {time_seconds}s: {w}x{h} -> split to {w}x{half_h} each")
+
+        # Compute color correction
+        color_correction = compute_color_correction(img_left, img_right)
+
+        # Save to match metadata
+        if match_data.metadata is None:
+            match_data.metadata = {}
+        match_data.metadata["colorCorrection"] = color_correction
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
+
+        logger.info(f"Auto color correction computed for match {match_id}")
+
+        return {
+            "success": True,
+            "colorCorrection": color_correction,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error computing auto color correction for match {match_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to compute color correction: {str(e)}")

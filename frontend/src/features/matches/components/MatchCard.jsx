@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 /**
@@ -10,17 +10,13 @@ import { cn } from '@/lib/cn';
 export default function MatchCard({ match, onSelect, className }) {
 	const [previewUrl, setPreviewUrl] = useState(null);
 	const [previewLoading, setPreviewLoading] = useState(true);
-	const [viewed, setViewed] = useState(false);
 
-	// Check if match has been viewed
-	useEffect(() => {
-		const viewedMatches = JSON.parse(localStorage.getItem('viewedMatches') || '[]');
-		setViewed(viewedMatches.includes(match.id));
-	}, [match.id]);
+	// Use viewed state from backend match model (already includes localStorage sync from Viewer)
+	const viewed = match.viewed || false;
 
 	// Try to load preview image after transcoding
 	useEffect(() => {
-		if (match.src && match.status === 'ready') {
+		if (match.src && (match.status === 'ready' || match.status === 'warning')) {
 			// Video is ready, preview should exist
 			const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
 			const baseUrl = apiBaseUrl.replace('/api', '');
@@ -47,7 +43,20 @@ export default function MatchCard({ match, onSelect, className }) {
 		// Check if match is actually complete (has all required data)
 		const hasRequiredData = match.src && match.params && match.left_uniforms && match.right_uniforms;
 		// Match is ready if status says so, OR if it has all data AND isn't awaiting frames
-		const isActuallyReady = status === 'ready' || (hasRequiredData && match.processing_step !== 'awaiting_frames');
+		const isActuallyReady =
+			status === 'ready' ||
+			status === 'warning' ||
+			(hasRequiredData && match.processing_step !== 'awaiting_frames');
+
+		// Show warning badge for calibration failure
+		if (status === 'warning') {
+			return (
+				<Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-600 dark:text-yellow-400">
+					<AlertTriangle className="h-3 w-3" />
+					Calibration Failed
+				</Badge>
+			);
+		}
 
 		// If it has all data and isn't waiting for frames, treat as ready
 		if (isActuallyReady) {

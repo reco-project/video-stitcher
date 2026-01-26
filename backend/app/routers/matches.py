@@ -1,12 +1,14 @@
 """FastAPI router for match API endpoints."""
 
 import os
+import shutil
 from typing import List, Dict
 from fastapi import APIRouter, HTTPException, Depends, status
 
 from app.repositories.match_store import MatchStore
 from app.models.match import MatchModel
 from app.utils.logger import get_logger
+from app.data_paths import VIDEOS_DIR, TEMP_DIR
 
 
 router = APIRouter(prefix="/matches")
@@ -155,35 +157,35 @@ def delete_match(match_id: str, store: MatchStore = Depends(get_store)):
     # Delete associated video files
     if match.src:
         video_path = match.src
-        # Remove 'videos/' prefix if present to get relative path from data directory
+        # Remove 'videos/' prefix if present to get relative path
         if video_path.startswith("videos/"):
             video_path = video_path[7:]  # Remove 'videos/' prefix
 
-        full_video_path = os.path.join("data", "videos", video_path)
+        full_video_path = VIDEOS_DIR / video_path
 
         # Delete main video file
-        if os.path.exists(full_video_path):
+        if full_video_path.exists():
             try:
-                os.remove(full_video_path)
+                full_video_path.unlink()
                 logger.info(f"Deleted video file: {full_video_path}")
             except Exception as e:
                 logger.warning(f"Failed to delete video file {full_video_path}: {e}")
 
         # Delete preview image if it exists
-        preview_path = full_video_path.rsplit(".", 1)[0] + "_preview.jpg"
-        if os.path.exists(preview_path):
+        preview_path = full_video_path.with_suffix('').with_suffix(full_video_path.suffix + "_preview.jpg")
+        # Actually, preview is like "video_preview.jpg" not "video.mp4_preview.jpg"
+        preview_path = VIDEOS_DIR / (video_path.rsplit(".", 1)[0] + "_preview.jpg")
+        if preview_path.exists():
             try:
-                os.remove(preview_path)
+                preview_path.unlink()
                 logger.info(f"Deleted preview file: {preview_path}")
             except Exception as e:
                 logger.warning(f"Failed to delete preview file {preview_path}: {e}")
 
     # Delete temp directory if it exists
-    temp_dir = os.path.join("temp", match_id)
-    if os.path.exists(temp_dir):
+    temp_dir = TEMP_DIR / match_id
+    if temp_dir.exists():
         try:
-            import shutil
-
             shutil.rmtree(temp_dir)
             logger.info(f"Deleted temp directory: {temp_dir}")
         except Exception as e:

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useViewerStore } from '../stores/store.js';
 import { Canvas } from '@react-three/fiber';
 import fisheyeShader from '../shaders/fisheye.js';
@@ -12,10 +12,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { updateMatch } from '@/features/matches/api/matches.js';
 import { CameraProvider, useCameraControls } from '../stores/cameraContext';
-import { Slider } from '@/components/ui/slider';
-import { Label } from '@/components/ui/label';
-import { ChevronDown } from 'lucide-react';
-import { getProcessingDuration, getTranscodeMetrics, getQualitySettings } from '@/lib/matchHelpers.js';
+import RecalibratePanel from './RecalibratePanel';
+import { DualColorCorrectionPanel } from './ColorCorrectionPanel.jsx';
+import DescriptionPanel from './DescriptionPanel.jsx';
+import VideoTitle from './VideoTitle.jsx';
 
 const ViewerErrorFallback = ({ error, resetErrorBoundary }) => {
 	return (
@@ -49,11 +49,15 @@ const CameraControlsWrapper = ({ yawRange, pitchRange, children }) => {
 
 const VideoPlane = ({ texture, isLeft }) => {
 	const selectedMatch = useViewerStore((s) => s.selectedMatch);
+	const leftColorCorrection = useViewerStore((s) => s.leftColorCorrection);
+	const rightColorCorrection = useViewerStore((s) => s.rightColorCorrection);
+	const blendWidth = useViewerStore((s) => s.blendWidth);
 
 	if (!selectedMatch) return null;
 
 	const params = selectedMatch.params || {};
 	const u = isLeft ? selectedMatch.left_uniforms : selectedMatch.right_uniforms;
+	const colorCorrection = isLeft ? leftColorCorrection : rightColorCorrection;
 
 	// Validate uniforms exist
 	if (!u || !u.width || !u.fx) {
@@ -70,10 +74,22 @@ const VideoPlane = ({ texture, isLeft }) => {
 		: [(planeWidth / 2) * (1 - (params.intersect || 0.5)), params.xTy || 0, 0];
 	const rotation = isLeft ? [params.zRx || 0, THREE.MathUtils.degToRad(90), 0] : [0, 0, params.xRz || 0];
 
+	// Generate key from params, color correction, and blend width to force re-render on changes
+	const meshKey = JSON.stringify({ params, colorCorrection, blendWidth });
+
+	// Left plane: fully opaque, renders first as base layer
+	// Right plane: transparent with alpha blend, renders on top
+	const isTransparent = !isLeft && blendWidth > 0;
+
 	return (
-		<mesh position={position} rotation={rotation}>
+		<mesh key={meshKey} position={position} rotation={rotation} renderOrder={isLeft ? 1 : 2}>
 			<planeGeometry args={[planeWidth, planeWidth / aspect]} />
-			<shaderMaterial uniforms={formatUniforms(u, texture)} {...fisheyeShader(isLeft)} />
+			<shaderMaterial
+				uniforms={formatUniforms(u, texture, colorCorrection, blendWidth)}
+				transparent={isTransparent}
+				depthWrite={!isTransparent}
+				{...fisheyeShader(isLeft)}
+			/>
 		</mesh>
 	);
 };
@@ -96,15 +112,47 @@ const VideoPanorama = () => {
 
 const Viewer = ({ selectedMatch }) => {
 	const setSelectedMatch = useViewerStore((s) => s.setSelectedMatch);
+	const videoRef = useViewerStore((s) => s.videoRef);
+	const leftColorCorrection = useViewerStore((s) => s.leftColorCorrection);
+	const rightColorCorrection = useViewerStore((s) => s.rightColorCorrection);
+	const setLeftColorCorrection = useViewerStore((s) => s.setLeftColorCorrection);
+	const setRightColorCorrection = useViewerStore((s) => s.setRightColorCorrection);
+	const resetColorCorrection = useViewerStore((s) => s.resetColorCorrection);
+	const loadColorCorrectionFromMatch = useViewerStore((s) => s.loadColorCorrectionFromMatch);
+
 	const [yawRange, setYawRange] = useState(140);
 	const [pitchRange, setPitchRange] = useState(20);
-	const [isExpanded, setIsExpanded] = useState(false);
 	const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
 	const saveTimeoutRef = React.useRef(null);
+	const colorSaveTimeoutRef = React.useRef(null);
+
+	// Handler for when recalibration completes
+	const handleRecalibrated = useCallback(
+		(result) => {
+			// Only update match data if calibration succeeded
+			// If calibration failed, keep existing params
+			if (result && result.params && !result.calibration_failed) {
+				setSelectedMatch({
+					...selectedMatch,
+					params: result.params,
+					num_matches: result.num_matches,
+					confidence: result.confidence,
+					status: 'ready',
+				});
+			}
+			// If calibration failed, RecalibratePanel will show the warning
+		},
+		[selectedMatch, setSelectedMatch]
+	);
 
 	useEffect(() => {
 		setSelectedMatch(selectedMatch);
 	}, [selectedMatch, setSelectedMatch]);
+
+	// Load color correction from match when it changes
+	useEffect(() => {
+		loadColorCorrectionFromMatch();
+	}, [selectedMatch?.id, loadColorCorrectionFromMatch]);
 
 	// Mark match as viewed when component mounts
 	useEffect(() => {
@@ -160,8 +208,8 @@ const Viewer = ({ selectedMatch }) => {
 
 	// Auto-save panning ranges with debouncing
 	useEffect(() => {
-		// Don't save on initial load or if no match selected
-		if (!selectedMatch?.id || initialLoadRef.current) return;
+		// Don't save on initial load, if no match selected, or if match doesn't exist on backend yet
+		if (!selectedMatch?.id || initialLoadRef.current || !selectedMatch?.params) return;
 
 		// Skip save if values are the same as stored (prevents save on load)
 		if (
@@ -209,6 +257,47 @@ const Viewer = ({ selectedMatch }) => {
 		};
 	}, [yawRange, pitchRange, selectedMatch]);
 
+	// Auto-save color correction with debouncing
+	useEffect(() => {
+		// Don't save on initial load, if no match selected, or if match doesn't exist on backend yet
+		if (!selectedMatch?.id || initialLoadRef.current || !selectedMatch?.params) return;
+
+		// Clear existing timeout
+		if (colorSaveTimeoutRef.current) {
+			clearTimeout(colorSaveTimeoutRef.current);
+		}
+
+		// Set new timeout for debounced save
+		colorSaveTimeoutRef.current = setTimeout(async () => {
+			try {
+				setSaveStatus('saving');
+				const updatedMatch = {
+					id: selectedMatch.id,
+					metadata: {
+						...selectedMatch.metadata,
+						colorCorrection: {
+							left: leftColorCorrection,
+							right: rightColorCorrection,
+						},
+					},
+				};
+				await updateMatch(selectedMatch.id, updatedMatch);
+				setSaveStatus('success');
+				setTimeout(() => setSaveStatus(null), 2000);
+			} catch (err) {
+				console.warn('Failed to auto-save color correction:', err);
+				setSaveStatus('error');
+				setTimeout(() => setSaveStatus(null), 3000);
+			}
+		}, 1000);
+
+		return () => {
+			if (colorSaveTimeoutRef.current) {
+				clearTimeout(colorSaveTimeoutRef.current);
+			}
+		};
+	}, [leftColorCorrection, rightColorCorrection, selectedMatch]);
+
 	// Show friendly message for unprocessed matches
 	if (!selectedMatch?.params || !selectedMatch?.left_uniforms || !selectedMatch?.right_uniforms) {
 		const missingItems = [];
@@ -241,13 +330,32 @@ const Viewer = ({ selectedMatch }) => {
 	const cameraAxisOffset = selectedMatch.params.cameraAxisOffset;
 
 	return (
-		<div className="w-full flex flex-col items-center gap-4 px-4 py-4">
+		<div className="w-full flex flex-col items-center gap-3 px-4 py-4">
+			{/* Warning Banner for failed calibration */}
+			{selectedMatch.status === 'warning' && (
+				<div className="w-full max-w-6xl">
+					<Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+						<AlertTitle className="text-yellow-700 dark:text-yellow-400">⚠️ Calibration Failed</AlertTitle>
+						<AlertDescription className="text-yellow-600 dark:text-yellow-300">
+							{selectedMatch.processing?.message ||
+								'Could not find enough features to calibrate cameras. Using default alignment.'}{' '}
+							Use the Recalibrate panel below to try again with a different frame (look for frames with
+							visible grass, textures, or distinct features).
+						</AlertDescription>
+					</Alert>
+				</div>
+			)}
+
+			{/* Video Title */}
+			<VideoTitle match={selectedMatch} />
+
 			{/* 3D Viewer - Takes full width of parent */}
 			<ErrorBoundary FallbackComponent={ViewerErrorFallback}>
 				<CameraProvider>
 					<CameraControlsWrapper yawRange={yawRange} pitchRange={pitchRange}>
 						<VideoPlayerContainer>
 							<Canvas
+								frameloop="always"
 								camera={{
 									position: [cameraAxisOffset, 0, cameraAxisOffset],
 									fov: defaultFOV,
@@ -263,208 +371,34 @@ const Viewer = ({ selectedMatch }) => {
 				</CameraProvider>
 			</ErrorBoundary>
 
-			{/* Minimizable Info Panel */}
-			<div className="w-full max-w-6xl bg-card border rounded-lg overflow-hidden">
-				{/* Header - Always Visible */}
-				<button
-					onClick={() => setIsExpanded(!isExpanded)}
-					className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
-				>
-					<div className="flex items-center gap-2">
-						<h3 className="font-semibold text-sm">{selectedMatch.name || selectedMatch.label}</h3>
-						<span className="text-xs text-green-600 font-medium">Ready</span>
-						{/* Save Status Indicator */}
-						{saveStatus === 'saving' && (
-							<span className="text-xs text-blue-600 font-medium animate-pulse">Saving...</span>
-						)}
-						{saveStatus === 'success' && (
-							<span className="text-xs text-green-600 font-medium">✓ Saved</span>
-						)}
-						{saveStatus === 'error' && (
-							<span className="text-xs text-red-600 font-medium">✗ Save failed</span>
-						)}
-					</div>
-					<ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-				</button>
+			{/* Description Panel - Collapsible */}
+			<div className="w-full max-w-6xl">
+				<DescriptionPanel
+					match={selectedMatch}
+					yawRange={yawRange}
+					pitchRange={pitchRange}
+					onYawChange={setYawRange}
+					onPitchChange={setPitchRange}
+					saveStatus={saveStatus}
+				/>
+			</div>
 
-				{/* Expandable Content */}
-				{isExpanded && (
-					<div className="border-t px-3 py-4 space-y-4 bg-muted/20">
-						{/* Match Info Grid */}
-						<div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-							<div>
-								<span className="text-muted-foreground">Match ID:</span>
-								<span className="ml-2 font-mono">{selectedMatch.id}</span>
-							</div>
-							<div>
-								<span className="text-muted-foreground">Created:</span>
-								<span className="ml-2">
-									{selectedMatch.created_at
-										? new Date(selectedMatch.created_at).toLocaleDateString()
-										: 'N/A'}
-								</span>
-							</div>
-							{selectedMatch.left_videos && selectedMatch.left_videos[0]?.profile_id && (
-								<div className="col-span-2">
-									<span className="text-muted-foreground">Left Profile:</span>
-									<span className="ml-2 font-mono text-[10px] break-all">
-										{selectedMatch.left_videos[0].profile_id}
-									</span>
-								</div>
-							)}
-							{selectedMatch.right_videos && selectedMatch.right_videos[0]?.profile_id && (
-								<div className="col-span-2">
-									<span className="text-muted-foreground">Right Profile:</span>
-									<span className="ml-2 font-mono text-[10px] break-all">
-										{selectedMatch.right_videos[0].profile_id}
-									</span>
-								</div>
-							)}
-							{!selectedMatch.left_videos?.[0]?.profile_id && selectedMatch.metadata?.left_profile_id && (
-								<div className="col-span-2">
-									<span className="text-muted-foreground">Left Profile:</span>
-									<span className="ml-2 font-mono text-[10px] break-all">
-										{selectedMatch.metadata.left_profile_id}
-									</span>
-								</div>
-							)}
-							{!selectedMatch.right_videos?.[0]?.profile_id &&
-								selectedMatch.metadata?.right_profile_id && (
-									<div className="col-span-2">
-										<span className="text-muted-foreground">Right Profile:</span>
-										<span className="ml-2 font-mono text-[10px] break-all">
-											{selectedMatch.metadata.right_profile_id}
-										</span>
-									</div>
-								)}
-							{(() => {
-								const metrics = getTranscodeMetrics(selectedMatch);
-								return (
-									metrics.offsetSeconds !== undefined &&
-									metrics.offsetSeconds !== null && (
-										<div>
-											<span className="text-muted-foreground">Audio Offset:</span>
-											<span className="ml-2">{metrics.offsetSeconds.toFixed(3)}s</span>
-										</div>
-									)
-								);
-							})()}
-							{selectedMatch.num_matches && (
-								<div>
-									<span className="text-muted-foreground">Feature Matches:</span>
-									<span className="ml-2">{selectedMatch.num_matches}</span>
-								</div>
-							)}
-							{(() => {
-								const duration = getProcessingDuration(selectedMatch);
-								return (
-									duration && (
-										<div>
-											<span className="text-muted-foreground">Processing Time:</span>
-											<span className="ml-2">{duration.toFixed(1)}s</span>
-										</div>
-									)
-								);
-							})()}
-							{(() => {
-								const metrics = getTranscodeMetrics(selectedMatch);
-								return (
-									metrics.fps && (
-										<div>
-											<span className="text-muted-foreground">Transcode FPS:</span>
-											<span className="ml-2">{metrics.fps.toFixed(1)} fps</span>
-										</div>
-									)
-								);
-							})()}
-						</div>
+			{/* Color Correction - Collapsible */}
+			<div className="w-full max-w-6xl">
+				<DualColorCorrectionPanel
+					leftValues={leftColorCorrection}
+					rightValues={rightColorCorrection}
+					onLeftChange={setLeftColorCorrection}
+					onRightChange={setRightColorCorrection}
+					onResetAll={resetColorCorrection}
+					matchId={selectedMatch?.id}
+					videoRef={videoRef}
+				/>
+			</div>
 
-						{/* Quality Settings */}
-						{(() => {
-							const qualitySettings = getQualitySettings(selectedMatch);
-							return (
-								qualitySettings && (
-									<div className="border-t pt-3">
-										<h4 className="text-xs font-semibold mb-2">Processing Quality</h4>
-										<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-											<div>
-												<span className="text-muted-foreground">Preset:</span>
-												<span className="ml-2 capitalize">{qualitySettings.preset}</span>
-											</div>
-											{qualitySettings.resolution && (
-												<div>
-													<span className="text-muted-foreground">Resolution:</span>
-													<span className="ml-2">{qualitySettings.resolution}</span>
-												</div>
-											)}
-											{qualitySettings.bitrate && (
-												<div>
-													<span className="text-muted-foreground">Bitrate:</span>
-													<span className="ml-2">{qualitySettings.bitrate}</span>
-												</div>
-											)}
-											{qualitySettings.speed_preset && (
-												<div>
-													<span className="text-muted-foreground">Speed:</span>
-													<span className="ml-2 capitalize">
-														{qualitySettings.speed_preset}
-													</span>
-												</div>
-											)}
-											{qualitySettings.use_gpu_decode !== undefined && (
-												<div>
-													<span className="text-muted-foreground">GPU Decode:</span>
-													<span className="ml-2">
-														{qualitySettings.use_gpu_decode ? 'Enabled' : 'Disabled'}
-													</span>
-												</div>
-											)}
-										</div>
-									</div>
-								)
-							);
-						})()}
-
-						{/* Divider */}
-						<div className="border-t pt-3">
-							<p className="text-xs text-muted-foreground mb-3">
-								Adjust your preferred viewing range. Changes are saved automatically.
-							</p>
-						</div>
-
-						{/* Horizontal Panning */}
-						<div>
-							<Label htmlFor="yaw-range" className="text-xs font-medium">
-								Horizontal Range: {yawRange}°
-							</Label>
-							<Slider
-								id="yaw-range"
-								min={30}
-								max={180}
-								step={5}
-								value={[yawRange]}
-								onValueChange={(value) => setYawRange(value[0])}
-								className="mt-2"
-							/>
-						</div>
-
-						{/* Vertical Panning */}
-						<div>
-							<Label htmlFor="pitch-range" className="text-xs font-medium">
-								Vertical Range: {pitchRange}°
-							</Label>
-							<Slider
-								id="pitch-range"
-								min={5}
-								max={60}
-								step={5}
-								value={[pitchRange]}
-								onValueChange={(value) => setPitchRange(value[0])}
-								className="mt-2"
-							/>
-						</div>
-					</div>
-				)}
+			{/* Recalibrate - Collapsible */}
+			<div className="w-full max-w-6xl">
+				<RecalibratePanel match={selectedMatch} videoRef={videoRef} onRecalibrated={handleRecalibrated} />
 			</div>
 		</div>
 	);

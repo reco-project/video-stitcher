@@ -15,6 +15,7 @@
 	"devDependencies": {
 		"@eslint/js": "^9.37.0",
 		"@vitejs/plugin-react": "^5.1.2",
+		"baseline-browser-mapping": "^2.9.18",
 		"eslint": "^9.37.0",
 		"eslint-plugin-import": "^2.32.0",
 		"eslint-plugin-react": "^7.37.5",
@@ -27,6 +28,7 @@
 		"@radix-ui/react-dialog": "^1.1.15",
 		"@radix-ui/react-dropdown-menu": "^2.1.16",
 		"@radix-ui/react-label": "^2.1.8",
+		"@radix-ui/react-popover": "^1.1.15",
 		"@radix-ui/react-progress": "^1.1.8",
 		"@radix-ui/react-select": "^2.2.6",
 		"@radix-ui/react-separator": "^1.1.8",
@@ -42,6 +44,7 @@
 		"axios": "^1.13.1",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
+		"cmdk": "^1.1.1",
 		"lucide-react": "^0.548.0",
 		"react": "^19.2.3",
 		"react-dom": "^19.2.3",

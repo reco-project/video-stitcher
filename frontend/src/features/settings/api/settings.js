@@ -11,6 +11,16 @@ const API_BASE_URL = env.API_BASE_URL;
  * @returns {Promise<Object>} Encoder info with available encoders and current selection
  */
 export async function getEncoderSettings() {
+	// Use Electron API if available (desktop app)
+	if (window.electronAPI?.getEncoderInfo) {
+		const result = await window.electronAPI.getEncoderInfo();
+		if (result.ok) {
+			return result;
+		}
+		throw new Error(result.error || 'Failed to get encoder settings');
+	}
+
+	// Fallback to HTTP API (web version)
 	const response = await fetch(`${API_BASE_URL}/settings/encoders`);
 	if (!response.ok) {
 		throw new Error(`Failed to get encoder settings: ${response.statusText}`);
@@ -24,6 +34,13 @@ export async function getEncoderSettings() {
  * @returns {Promise<Object>} Update confirmation
  */
 export async function updateEncoderSettings(encoder) {
+	// Use Electron API if available (desktop app)
+	if (window.electronAPI?.updateSetting) {
+		await window.electronAPI.updateSetting('encoderPreference', encoder);
+		return { ok: true, encoder };
+	}
+
+	// Fallback to HTTP API (web version)
 	const response = await fetch(`${API_BASE_URL}/settings/encoders`, {
 		method: 'PUT',
 		headers: {

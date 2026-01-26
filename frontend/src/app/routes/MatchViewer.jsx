@@ -34,7 +34,7 @@ export default function MatchViewer() {
 		<div className="w-full h-full flex flex-col items-center justify-start px-6 py-6">
 			<div className="w-full max-w-6xl">
 				<div className="mt-6 w-full flex justify-center">
-					<section className="w-full max-w-6xl aspect-video flex flex-col gap-4">
+					<section className="w-full max-w-6xl aspect-video flex flex-col">
 						<Button variant="ghost" onClick={() => navigate('/')} className="self-start">
 							<ChevronLeft className="h-4 w-4 mr-2" />
 							Back to Matches

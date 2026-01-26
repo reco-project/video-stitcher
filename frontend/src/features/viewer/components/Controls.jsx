@@ -6,7 +6,6 @@ import { useCameraControls } from '../stores/cameraContext';
 const Controls = () => {
 	const { camera, gl } = useThree();
 	const { yawRange, pitchRange } = useCameraControls();
-	const canvas = gl.domElement;
 	const dragging = useRef(false);
 	const lastX = useRef(0);
 	const lastY = useRef(0);
@@ -32,14 +31,19 @@ const Controls = () => {
 	const maxYaw = yawRangeRad / 2 + THREE.MathUtils.degToRad(45);
 
 	useEffect(() => {
+		const canvas = gl?.domElement;
+		if (!canvas) return;
+
 		const onPointerDown = (e) => {
 			dragging.current = true;
 			lastX.current = e.clientX;
 			lastY.current = e.clientY;
+			canvas.style.cursor = 'grabbing';
 		};
 
 		const onPointerUp = () => {
 			dragging.current = false;
+			canvas.style.cursor = 'grab';
 		};
 
 		const onPointerMove = (e) => {
@@ -72,6 +76,9 @@ const Controls = () => {
 			camera.updateProjectionMatrix();
 		};
 
+		// Set initial cursor style
+		canvas.style.cursor = 'grab';
+
 		// attached to window to capture events outside the canvas
 		canvas.addEventListener('wheel', onWheel, { passive: false });
 		canvas.addEventListener('pointerdown', onPointerDown);
@@ -80,12 +87,15 @@ const Controls = () => {
 		canvas.addEventListener('pointerleave', onPointerUp);
 
 		return () => {
+			if (!canvas) return;
+			canvas.style.cursor = '';
 			canvas.removeEventListener('wheel', onWheel);
 			canvas.removeEventListener('pointerdown', onPointerDown);
 			canvas.removeEventListener('pointerup', onPointerUp);
 			canvas.removeEventListener('pointermove', onPointerMove);
+			canvas.removeEventListener('pointerleave', onPointerUp);
 		};
-	}, [camera, yawRange, pitchRange]);
+	}, [camera, gl, yawRange, pitchRange]);
 };
 
 export default Controls;

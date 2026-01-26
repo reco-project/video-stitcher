@@ -3,6 +3,7 @@
  */
 
 import { api } from '@/lib/api';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 
 /**
  * Shared helper to extract nested fields from backend response
@@ -95,7 +96,9 @@ export async function getMatch(matchId) {
  * Create a new match
  */
 export async function createMatch(matchData) {
-	return api.post('/matches', matchData);
+	const created = await api.post('/matches', matchData);
+	trackTelemetryEvent('match_created');
+	return created;
 }
 
 /**
@@ -117,16 +120,19 @@ export async function deleteMatch(matchId) {
  * This is the first step of processing - it prepares videos for frame extraction and calibration
  */
 export async function processMatch(matchId) {
-	return api.post(`/matches/${matchId}/transcode`);
+	const res = await api.post(`/matches/${matchId}/transcode`);
+	trackTelemetryEvent('processing_start');
+	return res;
 }
 
 /**
  * Process match with pre-warped frames from frontend
  */
-export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameBlob) {
+export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameBlob, debugMode = false) {
 	const formData = new FormData();
 	formData.append('left_frame', leftFrameBlob, 'left_frame.png');
 	formData.append('right_frame', rightFrameBlob, 'right_frame.png');
+	formData.append('debug_mode', debugMode.toString());
 
 	const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
 	const response = await fetch(`${apiBaseUrl}/matches/${matchId}/process-with-frames`, {
@@ -159,7 +165,9 @@ export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameB
  * Cancel ongoing processing for a match
  */
 export async function cancelProcessing(matchId) {
-	return api.post(`/matches/${matchId}/cancel`);
+	const res = await api.post(`/matches/${matchId}/cancel`);
+	trackTelemetryEvent('processing_cancel');
+	return res;
 }
 
 /**
@@ -168,4 +176,25 @@ export async function cancelProcessing(matchId) {
 export async function getMatchStatus(matchId) {
 	const raw = await api.get(`/matches/${matchId}/status`);
 	return normalizeMatch(raw);
+}
+
+/**
+ * Auto-compute color correction from the transcoded video at a specific timestamp
+ */
+export async function autoColorCorrection(matchId, timeSeconds = 0) {
+	const formData = new FormData();
+	formData.append('time_seconds', timeSeconds.toString());
+
+	const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+	const response = await fetch(`${apiBaseUrl}/matches/${matchId}/auto-color-correction`, {
+		method: 'POST',
+		body: formData,
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: 'Failed to compute color correction' }));
+		throw new Error(error.detail || 'Failed to compute color correction');
+	}
+
+	return response.json();
 }

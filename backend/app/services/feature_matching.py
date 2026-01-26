@@ -199,3 +199,166 @@ def _normalize_to_plane_coords(pts: np.ndarray, img_w: int, img_h: int, plane_w:
     y_plane = (y_norm - 0.5) * plane_h
 
     return np.stack([x_plane, y_plane], axis=1)
+
+
+def _grass_mask(bgr: np.ndarray) -> np.ndarray:
+    """
+    Create a mask for grass/green areas in the image.
+    Uses HSV color space to identify green-ish pixels, avoiding very dark/bright areas.
+    """
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    H, S, V = cv2.split(hsv)
+    # Green-ish pixels (broad range) + avoid very dark/very bright
+    mask = (H >= 30) & (H <= 95) & (S >= 35) & (V >= 25) & (V <= 245)
+    mask = mask.astype(np.uint8) * 255
+    # Morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    return mask
+
+
+def _sky_mask(bgr: np.ndarray) -> np.ndarray:
+    """
+    Create a mask for sky/blue areas in the image.
+    Uses HSV color space to identify blue-ish pixels (sky), avoiding very dark areas.
+    """
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    H, S, V = cv2.split(hsv)
+    # Blue sky pixels: hue around 100-130 (blue range), moderate saturation, bright
+    mask = (H >= 95) & (H <= 135) & (S >= 20) & (S <= 180) & (V >= 100) & (V <= 255)
+    mask = mask.astype(np.uint8) * 255
+    # Morphological cleanup
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    return mask
+
+
+def _combined_mask(bgr: np.ndarray) -> np.ndarray:
+    """
+    Create a combined mask for color-rich areas (grass + sky).
+    Falls back to excluding very dark/bright pixels if not enough grass/sky found.
+    """
+    grass = _grass_mask(bgr)
+    sky = _sky_mask(bgr)
+    combined = cv2.bitwise_or(grass, sky)
+
+    # If combined mask is too small, use all pixels except very dark/bright
+    if combined.sum() < 3000 * 255:
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        V = hsv[:, :, 2]
+        # Exclude very dark and very bright pixels
+        combined = ((V >= 20) & (V <= 240)).astype(np.uint8) * 255
+
+    return combined
+
+
+def _lab_mean_std(bgr: np.ndarray, mask: np.ndarray) -> tuple:
+    """
+    Compute mean and std of LAB color space for masked region.
+    Falls back to full image if mask is too small.
+
+    Uses OpenCV LAB range: L: 0-255, a: 0-255, b: 0-255 (128 is neutral for a/b)
+    This matches the user's working Python script exactly.
+    """
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    m = mask.astype(bool)
+    if m.sum() < 3000:  # Fallback if mask is too small
+        m = np.ones(mask.shape, dtype=bool)
+    pixels = lab[m]
+    mean = pixels.mean(axis=0)
+    std = pixels.std(axis=0) + 1e-6  # Avoid division by zero
+    return mean, std
+
+
+def compute_color_correction(img_left: np.ndarray, img_right: np.ndarray) -> Dict[str, Dict[str, Any]]:
+    """
+    Compute color correction parameters using Reinhard color transfer in LAB space.
+
+    This method analyzes the overlapping regions between cameras and computes
+    LAB color space statistics to enable Reinhard-style color transfer.
+    The right image will be transformed to match the left image's colors.
+
+    Args:
+        img_left: Left camera image (BGR format)
+        img_right: Right camera image (BGR format)
+
+    Returns:
+        Dictionary with 'left' and 'right' color correction params including
+        LAB mean/std for Reinhard transfer
+    """
+    if img_left is None or img_right is None:
+        return _default_color_correction()
+
+    try:
+        h, w = img_left.shape[:2]
+
+        # Extract overlapping regions (right 30% of left, left 30% of right)
+        overlap_pct = 0.30
+        overlap_left = img_left[:, int(w * (1 - overlap_pct)) :, :]
+        overlap_right = img_right[:, : int(w * overlap_pct), :]
+
+        # Ensure same size
+        min_w = min(overlap_left.shape[1], overlap_right.shape[1])
+        overlap_left = overlap_left[:, :min_w, :]
+        overlap_right = overlap_right[:, :min_w, :]
+
+        # Create combined masks (grass + sky) for balanced color sampling
+        mask_left = _combined_mask(overlap_left)
+        mask_right = _combined_mask(overlap_right)
+
+        # Compute LAB statistics from overlap regions
+        # Target: left image colors (right will match left)
+        tgt_mean, tgt_std = _lab_mean_std(overlap_left, mask_left)
+        src_mean, src_std = _lab_mean_std(overlap_right, mask_right)
+
+        # Reinhard transfer parameters for right image:
+        # transformed = (pixel - src_mean) / src_std * tgt_std + tgt_mean
+        # This can be rewritten as: transformed = pixel * scale + offset
+        # where scale = tgt_std / src_std and offset = tgt_mean - src_mean * scale
+        scale = tgt_std / src_std
+        offset = tgt_mean - src_mean * scale
+
+        return {
+            'left': {
+                # Left stays unchanged (neutral)
+                'brightness': 0.0,
+                'contrast': 1.0,
+                'saturation': 1.0,
+                'colorBalance': [1.0, 1.0, 1.0],
+                'temperature': 0.0,
+                # LAB Reinhard params (identity transform)
+                'labScale': [1.0, 1.0, 1.0],
+                'labOffset': [0.0, 0.0, 0.0],
+            },
+            'right': {
+                # Keep legacy params for backward compatibility
+                'brightness': 0.0,
+                'contrast': 1.0,
+                'saturation': 1.0,
+                'colorBalance': [1.0, 1.0, 1.0],
+                'temperature': 0.0,
+                # LAB Reinhard params for color transfer
+                'labScale': [round(float(s), 6) for s in scale],
+                'labOffset': [round(float(o), 6) for o in offset],
+            },
+        }
+
+    except Exception as e:
+        print(f"Color correction computation failed: {e}")
+        return _default_color_correction()
+
+
+def _default_color_correction() -> Dict[str, Dict[str, Any]]:
+    """Return default (neutral) color correction params."""
+    default = {
+        'brightness': 0,
+        'contrast': 1,
+        'saturation': 1,
+        'colorBalance': [1, 1, 1],
+        'temperature': 0,
+        'labScale': [1.0, 1.0, 1.0],
+        'labOffset': [0.0, 0.0, 0.0],
+    }
+    return {'left': default.copy(), 'right': default.copy()}

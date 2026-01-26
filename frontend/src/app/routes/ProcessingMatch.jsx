@@ -7,7 +7,7 @@ import FrameExtractor from '@/features/viewer/components/FrameExtractor';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { getApiBaseUrl } from '@/hooks/useSettings';
+import { useSettings } from '@/hooks/useSettings';
 
 /**
  * ProcessingMatch page - shows processing status for a match
@@ -17,6 +17,7 @@ export default function ProcessingMatch() {
 	const { id: matchId } = useParams();
 	const navigate = useNavigate();
 	const { showToast } = useToast();
+	const { settings } = useSettings();
 
 	const [matchData, setMatchData] = React.useState(null);
 	const [loading, setLoading] = React.useState(true);
@@ -100,7 +101,7 @@ export default function ProcessingMatch() {
 				}
 
 				if (match && match.src) {
-					const apiBaseUrl = getApiBaseUrl();
+					const apiBaseUrl = settings.apiBaseUrl;
 					const baseUrl = apiBaseUrl.replace('/api', '');
 					const videoUrl = `${baseUrl}/${match.src}`;
 
@@ -125,13 +126,35 @@ export default function ProcessingMatch() {
 			setExtractingMatch(null);
 
 			showToast({ message: 'Uploading extracted frames...', type: 'info' });
-			await processMatchWithFrames(mId, leftBlob, rightBlob);
+			const result = await processMatchWithFrames(mId, leftBlob, rightBlob, settings.debugMode || false);
 
-			showToast({ message: 'Calibration started', type: 'info' });
+			// Check if calibration failed
+			if (result.calibration_failed) {
+				showToast({
+					message: `Calibration failed: ${result.calibration_error || 'Not enough features found'}. Using default alignment - try a different frame with more visible features.`,
+					type: 'warning',
+					duration: 8000,
+				});
+			} else if (result.debug && result.debug.timing) {
+				// Show debug timing if available
+				console.log('[DEBUG] Processing timing:', result.debug.timing_breakdown);
+				if (settings.debugMode) {
+					const timingInfo = Object.entries(result.debug.timing_breakdown)
+						.filter(([, v]) => v !== null)
+						.map(([k, v]) => `${k}: ${v}`)
+						.join(', ');
+					showToast({ message: `Calibration complete (${timingInfo})`, type: 'success' });
+				} else {
+					showToast({ message: 'Calibration complete', type: 'success' });
+				}
+			} else {
+				showToast({ message: 'Calibration complete', type: 'success' });
+			}
+
 			processing.startPolling();
 		} catch (err) {
 			console.error('Failed to send frames:', err);
-			showToast({ message: 'Failed to upload frames', type: 'error' });
+			showToast({ message: `Failed to process frames: ${err.message}`, type: 'error' });
 			setError(err.message || 'Failed to upload frames');
 		}
 	};
@@ -271,7 +294,7 @@ export default function ProcessingMatch() {
 			{extractingMatch && (
 				<FrameExtractor
 					videoSrc={extractingMatch.videoUrl}
-					frameTime={100 / 30}
+					frameTimePercent={0.1}
 					leftUniforms={extractingMatch.leftUniforms}
 					rightUniforms={extractingMatch.rightUniforms}
 					onComplete={handleFrameExtractionComplete}
