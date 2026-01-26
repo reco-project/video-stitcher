@@ -718,3 +718,84 @@ async def process_match_with_frames(
         match_data.update_processing(status="error", step=None, error_message="Failed to process frames")
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
         raise HTTPException(status_code=500, detail="Internal processing error")
+
+
+@router.post("/{match_id}/auto-color-correction")
+async def auto_color_correction(
+    match_id: str,
+    time_seconds: float = Form(0.0),
+    match_store: MatchStore = Depends(get_store),
+):
+    """
+    Automatically compute color correction from the transcoded video at a specific timestamp.
+
+    Extracts a frame from the stacked video, splits it into left/right, and computes
+    color correction parameters to match colors between cameras.
+
+    Args:
+        match_id: Match identifier
+        time_seconds: Timestamp in seconds to extract frame from (default: 0)
+        match_store: Match store dependency
+
+    Returns:
+        Computed color correction parameters for both cameras
+    """
+    from app.services.feature_matching import compute_color_correction
+
+    # Get match
+    match_data = match_store.get_by_id(match_id)
+    if not match_data:
+        raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
+
+    # Check if video exists
+    if not match_data.src:
+        raise HTTPException(status_code=400, detail="Match has no transcoded video")
+
+    video_path = VIDEOS_DIR / match_data.src.replace("videos/", "")
+    if not video_path.exists():
+        raise HTTPException(status_code=400, detail=f"Video file not found: {video_path}")
+
+    try:
+        # Open video and seek to timestamp
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            raise HTTPException(status_code=500, detail="Failed to open video file")
+
+        # Seek to requested time
+        cap.set(cv2.CAP_PROP_POS_MSEC, time_seconds * 1000)
+
+        ret, frame = cap.read()
+        cap.release()
+
+        if not ret or frame is None:
+            raise HTTPException(status_code=400, detail="Failed to read frame from video")
+
+        # Split stacked frame into left (top) and right (bottom)
+        h, w = frame.shape[:2]
+        half_h = h // 2
+        img_left = frame[:half_h, :, :]
+        img_right = frame[half_h:, :, :]
+
+        logger.info(f"Extracted frame at {time_seconds}s: {w}x{h} -> split to {w}x{half_h} each")
+
+        # Compute color correction
+        color_correction = compute_color_correction(img_left, img_right)
+
+        # Save to match metadata
+        if match_data.metadata is None:
+            match_data.metadata = {}
+        match_data.metadata["colorCorrection"] = color_correction
+        match_store.update(match_id, match_data.model_dump(exclude_none=False))
+
+        logger.info(f"Auto color correction computed for match {match_id}")
+
+        return {
+            "success": True,
+            "colorCorrection": color_correction,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error computing auto color correction for match {match_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to compute color correction: {str(e)}")

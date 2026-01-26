@@ -177,3 +177,24 @@ export async function getMatchStatus(matchId) {
 	const raw = await api.get(`/matches/${matchId}/status`);
 	return normalizeMatch(raw);
 }
+
+/**
+ * Auto-compute color correction from the transcoded video at a specific timestamp
+ */
+export async function autoColorCorrection(matchId, timeSeconds = 0) {
+	const formData = new FormData();
+	formData.append('time_seconds', timeSeconds.toString());
+
+	const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+	const response = await fetch(`${apiBaseUrl}/matches/${matchId}/auto-color-correction`, {
+		method: 'POST',
+		body: formData,
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: 'Failed to compute color correction' }));
+		throw new Error(error.detail || 'Failed to compute color correction');
+	}
+
+	return response.json();
+}

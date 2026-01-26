@@ -199,3 +199,138 @@ def _normalize_to_plane_coords(pts: np.ndarray, img_w: int, img_h: int, plane_w:
     y_plane = (y_norm - 0.5) * plane_h
 
     return np.stack([x_plane, y_plane], axis=1)
+
+
+def compute_color_correction(img_left: np.ndarray, img_right: np.ndarray) -> Dict[str, Dict[str, Any]]:
+    """
+    Compute color correction parameters to match colors between two cameras.
+
+    Uses histogram analysis in HSV space to better match colors like grass.
+    Focuses on the overlapping regions and computes per-channel corrections.
+
+    Args:
+        img_left: Left camera image (BGR format)
+        img_right: Right camera image (BGR format)
+
+    Returns:
+        Dictionary with 'left' and 'right' color correction params
+    """
+    if img_left is None or img_right is None:
+        return _default_color_correction()
+
+    try:
+        h, w = img_left.shape[:2]
+
+        # Extract overlapping regions (right 30% of left, left 30% of right)
+        # Smaller overlap for more accurate matching
+        overlap_left = img_left[:, int(w * 0.7) :, :]
+        overlap_right = img_right[:, : int(w * 0.3), :]
+
+        # Ensure same size
+        min_w = min(overlap_left.shape[1], overlap_right.shape[1])
+        overlap_left = overlap_left[:, :min_w, :]
+        overlap_right = overlap_right[:, :min_w, :]
+
+        # Convert to HSV for better color analysis
+        hsv_left = cv2.cvtColor(overlap_left, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv_right = cv2.cvtColor(overlap_right, cv2.COLOR_BGR2HSV).astype(np.float32)
+
+        # Also work in RGB for color balance
+        rgb_left = cv2.cvtColor(overlap_left, cv2.COLOR_BGR2RGB).astype(np.float32)
+        rgb_right = cv2.cvtColor(overlap_right, cv2.COLOR_BGR2RGB).astype(np.float32)
+
+        # Compute per-channel statistics using percentiles (more robust than mean)
+        def channel_stats(img):
+            """Get median and IQR for each channel."""
+            medians = np.median(img, axis=(0, 1))
+            p25 = np.percentile(img, 25, axis=(0, 1))
+            p75 = np.percentile(img, 75, axis=(0, 1))
+            return medians, p75 - p25  # median, interquartile range
+
+        # HSV statistics
+        hsv_med_left, hsv_iqr_left = channel_stats(hsv_left)
+        hsv_med_right, hsv_iqr_right = channel_stats(hsv_right)
+
+        # RGB statistics for color balance
+        rgb_med_left, _ = channel_stats(rgb_left)
+        rgb_med_right, _ = channel_stats(rgb_right)
+
+        # Target: midpoint between both cameras
+        hsv_med_target = (hsv_med_left + hsv_med_right) / 2
+        rgb_med_target = (rgb_med_left + rgb_med_right) / 2
+
+        # Brightness correction from V channel (0-255 range)
+        # Normalize to our -0.5 to 0.5 range
+        v_diff_left = (hsv_med_target[2] - hsv_med_left[2]) / 255.0
+        v_diff_right = (hsv_med_target[2] - hsv_med_right[2]) / 255.0
+        brightness_left = float(np.clip(v_diff_left, -0.3, 0.3))
+        brightness_right = float(np.clip(v_diff_right, -0.3, 0.3))
+
+        # Saturation from S channel (0-255 range)
+        # Convert to multiplier (1.0 = no change)
+        s_left = max(hsv_med_left[1], 1.0)
+        s_right = max(hsv_med_right[1], 1.0)
+        s_target = max(hsv_med_target[1], 1.0)
+        saturation_left = float(np.clip(s_target / s_left, 0.7, 1.4))
+        saturation_right = float(np.clip(s_target / s_right, 0.7, 1.4))
+
+        # Contrast from V channel spread (IQR)
+        v_iqr_left = max(hsv_iqr_left[2], 1.0)
+        v_iqr_right = max(hsv_iqr_right[2], 1.0)
+        v_iqr_target = (v_iqr_left + v_iqr_right) / 2
+        contrast_left = float(np.clip(v_iqr_target / v_iqr_left, 0.8, 1.2))
+        contrast_right = float(np.clip(v_iqr_target / v_iqr_right, 0.8, 1.2))
+
+        # Color balance from RGB channels
+        # Compute ratio to reach target, then normalize so green stays at 1.0
+        rgb_med_left = np.maximum(rgb_med_left, 1.0)
+        rgb_med_right = np.maximum(rgb_med_right, 1.0)
+
+        cb_left = rgb_med_target / rgb_med_left
+        cb_right = rgb_med_target / rgb_med_right
+
+        # Normalize around green channel (index 1) to preserve overall brightness
+        cb_left = cb_left / cb_left[1]
+        cb_right = cb_right / cb_right[1]
+
+        # Clamp to reasonable range
+        cb_left = np.clip(cb_left, 0.85, 1.15).tolist()
+        cb_right = np.clip(cb_right, 0.85, 1.15).tolist()
+
+        # Temperature: derived from blue/red balance
+        # Positive = warmer (more red), negative = cooler (more blue)
+        temp_left = float(np.clip((cb_left[0] - cb_left[2]) * 0.5, -0.2, 0.2))
+        temp_right = float(np.clip((cb_right[0] - cb_right[2]) * 0.5, -0.2, 0.2))
+
+        return {
+            'left': {
+                'brightness': round(brightness_left, 4),
+                'contrast': round(contrast_left, 4),
+                'saturation': round(saturation_left, 4),
+                'colorBalance': [round(c, 4) for c in cb_left],
+                'temperature': round(temp_left, 4),
+            },
+            'right': {
+                'brightness': round(brightness_right, 4),
+                'contrast': round(contrast_right, 4),
+                'saturation': round(saturation_right, 4),
+                'colorBalance': [round(c, 4) for c in cb_right],
+                'temperature': round(temp_right, 4),
+            },
+        }
+
+    except Exception as e:
+        print(f"Color correction computation failed: {e}")
+        return _default_color_correction()
+
+
+def _default_color_correction() -> Dict[str, Dict[str, Any]]:
+    """Return default (neutral) color correction params."""
+    default = {
+        'brightness': 0,
+        'contrast': 1,
+        'saturation': 1,
+        'colorBalance': [1, 1, 1],
+        'temperature': 0,
+    }
+    return {'left': default.copy(), 'right': default.copy()}

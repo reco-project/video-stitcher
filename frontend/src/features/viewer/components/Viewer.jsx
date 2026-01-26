@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { ChevronDown } from 'lucide-react';
 import { getProcessingDuration, getTranscodeMetrics, getQualitySettings } from '@/lib/matchHelpers.js';
 import RecalibratePanel from './RecalibratePanel';
+import { DualColorCorrectionPanel } from './ColorCorrectionPanel.jsx';
 
 const ViewerErrorFallback = ({ error, resetErrorBoundary }) => {
 	return (
@@ -50,11 +51,14 @@ const CameraControlsWrapper = ({ yawRange, pitchRange, children }) => {
 
 const VideoPlane = ({ texture, isLeft }) => {
 	const selectedMatch = useViewerStore((s) => s.selectedMatch);
+	const leftColorCorrection = useViewerStore((s) => s.leftColorCorrection);
+	const rightColorCorrection = useViewerStore((s) => s.rightColorCorrection);
 
 	if (!selectedMatch) return null;
 
 	const params = selectedMatch.params || {};
 	const u = isLeft ? selectedMatch.left_uniforms : selectedMatch.right_uniforms;
+	const colorCorrection = isLeft ? leftColorCorrection : rightColorCorrection;
 
 	// Validate uniforms exist
 	if (!u || !u.width || !u.fx) {
@@ -71,10 +75,17 @@ const VideoPlane = ({ texture, isLeft }) => {
 		: [(planeWidth / 2) * (1 - (params.intersect || 0.5)), params.xTy || 0, 0];
 	const rotation = isLeft ? [params.zRx || 0, THREE.MathUtils.degToRad(90), 0] : [0, 0, params.xRz || 0];
 
+	// Generate key from color correction to force shader material update
+	const ccKey = JSON.stringify(colorCorrection);
+
 	return (
 		<mesh position={position} rotation={rotation}>
 			<planeGeometry args={[planeWidth, planeWidth / aspect]} />
-			<shaderMaterial uniforms={formatUniforms(u, texture)} {...fisheyeShader(isLeft)} />
+			<shaderMaterial 
+				key={ccKey}
+				uniforms={formatUniforms(u, texture, colorCorrection)} 
+				{...fisheyeShader(isLeft)} 
+			/>
 		</mesh>
 	);
 };
@@ -98,11 +109,19 @@ const VideoPanorama = () => {
 const Viewer = ({ selectedMatch }) => {
 	const setSelectedMatch = useViewerStore((s) => s.setSelectedMatch);
 	const videoRef = useViewerStore((s) => s.videoRef);
+	const leftColorCorrection = useViewerStore((s) => s.leftColorCorrection);
+	const rightColorCorrection = useViewerStore((s) => s.rightColorCorrection);
+	const setLeftColorCorrection = useViewerStore((s) => s.setLeftColorCorrection);
+	const setRightColorCorrection = useViewerStore((s) => s.setRightColorCorrection);
+	const resetColorCorrection = useViewerStore((s) => s.resetColorCorrection);
+	const loadColorCorrectionFromMatch = useViewerStore((s) => s.loadColorCorrectionFromMatch);
+
 	const [yawRange, setYawRange] = useState(140);
 	const [pitchRange, setPitchRange] = useState(20);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
 	const saveTimeoutRef = React.useRef(null);
+	const colorSaveTimeoutRef = React.useRef(null);
 
 	// Handler for when recalibration completes
 	const handleRecalibrated = useCallback((result) => {
@@ -119,6 +138,11 @@ const Viewer = ({ selectedMatch }) => {
 	useEffect(() => {
 		setSelectedMatch(selectedMatch);
 	}, [selectedMatch, setSelectedMatch]);
+
+	// Load color correction from match when it changes
+	useEffect(() => {
+		loadColorCorrectionFromMatch();
+	}, [selectedMatch?.id, loadColorCorrectionFromMatch]);
 
 	// Mark match as viewed when component mounts
 	useEffect(() => {
@@ -174,8 +198,8 @@ const Viewer = ({ selectedMatch }) => {
 
 	// Auto-save panning ranges with debouncing
 	useEffect(() => {
-		// Don't save on initial load or if no match selected
-		if (!selectedMatch?.id || initialLoadRef.current) return;
+		// Don't save on initial load, if no match selected, or if match doesn't exist on backend yet
+		if (!selectedMatch?.id || initialLoadRef.current || !selectedMatch?.params) return;
 
 		// Skip save if values are the same as stored (prevents save on load)
 		if (
@@ -222,6 +246,47 @@ const Viewer = ({ selectedMatch }) => {
 			}
 		};
 	}, [yawRange, pitchRange, selectedMatch]);
+
+	// Auto-save color correction with debouncing
+	useEffect(() => {
+		// Don't save on initial load, if no match selected, or if match doesn't exist on backend yet
+		if (!selectedMatch?.id || initialLoadRef.current || !selectedMatch?.params) return;
+
+		// Clear existing timeout
+		if (colorSaveTimeoutRef.current) {
+			clearTimeout(colorSaveTimeoutRef.current);
+		}
+
+		// Set new timeout for debounced save
+		colorSaveTimeoutRef.current = setTimeout(async () => {
+			try {
+				setSaveStatus('saving');
+				const updatedMatch = {
+					id: selectedMatch.id,
+					metadata: {
+						...selectedMatch.metadata,
+						colorCorrection: {
+							left: leftColorCorrection,
+							right: rightColorCorrection,
+						},
+					},
+				};
+				await updateMatch(selectedMatch.id, updatedMatch);
+				setSaveStatus('success');
+				setTimeout(() => setSaveStatus(null), 2000);
+			} catch (err) {
+				console.warn('Failed to auto-save color correction:', err);
+				setSaveStatus('error');
+				setTimeout(() => setSaveStatus(null), 3000);
+			}
+		}, 1000);
+
+		return () => {
+			if (colorSaveTimeoutRef.current) {
+				clearTimeout(colorSaveTimeoutRef.current);
+			}
+		};
+	}, [leftColorCorrection, rightColorCorrection, selectedMatch]);
 
 	// Show friendly message for unprocessed matches
 	if (!selectedMatch?.params || !selectedMatch?.left_uniforms || !selectedMatch?.right_uniforms) {
@@ -477,6 +542,17 @@ const Viewer = ({ selectedMatch }) => {
 								className="mt-2"
 							/>
 						</div>
+
+						{/* Color Correction Panel */}
+						<DualColorCorrectionPanel
+							leftValues={leftColorCorrection}
+							rightValues={rightColorCorrection}
+							onLeftChange={setLeftColorCorrection}
+							onRightChange={setRightColorCorrection}
+							onResetAll={resetColorCorrection}
+							matchId={selectedMatch?.id}
+							currentTime={videoRef?.current?.currentTime || 0}
+						/>
 
 						{/* Recalibrate Panel */}
 						<RecalibratePanel
