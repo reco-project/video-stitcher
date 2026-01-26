@@ -1,66 +1,30 @@
 # video-stitcher
 
-### An open-source, GPU-accelerated alternative to [Veo](https://www.veo.co/) for affordable sports filming
+An open-source, GPU-accelerated alternative to [Veo](https://www.veo.co/) for affordable sports filming.
 
 **Status:** Imminent beta release  
-**License:** AGPL-3.0  
-**Progress:** see [timeline](#development-progress) below
+**License:** AGPL-3.0
 
 ---
 
 ## Overview
 
-**video-stitcher** is an experimental open-source project aimed at making sports filming affordable and accessible to everyone — especially small clubs.  
-It can **live-stitch two camera feeds directly in the browser** (after calibration), producing a seamless panoramic view similar to Veo or Veo Go — but without subscriptions or proprietary hardware.
+**video-stitcher** stitches two camera feeds into a seamless panoramic view — similar to Veo, but open-source and without subscriptions.
 
-The project has been tested using two GoPros and is designed to support a wide range of cameras, including mobile devices.
+Tested with GoPros and designed to support various cameras, including mobile devices.
+
+**Tech stack:**
+- **Frontend:** React + Three.js (GPU-accelerated WebGL stitching)
+- **Backend:** Python FastAPI (OpenCV + FFmpeg)
+- **Platforms:** Windows, macOS, Linux
+
+**Features:**
+- Real-time stitching with GPU acceleration
+- Automatic camera calibration
+- Works with any camera setup
+- Recording and playback controls
 
 More context: [Reddit post](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/)
-
-**Current tech stack:**
-
-- **Frontend:** React + Vite (Three.js / React Three Fiber for WebGL video stitching and frame warping)
-- **Backend:** Python FastAPI (OpenCV for feature matching + FFmpeg for transcoding)
-- **Platforms:** Windows, macOS, Linux (x86_64 and arm64)
-
----
-
-## Current Features
-
-- Live stitching of two video feeds (GPU-accelerated with WebGL shaders)
-- Automatic camera calibration using feature matching
-- Browser-based processing with frontend frame warping
-- Works with arbitrary camera models and positions
-- Experimental livestreaming support (in progress)
-
----
-
-## Goals
-
-- Provide a non-subscription, self-hosted alternative to Veo
-- Allow local clubs and communities to film and analyze games affordably
-- Build a sustainable, community-driven open-source ecosystem
-
-### Notes on Current Approach
-
-This browser-based approach comes with some quirks, mainly related to:
-
-- Frame synchronization between cameras
-- Limited control over video playback, as browsers don’t provide frame-precise rendering
-
-To mitigate these, a pre-transcoding step is required: both videos are first stacked vertically into a single file.  
-This introduces a delay before stitching but ensures smoother operation and synchronization in-browser.
-
-If the project gains traction, a more robust stack will be explored, likely Rust + wgpu similarly to [Gyroflow](https://github.com/gyroflow/gyroflow), enabling:
-
-- Faster-than-real-time processing
-- Frame-precise synchronization
-- Multiple simultaneous streams without pre-transcoding
-- High-resolution and low-latency operation
-- Cloud deployment
-- Seamless AI-based football tracking (although auto-panning via ball coordinates is already feasible)
-
-_Note: Just found out about [Webcodecs](https://developer.chrome.com/docs/web-platform/best-practices/webcodecs) which could be useful to mitigate the above mentionned quirks, without having to rebuild in a new tech stack. This shall be considered soon. Also, this [rVFC demo](https://web.dev/articles/requestvideoframecallback-rvfc#demo) is very impressive, and could hopefully allow us to sync the two videos without having to transcode._
 
 ---
 
@@ -75,14 +39,12 @@ _Note: Just found out about [Webcodecs](https://developer.chrome.com/docs/web-pl
 ### Installation
 
 1. Clone the repository:
-
     ```bash
     git clone https://github.com/reco-project/video-stitcher.git
     cd video-stitcher
     ```
 
-2. Install all dependencies:
-
+2. Install dependencies:
     ```bash
     npm run setup
     ```
@@ -92,56 +54,29 @@ _Note: Just found out about [Webcodecs](https://developer.chrome.com/docs/web-pl
     npm run dev
     ```
 
-The app will start with:
-
-- Frontend dev server (Vite)
-- Backend API server (FastAPI)
-- Electron desktop app
+The app will start with frontend, backend, and Electron desktop app.
 
 ---
 
-## Development Progress
-
-All core functionality already exists in a private repository.  
-The following steps mainly involve refactoring and integration work before the public beta.
-
-- [x] Setup project repository
-- [x] Implement initial stitcher with hardcoded settings
-- [x] Add controls to pan across the panorama
-- [x] Introduce state management to replace hardcoded settings
-- [x] Add video player controls
-- [x] Implement lens profile system with camera calibration data
-- [x] Build match creation and management system
-- [x] Create comprehensive backend API (FastAPI) with testing suite
-- [x] Add multi-step match wizard UI with validation
-- [x] Establish proper data organization and documentation
-- [x] Integrate backend video processing pipeline (transcoding + calibration)
-- [x] Design and implement enhanced UI/UX improvements
-- [ ] Prepare and publish beta release
+## Telemetry
+This app collects minimal anonymous usage data to help improve the software (e.g., feature usage, errors). No personal information or video content is collected. Telemetry is **opt-in** and disabled by default. You can enable it in Settings.
 
 ---
 
 ## License
 
-This project is licensed under the **AGPL-3.0** license.  
-All derived versions must remain open-source.  
-A contributor license agreement (CLA) will be published soon.
+Licensed under **AGPL-3.0** — all derived versions must remain open-source.
 
 ---
 
 ## Community & Contributions
 
-This project welcomes everyone: developers, designers, coaches, and camera enthusiasts alike.  
-Contributions, feedback, and testing are all appreciated, whether technical or not.
+Contributions, feedback, and testing are welcome from developers, designers, coaches, and camera enthusiasts.
 
-Guidelines and contribution details will be released very soon.  
-A dedicated community forum will also be launched to centralize discussions and ideas.
+Guidelines will be released soon, along with a dedicated community forum.
 
 ---
 
 ## Feedback
 
-Feedback on design priorities, usability, or the general direction of the project is highly encouraged.  
-You can share thoughts in the [Reddit thread](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/) for now. Issues and discussions will open once the beta is public.
-
-You can also contact me at mohamedtahaguelzim@gmail.com
+Share feedback in the [Reddit thread](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/) or contact mohamedtahaguelzim@gmail.com
