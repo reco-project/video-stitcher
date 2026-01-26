@@ -51,7 +51,7 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 	const [extractorData, setExtractorData] = useState(null);
 	const [isCollapsed, setIsCollapsed] = useState(true);
 
-    // TODO: little ugly - move video URL construction to a util
+	// TODO: little ugly - move video URL construction to a util
 	// Build full video URL from match.src
 	const getVideoUrl = useCallback(() => {
 		if (!match?.src) return null;
@@ -114,7 +114,7 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 				// Use debug mode from settings
 				const debugMode = settings.debugMode || false;
 				const result = await processMatchWithFrames(match.id, leftBlob, rightBlob, debugMode);
-				
+
 				// Check if calibration failed but still returned default params
 				if (result.calibration_failed) {
 					const errorMsg = result.calibration_error || 'Not enough features found';
@@ -129,7 +129,7 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 					setStatus('success');
 					showToast({ message: 'Recalibration successful!', type: 'success' });
 				}
-				
+
 				onRecalibrated?.(result);
 
 				// Reset after delay
@@ -168,7 +168,9 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 							Recalibrate
 						</h4>
 					</div>
-					<ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`} />
+					<ChevronDown
+						className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
+					/>
 				</button>
 
 				{/* Collapsible Content */}

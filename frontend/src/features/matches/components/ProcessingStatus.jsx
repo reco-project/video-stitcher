@@ -25,11 +25,11 @@ export default function ProcessingStatus({ status, onComplete }) {
 		const stage = status.current_stage;
 		// Order: concatenation -> audio_extraction -> audio_sync -> encoding
 		const stages = ['concatenation', 'audio_extraction', 'audio_sync', 'encoding'];
-		
+
 		// If no concatenation needed, skip that stage
-		const hasMultipleVideos = (status.left_video_count > 1) || (status.right_video_count > 1);
-		const activeStages = hasMultipleVideos ? stages : stages.filter(s => s !== 'concatenation');
-		
+		const hasMultipleVideos = status.left_video_count > 1 || status.right_video_count > 1;
+		const activeStages = hasMultipleVideos ? stages : stages.filter((s) => s !== 'concatenation');
+
 		return {
 			current: stage,
 			stages: activeStages,
@@ -144,13 +144,15 @@ export default function ProcessingStatus({ status, onComplete }) {
 				const stage = status.current_stage;
 				let title = 'Syncing Videos';
 				let message = status.processing_message || 'Synchronizing audio and encoding side-by-side video...';
-				
+
 				if (stage === 'concatenation') {
 					title = 'Concatenating Videos';
 					const leftCount = status.left_video_count || 0;
 					const rightCount = status.right_video_count || 0;
 					if (leftCount > 1 || rightCount > 1) {
-						message = status.processing_message || `Joining video files (${leftCount} left, ${rightCount} right)...`;
+						message =
+							status.processing_message ||
+							`Joining video files (${leftCount} left, ${rightCount} right)...`;
 					}
 				} else if (stage === 'audio_extraction') {
 					title = 'Extracting Audio';
@@ -162,7 +164,7 @@ export default function ProcessingStatus({ status, onComplete }) {
 					title = 'Encoding Video';
 					message = status.processing_message || 'Encoding synchronized side-by-side video...';
 				}
-				
+
 				return {
 					icon: Loader2,
 					variant: 'default',
@@ -198,7 +200,9 @@ export default function ProcessingStatus({ status, onComplete }) {
 					variant: 'warning',
 					color: 'text-yellow-500',
 					title: 'Calibration Failed',
-					message: status.processing_message || 'Calibration failed. Using default alignment - try recalibrating with a different frame.',
+					message:
+						status.processing_message ||
+						'Calibration failed. Using default alignment - try recalibrating with a different frame.',
 					bgClass: 'bg-yellow-50 dark:bg-yellow-950',
 				};
 			case 'error':
@@ -262,44 +266,48 @@ export default function ProcessingStatus({ status, onComplete }) {
 					</div>
 
 					{/* Transcoding stage indicator */}
-					{status.status === 'transcoding' && (() => {
-						const stageInfo = getTranscodeStage();
-						if (!stageInfo) return null;
-						
-						const stageLabels = {
-							concatenation: 'Concat',
-							audio_extraction: 'Audio',
-							audio_sync: 'Sync',
-							encoding: 'Encode',
-						};
-						
-						return (
-							<div className="flex items-center gap-1 mb-3">
-								{stageInfo.stages.map((stage, idx) => {
-									const isActive = stage === stageInfo.current;
-									const isComplete = idx < stageInfo.index;
-									return (
-										<React.Fragment key={stage}>
-											<div
-												className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-													isActive
-														? 'bg-blue-500 text-white'
-														: isComplete
-															? 'bg-green-500/20 text-green-700 dark:text-green-400'
-															: 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-												}`}
-											>
-												{isComplete ? '✓ ' : ''}{stageLabels[stage] || stage}
-											</div>
-											{idx < stageInfo.stages.length - 1 && (
-												<div className={`w-3 h-0.5 ${isComplete ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
-											)}
-										</React.Fragment>
-									);
-								})}
-							</div>
-						);
-					})()}
+					{status.status === 'transcoding' &&
+						(() => {
+							const stageInfo = getTranscodeStage();
+							if (!stageInfo) return null;
+
+							const stageLabels = {
+								concatenation: 'Concat',
+								audio_extraction: 'Audio',
+								audio_sync: 'Sync',
+								encoding: 'Encode',
+							};
+
+							return (
+								<div className="flex items-center gap-1 mb-3">
+									{stageInfo.stages.map((stage, idx) => {
+										const isActive = stage === stageInfo.current;
+										const isComplete = idx < stageInfo.index;
+										return (
+											<React.Fragment key={stage}>
+												<div
+													className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+														isActive
+															? 'bg-blue-500 text-white'
+															: isComplete
+																? 'bg-green-500/20 text-green-700 dark:text-green-400'
+																: 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+													}`}
+												>
+													{isComplete ? '✓ ' : ''}
+													{stageLabels[stage] || stage}
+												</div>
+												{idx < stageInfo.stages.length - 1 && (
+													<div
+														className={`w-3 h-0.5 ${isComplete ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+													/>
+												)}
+											</React.Fragment>
+										);
+									})}
+								</div>
+							);
+						})()}
 
 					{/* Progress bar for active processing - show immediately after message */}
 					{isProcessing && (

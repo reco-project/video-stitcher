@@ -66,7 +66,8 @@ export default function VideoList({ side, videoPaths, metadata, onSelectFiles, o
 				<>
 					<div className="flex items-center justify-between pb-2">
 						<div className="text-xs text-muted-foreground">
-							{calculateVideoTotals(metadata).count} video(s) • {calculateVideoTotals(metadata).durationFormatted} •{' '}
+							{calculateVideoTotals(metadata).count} video(s) •{' '}
+							{calculateVideoTotals(metadata).durationFormatted} •{' '}
 							{calculateVideoTotals(metadata).sizeFormatted}
 						</div>
 						<Button type="button" size="sm" onClick={() => onSelectFiles(side)}>
@@ -104,9 +105,7 @@ export default function VideoList({ side, videoPaths, metadata, onSelectFiles, o
 									</div>
 									{metadata[index] && (
 										<div className="text-xs text-muted-foreground pl-6 space-x-2">
-											{metadata[index].resolution && (
-												<span>{metadata[index].resolution}</span>
-											)}
+											{metadata[index].resolution && <span>{metadata[index].resolution}</span>}
 											{metadata[index].duration && (
 												<span>• {formatDuration(metadata[index].duration)}</span>
 											)}

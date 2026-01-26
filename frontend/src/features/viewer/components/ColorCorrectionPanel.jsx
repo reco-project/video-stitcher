@@ -153,9 +153,7 @@ export function DualColorCorrectionPanel({
 					>
 						<Settings2 className="h-3 w-3" />
 						{showAdvanced ? 'Hide' : 'Show'} manual adjustments
-						<ChevronDown
-							className={`h-3 w-3 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
-						/>
+						<ChevronDown className={`h-3 w-3 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
 					</button>
 
 					{/* Advanced Manual Controls */}

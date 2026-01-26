@@ -1,27 +1,13 @@
 import React, { useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import {
-	Info,
-	Move,
-	Clock,
-	Calendar,
-	Gauge,
-	ChevronDown,
-} from 'lucide-react';
+import { Info, Move, Clock, Calendar, Gauge, ChevronDown } from 'lucide-react';
 import { getProcessingDuration, getTranscodeMetrics, getQualitySettings } from '@/lib/matchHelpers.js';
 
 /**
  * DescriptionPanel - Collapsible panel showing match metadata and view controls
  */
-export default function DescriptionPanel({
-	match,
-	yawRange,
-	pitchRange,
-	onYawChange,
-	onPitchChange,
-	saveStatus,
-}) {
+export default function DescriptionPanel({ match, yawRange, pitchRange, onYawChange, onPitchChange, saveStatus }) {
 	const [isCollapsed, setIsCollapsed] = useState(false);
 
 	// Get metrics
@@ -45,15 +31,25 @@ export default function DescriptionPanel({
 				<div className="flex items-center gap-2">
 					{/* Save Status Indicator */}
 					{saveStatus && (
-						<span className={`text-xs font-medium ${
-							saveStatus === 'saving' ? 'text-blue-600 animate-pulse' :
-							saveStatus === 'success' ? 'text-green-600' : 'text-red-600'
-						}`}>
-							{saveStatus === 'saving' ? '● Saving...' :
-							 saveStatus === 'success' ? '✓ Saved' : '✗ Save failed'}
+						<span
+							className={`text-xs font-medium ${
+								saveStatus === 'saving'
+									? 'text-blue-600 animate-pulse'
+									: saveStatus === 'success'
+										? 'text-green-600'
+										: 'text-red-600'
+							}`}
+						>
+							{saveStatus === 'saving'
+								? '● Saving...'
+								: saveStatus === 'success'
+									? '✓ Saved'
+									: '✗ Save failed'}
 						</span>
 					)}
-					<ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`} />
+					<ChevronDown
+						className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
+					/>
 				</div>
 			</button>
 
@@ -69,9 +65,11 @@ export default function DescriptionPanel({
 								<span className="text-muted-foreground">Created:</span>
 								<span>
 									{match.created_at
-										? new Date(match.created_at).toLocaleDateString('en-US', { 
-											month: 'short', day: 'numeric', year: 'numeric' 
-										})
+										? new Date(match.created_at).toLocaleDateString('en-US', {
+												month: 'short',
+												day: 'numeric',
+												year: 'numeric',
+											})
 										: 'N/A'}
 								</span>
 							</div>
@@ -95,22 +93,30 @@ export default function DescriptionPanel({
 							)}
 
 							{/* Audio Sync */}
-							{transcodeMetrics.offsetSeconds !== undefined && transcodeMetrics.offsetSeconds !== null && (
-								<div className="flex items-center gap-1.5">
-									<span className="text-muted-foreground">Audio Sync:</span>
-									<span className={`font-mono ${Math.abs(transcodeMetrics.offsetSeconds) < 0.1 ? 'text-green-600' : 'text-amber-600'}`}>
-										{transcodeMetrics.offsetSeconds > 0 ? '+' : ''}{transcodeMetrics.offsetSeconds.toFixed(3)}s
-									</span>
-								</div>
-							)}
+							{transcodeMetrics.offsetSeconds !== undefined &&
+								transcodeMetrics.offsetSeconds !== null && (
+									<div className="flex items-center gap-1.5">
+										<span className="text-muted-foreground">Audio Sync:</span>
+										<span
+											className={`font-mono ${Math.abs(transcodeMetrics.offsetSeconds) < 0.1 ? 'text-green-600' : 'text-amber-600'}`}
+										>
+											{transcodeMetrics.offsetSeconds > 0 ? '+' : ''}
+											{transcodeMetrics.offsetSeconds.toFixed(3)}s
+										</span>
+									</div>
+								)}
 
 							{/* Quality Settings */}
 							{qualitySettings && (
 								<>
 									<div className="flex items-center gap-1.5">
 										<span className="text-muted-foreground">Quality:</span>
-										<span className="uppercase">{qualitySettings.resolution || qualitySettings.preset}</span>
-										{qualitySettings.bitrate && <span className="text-muted-foreground">@ {qualitySettings.bitrate}</span>}
+										<span className="uppercase">
+											{qualitySettings.resolution || qualitySettings.preset}
+										</span>
+										{qualitySettings.bitrate && (
+											<span className="text-muted-foreground">@ {qualitySettings.bitrate}</span>
+										)}
 									</div>
 									<div className="flex items-center gap-1.5">
 										<span className="text-muted-foreground">GPU Decoding:</span>

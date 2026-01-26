@@ -130,10 +130,10 @@ export default function ProcessingMatch() {
 
 			// Check if calibration failed
 			if (result.calibration_failed) {
-				showToast({ 
-					message: `Calibration failed: ${result.calibration_error || 'Not enough features found'}. Using default alignment - try a different frame with more visible features.`, 
+				showToast({
+					message: `Calibration failed: ${result.calibration_error || 'Not enough features found'}. Using default alignment - try a different frame with more visible features.`,
 					type: 'warning',
-					duration: 8000
+					duration: 8000,
 				});
 			} else if (result.debug && result.debug.timing) {
 				// Show debug timing if available

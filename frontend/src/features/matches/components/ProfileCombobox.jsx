@@ -340,193 +340,87 @@ function ProfileComboboxInner({ value, onChange, disabled, className, labelPrefi
 	// Display value
 	const displayValue = selectedProfile ? formatProfile(selectedProfile) : 'Select profile...';
 
-		return (
-			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger asChild>
-					<Button
-						variant="outline"
-						role="combobox"
-						aria-expanded={open}
-						disabled={disabled}
-						className={cn('!flex justify-start font-normal w-full h-9 px-3 gap-2', className)}
-						title={selectedProfile ? displayValue : undefined}
-					>
-						{labelPrefix && (
-							<>
-								<span className="shrink-0 text-sm font-semibold">
-									{labelPrefix.replace(':', '').trim()}
-								</span>
-								{selectedProfile && (
-									<>
-										<div className="w-px h-4 bg-border shrink-0" />
-										<span
-											onClick={(e) => {
-												e.stopPropagation();
-												handleToggleFavorite(e, selectedProfile);
-											}}
-											className="shrink-0 hover:scale-110 transition-transform cursor-pointer"
-											title={
-												selectedProfile.is_favorite ? 'Remove from favorites' : 'Add to favorites'
-											}
-										>
-											<Star
-												className={cn(
-													'h-4 w-4',
-													selectedProfile.is_favorite
-														? 'fill-yellow-400 text-yellow-400'
-														: 'text-muted-foreground'
-												)}
-											/>
-										</span>
-									</>
-								)}
-								<div className="w-px h-4 bg-border shrink-0" />
-							</>
-						)}
-						{!labelPrefix && selectedProfile && (
-							<span
-								onClick={(e) => {
-									e.stopPropagation();
-									handleToggleFavorite(e, selectedProfile);
-								}}
-								className="shrink-0 hover:scale-110 transition-transform -ml-1 cursor-pointer"
-								title={selectedProfile.is_favorite ? 'Remove from favorites' : 'Add to favorites'}
-							>
-								<Star
-									className={cn(
-										'h-4 w-4',
-										selectedProfile.is_favorite
-											? 'fill-yellow-400 text-yellow-400'
-											: 'text-muted-foreground'
-									)}
-								/>
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<Button
+					variant="outline"
+					role="combobox"
+					aria-expanded={open}
+					disabled={disabled}
+					className={cn('!flex justify-start font-normal w-full h-9 px-3 gap-2', className)}
+					title={selectedProfile ? displayValue : undefined}
+				>
+					{labelPrefix && (
+						<>
+							<span className="shrink-0 text-sm font-semibold">
+								{labelPrefix.replace(':', '').trim()}
 							</span>
-						)}
-						<span className="truncate flex-1">{displayValue}</span>
-						{loadingSelectedProfile && (
-							<Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
-						)}
-						<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-					</Button>
-				</PopoverTrigger>
-				<PopoverContent className="w-[400px] p-0" align="start">
-					<Command shouldFilter={false}>
-						<CommandInput placeholder="Search profiles..." value={searchQuery} onValueChange={setSearchQuery} />
-						<CommandList>
-							{loading && <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>}
-
-							{/* SEARCH MODE: Show direct profile results */}
-							{!loading && isSearchMode && (
+							{selectedProfile && (
 								<>
-									{searchResults.length > 0 ? (
-										<CommandGroup heading={`Results for ${searchQuery}`}>
-											{searchResults.slice(0, 50).map((profile) => (
-												<CommandItem
-													key={profile.id}
-													value={profile.id}
-													onSelect={() => handleSelect(profile.id)}
-													className="cursor-pointer min-w-0"
-												>
-													{profile.is_favorite && (
-														<Star className="mr-2 h-3 w-3 fill-yellow-400 text-yellow-400 shrink-0" />
-													)}
-													<span className="truncate flex-1 min-w-0">
-														{formatProfile(profile)}
-													</span>
-													{value === profile.id && <Check className="ml-2 h-4 w-4 shrink-0" />}
-												</CommandItem>
-											))}
-											{searchResults.length > 50 && (
-												<div className="py-2 text-center text-xs text-muted-foreground">
-													Showing first 50 of {searchResults.length} results
-												</div>
+									<div className="w-px h-4 bg-border shrink-0" />
+									<span
+										onClick={(e) => {
+											e.stopPropagation();
+											handleToggleFavorite(e, selectedProfile);
+										}}
+										className="shrink-0 hover:scale-110 transition-transform cursor-pointer"
+										title={
+											selectedProfile.is_favorite ? 'Remove from favorites' : 'Add to favorites'
+										}
+									>
+										<Star
+											className={cn(
+												'h-4 w-4',
+												selectedProfile.is_favorite
+													? 'fill-yellow-400 text-yellow-400'
+													: 'text-muted-foreground'
 											)}
-										</CommandGroup>
-									) : (
-										<CommandEmpty>No profiles found for {searchQuery}</CommandEmpty>
-									)}
+										/>
+									</span>
 								</>
 							)}
+							<div className="w-px h-4 bg-border shrink-0" />
+						</>
+					)}
+					{!labelPrefix && selectedProfile && (
+						<span
+							onClick={(e) => {
+								e.stopPropagation();
+								handleToggleFavorite(e, selectedProfile);
+							}}
+							className="shrink-0 hover:scale-110 transition-transform -ml-1 cursor-pointer"
+							title={selectedProfile.is_favorite ? 'Remove from favorites' : 'Add to favorites'}
+						>
+							<Star
+								className={cn(
+									'h-4 w-4',
+									selectedProfile.is_favorite
+										? 'fill-yellow-400 text-yellow-400'
+										: 'text-muted-foreground'
+								)}
+							/>
+						</span>
+					)}
+					<span className="truncate flex-1">{displayValue}</span>
+					{loadingSelectedProfile && (
+						<Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
+					)}
+					<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent className="w-[400px] p-0" align="start">
+				<Command shouldFilter={false}>
+					<CommandInput placeholder="Search profiles..." value={searchQuery} onValueChange={setSearchQuery} />
+					<CommandList>
+						{loading && <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>}
 
-							{/* BROWSE MODE: Favorites + Brand navigation */}
-							{!loading && !isSearchMode && !navBrand && (
-								<>
-									{/* Favorites Section */}
-									{favorites.length > 0 && (
-										<CommandGroup heading="Favorites">
-											{favorites.map((profile) => (
-												<CommandItem
-													key={profile.id}
-													value={profile.id}
-													onSelect={() => handleSelect(profile.id)}
-													className="cursor-pointer min-w-0"
-												>
-													<span className="truncate flex-1 min-w-0">
-														{formatProfile(profile)}
-													</span>
-													{value === profile.id && <Check className="ml-2 h-4 w-4 shrink-0" />}
-												</CommandItem>
-											))}
-										</CommandGroup>
-									)}
-
-									{favorites.length > 0 && brands.length > 0 && <CommandSeparator />}
-
-									{/* Browse by Brand */}
-									<CommandGroup heading="Browse">
-										{brands.map((brand) => (
-											<CommandItem
-												key={brand}
-												value={brand}
-												onSelect={() => setNavBrand(brand)}
-												className="cursor-pointer"
-											>
-												<span className="flex-1">{brand}</span>
-												<ChevronRight className="h-4 w-4 opacity-50" />
-											</CommandItem>
-										))}
-									</CommandGroup>
-								</>
-							)}
-
-							{/* BROWSE MODE: Model Selection */}
-							{!loading && !isSearchMode && navBrand && !navModel && (
-								<>
-									<CommandGroup>
-										<CommandItem onSelect={goBack} className="cursor-pointer text-muted-foreground">
-											<ChevronLeft className="mr-2 h-4 w-4" />
-											Back to brands
-										</CommandItem>
-									</CommandGroup>
-									<CommandSeparator />
-									<CommandGroup heading={navBrand}>
-										{models.map((model) => (
-											<CommandItem
-												key={model}
-												value={model}
-												onSelect={() => setNavModel(model)}
-												className="cursor-pointer"
-											>
-												<span className="flex-1">{model}</span>
-												<ChevronRight className="h-4 w-4 opacity-50" />
-											</CommandItem>
-										))}
-									</CommandGroup>
-								</>
-							)}
-
-							{/* BROWSE MODE: Profile Selection */}
-							{!loading && !isSearchMode && navBrand && navModel && (
-								<>
-									<CommandGroup>
-										<CommandItem onSelect={goBack} className="cursor-pointer text-muted-foreground">
-											<ChevronLeft className="mr-2 h-4 w-4" />
-											Back to {navBrand}
-										</CommandItem>
-									</CommandGroup>
-									<CommandSeparator />
-									<CommandGroup heading={`${navBrand} ${navModel}`}>
-										{profiles.map((profile) => (
+						{/* SEARCH MODE: Show direct profile results */}
+						{!loading && isSearchMode && (
+							<>
+								{searchResults.length > 0 ? (
+									<CommandGroup heading={`Results for ${searchQuery}`}>
+										{searchResults.slice(0, 50).map((profile) => (
 											<CommandItem
 												key={profile.id}
 												value={profile.id}
@@ -537,25 +431,133 @@ function ProfileComboboxInner({ value, onChange, disabled, className, labelPrefi
 													<Star className="mr-2 h-3 w-3 fill-yellow-400 text-yellow-400 shrink-0" />
 												)}
 												<span className="truncate flex-1 min-w-0">
-													{formatProfile(profile, false)}
+													{formatProfile(profile)}
+												</span>
+												{value === profile.id && <Check className="ml-2 h-4 w-4 shrink-0" />}
+											</CommandItem>
+										))}
+										{searchResults.length > 50 && (
+											<div className="py-2 text-center text-xs text-muted-foreground">
+												Showing first 50 of {searchResults.length} results
+											</div>
+										)}
+									</CommandGroup>
+								) : (
+									<CommandEmpty>No profiles found for {searchQuery}</CommandEmpty>
+								)}
+							</>
+						)}
+
+						{/* BROWSE MODE: Favorites + Brand navigation */}
+						{!loading && !isSearchMode && !navBrand && (
+							<>
+								{/* Favorites Section */}
+								{favorites.length > 0 && (
+									<CommandGroup heading="Favorites">
+										{favorites.map((profile) => (
+											<CommandItem
+												key={profile.id}
+												value={profile.id}
+												onSelect={() => handleSelect(profile.id)}
+												className="cursor-pointer min-w-0"
+											>
+												<span className="truncate flex-1 min-w-0">
+													{formatProfile(profile)}
 												</span>
 												{value === profile.id && <Check className="ml-2 h-4 w-4 shrink-0" />}
 											</CommandItem>
 										))}
 									</CommandGroup>
-								</>
-							)}
-						</CommandList>
-					</Command>
-				</PopoverContent>
-			</Popover>
-		);
-	}
+								)}
 
-	export default function ProfileCombobox(props) {
-		return (
-			<ErrorBoundary fallback={<div className="text-destructive text-sm p-2">Something went wrong loading profiles.</div>}>
-				<ProfileComboboxInner {...props} />
-			</ErrorBoundary>
-		);
-	}
+								{favorites.length > 0 && brands.length > 0 && <CommandSeparator />}
+
+								{/* Browse by Brand */}
+								<CommandGroup heading="Browse">
+									{brands.map((brand) => (
+										<CommandItem
+											key={brand}
+											value={brand}
+											onSelect={() => setNavBrand(brand)}
+											className="cursor-pointer"
+										>
+											<span className="flex-1">{brand}</span>
+											<ChevronRight className="h-4 w-4 opacity-50" />
+										</CommandItem>
+									))}
+								</CommandGroup>
+							</>
+						)}
+
+						{/* BROWSE MODE: Model Selection */}
+						{!loading && !isSearchMode && navBrand && !navModel && (
+							<>
+								<CommandGroup>
+									<CommandItem onSelect={goBack} className="cursor-pointer text-muted-foreground">
+										<ChevronLeft className="mr-2 h-4 w-4" />
+										Back to brands
+									</CommandItem>
+								</CommandGroup>
+								<CommandSeparator />
+								<CommandGroup heading={navBrand}>
+									{models.map((model) => (
+										<CommandItem
+											key={model}
+											value={model}
+											onSelect={() => setNavModel(model)}
+											className="cursor-pointer"
+										>
+											<span className="flex-1">{model}</span>
+											<ChevronRight className="h-4 w-4 opacity-50" />
+										</CommandItem>
+									))}
+								</CommandGroup>
+							</>
+						)}
+
+						{/* BROWSE MODE: Profile Selection */}
+						{!loading && !isSearchMode && navBrand && navModel && (
+							<>
+								<CommandGroup>
+									<CommandItem onSelect={goBack} className="cursor-pointer text-muted-foreground">
+										<ChevronLeft className="mr-2 h-4 w-4" />
+										Back to {navBrand}
+									</CommandItem>
+								</CommandGroup>
+								<CommandSeparator />
+								<CommandGroup heading={`${navBrand} ${navModel}`}>
+									{profiles.map((profile) => (
+										<CommandItem
+											key={profile.id}
+											value={profile.id}
+											onSelect={() => handleSelect(profile.id)}
+											className="cursor-pointer min-w-0"
+										>
+											{profile.is_favorite && (
+												<Star className="mr-2 h-3 w-3 fill-yellow-400 text-yellow-400 shrink-0" />
+											)}
+											<span className="truncate flex-1 min-w-0">
+												{formatProfile(profile, false)}
+											</span>
+											{value === profile.id && <Check className="ml-2 h-4 w-4 shrink-0" />}
+										</CommandItem>
+									))}
+								</CommandGroup>
+							</>
+						)}
+					</CommandList>
+				</Command>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+export default function ProfileCombobox(props) {
+	return (
+		<ErrorBoundary
+			fallback={<div className="text-destructive text-sm p-2">Something went wrong loading profiles.</div>}
+		>
+			<ProfileComboboxInner {...props} />
+		</ErrorBoundary>
+	);
+}

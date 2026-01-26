@@ -155,7 +155,6 @@ export default function AppSettings() {
 					{encoderError && <p className="text-sm text-destructive">{encoderError}</p>}
 				</CardContent>
 			</Card>
-
 			{/* Recording Settings */}
 			<Card id="recording">
 				<CardHeader>
@@ -167,7 +166,8 @@ export default function AppSettings() {
 						</span>
 					</div>
 					<CardDescription>
-						Configure canvas recording quality and format for sharing clips. This feature is experimental and may have issues with certain browsers or configurations.
+						Configure canvas recording quality and format for sharing clips. This feature is experimental
+						and may have issues with certain browsers or configurations.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -188,7 +188,9 @@ export default function AppSettings() {
 								<SelectItem value="60">60 Mbps (Maximum)</SelectItem>
 							</SelectContent>
 						</Select>
-						<p className="text-xs text-muted-foreground">Higher bitrate = better quality, larger file size</p>
+						<p className="text-xs text-muted-foreground">
+							Higher bitrate = better quality, larger file size
+						</p>
 					</div>
 
 					<Separator />
@@ -214,15 +216,16 @@ export default function AppSettings() {
 
 					<div className="bg-muted/50 p-3 rounded-md space-y-2">
 						<p className="text-xs text-muted-foreground">
-							💡 Press <kbd className="px-1 py-0.5 bg-background rounded text-xs font-mono">R</kbd> in the viewer to start/stop recording.
+							💡 Press <kbd className="px-1 py-0.5 bg-background rounded text-xs font-mono">R</kbd> in the
+							viewer to start/stop recording.
 						</p>
 						<p className="text-xs text-muted-foreground">
-							🖥️ <strong>Fullscreen recommended:</strong> Recording in fullscreen captures at your screen's native resolution for the best quality.
+							🖥️ <strong>Fullscreen recommended:</strong> Recording in fullscreen captures at your
+							screen&apos;s native resolution for the best quality.
 						</p>
 					</div>
 				</CardContent>
 			</Card>
-
 			{/* Telemetry */}
 			<Card>
 				<CardHeader>
@@ -477,7 +480,6 @@ export default function AppSettings() {
 					</div>
 				</CardContent>
 			</Card>
-
 			{/* Developer Settings */}
 			<Card>
 				<CardHeader>
@@ -505,7 +507,6 @@ export default function AppSettings() {
 					</div>
 				</CardContent>
 			</Card>
-
 			{/* Connection Settings */}
 			<Card>
 				<CardHeader>
@@ -540,40 +541,40 @@ export default function AppSettings() {
 					</div>
 				</CardContent>
 			</Card>
-		{/* Display Settings */}
-		<Card>
-			<CardHeader>
-				<div className="flex items-center gap-2">
-					<Settings2 className="h-5 w-5 text-muted-foreground" />
-					<CardTitle>Display</CardTitle>
-				</div>
-				<CardDescription>Graphics rendering and display options</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-4">
-				<div className="flex items-center justify-between space-x-4">
-					<div className="flex-1 space-y-1">
-						<Label htmlFor="disable-hw-accel" className="text-base cursor-pointer">
-							Disable hardware acceleration
-						</Label>
-						<p className="text-sm text-muted-foreground">
-							Fixes font aliasing issues with NVIDIA FXAA and some GPU drivers. Requires app restart.
+			{/* Display Settings */}
+			<Card>
+				<CardHeader>
+					<div className="flex items-center gap-2">
+						<Settings2 className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>Display</CardTitle>
+					</div>
+					<CardDescription>Graphics rendering and display options</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div className="flex items-center justify-between space-x-4">
+						<div className="flex-1 space-y-1">
+							<Label htmlFor="disable-hw-accel" className="text-base cursor-pointer">
+								Disable hardware acceleration
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								Fixes font aliasing issues with NVIDIA FXAA and some GPU drivers. Requires app restart.
+							</p>
+						</div>
+						<Switch
+							id="disable-hw-accel"
+							checked={settings.disableHardwareAcceleration ?? false}
+							onCheckedChange={(checked) => updateSetting('disableHardwareAcceleration', checked)}
+						/>
+					</div>
+					<div className="bg-muted/50 p-3 rounded-md">
+						<p className="text-xs text-muted-foreground">
+							💡 If text looks blurry or aliased, try enabling this option and restart the app.
 						</p>
 					</div>
-					<Switch
-						id="disable-hw-accel"
-						checked={settings.disableHardwareAcceleration ?? false}
-						onCheckedChange={(checked) => updateSetting('disableHardwareAcceleration', checked)}
-					/>
-				</div>
-				<div className="bg-muted/50 p-3 rounded-md">
-					<p className="text-xs text-muted-foreground">
-						💡 If text looks blurry or aliased, try enabling this option and restart the app.
-					</p>
-				</div>
-			</CardContent>
-		</Card>
-
-		{/* Storage */}			<Card>
+				</CardContent>
+			</Card>
+			{/* Storage */}{' '}
+			<Card>
 				<CardHeader>
 					<div className="flex items-center gap-2">
 						<Database className="h-5 w-5 text-muted-foreground" />

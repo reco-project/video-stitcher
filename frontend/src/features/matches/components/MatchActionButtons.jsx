@@ -132,7 +132,10 @@ export default function MatchActionButtons({
 					{/* Option: View Details (only for View button text variant) */}
 					{match.status !== 'ready' && match.status !== 'warning' && match.status !== undefined && (
 						<>
-							<DropdownMenuItem onClick={() => onView?.(match)} disabled={match.status !== 'ready' && match.status !== 'warning'}>
+							<DropdownMenuItem
+								onClick={() => onView?.(match)}
+								disabled={match.status !== 'ready' && match.status !== 'warning'}
+							>
 								View Details
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />

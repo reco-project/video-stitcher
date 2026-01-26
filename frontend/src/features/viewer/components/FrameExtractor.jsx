@@ -29,7 +29,7 @@ const ExtractorPlane = ({ texture, isLeft, uniforms }) => {
 			<planeGeometry args={[planeWidth, planeHeight]} />
 			<shaderMaterial
 				key={isLeft ? 'left' : 'right'} // Force shader recreation when side changes
-				uniforms={formatUniforms(uniforms, texture, {}, 0)}  // blendWidth=0 for full frame capture
+				uniforms={formatUniforms(uniforms, texture, {}, 0)} // blendWidth=0 for full frame capture
 				{...fisheyeShader(isLeft)}
 			/>
 		</mesh>
@@ -89,7 +89,7 @@ const CaptureController = ({ texture, onCapture, shouldCapture, side }) => {
 /**
  * Main FrameExtractor component.
  * Uses a SINGLE persistent Canvas to avoid WebGL context loss.
- * 
+ *
  * @param {string} videoSrc - URL of the video to extract frames from
  * @param {number} frameTime - Exact time in seconds to seek to (optional if frameTimePercent is provided)
  * @param {number} frameTimePercent - Percentage of video duration to seek to (0-1, default 0.1 = 10%)
@@ -98,7 +98,15 @@ const CaptureController = ({ texture, onCapture, shouldCapture, side }) => {
  * @param {function} onComplete - Callback with { leftBlob, rightBlob }
  * @param {function} onError - Callback with error
  */
-const FrameExtractor = ({ videoSrc, frameTime, frameTimePercent = 0.1, leftUniforms, rightUniforms, onComplete, onError }) => {
+const FrameExtractor = ({
+	videoSrc,
+	frameTime,
+	frameTimePercent = 0.1,
+	leftUniforms,
+	rightUniforms,
+	onComplete,
+	onError,
+}) => {
 	const [phase, setPhase] = useState('loading'); // 'loading' | 'left' | 'right' | 'done'
 	const [leftBlob, setLeftBlob] = useState(null);
 	const [texture, setTexture] = useState(null);
@@ -219,13 +227,16 @@ const FrameExtractor = ({ videoSrc, frameTime, frameTimePercent = 0.1, leftUnifo
 				<div className="px-6 py-4 border-b border-border bg-muted/30">
 					<h3 className="text-lg font-semibold">Extracting Calibration Frames</h3>
 					<p className="text-sm text-muted-foreground mt-1">
-						Processing video at {computedFrameTime != null ? `${Math.floor(computedFrameTime / 60)}:${String(Math.floor(computedFrameTime % 60)).padStart(2, '0')}` : '...'}
+						Processing video at{' '}
+						{computedFrameTime != null
+							? `${Math.floor(computedFrameTime / 60)}:${String(Math.floor(computedFrameTime % 60)).padStart(2, '0')}`
+							: '...'}
 					</p>
 				</div>
 
 				{/* Progress bar */}
 				<div className="h-1 bg-muted">
-					<div 
+					<div
 						className="h-full bg-primary transition-all duration-500 ease-out"
 						style={{ width: `${progressPercent}%` }}
 					/>
@@ -268,7 +279,11 @@ const FrameExtractor = ({ videoSrc, frameTime, frameTimePercent = 0.1, leftUnifo
 								<div className="text-center">
 									<div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
 									<p className="text-sm text-muted-foreground">
-										{phase === 'loading' ? 'Loading video...' : phase === 'done' ? 'Complete!' : 'Preparing...'}
+										{phase === 'loading'
+											? 'Loading video...'
+											: phase === 'done'
+												? 'Complete!'
+												: 'Preparing...'}
 									</p>
 								</div>
 							</div>
@@ -288,24 +303,30 @@ const FrameExtractor = ({ videoSrc, frameTime, frameTimePercent = 0.1, leftUnifo
 							const stepIndex = progressSteps.indexOf(step.key);
 							const isActive = phase === step.key;
 							const isComplete = currentStepIndex > stepIndex;
-							
+
 							return (
 								<div key={step.key} className="flex items-center">
 									<div className="flex flex-col items-center">
-										<div className={`
+										<div
+											className={`
 											w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all
 											${isComplete ? 'bg-primary text-primary-foreground' : ''}
 											${isActive ? 'bg-primary/20 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}
 											${!isActive && !isComplete ? 'bg-muted text-muted-foreground' : ''}
-										`}>
+										`}
+										>
 											{isComplete ? '✓' : index + 1}
 										</div>
-										<span className={`text-xs mt-1.5 ${isActive ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+										<span
+											className={`text-xs mt-1.5 ${isActive ? 'text-primary font-medium' : 'text-muted-foreground'}`}
+										>
 											{step.label}
 										</span>
 									</div>
 									{index < 3 && (
-										<div className={`w-12 h-0.5 mx-2 mb-5 ${isComplete ? 'bg-primary' : 'bg-muted'}`} />
+										<div
+											className={`w-12 h-0.5 mx-2 mb-5 ${isComplete ? 'bg-primary' : 'bg-muted'}`}
+										/>
 									)}
 								</div>
 							);

@@ -43,7 +43,10 @@ export default function MatchCard({ match, onSelect, className }) {
 		// Check if match is actually complete (has all required data)
 		const hasRequiredData = match.src && match.params && match.left_uniforms && match.right_uniforms;
 		// Match is ready if status says so, OR if it has all data AND isn't awaiting frames
-		const isActuallyReady = status === 'ready' || status === 'warning' || (hasRequiredData && match.processing_step !== 'awaiting_frames');
+		const isActuallyReady =
+			status === 'ready' ||
+			status === 'warning' ||
+			(hasRequiredData && match.processing_step !== 'awaiting_frames');
 
 		// Show warning badge for calibration failure
 		if (status === 'warning') {

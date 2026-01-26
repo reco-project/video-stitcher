@@ -33,15 +33,15 @@
  *
  */
 const fisheyeShader = (isLeft) => {
-  return {
-    vertexShader: `
+	return {
+		vertexShader: `
       varying vec2 vUv;
       void main() {
         vUv = uv * 2.0 - 0.5;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
-    fragmentShader: `
+		fragmentShader: `
       precision highp float;
       uniform sampler2D uVideo;
       uniform float fx, fy, cx, cy;
@@ -289,21 +289,25 @@ const fisheyeShader = (isLeft) => {
           // Left plane stays fully opaque (renders first, acts as base)
           // Right plane fades in over the left (renders second, blends on top)
           float alpha = 1.0;
-          ${isLeft ? `
+          ${
+				isLeft
+					? `
           // Left plane: fully opaque, no blending
-          ` : `
+          `
+					: `
           // Right plane: fade in at left edge (blend over left plane)
           if (blendWidth > 0.0) {
             float edgeDist = vUv.x;  // Distance from left edge
             alpha = smoothstep(0.0, blendWidth, edgeDist);
           }
-          `}
+          `
+			}
           
           gl_FragColor = vec4(color, alpha);
         }
       }
     `,
-  };
+	};
 };
 
 export default fisheyeShader;

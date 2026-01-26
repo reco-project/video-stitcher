@@ -16,7 +16,7 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 	const { loadDraft, saveDraft, clearDraft } = useMatchDraft();
 	const draft = loadDraft();
 	const { showToast } = useToast();
-	
+
 	const [name, setName] = useState(initialData?.name || draft?.name || '');
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -140,111 +140,113 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 		onCancel();
 	};
 
-		return (
-			<div className="w-full max-w-6xl space-y-6">
-				{/* Header */}
-				<div>
-					<h1 className="text-3xl font-bold">Create New Match</h1>
-					<p className="text-muted-foreground mt-2">
-						Configure your match by selecting videos and assigning lens profiles for both cameras.
-					</p>
-				</div>
-				{/* Match Name */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Match Name</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<Input
-							type="text"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="e.g., My game 2025-12-29"
-							className="text-lg"
-							autoFocus={false}
-						/>
-					</CardContent>
-				</Card>
-				{/* Videos */}
-				<VideoSections
-					initialLeftPaths={initialData?.left_videos?.map((v) => v.path) || draft?.leftVideoPaths || []}
-					initialRightPaths={initialData?.right_videos?.map((v) => v.path) || draft?.rightVideoPaths || []}
-					onChange={handleVideoChange}
-				/>
-				{/* Camera Settings */}
-				<CameraSettings
-					leftProfileId={leftProfileId}
-					onLeftProfileChange={setLeftProfileId}
-					rightProfileId={rightProfileId}
-					onRightProfileChange={setRightProfileId}
-				/>
-				{/* Quality Settings */}
-				<QualitySettings
-					qualityPreset={quality.preset}
-					onPresetChange={quality.setPreset}
-					customBitrate={quality.customBitrate}
-					customPreset={quality.customPreset}
-					customResolution={quality.customResolution}
-					customUseGpuDecode={quality.customUseGpuDecode}
-					onCustomChange={quality.handleCustomChange}
-					encoderInfo={quality.encoderInfo}
-					loadingEncoder={quality.loadingEncoder}
-				/>
-				{/* Debug panel - only shown when debugMode is enabled in settings */}
-				{settings.debugMode && (
-					<details className="text-xs bg-muted p-3 rounded-md">
-						<summary className="cursor-pointer font-medium">Debug: Form State</summary>
-						<pre className="mt-2 overflow-auto max-h-64 text-[10px]">
-							{JSON.stringify(
-								{
-									name,
-									leftVideoPaths: videoData.left.paths,
-									rightVideoPaths: videoData.right.paths,
-									leftProfileId,
-									rightProfileId,
-									qualitySettings: quality.qualitySettings,
-									encoderInfo: quality.encoderInfo,
-								},
-								null,
-								2
-							)}
-						</pre>
-					</details>
-				)}
-				{/* Actions */}
-				<div className="flex justify-between items-center pt-4">
-					<Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
-						Cancel
-					</Button>
-					{initialData ? (
-						<div className="flex gap-2">
-							<Button
-								onClick={() => handleSubmit(false)}
-								disabled={isSubmitting}
-								variant="outline"
-								size="lg"
-								className="px-8"
-							>
-								{isSubmitting ? 'Saving...' : 'Save'}
-							</Button>
-							<Button onClick={() => handleSubmit(true)} disabled={isSubmitting} size="lg" className="px-8">
-								{isSubmitting ? 'Processing...' : 'Save & Process'}
-							</Button>
-						</div>
-					) : (
-						<Button onClick={() => handleSubmit(true)} disabled={isSubmitting} size="lg" className="px-8">
-							{isSubmitting ? 'Creating...' : 'Create & Process'}
-						</Button>
-					)}
-				</div>
+	return (
+		<div className="w-full max-w-6xl space-y-6">
+			{/* Header */}
+			<div>
+				<h1 className="text-3xl font-bold">Create New Match</h1>
+				<p className="text-muted-foreground mt-2">
+					Configure your match by selecting videos and assigning lens profiles for both cameras.
+				</p>
 			</div>
-		);
-	}
+			{/* Match Name */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Match Name</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<Input
+						type="text"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						placeholder="e.g., My game 2025-12-29"
+						className="text-lg"
+						autoFocus={false}
+					/>
+				</CardContent>
+			</Card>
+			{/* Videos */}
+			<VideoSections
+				initialLeftPaths={initialData?.left_videos?.map((v) => v.path) || draft?.leftVideoPaths || []}
+				initialRightPaths={initialData?.right_videos?.map((v) => v.path) || draft?.rightVideoPaths || []}
+				onChange={handleVideoChange}
+			/>
+			{/* Camera Settings */}
+			<CameraSettings
+				leftProfileId={leftProfileId}
+				onLeftProfileChange={setLeftProfileId}
+				rightProfileId={rightProfileId}
+				onRightProfileChange={setRightProfileId}
+			/>
+			{/* Quality Settings */}
+			<QualitySettings
+				qualityPreset={quality.preset}
+				onPresetChange={quality.setPreset}
+				customBitrate={quality.customBitrate}
+				customPreset={quality.customPreset}
+				customResolution={quality.customResolution}
+				customUseGpuDecode={quality.customUseGpuDecode}
+				onCustomChange={quality.handleCustomChange}
+				encoderInfo={quality.encoderInfo}
+				loadingEncoder={quality.loadingEncoder}
+			/>
+			{/* Debug panel - only shown when debugMode is enabled in settings */}
+			{settings.debugMode && (
+				<details className="text-xs bg-muted p-3 rounded-md">
+					<summary className="cursor-pointer font-medium">Debug: Form State</summary>
+					<pre className="mt-2 overflow-auto max-h-64 text-[10px]">
+						{JSON.stringify(
+							{
+								name,
+								leftVideoPaths: videoData.left.paths,
+								rightVideoPaths: videoData.right.paths,
+								leftProfileId,
+								rightProfileId,
+								qualitySettings: quality.qualitySettings,
+								encoderInfo: quality.encoderInfo,
+							},
+							null,
+							2
+						)}
+					</pre>
+				</details>
+			)}
+			{/* Actions */}
+			<div className="flex justify-between items-center pt-4">
+				<Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
+					Cancel
+				</Button>
+				{initialData ? (
+					<div className="flex gap-2">
+						<Button
+							onClick={() => handleSubmit(false)}
+							disabled={isSubmitting}
+							variant="outline"
+							size="lg"
+							className="px-8"
+						>
+							{isSubmitting ? 'Saving...' : 'Save'}
+						</Button>
+						<Button onClick={() => handleSubmit(true)} disabled={isSubmitting} size="lg" className="px-8">
+							{isSubmitting ? 'Processing...' : 'Save & Process'}
+						</Button>
+					</div>
+				) : (
+					<Button onClick={() => handleSubmit(true)} disabled={isSubmitting} size="lg" className="px-8">
+						{isSubmitting ? 'Creating...' : 'Create & Process'}
+					</Button>
+				)}
+			</div>
+		</div>
+	);
+}
 
-	export default function MatchCreationForm(props) {
-		return (
-			<ErrorBoundary fallback={<div className="text-destructive text-sm p-2">Something went wrong creating the match.</div>}>
-				<MatchCreationFormInner {...props} />
-			</ErrorBoundary>
-		);
-	}
+export default function MatchCreationForm(props) {
+	return (
+		<ErrorBoundary
+			fallback={<div className="text-destructive text-sm p-2">Something went wrong creating the match.</div>}
+		>
+			<MatchCreationFormInner {...props} />
+		</ErrorBoundary>
+	);
+}

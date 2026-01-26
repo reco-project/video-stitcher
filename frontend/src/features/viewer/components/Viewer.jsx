@@ -84,11 +84,11 @@ const VideoPlane = ({ texture, isLeft }) => {
 	return (
 		<mesh key={meshKey} position={position} rotation={rotation} renderOrder={isLeft ? 1 : 2}>
 			<planeGeometry args={[planeWidth, planeWidth / aspect]} />
-			<shaderMaterial 
-				uniforms={formatUniforms(u, texture, colorCorrection, blendWidth)} 
+			<shaderMaterial
+				uniforms={formatUniforms(u, texture, colorCorrection, blendWidth)}
 				transparent={isTransparent}
 				depthWrite={!isTransparent}
-				{...fisheyeShader(isLeft)} 
+				{...fisheyeShader(isLeft)}
 			/>
 		</mesh>
 	);
@@ -127,20 +127,23 @@ const Viewer = ({ selectedMatch }) => {
 	const colorSaveTimeoutRef = React.useRef(null);
 
 	// Handler for when recalibration completes
-	const handleRecalibrated = useCallback((result) => {
-		// Only update match data if calibration succeeded
-		// If calibration failed, keep existing params
-		if (result && result.params && !result.calibration_failed) {
-			setSelectedMatch({
-				...selectedMatch,
-				params: result.params,
-				num_matches: result.num_matches,
-				confidence: result.confidence,
-				status: 'ready',
-			});
-		}
-		// If calibration failed, RecalibratePanel will show the warning
-	}, [selectedMatch, setSelectedMatch]);
+	const handleRecalibrated = useCallback(
+		(result) => {
+			// Only update match data if calibration succeeded
+			// If calibration failed, keep existing params
+			if (result && result.params && !result.calibration_failed) {
+				setSelectedMatch({
+					...selectedMatch,
+					params: result.params,
+					num_matches: result.num_matches,
+					confidence: result.confidence,
+					status: 'ready',
+				});
+			}
+			// If calibration failed, RecalibratePanel will show the warning
+		},
+		[selectedMatch, setSelectedMatch]
+	);
 
 	useEffect(() => {
 		setSelectedMatch(selectedMatch);
@@ -334,8 +337,10 @@ const Viewer = ({ selectedMatch }) => {
 					<Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
 						<AlertTitle className="text-yellow-700 dark:text-yellow-400">⚠️ Calibration Failed</AlertTitle>
 						<AlertDescription className="text-yellow-600 dark:text-yellow-300">
-							{selectedMatch.processing?.message || 'Could not find enough features to calibrate cameras. Using default alignment.'}
-							{' '}Use the Recalibrate panel below to try again with a different frame (look for frames with visible grass, textures, or distinct features).
+							{selectedMatch.processing?.message ||
+								'Could not find enough features to calibrate cameras. Using default alignment.'}{' '}
+							Use the Recalibrate panel below to try again with a different frame (look for frames with
+							visible grass, textures, or distinct features).
 						</AlertDescription>
 					</Alert>
 				</div>
@@ -377,7 +382,7 @@ const Viewer = ({ selectedMatch }) => {
 					saveStatus={saveStatus}
 				/>
 			</div>
-			
+
 			{/* Color Correction - Collapsible */}
 			<div className="w-full max-w-6xl">
 				<DualColorCorrectionPanel
@@ -393,11 +398,7 @@ const Viewer = ({ selectedMatch }) => {
 
 			{/* Recalibrate - Collapsible */}
 			<div className="w-full max-w-6xl">
-				<RecalibratePanel
-					match={selectedMatch}
-					videoRef={videoRef}
-					onRecalibrated={handleRecalibrated}
-				/>
+				<RecalibratePanel match={selectedMatch} videoRef={videoRef} onRecalibrated={handleRecalibrated} />
 			</div>
 		</div>
 	);

@@ -6,11 +6,7 @@ import { useVideoManager } from '../hooks/useVideoManager';
  * VideoSections - Manages left and right camera video uploads
  * Encapsulates useVideoManager hook and exposes video paths via onChange
  */
-export default function VideoSections({
-	initialLeftPaths = [],
-	initialRightPaths = [],
-	onChange,
-}) {
+export default function VideoSections({ initialLeftPaths = [], initialRightPaths = [], onChange }) {
 	const { left, right, handlers } = useVideoManager(initialLeftPaths, initialRightPaths);
 
 	// Notify parent when video paths change

@@ -94,7 +94,6 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 								match.status === 'ready' ||
 								match.status === 'warning' ||
 								(hasRequiredData && match.processing_step !== 'awaiting_frames');
-							const isWarning = match.status === 'warning';
 							const isCancelled = match.processing_message?.toLowerCase().includes('cancelled');
 							const isError = match.status === 'error' || isCancelled;
 							const isProcessing = ['transcoding', 'calibrating'].includes(match.status);

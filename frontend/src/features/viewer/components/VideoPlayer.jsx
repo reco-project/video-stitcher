@@ -1,17 +1,17 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { cn } from '@/lib/cn';
 import { useViewerStore } from '../stores/store';
-import { 
-	LucidePlay, 
-	LucidePause, 
-	LucideVolume, 
-	LucideMaximize, 
-	LucideCircle, 
+import {
+	LucidePlay,
+	LucidePause,
+	LucideVolume,
+	LucideMaximize,
+	LucideCircle,
 	LucideSquare,
 	LucideMic,
 	LucideMicOff,
 	LucideSettings,
-	LucideChevronDown
+	LucideChevronDown,
 } from 'lucide-react';
 import { useCanvasRecorder } from '../hooks/useCanvasRecorder';
 import { useSettings } from '@/hooks/useSettings';
@@ -35,13 +35,14 @@ export default function VideoPlayer({ children, className }) {
 
 	// Get recording settings
 	const { settings } = useSettings();
-	const recordingOptions = useMemo(() => ({
-		fps: 30, // Fixed at 30 FPS for now
-		videoBitsPerSecond: (settings.recordingBitrate ?? 16) * 1000000,
-		mimeType: settings.recordingFormat === 'webm-vp8' 
-			? 'video/webm;codecs=vp8' 
-			: 'video/webm;codecs=vp9',
-	}), [settings.recordingBitrate, settings.recordingFormat]);
+	const recordingOptions = useMemo(
+		() => ({
+			fps: 30, // Fixed at 30 FPS for now
+			videoBitsPerSecond: (settings.recordingBitrate ?? 16) * 1000000,
+			mimeType: settings.recordingFormat === 'webm-vp8' ? 'video/webm;codecs=vp8' : 'video/webm;codecs=vp9',
+		}),
+		[settings.recordingBitrate, settings.recordingFormat]
+	);
 
 	// Canvas recording
 	const { isRecording, recordingDuration, toggleRecording } = useCanvasRecorder(recordingOptions);
@@ -50,7 +51,7 @@ export default function VideoPlayer({ children, className }) {
 	const enumerateAudioDevices = async () => {
 		try {
 			const devices = await navigator.mediaDevices.enumerateDevices();
-			const audioInputs = devices.filter(device => device.kind === 'audioinput');
+			const audioInputs = devices.filter((device) => device.kind === 'audioinput');
 			setAudioDevices(audioInputs);
 			if (audioInputs.length > 0 && !selectedDeviceId) {
 				setSelectedDeviceId(audioInputs[0].deviceId);
@@ -64,14 +65,14 @@ export default function VideoPlayer({ children, className }) {
 	const handleToggleMic = async () => {
 		if (micEnabled && micStream) {
 			// Stop microphone
-			micStream.getTracks().forEach(track => track.stop());
+			micStream.getTracks().forEach((track) => track.stop());
 			setMicStream(null);
 			setMicEnabled(false);
 		} else {
 			// Request microphone access
 			try {
 				const constraints = {
-					audio: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true
+					audio: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true,
 				};
 				const stream = await navigator.mediaDevices.getUserMedia(constraints);
 				setMicStream(stream);
@@ -90,11 +91,11 @@ export default function VideoPlayer({ children, className }) {
 		setSelectedDeviceId(deviceId);
 		if (micEnabled && micStream) {
 			// Stop current stream
-			micStream.getTracks().forEach(track => track.stop());
+			micStream.getTracks().forEach((track) => track.stop());
 			// Start with new device
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({
-					audio: { deviceId: { exact: deviceId } }
+					audio: { deviceId: { exact: deviceId } },
 				});
 				setMicStream(stream);
 			} catch (err) {
@@ -108,7 +109,7 @@ export default function VideoPlayer({ children, className }) {
 	useEffect(() => {
 		return () => {
 			if (micStream) {
-				micStream.getTracks().forEach(track => track.stop());
+				micStream.getTracks().forEach((track) => track.stop());
 			}
 		};
 	}, [micStream]);
@@ -132,8 +133,8 @@ export default function VideoPlayer({ children, className }) {
 		if (!document.fullscreenElement) {
 			const shouldContinue = window.confirm(
 				'For best recording quality, fullscreen mode is recommended.\n\n' +
-				'Recording in fullscreen captures at your screen\'s native resolution.\n\n' +
-				'Click OK to start recording anyway, or Cancel to go fullscreen first.'
+					"Recording in fullscreen captures at your screen's native resolution.\n\n" +
+					'Click OK to start recording anyway, or Cancel to go fullscreen first.'
 			);
 			if (!shouldContinue) {
 				// Try to go fullscreen
@@ -363,8 +364,8 @@ export default function VideoPlayer({ children, className }) {
 				if (isRecording) {
 					const shouldExit = window.confirm(
 						'You are currently recording.\n\n' +
-						'Exiting fullscreen will reduce the recording resolution.\n\n' +
-						'Click OK to exit fullscreen, or Cancel to stay in fullscreen.'
+							'Exiting fullscreen will reduce the recording resolution.\n\n' +
+							'Click OK to exit fullscreen, or Cancel to stay in fullscreen.'
 					);
 					if (!shouldExit) return;
 				}
@@ -415,7 +416,8 @@ export default function VideoPlayer({ children, className }) {
 
 			{/* Controls Overlay */}
 			{isControlsVisible && (
-				<div className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-sm text-white px-4 py-2 flex items-center space-x-4 z-10"
+				<div
+					className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-sm text-white px-4 py-2 flex items-center space-x-4 z-10"
 					onPointerDown={(e) => e.stopPropagation()}
 					onPointerUp={(e) => e.stopPropagation()}
 					onPointerMove={(e) => e.stopPropagation()}
@@ -490,10 +492,8 @@ export default function VideoPlayer({ children, className }) {
 							<button
 								disabled
 								className={cn(
-									"p-1.5 rounded transition flex items-center gap-0.5 cursor-not-allowed opacity-50",
-									micEnabled 
-										? "text-green-500 bg-green-500/20" 
-										: "text-white/60"
+									'p-1.5 rounded transition flex items-center gap-0.5 cursor-not-allowed opacity-50',
+									micEnabled ? 'text-green-500 bg-green-500/20' : 'text-white/60'
 								)}
 								aria-label="Microphone locked during recording"
 								title="Cannot change microphone while recording"
@@ -506,59 +506,62 @@ export default function VideoPlayer({ children, className }) {
 								<DropdownMenuPrimitive.Trigger asChild>
 									<button
 										className={cn(
-											"p-1.5 rounded transition cursor-pointer flex items-center gap-0.5",
-											micEnabled 
-												? "text-green-500 hover:text-green-400 bg-green-500/20" 
-												: "text-white/60 hover:text-white"
+											'p-1.5 rounded transition cursor-pointer flex items-center gap-0.5',
+											micEnabled
+												? 'text-green-500 hover:text-green-400 bg-green-500/20'
+												: 'text-white/60 hover:text-white'
 										)}
 										aria-label={micEnabled ? 'Microphone Settings' : 'Enable Microphone'}
-										title={micEnabled ? 'Microphone On (click to configure)' : 'Configure Microphone'}
+										title={
+											micEnabled ? 'Microphone On (click to configure)' : 'Configure Microphone'
+										}
 									>
-										{micEnabled ? <LucideMic className="h-4 w-4" /> : <LucideMicOff className="h-4 w-4" />}
+										{micEnabled ? (
+											<LucideMic className="h-4 w-4" />
+										) : (
+											<LucideMicOff className="h-4 w-4" />
+										)}
 										<LucideChevronDown className="h-3 w-3" />
 									</button>
 								</DropdownMenuPrimitive.Trigger>
 								<DropdownMenuPrimitive.Portal container={containerRef.current}>
-									<DropdownMenuPrimitive.Content 
+									<DropdownMenuPrimitive.Content
 										align="end"
 										sideOffset={5}
 										className="z-[9999] w-56 min-w-32 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
 									>
-								<DropdownMenuItem
-									onClick={handleToggleMic}
-									className="cursor-pointer"
-								>
-									{micEnabled ? (
-										<>
-											<LucideMicOff className="h-4 w-4 mr-2" />
-											Disable Microphone
-										</>
-									) : (
-										<>
-											<LucideMic className="h-4 w-4 mr-2" />
-											Enable Microphone
-										</>
-									)}
-								</DropdownMenuItem>
-								{audioDevices.length > 0 && (
-									<>
-										<div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-											Select Device
-										</div>
-										{audioDevices.map(device => (
-											<DropdownMenuItem
-												key={device.deviceId}
-												onClick={() => handleChangeMicrophone(device.deviceId)}
-												className={cn(
-													"cursor-pointer",
-													selectedDeviceId === device.deviceId && "bg-accent"
-												)}
-											>
-												{device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
-											</DropdownMenuItem>
-										))}
-									</>
-								)}
+										<DropdownMenuItem onClick={handleToggleMic} className="cursor-pointer">
+											{micEnabled ? (
+												<>
+													<LucideMicOff className="h-4 w-4 mr-2" />
+													Disable Microphone
+												</>
+											) : (
+												<>
+													<LucideMic className="h-4 w-4 mr-2" />
+													Enable Microphone
+												</>
+											)}
+										</DropdownMenuItem>
+										{audioDevices.length > 0 && (
+											<>
+												<div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+													Select Device
+												</div>
+												{audioDevices.map((device) => (
+													<DropdownMenuItem
+														key={device.deviceId}
+														onClick={() => handleChangeMicrophone(device.deviceId)}
+														className={cn(
+															'cursor-pointer',
+															selectedDeviceId === device.deviceId && 'bg-accent'
+														)}
+													>
+														{device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+													</DropdownMenuItem>
+												))}
+											</>
+										)}
 									</DropdownMenuPrimitive.Content>
 								</DropdownMenuPrimitive.Portal>
 							</DropdownMenuPrimitive.Root>
@@ -568,10 +571,10 @@ export default function VideoPlayer({ children, className }) {
 						<button
 							onClick={handleToggleRecording}
 							className={cn(
-								"p-1.5 rounded transition cursor-pointer flex items-center gap-1",
-								isRecording 
-									? "bg-red-600 hover:bg-red-500 text-white" 
-									: "bg-red-600/80 hover:bg-red-500 text-white"
+								'p-1.5 rounded transition cursor-pointer flex items-center gap-1',
+								isRecording
+									? 'bg-red-600 hover:bg-red-500 text-white'
+									: 'bg-red-600/80 hover:bg-red-500 text-white'
 							)}
 							aria-label={isRecording ? 'Stop Recording' : 'Start Recording'}
 							title={isRecording ? 'Stop Recording (R)' : 'Start Recording (R)'}
