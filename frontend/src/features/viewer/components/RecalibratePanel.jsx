@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RefreshCw, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { RefreshCw, Clock, AlertCircle, CheckCircle, ChevronDown } from 'lucide-react';
 import { processMatchWithFrames } from '@/features/matches/api/matches';
 import { useSettings } from '@/hooks/useSettings';
 import FrameExtractor from './FrameExtractor';
@@ -47,6 +47,7 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 	const [status, setStatus] = useState('idle'); // 'idle' | 'extracting' | 'processing' | 'success' | 'error'
 	const [error, setError] = useState(null);
 	const [extractorData, setExtractorData] = useState(null);
+	const [isCollapsed, setIsCollapsed] = useState(true);
 
     // TODO: little ugly - move video URL construction to a util
 	// Build full video URL from match.src
@@ -134,73 +135,88 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 
 	return (
 		<>
-			<div className="border-t pt-3">
-				<h4 className="text-xs font-semibold mb-2 flex items-center gap-2">
-					<RefreshCw className="h-3 w-3" />
-					Recalibrate
-				</h4>
-				<p className="text-xs text-muted-foreground mb-3">
-					Re-run calibration using a frame at a specific time in the video.
-				</p>
-
-				<div className="flex items-end gap-2">
-					<div className="flex-1">
-						<Label htmlFor="recalibrate-time" className="text-xs">
-							Time (MM:SS)
-						</Label>
-						<Input
-							id="recalibrate-time"
-							type="text"
-							placeholder="0:30"
-							value={timeInput}
-							onChange={(e) => {
-								setTimeInput(e.target.value);
-								if (status === 'error') setStatus('idle');
-							}}
-							disabled={isProcessing}
-							className="h-8 text-xs"
-						/>
+			<div className="bg-card border rounded-lg shadow-sm overflow-hidden">
+				{/* Collapsible Header */}
+				<button
+					onClick={() => setIsCollapsed(!isCollapsed)}
+					className="w-full flex items-center justify-between px-4 py-3 bg-muted/20 hover:bg-muted/40 transition-colors"
+				>
+					<div className="flex items-center gap-3">
+						<h4 className="font-semibold flex items-center gap-2">
+							<RefreshCw className="h-4 w-4 text-muted-foreground" />
+							Recalibrate
+						</h4>
 					</div>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={handleUseCurrentTime}
-						disabled={isProcessing || !videoRef?.currentTime}
-						className="h-8"
-						title="Use current video time"
-					>
-						<Clock className="h-3 w-3" />
-					</Button>
-					<Button
-						type="button"
-						size="sm"
-						onClick={handleRecalibrate}
-						disabled={isProcessing || !timeInput}
-						className="h-8"
-					>
-						{isProcessing ? (
-							<>
-								<RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-								{status === 'extracting' ? 'Extracting...' : 'Calibrating...'}
-							</>
-						) : (
-							'Recalibrate'
+					<ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`} />
+				</button>
+
+				{/* Collapsible Content */}
+				{!isCollapsed && (
+					<div className="px-4 py-3 border-t">
+						<p className="text-xs text-muted-foreground mb-3">
+							Re-run calibration using a frame at a specific time in the video.
+						</p>
+
+						<div className="flex items-end gap-2">
+							<div className="flex-1">
+								<Label htmlFor="recalibrate-time" className="text-xs">
+									Time (MM:SS)
+								</Label>
+								<Input
+									id="recalibrate-time"
+									type="text"
+									placeholder="0:30"
+									value={timeInput}
+									onChange={(e) => {
+										setTimeInput(e.target.value);
+										if (status === 'error') setStatus('idle');
+									}}
+									disabled={isProcessing}
+									className="h-8 text-xs"
+								/>
+							</div>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={handleUseCurrentTime}
+								disabled={isProcessing || !videoRef?.currentTime}
+								className="h-8"
+								title="Use current video time"
+							>
+								<Clock className="h-3 w-3" />
+							</Button>
+							<Button
+								type="button"
+								size="sm"
+								onClick={handleRecalibrate}
+								disabled={isProcessing || !timeInput}
+								className="h-8"
+							>
+								{isProcessing ? (
+									<>
+										<RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+										{status === 'extracting' ? 'Extracting...' : 'Calibrating...'}
+									</>
+								) : (
+									'Recalibrate'
+								)}
+							</Button>
+						</div>
+
+						{/* Status messages */}
+						{status === 'error' && error && (
+							<div className="mt-2 flex items-center gap-1 text-xs text-red-500">
+								<AlertCircle className="h-3 w-3" />
+								{error}
+							</div>
 						)}
-					</Button>
-				</div>
-
-				{/* Status messages */}
-				{status === 'error' && error && (
-					<div className="mt-2 flex items-center gap-1 text-xs text-red-500">
-						<AlertCircle className="h-3 w-3" />
-						{error}
-					</div>
-				)}
-				{status === 'success' && (
-					<div className="mt-2 flex items-center gap-1 text-xs text-green-500">
-						<CheckCircle className="h-3 w-3" />
-						Recalibration complete! Refresh to see changes.
+						{status === 'success' && (
+							<div className="mt-2 flex items-center gap-1 text-xs text-green-500">
+								<CheckCircle className="h-3 w-3" />
+								Recalibration complete! Refresh to see changes.
+							</div>
+						)}
 					</div>
 				)}
 			</div>

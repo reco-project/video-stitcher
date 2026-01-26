@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Palette, RotateCcw, Sun, Contrast, Droplets, Thermometer, Wand2 } from 'lucide-react';
+import { Palette, RotateCcw, Sun, Contrast, Droplets, Thermometer, Wand2, ChevronDown } from 'lucide-react';
 import { DEFAULT_COLOR_CORRECTION } from '../utils/utils';
 import { autoColorCorrection } from '@/features/matches/api/matches.js';
 
@@ -171,9 +171,10 @@ export default function ColorCorrectionPanel({ side, values, onChange, onReset }
 /**
  * Dual camera color correction panel with link/unlink option
  */
-export function DualColorCorrectionPanel({ leftValues, rightValues, onLeftChange, onRightChange, onResetAll, matchId, currentTime }) {
+export function DualColorCorrectionPanel({ leftValues, rightValues, onLeftChange, onRightChange, onResetAll, matchId, videoRef }) {
 	const [linked, setLinked] = useState(false);
 	const [autoLoading, setAutoLoading] = useState(false);
+	const [isCollapsed, setIsCollapsed] = useState(true);
 
 	const handleLeftChange = useCallback(
 		(newValues) => {
@@ -213,7 +214,9 @@ export function DualColorCorrectionPanel({ leftValues, rightValues, onLeftChange
 		if (!matchId) return;
 		setAutoLoading(true);
 		try {
-			const result = await autoColorCorrection(matchId, currentTime || 0);
+			// Get current video time when button is clicked
+			const currentTime = videoRef?.current?.currentTime || 0;
+			const result = await autoColorCorrection(matchId, currentTime);
 			if (result?.colorCorrection) {
 				if (result.colorCorrection.left) {
 					onLeftChange(result.colorCorrection.left);
@@ -227,67 +230,83 @@ export function DualColorCorrectionPanel({ leftValues, rightValues, onLeftChange
 		} finally {
 			setAutoLoading(false);
 		}
-	}, [matchId, currentTime, onLeftChange, onRightChange]);
+	}, [matchId, videoRef, onLeftChange, onRightChange]);
 
 	return (
-		<div className="border-t pt-3">
-			<div className="flex items-center justify-between mb-3">
-				<h4 className="text-xs font-semibold flex items-center gap-2">
-					<Palette className="h-3 w-3" />
-					Color Correction
-				</h4>
-				<div className="flex items-center gap-2">
-					{matchId && (
+		<div className="bg-card border rounded-lg shadow-sm overflow-hidden">
+			{/* Collapsible Header - full width clickable like Info panel */}
+			<button
+				onClick={() => setIsCollapsed(!isCollapsed)}
+				className="w-full flex items-center justify-between px-4 py-3 bg-muted/20 hover:bg-muted/40 transition-colors"
+			>
+				<div className="flex items-center gap-3">
+					<h4 className="font-semibold flex items-center gap-2">
+						<Palette className="h-4 w-4 text-muted-foreground" />
+						Color Correction
+					</h4>
+				</div>
+				<ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`} />
+			</button>
+
+			{/* Collapsible Content */}
+			{!isCollapsed && (
+				<>
+					{/* Action buttons */}
+					<div className="flex items-center gap-2 px-4 py-2 border-t bg-muted/10">
+						{matchId && (
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={handleAutoColorCorrection}
+								disabled={autoLoading}
+								className="h-6 px-2 text-xs"
+								title="Auto-detect color correction from current frame (experimental)"
+							>
+								<Wand2 className={`h-3 w-3 mr-1 ${autoLoading ? 'animate-spin' : ''}`} />
+								{autoLoading ? 'Analyzing...' : 'Auto ⚗️'}
+							</Button>
+						)}
 						<Button
 							type="button"
-							variant="outline"
+							variant={linked ? 'default' : 'outline'}
 							size="sm"
-							onClick={handleAutoColorCorrection}
-							disabled={autoLoading}
+							onClick={() => setLinked(!linked)}
 							className="h-6 px-2 text-xs"
-							title="Auto-detect color correction (experimental)"
 						>
-							<Wand2 className={`h-3 w-3 mr-1 ${autoLoading ? 'animate-spin' : ''}`} />
-							{autoLoading ? 'Analyzing...' : 'Auto ⚗️'}
+							{linked ? '🔗 Linked' : '🔓 Independent'}
 						</Button>
-					)}
-					<Button
-						type="button"
-						variant={linked ? 'default' : 'outline'}
-						size="sm"
-						onClick={() => setLinked(!linked)}
-						className="h-6 px-2 text-xs"
-					>
-						{linked ? '🔗 Linked' : '🔓 Independent'}
-					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						onClick={onResetAll}
-						className="h-6 px-2 text-xs"
-						title="Reset all to defaults"
-					>
-						<RotateCcw className="h-3 w-3 mr-1" />
-						Reset All
-					</Button>
-				</div>
-			</div>
-
-			<div className="grid grid-cols-2 gap-4">
-				<ColorCorrectionPanel
-					side="left"
-					values={leftValues}
-					onChange={handleLeftChange}
-					onReset={handleResetLeft}
-				/>
-				<ColorCorrectionPanel
-					side="right"
-					values={rightValues}
-					onChange={handleRightChange}
-					onReset={handleResetRight}
-				/>
-			</div>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={onResetAll}
+							className="h-6 px-2 text-xs"
+							title="Reset all to defaults"
+						>
+							<RotateCcw className="h-3 w-3 mr-1" />
+							Reset
+						</Button>
+					</div>
+					{/* Sliders */}
+					<div className="px-4 pb-3 pt-2">
+						<div className="grid grid-cols-2 gap-4">
+							<ColorCorrectionPanel
+								side="left"
+								values={leftValues}
+								onChange={handleLeftChange}
+								onReset={handleResetLeft}
+							/>
+							<ColorCorrectionPanel
+								side="right"
+								values={rightValues}
+								onChange={handleRightChange}
+								onReset={handleResetRight}
+							/>
+						</div>
+					</div>
+				</>
+			)}
 		</div>
 	);
 }
