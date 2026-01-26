@@ -8,9 +8,12 @@ Design notes:
 - Each match is a single JSON file identified by match_id
 - Simpler structure than profiles (no hierarchical organization needed)
 - Persists across app restarts
+- Uses atomic writes to prevent file corruption
 """
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -65,15 +68,34 @@ class FileMatchStore(MatchStore):
 
     def _save_match_file(self, path: Path, match: MatchModel) -> None:
         """
-        Save match to JSON file.
+        Save match to JSON file atomically.
+
+        Uses write-to-temp-then-rename pattern to prevent corruption
+        from concurrent writes or crashes during write.
 
         Args:
             path: Path to match JSON file
             match: Match model to save
         """
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(match.model_dump(exclude_none=False), f, indent=2, ensure_ascii=False)
+
+        # Write to temporary file in the same directory (same filesystem for atomic rename)
+        fd, tmp_path = tempfile.mkstemp(suffix='.tmp', prefix=f'{path.stem}_', dir=path.parent)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(match.model_dump(exclude_none=False), f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())  # Ensure data is written to disk
+
+            # Atomic rename (on POSIX systems)
+            os.replace(tmp_path, path)
+        except Exception:
+            # Clean up temp file on error
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def list_all(self) -> List[MatchModel]:
         """

@@ -327,6 +327,7 @@ const Viewer = ({ selectedMatch }) => {
 					<CameraControlsWrapper yawRange={yawRange} pitchRange={pitchRange}>
 						<VideoPlayerContainer>
 							<Canvas
+								frameloop="always"
 								camera={{
 									position: [cameraAxisOffset, 0, cameraAxisOffset],
 									fov: defaultFOV,

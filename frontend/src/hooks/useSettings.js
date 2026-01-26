@@ -10,6 +10,9 @@ const defaultSettings = {
 	telemetryEndpointUrl: 'https://telemetry.reco-project.org/telemetry',
 	telemetryAutoUpload: false,
 	telemetryPromptShown: false,
+	// Recording settings
+	recordingBitrate: 16, // Mbps
+	recordingFormat: 'webm',
 };
 
 /**
