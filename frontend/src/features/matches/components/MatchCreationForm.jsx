@@ -1,47 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useToast } from '@/components/ui/toast';
-import { Video } from 'lucide-react';
-import { getEncoderSettings } from '@/features/settings/api/settings';
+import { useSettings } from '@/hooks/useSettings';
 import CameraSettings from './CameraSettings';
-import VideoList from './VideoList';
+import VideoSections from './VideoSections';
 import QualitySettings from './QualitySettings';
-import { useVideoManager } from '../hooks/useVideoManager';
+import { useMatchDraft, useAutoSaveDraft } from '../hooks/useMatchDraft';
+import { useQualitySettings } from '../hooks/useQualitySettings';
 
-const DRAFT_KEY = 'matchCreationDraft';
-
-const loadDraft = () => {
-	try {
-		const draft = localStorage.getItem(DRAFT_KEY);
-		return draft ? JSON.parse(draft) : null;
-	} catch (err) {
-		console.warn('Failed to load draft:', err);
-		return null;
-	}
-};
-
-const saveDraft = (data) => {
-	try {
-		localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
-	} catch (err) {
-		console.warn('Failed to save draft:', err);
-	}
-};
-
-// TODO: Would highly benefit from more modularization and better prop management
 function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
+	const { settings } = useSettings();
+	const { loadDraft, saveDraft, clearDraft } = useMatchDraft();
 	const draft = loadDraft();
 	const { showToast } = useToast();
+	
 	const [name, setName] = useState(initialData?.name || draft?.name || '');
+	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	// Video management via hook
-	const { left, right, handlers } = useVideoManager(
-		initialData?.left_videos?.map((v) => v.path) || draft?.leftVideoPaths || [],
-		initialData?.right_videos?.map((v) => v.path) || draft?.rightVideoPaths || []
-	);
+	// Video data from VideoSections
+	const [videoData, setVideoData] = useState({
+		left: { paths: initialData?.left_videos?.map((v) => v.path) || draft?.leftVideoPaths || [], metadata: [] },
+		right: { paths: initialData?.right_videos?.map((v) => v.path) || draft?.rightVideoPaths || [], metadata: [] },
+	});
+
+	const handleVideoChange = useCallback(({ left, right }) => {
+		setVideoData({ left, right });
+	}, []);
 
 	// Profile selection
 	const [leftProfileId, setLeftProfileId] = useState(draft?.leftProfileId || '');
@@ -55,90 +42,33 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 			const rightProfileFromData =
 				initialData.right_videos?.[0]?.profile_id || initialData.metadata?.right_profile_id || '';
 
-			if (leftProfileFromData) {
-				setLeftProfileId(leftProfileFromData);
-			}
-			if (rightProfileFromData) {
-				setRightProfileId(rightProfileFromData);
-			}
+			if (leftProfileFromData) setLeftProfileId(leftProfileFromData);
+			if (rightProfileFromData) setRightProfileId(rightProfileFromData);
 		}
 	}, [initialData]);
 
-	const [isSubmitting, setIsSubmitting] = useState(false);
+	// Quality settings (uses dedicated hook)
+	const quality = useQualitySettings({
+		preset: initialData?.quality_settings?.preset || draft?.qualityPreset,
+		customBitrate: initialData?.quality_settings?.custom?.bitrate || draft?.customBitrate,
+		customPreset: initialData?.quality_settings?.custom?.preset || draft?.customPreset,
+		customResolution: initialData?.quality_settings?.custom?.resolution || draft?.customResolution,
+		customUseGpuDecode: initialData?.quality_settings?.custom?.use_gpu_decode ?? draft?.customUseGpuDecode,
+	});
 
-	// Encoder info
-	const [encoderInfo, setEncoderInfo] = useState(null);
-	const [loadingEncoder, setLoadingEncoder] = useState(true);
-
-	// Quality settings
-	const [qualityPreset, setQualityPreset] = useState(
-		initialData?.quality_settings?.preset || draft?.qualityPreset || '1080p'
+	// Auto-save draft
+	const draftData = useMemo(
+		() => ({
+			name,
+			leftVideoPaths: videoData.left.paths,
+			rightVideoPaths: videoData.right.paths,
+			leftProfileId,
+			rightProfileId,
+			...quality.draftValues,
+		}),
+		[name, videoData.left.paths, videoData.right.paths, leftProfileId, rightProfileId, quality.draftValues]
 	);
-	const [customBitrate, setCustomBitrate] = useState(
-		initialData?.quality_settings?.custom?.bitrate || draft?.customBitrate || '30M'
-	);
-	const [customPreset, setCustomPreset] = useState(
-		initialData?.quality_settings?.custom?.preset || draft?.customPreset || 'medium'
-	);
-	const [customResolution, setCustomResolution] = useState(
-		initialData?.quality_settings?.custom?.resolution || draft?.customResolution || '1080p'
-	);
-	const [customUseGpuDecode, setCustomUseGpuDecode] = useState(
-		initialData?.quality_settings?.custom?.use_gpu_decode ?? draft?.customUseGpuDecode ?? true
-	);
-
-	const handleCustomSettingsChange = (changes) => {
-		if ('bitrate' in changes) setCustomBitrate(changes.bitrate);
-		if ('preset' in changes) setCustomPreset(changes.preset);
-		if ('resolution' in changes) setCustomResolution(changes.resolution);
-		if ('useGpuDecode' in changes) setCustomUseGpuDecode(changes.useGpuDecode);
-	};
-
-	// Save draft to localStorage with debounce
-	useEffect(() => {
-		const timeoutId = setTimeout(() => {
-			const draftData = {
-				name,
-				leftVideoPaths: left.paths,
-				rightVideoPaths: right.paths,
-				leftProfileId,
-				rightProfileId,
-				qualityPreset,
-				customBitrate,
-				customPreset,
-				customResolution,
-				customUseGpuDecode,
-			};
-			saveDraft(draftData);
-		}, 500);
-
-		return () => clearTimeout(timeoutId);
-	}, [
-		name,
-		left.paths,
-		right.paths,
-		leftProfileId,
-		rightProfileId,
-		qualityPreset,
-		customBitrate,
-		customPreset,
-		customResolution,
-		customUseGpuDecode,
-	]);
-
-	// Load encoder settings on mount
-	useEffect(() => {
-		getEncoderSettings()
-			.then((info) => {
-				setEncoderInfo(info);
-			})
-			.catch((err) => {
-				console.error('Failed to load encoder settings:', err);
-			})
-			.finally(() => {
-				setLoadingEncoder(false);
-			});
-	}, []);
+	useAutoSaveDraft(draftData, saveDraft);
 
 	const handleSubmit = async (startProcessing = true) => {
 		// Validation
@@ -147,8 +77,8 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 			return;
 		}
 
-		const validLeftPaths = left.paths.filter((p) => p.trim());
-		const validRightPaths = right.paths.filter((p) => p.trim());
+		const validLeftPaths = videoData.left.paths.filter((p) => p.trim());
+		const validRightPaths = videoData.right.paths.filter((p) => p.trim());
 
 		if (validLeftPaths.length === 0) {
 			showToast({ message: 'Please select at least one left camera video', type: 'error' });
@@ -186,31 +116,6 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 			const leftProfile = await leftProfileRes.json();
 			const rightProfile = await rightProfileRes.json();
 
-			// Preset to bitrate mapping (frontend handles all preset logic)
-			const presetToBitrate = {
-				'720p': '30M',
-				'1080p': '50M',
-				'1440p': '70M',
-			};
-
-			// Build quality settings - always send full settings (backend has no preset logic)
-			const qualitySettings =
-				qualityPreset === 'custom'
-					? {
-							preset: 'custom',
-							bitrate: customBitrate,
-							speed_preset: customPreset,
-							resolution: customResolution,
-							use_gpu_decode: customUseGpuDecode,
-						}
-					: {
-							preset: qualityPreset,
-							bitrate: presetToBitrate[qualityPreset] || '50M',
-							speed_preset: 'superfast',
-							resolution: qualityPreset, // Use preset name as resolution
-							use_gpu_decode: false,
-						};
-
 			await onSubmit(
 				{
 					name: name.trim(),
@@ -218,16 +123,11 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 					right_videos: validRightPaths.map((path) => ({ path, profile_id: rightProfileId })),
 					leftProfile,
 					rightProfile,
-					qualitySettings,
+					qualitySettings: quality.qualitySettings,
 				},
 				startProcessing
 			);
-			// Clear draft on successful submission
-			try {
-				localStorage.removeItem(DRAFT_KEY);
-			} catch (err) {
-				console.warn('Failed to clear draft:', err);
-			}
+			clearDraft();
 		} catch (err) {
 			showToast({ message: err.message || 'Failed to create match', type: 'error' });
 			setIsSubmitting(false);
@@ -236,12 +136,7 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 	};
 
 	const handleCancel = () => {
-		// Clear draft when canceling
-		try {
-			localStorage.removeItem(DRAFT_KEY);
-		} catch (err) {
-			console.warn('Failed to clear draft:', err);
-		}
+		clearDraft();
 		onCancel();
 	};
 
@@ -264,80 +159,58 @@ function MatchCreationFormInner({ onSubmit, onCancel, initialData }) {
 							type="text"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
-							placeholder="e.g., Concert 2025-12-29"
+							placeholder="e.g., My game 2025-12-29"
 							className="text-lg"
 							autoFocus={false}
 						/>
 					</CardContent>
 				</Card>
 				{/* Videos */}
-				<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Video className="h-5 w-5" />
-								Left Camera
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<VideoList
-								side="left"
-								videoPaths={left.paths}
-								metadata={left.metadata}
-								onSelectFiles={handlers.handleSelectFiles}
-								onRemoveVideo={handlers.handleRemoveVideo}
-								onDragStart={handlers.handleDragStart}
-								onDrop={handlers.handleDrop}
-							/>
-						</CardContent>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Video className="h-5 w-5" />
-								Right Camera
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<VideoList
-								side="right"
-								videoPaths={right.paths}
-								metadata={right.metadata}
-								onSelectFiles={handlers.handleSelectFiles}
-								onRemoveVideo={handlers.handleRemoveVideo}
-								onDragStart={handlers.handleDragStart}
-								onDrop={handlers.handleDrop}
-							/>
-						</CardContent>
-					</Card>
-				</div>
+				<VideoSections
+					initialLeftPaths={initialData?.left_videos?.map((v) => v.path) || draft?.leftVideoPaths || []}
+					initialRightPaths={initialData?.right_videos?.map((v) => v.path) || draft?.rightVideoPaths || []}
+					onChange={handleVideoChange}
+				/>
 				{/* Camera Settings */}
 				<CameraSettings
-					leftVideoPaths={left.paths}
-					leftMetadata={left.metadata}
 					leftProfileId={leftProfileId}
 					onLeftProfileChange={setLeftProfileId}
-					rightVideoPaths={right.paths}
-					rightMetadata={right.metadata}
 					rightProfileId={rightProfileId}
 					onRightProfileChange={setRightProfileId}
-					onSelectFiles={handlers.handleSelectFiles}
-					onRemoveVideo={handlers.handleRemoveVideo}
-					onDragStart={handlers.handleDragStart}
-					onDrop={handlers.handleDrop}
 				/>
 				{/* Quality Settings */}
 				<QualitySettings
-					qualityPreset={qualityPreset}
-					onPresetChange={setQualityPreset}
-					customBitrate={customBitrate}
-					customPreset={customPreset}
-					customResolution={customResolution}
-					customUseGpuDecode={customUseGpuDecode}
-					onCustomChange={handleCustomSettingsChange}
-					encoderInfo={encoderInfo}
-					loadingEncoder={loadingEncoder}
+					qualityPreset={quality.preset}
+					onPresetChange={quality.setPreset}
+					customBitrate={quality.customBitrate}
+					customPreset={quality.customPreset}
+					customResolution={quality.customResolution}
+					customUseGpuDecode={quality.customUseGpuDecode}
+					onCustomChange={quality.handleCustomChange}
+					encoderInfo={quality.encoderInfo}
+					loadingEncoder={quality.loadingEncoder}
 				/>
+				{/* Debug panel - only shown when debugMode is enabled in settings */}
+				{settings.debugMode && (
+					<details className="text-xs bg-muted p-3 rounded-md">
+						<summary className="cursor-pointer font-medium">Debug: Form State</summary>
+						<pre className="mt-2 overflow-auto max-h-64 text-[10px]">
+							{JSON.stringify(
+								{
+									name,
+									leftVideoPaths: videoData.left.paths,
+									rightVideoPaths: videoData.right.paths,
+									leftProfileId,
+									rightProfileId,
+									qualitySettings: quality.qualitySettings,
+									encoderInfo: quality.encoderInfo,
+								},
+								null,
+								2
+							)}
+						</pre>
+					</details>
+				)}
 				{/* Actions */}
 				<div className="flex justify-between items-center pt-4">
 					<Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>

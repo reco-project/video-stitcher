@@ -1,34 +1,12 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Video, Trash2, GripVertical } from 'lucide-react';
+import { formatDuration, calculateVideoTotals } from '../utils/format';
 
-function formatDuration(seconds) {
-	if (!seconds) return '0:00';
-	const mins = Math.floor(seconds / 60);
-	const secs = Math.floor(seconds % 60);
-	return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function calculateTotals(metadata) {
-	const validMetadata = metadata.filter(Boolean);
-	const totalDuration = validMetadata.reduce((sum, m) => sum + (m.duration || 0), 0);
-	const totalSize = validMetadata.reduce((sum, m) => sum + (m.size || 0), 0);
-
-	const formatFileSize = (bytes) => {
-		if (bytes === 0) return '0 Bytes';
-		const k = 1024;
-		const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-	};
-
-	return {
-		durationFormatted: formatDuration(totalDuration),
-		sizeFormatted: formatFileSize(totalSize),
-	};
-}
-
-// TODO: I don't think we need so many handlers passed from parent. VideoList can manage its own drag state and just inform parent on reorder (even just set the new array)
+/**
+ * VideoList - Displays and manages a list of video files for one camera side
+ * Supports drag-drop reordering, file drops from filesystem, and file selection
+ */
 export default function VideoList({ side, videoPaths, metadata, onSelectFiles, onRemoveVideo, onDragStart, onDrop }) {
 	const [dropTargetIndex, setDropTargetIndex] = useState(null);
 	const [isDraggingOverEmpty, setIsDraggingOverEmpty] = useState(false);
@@ -88,8 +66,8 @@ export default function VideoList({ side, videoPaths, metadata, onSelectFiles, o
 				<>
 					<div className="flex items-center justify-between pb-2">
 						<div className="text-xs text-muted-foreground">
-							{metadata.filter(Boolean).length} video(s) • {calculateTotals(metadata).durationFormatted} •{' '}
-							{calculateTotals(metadata).sizeFormatted}
+							{calculateVideoTotals(metadata).count} video(s) • {calculateVideoTotals(metadata).durationFormatted} •{' '}
+							{calculateVideoTotals(metadata).sizeFormatted}
 						</div>
 						<Button type="button" size="sm" onClick={() => onSelectFiles(side)}>
 							Add More

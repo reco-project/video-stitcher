@@ -1,10 +1,12 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // Expose file system APIs to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
+	// Get file path from a dropped File object (required with contextIsolation)
+	getPathForFile: (file) => webUtils.getPathForFile(file),
 	// Open file dialog and return selected file path
 	selectVideoFile: () => ipcRenderer.invoke('dialog:selectVideoFile'),
 	// Open file dialog with multi-select and return array of paths
