@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 
 const defaultSettings = {
-	debugMode: false,
+	debugMode: true,
 	apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
 	encoderPreference: 'auto',
+	disableHardwareAcceleration: false,
 	telemetryEnabled: false,
 	telemetryIncludeSystemInfo: false,
 	telemetryEndpointUrl: 'https://telemetry.reco-project.org/telemetry',

@@ -126,9 +126,24 @@ export default function ProcessingMatch() {
 			setExtractingMatch(null);
 
 			showToast({ message: 'Uploading extracted frames...', type: 'info' });
-			await processMatchWithFrames(mId, leftBlob, rightBlob);
+			const result = await processMatchWithFrames(mId, leftBlob, rightBlob, settings.debugMode || false);
 
-			showToast({ message: 'Calibration started', type: 'info' });
+			// Show debug timing if available
+			if (result.debug && result.debug.timing) {
+				console.log('[DEBUG] Processing timing:', result.debug.timing_breakdown);
+				if (settings.debugMode) {
+					const timingInfo = Object.entries(result.debug.timing_breakdown)
+						.filter(([, v]) => v !== null)
+						.map(([k, v]) => `${k}: ${v}`)
+						.join(', ');
+					showToast({ message: `Calibration started (${timingInfo})`, type: 'info' });
+				} else {
+					showToast({ message: 'Calibration started', type: 'info' });
+				}
+			} else {
+				showToast({ message: 'Calibration started', type: 'info' });
+			}
+
 			processing.startPolling();
 		} catch (err) {
 			console.error('Failed to send frames:', err);

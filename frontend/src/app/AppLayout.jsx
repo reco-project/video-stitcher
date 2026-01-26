@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMatches } from '@/features/matches/hooks/useMatches';
 import { trackTelemetryEvent } from '@/lib/telemetry';
+import { useToast } from '@/components/ui/toast';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
@@ -11,11 +12,30 @@ import TelemetryConsentDialog from './components/TelemetryConsentDialog';
  * AppLayout wraps all pages with persistent header and sidebar navigation
  * This provides consistent context and navigation across the entire app
  */
+const WIZARD_DRAFT_KEY = 'matchCreationDraft';
+
 export default function AppLayout({ children }) {
 	const { matches, refetch } = useMatches();
 	const location = useLocation();
+	const { showToast } = useToast();
 	const isOnProcessingPage = location.pathname.startsWith('/processing');
 	const wasOnProcessingPageRef = React.useRef(isOnProcessingPage);
+
+	// Listen for backend reconnection events
+	useEffect(() => {
+		if (window.electronAPI?.onBackendReconnected) {
+			const cleanup = window.electronAPI.onBackendReconnected(() => {
+				showToast({
+					message: 'Backend service has been restored',
+					type: 'success',
+				});
+				// Refetch matches after reconnection
+				refetch();
+			});
+
+			return cleanup;
+		}
+	}, [showToast, refetch]);
 
 	// Set up polling interval (separate from state management)
 	useEffect(() => {
@@ -26,9 +46,15 @@ export default function AppLayout({ children }) {
 		return () => clearInterval(interval);
 	}, [refetch]);
 
-	// Telemetry: app open (opt-in)
+	// Telemetry: app open (opt-in) and clear wizard cache
 	useEffect(() => {
 		trackTelemetryEvent('app_open');
+		// Clear match creation wizard cache on app start
+		try {
+			localStorage.removeItem(WIZARD_DRAFT_KEY);
+		} catch (err) {
+			console.warn('Failed to clear match creation draft:', err);
+		}
 	}, []);
 
 	// Manage processing state based on matches and location

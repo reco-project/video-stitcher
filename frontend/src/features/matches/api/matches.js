@@ -128,10 +128,11 @@ export async function processMatch(matchId) {
 /**
  * Process match with pre-warped frames from frontend
  */
-export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameBlob) {
+export async function processMatchWithFrames(matchId, leftFrameBlob, rightFrameBlob, debugMode = false) {
 	const formData = new FormData();
 	formData.append('left_frame', leftFrameBlob, 'left_frame.png');
 	formData.append('right_frame', rightFrameBlob, 'right_frame.png');
+	formData.append('debug_mode', debugMode.toString());
 
 	const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
 	const response = await fetch(`${apiBaseUrl}/matches/${matchId}/process-with-frames`, {

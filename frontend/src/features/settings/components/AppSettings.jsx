@@ -8,7 +8,17 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, RotateCcw, Settings2, Database, Bug, ChevronDown, ChevronUp, FolderOpen, RefreshCw } from 'lucide-react';
+import {
+	Trash2,
+	RotateCcw,
+	Settings2,
+	Database,
+	Bug,
+	ChevronDown,
+	ChevronUp,
+	FolderOpen,
+	RefreshCw,
+} from 'lucide-react';
 import { getEncoderSettings, updateEncoderSettings } from '@/features/settings/api/settings';
 
 export default function AppSettings() {
@@ -89,7 +99,7 @@ export default function AppSettings() {
 						<CardTitle>Encoder</CardTitle>
 					</div>
 					<CardDescription>
-						Choose which encoder FFmpeg should prefer for transcoding. "Auto" picks the best available.
+						Choose which encoder FFmpeg should prefer for transcoding. Auto picks the best available.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -145,6 +155,39 @@ export default function AppSettings() {
 				</CardContent>
 			</Card>
 
+			{/* Display Settings */}
+			<Card>
+				<CardHeader>
+					<div className="flex items-center gap-2">
+						<Settings2 className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>Display</CardTitle>
+					</div>
+					<CardDescription>Graphics rendering and display options</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div className="flex items-center justify-between space-x-4">
+						<div className="flex-1 space-y-1">
+							<Label htmlFor="disable-hw-accel" className="text-base cursor-pointer">
+								Disable hardware acceleration
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								Fixes font aliasing issues with NVIDIA FXAA and some GPU drivers. Requires app restart.
+							</p>
+						</div>
+						<Switch
+							id="disable-hw-accel"
+							checked={settings.disableHardwareAcceleration ?? false}
+							onCheckedChange={(checked) => updateSetting('disableHardwareAcceleration', checked)}
+						/>
+					</div>
+					<div className="bg-muted/50 p-3 rounded-md">
+						<p className="text-xs text-muted-foreground">
+							💡 If text looks blurry or aliased, try enabling this option and restart the app.
+						</p>
+					</div>
+				</CardContent>
+			</Card>
+
 			{/* Telemetry */}
 			<Card>
 				<CardHeader>
@@ -153,7 +196,8 @@ export default function AppSettings() {
 						<CardTitle>Telemetry</CardTitle>
 					</div>
 					<CardDescription>
-						Optional anonymous usage data to help improve the app. No personal data or file content collected.
+						Optional anonymous usage data to help improve the app. No personal data or file content
+						collected.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-6">
@@ -176,9 +220,7 @@ export default function AppSettings() {
 								</ul>
 							</div>
 							<div className="bg-green-500/10 border border-green-500/20 p-3 rounded-md">
-								<p className="font-medium text-green-700 dark:text-green-400 mb-1">
-									🔒 Privacy-first
-								</p>
+								<p className="font-medium text-green-700 dark:text-green-400 mb-1">🔒 Privacy-first</p>
 								<ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
 									<li>Anonymous, no tracking</li>
 									<li>Never sold or shared</li>
@@ -190,10 +232,10 @@ export default function AppSettings() {
 					<div className="flex items-center justify-between space-x-4">
 						<div className="flex-1 space-y-1">
 							<Label htmlFor="telemetry-enabled" className="text-base cursor-pointer">
-							Enable telemetry
-						</Label>
-						<p className="text-sm text-muted-foreground">
-							Collect anonymous usage data locally (e.g., app_open, match_created, errors).
+								Enable telemetry
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								Collect anonymous usage data locally (e.g., app_open, match_created, errors).
 							</p>
 						</div>
 						<Switch
@@ -212,10 +254,10 @@ export default function AppSettings() {
 					<div className="flex items-center justify-between space-x-4">
 						<div className="flex-1 space-y-1">
 							<Label htmlFor="telemetry-system" className="text-base cursor-pointer">
-							Include system info
-						</Label>
-						<p className="text-sm text-muted-foreground">
-							Add OS, CPU, RAM, and GPU info to help diagnose hardware-specific issues.
+								Include system info
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								Add OS, CPU, RAM, and GPU info to help diagnose hardware-specific issues.
 							</p>
 						</div>
 						<Switch
@@ -238,155 +280,167 @@ export default function AppSettings() {
 						<Switch
 							id="telemetry-auto-upload"
 							checked={settings.telemetryAutoUpload}
-						onCheckedChange={async (checked) => {
-							updateSetting('telemetryAutoUpload', checked);
-							if (checked && window.electronAPI?.telemetryUploadNow && settings.telemetryEndpointUrl) {
-								try {
-									await window.electronAPI.telemetryUploadNow({
-										endpointUrl: settings.telemetryEndpointUrl,
-									});
-								} catch (err) {
-									console.error('Auto-upload activation upload failed:', err);
+							onCheckedChange={async (checked) => {
+								updateSetting('telemetryAutoUpload', checked);
+								if (
+									checked &&
+									window.electronAPI?.telemetryUploadNow &&
+									settings.telemetryEndpointUrl
+								) {
+									try {
+										await window.electronAPI.telemetryUploadNow({
+											endpointUrl: settings.telemetryEndpointUrl,
+										});
+									} catch (err) {
+										console.error('Auto-upload activation upload failed:', err);
+									}
 								}
-							}
-						}}
+							}}
 							disabled={!settings.telemetryEnabled || !settings.telemetryEndpointUrl?.trim()}
 						/>
 					</div>
 
 					<div className="space-y-2">
-					<Label htmlFor="telemetry-endpoint" className="text-base">Endpoint URL</Label>
-					<p className="text-xs text-muted-foreground">
-						Remote server endpoint for telemetry uploads.
-					</p>
-					<div className="flex gap-2">
-						<Input
-							id="telemetry-endpoint"
-							type="url"
-							value={settings.telemetryEndpointUrl}
-							onChange={(e) => updateSetting('telemetryEndpointUrl', e.target.value)}
-							placeholder="https://your-domain.com/telemetry"
-							className="font-mono text-sm"
-							disabled={!settings.telemetryEnabled}
-						/>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={
-								!settings.telemetryEnabled ||
-								telemetryUploading ||
-								!settings.telemetryEndpointUrl?.trim()
-							}
-							onClick={async () => {
-								setTelemetryUploadStatus(null);
-								if (!window.electronAPI?.telemetryUploadNow) {
-									setTelemetryUploadStatus({
-										ok: false,
-										error: 'Upload is only available in the desktop app.',
-									});
-									return;
+						<Label htmlFor="telemetry-endpoint" className="text-base">
+							Endpoint URL
+						</Label>
+						<p className="text-xs text-muted-foreground">Remote server endpoint for telemetry uploads.</p>
+						<div className="flex gap-2">
+							<Input
+								id="telemetry-endpoint"
+								type="url"
+								value={settings.telemetryEndpointUrl}
+								onChange={(e) => updateSetting('telemetryEndpointUrl', e.target.value)}
+								placeholder="https://your-domain.com/telemetry"
+								className="font-mono text-sm"
+								disabled={!settings.telemetryEnabled}
+							/>
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={
+									!settings.telemetryEnabled ||
+									telemetryUploading ||
+									!settings.telemetryEndpointUrl?.trim()
 								}
+								onClick={async () => {
+									setTelemetryUploadStatus(null);
+									if (!window.electronAPI?.telemetryUploadNow) {
+										setTelemetryUploadStatus({
+											ok: false,
+											error: 'Upload is only available in the desktop app.',
+										});
+										return;
+									}
 
-								setTelemetryUploading(true);
-								try {
-									const res = await window.electronAPI.telemetryUploadNow({
-										endpointUrl: settings.telemetryEndpointUrl,
-									});
-									setTelemetryUploadStatus(res);
-								} catch (err) {
-									setTelemetryUploadStatus({ ok: false, error: err?.message || 'Upload failed' });
-								} finally {
-									setTelemetryUploading(false);
-								}
-							}}
-						>
-							{telemetryUploading ? 'Uploading…' : 'Upload manually'}
-						</Button>
+									setTelemetryUploading(true);
+									try {
+										const res = await window.electronAPI.telemetryUploadNow({
+											endpointUrl: settings.telemetryEndpointUrl,
+										});
+										setTelemetryUploadStatus(res);
+									} catch (err) {
+										setTelemetryUploadStatus({ ok: false, error: err?.message || 'Upload failed' });
+									} finally {
+										setTelemetryUploading(false);
+									}
+								}}
+							>
+								{telemetryUploading ? 'Uploading…' : 'Upload manually'}
+							</Button>
+						</div>
+						{telemetryUploadStatus && (
+							<p className="text-xs">
+								{telemetryUploadStatus.ok
+									? `Uploaded ${telemetryUploadStatus.sent || 0} line(s). Remaining: ${telemetryUploadStatus.remaining_lines ?? 0}.`
+									: `Upload failed: ${telemetryUploadStatus.error || 'Unknown error'}`}
+							</p>
+						)}
 					</div>
-					{telemetryUploadStatus && (
-						<p className="text-xs">
-							{telemetryUploadStatus.ok
-								? `Uploaded ${telemetryUploadStatus.sent || 0} line(s). Remaining: ${telemetryUploadStatus.remaining_lines ?? 0}.`
-								: `Upload failed: ${telemetryUploadStatus.error || 'Unknown error'}`}
+
+					<Separator />
+
+					<div className="space-y-2">
+						<Label className="text-base">Local storage</Label>
+						<p className="text-sm text-muted-foreground">
+							All events are saved locally on your machine. You can view the files anytime.
 						</p>
-					)}
-				</div>
-
-				<Separator />
-
-				<div className="space-y-2">
-					<Label className="text-base">Local storage</Label>
-					<p className="text-sm text-muted-foreground">
-						All events are saved locally on your machine. You can view the files anytime.
-					</p>
-					<div className="flex gap-2 flex-wrap">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={async () => {
-								if (window.electronAPI?.telemetryOpenFolder) {
-									await window.electronAPI.telemetryOpenFolder();
-								} else {
-									alert('Telemetry folder is only available in the desktop app.');
-								}
-							}}
-						>
-							<FolderOpen className="h-3 w-3 mr-2" />
-							Open folder
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={async () => {
-								if (!window.electronAPI?.telemetryDeleteLocal) return;
-								
-								if (!confirm('Delete all local telemetry data? This cannot be undone.\n\nTo delete online telemetry, please email the developer.')) {
-									return;
-								}
-
-								try {
-									const res = await window.electronAPI.telemetryDeleteLocal();
-									if (res.ok) {
-										alert('Local telemetry data deleted successfully.');
+						<div className="flex gap-2 flex-wrap">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={async () => {
+									if (window.electronAPI?.telemetryOpenFolder) {
+										await window.electronAPI.telemetryOpenFolder();
 									} else {
-										alert(`Failed to delete: ${res.error || 'Unknown error'}`);
+										alert('Telemetry folder is only available in the desktop app.');
 									}
-								} catch (err) {
-									alert(`Failed to delete: ${err?.message || 'Unknown error'}`);
-								}
-							}}
-						>
-							<Trash2 className="h-3 w-3 mr-2" />
-							Delete local telemetry
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={async () => {
-								if (!window.electronAPI?.telemetryResetClientId) return;
-								
-								if (!confirm('Reset client ID? A new anonymous ID will be generated.\n\nThis is useful if you want to start fresh with a new identity.')) {
-									return;
-								}
+								}}
+							>
+								<FolderOpen className="h-3 w-3 mr-2" />
+								Open folder
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={async () => {
+									if (!window.electronAPI?.telemetryDeleteLocal) return;
 
-								try {
-									const res = await window.electronAPI.telemetryResetClientId();
-									if (res.ok) {
-										alert(`Client ID reset successfully.\n\nNew ID: ${res.client_id}`);
-									} else {
-										alert(`Failed to reset: ${res.error || 'Unknown error'}`);
+									if (
+										!confirm(
+											'Delete all local telemetry data? This cannot be undone.\n\nTo delete online telemetry, please email the developer.'
+										)
+									) {
+										return;
 									}
-								} catch (err) {
-									alert(`Failed to reset: ${err?.message || 'Unknown error'}`);
-								}
-							}}
-						>
-							<RefreshCw className="h-3 w-3 mr-2" />
-							Reset client ID
-						</Button>
+
+									try {
+										const res = await window.electronAPI.telemetryDeleteLocal();
+										if (res.ok) {
+											alert('Local telemetry data deleted successfully.');
+										} else {
+											alert(`Failed to delete: ${res.error || 'Unknown error'}`);
+										}
+									} catch (err) {
+										alert(`Failed to delete: ${err?.message || 'Unknown error'}`);
+									}
+								}}
+							>
+								<Trash2 className="h-3 w-3 mr-2" />
+								Delete local telemetry
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={async () => {
+									if (!window.electronAPI?.telemetryResetClientId) return;
+
+									if (
+										!confirm(
+											'Reset client ID? A new anonymous ID will be generated.\n\nThis is useful if you want to start fresh with a new identity.'
+										)
+									) {
+										return;
+									}
+
+									try {
+										const res = await window.electronAPI.telemetryResetClientId();
+										if (res.ok) {
+											alert(`Client ID reset successfully.\n\nNew ID: ${res.client_id}`);
+										} else {
+											alert(`Failed to reset: ${res.error || 'Unknown error'}`);
+										}
+									} catch (err) {
+										alert(`Failed to reset: ${err?.message || 'Unknown error'}`);
+									}
+								}}
+							>
+								<RefreshCw className="h-3 w-3 mr-2" />
+								Reset client ID
+							</Button>
+						</div>
 					</div>
-				</div>
-			</CardContent>
+				</CardContent>
 			</Card>
 
 			{/* Developer Settings */}
@@ -405,7 +459,7 @@ export default function AppSettings() {
 								Debug Mode
 							</Label>
 							<p className="text-sm text-muted-foreground">
-								Show detailed console logs for troubleshooting
+								Save debug frames to temp folder, show timing metrics, and enable verbose logging
 							</p>
 						</div>
 						<Switch
@@ -481,7 +535,9 @@ export default function AppSettings() {
 					<div className="flex items-center justify-between">
 						<div className="flex-1">
 							<Label className="text-base">User Data Folder</Label>
-							<p className="text-sm text-muted-foreground">Open the folder containing all app data and settings</p>
+							<p className="text-sm text-muted-foreground">
+								Open the folder containing all app data and settings
+							</p>
 						</div>
 						<Button
 							variant="outline"
@@ -520,7 +576,8 @@ export default function AppSettings() {
 								</Badge>
 							</div>
 							<p className="text-sm text-muted-foreground">
-								Clear browser cache and UI state (drafts, viewing history). Does not delete matches, videos, or settings.
+								Clear browser cache and UI state (drafts, viewing history). Does not delete matches,
+								videos, or settings.
 							</p>
 						</div>
 						<Button variant="destructive" size="sm" onClick={() => handleClearStorage('all', 'UI cache')}>
@@ -540,7 +597,8 @@ export default function AppSettings() {
 								</Badge>
 							</div>
 							<p className="text-sm text-muted-foreground">
-								Permanently delete ALL data: matches, videos, settings, telemetry, logs. App will quit. Cannot be undone.
+								Permanently delete ALL data: matches, videos, settings, telemetry, logs. App will quit.
+								Cannot be undone.
 							</p>
 						</div>
 						<Button variant="destructive" size="sm" onClick={handleClearUserData}>

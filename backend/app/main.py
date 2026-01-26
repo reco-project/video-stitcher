@@ -13,6 +13,7 @@ from app.repositories.lens_profile_store import LensProfileStore
 from app.repositories.file_match_store import FileMatchStore
 from app.repositories.match_store import MatchStore
 from app.data_paths import PROFILES_DIR, MATCHES_DIR, VIDEOS_DIR
+import asyncio
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router

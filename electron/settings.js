@@ -9,9 +9,10 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { dialog } from 'electron';
 
 const defaultSettings = {
-    debugMode: false,
+    debugMode: true,
     apiBaseUrl: 'http://127.0.0.1:8000/api',
     encoderPreference: 'auto',
+    disableHardwareAcceleration: false,
     telemetryEnabled: false,
     telemetryIncludeSystemInfo: false,
     telemetryEndpointUrl: 'https://telemetry.reco-project.org/telemetry',

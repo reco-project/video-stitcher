@@ -459,6 +459,7 @@ async def process_match_with_frames(
     match_id: str,
     left_frame: UploadFile = File(...),
     right_frame: UploadFile = File(...),
+    debug_mode: bool = Form(False),
     match_store: MatchStore = Depends(get_store),
 ):
     """
@@ -488,6 +489,10 @@ async def process_match_with_frames(
     if not match_data:
         raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
 
+    # Track timing for debug mode
+    timing = {} if debug_mode else None
+    start_time = time.time() if debug_mode else None
+
     try:
         # Read uploaded images
         left_bytes = await left_frame.read()
@@ -495,20 +500,29 @@ async def process_match_with_frames(
 
         logger.info(f"Received frames: left={len(left_bytes)} bytes, right={len(right_bytes)} bytes")
 
-        # Save frames for debugging
-        import os
+        if debug_mode:
+            timing['frame_upload'] = time.time() - start_time
+            logger.info(f"[DEBUG] Frame upload took {timing['frame_upload']:.3f}s")
 
-        debug_dir = os.path.join("temp", match_id, "debug_frames")
-        os.makedirs(debug_dir, exist_ok=True)
+        # Save frames for debugging (only if debug mode enabled)
+        if debug_mode:
+            import os
 
-        with open(os.path.join(debug_dir, "left_received.png"), "wb") as f:
-            f.write(left_bytes)
-        with open(os.path.join(debug_dir, "right_received.png"), "wb") as f:
-            f.write(right_bytes)
+            debug_start = time.time()
 
-        logger.info(f"Debug frames saved to: {debug_dir}")
+            debug_dir = os.path.join(TEMP_DIR, match_id, "debug_frames")
+            os.makedirs(debug_dir, exist_ok=True)
+
+            with open(os.path.join(debug_dir, "left_received.png"), "wb") as f:
+                f.write(left_bytes)
+            with open(os.path.join(debug_dir, "right_received.png"), "wb") as f:
+                f.write(right_bytes)
+
+            timing['debug_frame_save'] = time.time() - debug_start
+            logger.info(f"[DEBUG] Debug frames saved to: {debug_dir} (took {timing['debug_frame_save']:.3f}s)")
 
         # Convert to numpy arrays
+        decode_start = time.time() if debug_mode else None
         left_np = np.frombuffer(left_bytes, dtype=np.uint8)
         right_np = np.frombuffer(right_bytes, dtype=np.uint8)
 
@@ -519,6 +533,10 @@ async def process_match_with_frames(
         if img_left is None or img_right is None:
             raise HTTPException(status_code=400, detail="Failed to decode image data")
 
+        if debug_mode:
+            timing['image_decode'] = time.time() - decode_start
+            logger.info(f"[DEBUG] Image decode took {timing['image_decode']:.3f}s")
+
         logger.info(f"Decoded images: left={img_left.shape}, right={img_right.shape}")
 
         # Update match status
@@ -528,66 +546,77 @@ async def process_match_with_frames(
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
         # Step 1: Match features
+        feature_start = time.time() if debug_mode else None
         match_result = match_features(img_left, img_right)
+        if debug_mode:
+            timing['feature_matching'] = time.time() - feature_start
+            logger.info(
+                f"[DEBUG] Feature matching took {timing['feature_matching']:.3f}s, found {len(match_result.get('left_points', []))} matches"
+            )
 
-        # Debug: Draw feature matches visualization
-        try:
-            # Resize images for visualization
-            h, w = img_left.shape[:2]
-            target_w = 1920
-            scale = target_w / w
+        # Debug: Draw feature matches visualization (only if debug mode enabled)
+        if debug_mode:
+            viz_start = time.time()
+            try:
+                # Resize images for visualization
+                h, w = img_left.shape[:2]
+                target_w = 1920
+                scale = target_w / w
 
-            img_left_vis = cv2.resize(img_left, (int(w * scale), int(h * scale)))
-            img_right_vis = cv2.resize(img_right, (int(w * scale), int(h * scale)))
+                img_left_vis = cv2.resize(img_left, (int(w * scale), int(h * scale)))
+                img_right_vis = cv2.resize(img_right, (int(w * scale), int(h * scale)))
 
-            # Get points from match result (they're in normalized plane coords)
-            left_points = np.array(match_result["left_points"])
-            right_points = np.array(match_result["right_points"])
+                # Get points from match result (they're in normalized plane coords)
+                left_points = np.array(match_result["left_points"])
+                right_points = np.array(match_result["right_points"])
 
-            # Convert back to image coordinates for visualization
-            img_h, img_w = img_left_vis.shape[:2]
-            plane_w = 1.0
-            plane_h = plane_w * (img_h / img_w)
+                # Convert back to image coordinates for visualization
+                img_h, img_w = img_left_vis.shape[:2]
+                plane_w = 1.0
+                plane_h = plane_w * (img_h / img_w)
 
-            # Reverse the normalization
-            left_pts_img = np.zeros_like(left_points)
-            left_pts_img[:, 0] = (left_points[:, 0] / plane_w + 0.5) * img_w
-            left_pts_img[:, 1] = (left_points[:, 1] / plane_h + 0.5) * img_h
+                # Reverse the normalization
+                left_pts_img = np.zeros_like(left_points)
+                left_pts_img[:, 0] = (left_points[:, 0] / plane_w + 0.5) * img_w
+                left_pts_img[:, 1] = (left_points[:, 1] / plane_h + 0.5) * img_h
 
-            right_pts_img = np.zeros_like(right_points)
-            right_pts_img[:, 0] = (right_points[:, 0] / plane_w + 0.5) * img_w
-            right_pts_img[:, 1] = (right_points[:, 1] / plane_h + 0.5) * img_h
+                right_pts_img = np.zeros_like(right_points)
+                right_pts_img[:, 0] = (right_points[:, 0] / plane_w + 0.5) * img_w
+                right_pts_img[:, 1] = (right_points[:, 1] / plane_h + 0.5) * img_h
 
-            # Draw matches on concatenated image
-            vis_height = max(img_left_vis.shape[0], img_right_vis.shape[0])
-            vis_img = np.zeros((vis_height, img_left_vis.shape[1] + img_right_vis.shape[1], 3), dtype=np.uint8)
-            vis_img[: img_left_vis.shape[0], : img_left_vis.shape[1]] = img_left_vis
-            vis_img[: img_right_vis.shape[0], img_left_vis.shape[1] :] = img_right_vis
+                # Draw matches on concatenated image
+                vis_height = max(img_left_vis.shape[0], img_right_vis.shape[0])
+                vis_img = np.zeros((vis_height, img_left_vis.shape[1] + img_right_vis.shape[1], 3), dtype=np.uint8)
+                vis_img[: img_left_vis.shape[0], : img_left_vis.shape[1]] = img_left_vis
+                vis_img[: img_right_vis.shape[0], img_left_vis.shape[1] :] = img_right_vis
 
-            # Draw lines between matched points
-            offset = img_left_vis.shape[1]
-            for i in range(len(left_pts_img)):
-                pt1 = tuple(left_pts_img[i].astype(int))
-                pt2 = tuple((right_pts_img[i] + [offset, 0]).astype(int))
+                # Draw lines between matched points
+                offset = img_left_vis.shape[1]
+                for i in range(len(left_pts_img)):
+                    pt1 = tuple(left_pts_img[i].astype(int))
+                    pt2 = tuple((right_pts_img[i] + [offset, 0]).astype(int))
 
-                # Draw circles at keypoints
-                cv2.circle(vis_img, pt1, 5, (0, 255, 0), 2)
-                cv2.circle(vis_img, pt2, 5, (0, 255, 0), 2)
+                    # Draw circles at keypoints
+                    cv2.circle(vis_img, pt1, 5, (0, 255, 0), 2)
+                    cv2.circle(vis_img, pt2, 5, (0, 255, 0), 2)
 
-                # Draw line connecting them
-                cv2.line(vis_img, pt1, pt2, (255, 0, 255), 1)
+                    # Draw line connecting them
+                    cv2.line(vis_img, pt1, pt2, (255, 0, 255), 1)
 
-            # Add text overlay
-            text = f"Matches: {match_result['num_matches']} | Confidence: {match_result['confidence']:.2%}"
-            cv2.putText(vis_img, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
+                # Add text overlay
+                text = f"Matches: {match_result['num_matches']} | Confidence: {match_result['confidence']:.2%}"
+                cv2.putText(vis_img, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
 
-            # Save visualization
-            vis_path = os.path.join(debug_dir, "feature_matches.png")
-            cv2.imwrite(vis_path, vis_img)
-            logger.info(f"Feature matching visualization saved to: {vis_path}")
+                # Save visualization
+                vis_path = os.path.join(TEMP_DIR, match_id, "debug_frames", "feature_matches.png")
+                cv2.imwrite(vis_path, vis_img)
+                timing['visualization'] = time.time() - viz_start
+                logger.info(
+                    f"[DEBUG] Feature matching visualization saved to: {vis_path} (took {timing['visualization']:.3f}s)"
+                )
 
-        except Exception as viz_error:
-            logger.warning(f"Failed to create feature matching visualization: {viz_error}")
+            except Exception as viz_error:
+                logger.warning(f"Failed to create feature matching visualization: {viz_error}")
 
         # Update status
         match_data.update_processing(
@@ -596,8 +625,12 @@ async def process_match_with_frames(
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
         # Step 2: Optimize camera positions
+        opt_start = time.time() if debug_mode else None
         # Note: Swap left/right to match viewer's coordinate system
         params = optimize_position(match_result["right_points"], match_result["left_points"])
+        if debug_mode:
+            timing['optimization'] = time.time() - opt_start
+            logger.info(f"[DEBUG] Position optimization took {timing['optimization']:.3f}s")
 
         # Update match with results
         from datetime import datetime, timezone
@@ -617,12 +650,35 @@ async def process_match_with_frames(
 
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
-        return {
+        if debug_mode:
+            timing['total'] = time.time() - start_time
+            logger.info(f"[DEBUG] Total processing time: {timing['total']:.3f}s")
+
+        response = {
             "success": True,
             "params": params,
             "num_matches": match_result["num_matches"],
             "confidence": match_result["confidence"],
         }
+
+        # Include timing data in response when debug mode is enabled
+        if debug_mode and timing:
+            response["debug"] = {
+                "timing": timing,
+                "timing_breakdown": {
+                    "frame_upload": f"{timing.get('frame_upload', 0):.3f}s",
+                    "debug_frame_save": (
+                        f"{timing.get('debug_frame_save', 0):.3f}s" if timing.get('debug_frame_save') else None
+                    ),
+                    "image_decode": f"{timing.get('image_decode', 0):.3f}s",
+                    "feature_matching": f"{timing.get('feature_matching', 0):.3f}s",
+                    "visualization": f"{timing.get('visualization', 0):.3f}s" if timing.get('visualization') else None,
+                    "optimization": f"{timing.get('optimization', 0):.3f}s",
+                    "total": f"{timing.get('total', 0):.3f}s",
+                },
+            }
+
+        return response
 
     except ValueError as e:
         # Feature matching or optimization error

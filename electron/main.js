@@ -7,7 +7,7 @@ import { platform } from 'node:os';
 import started from 'electron-squirrel-startup';
 import { registerTelemetryIpc } from './telemetry.js';
 import { registerTelemetryUploadIpc } from './telemetry_uploader.js';
-import { registerSettingsIpc } from './settings.js';
+import { registerSettingsIpc, readSettings } from './settings.js';
 
 const fetchImpl = globalThis.fetch;
 
@@ -27,6 +27,9 @@ let lastLoggedState = false;
 
 // Backend process management
 let backendProcess = null;
+let backendRestartAttempts = 0;
+const MAX_RESTART_ATTEMPTS = 3;
+let isShuttingDown = false;
 
 // Function to check if Vite dev server is running
 async function viteDevServerRunning(url = 'http://localhost:5173') {
@@ -40,6 +43,13 @@ async function viteDevServerRunning(url = 'http://localhost:5173') {
 }
 
 const isDev = await viteDevServerRunning();
+
+// Apply hardware acceleration setting BEFORE app is ready
+const initialSettings = readSettings(app);
+if (initialSettings.disableHardwareAcceleration) {
+	console.log('[Electron] Disabling hardware acceleration');
+	app.disableHardwareAcceleration();
+}
 
 // Wait for backend to be ready
 async function waitForBackend(maxAttempts = 30, delayMs = 1000) {
@@ -102,11 +112,73 @@ function startBackend() {
 	backendProcess.on('error', (error) => {
 		console.error('[Backend] Failed to start:', error);
 		backendProcess = null;
+
+		// Show error dialog to user
+		if (!isShuttingDown) {
+			dialog.showErrorBox(
+				'Backend Error',
+				`Failed to start backend process:\n${error.message}\n\nPlease contact the developer if this issue persists.`
+			);
+			app.quit();
+		}
 	});
 
 	backendProcess.on('exit', (code, signal) => {
 		console.log(`[Backend] Process exited with code ${code}, signal ${signal}`);
 		backendProcess = null;
+
+		// Don't restart if we're shutting down intentionally
+		if (isShuttingDown) {
+			console.log('[Backend] Shutdown initiated, not restarting');
+			return;
+		}
+
+		// Restart on unexpected exit
+		if (code !== 0 && code !== null) {
+			console.error(`[Backend] Crashed with exit code ${code}`);
+
+			if (backendRestartAttempts < MAX_RESTART_ATTEMPTS) {
+				backendRestartAttempts++;
+				console.log(`[Backend] Attempting restart (${backendRestartAttempts}/${MAX_RESTART_ATTEMPTS})...`);
+
+				// Wait a bit before restarting
+				setTimeout(() => {
+					startBackend();
+
+					// Wait for backend and notify user
+					waitForBackend(10, 1000).then((ready) => {
+						if (ready) {
+							console.log('[Backend] Restarted successfully');
+							backendRestartAttempts = 0; // Reset counter on success
+
+							// Notify user of successful recovery
+							const windows = BrowserWindow.getAllWindows();
+							if (windows.length > 0) {
+								windows[0].webContents.send('backend-reconnected');
+							}
+						} else {
+							console.error('[Backend] Failed to restart');
+
+							// Show error dialog and quit
+							dialog.showErrorBox(
+								'Backend Connection Lost',
+								'The backend process crashed and could not be restarted automatically.\n\nThe application will now close. Please restart it.\n\nIf this issue persists, please contact the developer.'
+							);
+							app.quit();
+						}
+					});
+				}, 2000); // Wait 2 seconds before restart
+			} else {
+				console.error('[Backend] Max restart attempts reached');
+
+				// Show error dialog and quit
+				dialog.showErrorBox(
+					'Backend Connection Lost',
+					'The backend process has crashed multiple times and cannot be restarted.\n\nThe application will now close. Please restart it.\n\nIf this issue persists, please contact the developer.'
+				);
+				app.quit();
+			}
+		}
 	});
 }
 
@@ -114,6 +186,7 @@ function startBackend() {
 function stopBackend() {
 	if (backendProcess) {
 		console.log('[Backend] Stopping process...');
+		isShuttingDown = true; // Prevent restart attempts
 		backendProcess.kill();
 		backendProcess = null;
 	}
@@ -220,8 +293,9 @@ app.on('before-quit', () => {
 // code. You can also put them in separate files and import them here.
 
 // IPC handlers for file dialogs
-ipcMain.handle('dialog:selectVideoFile', async () => {
-	const result = await dialog.showOpenDialog({
+ipcMain.handle('dialog:selectVideoFile', async (event) => {
+	const parentWindow = BrowserWindow.fromWebContents(event.sender);
+	const result = await dialog.showOpenDialog(parentWindow, {
 		properties: ['openFile'],
 		filters: [
 			{ name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm3u8'] },
@@ -237,8 +311,9 @@ ipcMain.handle('dialog:selectVideoFile', async () => {
 });
 
 // IPC handler for multi-select file dialog
-ipcMain.handle('dialog:selectVideoFiles', async () => {
-	const result = await dialog.showOpenDialog({
+ipcMain.handle('dialog:selectVideoFiles', async (event) => {
+	const parentWindow = BrowserWindow.fromWebContents(event.sender);
+	const result = await dialog.showOpenDialog(parentWindow, {
 		properties: ['openFile', 'multiSelections'],
 		filters: [
 			{ name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm3u8'] },

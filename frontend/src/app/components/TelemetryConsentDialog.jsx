@@ -70,8 +70,8 @@ export default function TelemetryConsentDialog() {
 				<DialogHeader>
 					<DialogTitle>Help Improve Video Stitcher?</DialogTitle>
 					<DialogDescription>
-						Anonymous usage data helps us improve the app. No personal data, file names, or video
-						content is collected.
+						Anonymous usage data helps us improve the app. No personal data, file names, or video content is
+						collected.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -95,9 +95,7 @@ export default function TelemetryConsentDialog() {
 								</ul>
 							</div>
 							<div className="bg-green-500/10 border border-green-500/20 p-3 rounded-md">
-								<p className="font-medium text-green-700 dark:text-green-400 mb-1">
-									🔒 Privacy-first
-								</p>
+								<p className="font-medium text-green-700 dark:text-green-400 mb-1">🔒 Privacy-first</p>
 								<ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
 									<li>Anonymous, no tracking</li>
 									<li>Never sold or shared</li>
