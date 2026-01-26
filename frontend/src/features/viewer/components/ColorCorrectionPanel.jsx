@@ -2,9 +2,10 @@ import React, { useState, useCallback } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Palette, RotateCcw, Wand2, ChevronDown, Check, Settings2 } from 'lucide-react';
+import { Palette, RotateCcw, Wand2, ChevronDown, Check, Settings2, Blend } from 'lucide-react';
 import { DEFAULT_COLOR_CORRECTION } from '../utils/utils';
 import { autoColorCorrection } from '@/features/matches/api/matches.js';
+import { useViewerStore } from '../stores/store.js';
 
 /**
  * Check if LAB correction is applied (not identity)
@@ -146,6 +147,9 @@ export function DualColorCorrectionPanel({
 						</p>
 					)}
 
+					{/* Blend Width Control */}
+					<BlendWidthControl />
+
 					{/* Advanced Toggle */}
 					<button
 						onClick={() => setShowAdvanced(!showAdvanced)}
@@ -233,6 +237,36 @@ export function DualColorCorrectionPanel({
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
+
+/**
+ * Blend width control for seam transition
+ */
+function BlendWidthControl() {
+	const blendWidth = useViewerStore((s) => s.blendWidth);
+	const setBlendWidth = useViewerStore((s) => s.setBlendWidth);
+
+	return (
+		<div className="space-y-2 pt-2 border-t">
+			<div className="flex items-center gap-2">
+				<Blend className="h-3 w-3 text-muted-foreground" />
+				<Label className="text-xs font-medium">Seam Blend</Label>
+				<span className="text-xs text-muted-foreground font-mono ml-auto">
+					{blendWidth === 0 ? 'Off' : `${Math.round(blendWidth * 100)}%`}
+				</span>
+			</div>
+			<Slider
+				min={0}
+				max={50}
+				step={1}
+				value={[blendWidth * 100]}
+				onValueChange={([v]) => setBlendWidth(v / 100)}
+			/>
+			<p className="text-xs text-muted-foreground">
+				How much to fade the cameras together at the seam.
+			</p>
 		</div>
 	);
 }

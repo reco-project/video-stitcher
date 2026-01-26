@@ -20,9 +20,10 @@ export const DEFAULT_COLOR_CORRECTION = {
  * @param {*} u The uniforms object containing width, height, fx, fy, cx, cy, d
  * @param {*} texture The video texture to be used
  * @param {*} colorCorrection Optional color correction parameters
+ * @param {*} blendWidth Width of the blend zone at the seam (0-1, default 0 = no blend)
  * @returns An object with the converted uniforms
  */
-export function formatUniforms(u, texture, colorCorrection = {}) {
+export function formatUniforms(u, texture, colorCorrection = {}, blendWidth = 0) {
 	if (!u || !u.width || !u.height || !u.fx || !u.fy || !u.cx || !u.cy) {
 		console.error('Invalid uniforms:', u);
 		throw new Error('Missing required uniform parameters');
@@ -45,6 +46,8 @@ export function formatUniforms(u, texture, colorCorrection = {}) {
 		cx: { value: u.cx / width },
 		cy: { value: u.cy / height },
 		d: { value: new THREE.Vector4(...u.d) },
+		// Blend zone width for seam transition
+		blendWidth: { value: blendWidth },
 		// LAB-based Reinhard color transfer uniforms (primary)
 		labScale: { value: new THREE.Vector3(...(cc.labScale || [1, 1, 1])) },
 		labOffset: { value: new THREE.Vector3(...(cc.labOffset || [0, 0, 0])) },

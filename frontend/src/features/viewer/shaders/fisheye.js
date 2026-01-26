@@ -47,6 +47,9 @@ const fisheyeShader = (isLeft) => {
       uniform float fx, fy, cx, cy;
       uniform vec4 d;
       
+      // Blend zone for smooth seam transition
+      uniform float blendWidth;  // Width of blend zone (0-1, relative to UV)
+      
       // LAB-based Reinhard color transfer uniforms
       uniform vec3 labScale;
       uniform vec3 labOffset;
@@ -282,7 +285,21 @@ const fisheyeShader = (isLeft) => {
             color = applyLegacyCorrection(color);
           }
           
-          gl_FragColor = vec4(color, texColor.a);
+          // Compute alpha for blend zone at the seam edge
+          // Left plane stays fully opaque (renders first, acts as base)
+          // Right plane fades in over the left (renders second, blends on top)
+          float alpha = 1.0;
+          ${isLeft ? `
+          // Left plane: fully opaque, no blending
+          ` : `
+          // Right plane: fade in at left edge (blend over left plane)
+          if (blendWidth > 0.0) {
+            float edgeDist = vUv.x;  // Distance from left edge
+            alpha = smoothstep(0.0, blendWidth, edgeDist);
+          }
+          `}
+          
+          gl_FragColor = vec4(color, alpha);
         }
       }
     `,

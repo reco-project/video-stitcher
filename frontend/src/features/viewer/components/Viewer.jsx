@@ -51,6 +51,7 @@ const VideoPlane = ({ texture, isLeft }) => {
 	const selectedMatch = useViewerStore((s) => s.selectedMatch);
 	const leftColorCorrection = useViewerStore((s) => s.leftColorCorrection);
 	const rightColorCorrection = useViewerStore((s) => s.rightColorCorrection);
+	const blendWidth = useViewerStore((s) => s.blendWidth);
 
 	if (!selectedMatch) return null;
 
@@ -73,15 +74,21 @@ const VideoPlane = ({ texture, isLeft }) => {
 		: [(planeWidth / 2) * (1 - (params.intersect || 0.5)), params.xTy || 0, 0];
 	const rotation = isLeft ? [params.zRx || 0, THREE.MathUtils.degToRad(90), 0] : [0, 0, params.xRz || 0];
 
-	// Generate key from color correction to force shader material update
-	const ccKey = JSON.stringify(colorCorrection);
+	// Generate key from color correction and blend width to force shader material update
+	const ccKey = JSON.stringify({ colorCorrection, blendWidth });
+
+	// Left plane: fully opaque, renders first as base layer
+	// Right plane: transparent with alpha blend, renders on top
+	const isTransparent = !isLeft && blendWidth > 0;
 
 	return (
-		<mesh position={position} rotation={rotation}>
+		<mesh position={position} rotation={rotation} renderOrder={isLeft ? 1 : 2}>
 			<planeGeometry args={[planeWidth, planeWidth / aspect]} />
 			<shaderMaterial 
 				key={ccKey}
-				uniforms={formatUniforms(u, texture, colorCorrection)} 
+				uniforms={formatUniforms(u, texture, colorCorrection, blendWidth)} 
+				transparent={isTransparent}
+				depthWrite={!isTransparent}
 				{...fisheyeShader(isLeft)} 
 			/>
 		</mesh>

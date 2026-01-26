@@ -23,6 +23,10 @@ export const useViewerStore = create((set, get) => ({
 	fullscreen: false,
 	setFullscreen: (fs) => set({ fullscreen: fs }),
 
+	// Blend width for seam transition (0-0.5, default 0 = no blend)
+	blendWidth: 0,
+	setBlendWidth: (w) => set({ blendWidth: w }),
+
 	// Color correction state
 	leftColorCorrection: { ...DEFAULT_COLOR_CORRECTION },
 	rightColorCorrection: { ...DEFAULT_COLOR_CORRECTION },

@@ -29,7 +29,7 @@ const ExtractorPlane = ({ texture, isLeft, uniforms }) => {
 			<planeGeometry args={[planeWidth, planeHeight]} />
 			<shaderMaterial
 				key={isLeft ? 'left' : 'right'} // Force shader recreation when side changes
-				uniforms={formatUniforms(uniforms, texture)}
+				uniforms={formatUniforms(uniforms, texture, {}, 0)}  // blendWidth=0 for full frame capture
 				{...fisheyeShader(isLeft)}
 			/>
 		</mesh>
