@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useViewerStore } from '../stores/store.js';
 import { Canvas } from '@react-three/fiber';
 import fisheyeShader from '../shaders/fisheye.js';
@@ -16,6 +16,7 @@ import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { ChevronDown } from 'lucide-react';
 import { getProcessingDuration, getTranscodeMetrics, getQualitySettings } from '@/lib/matchHelpers.js';
+import RecalibratePanel from './RecalibratePanel';
 
 const ViewerErrorFallback = ({ error, resetErrorBoundary }) => {
 	return (
@@ -96,11 +97,24 @@ const VideoPanorama = () => {
 
 const Viewer = ({ selectedMatch }) => {
 	const setSelectedMatch = useViewerStore((s) => s.setSelectedMatch);
+	const videoRef = useViewerStore((s) => s.videoRef);
 	const [yawRange, setYawRange] = useState(140);
 	const [pitchRange, setPitchRange] = useState(20);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
 	const saveTimeoutRef = React.useRef(null);
+
+	// Handler for when recalibration completes
+	const handleRecalibrated = useCallback((result) => {
+		// Update the local match data with new calibration params
+		if (result && result.params) {
+			setSelectedMatch({
+				...selectedMatch,
+				params: result.params,
+				num_matches: result.num_matches,
+			});
+		}
+	}, [selectedMatch, setSelectedMatch]);
 
 	useEffect(() => {
 		setSelectedMatch(selectedMatch);
@@ -463,6 +477,13 @@ const Viewer = ({ selectedMatch }) => {
 								className="mt-2"
 							/>
 						</div>
+
+						{/* Recalibrate Panel */}
+						<RecalibratePanel
+							match={selectedMatch}
+							videoRef={videoRef}
+							onRecalibrated={handleRecalibrated}
+						/>
 					</div>
 				)}
 			</div>

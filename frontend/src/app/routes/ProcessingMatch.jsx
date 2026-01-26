@@ -287,7 +287,7 @@ export default function ProcessingMatch() {
 			{extractingMatch && (
 				<FrameExtractor
 					videoSrc={extractingMatch.videoUrl}
-					frameTime={100 / 30}
+					frameTimePercent={0.1}
 					leftUniforms={extractingMatch.leftUniforms}
 					rightUniforms={extractingMatch.rightUniforms}
 					onComplete={handleFrameExtractionComplete}

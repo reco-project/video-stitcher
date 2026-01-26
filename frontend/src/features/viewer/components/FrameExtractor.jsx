@@ -89,11 +89,20 @@ const CaptureController = ({ texture, onCapture, shouldCapture, side }) => {
 /**
  * Main FrameExtractor component.
  * Uses a SINGLE persistent Canvas to avoid WebGL context loss.
+ * 
+ * @param {string} videoSrc - URL of the video to extract frames from
+ * @param {number} frameTime - Exact time in seconds to seek to (optional if frameTimePercent is provided)
+ * @param {number} frameTimePercent - Percentage of video duration to seek to (0-1, default 0.1 = 10%)
+ * @param {object} leftUniforms - Shader uniforms for left camera
+ * @param {object} rightUniforms - Shader uniforms for right camera
+ * @param {function} onComplete - Callback with { leftBlob, rightBlob }
+ * @param {function} onError - Callback with error
  */
-const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onComplete, onError }) => {
+const FrameExtractor = ({ videoSrc, frameTime, frameTimePercent = 0.1, leftUniforms, rightUniforms, onComplete, onError }) => {
 	const [phase, setPhase] = useState('loading'); // 'loading' | 'left' | 'right' | 'done'
 	const [leftBlob, setLeftBlob] = useState(null);
 	const [texture, setTexture] = useState(null);
+	const [computedFrameTime, setComputedFrameTime] = useState(frameTime);
 	const videoRef = useRef(null);
 
 	// Create texture from video when ready
@@ -126,7 +135,10 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 
 		const handleLoadedMetadata = () => {
 			video.pause();
-			video.currentTime = frameTime;
+			// Use explicit frameTime if provided, otherwise calculate from percentage
+			const targetTime = frameTime != null ? frameTime : Math.floor(video.duration * frameTimePercent);
+			setComputedFrameTime(targetTime);
+			video.currentTime = targetTime;
 		};
 
 		const handleError = (e) => {
@@ -142,7 +154,9 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 		// If already loaded, seek
 		if (video.readyState >= 1) {
 			video.pause();
-			video.currentTime = frameTime;
+			const targetTime = frameTime != null ? frameTime : Math.floor(video.duration * frameTimePercent);
+			setComputedFrameTime(targetTime);
+			video.currentTime = targetTime;
 		}
 
 		return () => {
@@ -154,7 +168,7 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 				videoTexture.dispose();
 			}
 		};
-	}, [frameTime, onError]);
+	}, [frameTime, frameTimePercent, onError]);
 
 	// Handle frame capture
 	const handleCapture = useCallback(
@@ -193,67 +207,110 @@ const FrameExtractor = ({ videoSrc, frameTime, leftUniforms, rightUniforms, onCo
 	const uniforms = isLeft ? leftUniforms : rightUniforms;
 	const shouldCapture = phase === 'left' || phase === 'right';
 
+	// Progress calculation
+	const progressSteps = ['loading', 'left', 'right', 'done'];
+	const currentStepIndex = progressSteps.indexOf(phase);
+	const progressPercent = ((currentStepIndex + 1) / progressSteps.length) * 100;
+
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90">
-			<div className="bg-gray-900 p-6 rounded-lg border-2 border-emerald-600 max-w-4xl w-full">
-				<div className="text-white font-bold mb-4">
-					Extracting and warping frames...
-					<span className="ml-2 text-emerald-400">
-						{phase === 'loading'
-							? 'Loading video...'
-							: phase === 'left'
-								? 'Left camera'
-								: phase === 'right'
-									? 'Right camera'
-									: 'Complete'}
-					</span>
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+			<div className="bg-card border border-border rounded-xl shadow-2xl max-w-3xl w-full mx-4 overflow-hidden">
+				{/* Header */}
+				<div className="px-6 py-4 border-b border-border bg-muted/30">
+					<h3 className="text-lg font-semibold">Extracting Calibration Frames</h3>
+					<p className="text-sm text-muted-foreground mt-1">
+						Processing video at {computedFrameTime != null ? `${Math.floor(computedFrameTime / 60)}:${String(Math.floor(computedFrameTime % 60)).padStart(2, '0')}` : '...'}
+					</p>
 				</div>
 
-				<div className="w-full aspect-video bg-black rounded overflow-hidden">
-					{texture && shouldCapture ? (
-						<Canvas
-							gl={{
-								preserveDrawingBuffer: true,
-								antialias: false,
-								alpha: false,
-								powerPreference: 'high-performance',
-							}}
-							camera={{
-								position: [0, 0, cameraDistance],
-								fov: cameraFOV,
-								aspect: 16 / 9,
-								near: 0.01,
-								far: 5,
-							}}
-							style={{ width: '100%', height: '100%' }}
-							dpr={1}
-							onCreated={({ gl }) => {
-								gl.setSize(renderWidth, renderHeight, false);
-							}}
-						>
-							<ExtractorPlane texture={texture} isLeft={isLeft} uniforms={uniforms} />
-							<CaptureController
-								texture={texture}
-								onCapture={handleCapture}
-								shouldCapture={shouldCapture}
-								side={isLeft ? 'left' : 'right'}
-							/>
-						</Canvas>
-					) : (
-						<div
-							style={{
-								width: '100%',
-								height: '100%',
-								background: '#000',
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								color: '#888',
-							}}
-						>
-							{phase === 'loading' ? 'Loading video...' : phase === 'done' ? 'Done!' : 'Preparing...'}
-						</div>
-					)}
+				{/* Progress bar */}
+				<div className="h-1 bg-muted">
+					<div 
+						className="h-full bg-primary transition-all duration-500 ease-out"
+						style={{ width: `${progressPercent}%` }}
+					/>
+				</div>
+
+				{/* Video preview */}
+				<div className="p-4">
+					<div className="w-full aspect-video bg-black rounded-lg overflow-hidden ring-1 ring-border">
+						{texture && shouldCapture ? (
+							<Canvas
+								gl={{
+									preserveDrawingBuffer: true,
+									antialias: false,
+									alpha: false,
+									powerPreference: 'high-performance',
+								}}
+								camera={{
+									position: [0, 0, cameraDistance],
+									fov: cameraFOV,
+									aspect: 16 / 9,
+									near: 0.01,
+									far: 5,
+								}}
+								style={{ width: '100%', height: '100%' }}
+								dpr={1}
+								onCreated={({ gl }) => {
+									gl.setSize(renderWidth, renderHeight, false);
+								}}
+							>
+								<ExtractorPlane texture={texture} isLeft={isLeft} uniforms={uniforms} />
+								<CaptureController
+									texture={texture}
+									onCapture={handleCapture}
+									shouldCapture={shouldCapture}
+									side={isLeft ? 'left' : 'right'}
+								/>
+							</Canvas>
+						) : (
+							<div className="w-full h-full flex items-center justify-center">
+								<div className="text-center">
+									<div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+									<p className="text-sm text-muted-foreground">
+										{phase === 'loading' ? 'Loading video...' : phase === 'done' ? 'Complete!' : 'Preparing...'}
+									</p>
+								</div>
+							</div>
+						)}
+					</div>
+				</div>
+
+				{/* Step indicators */}
+				<div className="px-6 pb-5">
+					<div className="flex items-center justify-between">
+						{[
+							{ key: 'loading', label: 'Load Video' },
+							{ key: 'left', label: 'Left Camera' },
+							{ key: 'right', label: 'Right Camera' },
+							{ key: 'done', label: 'Complete' },
+						].map((step, index) => {
+							const stepIndex = progressSteps.indexOf(step.key);
+							const isActive = phase === step.key;
+							const isComplete = currentStepIndex > stepIndex;
+							
+							return (
+								<div key={step.key} className="flex items-center">
+									<div className="flex flex-col items-center">
+										<div className={`
+											w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all
+											${isComplete ? 'bg-primary text-primary-foreground' : ''}
+											${isActive ? 'bg-primary/20 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}
+											${!isActive && !isComplete ? 'bg-muted text-muted-foreground' : ''}
+										`}>
+											{isComplete ? '✓' : index + 1}
+										</div>
+										<span className={`text-xs mt-1.5 ${isActive ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+											{step.label}
+										</span>
+									</div>
+									{index < 3 && (
+										<div className={`w-12 h-0.5 mx-2 mb-5 ${isComplete ? 'bg-primary' : 'bg-muted'}`} />
+									)}
+								</div>
+							);
+						})}
+					</div>
 				</div>
 
 				{/* Hidden video element */}
