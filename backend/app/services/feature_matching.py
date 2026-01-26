@@ -320,16 +320,6 @@ def compute_color_correction(img_left: np.ndarray, img_right: np.ndarray) -> Dic
         scale = tgt_std / src_std
         offset = tgt_mean - src_mean * scale
 
-        # Log mask coverage for debugging
-        mask_left_pct = mask_left.sum() / 255 / mask_left.size * 100
-        mask_right_pct = mask_right.sum() / 255 / mask_right.size * 100
-        print(f"LAB Color Correction Debug:")
-        print(f"  Mask coverage: left={mask_left_pct:.1f}%, right={mask_right_pct:.1f}%")
-        print(f"  Target (left) mean: L={tgt_mean[0]:.1f}, a={tgt_mean[1]:.1f}, b={tgt_mean[2]:.1f}")
-        print(f"  Source (right) mean: L={src_mean[0]:.1f}, a={src_mean[1]:.1f}, b={src_mean[2]:.1f}")
-        print(f"  Computed scale: L={scale[0]:.3f}, a={scale[1]:.3f}, b={scale[2]:.3f}")
-        print(f"  Computed offset: L={offset[0]:.1f}, a={offset[1]:.1f}, b={offset[2]:.1f}")
-
         return {
             'left': {
                 # Left stays unchanged (neutral)

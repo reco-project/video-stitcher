@@ -1,229 +1,65 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Palette, RotateCcw, Sun, Contrast, Droplets, Thermometer, Wand2, ChevronDown } from 'lucide-react';
+import { Palette, RotateCcw, Wand2, ChevronDown, Check, Settings2 } from 'lucide-react';
 import { DEFAULT_COLOR_CORRECTION } from '../utils/utils';
 import { autoColorCorrection } from '@/features/matches/api/matches.js';
 
 /**
- * ColorCorrectionPanel - Controls for adjusting color correction per camera
+ * Check if LAB correction is applied (not identity)
  */
-export default function ColorCorrectionPanel({ side, values, onChange, onReset }) {
-	const sideLabel = side === 'left' ? 'Left' : 'Right';
+function hasLabCorrection(values) {
+	if (!values?.labScale || !values?.labOffset) return false;
+	const isIdentityScale = values.labScale.every((v) => Math.abs(v - 1) < 0.001);
+	const isIdentityOffset = values.labOffset.every((v) => Math.abs(v) < 0.1);
+	return !(isIdentityScale && isIdentityOffset);
+}
 
-	const handleChange = useCallback(
-		(key, value) => {
-			onChange({ ...values, [key]: value });
-		},
-		[values, onChange]
-	);
-
-	const handleColorBalanceChange = useCallback(
-		(index, value) => {
-			const newBalance = [...values.colorBalance];
-			newBalance[index] = value;
-			onChange({ ...values, colorBalance: newBalance });
-		},
-		[values, onChange]
-	);
+/**
+ * Compact LAB values display
+ */
+function LabBadge({ values, side }) {
+	const hasLab = hasLabCorrection(values);
+	if (!hasLab) return null;
 
 	return (
-		<div className="space-y-3">
-			<div className="flex items-center justify-between">
-				<h5 className="text-xs font-medium flex items-center gap-1.5">
-					<Palette className="h-3 w-3" />
-					{sideLabel} Camera
-				</h5>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					onClick={onReset}
-					className="h-6 px-2 text-xs"
-					title="Reset to defaults"
-				>
-					<RotateCcw className="h-3 w-3" />
-				</Button>
-			</div>
-
-			{/* Brightness */}
-			<div className="space-y-1">
-				<div className="flex items-center justify-between">
-					<Label className="text-xs flex items-center gap-1">
-						<Sun className="h-3 w-3" />
-						Brightness
-					</Label>
-					<span className="text-xs text-muted-foreground w-12 text-right">
-						{values.brightness > 0 ? '+' : ''}
-						{(values.brightness * 100).toFixed(0)}%
-					</span>
-				</div>
-				<Slider
-					min={-50}
-					max={50}
-					step={1}
-					value={[values.brightness * 100]}
-					onValueChange={([v]) => handleChange('brightness', v / 100)}
-				/>
-			</div>
-
-			{/* Contrast */}
-			<div className="space-y-1">
-				<div className="flex items-center justify-between">
-					<Label className="text-xs flex items-center gap-1">
-						<Contrast className="h-3 w-3" />
-						Contrast
-					</Label>
-					<span className="text-xs text-muted-foreground w-12 text-right">
-						{(values.contrast * 100).toFixed(0)}%
-					</span>
-				</div>
-				<Slider
-					min={50}
-					max={150}
-					step={1}
-					value={[values.contrast * 100]}
-					onValueChange={([v]) => handleChange('contrast', v / 100)}
-				/>
-			</div>
-
-			{/* Saturation */}
-			<div className="space-y-1">
-				<div className="flex items-center justify-between">
-					<Label className="text-xs flex items-center gap-1">
-						<Droplets className="h-3 w-3" />
-						Saturation
-					</Label>
-					<span className="text-xs text-muted-foreground w-12 text-right">
-						{(values.saturation * 100).toFixed(0)}%
-					</span>
-				</div>
-				<Slider
-					min={0}
-					max={200}
-					step={1}
-					value={[values.saturation * 100]}
-					onValueChange={([v]) => handleChange('saturation', v / 100)}
-				/>
-			</div>
-
-			{/* Temperature */}
-			<div className="space-y-1">
-				<div className="flex items-center justify-between">
-					<Label className="text-xs flex items-center gap-1">
-						<Thermometer className="h-3 w-3" />
-						Temperature
-					</Label>
-					<span className="text-xs text-muted-foreground w-12 text-right">
-						{values.temperature > 0 ? 'Warm' : values.temperature < 0 ? 'Cool' : 'Neutral'}
-					</span>
-				</div>
-				<Slider
-					min={-100}
-					max={100}
-					step={1}
-					value={[values.temperature * 100]}
-					onValueChange={([v]) => handleChange('temperature', v / 100)}
-				/>
-			</div>
-
-			{/* RGB Color Balance */}
-			<div className="space-y-2 pt-1">
-				<Label className="text-xs">Color Balance (RGB)</Label>
-				<div className="grid grid-cols-3 gap-2">
-					{['R', 'G', 'B'].map((channel, index) => (
-						<div key={channel} className="space-y-1">
-							<div className="flex items-center justify-between">
-								<span
-									className={`text-xs font-medium ${
-										index === 0 ? 'text-red-500' : index === 1 ? 'text-green-500' : 'text-blue-500'
-									}`}
-								>
-									{channel}
-								</span>
-								<span className="text-xs text-muted-foreground">
-									{(values.colorBalance[index] * 100).toFixed(0)}%
-								</span>
-							</div>
-							<Slider
-								min={50}
-								max={150}
-								step={1}
-								value={[values.colorBalance[index] * 100]}
-								onValueChange={([v]) => handleColorBalanceChange(index, v / 100)}
-								className={
-									index === 0
-										? '[&_[role=slider]]:bg-red-500'
-										: index === 1
-											? '[&_[role=slider]]:bg-green-500'
-											: '[&_[role=slider]]:bg-blue-500'
-								}
-							/>
-						</div>
-					))}
-				</div>
-			</div>
+		<div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+			<span className="font-medium text-foreground">{side}:</span>{' '}
+			<span className="font-mono">
+				L×{values.labScale[0].toFixed(2)} a×{values.labScale[1].toFixed(2)} b×{values.labScale[2].toFixed(2)}
+			</span>
 		</div>
 	);
 }
 
 /**
- * Dual camera color correction panel with link/unlink option
+ * Simplified Color Correction Panel
  */
-export function DualColorCorrectionPanel({ leftValues, rightValues, onLeftChange, onRightChange, onResetAll, matchId, videoRef }) {
-	const [linked, setLinked] = useState(false);
+export function DualColorCorrectionPanel({
+	leftValues,
+	rightValues,
+	onLeftChange,
+	onRightChange,
+	onResetAll,
+	matchId,
+	videoRef,
+}) {
 	const [autoLoading, setAutoLoading] = useState(false);
 	const [isCollapsed, setIsCollapsed] = useState(true);
+	const [showAdvanced, setShowAdvanced] = useState(false);
 
-	const handleLeftChange = useCallback(
-		(newValues) => {
-			onLeftChange(newValues);
-			if (linked) {
-				onRightChange(newValues);
-			}
-		},
-		[linked, onLeftChange, onRightChange]
-	);
-
-	const handleRightChange = useCallback(
-		(newValues) => {
-			onRightChange(newValues);
-			if (linked) {
-				onLeftChange(newValues);
-			}
-		},
-		[linked, onLeftChange, onRightChange]
-	);
-
-	const handleResetLeft = useCallback(() => {
-		onLeftChange({ ...DEFAULT_COLOR_CORRECTION });
-		if (linked) {
-			onRightChange({ ...DEFAULT_COLOR_CORRECTION });
-		}
-	}, [linked, onLeftChange, onRightChange]);
-
-	const handleResetRight = useCallback(() => {
-		onRightChange({ ...DEFAULT_COLOR_CORRECTION });
-		if (linked) {
-			onLeftChange({ ...DEFAULT_COLOR_CORRECTION });
-		}
-	}, [linked, onLeftChange, onRightChange]);
+	const hasAnyCorrection = hasLabCorrection(leftValues) || hasLabCorrection(rightValues);
 
 	const handleAutoColorCorrection = useCallback(async () => {
 		if (!matchId) return;
 		setAutoLoading(true);
 		try {
-			// Get current video time when button is clicked
-			// videoRef can be either a ref object (with .current) or the element directly
 			const videoElement = videoRef?.current ?? videoRef;
 			const currentTime = videoElement?.currentTime || 0;
-			console.log('Auto color correction at time:', currentTime);
 			const result = await autoColorCorrection(matchId, currentTime);
-			console.log('Auto color correction result:', result);
 			if (result?.colorCorrection) {
 				if (result.colorCorrection.left) {
-					// Merge with defaults to ensure all fields are present
 					onLeftChange({ ...DEFAULT_COLOR_CORRECTION, ...result.colorCorrection.left });
 				}
 				if (result.colorCorrection.right) {
@@ -237,81 +73,189 @@ export function DualColorCorrectionPanel({ leftValues, rightValues, onLeftChange
 		}
 	}, [matchId, videoRef, onLeftChange, onRightChange]);
 
+	const handleReset = useCallback(() => {
+		onResetAll();
+	}, [onResetAll]);
+
+	// Advanced slider handler
+	const handleSliderChange = useCallback(
+		(side, key, value) => {
+			const setter = side === 'left' ? onLeftChange : onRightChange;
+			const current = side === 'left' ? leftValues : rightValues;
+			setter({ ...current, [key]: value });
+		},
+		[leftValues, rightValues, onLeftChange, onRightChange]
+	);
+
 	return (
 		<div className="bg-card border rounded-lg shadow-sm overflow-hidden">
-			{/* Collapsible Header - full width clickable like Info panel */}
+			{/* Header */}
 			<button
 				onClick={() => setIsCollapsed(!isCollapsed)}
-				className="w-full flex items-center justify-between px-4 py-3 bg-muted/20 hover:bg-muted/40 transition-colors"
+				className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/20 transition-colors"
 			>
 				<div className="flex items-center gap-3">
-					<h4 className="font-semibold flex items-center gap-2">
-						<Palette className="h-4 w-4 text-muted-foreground" />
-						Color Correction
-					</h4>
+					<Palette className="h-4 w-4 text-muted-foreground" />
+					<span className="font-medium">Color Match</span>
+					{hasAnyCorrection && (
+						<span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">
+							<Check className="h-3 w-3" />
+							Applied
+						</span>
+					)}
 				</div>
-				<ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`} />
+				<ChevronDown
+					className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
+				/>
 			</button>
 
-			{/* Collapsible Content */}
+			{/* Content */}
 			{!isCollapsed && (
-				<>
-					{/* Action buttons */}
-					<div className="flex items-center gap-2 px-4 py-2 border-t bg-muted/10">
-						{matchId && (
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={handleAutoColorCorrection}
-								disabled={autoLoading}
-								className="h-6 px-2 text-xs"
-								title="Auto-detect color correction from current frame (experimental)"
-							>
-								<Wand2 className={`h-3 w-3 mr-1 ${autoLoading ? 'animate-spin' : ''}`} />
-								{autoLoading ? 'Analyzing...' : 'Auto ⚗️'}
+				<div className="px-4 pb-4 space-y-4">
+					{/* Main Actions */}
+					<div className="flex items-center gap-2 pt-1">
+						<Button
+							onClick={handleAutoColorCorrection}
+							disabled={autoLoading || !matchId}
+							size="sm"
+							className="flex-1"
+						>
+							<Wand2 className={`h-4 w-4 mr-2 ${autoLoading ? 'animate-spin' : ''}`} />
+							{autoLoading ? 'Analyzing...' : 'Auto Match Colors'}
+						</Button>
+						{hasAnyCorrection && (
+							<Button onClick={handleReset} variant="outline" size="sm">
+								<RotateCcw className="h-4 w-4" />
 							</Button>
 						)}
-						<Button
-							type="button"
-							variant={linked ? 'default' : 'outline'}
-							size="sm"
-							onClick={() => setLinked(!linked)}
-							className="h-6 px-2 text-xs"
-						>
-							{linked ? '🔗 Linked' : '🔓 Independent'}
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							onClick={onResetAll}
-							className="h-6 px-2 text-xs"
-							title="Reset all to defaults"
-						>
-							<RotateCcw className="h-3 w-3 mr-1" />
-							Reset
-						</Button>
 					</div>
-					{/* Sliders */}
-					<div className="px-4 pb-3 pt-2">
-						<div className="grid grid-cols-2 gap-4">
-							<ColorCorrectionPanel
-								side="left"
-								values={leftValues}
-								onChange={handleLeftChange}
-								onReset={handleResetLeft}
-							/>
-							<ColorCorrectionPanel
-								side="right"
-								values={rightValues}
-								onChange={handleRightChange}
-								onReset={handleResetRight}
-							/>
+
+					{/* Status / LAB Values */}
+					{hasAnyCorrection ? (
+						<div className="space-y-2">
+							<div className="flex items-center gap-2 flex-wrap">
+								<LabBadge values={rightValues} side="Right cam" />
+							</div>
+							<p className="text-xs text-muted-foreground">
+								Color correction applied using LAB color transfer. Seek to a different frame and click Auto again to recalculate.
+							</p>
 						</div>
-					</div>
-				</>
+					) : (
+						<p className="text-xs text-muted-foreground">
+							Seek to a frame where both cameras show similar content (like grass), then click Auto Match to align colors.
+						</p>
+					)}
+
+					{/* Advanced Toggle */}
+					<button
+						onClick={() => setShowAdvanced(!showAdvanced)}
+						className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+					>
+						<Settings2 className="h-3 w-3" />
+						{showAdvanced ? 'Hide' : 'Show'} manual adjustments
+						<ChevronDown
+							className={`h-3 w-3 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+						/>
+					</button>
+
+					{/* Advanced Manual Controls */}
+					{showAdvanced && (
+						<div className="space-y-4 pt-2 border-t">
+							<p className="text-xs text-muted-foreground">
+								Fine-tune the color correction. These adjustments apply on top of Auto Match.
+							</p>
+							<div className="grid grid-cols-2 gap-6">
+								{/* Left Camera */}
+								<div className="space-y-3">
+									<h5 className="text-xs font-medium text-muted-foreground">Left Camera</h5>
+									<SliderControl
+										label="Brightness"
+										value={leftValues.brightness}
+										min={-0.5}
+										max={0.5}
+										step={0.01}
+										format={(v) => `${v > 0 ? '+' : ''}${(v * 100).toFixed(0)}%`}
+										onChange={(v) => handleSliderChange('left', 'brightness', v)}
+									/>
+									<SliderControl
+										label="Contrast"
+										value={leftValues.contrast}
+										min={0.5}
+										max={1.5}
+										step={0.01}
+										format={(v) => `${(v * 100).toFixed(0)}%`}
+										onChange={(v) => handleSliderChange('left', 'contrast', v)}
+									/>
+									<SliderControl
+										label="Saturation"
+										value={leftValues.saturation}
+										min={0}
+										max={2}
+										step={0.01}
+										format={(v) => `${(v * 100).toFixed(0)}%`}
+										onChange={(v) => handleSliderChange('left', 'saturation', v)}
+									/>
+								</div>
+
+								{/* Right Camera */}
+								<div className="space-y-3">
+									<h5 className="text-xs font-medium text-muted-foreground">Right Camera</h5>
+									<SliderControl
+										label="Brightness"
+										value={rightValues.brightness}
+										min={-0.5}
+										max={0.5}
+										step={0.01}
+										format={(v) => `${v > 0 ? '+' : ''}${(v * 100).toFixed(0)}%`}
+										onChange={(v) => handleSliderChange('right', 'brightness', v)}
+									/>
+									<SliderControl
+										label="Contrast"
+										value={rightValues.contrast}
+										min={0.5}
+										max={1.5}
+										step={0.01}
+										format={(v) => `${(v * 100).toFixed(0)}%`}
+										onChange={(v) => handleSliderChange('right', 'contrast', v)}
+									/>
+									<SliderControl
+										label="Saturation"
+										value={rightValues.saturation}
+										min={0}
+										max={2}
+										step={0.01}
+										format={(v) => `${(v * 100).toFixed(0)}%`}
+										onChange={(v) => handleSliderChange('right', 'saturation', v)}
+									/>
+								</div>
+							</div>
+						</div>
+					)}
+				</div>
 			)}
 		</div>
 	);
 }
+
+/**
+ * Simple slider control
+ */
+function SliderControl({ label, value, min, max, step, format, onChange }) {
+	return (
+		<div className="space-y-1">
+			<div className="flex items-center justify-between">
+				<Label className="text-xs">{label}</Label>
+				<span className="text-xs text-muted-foreground font-mono">{format(value)}</span>
+			</div>
+			<Slider
+				min={min * 100}
+				max={max * 100}
+				step={step * 100}
+				value={[value * 100]}
+				onValueChange={([v]) => onChange(v / 100)}
+			/>
+		</div>
+	);
+}
+
+export default DualColorCorrectionPanel;

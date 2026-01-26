@@ -36,14 +36,6 @@ export function formatUniforms(u, texture, colorCorrection = {}) {
 	// Merge with defaults
 	const cc = { ...DEFAULT_COLOR_CORRECTION, ...colorCorrection };
 
-	// Debug: log LAB values being applied
-	if (cc.labScale && cc.labOffset) {
-		const isIdentity = cc.labScale.every(v => v === 1) && cc.labOffset.every(v => v === 0);
-		if (!isIdentity) {
-			console.log('Applying LAB color correction:', { labScale: cc.labScale, labOffset: cc.labOffset });
-		}
-	}
-
 	const width = u.width;
 	const height = u.height;
 	return {
