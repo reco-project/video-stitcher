@@ -24,6 +24,7 @@ import app.routers.settings as settings_router
 # Must be set AFTER all imports to avoid issues with scipy and other libraries
 if sys.platform == 'win32':
     import asyncio
+
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Initialize logging
@@ -138,10 +139,11 @@ def run_server():
 
 if __name__ == "__main__":
     import os
+
     # Use reload only in development (when run via npm run backend-dev)
     # Don't use reload when started by Electron (USER_DATA_PATH is set)
     use_reload = "USER_DATA_PATH" not in os.environ
-    
+
     if use_reload:
         uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
     else:
