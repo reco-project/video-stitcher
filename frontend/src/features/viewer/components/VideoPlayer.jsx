@@ -114,8 +114,22 @@ export default function VideoPlayer({ children, className }) {
 	}, [micStream]);
 
 	const handleToggleRecording = () => {
+		// If currently recording, stop and pause the video
+		if (isRecording) {
+			const canvas = containerRef.current?.querySelector('canvas');
+			if (canvas) {
+				toggleRecording(canvas, videoRef, micStream);
+			}
+			// Pause the video when stopping recording
+			if (videoRef && !videoRef.paused) {
+				videoRef.pause();
+				setPlaying(false);
+			}
+			return;
+		}
+
 		// Suggest fullscreen for better resolution
-		if (!isRecording && !document.fullscreenElement) {
+		if (!document.fullscreenElement) {
 			const shouldContinue = window.confirm(
 				'For best recording quality, fullscreen mode is recommended.\n\n' +
 				'Recording in fullscreen captures at your screen\'s native resolution.\n\n' +
@@ -135,7 +149,7 @@ export default function VideoPlayer({ children, className }) {
 		const canvas = containerRef.current?.querySelector('canvas');
 		if (canvas) {
 			// Auto-play video if not playing when starting recording
-			if (!isRecording && videoRef && videoRef.paused) {
+			if (videoRef && videoRef.paused) {
 				videoRef.play();
 				setPlaying(true);
 			}
