@@ -132,8 +132,19 @@ function startBackend() {
 			...process.env,
 			USER_DATA_PATH: userDataPath,
 			PATH: newPath,
+			PYTHONUNBUFFERED: '1', // Force Python to flush output immediately
 		},
-		stdio: 'inherit',
+		stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout and stderr
+		windowsHide: true, // Hide console window on Windows
+	});
+
+	// Log backend output
+	backendProcess.stdout?.on('data', (data) => {
+		console.log('[Backend]', data.toString().trim());
+	});
+
+	backendProcess.stderr?.on('data', (data) => {
+		console.error('[Backend Error]', data.toString().trim());
 	});
 
 	backendProcess.on('error', (error) => {
