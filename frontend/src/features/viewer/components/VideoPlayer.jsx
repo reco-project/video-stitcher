@@ -35,8 +35,97 @@ export default function VideoPlayer({ children, className }) {
 		if (!videoRef) return;
 		const onTimeUpdate = () => setPlaying(!videoRef.paused);
 		videoRef.addEventListener('timeupdate', onTimeUpdate);
-		return () => videoRef.removeEventListener('timeupdate', onTimeUpdate);
+		return () => {
+			if (videoRef) {
+				videoRef.removeEventListener('timeupdate', onTimeUpdate);
+			}
+		};
 	}, [videoRef, setPlaying]);
+
+	// Sync fullscreen state with document fullscreen changes (e.g., when user presses Escape)
+	useEffect(() => {
+		const onFullscreenChange = () => {
+			setIsFullscreen(!!document.fullscreenElement);
+		};
+		document.addEventListener('fullscreenchange', onFullscreenChange);
+		return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+	}, []);
+
+	// Global keyboard shortcuts for the viewer
+	useEffect(() => {
+		const handleKeyDown = (e) => {
+			// Don't trigger shortcuts when typing in input fields or interacting with sliders
+			const target = e.target;
+			if (
+				target.tagName === 'INPUT' ||
+				target.tagName === 'TEXTAREA' ||
+				target.isContentEditable ||
+				target.getAttribute('role') === 'slider'
+			) {
+				return;
+			}
+
+			switch (e.key.toLowerCase()) {
+				case ' ':
+				case 'k':
+					e.preventDefault();
+					if (videoRef) {
+						if (videoRef.paused) {
+							videoRef.play();
+							setPlaying(true);
+						} else {
+							videoRef.pause();
+							setPlaying(false);
+						}
+					}
+					break;
+				case 'arrowright':
+				case 'l':
+					if (videoRef) {
+						videoRef.currentTime = Math.min(videoRef.currentTime + 5, videoRef.duration);
+						setCurrentTime(videoRef.currentTime);
+					}
+					break;
+				case 'arrowleft':
+				case 'j':
+					if (videoRef) {
+						videoRef.currentTime = Math.max(videoRef.currentTime - 5, 0);
+						setCurrentTime(videoRef.currentTime);
+					}
+					break;
+				case 'm':
+					if (videoRef) {
+						videoRef.muted = !videoRef.muted;
+						setMuted(videoRef.muted);
+					}
+					break;
+				case 'f':
+					handleFullscreenRef.current();
+					break;
+				case 'arrowup':
+					e.preventDefault();
+					if (videoRef) {
+						const newVolume = Math.min(videoRef.volume + 0.1, 1);
+						videoRef.volume = newVolume;
+						setVolume(newVolume);
+					}
+					break;
+				case 'arrowdown':
+					e.preventDefault();
+					if (videoRef) {
+						const newVolume = Math.max(videoRef.volume - 0.1, 0);
+						videoRef.volume = newVolume;
+						setVolume(newVolume);
+					}
+					break;
+				default:
+					break;
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [videoRef]);
 
 	const togglePlay = () => {
 		if (!videoRef) return;
@@ -79,13 +168,15 @@ export default function VideoPlayer({ children, className }) {
 
 	const handleMouseDown = (e) => {
 		if (!videoRef || !videoRef.duration) return;
+		const video = videoRef; // Capture reference
 		const rect = e.currentTarget.getBoundingClientRect();
 		const startX = e.clientX;
 		const seek = (clientX) => {
+			if (!video) return;
 			const clickX = clientX - rect.left;
 			const seekPercent = Math.max(0, Math.min(1, clickX / rect.width));
-			videoRef.currentTime = seekPercent * videoRef.duration;
-			setCurrentTime(videoRef.currentTime);
+			video.currentTime = seekPercent * video.duration;
+			setCurrentTime(video.currentTime);
 		};
 		seek(startX);
 
@@ -101,49 +192,33 @@ export default function VideoPlayer({ children, className }) {
 		window.addEventListener('mouseup', onMouseUp);
 	};
 
-	const handleFullscreen = () => {
+	const handleFullscreen = async () => {
 		const el = containerRef.current;
-		let attemptedFullscreen = !isFullscreen;
 		if (!el) return;
-		if (isFullscreen) {
-			document.exitFullscreen();
-		} else if (el.requestFullscreen) {
-			el.requestFullscreen();
-		} else if (el.webkitRequestFullscreen) {
-			el.webkitRequestFullscreen();
-		} else if (el.msRequestFullscreen) {
-			el.msRequestFullscreen();
-		} else {
-			console.warn('Fullscreen API is not supported.');
-			attemptedFullscreen = isFullscreen;
+
+		try {
+			if (document.fullscreenElement) {
+				await document.exitFullscreen();
+			} else if (el.requestFullscreen) {
+				await el.requestFullscreen();
+			} else if (el.webkitRequestFullscreen) {
+				el.webkitRequestFullscreen();
+			} else if (el.msRequestFullscreen) {
+				el.msRequestFullscreen();
+			} else {
+				console.warn('Fullscreen API is not supported.');
+			}
+		} catch (err) {
+			// Ignore errors from rapid fullscreen toggling or inactive document
+			console.warn('Fullscreen operation failed:', err.message);
 		}
-		setIsFullscreen(attemptedFullscreen);
 	};
 
-	const handleKeyDown = (e) => {
-		if (e.key === ' ') {
-			e.preventDefault();
-			togglePlay();
-		}
-		if (e.key === 'ArrowRight') {
-			if (videoRef) {
-				videoRef.currentTime = Math.min(videoRef.currentTime + 5, videoRef.duration);
-				setCurrentTime(videoRef.currentTime);
-			}
-		}
-		if (e.key === 'ArrowLeft') {
-			if (videoRef) {
-				videoRef.currentTime = Math.max(videoRef.currentTime - 5, 0);
-				setCurrentTime(videoRef.currentTime);
-			}
-		}
-		if (e.key === 'm') {
-			handleVolumeToggle();
-		}
-		if (e.key === 'f') {
-			handleFullscreen();
-		}
-	};
+	// Ref to access handleFullscreen in the global event listener
+	const handleFullscreenRef = useRef(handleFullscreen);
+	useEffect(() => {
+		handleFullscreenRef.current = handleFullscreen;
+	}, [handleFullscreen]);
 
 	const [isControlsVisible, setIsControlsVisible] = useState(true);
 
@@ -157,8 +232,6 @@ export default function VideoPlayer({ children, className }) {
 				className
 			)}
 			ref={containerRef}
-			tabIndex={0} // make div focusable
-			onKeyDown={handleKeyDown}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
 		>
@@ -166,11 +239,15 @@ export default function VideoPlayer({ children, className }) {
 
 			{/* Controls Overlay */}
 			{isControlsVisible && (
-				<div className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-sm text-white px-4 py-2 flex items-center space-x-4">
+				<div className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-sm text-white px-4 py-2 flex items-center space-x-4 z-10"
+					onPointerDown={(e) => e.stopPropagation()}
+					onPointerUp={(e) => e.stopPropagation()}
+					onPointerMove={(e) => e.stopPropagation()}
+				>
 					{/* Play/Pause */}
 					<button
 						onClick={togglePlay}
-						className="p-1 hover:text-primary transition"
+						className="p-1 hover:text-primary transition cursor-pointer"
 						aria-label={playing ? 'Pause' : 'Play'}
 					>
 						{playing ? <LucidePause /> : <LucidePlay />}
@@ -226,14 +303,14 @@ export default function VideoPlayer({ children, className }) {
 							step="0.01"
 							value={muted ? 0 : volume}
 							onChange={handleVolumeChange}
-							className="w-24"
+							className="w-24 cursor-pointer"
 							aria-label="Volume control"
 						/>
 					</div>
 					{/* Fullscreen */}
 					<button
 						onClick={handleFullscreen}
-						className="p-1 hover:text-primary transition"
+						className="p-1 hover:text-primary transition cursor-pointer"
 						aria-label="Toggle Fullscreen"
 					>
 						<LucideMaximize />
