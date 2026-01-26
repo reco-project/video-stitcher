@@ -14,11 +14,13 @@ An open-source, GPU-accelerated alternative to [Veo](https://www.veo.co/) for af
 Tested with GoPros and designed to support various cameras, including mobile devices.
 
 **Tech stack:**
+
 - **Frontend:** React + Three.js (GPU-accelerated WebGL stitching)
 - **Backend:** Python FastAPI (OpenCV + FFmpeg)
 - **Platforms:** Windows, macOS, Linux
 
 **Features:**
+
 - Real-time stitching with GPU acceleration
 - Automatic camera calibration
 - Works with any camera setup
@@ -39,12 +41,14 @@ More context: [Reddit post](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/
 ### Installation
 
 1. Clone the repository:
+
     ```bash
     git clone https://github.com/reco-project/video-stitcher.git
     cd video-stitcher
     ```
 
 2. Install dependencies:
+
     ```bash
     npm run setup
     ```
@@ -59,6 +63,7 @@ The app will start with frontend, backend, and Electron desktop app.
 ---
 
 ## Telemetry
+
 This app collects minimal anonymous usage data to help improve the software (e.g., feature usage, errors). No personal information or video content is collected. Telemetry is **opt-in** and disabled by default. You can enable it in Settings.
 
 ---
