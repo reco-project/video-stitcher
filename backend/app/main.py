@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+import sys
 
 from app.utils.logger import get_logger, configure_uvicorn_logging, info
 from app.repositories.file_lens_profile_store import FileLensProfileStore
@@ -13,11 +14,17 @@ from app.repositories.lens_profile_store import LensProfileStore
 from app.repositories.file_match_store import FileMatchStore
 from app.repositories.match_store import MatchStore
 from app.data_paths import PROFILES_DIR, MATCHES_DIR, VIDEOS_DIR
-import asyncio
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
 import app.routers.settings as settings_router
+
+# Fix for Windows: Use SelectorEventLoop instead of ProactorEventLoop
+# This prevents timeout issues when running uvicorn on Windows
+# Must be set AFTER all imports to avoid issues with scipy and other libraries
+if sys.platform == 'win32':
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Initialize logging
 logger = get_logger(__name__)
@@ -124,5 +131,18 @@ async def health_check():
     return {"status": "ok"}
 
 
+def run_server():
+    """Run the server without reload (for production/Electron)."""
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None)
+
+
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+    # Use reload only in development (when run via npm run backend-dev)
+    # Don't use reload when started by Electron (USER_DATA_PATH is set)
+    use_reload = "USER_DATA_PATH" not in os.environ
+    
+    if use_reload:
+        uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    else:
+        run_server()
