@@ -104,10 +104,16 @@ export default function VideoList({ side, videoPaths, metadata, onSelectFiles, o
 									</div>
 									{metadata[index] && (
 										<div className="text-xs text-muted-foreground pl-6 space-x-2">
+											{metadata[index].resolution && (
+												<span>{metadata[index].resolution}</span>
+											)}
 											{metadata[index].duration && (
-												<span>{formatDuration(metadata[index].duration)}</span>
+												<span>• {formatDuration(metadata[index].duration)}</span>
 											)}
 											<span>• {metadata[index].sizeFormatted}</span>
+											{metadata[index].createdFormatted && (
+												<span>• {metadata[index].createdFormatted}</span>
+											)}
 										</div>
 									)}
 								</div>

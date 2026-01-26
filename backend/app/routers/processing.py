@@ -187,7 +187,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
         404: Match not found
         400: Match validation failed
     """
-    from app.services.transcoding import transcode_and_stack, check_ffmpeg
+    from app.services.transcoding import transcode_and_stack_multiple, check_ffmpeg
 
     # Get match
     match_data = match_store.get_by_id(match_id)
@@ -201,9 +201,13 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
     if not left_videos or not right_videos:
         raise HTTPException(status_code=400, detail="Match must have at least one left and one right video")
 
-    # Get first video from each side
-    left_video_path = left_videos[0].path
-    right_video_path = right_videos[0].path
+    # Extract paths from video objects
+    left_video_paths = [v.path for v in left_videos]
+    right_video_paths = [v.path for v in right_videos]
+
+    logger.info(
+        f"Processing match {match_id} with {len(left_video_paths)} left videos and {len(right_video_paths)} right videos"
+    )
 
     # Check FFmpeg
     try:
@@ -215,10 +219,15 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
     from datetime import datetime, timezone
 
     try:
+        # Determine initial message based on video counts
+        initial_message = "Preparing to sync and stack videos..."
+        if len(left_video_paths) > 1 or len(right_video_paths) > 1:
+            initial_message = f"Preparing to concatenate and process videos ({len(left_video_paths)} left, {len(right_video_paths)} right)..."
+
         match_data.update_processing(
             status="transcoding",
             step="transcoding",
-            message="Preparing to sync and stack videos...",
+            message=initial_message,
             started_at=datetime.now(timezone.utc).isoformat(),
         )
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
@@ -227,7 +236,11 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
         raise HTTPException(status_code=500, detail=f"Failed to initialize transcoding: {str(e)}")
 
     # Initialize progress cache with starting message
-    _progress_cache[match_id] = {'processing_message': 'Starting transcoding process...'}
+    _progress_cache[match_id] = {
+        'processing_message': 'Starting transcoding process...',
+        'left_video_count': len(left_video_paths),
+        'right_video_count': len(right_video_paths),
+    }
 
     try:
         # Transcode in background thread
@@ -258,14 +271,25 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                         _progress_cache[match_id] = {}
 
                     # Update based on stage
-                    if stage == 'audio_extraction':
+                    if stage == 'concatenation':
+                        concat_side = progress_info.get('concat_side', '')
+                        concat_count = progress_info.get('concat_count', 0)
+                        _progress_cache[match_id]['processing_message'] = progress_info.get(
+                            'message', f'Concatenating {concat_side} videos...'
+                        )
+                        _progress_cache[match_id]['current_stage'] = 'concatenation'
+                        if concat_side:
+                            _progress_cache[match_id][f'concat_{concat_side}_count'] = concat_count
+                    elif stage == 'audio_extraction':
                         _progress_cache[match_id]['processing_message'] = progress_info.get(
                             'message', 'Extracting audio...'
                         )
+                        _progress_cache[match_id]['current_stage'] = 'audio_extraction'
                     elif stage == 'audio_sync':
                         _progress_cache[match_id]['processing_message'] = progress_info.get(
                             'message', 'Syncing audio...'
                         )
+                        _progress_cache[match_id]['current_stage'] = 'audio_sync'
                     elif stage == 'encoding':
                         # Detailed encoding progress - stored in memory only
                         fps = progress_info.get('fps', 0)
@@ -278,6 +302,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                         _progress_cache[match_id].update(
                             {
                                 'processing_message': f"Encoding video ({encoder})...",
+                                'current_stage': 'encoding',
                                 'transcode_progress': float(round(progress_percent, 1)),
                                 'transcode_fps': float(round(fps, 1)),
                                 'transcode_speed': str(speed),
@@ -327,9 +352,10 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 else:
                     logger.warning(f"No quality_settings found in match data for {match_id}")
 
-                stacked_path, offset = transcode_and_stack(
-                    left_video_path,
-                    right_video_path,
+                # Use the new multi-video function
+                stacked_path, offset = transcode_and_stack_multiple(
+                    left_video_paths,
+                    right_video_paths,
                     output_video_path,
                     temp_dir,
                     progress_callback=update_progress,

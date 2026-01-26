@@ -19,9 +19,27 @@ export default function ProcessingStatus({ status, onComplete }) {
 
 	if (!status) return null;
 
+	// Get the current transcoding stage for step display
+	const getTranscodeStage = () => {
+		if (status.status !== 'transcoding') return null;
+		const stage = status.current_stage;
+		// Order: concatenation -> audio_extraction -> audio_sync -> encoding
+		const stages = ['concatenation', 'audio_extraction', 'audio_sync', 'encoding'];
+		
+		// If no concatenation needed, skip that stage
+		const hasMultipleVideos = (status.left_video_count > 1) || (status.right_video_count > 1);
+		const activeStages = hasMultipleVideos ? stages : stages.filter(s => s !== 'concatenation');
+		
+		return {
+			current: stage,
+			stages: activeStages,
+			index: activeStages.indexOf(stage),
+		};
+	};
+
 	// Determine progress percentage based on step or explicit fields returned from backend
 	const getProgress = () => {
-		// Use transcoding progress if available
+		// Use transcoding progress if available (for encoding step)
 		if (status.status === 'transcoding' && typeof status.transcode_progress === 'number') {
 			return Math.round(status.transcode_progress);
 		}
@@ -30,8 +48,16 @@ export default function ProcessingStatus({ status, onComplete }) {
 		if (typeof status.processing_percent === 'number') return Math.round(status.processing_percent);
 		if (typeof status.step_progress === 'number') return Math.round(status.step_progress);
 
-		// For transcoding status without specific progress, return 0 to show progress bar
-		if (status.status === 'transcoding') return 0;
+		// For transcoding status without specific progress, estimate based on stage
+		if (status.status === 'transcoding') {
+			const stageInfo = getTranscodeStage();
+			if (stageInfo && stageInfo.index >= 0) {
+				// For non-encoding stages, show indeterminate (0)
+				// Encoding stage will use transcode_progress above
+				if (stageInfo.current !== 'encoding') return 0;
+			}
+			return 0;
+		}
 
 		// Calibrating is near the end of processing
 		if (status.status === 'calibrating') return 95;
@@ -113,16 +139,40 @@ export default function ProcessingStatus({ status, onComplete }) {
 					message: 'Match is ready to be processed',
 					bgClass: 'bg-gray-50 dark:bg-gray-950',
 				};
-			case 'transcoding':
+			case 'transcoding': {
+				// Determine which sub-step we're in based on current_stage
+				const stage = status.current_stage;
+				let title = 'Syncing Videos';
+				let message = status.processing_message || 'Synchronizing audio and encoding side-by-side video...';
+				
+				if (stage === 'concatenation') {
+					title = 'Concatenating Videos';
+					const leftCount = status.left_video_count || 0;
+					const rightCount = status.right_video_count || 0;
+					if (leftCount > 1 || rightCount > 1) {
+						message = status.processing_message || `Joining video files (${leftCount} left, ${rightCount} right)...`;
+					}
+				} else if (stage === 'audio_extraction') {
+					title = 'Extracting Audio';
+					message = status.processing_message || 'Extracting audio tracks for synchronization...';
+				} else if (stage === 'audio_sync') {
+					title = 'Computing Sync';
+					message = status.processing_message || 'Analyzing audio to compute sync offset...';
+				} else if (stage === 'encoding') {
+					title = 'Encoding Video';
+					message = status.processing_message || 'Encoding synchronized side-by-side video...';
+				}
+				
 				return {
 					icon: Loader2,
 					variant: 'default',
 					color: 'text-blue-500',
-					title: 'Syncing Videos',
-					message: status.processing_message || 'Synchronizing audio and encoding side-by-side video...',
+					title,
+					message,
 					animated: true,
 					bgClass: 'bg-blue-50 dark:bg-blue-950',
 				};
+			}
 			case 'calibrating':
 				return {
 					icon: Loader2,
@@ -201,6 +251,46 @@ export default function ProcessingStatus({ status, onComplete }) {
 							<div className="text-xs mt-1 opacity-70">Error code: {config.errorCode}</div>
 						)}
 					</div>
+
+					{/* Transcoding stage indicator */}
+					{status.status === 'transcoding' && (() => {
+						const stageInfo = getTranscodeStage();
+						if (!stageInfo) return null;
+						
+						const stageLabels = {
+							concatenation: 'Concat',
+							audio_extraction: 'Audio',
+							audio_sync: 'Sync',
+							encoding: 'Encode',
+						};
+						
+						return (
+							<div className="flex items-center gap-1 mb-3">
+								{stageInfo.stages.map((stage, idx) => {
+									const isActive = stage === stageInfo.current;
+									const isComplete = idx < stageInfo.index;
+									return (
+										<React.Fragment key={stage}>
+											<div
+												className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+													isActive
+														? 'bg-blue-500 text-white'
+														: isComplete
+															? 'bg-green-500/20 text-green-700 dark:text-green-400'
+															: 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+												}`}
+											>
+												{isComplete ? '✓ ' : ''}{stageLabels[stage] || stage}
+											</div>
+											{idx < stageInfo.stages.length - 1 && (
+												<div className={`w-3 h-0.5 ${isComplete ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+											)}
+										</React.Fragment>
+									);
+								})}
+							</div>
+						);
+					})()}
 
 					{/* Progress bar for active processing - show immediately after message */}
 					{isProcessing && (

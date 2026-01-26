@@ -64,6 +64,200 @@ def check_ffmpeg() -> None:
         raise RuntimeError(ERROR_MESSAGES["FFMPEG_NOT_FOUND"])
 
 
+def concat_videos(video_list: List[str], output_path: str, progress_callback=None) -> str:
+    """
+    Concatenate multiple video files into a single file using FFmpeg concat demuxer.
+
+    This is useful for GoPro-style split recordings where a single session
+    is automatically split into multiple files.
+
+    Args:
+        video_list: List of video file paths to concatenate (in order)
+        output_path: Path for the concatenated output video
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        Path to the concatenated video
+
+    Raises:
+        RuntimeError: If concatenation fails
+        FileNotFoundError: If any input video is not found
+    """
+    if not video_list:
+        raise ValueError("video_list cannot be empty")
+
+    # If only one video, just return its path (no concatenation needed)
+    if len(video_list) == 1:
+        return video_list[0]
+
+    # Validate all input files exist
+    for video_path in video_list:
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Video not found: {video_path}")
+
+    # Create concat list file
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
+        for video_path in video_list:
+            # Use absolute paths and escape single quotes
+            abs_path = os.path.abspath(video_path)
+            f.write(f"file '{abs_path}'\n")
+        list_path = f.name
+
+    try:
+        if progress_callback:
+            progress_callback({'stage': 'concatenation', 'message': f'Concatenating {len(video_list)} video files...'})
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_path,
+            "-c",
+            "copy",  # Stream copy (no re-encoding) for speed
+            output_path,
+        ]
+
+        logger.info(f"Concatenating {len(video_list)} videos to {output_path}")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"FFmpeg concat failed: {result.stderr}")
+
+        logger.info(f"Concatenation complete: {output_path}")
+        return output_path
+
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Video concatenation timed out")
+    finally:
+        # Clean up temp concat list file
+        if os.path.exists(list_path):
+            os.remove(list_path)
+
+
+def transcode_and_stack_multiple(
+    left_videos: List[str],
+    right_videos: List[str],
+    output_path: str,
+    temp_dir: Optional[str] = None,
+    progress_callback=None,
+    cancellation_check=None,
+    process_callback=None,
+    quality_settings=None,
+) -> Tuple[str, float]:
+    """
+    Concatenate and then synchronize and stack multiple videos from each side.
+
+    This is the main entry point for processing matches with multiple video files
+    per camera (e.g., GoPro split recordings).
+
+    Args:
+        left_videos: List of paths to left/top camera videos (in order)
+        right_videos: List of paths to right/bottom camera videos (in order)
+        output_path: Path for output stacked video
+        temp_dir: Optional temporary directory (auto-created if None)
+        progress_callback: Optional callback function(dict) for progress updates
+        cancellation_check: Optional callback function() -> bool to check if cancelled
+        process_callback: Optional callback function(pid: int) to receive FFmpeg PID
+        quality_settings: Optional dict with quality settings
+
+    Returns:
+        Tuple of (output_path, offset_seconds)
+
+    Raises:
+        RuntimeError: If processing fails
+        FileNotFoundError: If input videos not found
+        ValueError: If video lists are empty
+    """
+    if not left_videos:
+        raise ValueError("left_videos list cannot be empty")
+    if not right_videos:
+        raise ValueError("right_videos list cannot be empty")
+
+    # Check FFmpeg availability
+    check_ffmpeg()
+
+    # Create temp directory if not provided
+    cleanup_temp = False
+    if temp_dir is None:
+        temp_dir = os.path.join("backend", "temp", str(uuid.uuid4()))
+        cleanup_temp = True
+
+    os.makedirs(temp_dir, exist_ok=True)
+
+    try:
+        # Step 1: Concatenate videos if multiple files per side
+        left_concat_path = left_videos[0]  # Default to first if only one
+        right_concat_path = right_videos[0]
+
+        if len(left_videos) > 1:
+            if progress_callback:
+                progress_callback(
+                    {
+                        'stage': 'concatenation',
+                        'message': f'Concatenating {len(left_videos)} left camera videos...',
+                        'concat_side': 'left',
+                        'concat_count': len(left_videos),
+                    }
+                )
+
+            if cancellation_check and cancellation_check():
+                raise RuntimeError("Processing cancelled during left video concatenation")
+
+            left_concat_path = os.path.join(temp_dir, "left_concat.mp4")
+            concat_videos(left_videos, left_concat_path, progress_callback)
+            logger.info(f"Left videos concatenated: {len(left_videos)} files -> {left_concat_path}")
+
+        if len(right_videos) > 1:
+            if progress_callback:
+                progress_callback(
+                    {
+                        'stage': 'concatenation',
+                        'message': f'Concatenating {len(right_videos)} right camera videos...',
+                        'concat_side': 'right',
+                        'concat_count': len(right_videos),
+                    }
+                )
+
+            if cancellation_check and cancellation_check():
+                raise RuntimeError("Processing cancelled during right video concatenation")
+
+            right_concat_path = os.path.join(temp_dir, "right_concat.mp4")
+            concat_videos(right_videos, right_concat_path, progress_callback)
+            logger.info(f"Right videos concatenated: {len(right_videos)} files -> {right_concat_path}")
+
+        # Step 2: Now use the existing transcode_and_stack with the concatenated videos
+        return transcode_and_stack(
+            left_concat_path,
+            right_concat_path,
+            output_path,
+            temp_dir,
+            progress_callback,
+            cancellation_check,
+            process_callback,
+            quality_settings,
+        )
+
+    except Exception as e:
+        # Clean up output file if it was created
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        raise
+
+    finally:
+        # Clean up temp directory if we created it
+        if cleanup_temp and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def transcode_and_stack(
     video1_path: str,
     video2_path: str,

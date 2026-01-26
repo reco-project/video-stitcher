@@ -337,6 +337,64 @@ ipcMain.handle('file:exists', async (event, filePath) => {
 	}
 });
 
+// Helper function to get video metadata (duration, resolution) using ffprobe
+async function getVideoMetadata(filePath) {
+	return new Promise((resolve) => {
+		const ffprobe = spawn('ffprobe', [
+			'-v', 'error',
+			'-select_streams', 'v:0',
+			'-show_entries', 'stream=width,height:format=duration',
+			'-of', 'json',
+			filePath
+		]);
+
+		let output = '';
+		ffprobe.stdout.on('data', (data) => {
+			output += data.toString();
+		});
+
+		ffprobe.on('close', (code) => {
+			if (code === 0 && output.trim()) {
+				try {
+					const data = JSON.parse(output);
+					const stream = data.streams?.[0] || {};
+					const format = data.format || {};
+					resolve({
+						duration: format.duration ? parseFloat(format.duration) : null,
+						width: stream.width || null,
+						height: stream.height || null,
+					});
+				} catch {
+					resolve({ duration: null, width: null, height: null });
+				}
+			} else {
+				resolve({ duration: null, width: null, height: null });
+			}
+		});
+
+		ffprobe.on('error', () => {
+			resolve({ duration: null, width: null, height: null });
+		});
+
+		// Timeout after 5 seconds
+		setTimeout(() => {
+			ffprobe.kill();
+			resolve({ duration: null, width: null, height: null });
+		}, 5000);
+	});
+}
+
+// Helper to format date/time nicely
+function formatDateTime(date) {
+	const d = new Date(date);
+	const year = d.getFullYear();
+	const month = String(d.getMonth() + 1).padStart(2, '0');
+	const day = String(d.getDate()).padStart(2, '0');
+	const hours = String(d.getHours()).padStart(2, '0');
+	const minutes = String(d.getMinutes()).padStart(2, '0');
+	return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
 // IPC handler to get file metadata
 ipcMain.handle('file:getMetadata', async (event, filePath) => {
 	try {
@@ -347,11 +405,24 @@ ipcMain.handle('file:getMetadata', async (event, filePath) => {
 		const stats = statSync(filePath);
 		const fileName = filePath.split(/[/\\]/).pop();
 
+		// Get video metadata using ffprobe
+		const videoMeta = await getVideoMetadata(filePath);
+
+		// Use the older date between birthtime and mtime (more likely the actual recording date)
+		const birthtime = stats.birthtime && stats.birthtime.getTime() > 0 ? stats.birthtime : null;
+		const mtime = stats.mtime;
+		const fileDate = birthtime && birthtime < mtime ? birthtime : mtime;
+
 		return {
 			name: fileName,
 			size: stats.size,
 			sizeFormatted: formatFileSize(stats.size),
-			modified: stats.mtime.toISOString(),
+			created: fileDate.toISOString(),
+			createdFormatted: formatDateTime(fileDate),
+			duration: videoMeta.duration, // in seconds
+			width: videoMeta.width,
+			height: videoMeta.height,
+			resolution: videoMeta.width && videoMeta.height ? `${videoMeta.width}x${videoMeta.height}` : null,
 		};
 	} catch (error) {
 		console.error('Failed to get file metadata:', error);
