@@ -12,6 +12,7 @@ backend/temp/
 backend/logs/
 backend/data/videos/
 backend/data/matches/
+backend/bin/
 
 # IDE
 .vscode/

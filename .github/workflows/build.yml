@@ -1,0 +1,139 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.1.0)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact: video-stitcher-linux-x64
+          - os: windows-latest
+            platform: win32
+            artifact: video-stitcher-win32-x64
+          - os: macos-latest
+            platform: darwin
+            artifact: video-stitcher-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: frontend
+
+      - name: Install electron dependencies
+        run: npm install
+        working-directory: electron
+
+      - name: Create Python venv and install backend dependencies
+        shell: bash
+        run: |
+          cd backend
+          python -m venv venv
+          if [ "${{ matrix.platform }}" == "win32" ]; then
+            source venv/Scripts/activate
+            python -m pip install --upgrade pip
+          else
+            source venv/bin/activate
+            pip install --upgrade pip
+          fi
+          pip install -r requirements.txt
+
+      - name: Download FFmpeg
+        run: npm run download-ffmpeg
+
+      - name: Build frontend
+        run: npm run frontend-build
+
+      - name: Package Electron app
+        run: npx electron-forge package
+
+      - name: List output
+        shell: bash
+        run: |
+          ls -la out/
+          du -sh out/${{ matrix.artifact }}/
+
+      - name: Compress artifact (Linux/macOS)
+        if: matrix.platform != 'win32'
+        run: |
+          cd out
+          tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+
+      - name: Compress artifact (Windows)
+        if: matrix.platform == 'win32'
+        run: 7z a -tzip ${{ matrix.artifact }}.zip ${{ matrix.artifact }}
+        working-directory: out
+
+      - name: Upload artifact (Linux/macOS)
+        if: matrix.platform != 'win32'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: out/${{ matrix.artifact }}.tar.gz
+          retention-days: 7
+
+      - name: Upload artifact (Windows)
+        if: matrix.platform == 'win32'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: out/${{ matrix.artifact }}.zip
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.tar.gz
+            artifacts/video-stitcher-win32-x64/video-stitcher-win32-x64.zip
+            artifacts/video-stitcher-darwin-arm64/video-stitcher-darwin-arm64.tar.gz
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

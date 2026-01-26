@@ -112,10 +112,18 @@ function startBackend() {
 
 	const userDataPath = app.getPath('userData');
 
+	// Set up FFmpeg path - use bundled binaries in production
+	const ffmpegBinDir = join(backendDir, 'bin');
+	const pathSeparator = isWin ? ';' : ':';
+	const newPath = existsSync(ffmpegBinDir)
+		? `${ffmpegBinDir}${pathSeparator}${process.env.PATH || ''}`
+		: process.env.PATH;
+
 	console.log('[Backend] Starting Python backend...');
 	console.log('[Backend] isDev:', isDev);
 	console.log('[Backend] Python path:', pythonPath);
 	console.log('[Backend] Backend dir:', backendDir);
+	console.log('[Backend] FFmpeg bin dir:', ffmpegBinDir, existsSync(ffmpegBinDir) ? '(found)' : '(not found, using system)');
 	console.log('[Backend] User data path:', userDataPath);
 
 	backendProcess = spawn(pythonPath, ['-m', 'app.main'], {
@@ -123,6 +131,7 @@ function startBackend() {
 		env: {
 			...process.env,
 			USER_DATA_PATH: userDataPath,
+			PATH: newPath,
 		},
 		stdio: 'inherit',
 	});
