@@ -74,18 +74,17 @@ const VideoPlane = ({ texture, isLeft }) => {
 		: [(planeWidth / 2) * (1 - (params.intersect || 0.5)), params.xTy || 0, 0];
 	const rotation = isLeft ? [params.zRx || 0, THREE.MathUtils.degToRad(90), 0] : [0, 0, params.xRz || 0];
 
-	// Generate key from color correction and blend width to force shader material update
-	const ccKey = JSON.stringify({ colorCorrection, blendWidth });
+	// Generate key from params, color correction, and blend width to force re-render on changes
+	const meshKey = JSON.stringify({ params, colorCorrection, blendWidth });
 
 	// Left plane: fully opaque, renders first as base layer
 	// Right plane: transparent with alpha blend, renders on top
 	const isTransparent = !isLeft && blendWidth > 0;
 
 	return (
-		<mesh position={position} rotation={rotation} renderOrder={isLeft ? 1 : 2}>
+		<mesh key={meshKey} position={position} rotation={rotation} renderOrder={isLeft ? 1 : 2}>
 			<planeGeometry args={[planeWidth, planeWidth / aspect]} />
 			<shaderMaterial 
-				key={ccKey}
 				uniforms={formatUniforms(u, texture, colorCorrection, blendWidth)} 
 				transparent={isTransparent}
 				depthWrite={!isTransparent}
@@ -129,14 +128,18 @@ const Viewer = ({ selectedMatch }) => {
 
 	// Handler for when recalibration completes
 	const handleRecalibrated = useCallback((result) => {
-		// Update the local match data with new calibration params
-		if (result && result.params) {
+		// Only update match data if calibration succeeded
+		// If calibration failed, keep existing params
+		if (result && result.params && !result.calibration_failed) {
 			setSelectedMatch({
 				...selectedMatch,
 				params: result.params,
 				num_matches: result.num_matches,
+				confidence: result.confidence,
+				status: 'ready',
 			});
 		}
+		// If calibration failed, RecalibratePanel will show the warning
 	}, [selectedMatch, setSelectedMatch]);
 
 	useEffect(() => {
@@ -325,6 +328,19 @@ const Viewer = ({ selectedMatch }) => {
 
 	return (
 		<div className="w-full flex flex-col items-center gap-3 px-4 py-4">
+			{/* Warning Banner for failed calibration */}
+			{selectedMatch.status === 'warning' && (
+				<div className="w-full max-w-6xl">
+					<Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+						<AlertTitle className="text-yellow-700 dark:text-yellow-400">⚠️ Calibration Failed</AlertTitle>
+						<AlertDescription className="text-yellow-600 dark:text-yellow-300">
+							{selectedMatch.processing?.message || 'Could not find enough features to calibrate cameras. Using default alignment.'}
+							{' '}Use the Recalibrate panel below to try again with a different frame (look for frames with visible grass, textures, or distinct features).
+						</AlertDescription>
+					</Alert>
+				</div>
+			)}
+
 			{/* Video Title */}
 			<VideoTitle match={selectedMatch} />
 

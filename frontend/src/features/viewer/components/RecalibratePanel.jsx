@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { RefreshCw, Clock, AlertCircle, CheckCircle, ChevronDown } from 'lucide-react';
 import { processMatchWithFrames } from '@/features/matches/api/matches';
 import { useSettings } from '@/hooks/useSettings';
+import { useToast } from '@/components/ui/toast';
 import FrameExtractor from './FrameExtractor';
 
 /**
@@ -43,8 +44,9 @@ function formatSecondsToTime(seconds) {
  */
 export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 	const { settings } = useSettings();
+	const { showToast } = useToast();
 	const [timeInput, setTimeInput] = useState('');
-	const [status, setStatus] = useState('idle'); // 'idle' | 'extracting' | 'processing' | 'success' | 'error'
+	const [status, setStatus] = useState('idle'); // 'idle' | 'extracting' | 'processing' | 'success' | 'warning' | 'error'
 	const [error, setError] = useState(null);
 	const [extractorData, setExtractorData] = useState(null);
 	const [isCollapsed, setIsCollapsed] = useState(true);
@@ -109,20 +111,39 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 			setStatus('processing');
 
 			try {
-				const result = await processMatchWithFrames(match.id, leftBlob, rightBlob, false);
-				setStatus('success');
+				// Use debug mode from settings
+				const debugMode = settings.debugMode || false;
+				const result = await processMatchWithFrames(match.id, leftBlob, rightBlob, debugMode);
+				
+				// Check if calibration failed but still returned default params
+				if (result.calibration_failed) {
+					const errorMsg = result.calibration_error || 'Not enough features found';
+					setError(`Calibration failed: ${errorMsg}`);
+					setStatus('warning');
+					showToast({
+						message: `Calibration failed: ${errorMsg}. Try a different frame with more visible features (grass, textures).`,
+						type: 'warning',
+						duration: 8000,
+					});
+				} else {
+					setStatus('success');
+					showToast({ message: 'Recalibration successful!', type: 'success' });
+				}
+				
 				onRecalibrated?.(result);
 
-				// Reset after success
+				// Reset after delay
 				setTimeout(() => {
 					setStatus('idle');
-				}, 3000);
+					setError(null);
+				}, 5000);
 			} catch (err) {
 				setError(err.message || 'Recalibration failed');
 				setStatus('error');
+				showToast({ message: err.message || 'Recalibration failed', type: 'error' });
 			}
 		},
-		[match.id, onRecalibrated]
+		[match.id, onRecalibrated, settings.debugMode, showToast]
 	);
 
 	const handleExtractError = useCallback((err) => {
@@ -185,6 +206,7 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 								title="Use current video time"
 							>
 								<Clock className="h-3 w-3" />
+								Set current frame
 							</Button>
 							<Button
 								type="button"
@@ -211,10 +233,16 @@ export default function RecalibratePanel({ match, videoRef, onRecalibrated }) {
 								{error}
 							</div>
 						)}
+						{status === 'warning' && error && (
+							<div className="mt-2 flex items-start gap-1 text-xs text-yellow-600 dark:text-yellow-500">
+								<AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+								<span>{error} Try a different frame with more visible features (grass, textures).</span>
+							</div>
+						)}
 						{status === 'success' && (
 							<div className="mt-2 flex items-center gap-1 text-xs text-green-500">
 								<CheckCircle className="h-3 w-3" />
-								Recalibration complete! Refresh to see changes.
+								Recalibration complete!
 							</div>
 						)}
 					</div>

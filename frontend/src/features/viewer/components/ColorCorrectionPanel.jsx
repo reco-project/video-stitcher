@@ -113,42 +113,38 @@ export function DualColorCorrectionPanel({
 			{/* Content */}
 			{!isCollapsed && (
 				<div className="px-4 pb-4 space-y-4">
-					{/* Main Actions */}
-					<div className="flex items-center gap-2 pt-1">
+					{/* Main Actions Row - Auto Color + Seam Blend inline */}
+					<div className="flex items-center gap-3 pt-1">
 						<Button
 							onClick={handleAutoColorCorrection}
 							disabled={autoLoading || !matchId}
 							size="sm"
-							className="flex-1"
+							className="shrink-0"
 						>
 							<Wand2 className={`h-4 w-4 mr-2 ${autoLoading ? 'animate-spin' : ''}`} />
-							{autoLoading ? 'Analyzing...' : 'Auto Match Colors'}
+							{autoLoading ? 'Analyzing...' : 'Auto Color'}
 						</Button>
 						{hasAnyCorrection && (
-							<Button onClick={handleReset} variant="outline" size="sm">
+							<Button onClick={handleReset} variant="outline" size="sm" className="shrink-0">
 								<RotateCcw className="h-4 w-4" />
 							</Button>
 						)}
+						<div className="flex-1 flex items-center gap-2 min-w-0">
+							<Blend className="h-4 w-4 text-muted-foreground shrink-0" />
+							<span className="text-xs text-muted-foreground shrink-0">Blend</span>
+							<InlineBlendSlider />
+						</div>
 					</div>
 
-					{/* Status / LAB Values */}
 					{hasAnyCorrection ? (
-						<div className="space-y-2">
-							<div className="flex items-center gap-2 flex-wrap">
-								<LabBadge values={rightValues} side="Right cam" />
-							</div>
-							<p className="text-xs text-muted-foreground">
-								Color correction applied using LAB color transfer. Seek to a different frame and click Auto again to recalculate.
-							</p>
+						<div className="flex items-center gap-2 flex-wrap">
+							<LabBadge values={rightValues} side="Right cam" />
 						</div>
 					) : (
 						<p className="text-xs text-muted-foreground">
-							Seek to a frame where both cameras show similar content (like grass), then click Auto Match to align colors.
+							Seek to a frame with similar content (grass), then click Auto Color.
 						</p>
 					)}
-
-					{/* Blend Width Control */}
-					<BlendWidthControl />
 
 					{/* Advanced Toggle */}
 					<button
@@ -242,31 +238,25 @@ export function DualColorCorrectionPanel({
 }
 
 /**
- * Blend width control for seam transition
+ * Inline blend slider (compact)
  */
-function BlendWidthControl() {
+function InlineBlendSlider() {
 	const blendWidth = useViewerStore((s) => s.blendWidth);
 	const setBlendWidth = useViewerStore((s) => s.setBlendWidth);
 
 	return (
-		<div className="space-y-2 pt-2 border-t">
-			<div className="flex items-center gap-2">
-				<Blend className="h-3 w-3 text-muted-foreground" />
-				<Label className="text-xs font-medium">Seam Blend</Label>
-				<span className="text-xs text-muted-foreground font-mono ml-auto">
-					{blendWidth === 0 ? 'Off' : `${Math.round(blendWidth * 100)}%`}
-				</span>
-			</div>
+		<div className="flex items-center gap-2 flex-1 min-w-0">
 			<Slider
 				min={0}
 				max={50}
 				step={1}
 				value={[blendWidth * 100]}
 				onValueChange={([v]) => setBlendWidth(v / 100)}
+				className="flex-1"
 			/>
-			<p className="text-xs text-muted-foreground">
-				How much to fade the cameras together at the seam.
-			</p>
+			<span className="text-xs text-muted-foreground font-mono w-8 text-right">
+				{blendWidth === 0 ? 'Off' : `${Math.round(blendWidth * 100)}%`}
+			</span>
 		</div>
 	);
 }

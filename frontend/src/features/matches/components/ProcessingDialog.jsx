@@ -10,7 +10,7 @@ import { Loader2, X } from 'lucide-react';
  */
 export default function ProcessingDialog({ open, onOpenChange, matchName, processingStatus }) {
 	// Can only close if processing is done or errored
-	const canClose = processingStatus?.status === 'ready' || processingStatus?.status === 'error';
+	const canClose = processingStatus?.status === 'ready' || processingStatus?.status === 'warning' || processingStatus?.status === 'error';
 
 	// Don't allow clicking outside to close during processing
 	const handleOpenChange = (newOpen) => {

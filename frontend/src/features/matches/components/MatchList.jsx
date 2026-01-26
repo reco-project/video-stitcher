@@ -92,7 +92,9 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 							// Match is ready if status says so, OR if it has all data AND isn't awaiting frames
 							const isReady =
 								match.status === 'ready' ||
+								match.status === 'warning' ||
 								(hasRequiredData && match.processing_step !== 'awaiting_frames');
+							const isWarning = match.status === 'warning';
 							const isCancelled = match.processing_message?.toLowerCase().includes('cancelled');
 							const isError = match.status === 'error' || isCancelled;
 							const isProcessing = ['transcoding', 'calibrating'].includes(match.status);

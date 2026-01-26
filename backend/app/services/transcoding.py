@@ -985,6 +985,7 @@ def _stack_videos(
 def extract_preview_frame(video_path: str, output_path: str, timestamp: float = 1.0) -> str:
     """
     Extract a single frame from video as a preview thumbnail.
+    For stacked videos (top/bottom), only extracts the top half (left camera).
 
     Args:
             video_path: Path to input video
@@ -1011,12 +1012,15 @@ def extract_preview_frame(video_path: str, output_path: str, timestamp: float = 
         # -ss: seek to timestamp (fast seeking)
         # -vframes 1: extract only 1 frame
         # -q:v 2: quality (1-31, lower is better)
+        # crop filter: crop to top half (left camera from stacked video)
         cmd = [
             "ffmpeg",
             "-ss",
             str(timestamp),
             "-i",
             video_path,
+            "-vf",
+            "crop=iw:ih/2:0:0",  # Crop top half (left camera)
             "-vframes",
             "1",
             "-q:v",

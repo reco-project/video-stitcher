@@ -515,6 +515,9 @@ async def process_match_with_frames(
     if not match_data:
         raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
 
+    # Save original status in case calibration fails (so we can restore it)
+    original_status = match_data.processing.status if match_data.processing else None
+
     # Track timing for debug mode
     timing = {} if debug_mode else None
     start_time = time.time() if debug_mode else None
@@ -533,18 +536,23 @@ async def process_match_with_frames(
         # Save frames for debugging (only if debug mode enabled)
         if debug_mode:
             import os
+            from datetime import datetime
 
             debug_start = time.time()
+
+            # Use timestamp to avoid overwriting previous debug images
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             debug_dir = os.path.join(TEMP_DIR, match_id, "debug_frames")
             os.makedirs(debug_dir, exist_ok=True)
 
-            with open(os.path.join(debug_dir, "left_received.png"), "wb") as f:
+            with open(os.path.join(debug_dir, f"left_received_{timestamp}.png"), "wb") as f:
                 f.write(left_bytes)
-            with open(os.path.join(debug_dir, "right_received.png"), "wb") as f:
+            with open(os.path.join(debug_dir, f"right_received_{timestamp}.png"), "wb") as f:
                 f.write(right_bytes)
 
             timing['debug_frame_save'] = time.time() - debug_start
+            timing['debug_timestamp'] = timestamp  # Store for later use
             logger.info(f"[DEBUG] Debug frames saved to: {debug_dir} (took {timing['debug_frame_save']:.3f}s)")
 
         # Convert to numpy arrays
@@ -573,7 +581,21 @@ async def process_match_with_frames(
 
         # Step 1: Match features
         feature_start = time.time() if debug_mode else None
-        match_result = match_features(img_left, img_right)
+        calibration_failed = False
+        calibration_error = None
+        try:
+            match_result = match_features(img_left, img_right)
+        except ValueError as e:
+            # Feature matching failed - use default params
+            calibration_failed = True
+            calibration_error = str(e)
+            logger.warning(f"Feature matching failed for {match_id}: {e}. Using default calibration.")
+            match_result = {
+                "left_points": [],
+                "right_points": [],
+                "num_matches": 0,
+                "confidence": 0.0,
+            }
         if debug_mode:
             timing['feature_matching'] = time.time() - feature_start
             logger.info(
@@ -582,6 +604,8 @@ async def process_match_with_frames(
 
         # Debug: Draw feature matches visualization (only if debug mode enabled)
         if debug_mode:
+            from datetime import datetime
+
             viz_start = time.time()
             try:
                 # Resize images for visualization
@@ -633,8 +657,9 @@ async def process_match_with_frames(
                 text = f"Matches: {match_result['num_matches']} | Confidence: {match_result['confidence']:.2%}"
                 cv2.putText(vis_img, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
 
-                # Save visualization
-                vis_path = os.path.join(TEMP_DIR, match_id, "debug_frames", "feature_matches.png")
+                # Save visualization with timestamp
+                debug_timestamp = timing.get('debug_timestamp', datetime.now().strftime("%Y%m%d_%H%M%S"))
+                vis_path = os.path.join(TEMP_DIR, match_id, "debug_frames", f"feature_matches_{debug_timestamp}.png")
                 cv2.imwrite(vis_path, vis_img)
                 timing['visualization'] = time.time() - viz_start
                 logger.info(
@@ -650,10 +675,20 @@ async def process_match_with_frames(
         )
         match_store.update(match_id, match_data.model_dump(exclude_none=False))
 
-        # Step 2: Optimize camera positions
+        # Step 2: Optimize camera positions (or use defaults if calibration failed)
         opt_start = time.time() if debug_mode else None
-        # Note: Swap left/right to match viewer's coordinate system
-        params = optimize_position(match_result["right_points"], match_result["left_points"])
+        if calibration_failed:
+            # Use default params when calibration fails
+            params = {
+                "intersect": 0.5,
+                "xTy": 0.0,
+                "zRx": 0.0,
+                "xRz": 0.0,
+            }
+            logger.info(f"Using default calibration params for {match_id} due to: {calibration_error}")
+        else:
+            # Note: Swap left/right to match viewer's coordinate system
+            params = optimize_position(match_result["right_points"], match_result["left_points"])
         if debug_mode:
             timing['optimization'] = time.time() - opt_start
             logger.info(f"[DEBUG] Position optimization took {timing['optimization']:.3f}s")
@@ -661,20 +696,28 @@ async def process_match_with_frames(
         # Update match with results
         from datetime import datetime, timezone
 
-        match_data.params = params
-        match_data.num_matches = match_result["num_matches"]
-        match_data.confidence = match_result["confidence"]
+        # Only update params and status if calibration succeeded
+        # If calibration failed, keep existing params and status completely unchanged
+        if not calibration_failed:
+            match_data.params = params
+            match_data.num_matches = match_result["num_matches"]
+            match_data.confidence = match_result["confidence"]
+            match_data.update_processing(
+                status="ready", step="complete", message="Processing complete", error_code=None, error_message=None
+            )
 
-        # Update processing info
-        match_data.update_processing(
-            status="ready", step="complete", message="Processing complete", error_code=None, error_message=None
-        )
+            # Don't overwrite processing_completed_at if it was already set during transcoding
+            if match_data.processing and not match_data.processing.completed_at:
+                match_data.update_processing(completed_at=datetime.now(timezone.utc).isoformat())
 
-        # Don't overwrite processing_completed_at if it was already set during transcoding
-        if match_data.processing and not match_data.processing.completed_at:
-            match_data.update_processing(completed_at=datetime.now(timezone.utc).isoformat())
-
-        match_store.update(match_id, match_data.model_dump(exclude_none=False))
+            match_store.update(match_id, match_data.model_dump(exclude_none=False))
+        else:
+            # Restore the original status (we changed it to "calibrating" earlier)
+            # This ensures the match stays in its previous state (e.g., "ready" with existing params)
+            if original_status:
+                match_data.update_processing(status=original_status)
+                match_store.update(match_id, match_data.model_dump(exclude_none=False))
+            logger.info(f"Calibration failed for {match_id}, restored original status: {original_status}")
 
         if debug_mode:
             timing['total'] = time.time() - start_time
@@ -682,6 +725,8 @@ async def process_match_with_frames(
 
         response = {
             "success": True,
+            "calibration_failed": calibration_failed,
+            "calibration_error": calibration_error,
             "params": params,
             "num_matches": match_result["num_matches"],
             "confidence": match_result["confidence"],

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Zap } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertTriangle, Clock, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -191,6 +191,15 @@ export default function ProcessingStatus({ status, onComplete }) {
 					title: 'Ready',
 					message: 'Match is ready to view',
 					bgClass: 'bg-green-50 dark:bg-green-950',
+				};
+			case 'warning':
+				return {
+					icon: AlertTriangle,
+					variant: 'warning',
+					color: 'text-yellow-500',
+					title: 'Calibration Failed',
+					message: status.processing_message || 'Calibration failed. Using default alignment - try recalibrating with a different frame.',
+					bgClass: 'bg-yellow-50 dark:bg-yellow-950',
 				};
 			case 'error':
 				return {

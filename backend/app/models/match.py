@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 
 # Processing status enum
-MatchStatus = Literal["pending", "transcoding", "calibrating", "ready", "error"]
+MatchStatus = Literal["pending", "transcoding", "calibrating", "ready", "warning", "error"]
 
 # Processing step enum
 ProcessingStep = Literal[

@@ -86,7 +86,7 @@ export function useMatchProcessing(matchId, options = {}) {
 				const currentStatus = await fetchStatus();
 
 				// Stop polling if processing is complete or errored
-				if (currentStatus && (currentStatus.status === 'ready' || currentStatus.status === 'error')) {
+				if (currentStatus && (currentStatus.status === 'ready' || currentStatus.status === 'warning' || currentStatus.status === 'error')) {
 					stopPolling();
 				}
 			} catch (err) {

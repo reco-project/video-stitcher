@@ -33,7 +33,7 @@ export default function MatchActionButtons({
 		// Determine primary label, click handler, and disabled state
 		if (isPrimaryProcessing) return { label: 'Processing...', Icon: Loader2, onClick: null, disabled: true };
 
-		if (match.status === 'ready') {
+		if (match.status === 'ready' || match.status === 'warning') {
 			return { label: 'View', Icon: Eye, onClick: () => onView?.(match), disabled: false };
 		}
 
@@ -80,7 +80,7 @@ export default function MatchActionButtons({
 					primary.onClick && primary.onClick();
 				}}
 				disabled={primary.disabled}
-				variant={match.status === 'ready' ? 'default' : 'outline'}
+				variant={match.status === 'ready' || match.status === 'warning' ? 'default' : 'outline'}
 				size="sm"
 				className="gap-1 flex-1 text-xs"
 			>
@@ -116,8 +116,8 @@ export default function MatchActionButtons({
 						</>
 					)}
 
-					{/* Option: Reprocess All (for ready status) */}
-					{match.status === 'ready' && (
+					{/* Option: Reprocess All (for ready or warning status) */}
+					{(match.status === 'ready' || match.status === 'warning') && (
 						<>
 							<DropdownMenuItem
 								onClick={() => onReprocessAll?.(match.id, match.name || match.label)}
@@ -130,9 +130,9 @@ export default function MatchActionButtons({
 					)}
 
 					{/* Option: View Details (only for View button text variant) */}
-					{match.status !== 'ready' && match.status !== undefined && (
+					{match.status !== 'ready' && match.status !== 'warning' && match.status !== undefined && (
 						<>
-							<DropdownMenuItem onClick={() => onView?.(match)} disabled={match.status !== 'ready'}>
+							<DropdownMenuItem onClick={() => onView?.(match)} disabled={match.status !== 'ready' && match.status !== 'warning'}>
 								View Details
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />

@@ -128,26 +128,33 @@ export default function ProcessingMatch() {
 			showToast({ message: 'Uploading extracted frames...', type: 'info' });
 			const result = await processMatchWithFrames(mId, leftBlob, rightBlob, settings.debugMode || false);
 
-			// Show debug timing if available
-			if (result.debug && result.debug.timing) {
+			// Check if calibration failed
+			if (result.calibration_failed) {
+				showToast({ 
+					message: `Calibration failed: ${result.calibration_error || 'Not enough features found'}. Using default alignment - try a different frame with more visible features.`, 
+					type: 'warning',
+					duration: 8000
+				});
+			} else if (result.debug && result.debug.timing) {
+				// Show debug timing if available
 				console.log('[DEBUG] Processing timing:', result.debug.timing_breakdown);
 				if (settings.debugMode) {
 					const timingInfo = Object.entries(result.debug.timing_breakdown)
 						.filter(([, v]) => v !== null)
 						.map(([k, v]) => `${k}: ${v}`)
 						.join(', ');
-					showToast({ message: `Calibration started (${timingInfo})`, type: 'info' });
+					showToast({ message: `Calibration complete (${timingInfo})`, type: 'success' });
 				} else {
-					showToast({ message: 'Calibration started', type: 'info' });
+					showToast({ message: 'Calibration complete', type: 'success' });
 				}
 			} else {
-				showToast({ message: 'Calibration started', type: 'info' });
+				showToast({ message: 'Calibration complete', type: 'success' });
 			}
 
 			processing.startPolling();
 		} catch (err) {
 			console.error('Failed to send frames:', err);
-			showToast({ message: 'Failed to upload frames', type: 'error' });
+			showToast({ message: `Failed to process frames: ${err.message}`, type: 'error' });
 			setError(err.message || 'Failed to upload frames');
 		}
 	};
