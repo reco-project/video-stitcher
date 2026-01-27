@@ -74,12 +74,7 @@ export default function About() {
 							</Badge>
 							<Badge variant="secondary">Beta</Badge>
 						</div>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={handleCheckForUpdates}
-							disabled={checkingUpdate}
-						>
+						<Button variant="outline" size="sm" onClick={handleCheckForUpdates} disabled={checkingUpdate}>
 							{checkingUpdate ? (
 								<RefreshCw className="h-4 w-4 mr-2 animate-spin" />
 							) : (

@@ -12,33 +12,33 @@ let mainWindow = null;
 let appInstance = null;
 
 export function initAutoUpdater(window, app) {
-	mainWindow = window;
-	appInstance = app;
+    mainWindow = window;
+    appInstance = app;
 
-	// Read settings to check if auto-update is enabled
-	const settings = readSettings(app);
-	if (settings.autoUpdateEnabled === false) {
-		console.log('[Updater] Auto-update is disabled in settings');
-		return;
-	}
+    // Read settings to check if auto-update is enabled
+    const settings = readSettings(app);
+    if (settings.autoUpdateEnabled === false) {
+        console.log('[Updater] Auto-update is disabled in settings');
+        return;
+    }
 
-	// Check for updates on startup (with delay to not slow down launch)
-	setTimeout(() => {
-		checkForUpdates(false);
-	}, 5000);
+    // Check for updates on startup (with delay to not slow down launch)
+    setTimeout(() => {
+        checkForUpdates(false);
+    }, 5000);
 
-	// Check for updates every 4 hours (or configured interval)
-	const intervalHours = settings.autoUpdateCheckInterval || 4;
-	setInterval(
-		() => {
-			// Re-read settings in case user changed them
-			const currentSettings = readSettings(appInstance);
-			if (currentSettings.autoUpdateEnabled !== false) {
-				checkForUpdates(false);
-			}
-		},
-		intervalHours * 60 * 60 * 1000
-	);
+    // Check for updates every 4 hours (or configured interval)
+    const intervalHours = settings.autoUpdateCheckInterval || 4;
+    setInterval(
+        () => {
+            // Re-read settings in case user changed them
+            const currentSettings = readSettings(appInstance);
+            if (currentSettings.autoUpdateEnabled !== false) {
+                checkForUpdates(false);
+            }
+        },
+        intervalHours * 60 * 60 * 1000
+    );
 }
 
 export function checkForUpdates(showNoUpdateDialog = true) {
