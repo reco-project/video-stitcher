@@ -109,6 +109,19 @@ jobs:
       - name: Package Electron app
         run: npx electron-forge package
 
+      - name: Create Linux wrapper script for sandbox workaround
+        if: matrix.platform == 'linux'
+        run: |
+          cd out/${{ matrix.artifact }}
+          mv video-stitcher video-stitcher.bin
+          cat > video-stitcher << 'WRAPPER'
+          #!/bin/bash
+          export ELECTRON_DISABLE_SANDBOX=1
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          exec "$DIR/video-stitcher.bin" "$@"
+          WRAPPER
+          chmod +x video-stitcher
+
       - name: Make Linux AppImage
         if: matrix.platform == 'linux'
         run: npx electron-forge make --targets @reforged/maker-appimage
@@ -124,6 +137,9 @@ jobs:
         run: |
           APPIMAGE=$(find out/make -name '*.AppImage' -type f | head -1)
           cp "$APPIMAGE" out/video-stitcher-linux-x64.AppImage
+          # Also create tar.gz with sandbox workaround for systems where AppImage has issues
+          cd out
+          tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
           ls -la out/
 
       - name: Compress artifact (macOS)
@@ -204,6 +220,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: |
             out/video-stitcher-linux-x64.AppImage
+            out/${{ matrix.artifact }}.tar.gz
             out/latest-linux.yml
           retention-days: 7
 
@@ -249,6 +266,7 @@ jobs:
         with:
           files: |
             artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.AppImage
+            artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.tar.gz
             artifacts/video-stitcher-linux-x64/latest-linux.yml
             artifacts/video-stitcher-win32-x64/video-stitcher-win32-x64.zip
             artifacts/video-stitcher-win32-x64/latest.yml

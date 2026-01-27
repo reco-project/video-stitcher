@@ -1,5 +1,6 @@
 // electron/forge.config.js
 const path = require('path');
+const fs = require('fs');
 const { VitePlugin } = require('@electron-forge/plugin-vite');
 
 module.exports = {
@@ -13,6 +14,32 @@ module.exports = {
     icon: path.join(__dirname, 'resources', 'icon'),
     appBundleId: 'com.reco.video-stitcher',
     appCopyright: 'Copyright © 2026 Mohamed Taha GUELZIM',
+  },
+  hooks: {
+    postPackage: async (config, options) => {
+      // Debug: write to file
+      fs.writeFileSync('/tmp/forge-hook-debug.txt', JSON.stringify(options, null, 2));
+      
+      // Create a wrapper script for Linux to set ELECTRON_DISABLE_SANDBOX
+      if (options.platform === 'linux') {
+        const appPath = options.outputPaths[0];
+        const originalBinary = path.join(appPath, 'video-stitcher');
+        const realBinary = path.join(appPath, 'video-stitcher.bin');
+        
+        // Rename original binary
+        if (fs.existsSync(originalBinary) && !fs.existsSync(realBinary)) {
+          fs.renameSync(originalBinary, realBinary);
+          
+          // Create wrapper script
+          const wrapperScript = `#!/bin/bash
+export ELECTRON_DISABLE_SANDBOX=1
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/video-stitcher.bin" "$@"
+`;
+          fs.writeFileSync(originalBinary, wrapperScript, { mode: 0o755 });
+        }
+      }
+    },
   },
   rebuildConfig: {},
   makers: [

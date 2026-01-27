@@ -12,6 +12,11 @@ import { initAutoUpdater, checkForUpdates } from './updater.js';
 
 const fetchImpl = globalThis.fetch;
 
+// Add no-sandbox switch on Linux (env var is set by wrapper script)
+if (platform() === 'linux') {
+	app.commandLine.appendSwitch('no-sandbox');
+}
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
 	app.quit();
