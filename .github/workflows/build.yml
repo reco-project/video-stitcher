@@ -56,8 +56,19 @@ jobs:
         run: npm install
         working-directory: electron
 
-      - name: Create Python venv and install backend dependencies (Linux/macOS)
-        if: matrix.platform != 'win32'
+      - name: Setup Python packages for Linux (portable)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          cd backend
+          # Install packages to a local lib directory (no venv needed)
+          mkdir -p lib
+          pip install --target=lib -r requirements.txt
+          # Create a marker file so main.js knows to use PYTHONPATH approach
+          touch lib/.portable
+
+      - name: Create Python venv and install backend dependencies (macOS)
+        if: matrix.platform == 'darwin'
         shell: bash
         run: |
           cd backend

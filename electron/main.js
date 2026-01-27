@@ -111,9 +111,16 @@ function startBackend() {
 			? join(unpackedPath, 'backend')
 			: join(appPath, 'backend');
 
-		pythonPath = isWin
-			? join(backendDir, 'venv', 'Scripts', 'python.exe')
-			: join(backendDir, 'venv', 'bin', 'python');
+		// Check for portable Python setup (Linux with lib/.portable marker)
+		const portableMarker = join(backendDir, 'lib', '.portable');
+		if (!isWin && existsSync(portableMarker)) {
+			// Linux portable: use system python3 with PYTHONPATH
+			pythonPath = 'python3';
+		} else {
+			pythonPath = isWin
+				? join(backendDir, 'venv', 'Scripts', 'python.exe')
+				: join(backendDir, 'venv', 'bin', 'python');
+		}
 	}
 
 	const userDataPath = app.getPath('userData');
@@ -125,12 +132,21 @@ function startBackend() {
 		? `${ffmpegBinDir}${pathSeparator}${process.env.PATH || ''}`
 		: process.env.PATH;
 
+	// Set PYTHONPATH for portable Linux builds
+	const portableLibDir = join(backendDir, 'lib');
+	const pythonPathEnv = existsSync(join(portableLibDir, '.portable'))
+		? `${portableLibDir}:${backendDir}:${process.env.PYTHONPATH || ''}`
+		: process.env.PYTHONPATH;
+
 	console.log('[Backend] Starting Python backend...');
 	console.log('[Backend] isDev:', isDev);
 	console.log('[Backend] Python path:', pythonPath);
 	console.log('[Backend] Backend dir:', backendDir);
 	console.log('[Backend] FFmpeg bin dir:', ffmpegBinDir, existsSync(ffmpegBinDir) ? '(found)' : '(not found, using system)');
 	console.log('[Backend] User data path:', userDataPath);
+	if (pythonPathEnv) {
+		console.log('[Backend] PYTHONPATH:', pythonPathEnv);
+	}
 
 	backendProcess = spawn(pythonPath, ['-m', 'app.main'], {
 		cwd: backendDir,
@@ -138,6 +154,7 @@ function startBackend() {
 			...process.env,
 			USER_DATA_PATH: userDataPath,
 			PATH: newPath,
+			PYTHONPATH: pythonPathEnv,
 			PYTHONUNBUFFERED: '1', // Force Python to flush output immediately
 		},
 		stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout and stderr
