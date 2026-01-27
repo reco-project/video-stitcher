@@ -109,14 +109,25 @@ jobs:
       - name: Package Electron app
         run: npx electron-forge package
 
+      - name: Make Linux AppImage
+        if: matrix.platform == 'linux'
+        run: npx electron-forge make --targets @reforged/maker-appimage
+
       - name: List output
         shell: bash
         run: |
           ls -la out/
           du -sh out/${{ matrix.artifact }}/
 
-      - name: Compress artifact (Linux/macOS)
-        if: matrix.platform != 'win32'
+      - name: Copy AppImage (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          APPIMAGE=$(find out/make -name '*.AppImage' -type f | head -1)
+          cp "$APPIMAGE" out/video-stitcher-linux-x64.AppImage
+          ls -la out/
+
+      - name: Compress artifact (macOS)
+        if: matrix.platform == 'darwin'
         run: |
           cd out
           tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
@@ -131,7 +142,7 @@ jobs:
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          FILENAME=${{ matrix.artifact }}.tar.gz
+          FILENAME=video-stitcher-linux-x64.AppImage
           SIZE=$(stat -c%s "out/$FILENAME")
           SHA512=$(sha512sum "out/$FILENAME" | cut -d' ' -f1)
           cat > out/latest-linux.yml << EOF
@@ -192,7 +203,7 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: |
-            out/${{ matrix.artifact }}.tar.gz
+            out/video-stitcher-linux-x64.AppImage
             out/latest-linux.yml
           retention-days: 7
 
@@ -237,7 +248,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.tar.gz
+            artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.AppImage
             artifacts/video-stitcher-linux-x64/latest-linux.yml
             artifacts/video-stitcher-win32-x64/video-stitcher-win32-x64.zip
             artifacts/video-stitcher-win32-x64/latest.yml

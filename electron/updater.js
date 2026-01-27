@@ -1,6 +1,14 @@
-import { autoUpdater } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 import { dialog, BrowserWindow } from 'electron';
 import { readSettings } from './settings.js';
+
+// Configure update server (GitHub releases)
+autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'reco-project',
+    repo: 'video-stitcher',
+});
 
 // Configure logging
 autoUpdater.logger = console;

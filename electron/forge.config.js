@@ -26,7 +26,19 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-zip',
-      platforms: ['darwin', 'linux', 'win32'],
+      platforms: ['darwin', 'win32'],
+    },
+    {
+      name: '@reforged/maker-appimage',
+      platforms: ['linux'],
+      config: {
+        options: {
+          icon: path.join(__dirname, 'resources', 'icon.png'),
+          name: 'Video Stitcher',
+          genericName: 'Video Editor',
+          categories: ['AudioVideo', 'Video'],
+        },
+      },
     },
     {
       name: '@electron-forge/maker-deb',
