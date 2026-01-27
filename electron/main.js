@@ -310,7 +310,7 @@ app.whenReady().then(async () => {
 	if (!isDev) {
 		const windows = BrowserWindow.getAllWindows();
 		if (windows.length > 0) {
-			initAutoUpdater(windows[0]);
+			initAutoUpdater(windows[0], app);
 		}
 	}
 
@@ -516,6 +516,20 @@ ipcMain.handle('app:setProcessingState', async (event, isProcessing, origin = 'u
 		lastLoggedState = isProcessing;
 	}
 	return true;
+});
+
+// IPC handler to get app version
+ipcMain.handle('app:getVersion', () => {
+	return app.getVersion();
+});
+
+// IPC handler to check for updates
+ipcMain.handle('updater:checkForUpdates', () => {
+	if (!isDev) {
+		checkForUpdates(true);
+		return { success: true };
+	}
+	return { success: false, error: 'Updates not available in development mode' };
 });
 
 // Helper function to format file size

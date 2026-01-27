@@ -1,11 +1,40 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Github, ExternalLink, AlertCircle, Heart } from 'lucide-react';
+import { Github, ExternalLink, AlertCircle, Heart, Download, RefreshCw } from 'lucide-react';
 
 export default function About() {
+	const [appVersion, setAppVersion] = useState('...');
+	const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+	useEffect(() => {
+		// Get app version from Electron
+		if (window.electronAPI?.getAppVersion) {
+			window.electronAPI.getAppVersion().then((version) => {
+				setAppVersion(version || 'dev');
+			});
+		} else {
+			setAppVersion('dev');
+		}
+	}, []);
+
+	const handleCheckForUpdates = async () => {
+		if (!window.electronAPI?.checkForUpdates) {
+			alert('Updates are only available in the desktop app');
+			return;
+		}
+		setCheckingUpdate(true);
+		try {
+			await window.electronAPI.checkForUpdates();
+		} catch (err) {
+			console.error('Error checking for updates:', err);
+		} finally {
+			setTimeout(() => setCheckingUpdate(false), 2000);
+		}
+	};
+
 	const openLink = (url) => {
 		try {
 			// Open in default browser instead of Electron window
@@ -23,6 +52,45 @@ export default function About() {
 
 	return (
 		<div className="space-y-6">
+			{/* Logo and Version Header */}
+			<Card>
+				<CardContent className="pt-6">
+					<div className="flex flex-col items-center text-center space-y-4">
+						<img
+							src="/icon.png"
+							alt="Video Stitcher Logo"
+							className="w-24 h-24 rounded-2xl shadow-lg"
+							onError={(e) => {
+								e.target.style.display = 'none';
+							}}
+						/>
+						<div>
+							<h1 className="text-2xl font-bold">Video Stitcher</h1>
+							<p className="text-muted-foreground">VR180 Dual-Camera Stitching Tool</p>
+						</div>
+						<div className="flex items-center gap-3">
+							<Badge variant="outline" className="text-lg px-4 py-1">
+								v{appVersion}
+							</Badge>
+							<Badge variant="secondary">Beta</Badge>
+						</div>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handleCheckForUpdates}
+							disabled={checkingUpdate}
+						>
+							{checkingUpdate ? (
+								<RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+							) : (
+								<Download className="h-4 w-4 mr-2" />
+							)}
+							{checkingUpdate ? 'Checking...' : 'Check for Updates'}
+						</Button>
+					</div>
+				</CardContent>
+			</Card>
+
 			{/* Project Info */}
 			<Card>
 				<CardHeader>
@@ -133,14 +201,14 @@ export default function About() {
 				</CardContent>
 			</Card>
 
-			{/* Version Info */}
+			{/* Credits Footer */}
 			<Card>
 				<CardContent className="pt-6">
 					<div className="text-center text-sm text-muted-foreground">
-						<p>Version 0.1.0</p>
-						<p className="mt-1">
+						<p>
 							Made with <Heart className="h-3 w-3 inline text-red-500" /> by the RECO team
 						</p>
+						<p className="mt-1 text-xs">© 2026 Mohamed Taha GUELZIM</p>
 					</div>
 				</CardContent>
 			</Card>

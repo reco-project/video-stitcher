@@ -13,6 +13,9 @@ const defaultSettings = {
 	// Recording settings
 	recordingBitrate: 16, // Mbps
 	recordingFormat: 'webm',
+	// Auto-update settings
+	autoUpdateEnabled: true,
+	autoUpdateCheckInterval: 4, // hours
 };
 
 /**
