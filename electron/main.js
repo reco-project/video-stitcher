@@ -132,11 +132,20 @@ function startBackend() {
 		? `${ffmpegBinDir}${pathSeparator}${process.env.PATH || ''}`
 		: process.env.PATH;
 
-	// Set PYTHONPATH for portable Linux builds
-	const portableLibDir = join(backendDir, 'lib');
-	const pythonPathEnv = existsSync(join(portableLibDir, '.portable'))
-		? `${portableLibDir}:${backendDir}:${process.env.PYTHONPATH || ''}`
-		: process.env.PYTHONPATH;
+	// Set PYTHONPATH for production builds (both Windows embedded and Linux portable)
+	// This ensures Python can find the app module and installed packages
+	let pythonPathEnv = process.env.PYTHONPATH || '';
+	if (!isDev) {
+		const portableLibDir = join(backendDir, 'lib');
+		if (isWin) {
+			// Windows embedded: packages in venv/Scripts/Lib/site-packages, app in backendDir
+			const sitePackages = join(backendDir, 'venv', 'Scripts', 'Lib', 'site-packages');
+			pythonPathEnv = `${backendDir}${pathSeparator}${sitePackages}${pathSeparator}${pythonPathEnv}`;
+		} else if (existsSync(join(portableLibDir, '.portable'))) {
+			// Linux portable: packages in lib/, app in backendDir
+			pythonPathEnv = `${backendDir}${pathSeparator}${portableLibDir}${pathSeparator}${pythonPathEnv}`;
+		}
+	}
 
 	console.log('[Backend] Starting Python backend...');
 	console.log('[Backend] isDev:', isDev);
