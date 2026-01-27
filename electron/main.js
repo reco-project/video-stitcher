@@ -8,6 +8,7 @@ import started from 'electron-squirrel-startup';
 import { registerTelemetryIpc } from './telemetry.js';
 import { registerTelemetryUploadIpc } from './telemetry_uploader.js';
 import { registerSettingsIpc, readSettings } from './settings.js';
+import { initAutoUpdater, checkForUpdates } from './updater.js';
 
 const fetchImpl = globalThis.fetch;
 
@@ -304,6 +305,14 @@ app.whenReady().then(async () => {
 	}
 
 	createWindow();
+
+	// Initialize auto-updater (only in production)
+	if (!isDev) {
+		const windows = BrowserWindow.getAllWindows();
+		if (windows.length > 0) {
+			initAutoUpdater(windows[0]);
+		}
+	}
 
 	// On OS X it's common to re-create a window in the app when the
 	// dock icon is clicked and there are no other windows open.

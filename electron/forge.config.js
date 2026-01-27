@@ -18,6 +18,7 @@ module.exports = {
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
+      platforms: ['win32'],
       config: {
         name: 'VideoStitcher',
         setupIcon: path.join(__dirname, 'resources', 'icon.ico'),
@@ -25,10 +26,11 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-zip',
-      platforms: ['darwin'],
+      platforms: ['darwin', 'linux', 'win32'],
     },
     {
       name: '@electron-forge/maker-deb',
+      platforms: ['linux'],
       config: {
         options: {
           icon: path.join(__dirname, 'resources', 'icon.png'),
@@ -39,10 +41,24 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-rpm',
+      platforms: ['linux'],
       config: {
         options: {
           icon: path.join(__dirname, 'resources', 'icon.png'),
         },
+      },
+    },
+  ],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'reco-project',
+          name: 'video-stitcher',
+        },
+        prerelease: false,
+        draft: true,
       },
     },
   ],

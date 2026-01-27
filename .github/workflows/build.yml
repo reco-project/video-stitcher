@@ -27,6 +27,8 @@ jobs:
             artifact: video-stitcher-darwin-arm64
 
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -94,12 +96,74 @@ jobs:
         run: 7z a -tzip ${{ matrix.artifact }}.zip ${{ matrix.artifact }}
         working-directory: out
 
-      - name: Upload artifact (Linux/macOS)
-        if: matrix.platform != 'win32'
+      - name: Create latest.yml for auto-updates (Linux)
+        if: matrix.platform == 'linux' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          FILENAME=${{ matrix.artifact }}.tar.gz
+          SIZE=$(stat -c%s "out/$FILENAME")
+          SHA512=$(sha512sum "out/$FILENAME" | cut -d' ' -f1)
+          cat > out/latest-linux.yml << EOF
+          version: $VERSION
+          files:
+            - url: $FILENAME
+              sha512: $SHA512
+              size: $SIZE
+          path: $FILENAME
+          sha512: $SHA512
+          releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          EOF
+          cat out/latest-linux.yml
+
+      - name: Create latest.yml for auto-updates (Windows)
+        if: matrix.platform == 'win32' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          FILENAME=${{ matrix.artifact }}.zip
+          SIZE=$(stat -c%s "out/$FILENAME" 2>/dev/null || wc -c < "out/$FILENAME")
+          SHA512=$(sha512sum "out/$FILENAME" | cut -d' ' -f1)
+          cat > out/latest.yml << EOF
+          version: $VERSION
+          files:
+            - url: $FILENAME
+              sha512: $SHA512
+              size: $SIZE
+          path: $FILENAME
+          sha512: $SHA512
+          releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          EOF
+          cat out/latest.yml
+
+      - name: Create latest.yml for auto-updates (macOS)
+        if: matrix.platform == 'darwin' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          FILENAME=${{ matrix.artifact }}.tar.gz
+          SIZE=$(stat -f%z "out/$FILENAME")
+          SHA512=$(shasum -a 512 "out/$FILENAME" | cut -d' ' -f1)
+          cat > out/latest-mac.yml << EOF
+          version: $VERSION
+          files:
+            - url: $FILENAME
+              sha512: $SHA512
+              size: $SIZE
+          path: $FILENAME
+          sha512: $SHA512
+          releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          EOF
+          cat out/latest-mac.yml
+
+      - name: Upload artifact (Linux)
+        if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: out/${{ matrix.artifact }}.tar.gz
+          path: |
+            out/${{ matrix.artifact }}.tar.gz
+            out/latest-linux.yml
           retention-days: 7
 
       - name: Upload artifact (Windows)
@@ -107,7 +171,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: out/${{ matrix.artifact }}.zip
+          path: |
+            out/${{ matrix.artifact }}.zip
+            out/latest.yml
+          retention-days: 7
+
+      - name: Upload artifact (macOS)
+        if: matrix.platform == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            out/${{ matrix.artifact }}.tar.gz
+            out/latest-mac.yml
           retention-days: 7
 
   release:
@@ -124,15 +200,19 @@ jobs:
           path: artifacts
 
       - name: List artifacts
-        run: ls -la artifacts/
+        run: |
+          ls -laR artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.tar.gz
+            artifacts/video-stitcher-linux-x64/latest-linux.yml
             artifacts/video-stitcher-win32-x64/video-stitcher-win32-x64.zip
+            artifacts/video-stitcher-win32-x64/latest.yml
             artifacts/video-stitcher-darwin-arm64/video-stitcher-darwin-arm64.tar.gz
+            artifacts/video-stitcher-darwin-arm64/latest-mac.yml
           draft: true
           generate_release_notes: true
         env:

@@ -59,6 +59,15 @@
 		"rimraf": "^6.1.0"
 	},
 	"dependencies": {
-		"electron-squirrel-startup": "^1.0.1"
+		"@electron-forge/publisher-github": "^7.11.1",
+		"electron-squirrel-startup": "^1.0.1",
+		"electron-updater": "^6.7.3"
+	},
+	"build": {
+		"publish": {
+			"provider": "github",
+			"owner": "reco-project",
+			"repo": "video-stitcher"
+		}
 	}
 }
