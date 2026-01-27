@@ -235,6 +235,7 @@ const createWindow = () => {
 	const mainWindow = new BrowserWindow({
 		width: 800,
 		height: 800,
+		icon: join(__dirname, 'resources', 'icon.png'),
 		webPreferences: {
 			preload: join(__dirname, 'preload.js'),
 		},
