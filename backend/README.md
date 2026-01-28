@@ -2,14 +2,6 @@
 
 FastAPI backend for lens profile management, match orchestration, and video processing.
 
-## Prerequisites
-
-- Python 3.10+
-- **FFmpeg** (required for video processing)
-    - Download: https://ffmpeg.org/download.html
-    - Ensure `ffmpeg` is in your PATH
-    - Verify: `ffmpeg -version`
-
 ## Quick Start
 
 ```bash
@@ -20,147 +12,104 @@ pip install -r requirements.txt
 python -m app.main
 ```
 
-Server: `http://localhost:8000` | API docs: `http://localhost:8000/docs`
+- **Server:** http://localhost:8000
+- **API Docs:** http://localhost:8000/docs
+- **Tests:** `pytest tests/ -v`
 
-**Tests:** `pytest tests/ -v`
+## Requirements
+
+- Python 3.10+
+- FFmpeg (auto-downloaded via `npm run setup`)
 
 ## Project Structure
 
 ```
 backend/
 ├── app/
-│   ├── main.py                          # FastAPI app, CORS, dependency injection
-│   ├── models/
-│   │   ├── lens_profile.py              # LensProfile Pydantic model
-│   │   └── match.py                     # MatchModel, VideoInput Pydantic models
-│   ├── repositories/
-│   │   ├── lens_profile_store.py        # Abstract LensProfileStore interface
-│   │   ├── file_lens_profile_store.py   # File-based profile storage
-│   │   ├── match_store.py               # Abstract MatchStore interface
-│   │   └── file_match_store.py          # File-based match storage
-│   ├── routers/
-│   │   ├── profiles.py                  # /api/profiles endpoints
-│   │   └── matches.py                   # /api/matches endpoints
-│   └── utils/
-│       └── slug.py                      # Slug generation utility
+│   ├── main.py              # FastAPI app entry point
+│   ├── config.py            # Configuration settings
+│   ├── models/              # Pydantic data models
+│   ├── repositories/        # Data storage interfaces
+│   ├── routers/             # API endpoint handlers
+│   ├── services/            # Business logic (transcoding, matching)
+│   └── utils/               # Helper utilities
 ├── data/
-│   ├── lens_profiles/                   # Lens calibration files
-│   │   └── {brand}/{model}/{id}.json
-│   └── matches/                         # Match storage
-│       └── {match-id}.json
-├── tests/
-│   ├── test_profiles_api.py             # Profile API tests
-│   ├── test_matches_api.py              # Match API tests
-│   └── conftest.py                      # Pytest fixtures
-├── pyproject.toml                       # Project metadata
-└── requirements.txt                     # Python dependencies
+│   ├── lens_profiles/       # Lens calibration profiles
+│   ├── matches/             # Match project storage
+│   ├── temp/                # Temporary processing files
+│   └── logs/                # Application logs
+└── tests/                   # Pytest test suite
 ```
 
 ## API Endpoints
 
-- **Health:** `GET /`, `GET /api/health`
-- **Profiles:** `/api/profiles` - Full CRUD + hierarchy navigation
-- **Matches:** `/api/matches` - Full CRUD operations
-- **Processing:**
-    - `POST /api/transcode` - Stack videos vertically (awaits frontend frame extraction)
-    - `POST /api/process-with-frames` - Calibrate using warped frames from frontend
+### Health
 
-See [LENS_PROFILES.md](../docs/LENS_PROFILES.md) and [MATCHES.md](../docs/MATCHES.md) for details.
+- `GET /` — Root health check
+- `GET /api/health` — API health status
 
-## Storage
+### Profiles
 
-**Profiles:** `backend/data/lens_profiles/{brand}/{model}/{id}.json`  
-**Matches:** `backend/data/matches/{match-id}.json`
+- `GET /api/profiles` — List all lens profiles
+- `GET /api/profiles/{id}` — Get profile by ID
+- `POST /api/profiles` — Create new profile
+- `PUT /api/profiles/{id}` — Update profile
+- `DELETE /api/profiles/{id}` — Delete profile
 
-User-created matches are git-ignored (except m1-m5 samples).
+### Matches
+
+- `GET /api/matches` — List all matches
+- `GET /api/matches/{id}` — Get match by ID
+- `POST /api/matches` — Create new match
+- `PUT /api/matches/{id}` — Update match
+- `DELETE /api/matches/{id}` — Delete match
+
+### Processing
+
+- `POST /api/transcode` — Stack and transcode videos
+- `POST /api/process-with-frames` — Calibrate using warped frames
+
+## Data Storage
+
+**Profiles:** `data/lens_profiles/{brand}/{model}/{id}.json`  
+**Matches:** `data/matches/{match-id}.json`
+
+Storage backends implement abstract interfaces (`MatchStore`, `LensProfileStore`), making it easy to swap file-based storage for databases.
 
 ## Development
 
 ### Adding New Endpoints
 
 1. Create route handler in `app/routers/`
-2. Import router in `app/main.py`
-3. Register with `app.include_router()`
-4. Add tests in `tests/`
+2. Import and register router in `app/main.py`
+3. Add tests in `tests/`
 
-Example:
+### Running Tests
 
-```python
-# app/routers/new_feature.py
-from fastapi import APIRouter
-
-router = APIRouter(prefix="/new-feature")
-
-@router.get("")
-def list_items():
-    return {"items": []}
-
-# app/main.py
-import app.routers.new_feature as new_feature_router
-app.include_router(new_feature_router.router, prefix="/api", tags=["new-feature"])
+```bash
+pytest tests/ -v
+pytest tests/test_profiles_api.py -v  # Specific test file
 ```
 
-### Implementing New Storage Backend
+## Troubleshooting
 
-1. Create class implementing `MatchStore` or `LensProfileStore`
-2. Implement all abstract methods
-3. Update dependency injection in `app/main.py`
+### Port already in use
 
-Example:
-
-```python
-from app.repositories.match_store import MatchStore
-
-class RedisMatchStore(MatchStore):
-    def __init__(self, redis_client):
-        self.client = redis_client
-
-    def list_all(self) -> List[Dict]:
-        # Implementation
-        pass
-
-    # ... implement other methods
-
-# In app/main.py
-from redis import Redis
-from app.repositories.redis_match_store import RedisMatchStore
-
-redis_client = Redis(host='localhost', port=6379)
-match_store = RedisMatchStore(redis_client)
-## Architecture
-
-Storage backends implement abstract interfaces (`MatchStore`, `LensProfileStore`). Swap implementations by updating dependency injection in `app/main.py`.
-
-**Key dependencies:** FastAPI, Uvicorn, Pydantic, pytest
-# Kill process or use different port
-uvicorn app.main:app --reload --port 8001
+```bash
+# Use a different port
+python -m app.main --port 8001
 ```
 
 ### Import errors
 
 ```bash
-# Ensure you're in backend directory
+# Ensure you're in backend/ and venv is activated
 cd backend
-
-# Reinstall dependencies
+source venv/bin/activate
 pip install -r requirements.txt
-
-# Check Python version (3.10+ required)
-python --version
 ```
-
-### CORS issues
-
-Check `allow_origins` in `app/main.py`. For development, use `["*"]`. For production, specify exact frontend URL.
-
-### Data not persisting
-
-- Ensure `backend/data/` directories exist
-- Check file permissions
-
-## Status
 
 ---
 
-**Detailed docs:** [Lens Profiles](../docs/LENS_PROFILES.md) | [Matches](../docs/MATCHES.md)  
-**License:** AGPL-3.0 | Gyroflow data: CC0 1.0 Universal
+**License:** AGPL-3.0  
+**Lens profiles data:** CC0 1.0 Universal (derived from [Gyroflow](https://github.com/gyroflow/gyroflow))

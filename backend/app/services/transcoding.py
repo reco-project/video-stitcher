@@ -127,7 +127,14 @@ def concat_videos(video_list: List[str], output_path: str, progress_callback=Non
         ]
 
         logger.info(f"Concatenating {len(video_list)} videos to {output_path}")
+        logger.debug(f"FFmpeg concat command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+
+        if result.stderr:
+            # Log FFmpeg output (it outputs to stderr even for info messages)
+            for line in result.stderr.strip().split('\n'):
+                if line.strip():
+                    logger.debug(f"[FFmpeg concat] {line.strip()}")
 
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg concat failed: {result.stderr}")
@@ -826,6 +833,10 @@ def _stack_videos(
                 if process.stderr:
                     for line in process.stderr:
                         stderr_lines.append(line)
+                        # Log FFmpeg stderr output in real-time
+                        line_stripped = line.strip() if isinstance(line, str) else line.decode().strip()
+                        if line_stripped:
+                            logger.debug(f"[FFmpeg] {line_stripped}")
 
             stderr_thread = threading.Thread(target=read_stderr, daemon=True)
             stderr_thread.start()

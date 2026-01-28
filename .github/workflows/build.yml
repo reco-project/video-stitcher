@@ -1,0 +1,292 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Linux dependencies for electron-builder
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg fakeroot rpm
+
+      - name: Install dependencies
+        run: |
+          npm install
+          cd frontend && npm install
+          cd ../electron && npm install
+
+      - name: Install Python dependencies and PyInstaller
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Python backend executable
+        shell: bash
+        run: |
+          cd backend
+          
+          # Determine path separator for --add-data (Windows uses ; Linux/Mac use :)
+          if [[ "${{ matrix.platform }}" == "win32" ]]; then
+            SEP=";"
+          else
+            SEP=":"
+          fi
+          
+          pyinstaller --onedir --name backend_server \
+            --paths=. \
+            --add-data "data${SEP}data" \
+            --hidden-import uvicorn.logging \
+            --hidden-import uvicorn.lifespan \
+            --hidden-import uvicorn.lifespan.on \
+            --hidden-import uvicorn.lifespan.off \
+            --hidden-import uvicorn.protocols \
+            --hidden-import uvicorn.protocols.http \
+            --hidden-import uvicorn.protocols.http.auto \
+            --hidden-import uvicorn.protocols.http.h11_impl \
+            --hidden-import uvicorn.protocols.http.httptools_impl \
+            --hidden-import uvicorn.protocols.websockets \
+            --hidden-import uvicorn.protocols.websockets.auto \
+            --hidden-import uvicorn.protocols.websockets.websockets_impl \
+            --hidden-import uvicorn.protocols.websockets.wsproto_impl \
+            app/main.py
+          ls -la dist/
+
+      - name: Download FFmpeg
+        run: npm run download-ffmpeg
+
+      - name: Build frontend
+        run: npm run frontend-build
+
+      # First package the app, then inject backend, then make installers
+      - name: Package Electron app
+        run: npx electron-forge package --arch=${{ matrix.arch }} --platform=${{ matrix.platform }}
+
+      - name: Copy backend bundle to packaged app
+        shell: bash
+        run: |
+          # Determine the packaged app name
+          if [ "${{ matrix.platform }}" == "darwin" ]; then
+            PACKAGED_APP="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}"
+            RESOURCES_PATH="$PACKAGED_APP/Video Stitcher.app/Contents/Resources"
+          elif [ "${{ matrix.platform }}" == "win32" ]; then
+            PACKAGED_APP="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}"
+            RESOURCES_PATH="$PACKAGED_APP/resources"
+          else
+            PACKAGED_APP="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}"
+            RESOURCES_PATH="$PACKAGED_APP/resources"
+          fi
+          
+          echo "Packaged app: $PACKAGED_APP"
+          echo "Resources path: $RESOURCES_PATH"
+          ls -la out/ || true
+          
+          # Copy PyInstaller bundle and FFmpeg to resources
+          mkdir -p "$RESOURCES_PATH/dist_bundle"
+          cp -r backend/dist/backend_server/* "$RESOURCES_PATH/dist_bundle/"
+          
+          # Copy FFmpeg binaries if they exist
+          if [ -d "backend/bin" ]; then
+            cp -r backend/bin "$RESOURCES_PATH/dist_bundle/"
+          fi
+          
+          # Copy runtime node_modules dependencies (electron-updater, electron-squirrel-startup)
+          # These are externalized by Vite and need to be available at runtime
+          APP_PATH="$RESOURCES_PATH/app"
+          if [ -d "$APP_PATH" ]; then
+            mkdir -p "$APP_PATH/node_modules"
+            
+            # Full list of electron-updater dependencies (including transitive)
+            DEPS=(
+              electron-updater
+              electron-squirrel-startup
+              builder-util-runtime
+              debug
+              ms
+              sax
+              fs-extra
+              graceful-fs
+              jsonfile
+              universalify
+              js-yaml
+              argparse
+              lazy-val
+              lodash.escaperegexp
+              lodash.isequal
+              semver
+              tiny-typed-emitter
+            )
+            
+            for dep in "${DEPS[@]}"; do
+              if [ -d "node_modules/$dep" ]; then
+                echo "Copying $dep..."
+                cp -r "node_modules/$dep" "$APP_PATH/node_modules/"
+              else
+                echo "Warning: $dep not found in node_modules"
+              fi
+            done
+            
+            echo "Copied node_modules:"
+            ls -la "$APP_PATH/node_modules/"
+          fi
+          
+          ls -la "$RESOURCES_PATH/dist_bundle/"
+
+      - name: Clean up packaged app (remove source folders)
+        shell: bash
+        run: |
+          # Determine the app path based on platform
+          if [ "${{ matrix.platform }}" == "darwin" ]; then
+            RESOURCES_BASE="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}/Video Stitcher.app/Contents/Resources"
+            if [ -d "$RESOURCES_BASE/app" ]; then
+              APP_PATH="$RESOURCES_BASE/app"
+            else
+              APP_PATH="$RESOURCES_BASE"
+            fi
+          else
+            APP_PATH="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}/resources/app"
+          fi
+          
+          echo "Cleaning up $APP_PATH..."
+          
+          if [ -d "$APP_PATH" ]; then
+            # Remove source folders (but keep node_modules for runtime dependencies!)
+            rm -rf "$APP_PATH/backend" || true
+            rm -rf "$APP_PATH/frontend/src" || true
+            rm -rf "$APP_PATH/frontend/node_modules" || true
+            rm -f "$APP_PATH/frontend/package.json" || true
+            rm -f "$APP_PATH/frontend/package-lock.json" || true
+            rm -f "$APP_PATH/frontend/*.config.*" || true
+            rm -f "$APP_PATH/frontend/*.mjs" || true
+            rm -f "$APP_PATH/frontend/*.cjs" || true
+            rm -f "$APP_PATH/frontend/*.json" || true
+            rm -rf "$APP_PATH/scripts" || true
+            rm -rf "$APP_PATH/docs" || true
+            rm -rf "$APP_PATH/.git" || true
+            rm -rf "$APP_PATH/.github" || true
+            rm -rf "$APP_PATH/.vscode" || true
+            # Keep node_modules for runtime dependencies (electron-updater, electron-squirrel-startup)
+            rm -f "$APP_PATH/.gitignore" || true
+            rm -f "$APP_PATH/.gitattributes" || true
+            rm -f "$APP_PATH/.prettierrc" || true
+            rm -f "$APP_PATH/.prettierignore" || true
+            rm -f "$APP_PATH/README.md" || true
+            rm -f "$APP_PATH/LICENSE" || true
+            
+            echo "Contents after cleanup:"
+            ls -la "$APP_PATH/" || true
+            du -sh "$APP_PATH/" || true
+          fi
+
+      # Now run make to create installers from the prepared package
+      - name: Make installers
+        shell: bash
+        run: |
+          # electron-forge make will use the already packaged app
+          npx electron-forge make --arch=${{ matrix.arch }} --platform=${{ matrix.platform }} --skip-package
+        env:
+          # For Windows code signing (optional, set in repo secrets)
+          WINDOWS_CERTIFICATE_FILE: ${{ secrets.WINDOWS_CERTIFICATE_FILE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+      - name: List make output
+        shell: bash
+        run: |
+          echo "=== Make output ==="
+          ls -laR out/make/ || true
+
+      - name: Upload Linux installers
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installers
+          path: |
+            out/make/deb/x64/*.deb
+            out/make/rpm/x64/*.rpm
+            out/make/zip/linux/x64/*.zip
+          retention-days: 7
+
+      - name: Upload Windows installer
+        if: matrix.platform == 'win32'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            out/make/squirrel.windows/x64/*.exe
+            out/make/squirrel.windows/x64/*.nupkg
+            out/make/zip/win32/x64/*.zip
+          retention-days: 7
+
+      - name: Upload macOS installer
+        if: matrix.platform == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: |
+            out/make/zip/darwin/arm64/*.zip
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -laR artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/linux-installers/**/*
+            artifacts/windows-installer/**/*
+            artifacts/macos-installer/**/*
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

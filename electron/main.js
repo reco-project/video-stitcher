@@ -4,16 +4,34 @@ import { existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'node:child_process';
 import { platform } from 'node:os';
-import started from 'electron-squirrel-startup';
+
+// CRITICAL: Handle Squirrel events FIRST on Windows before any other code
+// This must happen synchronously at startup to prevent double-launching
+if (platform() === 'win32') {
+	try {
+		// Use dynamic import but handle synchronously for Squirrel
+		const squirrelStartup = await import('electron-squirrel-startup');
+		if (squirrelStartup.default) {
+			app.quit();
+			// Force immediate exit to prevent any further execution
+			process.exit(0);
+		}
+	} catch (e) {
+		// Package not available in dev mode, ignore
+		console.log('[Squirrel] electron-squirrel-startup not available:', e.message);
+	}
+}
+
 import { registerTelemetryIpc } from './telemetry.js';
 import { registerTelemetryUploadIpc } from './telemetry_uploader.js';
 import { registerSettingsIpc, readSettings } from './settings.js';
+import { initAutoUpdater, checkForUpdates } from './updater.js';
 
 const fetchImpl = globalThis.fetch;
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-	app.quit();
+// Add no-sandbox switch on Linux (env var is set by wrapper script)
+if (platform() === 'linux') {
+	app.commandLine.appendSwitch('no-sandbox');
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -52,7 +70,7 @@ if (initialSettings.disableHardwareAcceleration) {
 }
 
 // Wait for backend to be ready
-async function waitForBackend(maxAttempts = 30, delayMs = 1000) {
+async function waitForBackend(maxAttempts = 15, delayMs = 500) {
 	console.log('[Backend] Waiting for backend to be ready...');
 
 	for (let i = 0; i < maxAttempts; i++) {
@@ -81,34 +99,54 @@ function startBackend() {
 	}
 
 	const isWin = platform() === 'win32';
-
-	// In development, use workspace root paths
-	// In production, use paths relative to app resources
-	const workspaceRoot = isDev
-		? join(__dirname, '..')
-		: join(__dirname, '..', '..');
-
-	const pythonPath = isWin
-		? join(workspaceRoot, 'backend', 'venv', 'Scripts', 'python.exe')
-		: join(workspaceRoot, 'backend', 'venv', 'bin', 'python');
-
-	const backendDir = join(workspaceRoot, 'backend');
 	const userDataPath = app.getPath('userData');
+	const pathSeparator = isWin ? ';' : ':';
 
-	console.log('[Backend] Starting Python backend...');
-	console.log('[Backend] Python path:', pythonPath);
-	console.log('[Backend] Backend dir:', backendDir);
+	let backendExe;
+	let backendDir;
+	let ffmpegBinDir;
+	let spawnArgs = [];
+
+	if (isDev) {
+		// Development: use Python venv directly
+		const workspaceRoot = join(__dirname, '..');
+		backendDir = join(workspaceRoot, 'backend');
+		backendExe = isWin
+			? join(backendDir, 'venv', 'Scripts', 'python.exe')
+			: join(backendDir, 'venv', 'bin', 'python');
+		spawnArgs = ['-m', 'app.main'];
+		ffmpegBinDir = join(backendDir, 'bin');
+	} else {
+		// Production: PyInstaller executable is in resources/dist_bundle
+		const resourcesPath = process.resourcesPath; // Points to app/resources
+		backendDir = join(resourcesPath, 'dist_bundle');
+		backendExe = isWin
+			? join(backendDir, 'backend_server.exe')
+			: join(backendDir, 'backend_server');
+		ffmpegBinDir = join(backendDir, 'bin');
+	}
+
+	// Set up FFmpeg path
+	const newPath = existsSync(ffmpegBinDir)
+		? `${ffmpegBinDir}${pathSeparator}${process.env.PATH || ''}`
+		: process.env.PATH;
+
+	console.log('[Backend] Starting backend...');
+	console.log('[Backend] isDev:', isDev);
+	console.log('[Backend] Executable:', backendExe);
+	console.log('[Backend] Working dir:', backendDir);
+	console.log('[Backend] FFmpeg bin dir:', ffmpegBinDir, existsSync(ffmpegBinDir) ? '(found)' : '(not found, using system)');
 	console.log('[Backend] User data path:', userDataPath);
 
-	backendProcess = spawn(pythonPath, ['-m', 'app.main'], {
+	backendProcess = spawn(backendExe, spawnArgs, {
 		cwd: backendDir,
 		env: {
 			...process.env,
 			USER_DATA_PATH: userDataPath,
-			PYTHONUNBUFFERED: '1', // Force Python to flush output immediately
+			PATH: newPath,
 		},
-		stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout and stderr
-		windowsHide: true, // Hide console window on Windows
+		stdio: ['ignore', 'pipe', 'pipe'],
+		windowsHide: true,
 	});
 
 	// Log backend output
@@ -208,6 +246,7 @@ const createWindow = () => {
 	const mainWindow = new BrowserWindow({
 		width: 800,
 		height: 800,
+		icon: join(__dirname, 'resources', 'icon.png'),
 		webPreferences: {
 			preload: join(__dirname, 'preload.js'),
 		},
@@ -239,10 +278,17 @@ const createWindow = () => {
 	});
 
 	// and load the index.html of the app.
-	if (isDev) {
+	if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== 'undefined') {
+		mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+	} else if (typeof MAIN_WINDOW_VITE_NAME !== 'undefined') {
+		// Load from VitePlugin's output directory
+		mainWindow.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+	} else if (isDev) {
+		// Fallback for dev mode without VitePlugin
 		mainWindow.loadURL(devServerUrl);
 	} else {
-		mainWindow.loadFile(join(__dirname, '../frontend/dist/index.html'));
+		// Fallback for production without VitePlugin globals
+		mainWindow.loadFile(join(app.getAppPath(), '.vite', 'renderer', 'main_window', 'index.html'));
 	}
 
 	// Open the DevTools.
@@ -275,6 +321,14 @@ app.whenReady().then(async () => {
 	}
 
 	createWindow();
+
+	// Initialize auto-updater (only in production)
+	if (!isDev) {
+		const windows = BrowserWindow.getAllWindows();
+		if (windows.length > 0) {
+			initAutoUpdater(windows[0], app);
+		}
+	}
 
 	// On OS X it's common to re-create a window in the app when the
 	// dock icon is clicked and there are no other windows open.
@@ -478,6 +532,20 @@ ipcMain.handle('app:setProcessingState', async (event, isProcessing, origin = 'u
 		lastLoggedState = isProcessing;
 	}
 	return true;
+});
+
+// IPC handler to get app version
+ipcMain.handle('app:getVersion', () => {
+	return app.getVersion();
+});
+
+// IPC handler to check for updates
+ipcMain.handle('updater:checkForUpdates', () => {
+	if (!isDev) {
+		checkForUpdates(true);
+		return { success: true };
+	}
+	return { success: false, error: 'Updates not available in development mode' };
 });
 
 // Helper function to format file size

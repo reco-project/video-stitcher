@@ -226,6 +226,38 @@ export default function AppSettings() {
 					</div>
 				</CardContent>
 			</Card>
+			{/* Auto Updates */}
+			<Card>
+				<CardHeader>
+					<div className="flex items-center gap-2">
+						<RefreshCw className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>Updates</CardTitle>
+					</div>
+					<CardDescription>Automatic update checking and installation</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div className="flex items-center justify-between space-x-4">
+						<div className="flex-1 space-y-1">
+							<Label htmlFor="auto-update" className="text-base cursor-pointer">
+								Enable auto-update
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								Automatically check for updates and prompt when a new version is available
+							</p>
+						</div>
+						<Switch
+							id="auto-update"
+							checked={settings.autoUpdateEnabled ?? true}
+							onCheckedChange={(checked) => updateSetting('autoUpdateEnabled', checked)}
+						/>
+					</div>
+					<div className="bg-muted/50 p-3 rounded-md">
+						<p className="text-xs text-muted-foreground">
+							💡 Updates are downloaded in the background. You&apos;ll be asked before installing.
+						</p>
+					</div>
+				</CardContent>
+			</Card>
 			{/* Telemetry */}
 			<Card>
 				<CardHeader>

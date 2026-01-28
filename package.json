@@ -1,9 +1,12 @@
 {
-	"name": "video-stitcher",
-	"version": "0.1.0",
-	"description": "Reco Video Stitcher Application based on Electron, FastAPI, React, Vite and Three.js",
-	"main": "electron/main.js",
+	"name": "reco-video-stitcher",
+	"version": "0.2.13",
+	"description": "Open-source, GPU-accelerated video stitching for sports filming",
+	"main": ".vite/build/main.js",
 	"type": "module",
+	"config": {
+		"forge": "./electron/forge.config.cjs"
+	},
 	"scripts": {
 		"setup": "npm install && cd frontend && npm install && cd ../electron && npm install && cd ../backend && npm run backend-install",
 		"backend-install": "node scripts/setup.js",
@@ -11,9 +14,10 @@
 		"backend-build": "cross-env SHELL=1 cd backend && pyinstaller --onefile app/main.py --name fastapi_backend --distpath ../electron/resources",
 		"frontend-dev": "cd frontend && npm run dev",
 		"frontend-build": "cd frontend && npm run build",
+		"download-ffmpeg": "node scripts/download-ffmpeg.cjs",
 		"electron-dev": "electron-forge start",
-		"electron-package": "electron-forge package",
-		"electron-make": "electron-forge make",
+		"electron-package": "npm run download-ffmpeg && npm run frontend-build && electron-forge package",
+		"electron-make": "npm run download-ffmpeg && npm run frontend-build && electron-forge make",
 		"electron-publish": "electron-forge publish",
 		"dev": "node scripts/dev.js",
 		"dev:base": "concurrently -k \"npm:frontend-dev\" \"npm:electron-dev\"",
@@ -51,12 +55,24 @@
 		"@electron-forge/plugin-fuses": "^7.9.0",
 		"@electron-forge/plugin-vite": "^7.9.0",
 		"@electron/fuses": "^1.8.0",
+		"@reforged/maker-appimage": "^5.1.1",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
 		"electron": "38.2.1",
-		"rimraf": "^6.1.0"
+		"fs-extra": "^11.3.3",
+		"rimraf": "^6.1.0",
+		"vite": "^7.3.0"
 	},
 	"dependencies": {
-		"electron-squirrel-startup": "^1.0.1"
+		"@electron-forge/publisher-github": "^7.11.1",
+		"electron-squirrel-startup": "^1.0.1",
+		"electron-updater": "^6.7.3"
+	},
+	"build": {
+		"publish": {
+			"provider": "github",
+			"owner": "reco-project",
+			"repo": "video-stitcher"
+		}
 	}
 }

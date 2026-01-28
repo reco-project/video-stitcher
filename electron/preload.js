@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	telemetryUploadNow: (payload) => ipcRenderer.invoke('telemetry:uploadNow', payload),
 	telemetryDeleteLocal: () => ipcRenderer.invoke('telemetry:deleteLocal'),
 	telemetryResetClientId: () => ipcRenderer.invoke('telemetry:resetClientId'),
+	// App info
+	getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+	// Auto-updater
+	checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates'),
 	// Backend status events
 	onBackendReconnected: (callback) => {
 		ipcRenderer.on('backend-reconnected', callback);

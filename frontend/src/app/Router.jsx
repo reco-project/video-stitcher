@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBrowserRouter, useNavigate } from 'react-router';
+import { createBrowserRouter, createHashRouter, useNavigate } from 'react-router';
 import { RouterProvider } from 'react-router-dom';
 
 import AppLayout from './AppLayout';
@@ -10,6 +10,9 @@ import ProcessingMatch from './routes/ProcessingMatch';
 import MatchViewer from './routes/MatchViewer';
 import Profiles from './routes/Profiles';
 import NotFound from './routes/NotFound';
+
+// Use HashRouter for Electron (file:// protocol) and BrowserRouter for dev server
+const isElectron = window.location.protocol === 'file:';
 
 /*
  * Simplified routing with dedicated routes for each view
@@ -68,7 +71,7 @@ export const useNavigateTo = () => {
 	};
 };
 
-const router = createBrowserRouter([
+const routes = [
 	{
 		path: paths.home.pattern,
 		element: (
@@ -121,7 +124,10 @@ const router = createBrowserRouter([
 		path: '*',
 		element: <NotFound />,
 	},
-]);
+];
+
+// Use HashRouter for Electron (file:// protocol), BrowserRouter for dev server
+const router = isElectron ? createHashRouter(routes) : createBrowserRouter(routes);
 
 export default function AppRouter() {
 	return <RouterProvider router={router} />;
