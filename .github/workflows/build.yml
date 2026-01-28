@@ -133,18 +133,35 @@ jobs:
           if [ -d "$APP_PATH" ]; then
             mkdir -p "$APP_PATH/node_modules"
             
-            # Copy electron-updater and all its dependencies (including nested node_modules)
-            cp -r node_modules/electron-updater "$APP_PATH/node_modules/"
+            # Full list of electron-updater dependencies (including transitive)
+            DEPS=(
+              electron-updater
+              electron-squirrel-startup
+              builder-util-runtime
+              debug
+              ms
+              sax
+              fs-extra
+              graceful-fs
+              jsonfile
+              universalify
+              js-yaml
+              argparse
+              lazy-val
+              lodash.escaperegexp
+              lodash.isequal
+              semver
+              tiny-typed-emitter
+            )
             
-            # Copy all transitive dependencies of electron-updater
-            for dep in builder-util-runtime lazy-val lodash.isequal lodash.escaperegexp semver js-yaml tiny-typed-emitter graceful-fs jsonfile universalify argparse; do
+            for dep in "${DEPS[@]}"; do
               if [ -d "node_modules/$dep" ]; then
+                echo "Copying $dep..."
                 cp -r "node_modules/$dep" "$APP_PATH/node_modules/"
+              else
+                echo "Warning: $dep not found in node_modules"
               fi
             done
-            
-            # Copy electron-squirrel-startup (Windows only but copy anyway)
-            cp -r node_modules/electron-squirrel-startup "$APP_PATH/node_modules/" || true
             
             echo "Copied node_modules:"
             ls -la "$APP_PATH/node_modules/"
