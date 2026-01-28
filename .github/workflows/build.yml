@@ -118,34 +118,51 @@ jobs:
         run: |
           # Determine the app path based on platform
           if [ "${{ matrix.platform }}" == "darwin" ]; then
-            APP_PATH="out/${{ matrix.artifact }}/Video Stitcher.app/Contents/Resources/app"
+            # macOS: find the actual app location
+            RESOURCES_BASE="out/${{ matrix.artifact }}/Video Stitcher.app/Contents/Resources"
+            echo "Looking for app in macOS bundle..."
+            ls -la "$RESOURCES_BASE/" || true
+            
+            # The app could be directly in Resources or in Resources/app
+            if [ -d "$RESOURCES_BASE/app" ]; then
+              APP_PATH="$RESOURCES_BASE/app"
+            else
+              APP_PATH="$RESOURCES_BASE"
+            fi
           else
             APP_PATH="out/${{ matrix.artifact }}/resources/app"
           fi
           
           echo "Cleaning up $APP_PATH..."
           
-          # Remove source folders that shouldn't be in the packaged app
-          rm -rf "$APP_PATH/backend" || true
-          rm -rf "$APP_PATH/frontend" || true
-          rm -rf "$APP_PATH/scripts" || true
-          rm -rf "$APP_PATH/docs" || true
-          rm -rf "$APP_PATH/.git" || true
-          rm -rf "$APP_PATH/.github" || true
-          rm -rf "$APP_PATH/.vscode" || true
-          rm -rf "$APP_PATH/node_modules" || true
-          
-          # Remove unnecessary files
-          rm -f "$APP_PATH/.gitignore" || true
-          rm -f "$APP_PATH/.gitattributes" || true
-          rm -f "$APP_PATH/.prettierrc" || true
-          rm -f "$APP_PATH/.prettierignore" || true
-          rm -f "$APP_PATH/README.md" || true
-          rm -f "$APP_PATH/LICENSE" || true
-          
-          echo "Contents after cleanup:"
-          ls -la "$APP_PATH/"
-          du -sh "$APP_PATH/"
+          # Only proceed if the path exists
+          if [ -d "$APP_PATH" ]; then
+            # Remove source folders that shouldn't be in the packaged app
+            rm -rf "$APP_PATH/backend" || true
+            rm -rf "$APP_PATH/frontend" || true
+            rm -rf "$APP_PATH/scripts" || true
+            rm -rf "$APP_PATH/docs" || true
+            rm -rf "$APP_PATH/.git" || true
+            rm -rf "$APP_PATH/.github" || true
+            rm -rf "$APP_PATH/.vscode" || true
+            rm -rf "$APP_PATH/node_modules" || true
+            
+            # Remove unnecessary files
+            rm -f "$APP_PATH/.gitignore" || true
+            rm -f "$APP_PATH/.gitattributes" || true
+            rm -f "$APP_PATH/.prettierrc" || true
+            rm -f "$APP_PATH/.prettierignore" || true
+            rm -f "$APP_PATH/README.md" || true
+            rm -f "$APP_PATH/LICENSE" || true
+            
+            echo "Contents after cleanup:"
+            ls -la "$APP_PATH/" || true
+            du -sh "$APP_PATH/" || true
+          else
+            echo "Warning: APP_PATH does not exist: $APP_PATH"
+            echo "Listing out directory structure:"
+            find out/${{ matrix.artifact }} -type d -maxdepth 5 | head -30
+          fi
 
       - name: Create Linux wrapper script
         if: matrix.platform == 'linux'
