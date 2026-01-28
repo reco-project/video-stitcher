@@ -320,7 +320,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
             try:
                 # Create temp directory (inside try block for proper error handling)
                 os.makedirs(temp_dir, exist_ok=True)
-                
+
                 output_video_path = str(VIDEOS_DIR / f"{match_id}.mp4")
 
                 # Check for cancellation before starting

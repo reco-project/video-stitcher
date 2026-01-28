@@ -196,6 +196,7 @@ def transcode_and_stack_multiple(
     cleanup_temp = False
     if temp_dir is None:
         from app.data_paths import TEMP_DIR
+
         temp_dir = str(TEMP_DIR / str(uuid.uuid4()))
         cleanup_temp = True
 
@@ -309,6 +310,7 @@ def transcode_and_stack(
     cleanup_temp = False
     if temp_dir is None:
         from app.data_paths import TEMP_DIR
+
         temp_dir = str(TEMP_DIR / str(uuid.uuid4()))
         cleanup_temp = True
 
