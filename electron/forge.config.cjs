@@ -27,11 +27,11 @@ module.exports = {
         const appPath = options.outputPaths[0];
         const originalBinary = path.join(appPath, 'video-stitcher');
         const realBinary = path.join(appPath, 'video-stitcher.bin');
-        
+
         // Rename original binary
         if (fs.existsSync(originalBinary) && !fs.existsSync(realBinary)) {
           fs.renameSync(originalBinary, realBinary);
-          
+
           // Create wrapper script
           const wrapperScript = `#!/bin/bash
 export ELECTRON_DISABLE_SANDBOX=1
