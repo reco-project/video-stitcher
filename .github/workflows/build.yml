@@ -200,6 +200,7 @@ jobs:
           path: |
             out/make/deb/x64/*.deb
             out/make/rpm/x64/*.rpm
+            out/make/zip/linux/x64/*.zip
           retention-days: 7
 
       - name: Upload Windows installer
