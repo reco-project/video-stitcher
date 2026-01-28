@@ -258,8 +258,7 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                 logger.error(f"Match {match_id} not found in background thread")
                 return
 
-            temp_dir = os.path.join("temp", match_id)
-            os.makedirs(temp_dir, exist_ok=True)
+            temp_dir = str(TEMP_DIR / match_id)
 
             def update_progress(progress_info):
                 """Update in-memory progress cache (no disk I/O during encoding)."""
@@ -319,6 +318,9 @@ async def transcode_match_endpoint(match_id: str, match_store: MatchStore = Depe
                     logger.warning(f"Failed to update progress cache for {match_id}: {e}")
 
             try:
+                # Create temp directory (inside try block for proper error handling)
+                os.makedirs(temp_dir, exist_ok=True)
+                
                 output_video_path = str(VIDEOS_DIR / f"{match_id}.mp4")
 
                 # Check for cancellation before starting

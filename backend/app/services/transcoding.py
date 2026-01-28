@@ -195,7 +195,8 @@ def transcode_and_stack_multiple(
     # Create temp directory if not provided
     cleanup_temp = False
     if temp_dir is None:
-        temp_dir = os.path.join("backend", "temp", str(uuid.uuid4()))
+        from app.data_paths import TEMP_DIR
+        temp_dir = str(TEMP_DIR / str(uuid.uuid4()))
         cleanup_temp = True
 
     os.makedirs(temp_dir, exist_ok=True)
@@ -307,7 +308,8 @@ def transcode_and_stack(
     # Create temp directory if not provided
     cleanup_temp = False
     if temp_dir is None:
-        temp_dir = os.path.join("backend", "temp", str(uuid.uuid4()))
+        from app.data_paths import TEMP_DIR
+        temp_dir = str(TEMP_DIR / str(uuid.uuid4()))
         cleanup_temp = True
 
     os.makedirs(temp_dir, exist_ok=True)
