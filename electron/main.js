@@ -87,87 +87,54 @@ function startBackend() {
 	}
 
 	const isWin = platform() === 'win32';
+	const userDataPath = app.getPath('userData');
+	const pathSeparator = isWin ? ';' : ':';
 
-	// In development, use workspace root paths
-	// In production, use paths relative to app resources
+	let backendExe;
 	let backendDir;
-	let pythonPath;
+	let ffmpegBinDir;
+	let spawnArgs = [];
 
 	if (isDev) {
-		// Development: backend is at workspace root
+		// Development: use Python venv directly
 		const workspaceRoot = join(__dirname, '..');
 		backendDir = join(workspaceRoot, 'backend');
-		pythonPath = isWin
+		backendExe = isWin
 			? join(backendDir, 'venv', 'Scripts', 'python.exe')
 			: join(backendDir, 'venv', 'bin', 'python');
+		spawnArgs = ['-m', 'app.main'];
+		ffmpegBinDir = join(backendDir, 'bin');
 	} else {
-		// Production: backend is at app/backend (no asar with Vite plugin)
-		// or at app.asar.unpacked/backend if asar is enabled
-		const appPath = app.getAppPath();
-		const unpackedPath = appPath + '.unpacked';
-
-		// Check if unpacked exists (asar mode) or use app path directly
-		backendDir = existsSync(join(unpackedPath, 'backend'))
-			? join(unpackedPath, 'backend')
-			: join(appPath, 'backend');
-
-		// Check for portable Python setup (Linux with lib/.portable marker)
-		const portableMarker = join(backendDir, 'lib', '.portable');
-		if (!isWin && existsSync(portableMarker)) {
-			// Linux portable: use system python3 with PYTHONPATH
-			pythonPath = 'python3';
-		} else {
-			pythonPath = isWin
-				? join(backendDir, 'venv', 'Scripts', 'python.exe')
-				: join(backendDir, 'venv', 'bin', 'python');
-		}
+		// Production: PyInstaller executable is in resources/dist_bundle
+		const resourcesPath = process.resourcesPath; // Points to app/resources
+		backendDir = join(resourcesPath, 'dist_bundle');
+		backendExe = isWin
+			? join(backendDir, 'backend_server.exe')
+			: join(backendDir, 'backend_server');
+		ffmpegBinDir = join(backendDir, 'bin');
 	}
 
-	const userDataPath = app.getPath('userData');
-
-	// Set up FFmpeg path - use bundled binaries in production
-	const ffmpegBinDir = join(backendDir, 'bin');
-	const pathSeparator = isWin ? ';' : ':';
+	// Set up FFmpeg path
 	const newPath = existsSync(ffmpegBinDir)
 		? `${ffmpegBinDir}${pathSeparator}${process.env.PATH || ''}`
 		: process.env.PATH;
 
-	// Set PYTHONPATH for production builds (both Windows embedded and Linux portable)
-	// This ensures Python can find the app module and installed packages
-	let pythonPathEnv = process.env.PYTHONPATH || '';
-	if (!isDev) {
-		const portableLibDir = join(backendDir, 'lib');
-		if (isWin) {
-			// Windows embedded: packages in venv/Scripts/Lib/site-packages, app in backendDir
-			const sitePackages = join(backendDir, 'venv', 'Scripts', 'Lib', 'site-packages');
-			pythonPathEnv = `${backendDir}${pathSeparator}${sitePackages}${pathSeparator}${pythonPathEnv}`;
-		} else if (existsSync(join(portableLibDir, '.portable'))) {
-			// Linux portable: packages in lib/, app in backendDir
-			pythonPathEnv = `${backendDir}${pathSeparator}${portableLibDir}${pathSeparator}${pythonPathEnv}`;
-		}
-	}
-
-	console.log('[Backend] Starting Python backend...');
+	console.log('[Backend] Starting backend...');
 	console.log('[Backend] isDev:', isDev);
-	console.log('[Backend] Python path:', pythonPath);
-	console.log('[Backend] Backend dir:', backendDir);
+	console.log('[Backend] Executable:', backendExe);
+	console.log('[Backend] Working dir:', backendDir);
 	console.log('[Backend] FFmpeg bin dir:', ffmpegBinDir, existsSync(ffmpegBinDir) ? '(found)' : '(not found, using system)');
 	console.log('[Backend] User data path:', userDataPath);
-	if (pythonPathEnv) {
-		console.log('[Backend] PYTHONPATH:', pythonPathEnv);
-	}
 
-	backendProcess = spawn(pythonPath, ['-m', 'app.main'], {
+	backendProcess = spawn(backendExe, spawnArgs, {
 		cwd: backendDir,
 		env: {
 			...process.env,
 			USER_DATA_PATH: userDataPath,
 			PATH: newPath,
-			PYTHONPATH: pythonPathEnv,
-			PYTHONUNBUFFERED: '1', // Force Python to flush output immediately
 		},
-		stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout and stderr
-		windowsHide: true, // Hide console window on Windows
+		stdio: ['ignore', 'pipe', 'pipe'],
+		windowsHide: true,
 	});
 
 	// Log backend output

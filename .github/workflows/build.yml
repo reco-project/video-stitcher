@@ -5,11 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g., v0.1.0)'
-        required: false
-        default: ''
 
 jobs:
   build:
@@ -45,71 +40,48 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install root dependencies
-        run: npm install
+      - name: Install dependencies
+        run: |
+          npm install
+          cd frontend && npm install
+          cd ../electron && npm install
 
-      - name: Install frontend dependencies
-        run: npm install
-        working-directory: frontend
-
-      - name: Install electron dependencies
-        run: npm install
-        working-directory: electron
-
-      - name: Setup Python packages for Linux (portable)
-        if: matrix.platform == 'linux'
-        shell: bash
+      - name: Install Python dependencies and PyInstaller
         run: |
           cd backend
-          # Install packages to a local lib directory (no venv needed)
-          mkdir -p lib
-          pip install --target=lib -r requirements.txt
-          # Create a marker file so main.js knows to use PYTHONPATH approach
-          touch lib/.portable
-
-      - name: Create Python venv and install backend dependencies (macOS)
-        if: matrix.platform == 'darwin'
-        shell: bash
-        run: |
-          cd backend
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller
 
-      - name: Setup Python Embedded for Windows
-        if: matrix.platform == 'win32'
-        shell: pwsh
+      - name: Build Python backend executable
+        shell: bash
         run: |
-          # Download Python embedded distribution (portable, no install needed)
-          $pythonVersion = "3.11.9"
-          $pythonUrl = "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip"
-          $pipUrl = "https://bootstrap.pypa.io/get-pip.py"
+          cd backend
           
-          # Create venv directory structure to match expected paths
-          New-Item -ItemType Directory -Force -Path backend/venv/Scripts
+          # Determine path separator for --add-data (Windows uses ; Linux/Mac use :)
+          if [[ "${{ matrix.platform }}" == "win32" ]]; then
+            SEP=";"
+          else
+            SEP=":"
+          fi
           
-          # Download and extract Python embedded
-          Invoke-WebRequest -Uri $pythonUrl -OutFile python-embed.zip
-          Expand-Archive -Path python-embed.zip -DestinationPath backend/venv/Scripts -Force
-          
-          # Enable pip by uncommenting import site in python311._pth
-          $pthFile = "backend/venv/Scripts/python311._pth"
-          (Get-Content $pthFile) -replace '#import site', 'import site' | Set-Content $pthFile
-          # Add Lib\site-packages to the path file
-          Add-Content -Path $pthFile -Value "Lib\site-packages"
-          
-          # Download and install pip
-          Invoke-WebRequest -Uri $pipUrl -OutFile backend/venv/Scripts/get-pip.py
-          & backend/venv/Scripts/python.exe backend/venv/Scripts/get-pip.py --no-warn-script-location
-          
-          # Install dependencies
-          & backend/venv/Scripts/python.exe -m pip install --upgrade pip --no-warn-script-location
-          & backend/venv/Scripts/python.exe -m pip install -r backend/requirements.txt --no-warn-script-location
-          
-          # Clean up
-          Remove-Item python-embed.zip
-          Remove-Item backend/venv/Scripts/get-pip.py
+          pyinstaller --onedir --name backend_server \
+            --add-data "app${SEP}app" \
+            --add-data "data${SEP}data" \
+            --hidden-import uvicorn.logging \
+            --hidden-import uvicorn.lifespan \
+            --hidden-import uvicorn.lifespan.on \
+            --hidden-import uvicorn.lifespan.off \
+            --hidden-import uvicorn.protocols \
+            --hidden-import uvicorn.protocols.http \
+            --hidden-import uvicorn.protocols.http.auto \
+            --hidden-import uvicorn.protocols.http.h11_impl \
+            --hidden-import uvicorn.protocols.http.httptools_impl \
+            --hidden-import uvicorn.protocols.websockets \
+            --hidden-import uvicorn.protocols.websockets.auto \
+            --hidden-import uvicorn.protocols.websockets.websockets_impl \
+            --hidden-import uvicorn.protocols.websockets.wsproto_impl \
+            app/main.py
+          ls -la dist/
 
       - name: Download FFmpeg
         run: npm run download-ffmpeg
@@ -120,139 +92,56 @@ jobs:
       - name: Package Electron app
         run: npx electron-forge package
 
-      - name: Make Linux AppImage
-        if: matrix.platform == 'linux'
-        run: npx electron-forge make --targets @reforged/maker-appimage
+      - name: Copy backend bundle to packaged app
+        shell: bash
+        run: |
+          # Determine the resources path based on platform
+          if [ "${{ matrix.platform }}" == "darwin" ]; then
+            RESOURCES_PATH="out/${{ matrix.artifact }}/Video Stitcher.app/Contents/Resources"
+          else
+            RESOURCES_PATH="out/${{ matrix.artifact }}/resources"
+          fi
+          
+          # Copy PyInstaller bundle and FFmpeg to resources
+          mkdir -p "$RESOURCES_PATH/dist_bundle"
+          cp -r backend/dist/backend_server/* "$RESOURCES_PATH/dist_bundle/"
+          
+          # Copy FFmpeg binaries if they exist
+          if [ -d "backend/bin" ]; then
+            cp -r backend/bin "$RESOURCES_PATH/dist_bundle/"
+          fi
+          
+          ls -la "$RESOURCES_PATH/dist_bundle/"
 
-      - name: Create Linux wrapper script for sandbox workaround (for tar.gz)
+      - name: Create Linux wrapper script
         if: matrix.platform == 'linux'
         run: |
           cd out/${{ matrix.artifact }}
           mv video-stitcher video-stitcher.bin
-          cat > video-stitcher << 'WRAPPER'
+          cat > video-stitcher << 'EOF'
           #!/bin/bash
           export ELECTRON_DISABLE_SANDBOX=1
           DIR="$(cd "$(dirname "$0")" && pwd)"
           exec "$DIR/video-stitcher.bin" "$@"
-          WRAPPER
+          EOF
           chmod +x video-stitcher
 
-      - name: List output
+      - name: Compress artifact
         shell: bash
         run: |
-          ls -la out/
-          du -sh out/${{ matrix.artifact }}/
-
-      - name: Copy AppImage (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          APPIMAGE=$(find out/make -name '*.AppImage' -type f | head -1)
-          cp "$APPIMAGE" out/video-stitcher-linux-x64.AppImage
-          # Also create tar.gz with sandbox workaround for systems where AppImage has issues
           cd out
-          tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+          if [ "${{ matrix.platform }}" == "win32" ]; then
+            7z a -tzip ${{ matrix.artifact }}.zip ${{ matrix.artifact }}
+          else
+            tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+          fi
           ls -la
 
-      - name: Compress artifact (macOS)
-        if: matrix.platform == 'darwin'
-        run: |
-          cd out
-          tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
-
-      - name: Compress artifact (Windows)
-        if: matrix.platform == 'win32'
-        run: 7z a -tzip ${{ matrix.artifact }}.zip ${{ matrix.artifact }}
-        working-directory: out
-
-      - name: Create latest.yml for auto-updates (Linux)
-        if: matrix.platform == 'linux' && startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          FILENAME=video-stitcher-linux-x64.AppImage
-          SIZE=$(stat -c%s "out/$FILENAME")
-          SHA512=$(sha512sum "out/$FILENAME" | cut -d' ' -f1)
-          cat > out/latest-linux.yml << EOF
-          version: $VERSION
-          files:
-            - url: $FILENAME
-              sha512: $SHA512
-              size: $SIZE
-          path: $FILENAME
-          sha512: $SHA512
-          releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-          EOF
-          cat out/latest-linux.yml
-
-      - name: Create latest.yml for auto-updates (Windows)
-        if: matrix.platform == 'win32' && startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          FILENAME=${{ matrix.artifact }}.zip
-          SIZE=$(stat -c%s "out/$FILENAME" 2>/dev/null || wc -c < "out/$FILENAME")
-          SHA512=$(sha512sum "out/$FILENAME" | cut -d' ' -f1)
-          cat > out/latest.yml << EOF
-          version: $VERSION
-          files:
-            - url: $FILENAME
-              sha512: $SHA512
-              size: $SIZE
-          path: $FILENAME
-          sha512: $SHA512
-          releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-          EOF
-          cat out/latest.yml
-
-      - name: Create latest.yml for auto-updates (macOS)
-        if: matrix.platform == 'darwin' && startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          FILENAME=${{ matrix.artifact }}.tar.gz
-          SIZE=$(stat -f%z "out/$FILENAME")
-          SHA512=$(shasum -a 512 "out/$FILENAME" | cut -d' ' -f1)
-          cat > out/latest-mac.yml << EOF
-          version: $VERSION
-          files:
-            - url: $FILENAME
-              sha512: $SHA512
-              size: $SIZE
-          path: $FILENAME
-          sha512: $SHA512
-          releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-          EOF
-          cat out/latest-mac.yml
-
-      - name: Upload artifact (Linux)
-        if: matrix.platform == 'linux'
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            out/video-stitcher-linux-x64.AppImage
-            out/${{ matrix.artifact }}.tar.gz
-            out/latest-linux.yml
-          retention-days: 7
-
-      - name: Upload artifact (Windows)
-        if: matrix.platform == 'win32'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: |
-            out/${{ matrix.artifact }}.zip
-            out/latest.yml
-          retention-days: 7
-
-      - name: Upload artifact (macOS)
-        if: matrix.platform == 'darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: |
-            out/${{ matrix.artifact }}.tar.gz
-            out/latest-mac.yml
+          path: out/${{ matrix.artifact }}.*
           retention-days: 7
 
   release:
@@ -269,20 +158,15 @@ jobs:
           path: artifacts
 
       - name: List artifacts
-        run: |
-          ls -laR artifacts/
+        run: ls -laR artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.AppImage
-            artifacts/video-stitcher-linux-x64/video-stitcher-linux-x64.tar.gz
-            artifacts/video-stitcher-linux-x64/latest-linux.yml
-            artifacts/video-stitcher-win32-x64/video-stitcher-win32-x64.zip
-            artifacts/video-stitcher-win32-x64/latest.yml
-            artifacts/video-stitcher-darwin-arm64/video-stitcher-darwin-arm64.tar.gz
-            artifacts/video-stitcher-darwin-arm64/latest-mac.yml
+            artifacts/video-stitcher-linux-x64/*
+            artifacts/video-stitcher-win32-x64/*
+            artifacts/video-stitcher-darwin-arm64/*
           draft: true
           generate_release_notes: true
         env:

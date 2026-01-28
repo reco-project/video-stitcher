@@ -1,25 +1,27 @@
-// electron/forge.config.js
+// electron/forge.config.cjs
 const path = require('path');
 const fs = require('fs');
 const { VitePlugin } = require('@electron-forge/plugin-vite');
 
 module.exports = {
   packagerConfig: {
-    asar: {
-      // Unpack backend so Python can be executed
-      unpack: '**/backend/**',
-    },
+    asar: false, // Disable asar - PyInstaller bundle needs direct filesystem access
     name: 'Video Stitcher',
     executableName: 'video-stitcher',
     icon: path.join(__dirname, 'resources', 'icon'),
     appBundleId: 'com.reco.video-stitcher',
     appCopyright: 'Copyright © 2026 Mohamed Taha GUELZIM',
+    ignore: [
+      // Don't include these in the app bundle
+      /^\/backend\/(?!dist_bundle)/,
+      /^\/scripts/,
+      /^\/docs/,
+      /\.git/,
+      /node_modules/,
+    ],
   },
   hooks: {
     postPackage: async (config, options) => {
-      // Debug: write to file
-      fs.writeFileSync('/tmp/forge-hook-debug.txt', JSON.stringify(options, null, 2));
-      
       // Create a wrapper script for Linux to set ELECTRON_DISABLE_SANDBOX
       if (options.platform === 'linux') {
         const appPath = options.outputPaths[0];
