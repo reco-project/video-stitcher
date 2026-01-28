@@ -517,7 +517,7 @@ def _get_available_encoders() -> List[str]:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=10,  # Increased timeout for slower GPU init
+                timeout=5,
             )
 
             # If the command succeeded, the encoder is available
@@ -526,10 +526,12 @@ def _get_available_encoders() -> List[str]:
                 logger.info(f"Encoder {enc} is available and working")
             else:
                 # Log at INFO level to help diagnose issues
-                logger.info(f"Encoder {enc} not available: {result.stderr[-300:] if result.stderr else 'no error message'}")
+                logger.info(
+                    f"Encoder {enc} not available: {result.stderr[-300:] if result.stderr else 'no error message'}"
+                )
 
         except subprocess.TimeoutExpired:
-            logger.warning(f"Encoder {enc} test timed out after 10s")
+            logger.warning(f"Encoder {enc} test timed out after 5s")
         except subprocess.SubprocessError as e:
             logger.warning(f"Encoder {enc} test error: {e}")
 
