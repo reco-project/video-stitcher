@@ -4,7 +4,6 @@ import { existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'node:child_process';
 import { platform } from 'node:os';
-import started from 'electron-squirrel-startup';
 import { registerTelemetryIpc } from './telemetry.js';
 import { registerTelemetryUploadIpc } from './telemetry_uploader.js';
 import { registerSettingsIpc, readSettings } from './settings.js';
@@ -18,8 +17,16 @@ if (platform() === 'linux') {
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-	app.quit();
+// electron-squirrel-startup is only available on Windows with Squirrel installer
+if (platform() === 'win32') {
+	try {
+		const { default: started } = await import('electron-squirrel-startup');
+		if (started) {
+			app.quit();
+		}
+	} catch {
+		// Package not available, ignore
+	}
 }
 
 const __filename = fileURLToPath(import.meta.url);
