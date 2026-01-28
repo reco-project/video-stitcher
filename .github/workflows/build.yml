@@ -120,7 +120,11 @@ jobs:
       - name: Package Electron app
         run: npx electron-forge package
 
-      - name: Create Linux wrapper script for sandbox workaround
+      - name: Make Linux AppImage
+        if: matrix.platform == 'linux'
+        run: npx electron-forge make --targets @reforged/maker-appimage
+
+      - name: Create Linux wrapper script for sandbox workaround (for tar.gz)
         if: matrix.platform == 'linux'
         run: |
           cd out/${{ matrix.artifact }}
@@ -132,10 +136,6 @@ jobs:
           exec "$DIR/video-stitcher.bin" "$@"
           WRAPPER
           chmod +x video-stitcher
-
-      - name: Make Linux AppImage
-        if: matrix.platform == 'linux'
-        run: npx electron-forge make --targets @reforged/maker-appimage
 
       - name: List output
         shell: bash
