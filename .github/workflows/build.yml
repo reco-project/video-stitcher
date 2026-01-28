@@ -139,7 +139,15 @@ jobs:
           if [ -d "$APP_PATH" ]; then
             # Remove source folders that shouldn't be in the packaged app
             rm -rf "$APP_PATH/backend" || true
-            rm -rf "$APP_PATH/frontend" || true
+            # Keep frontend/dist (built files), remove frontend/src and other source files
+            rm -rf "$APP_PATH/frontend/src" || true
+            rm -rf "$APP_PATH/frontend/node_modules" || true
+            rm -f "$APP_PATH/frontend/package.json" || true
+            rm -f "$APP_PATH/frontend/package-lock.json" || true
+            rm -f "$APP_PATH/frontend/*.config.*" || true
+            rm -f "$APP_PATH/frontend/*.mjs" || true
+            rm -f "$APP_PATH/frontend/*.cjs" || true
+            rm -f "$APP_PATH/frontend/*.json" || true
             rm -rf "$APP_PATH/scripts" || true
             rm -rf "$APP_PATH/docs" || true
             rm -rf "$APP_PATH/.git" || true
