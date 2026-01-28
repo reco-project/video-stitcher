@@ -130,6 +130,13 @@ exec "$DIR/video-stitcher.bin" "$@"
         {
           entry: path.join(__dirname, 'main.js'),
           target: 'main',
+          viteConfig: {
+            build: {
+              rollupOptions: {
+                external: ['electron-updater', 'electron-squirrel-startup'],
+              },
+            },
+          },
         },
         {
           entry: path.join(__dirname, 'preload.js'),
