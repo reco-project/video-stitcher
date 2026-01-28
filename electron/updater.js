@@ -15,7 +15,7 @@ try {
     console.log('[Updater] autoUpdater:', autoUpdater ? 'found' : 'not found');
     if (autoUpdater) {
         updaterAvailable = true;
-        
+
         // Configure update server (GitHub releases)
         autoUpdater.setFeedURL({
             provider: 'github',
@@ -143,7 +143,7 @@ export function checkForUpdates(showNoUpdateDialog = true) {
         console.log('[Updater] Auto-updater not available');
         return;
     }
-    
+
     console.log('[Updater] Checking for updates...');
 
     autoUpdater.checkForUpdates().catch((err) => {

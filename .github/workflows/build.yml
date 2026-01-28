@@ -13,13 +13,13 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux
-            artifact: video-stitcher-linux-x64
+            arch: x64
           - os: windows-latest
             platform: win32
-            artifact: video-stitcher-win32-x64
+            arch: x64
           - os: macos-latest
             platform: darwin
-            artifact: video-stitcher-darwin-arm64
+            arch: arm64
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -39,6 +39,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Install Linux dependencies for electron-builder
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg fakeroot rpm
 
       - name: Install dependencies
         run: |
@@ -89,18 +95,28 @@ jobs:
       - name: Build frontend
         run: npm run frontend-build
 
+      # First package the app, then inject backend, then make installers
       - name: Package Electron app
-        run: npx electron-forge package
+        run: npx electron-forge package --arch=${{ matrix.arch }} --platform=${{ matrix.platform }}
 
       - name: Copy backend bundle to packaged app
         shell: bash
         run: |
-          # Determine the resources path based on platform
+          # Determine the packaged app name
           if [ "${{ matrix.platform }}" == "darwin" ]; then
-            RESOURCES_PATH="out/${{ matrix.artifact }}/Video Stitcher.app/Contents/Resources"
+            PACKAGED_APP="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}"
+            RESOURCES_PATH="$PACKAGED_APP/Video Stitcher.app/Contents/Resources"
+          elif [ "${{ matrix.platform }}" == "win32" ]; then
+            PACKAGED_APP="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}"
+            RESOURCES_PATH="$PACKAGED_APP/resources"
           else
-            RESOURCES_PATH="out/${{ matrix.artifact }}/resources"
+            PACKAGED_APP="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}"
+            RESOURCES_PATH="$PACKAGED_APP/resources"
           fi
+          
+          echo "Packaged app: $PACKAGED_APP"
+          echo "Resources path: $RESOURCES_PATH"
+          ls -la out/ || true
           
           # Copy PyInstaller bundle and FFmpeg to resources
           mkdir -p "$RESOURCES_PATH/dist_bundle"
@@ -118,28 +134,21 @@ jobs:
         run: |
           # Determine the app path based on platform
           if [ "${{ matrix.platform }}" == "darwin" ]; then
-            # macOS: find the actual app location
-            RESOURCES_BASE="out/${{ matrix.artifact }}/Video Stitcher.app/Contents/Resources"
-            echo "Looking for app in macOS bundle..."
-            ls -la "$RESOURCES_BASE/" || true
-            
-            # The app could be directly in Resources or in Resources/app
+            RESOURCES_BASE="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}/Video Stitcher.app/Contents/Resources"
             if [ -d "$RESOURCES_BASE/app" ]; then
               APP_PATH="$RESOURCES_BASE/app"
             else
               APP_PATH="$RESOURCES_BASE"
             fi
           else
-            APP_PATH="out/${{ matrix.artifact }}/resources/app"
+            APP_PATH="out/Video Stitcher-${{ matrix.platform }}-${{ matrix.arch }}/resources/app"
           fi
           
           echo "Cleaning up $APP_PATH..."
           
-          # Only proceed if the path exists
           if [ -d "$APP_PATH" ]; then
-            # Remove source folders that shouldn't be in the packaged app
+            # Remove source folders
             rm -rf "$APP_PATH/backend" || true
-            # Keep frontend/dist (built files), remove frontend/src and other source files
             rm -rf "$APP_PATH/frontend/src" || true
             rm -rf "$APP_PATH/frontend/node_modules" || true
             rm -f "$APP_PATH/frontend/package.json" || true
@@ -154,8 +163,6 @@ jobs:
             rm -rf "$APP_PATH/.github" || true
             rm -rf "$APP_PATH/.vscode" || true
             rm -rf "$APP_PATH/node_modules" || true
-            
-            # Remove unnecessary files
             rm -f "$APP_PATH/.gitignore" || true
             rm -f "$APP_PATH/.gitattributes" || true
             rm -f "$APP_PATH/.prettierrc" || true
@@ -166,41 +173,53 @@ jobs:
             echo "Contents after cleanup:"
             ls -la "$APP_PATH/" || true
             du -sh "$APP_PATH/" || true
-          else
-            echo "Warning: APP_PATH does not exist: $APP_PATH"
-            echo "Listing out directory structure:"
-            find out/${{ matrix.artifact }} -type d -maxdepth 5 | head -30
           fi
 
-      - name: Create Linux wrapper script
-        if: matrix.platform == 'linux'
-        run: |
-          cd out/${{ matrix.artifact }}
-          mv video-stitcher video-stitcher.bin
-          cat > video-stitcher << 'EOF'
-          #!/bin/bash
-          export ELECTRON_DISABLE_SANDBOX=1
-          DIR="$(cd "$(dirname "$0")" && pwd)"
-          exec "$DIR/video-stitcher.bin" "$@"
-          EOF
-          chmod +x video-stitcher
-
-      - name: Compress artifact
+      # Now run make to create installers from the prepared package
+      - name: Make installers
         shell: bash
         run: |
-          cd out
-          if [ "${{ matrix.platform }}" == "win32" ]; then
-            7z a -tzip ${{ matrix.artifact }}.zip ${{ matrix.artifact }}
-          else
-            tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
-          fi
-          ls -la
+          # electron-forge make will use the already packaged app
+          npx electron-forge make --arch=${{ matrix.arch }} --platform=${{ matrix.platform }} --skip-package
+        env:
+          # For Windows code signing (optional, set in repo secrets)
+          WINDOWS_CERTIFICATE_FILE: ${{ secrets.WINDOWS_CERTIFICATE_FILE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
-      - name: Upload artifact
+      - name: List make output
+        shell: bash
+        run: |
+          echo "=== Make output ==="
+          ls -laR out/make/ || true
+
+      - name: Upload Linux installers
+        if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: out/${{ matrix.artifact }}.*
+          name: linux-installers
+          path: |
+            out/make/deb/x64/*.deb
+            out/make/rpm/x64/*.rpm
+          retention-days: 7
+
+      - name: Upload Windows installer
+        if: matrix.platform == 'win32'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            out/make/squirrel.windows/x64/*.exe
+            out/make/squirrel.windows/x64/*.nupkg
+            out/make/zip/win32/x64/*.zip
+          retention-days: 7
+
+      - name: Upload macOS installer
+        if: matrix.platform == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: |
+            out/make/zip/darwin/arm64/*.zip
           retention-days: 7
 
   release:
@@ -223,9 +242,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/video-stitcher-linux-x64/*
-            artifacts/video-stitcher-win32-x64/*
-            artifacts/video-stitcher-darwin-arm64/*
+            artifacts/linux-installers/*
+            artifacts/windows-installer/*
+            artifacts/macos-installer/*
           draft: true
           generate_release_notes: true
         env:

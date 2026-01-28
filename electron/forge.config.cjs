@@ -14,11 +14,11 @@ module.exports = {
     ignore: (filePath) => {
       // Always include root
       if (!filePath) return false;
-      
+
       // Include package.json, .vite folder (Vite output)
       if (filePath === '/package.json') return false;
       if (filePath.startsWith('/.vite')) return false;
-      
+
       // Exclude everything else from root that we don't need
       const excludePatterns = [
         /^\/backend/,        // Backend source (PyInstaller bundle is copied separately)
@@ -33,7 +33,7 @@ module.exports = {
         /\.log$/,
         /^\/LICENSE$/,
       ];
-      
+
       return excludePatterns.some(pattern => pattern.test(filePath));
     },
   },
@@ -42,7 +42,7 @@ module.exports = {
     // because VitePlugin doesn't work well with packagerConfig.ignore or packageAfterCopy hooks
     postPackage: async (config, options) => {
       const platform = options.platform;
-      
+
       // Create a wrapper script for Linux to set ELECTRON_DISABLE_SANDBOX
       if (platform === 'linux') {
         const appPath = options.outputPaths[0];
@@ -72,23 +72,14 @@ exec "$DIR/video-stitcher.bin" "$@"
       config: {
         name: 'VideoStitcher',
         setupIcon: path.join(__dirname, 'resources', 'icon.ico'),
+        // Creates Setup.exe installer
+        authors: 'Mohamed Taha GUELZIM',
+        description: 'Professional video stitching application',
       },
     },
     {
       name: '@electron-forge/maker-zip',
-      platforms: ['darwin', 'win32'],
-    },
-    {
-      name: '@reforged/maker-appimage',
-      platforms: ['linux'],
-      config: {
-        options: {
-          icon: path.join(__dirname, 'resources', 'icon.png'),
-          name: 'Video Stitcher',
-          genericName: 'Video Editor',
-          categories: ['AudioVideo', 'Video'],
-        },
-      },
+      platforms: ['darwin'],
     },
     {
       name: '@electron-forge/maker-deb',
@@ -96,8 +87,14 @@ exec "$DIR/video-stitcher.bin" "$@"
       config: {
         options: {
           icon: path.join(__dirname, 'resources', 'icon.png'),
-          maintainer: 'Mohamed Taha GUELZIM',
+          maintainer: 'Mohamed Taha GUELZIM <mohamedtahaguelzim@gmail.com>',
           homepage: 'https://github.com/reco-project/video-stitcher',
+          name: 'video-stitcher',
+          productName: 'Video Stitcher',
+          genericName: 'Video Editor',
+          description: 'Professional video stitching application for creating panoramic and 360° videos',
+          categories: ['AudioVideo', 'Video', 'Graphics'],
+          section: 'video',
         },
       },
     },
@@ -107,6 +104,12 @@ exec "$DIR/video-stitcher.bin" "$@"
       config: {
         options: {
           icon: path.join(__dirname, 'resources', 'icon.png'),
+          name: 'video-stitcher',
+          productName: 'Video Stitcher',
+          genericName: 'Video Editor',
+          description: 'Professional video stitching application for creating panoramic and 360° videos',
+          categories: ['AudioVideo', 'Video', 'Graphics'],
+          license: 'AGPL-3.0',
         },
       },
     },
