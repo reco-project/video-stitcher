@@ -1,6 +1,6 @@
 {
-	"name": "reco-video-stitcher",
-	"version": "0.2.13",
+	"name": "video-stitcher",
+	"version": "0.2.14",
 	"description": "Open-source, GPU-accelerated video stitching for sports filming",
 	"main": ".vite/build/main.js",
 	"type": "module",
