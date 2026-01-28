@@ -1,6 +1,6 @@
 {
 	"name": "video-stitcher",
-	"version": "0.2.14",
+	"version": "0.2.15",
 	"description": "Open-source, GPU-accelerated video stitching for sports filming",
 	"main": ".vite/build/main.js",
 	"type": "module",
