@@ -151,7 +151,7 @@ jobs:
           # Also create tar.gz with sandbox workaround for systems where AppImage has issues
           cd out
           tar -czvf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
-          ls -la out/
+          ls -la
 
       - name: Compress artifact (macOS)
         if: matrix.platform == 'darwin'
