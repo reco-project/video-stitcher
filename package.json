@@ -1,6 +1,6 @@
 {
 	"name": "video-stitcher",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "Reco Video Stitcher Application based on Electron, FastAPI, React, Vite and Three.js",
 	"main": "electron/main.js",
 	"type": "module",
