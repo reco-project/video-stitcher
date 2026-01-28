@@ -1,87 +1,131 @@
-# video-stitcher
+<p align="center">
+  <img src="https://raw.githubusercontent.com/reco-project/video-stitcher/main/electron/resources/icon.png" alt="Reco Logo" width="120" />
+</p>
 
-An open-source, GPU-accelerated alternative to [Veo](https://www.veo.co/) for affordable sports filming.
+<h1 align="center">Reco Video Stitcher</h1>
 
-**Status:** Imminent beta release  
-**License:** AGPL-3.0
+<p align="center">
+  <strong>Open-source, GPU-accelerated video stitching for sports filming</strong>
+</p>
 
----
+<p align="center">
+  <a href="https://github.com/reco-project/video-stitcher/releases">
+    <img src="https://img.shields.io/github/v/release/reco-project/video-stitcher?style=flat-square" alt="Release" />
+  </a>
+  <a href="https://github.com/reco-project/video-stitcher/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="License" />
+  </a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform" />
+</p>
 
-## Overview
-
-**video-stitcher** stitches two camera feeds into a seamless panoramic view — similar to Veo, but open-source and without subscriptions.
-
-Tested with GoPros and designed to support various cameras, including mobile devices.
-
-**Tech stack:**
-
-- **Frontend:** React + Three.js (GPU-accelerated WebGL stitching)
-- **Backend:** Python FastAPI (OpenCV + FFmpeg)
-- **Platforms:** Windows, macOS, Linux
-
-**Features:**
-
-- Real-time stitching with GPU acceleration
-- Automatic camera calibration
-- Works with any camera setup
-- Recording and playback controls
-
-More context: [Reddit post](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/)
+<p align="center">
+  An open-source alternative to <a href="https://www.veo.co/">Veo</a> — stitch two camera feeds into a seamless panoramic view without subscriptions.
+</p>
 
 ---
 
-## Getting Started
+## ✨ Features
+
+- **GPU-Accelerated Stitching** — Real-time panoramic rendering using WebGL and Three.js shaders
+- **Automatic Calibration** — Feature matching and position optimization for seamless blending
+- **Lens Profile Support** — Pre-built profiles for GoPro, DJI, Insta360, Sony, and more
+- **Works with Any Camera** — Use action cameras, DSLRs, or even mobile devices
+- **Cross-Platform** — Native desktop app for Windows, macOS, and Linux
+- **No Subscriptions** — One-time setup, no recurring fees, your data stays local
+
+## 🎬 How It Works
+
+1. **Import Videos** — Select your left and right camera recordings
+2. **Assign Lens Profiles** — Choose calibration profiles for each camera
+3. **Process** — The app transcodes, extracts frames, and calibrates alignment
+4. **View & Export** — Watch the stitched panorama in the built-in viewer
+
+The processing pipeline combines backend video processing (FFmpeg + OpenCV) with frontend GPU rendering (Three.js) for optimal performance.
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
 - **Node.js** 20+ and npm
-- **Python** 3.9+ (3.11+ recommended)
-- **FFmpeg** installed and available in PATH
+- **Python** 3.10+ (3.11+ recommended)
+- **FFmpeg** (automatically downloaded during setup)
 
 ### Installation
 
-1. Clone the repository:
+```bash
+# Clone the repository
+git clone https://github.com/reco-project/video-stitcher.git
+cd video-stitcher
 
-    ```bash
-    git clone https://github.com/reco-project/video-stitcher.git
-    cd video-stitcher
-    ```
+# Install all dependencies (frontend, backend, electron)
+npm run setup
 
-2. Install dependencies:
+# Start the development environment
+npm run dev
+```
 
-    ```bash
-    npm run setup
-    ```
+The app will launch with the Electron desktop interface, React frontend, and FastAPI backend running together.
 
-3. Run the development environment:
-    ```bash
-    npm run dev
-    ```
+### Building for Production
 
-The app will start with frontend, backend, and Electron desktop app.
+```bash
+# Package the app for your platform
+npm run electron-make
+```
+
+## 🏗️ Architecture
+
+```
+video-stitcher/
+├── frontend/          # React + Three.js UI and GPU rendering
+├── backend/           # FastAPI server for video processing
+├── electron/          # Desktop app shell and system integration
+├── docs/              # Documentation
+└── scripts/           # Build and development utilities
+```
+
+| Component    | Technology               | Purpose                               |
+| ------------ | ------------------------ | ------------------------------------- |
+| **Frontend** | React, Three.js, Vite    | UI, WebGL stitching, frame extraction |
+| **Backend**  | FastAPI, OpenCV, FFmpeg  | Video transcoding, feature matching   |
+| **Desktop**  | Electron, Electron Forge | Cross-platform native app             |
+
+## 📖 Documentation
+
+- [Backend API](backend/README.md) — API endpoints and development guide
+- [Telemetry](docs/TELEMETRY.md) — Privacy-focused, opt-in analytics
+
+## 🔒 Privacy & Telemetry
+
+This app includes **optional, opt-in telemetry** to help improve the software:
+
+- Disabled by default
+- No personal data, filenames, or video content collected
+- All data stored locally first
+- Can be enabled/disabled anytime in Settings
+
+See [TELEMETRY.md](docs/TELEMETRY.md) for full details.
+
+## 📄 License
+
+Licensed under **[AGPL-3.0](LICENSE)** — all derived versions must remain open-source.
+
+## 🤝 Contributing
+
+Contributions are welcome! Whether you're a developer, designer, coach, or camera enthusiast:
+
+- 🐛 Report bugs and request features via [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
+- 💬 Join the discussion in the [Reddit community](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/)
+- 🔧 Submit pull requests for improvements
+
+## 📬 Contact
+
+- **Email:** mohamedtahaguelzim@gmail.com
+- **Reddit:** [r/VeoCamera discussion](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/)
+- **GitHub:** [reco-project/video-stitcher](https://github.com/reco-project/video-stitcher)
 
 ---
 
-## Telemetry
-
-This app collects minimal anonymous usage data to help improve the software (e.g., feature usage, errors). No personal information or video content is collected. Telemetry is **opt-in** and disabled by default. You can enable it in Settings.
-
----
-
-## License
-
-Licensed under **AGPL-3.0** — all derived versions must remain open-source.
-
----
-
-## Community & Contributions
-
-Contributions, feedback, and testing are welcome from developers, designers, coaches, and camera enthusiasts.
-
-Guidelines will be released soon, along with a dedicated community forum.
-
----
-
-## Feedback
-
-Share feedback in the [Reddit thread](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/) or contact mohamedtahaguelzim@gmail.com
+<p align="center">
+  Made with ❤️ for the sports filming community
+</p>
