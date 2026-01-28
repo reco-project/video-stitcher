@@ -133,14 +133,30 @@ def log_exception(message: str = "An exception occurred"):
 
 # Configure uvicorn logging to use our format
 def configure_uvicorn_logging():
-    """Configure uvicorn loggers to match our format."""
+    """Configure uvicorn loggers to match our format and ensure access logging."""
+    import logging
+
     # Get uvicorn loggers
     uvicorn_logger = logging.getLogger("uvicorn")
     uvicorn_access = logging.getLogger("uvicorn.access")
+    uvicorn_error = logging.getLogger("uvicorn.error")
 
-    # Set consistent formatting
-    for handler in uvicorn_logger.handlers:
-        handler.setFormatter(logging.Formatter(fmt='[%(levelname)s] uvicorn: %(message)s', datefmt='%H:%M:%S'))
+    # Ensure loggers have proper level
+    uvicorn_logger.setLevel(logging.INFO)
+    uvicorn_access.setLevel(logging.INFO)
+    uvicorn_error.setLevel(logging.INFO)
 
-    for handler in uvicorn_access.handlers:
-        handler.setFormatter(logging.Formatter(fmt='[%(levelname)s] uvicorn.access: %(message)s', datefmt='%H:%M:%S'))
+    # Create console handler if none exists
+    console_format = logging.Formatter(fmt='[%(levelname)s] %(name)s: %(message)s', datefmt='%H:%M:%S')
+
+    for logger in [uvicorn_logger, uvicorn_access, uvicorn_error]:
+        # Check if handler exists
+        if not logger.handlers:
+            handler = logging.StreamHandler(sys.stdout)
+            handler.setLevel(logging.INFO)
+            handler.setFormatter(console_format)
+            logger.addHandler(handler)
+        else:
+            # Update existing handler formatting
+            for handler in logger.handlers:
+                handler.setFormatter(console_format)

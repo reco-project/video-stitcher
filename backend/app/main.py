@@ -7,6 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import sys
+import os
+
+# Ensure unbuffered output for subprocess logging (important for PyInstaller)
+os.environ.setdefault('PYTHONUNBUFFERED', '1')
+sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
+sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
 
 from app.utils.logger import get_logger, configure_uvicorn_logging, info
 from app.repositories.file_lens_profile_store import FileLensProfileStore
@@ -135,7 +141,15 @@ async def health_check():
 def run_server():
     """Run the server without reload (for production/Electron)."""
     # Use workers=1 and no reload to prevent process spawning issues with PyInstaller
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None, workers=1)
+    # Enable access_log to see incoming requests
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=8000,
+        log_level="info",
+        access_log=True,
+        workers=1,
+    )
 
 
 if __name__ == "__main__":
