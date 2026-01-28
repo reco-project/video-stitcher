@@ -4,6 +4,24 @@ import { existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'node:child_process';
 import { platform } from 'node:os';
+
+// CRITICAL: Handle Squirrel events FIRST on Windows before any other code
+// This must happen synchronously at startup to prevent double-launching
+if (platform() === 'win32') {
+	try {
+		// Use dynamic import but handle synchronously for Squirrel
+		const squirrelStartup = await import('electron-squirrel-startup');
+		if (squirrelStartup.default) {
+			app.quit();
+			// Force immediate exit to prevent any further execution
+			process.exit(0);
+		}
+	} catch (e) {
+		// Package not available in dev mode, ignore
+		console.log('[Squirrel] electron-squirrel-startup not available:', e.message);
+	}
+}
+
 import { registerTelemetryIpc } from './telemetry.js';
 import { registerTelemetryUploadIpc } from './telemetry_uploader.js';
 import { registerSettingsIpc, readSettings } from './settings.js';
@@ -14,19 +32,6 @@ const fetchImpl = globalThis.fetch;
 // Add no-sandbox switch on Linux (env var is set by wrapper script)
 if (platform() === 'linux') {
 	app.commandLine.appendSwitch('no-sandbox');
-}
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-// electron-squirrel-startup is only available on Windows with Squirrel installer
-if (platform() === 'win32') {
-	try {
-		const { default: started } = await import('electron-squirrel-startup');
-		if (started) {
-			app.quit();
-		}
-	} catch {
-		// Package not available, ignore
-	}
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,7 +70,7 @@ if (initialSettings.disableHardwareAcceleration) {
 }
 
 // Wait for backend to be ready
-async function waitForBackend(maxAttempts = 30, delayMs = 1000) {
+async function waitForBackend(maxAttempts = 15, delayMs = 500) {
 	console.log('[Backend] Waiting for backend to be ready...');
 
 	for (let i = 0; i < maxAttempts; i++) {

@@ -10,9 +10,8 @@ let appInstance = null;
 // Try to load electron-updater (may not be available in all builds)
 try {
     const pkg = await import('electron-updater');
-    console.log('[Updater] electron-updater loaded, pkg keys:', Object.keys(pkg));
     autoUpdater = pkg.autoUpdater || pkg.default?.autoUpdater;
-    console.log('[Updater] autoUpdater:', autoUpdater ? 'found' : 'not found');
+    console.log('[Updater] electron-updater loaded successfully');
     if (autoUpdater) {
         updaterAvailable = true;
 

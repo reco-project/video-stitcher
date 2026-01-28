@@ -127,6 +127,21 @@ jobs:
             cp -r backend/bin "$RESOURCES_PATH/dist_bundle/"
           fi
           
+          # Copy runtime node_modules dependencies (electron-updater, electron-squirrel-startup)
+          # These are externalized by Vite and need to be available at runtime
+          APP_PATH="$RESOURCES_PATH/app"
+          if [ -d "$APP_PATH" ]; then
+            mkdir -p "$APP_PATH/node_modules"
+            cp -r node_modules/electron-updater "$APP_PATH/node_modules/" || true
+            cp -r node_modules/electron-squirrel-startup "$APP_PATH/node_modules/" || true
+            # Copy electron-updater's dependencies
+            for dep in builder-util-runtime lazy-val lodash.isequal semver; do
+              if [ -d "node_modules/$dep" ]; then
+                cp -r "node_modules/$dep" "$APP_PATH/node_modules/"
+              fi
+            done
+          fi
+          
           ls -la "$RESOURCES_PATH/dist_bundle/"
 
       - name: Clean up packaged app (remove source folders)
@@ -147,7 +162,7 @@ jobs:
           echo "Cleaning up $APP_PATH..."
           
           if [ -d "$APP_PATH" ]; then
-            # Remove source folders
+            # Remove source folders (but keep node_modules for runtime dependencies!)
             rm -rf "$APP_PATH/backend" || true
             rm -rf "$APP_PATH/frontend/src" || true
             rm -rf "$APP_PATH/frontend/node_modules" || true
@@ -162,7 +177,7 @@ jobs:
             rm -rf "$APP_PATH/.git" || true
             rm -rf "$APP_PATH/.github" || true
             rm -rf "$APP_PATH/.vscode" || true
-            rm -rf "$APP_PATH/node_modules" || true
+            # Keep node_modules for runtime dependencies (electron-updater, electron-squirrel-startup)
             rm -f "$APP_PATH/.gitignore" || true
             rm -f "$APP_PATH/.gitattributes" || true
             rm -f "$APP_PATH/.prettierrc" || true
@@ -243,9 +258,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/linux-installers/*
-            artifacts/windows-installer/*
-            artifacts/macos-installer/*
+            artifacts/linux-installers/**/*
+            artifacts/windows-installer/**/*
+            artifacts/macos-installer/**/*
           draft: true
           generate_release_notes: true
         env:
