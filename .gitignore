@@ -3,6 +3,8 @@ node_modules/
 # Build outputs
 out/
 frontend/dist/
+.vite/
+frontend/.vite/
 
 # Python
 __pycache__/
