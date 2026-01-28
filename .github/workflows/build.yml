@@ -113,6 +113,40 @@ jobs:
           
           ls -la "$RESOURCES_PATH/dist_bundle/"
 
+      - name: Clean up packaged app (remove source folders)
+        shell: bash
+        run: |
+          # Determine the app path based on platform
+          if [ "${{ matrix.platform }}" == "darwin" ]; then
+            APP_PATH="out/${{ matrix.artifact }}/Video Stitcher.app/Contents/Resources/app"
+          else
+            APP_PATH="out/${{ matrix.artifact }}/resources/app"
+          fi
+          
+          echo "Cleaning up $APP_PATH..."
+          
+          # Remove source folders that shouldn't be in the packaged app
+          rm -rf "$APP_PATH/backend" || true
+          rm -rf "$APP_PATH/frontend" || true
+          rm -rf "$APP_PATH/scripts" || true
+          rm -rf "$APP_PATH/docs" || true
+          rm -rf "$APP_PATH/.git" || true
+          rm -rf "$APP_PATH/.github" || true
+          rm -rf "$APP_PATH/.vscode" || true
+          rm -rf "$APP_PATH/node_modules" || true
+          
+          # Remove unnecessary files
+          rm -f "$APP_PATH/.gitignore" || true
+          rm -f "$APP_PATH/.gitattributes" || true
+          rm -f "$APP_PATH/.prettierrc" || true
+          rm -f "$APP_PATH/.prettierignore" || true
+          rm -f "$APP_PATH/README.md" || true
+          rm -f "$APP_PATH/LICENSE" || true
+          
+          echo "Contents after cleanup:"
+          ls -la "$APP_PATH/"
+          du -sh "$APP_PATH/"
+
       - name: Create Linux wrapper script
         if: matrix.platform == 'linux'
         run: |

@@ -38,47 +38,13 @@ module.exports = {
     },
   },
   hooks: {
-    packageAfterCopy: async (config, buildPath, electronVersion, platform, arch) => {
-      // Remove unnecessary folders after Vite plugin copies everything
-      const foldersToRemove = [
-        'backend',
-        'frontend', 
-        'scripts',
-        'docs',
-        '.git',
-        '.github',
-        '.vscode',
-        'node_modules',
-      ];
-      
-      for (const folder of foldersToRemove) {
-        const folderPath = path.join(buildPath, folder);
-        if (fs.existsSync(folderPath)) {
-          fs.rmSync(folderPath, { recursive: true, force: true });
-          console.log(`[Forge] Removed ${folder} from package`);
-        }
-      }
-      
-      // Also remove unnecessary files
-      const filesToRemove = [
-        '.gitignore',
-        '.gitattributes', 
-        '.prettierrc',
-        '.prettierignore',
-        'README.md',
-        'LICENSE',
-      ];
-      
-      for (const file of filesToRemove) {
-        const filePath = path.join(buildPath, file);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      }
-    },
+    // Cleanup is done in the GitHub Actions workflow after packaging
+    // because VitePlugin doesn't work well with packagerConfig.ignore or packageAfterCopy hooks
     postPackage: async (config, options) => {
+      const platform = options.platform;
+      
       // Create a wrapper script for Linux to set ELECTRON_DISABLE_SANDBOX
-      if (options.platform === 'linux') {
+      if (platform === 'linux') {
         const appPath = options.outputPaths[0];
         const originalBinary = path.join(appPath, 'video-stitcher');
         const realBinary = path.join(appPath, 'video-stitcher.bin');
