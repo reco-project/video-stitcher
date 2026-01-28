@@ -53,9 +53,14 @@ module.exports = {
         if (fs.existsSync(originalBinary) && !fs.existsSync(realBinary)) {
           fs.renameSync(originalBinary, realBinary);
 
-          // Create wrapper script that resolves symlinks
-          // readlink -f resolves the full path even through symlinks
+          // Create wrapper script that resolves symlinks and preserves GPU access
+          // - Source profile to get CUDA/GPU library paths
+          // - readlink -f resolves the full path even through symlinks
           const wrapperScript = `#!/bin/bash
+# Source profile for CUDA/GPU library paths if launching from desktop
+if [ -z "$LD_LIBRARY_PATH" ] && [ -f /etc/profile ]; then
+    source /etc/profile 2>/dev/null || true
+fi
 export ELECTRON_DISABLE_SANDBOX=1
 SCRIPT_PATH="$(readlink -f "$0")"
 DIR="$(dirname "$SCRIPT_PATH")"

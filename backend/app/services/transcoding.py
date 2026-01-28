@@ -506,6 +506,8 @@ def _get_available_encoders() -> List[str]:
     encoders = ["h264_nvenc", "h264_qsv", "h264_amf"]
     available = []
 
+    logger.info("Testing GPU encoders availability...")
+
     for enc in encoders:
         # Test if encoder actually works by trying to initialize it
         # Generate a tiny 1-frame test video (256x256 minimum for hardware encoders)
@@ -515,7 +517,7 @@ def _get_available_encoders() -> List[str]:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=5,
+                timeout=10,  # Increased timeout for slower GPU init
             )
 
             # If the command succeeded, the encoder is available
@@ -523,12 +525,15 @@ def _get_available_encoders() -> List[str]:
                 available.append(enc)
                 logger.info(f"Encoder {enc} is available and working")
             else:
-                logger.debug(f"Encoder {enc} failed test: {result.stderr[:200]}")
+                # Log at INFO level to help diagnose issues
+                logger.info(f"Encoder {enc} not available: {result.stderr[-300:] if result.stderr else 'no error message'}")
 
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Encoder {enc} test timed out after 10s")
         except subprocess.SubprocessError as e:
-            logger.debug(f"Encoder {enc} test error: {e}")
-            pass
+            logger.warning(f"Encoder {enc} test error: {e}")
 
+    logger.info(f"Available GPU encoders: {available if available else 'none'}")
     return available
 
 
