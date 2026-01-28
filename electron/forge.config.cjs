@@ -53,10 +53,12 @@ module.exports = {
         if (fs.existsSync(originalBinary) && !fs.existsSync(realBinary)) {
           fs.renameSync(originalBinary, realBinary);
 
-          // Create wrapper script
+          // Create wrapper script that resolves symlinks
+          // readlink -f resolves the full path even through symlinks
           const wrapperScript = `#!/bin/bash
 export ELECTRON_DISABLE_SANDBOX=1
-DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_PATH="$(readlink -f "$0")"
+DIR="$(dirname "$SCRIPT_PATH")"
 exec "$DIR/video-stitcher.bin" "$@"
 `;
           fs.writeFileSync(originalBinary, wrapperScript, { mode: 0o755 });
