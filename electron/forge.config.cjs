@@ -38,6 +38,44 @@ module.exports = {
     },
   },
   hooks: {
+    packageAfterCopy: async (config, buildPath, electronVersion, platform, arch) => {
+      // Remove unnecessary folders after Vite plugin copies everything
+      const foldersToRemove = [
+        'backend',
+        'frontend', 
+        'scripts',
+        'docs',
+        '.git',
+        '.github',
+        '.vscode',
+        'node_modules',
+      ];
+      
+      for (const folder of foldersToRemove) {
+        const folderPath = path.join(buildPath, folder);
+        if (fs.existsSync(folderPath)) {
+          fs.rmSync(folderPath, { recursive: true, force: true });
+          console.log(`[Forge] Removed ${folder} from package`);
+        }
+      }
+      
+      // Also remove unnecessary files
+      const filesToRemove = [
+        '.gitignore',
+        '.gitattributes', 
+        '.prettierrc',
+        '.prettierignore',
+        'README.md',
+        'LICENSE',
+      ];
+      
+      for (const file of filesToRemove) {
+        const filePath = path.join(buildPath, file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    },
     postPackage: async (config, options) => {
       // Create a wrapper script for Linux to set ELECTRON_DISABLE_SANDBOX
       if (options.platform === 'linux') {

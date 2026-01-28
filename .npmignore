@@ -1,0 +1,15 @@
+# Ignore everything by default
+*
+
+# Include only what's needed for the packaged app
+!package.json
+!electron/
+!.vite/
+
+# Exclude source files from electron (only need built output)
+electron/*.js
+electron/*.ts
+!electron/.vite/
+
+# The PyInstaller backend bundle is copied separately to resources/dist_bundle
+# by the GitHub Actions workflow, not included in the app bundle
