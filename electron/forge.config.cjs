@@ -132,24 +132,16 @@ exec "$DIR/video-stitcher.bin" "$@"
       build: [
         {
           entry: path.join(__dirname, 'main.js'),
-          target: 'main',
-          viteConfig: {
-            build: {
-              rollupOptions: {
-                external: ['electron-updater', 'electron-squirrel-startup'],
-              },
-            },
-          },
+          config: path.join(__dirname, 'vite.main.config.mjs'),
         },
         {
           entry: path.join(__dirname, 'preload.js'),
-          target: 'preload',
+          config: path.join(__dirname, 'vite.preload.config.mjs'),
         },
       ],
       renderer: [
         {
           name: 'main_window',
-          entry: path.resolve(__dirname, '../frontend/src/main.jsx'),
           config: path.resolve(__dirname, '../frontend/vite.config.mjs'),
         },
       ],

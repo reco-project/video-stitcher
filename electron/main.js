@@ -273,11 +273,17 @@ const createWindow = () => {
 	});
 
 	// and load the index.html of the app.
-	if (isDev) {
+	if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== 'undefined') {
+		mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+	} else if (typeof MAIN_WINDOW_VITE_NAME !== 'undefined') {
+		// Load from VitePlugin's output directory
+		mainWindow.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+	} else if (isDev) {
+		// Fallback for dev mode without VitePlugin
 		mainWindow.loadURL(devServerUrl);
 	} else {
-		// Load the built frontend from frontend/dist
-		mainWindow.loadFile(join(app.getAppPath(), 'frontend', 'dist', 'index.html'));
+		// Fallback for production without VitePlugin globals
+		mainWindow.loadFile(join(app.getAppPath(), '.vite', 'renderer', 'main_window', 'index.html'));
 	}
 
 	// Open the DevTools.
