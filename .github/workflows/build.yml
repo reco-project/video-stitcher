@@ -132,14 +132,22 @@ jobs:
           APP_PATH="$RESOURCES_PATH/app"
           if [ -d "$APP_PATH" ]; then
             mkdir -p "$APP_PATH/node_modules"
-            cp -r node_modules/electron-updater "$APP_PATH/node_modules/" || true
-            cp -r node_modules/electron-squirrel-startup "$APP_PATH/node_modules/" || true
-            # Copy electron-updater's dependencies
-            for dep in builder-util-runtime lazy-val lodash.isequal semver; do
+            
+            # Copy electron-updater and all its dependencies (including nested node_modules)
+            cp -r node_modules/electron-updater "$APP_PATH/node_modules/"
+            
+            # Copy all transitive dependencies of electron-updater
+            for dep in builder-util-runtime lazy-val lodash.isequal lodash.escaperegexp semver js-yaml tiny-typed-emitter graceful-fs jsonfile universalify argparse; do
               if [ -d "node_modules/$dep" ]; then
                 cp -r "node_modules/$dep" "$APP_PATH/node_modules/"
               fi
             done
+            
+            # Copy electron-squirrel-startup (Windows only but copy anyway)
+            cp -r node_modules/electron-squirrel-startup "$APP_PATH/node_modules/" || true
+            
+            echo "Copied node_modules:"
+            ls -la "$APP_PATH/node_modules/"
           fi
           
           ls -la "$RESOURCES_PATH/dist_bundle/"
