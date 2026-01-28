@@ -65,6 +65,7 @@ jobs:
           fi
           
           pyinstaller --onedir --name backend_server \
+            --paths=. \
             --add-data "data${SEP}data" \
             --hidden-import uvicorn.logging \
             --hidden-import uvicorn.lifespan \

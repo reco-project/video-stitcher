@@ -139,6 +139,10 @@ def run_server():
 
 if __name__ == "__main__":
     import os
+    import multiprocessing
+
+    # Required for PyInstaller to prevent infinite process spawning
+    multiprocessing.freeze_support()
 
     # Use reload only in development (when run via npm run backend-dev)
     # Don't use reload when started by Electron (USER_DATA_PATH is set)
