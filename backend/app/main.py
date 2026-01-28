@@ -134,7 +134,8 @@ async def health_check():
 
 def run_server():
     """Run the server without reload (for production/Electron)."""
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None)
+    # Use workers=1 and no reload to prevent process spawning issues with PyInstaller
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None, workers=1)
 
 
 if __name__ == "__main__":

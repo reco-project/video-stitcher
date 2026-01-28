@@ -11,14 +11,31 @@ module.exports = {
     icon: path.join(__dirname, 'resources', 'icon'),
     appBundleId: 'com.reco.video-stitcher',
     appCopyright: 'Copyright © 2026 Mohamed Taha GUELZIM',
-    ignore: [
-      // Don't include these in the app bundle
-      /^\/backend\/(?!dist_bundle)/,
-      /^\/scripts/,
-      /^\/docs/,
-      /\.git/,
-      /node_modules/,
-    ],
+    ignore: (filePath) => {
+      // Always include root
+      if (!filePath) return false;
+      
+      // Include package.json, .vite folder (Vite output)
+      if (filePath === '/package.json') return false;
+      if (filePath.startsWith('/.vite')) return false;
+      
+      // Exclude everything else from root that we don't need
+      const excludePatterns = [
+        /^\/backend/,        // Backend source (PyInstaller bundle is copied separately)
+        /^\/frontend/,       // Frontend source (Vite builds to .vite)
+        /^\/scripts/,
+        /^\/docs/,
+        /^\/\.git/,
+        /^\/\.github/,
+        /^\/node_modules/,
+        /^\/electron\/(?!.vite)/,  // Exclude electron source except .vite output
+        /\.md$/,
+        /\.log$/,
+        /^\/LICENSE$/,
+      ];
+      
+      return excludePatterns.some(pattern => pattern.test(filePath));
+    },
   },
   hooks: {
     postPackage: async (config, options) => {
