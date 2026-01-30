@@ -684,11 +684,7 @@ def _stack_videos(
     inputs_same_resolution = v1_w > 0 and v1_h > 0 and v1_w == v2_w and v1_h == v2_h
 
     # Parse desired resolution from single_resolution string (e.g., "1920:1080" -> 1920, 1080)
-    try:
-        desired_w, desired_h = map(int, single_resolution.split(':'))
-    except (ValueError, AttributeError):
-        logger.warning(f"Invalid resolution format: {single_resolution}, defaulting to 1920x1080")
-        desired_w, desired_h = 1920, 1080
+    desired_w, desired_h = map(int, single_resolution.split(':'))
 
     # Only skip scaling if inputs match each other AND match the desired output resolution
     inputs_match_desired_resolution = inputs_same_resolution and v1_w == desired_w and v1_h == desired_h
