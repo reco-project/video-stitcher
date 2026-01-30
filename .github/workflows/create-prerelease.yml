@@ -1,0 +1,129 @@
+name: Create Pre-Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      use_package_version:
+        description: 'Use version from package.json'
+        required: false
+        type: boolean
+        default: true
+      custom_version:
+        description: 'Custom version (e.g., 0.2.17, only used if use_package_version is false)'
+        required: false
+        type: string
+
+jobs:
+  create-prerelease:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get version from package.json
+        id: package-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+
+      - name: Determine version to use
+        id: version
+        run: |
+          if [ "${{ inputs.use_package_version }}" = "true" ] || [ -z "${{ inputs.custom_version }}" ]; then
+            VERSION="${{ steps.package-version.outputs.version }}"
+          else
+            VERSION="${{ inputs.custom_version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+          echo "Tag will be: v$VERSION"
+
+      - name: Check if release already exists
+        id: check-release
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release $TAG already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Release $TAG does not exist"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push tag
+        if: steps.check-release.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if tag exists locally or remotely
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists locally"
+          elif git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
+            echo "Tag $TAG already exists on remote"
+            git fetch --tags
+          else
+            echo "Creating new tag $TAG"
+            git tag -a "$TAG" -m "Pre-release $VERSION"
+          fi
+          
+          # Push the tag
+          git push origin "$TAG" || echo "Tag already exists on remote"
+
+      - name: Trigger build workflow
+        if: steps.check-release.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          echo "Tag $TAG has been pushed."
+          echo "The Build & Release workflow should now be triggered automatically."
+          echo "Check the Actions tab to monitor the build: https://github.com/${{ github.repository }}/actions"
+          
+      - name: Create pre-release (without assets)
+        if: steps.check-release.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Create a pre-release
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Pre-release $VERSION
+
+This is an automated pre-release. Build artifacts will be uploaded by the Build & Release workflow.
+
+**Note:** The build workflow may take some time to complete. Installers will be available once the workflow finishes.
+
+**Full Changelog**: https://github.com/${{ github.repository }}/compare/v0.2.16...$TAG" \
+            --prerelease \
+            --target main
+          
+          echo "Pre-release created successfully!"
+          echo "View it at: https://github.com/${{ github.repository }}/releases/tag/$TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release already exists
+        if: steps.check-release.outputs.exists == 'true'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          echo "Release $TAG already exists. No action taken."
+          echo "View it at: https://github.com/${{ github.repository }}/releases/tag/$TAG"
