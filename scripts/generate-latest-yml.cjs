@@ -144,7 +144,7 @@ function matchPattern(filename, pattern) {
 }
 
 // Main execution
-const outDir = path.join(__dirname, '..', 'out');
+const outDir = process.env.OUT_DIR || path.join(__dirname, '..', 'out');
 
 if (!fs.existsSync(outDir)) {
     console.error('Error: out directory does not exist. Run electron-forge make first.');
@@ -157,7 +157,7 @@ const windowsYml = path.join(outDir, 'make', 'latest.yml');
 processArtifacts(
     windowsMakeDir,
     windowsYml,
-    ['*Setup.exe', '*.nupkg']
+    ['*Setup*.exe', '*.nupkg']
 );
 
 console.log('\n=== Generating macOS latest-mac.yml ===');

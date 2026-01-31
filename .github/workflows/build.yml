@@ -235,7 +235,7 @@ jobs:
       - name: Generate latest yml files for auto-update
         shell: bash
         run: |
-          node scripts/generate-latest-yml.js
+          node scripts/generate-latest-yml.cjs
 
       - name: Upload Linux installers
         if: matrix.platform == 'linux'
