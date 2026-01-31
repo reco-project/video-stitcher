@@ -232,6 +232,11 @@ jobs:
           echo "=== Make output ==="
           ls -laR out/make/ || true
 
+      - name: Generate latest yml files for auto-update
+        shell: bash
+        run: |
+          node scripts/generate-latest-yml.js
+
       - name: Upload Linux installers
         if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
@@ -241,6 +246,7 @@ jobs:
             out/make/deb/x64/*.deb
             out/make/rpm/x64/*.rpm
             out/make/zip/linux/x64/*.zip
+            out/make/latest-linux.yml
           retention-days: 7
 
       - name: Upload Windows installer
@@ -252,6 +258,7 @@ jobs:
             out/make/squirrel.windows/x64/*.exe
             out/make/squirrel.windows/x64/*.nupkg
             out/make/zip/win32/x64/*.zip
+            out/make/latest.yml
           retention-days: 7
 
       - name: Upload macOS installer
@@ -261,6 +268,7 @@ jobs:
           name: macos-installer
           path: |
             out/make/zip/darwin/arm64/*.zip
+            out/make/latest-mac.yml
           retention-days: 7
 
   release:
