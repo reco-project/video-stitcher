@@ -45,7 +45,15 @@ try {
                 .then((result) => {
                     if (result.response === 0) {
                         console.log('[Updater] User chose to download update');
-                        autoUpdater.downloadUpdate();
+                        autoUpdater.downloadUpdate().catch((err) => {
+                            console.error('[Updater] Error downloading update:', err.message);
+                            dialog.showMessageBox(mainWindow, {
+                                type: 'error',
+                                title: 'Download Error',
+                                message: 'Failed to download update',
+                                detail: err.message,
+                            });
+                        });
                     }
                 });
         });
@@ -96,6 +104,15 @@ try {
         // Error handling
         autoUpdater.on('error', (err) => {
             console.error('[Updater] Error:', err.message);
+            // Show error to user if window is available
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                dialog.showMessageBox(mainWindow, {
+                    type: 'error',
+                    title: 'Update Error',
+                    message: 'An error occurred with the auto-updater',
+                    detail: err.message,
+                });
+            }
         });
     }
 } catch (err) {
