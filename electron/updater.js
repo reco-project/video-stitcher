@@ -47,12 +47,14 @@ try {
                         console.log('[Updater] User chose to download update');
                         autoUpdater.downloadUpdate().catch((err) => {
                             console.error('[Updater] Error downloading update:', err.message);
-                            dialog.showMessageBox(mainWindow, {
-                                type: 'error',
-                                title: 'Download Error',
-                                message: 'Failed to download update',
-                                detail: err.message,
-                            });
+                            if (mainWindow && !mainWindow.isDestroyed()) {
+                                dialog.showMessageBox(mainWindow, {
+                                    type: 'error',
+                                    title: 'Download Error',
+                                    message: 'Failed to download update',
+                                    detail: err.message,
+                                });
+                            }
                         });
                     }
                 });
