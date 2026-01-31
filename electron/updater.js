@@ -11,6 +11,10 @@ let appInstance = null;
 // Check if beta updates are enabled via environment variable
 const betaUpdatesEnabled = process.env.VIDEO_STITCHER_BETA_UPDATES === '1';
 
+// Constants for log truncation
+const MAX_RELEASE_NOTES_LENGTH = 100;
+const MAX_STACK_TRACE_LENGTH = 200;
+
 // Try to load electron-updater (may not be available in all builds)
 try {
     const pkg = await import('electron-updater');
@@ -51,7 +55,7 @@ try {
                 version: info.version,
                 releaseDate: info.releaseDate,
                 releaseName: info.releaseName,
-                releaseNotes: info.releaseNotes?.substring(0, 100) || 'N/A'
+                releaseNotes: info.releaseNotes?.substring(0, MAX_RELEASE_NOTES_LENGTH) || 'N/A'
             }, null, 2));
             updateAvailable = true;
 
@@ -139,7 +143,7 @@ try {
             log.error('[Updater] Event: error');
             log.error('[Updater] Error details:', JSON.stringify({
                 message: err.message,
-                stack: err.stack?.substring(0, 200) || 'N/A'
+                stack: err.stack?.substring(0, MAX_STACK_TRACE_LENGTH) || 'N/A'
             }, null, 2));
             // Show error to user if window is available
             if (mainWindow && !mainWindow.isDestroyed()) {
