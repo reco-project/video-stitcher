@@ -8,11 +8,23 @@ let updateAvailable = false;
 let mainWindow = null;
 let appInstance = null;
 
+// Check if beta updates are enabled via environment variable
+const betaUpdatesEnabled = process.env.VIDEO_STITCHER_BETA_UPDATES === '1';
+
+// Constants for log truncation
+const MAX_RELEASE_NOTES_LENGTH = 100;
+const MAX_STACK_TRACE_LENGTH = 200;
+
 // Try to load electron-updater (may not be available in all builds)
 try {
     const pkg = await import('electron-updater');
     autoUpdater = pkg.autoUpdater || pkg.default?.autoUpdater;
     log.info('[Updater] electron-updater loaded successfully');
+    
+    // Log the electron-log file path for diagnostics
+    const logFilePath = log.transports.file.getFile()?.path || 'unknown';
+    log.info('[Updater] Log file location:', logFilePath);
+    
     if (autoUpdater) {
         updaterAvailable = true;
 
@@ -21,10 +33,30 @@ try {
         autoUpdater.logger.transports.file.level = 'info';
         autoUpdater.autoDownload = false; // Don't download automatically, ask user first
         autoUpdater.autoInstallOnAppQuit = true;
+        
+        // Configure beta/prerelease updates
+        if (betaUpdatesEnabled) {
+            autoUpdater.allowPrerelease = true;
+            log.info('[Updater] Beta updates ENABLED - will receive prerelease versions');
+        } else {
+            autoUpdater.allowPrerelease = false;
+            log.info('[Updater] Beta updates DISABLED - stable releases only');
+        }
+
+        // Checking for update
+        autoUpdater.on('checking-for-update', () => {
+            log.info('[Updater] Event: checking-for-update');
+        });
 
         // Update available
         autoUpdater.on('update-available', (info) => {
-            log.info('[Updater] Update available:', info.version);
+            log.info('[Updater] Event: update-available');
+            log.info('[Updater] Update available:', JSON.stringify({
+                version: info.version,
+                releaseDate: info.releaseDate,
+                releaseName: info.releaseName,
+                releaseNotes: info.releaseNotes?.substring(0, MAX_RELEASE_NOTES_LENGTH) || 'N/A'
+            }, null, 2));
             updateAvailable = true;
 
             dialog
@@ -57,13 +89,16 @@ try {
 
         // No update available
         autoUpdater.on('update-not-available', (info) => {
-            log.info('[Updater] No update available. Current version is latest.');
+            log.info('[Updater] Event: update-not-available');
+            log.info('[Updater] No update available. Current version is latest:', JSON.stringify({
+                version: info.version
+            }, null, 2));
         });
 
         // Download progress
         autoUpdater.on('download-progress', (progress) => {
             const percent = Math.round(progress.percent);
-            log.info(`[Updater] Download progress: ${percent}%`);
+            log.info(`[Updater] Event: download-progress - ${percent}% (${progress.transferred}/${progress.total} bytes, speed: ${Math.round(progress.bytesPerSecond / 1024)} KB/s)`);
 
             // Send progress to renderer if needed
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -73,7 +108,12 @@ try {
 
         // Update downloaded
         autoUpdater.on('update-downloaded', (info) => {
-            log.info('[Updater] Update downloaded:', info.version);
+            log.info('[Updater] Event: update-downloaded');
+            log.info('[Updater] Update downloaded successfully:', JSON.stringify({
+                version: info.version,
+                releaseDate: info.releaseDate,
+                downloadedFile: info.downloadedFile || 'N/A'
+            }, null, 2));
 
             // Clear progress bar
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -100,7 +140,11 @@ try {
 
         // Error handling
         autoUpdater.on('error', (err) => {
-            log.error('[Updater] Error:', err.message);
+            log.error('[Updater] Event: error');
+            log.error('[Updater] Error details:', JSON.stringify({
+                message: err.message,
+                stack: err.stack?.substring(0, MAX_STACK_TRACE_LENGTH) || 'N/A'
+            }, null, 2));
             // Show error to user if window is available
             if (mainWindow && !mainWindow.isDestroyed()) {
                 dialog.showMessageBox(mainWindow, {
@@ -158,9 +202,12 @@ export function checkForUpdates(showNoUpdateDialog = true) {
     }
 
     log.info('[Updater] Checking for updates...');
+    log.info('[Updater] Beta mode:', betaUpdatesEnabled ? 'ENABLED' : 'DISABLED');
+    log.info('[Updater] allowPrerelease:', autoUpdater.allowPrerelease);
 
     autoUpdater.checkForUpdates().catch((err) => {
         log.error('[Updater] Error checking for updates:', err.message);
+        log.error('[Updater] Error stack:', err.stack);
         if (showNoUpdateDialog) {
             dialog.showMessageBox(mainWindow, {
                 type: 'error',
