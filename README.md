@@ -31,6 +31,7 @@
 - **Lens Profile Support** — Pre-built profiles for GoPro, DJI, Insta360, Sony, and more
 - **Works with Any Camera** — Use action cameras, DSLRs, or even mobile devices
 - **Cross-Platform** — Native desktop app for Windows, macOS, and Linux
+- **Auto-Updates** — Automatic update checks keep your app current with the latest features and fixes
 - **No Subscriptions** — One-time setup, no recurring fees, your data stays local
 
 ## 🎬 How It Works
@@ -94,6 +95,7 @@ video-stitcher/
 
 - [Backend API](backend/README.md) — API endpoints and development guide
 - [Telemetry](docs/TELEMETRY.md) — Privacy-focused, opt-in analytics
+- [Releases & Auto-Updates](docs/RELEASES.md) — How releases work and auto-update system
 
 ## 🔒 Privacy & Telemetry
 
