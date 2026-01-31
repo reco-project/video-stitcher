@@ -1,5 +1,6 @@
 import { dialog } from 'electron';
 import { readSettings } from './settings.js';
+import log from 'electron-log';
 
 let autoUpdater = null;
 let updaterAvailable = false;
@@ -11,25 +12,19 @@ let appInstance = null;
 try {
     const pkg = await import('electron-updater');
     autoUpdater = pkg.autoUpdater || pkg.default?.autoUpdater;
-    console.log('[Updater] electron-updater loaded successfully');
+    log.info('[Updater] electron-updater loaded successfully');
     if (autoUpdater) {
         updaterAvailable = true;
 
-        // Configure update server (GitHub releases)
-        autoUpdater.setFeedURL({
-            provider: 'github',
-            owner: 'reco-project',
-            repo: 'video-stitcher',
-        });
-
-        // Configure logging
-        autoUpdater.logger = console;
+        // Configure logging - electron-log for persistent logs (especially important on Windows)
+        autoUpdater.logger = log;
+        autoUpdater.logger.transports.file.level = 'info';
         autoUpdater.autoDownload = false; // Don't download automatically, ask user first
         autoUpdater.autoInstallOnAppQuit = true;
 
         // Update available
         autoUpdater.on('update-available', (info) => {
-            console.log('[Updater] Update available:', info.version);
+            log.info('[Updater] Update available:', info.version);
             updateAvailable = true;
 
             dialog
@@ -44,9 +39,9 @@ try {
                 })
                 .then((result) => {
                     if (result.response === 0) {
-                        console.log('[Updater] User chose to download update');
+                        log.info('[Updater] User chose to download update');
                         autoUpdater.downloadUpdate().catch((err) => {
-                            console.error('[Updater] Error downloading update:', err.message);
+                            log.error('[Updater] Error downloading update:', err.message);
                             if (mainWindow && !mainWindow.isDestroyed()) {
                                 dialog.showMessageBox(mainWindow, {
                                     type: 'error',
@@ -62,13 +57,13 @@ try {
 
         // No update available
         autoUpdater.on('update-not-available', (info) => {
-            console.log('[Updater] No update available. Current version is latest.');
+            log.info('[Updater] No update available. Current version is latest.');
         });
 
         // Download progress
         autoUpdater.on('download-progress', (progress) => {
             const percent = Math.round(progress.percent);
-            console.log(`[Updater] Download progress: ${percent}%`);
+            log.info(`[Updater] Download progress: ${percent}%`);
 
             // Send progress to renderer if needed
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -78,7 +73,7 @@ try {
 
         // Update downloaded
         autoUpdater.on('update-downloaded', (info) => {
-            console.log('[Updater] Update downloaded:', info.version);
+            log.info('[Updater] Update downloaded:', info.version);
 
             // Clear progress bar
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -97,7 +92,7 @@ try {
                 })
                 .then((result) => {
                     if (result.response === 0) {
-                        console.log('[Updater] Quitting and installing update...');
+                        log.info('[Updater] Quitting and installing update...');
                         autoUpdater.quitAndInstall();
                     }
                 });
@@ -105,7 +100,7 @@ try {
 
         // Error handling
         autoUpdater.on('error', (err) => {
-            console.error('[Updater] Error:', err.message);
+            log.error('[Updater] Error:', err.message);
             // Show error to user if window is available
             if (mainWindow && !mainWindow.isDestroyed()) {
                 dialog.showMessageBox(mainWindow, {
@@ -118,7 +113,7 @@ try {
         });
     }
 } catch (err) {
-    console.log('[Updater] electron-updater not available:', err.message);
+    log.info('[Updater] electron-updater not available:', err.message);
 }
 
 export function initAutoUpdater(window, app) {
@@ -126,14 +121,14 @@ export function initAutoUpdater(window, app) {
     appInstance = app;
 
     if (!updaterAvailable) {
-        console.log('[Updater] Auto-updater not available in this build');
+        log.info('[Updater] Auto-updater not available in this build');
         return;
     }
 
     // Read settings to check if auto-update is enabled
     const settings = readSettings(app);
     if (settings.autoUpdateEnabled === false) {
-        console.log('[Updater] Auto-update is disabled in settings');
+        log.info('[Updater] Auto-update is disabled in settings');
         return;
     }
 
@@ -158,14 +153,14 @@ export function initAutoUpdater(window, app) {
 
 export function checkForUpdates(showNoUpdateDialog = true) {
     if (!updaterAvailable || !autoUpdater) {
-        console.log('[Updater] Auto-updater not available');
+        log.info('[Updater] Auto-updater not available');
         return;
     }
 
-    console.log('[Updater] Checking for updates...');
+    log.info('[Updater] Checking for updates...');
 
     autoUpdater.checkForUpdates().catch((err) => {
-        console.error('[Updater] Error checking for updates:', err.message);
+        log.error('[Updater] Error checking for updates:', err.message);
         if (showNoUpdateDialog) {
             dialog.showMessageBox(mainWindow, {
                 type: 'error',
