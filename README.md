@@ -117,13 +117,14 @@ Licensed under **[AGPL-3.0](LICENSE)** — all derived versions must remain open
 Contributions are welcome! Whether you're a developer, designer, coach, or camera enthusiast:
 
 - 🐛 Report bugs and request features via [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
-- 💬 Join the discussion in the [Reddit community](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/)
+- 💬 Join the discussion on the [Reco Project Forum](https://forum.reco-project.org)
 - 🔧 Submit pull requests for improvements
 
 ## 📬 Contact
 
+- **Website:** [reco-project.org](https://reco-project.org)
+- **Forum:** [forum.reco-project.org](https://forum.reco-project.org)
 - **Email:** mohamedtahaguelzim@gmail.com
-- **Reddit:** [r/VeoCamera discussion](https://www.reddit.com/r/VeoCamera/comments/1nr0ic7/how_would_you_design_your_veo/)
 - **GitHub:** [reco-project/video-stitcher](https://github.com/reco-project/video-stitcher)
 
 ---
