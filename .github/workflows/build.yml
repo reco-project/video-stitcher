@@ -339,7 +339,9 @@ jobs:
             artifacts/linux-installers/**/*
             artifacts/windows-installer/**/*
             artifacts/macos-installer/**/*
-          draft: true
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
