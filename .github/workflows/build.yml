@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (optional, overrides tag if provided)'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -28,6 +33,45 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Extract version from tag or input
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            # Use workflow_dispatch input version if provided
+            VERSION="${{ inputs.version }}"
+            echo "Using workflow_dispatch version: $VERSION"
+          elif [ "${{ github.ref_type }}" == "tag" ]; then
+            # Extract version from tag (strip 'v' prefix)
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "Extracted version from tag: $VERSION"
+          else
+            # No version available (shouldn't happen, but fallback)
+            echo "Error: No version available from tag or input"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Setting version to: $VERSION"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Verify version update
+        shell: bash
+        run: |
+          EXPECTED_VERSION="${{ steps.version.outputs.version }}"
+          ACTUAL_VERSION=$(node -p "require('./package.json').version")
+          echo "Expected version: $EXPECTED_VERSION"
+          echo "Actual version: $ACTUAL_VERSION"
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Error: Version mismatch!"
+            exit 1
+          fi
+          echo "✓ Version verified successfully"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
