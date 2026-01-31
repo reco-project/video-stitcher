@@ -65,6 +65,7 @@
 	},
 	"dependencies": {
 		"@electron-forge/publisher-github": "^7.11.1",
+		"electron-log": "^5.4.3",
 		"electron-squirrel-startup": "^1.0.1",
 		"electron-updater": "^6.7.3"
 	},

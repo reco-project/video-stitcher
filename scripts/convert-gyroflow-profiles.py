@@ -356,13 +356,38 @@ def main():
     
     # List of top-level directories in Gyroflow repo
     brands_to_convert = args.brands or [
-        "GoPro",
+        "AKASO",
+        "ARRI",
+        "Blackmagic",
+        "Caddx",
+        "Canon",
         "DJI",
+        "Eken",
+        "Foxeer",
+        "Freefly",
+        "Fujifilm",
+        "GoPro",
+        "Hawkeye",
         "Insta360",
-        "Sony",
-        "Xiaomi",
+        "Kinefinity",
+        "Mobile phones",
+        "Mobius",
+        "Morecam",
+        "Nikon",
+        "Olympus",
+        "Other",
+        "Panasonic",
         "RED",
-        "Blackmagic"
+        "RunCam",
+        "SJCAM",
+        "Sigma",
+        "Sony",
+        "ThiEYE",
+        "Walksnail",
+        "XTU",
+        "Xiaomi",
+        "Z CAM",
+        "apeman"
     ]
     
     # Collect all files

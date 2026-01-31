@@ -120,6 +120,24 @@ export default function About() {
 							<Button
 								variant="outline"
 								className="justify-start"
+								onClick={() => openLink('https://reco-project.org')}
+							>
+								<ExternalLink className="h-4 w-4 mr-2" />
+								Website
+								<ExternalLink className="h-3 w-3 ml-auto" />
+							</Button>
+							<Button
+								variant="outline"
+								className="justify-start"
+								onClick={() => openLink('https://forum.reco-project.org')}
+							>
+								<ExternalLink className="h-4 w-4 mr-2" />
+								Community Forum
+								<ExternalLink className="h-3 w-3 ml-auto" />
+							</Button>
+							<Button
+								variant="outline"
+								className="justify-start"
 								onClick={() => openLink('https://github.com/reco-project/video-stitcher')}
 							>
 								<Github className="h-4 w-4 mr-2" />

@@ -4,154 +4,196 @@ This document describes how releases are created and how the auto-update system 
 
 ## Overview
 
-Reco Video Stitcher uses GitHub Actions to automatically build and release the application. The app supports automatic updates through `electron-updater`, which checks for new versions on GitHub releases.
+Video Stitcher uses **GitHub Actions** to automatically build and release the application.
+The app supports automatic updates through **electron-updater**, which checks for new versions on **GitHub Releases**.
+
+**Important rule:**
+👉 **Git tags are the single source of truth for versions.**
+You do **not** manually bump `package.json` for releases anymore.
+
+---
 
 ## Creating a Release
 
-### 1. Update Version
+### 1. Choose the Version
 
-Update the version in `package.json`:
+We follow semantic versioning:
+
+* **Patch (Z)** – bug fixes
+  `0.2.18 → 0.2.19`
+* **Minor (Y)** – new features
+  `0.2.18 → 0.3.0`
+* **Major (X)** – breaking changes (rare)
+  `0.x → 1.0.0`
+
+### 2. (Optional) Create a Beta / Prerelease
+
+Use prereleases to test without affecting normal users.
 
 ```bash
-npm version patch  # For bug fixes (0.2.17 -> 0.2.18)
-npm version minor  # For new features (0.2.17 -> 0.3.0)
-npm version major  # For breaking changes (0.2.17 -> 1.0.0)
+git tag -a v0.2.19-beta.1 -m "v0.2.19-beta.1"
+git push origin v0.2.19-beta.1
 ```
 
-This will automatically create a git tag.
+* Automatically marked as **Prerelease**
+* Only beta testers should receive it (via opt-in)
 
-### 2. Push the Tag
+### 3. Create a Stable Release
+
+When ready for everyone:
 
 ```bash
-git push origin v0.2.18  # Replace with your version
+git tag -a v0.2.19 -m "v0.2.19"
+git push origin v0.2.19
 ```
 
-### 3. Automated Build
+---
 
-The GitHub Actions workflow (`.github/workflows/build.yml`) will:
+## What the CI Does Automatically
 
-1. Build the app for Windows, macOS, and Linux
-2. Generate installer packages (`.exe`, `.zip`, `.deb`, `.rpm`)
-3. **Generate `latest.yml`, `latest-mac.yml`, and `latest-linux.yml` metadata files**
-4. Create a draft GitHub release with all artifacts
+When a tag `v*` is pushed, the GitHub Actions workflow (`.github/workflows/build.yml`) will:
 
-### 4. Publish the Release
+1. **Extract the version from the tag**
 
-1. Go to [GitHub Releases](https://github.com/reco-project/video-stitcher/releases)
-2. Edit the draft release
-3. Add release notes
-4. Publish the release
+   * `v0.2.19` → `0.2.19`
+   * `v0.2.19-beta.1` → `0.2.19-beta.1`
+
+2. **Update `package.json` and `package-lock.json` in CI**
+
+   * Uses `npm version --no-git-tag-version`
+   * No commit is created
+   * No retagging required
+
+3. **Build the app for all platforms**
+
+   * Windows (`.exe`, `.nupkg`, `RELEASES`)
+   * macOS (`.zip`)
+   * Linux (`.deb`, `.rpm`, `.zip`)
+
+4. **Generate update metadata**
+
+   * `latest.yml` (Windows)
+   * `latest-mac.yml`
+   * `latest-linux.yml`
+
+5. **Create a GitHub Release**
+
+   * Stable tag → normal release
+   * Tag with `-beta` / `-rc` → prerelease
+   * Never created as draft
+
+---
 
 ## Auto-Update System
 
 ### How It Works
 
-The app uses `electron-updater` to check for updates from GitHub releases:
+The app uses **electron-updater**:
 
-1. **Check for Updates**: Every 4 hours (configurable) and on startup
-2. **Download**: If a new version is available, user is prompted to download
-3. **Install**: After download, user can install immediately or on next restart
+1. **Check for updates**
 
-### Configuration
+   * On startup (after delay)
+   * Periodically (every 4 hours by default)
+2. **Download**
 
-Auto-update is configured in:
-- **`electron/updater.js`**: Main auto-updater logic
-- **`frontend/src/features/settings/components/AppSettings.jsx`**: User settings UI
-- **`electron/settings.js`**: Settings persistence
+   * User is prompted before downloading
+3. **Install**
 
-Users can enable/disable auto-updates in **Settings → Updates**.
+   * After download, user can restart to apply the update
 
-### Metadata Files
+### Beta Updates (Opt-In)
 
-The workflow generates three metadata files that electron-updater uses to detect new versions:
+Beta updates are **disabled by default**.
 
-#### `latest.yml` (Windows)
-```yaml
-version: 0.2.17
-files:
-  - url: Video-Stitcher-Setup-0.2.17.exe
-    sha512: <hash>
-    size: <bytes>
-  - url: Video-Stitcher-0.2.17-full.nupkg
-    sha512: <hash>
-    size: <bytes>
-path: Video-Stitcher-Setup-0.2.17.exe
-sha512: <hash>
-releaseDate: '2024-01-31T00:00:00.000Z'
-```
-
-#### `latest-mac.yml` (macOS)
-```yaml
-version: 0.2.17
-files:
-  - url: Video-Stitcher-darwin-arm64-0.2.17.zip
-    sha512: <hash>
-    size: <bytes>
-path: Video-Stitcher-darwin-arm64-0.2.17.zip
-sha512: <hash>
-releaseDate: '2024-01-31T00:00:00.000Z'
-```
-
-#### `latest-linux.yml` (Linux)
-```yaml
-version: 0.2.17
-files:
-  - url: Video-Stitcher-linux-x64-0.2.17.zip
-    sha512: <hash>
-    size: <bytes>
-path: Video-Stitcher-linux-x64-0.2.17.zip
-sha512: <hash>
-releaseDate: '2024-01-31T00:00:00.000Z'
-```
-
-These files are automatically generated by `scripts/generate-latest-yml.cjs` during the build process.
-
-## Manual Release (if needed)
-
-If you need to create a release manually:
+To enable beta updates (for testers/devs):
 
 ```bash
-# Build for your platform
-npm run electron-make
-
-# Generate latest yml files
-node scripts/generate-latest-yml.cjs
-
-# Upload artifacts to GitHub release manually
-# Files are in: out/make/
+VIDEO_STITCHER_BETA_UPDATES=1
 ```
+
+When enabled:
+
+* Prerelease versions (`-beta`, `-rc`) are allowed
+* Stable users are not affected
+
+---
+
+## Metadata Files
+
+The workflow generates metadata files used by `electron-updater`:
+
+### `latest.yml` (Windows)
+
+Includes installer + `.nupkg` references.
+
+### `latest-mac.yml` (macOS)
+
+Includes macOS zip.
+
+### `latest-linux.yml` (Linux)
+
+Includes Linux zip.
+
+⚠️ **Windows also requires `RELEASES`**, which is generated by Squirrel and uploaded by CI.
+
+---
 
 ## Testing Auto-Updates
 
-To test auto-updates locally:
+### Stable → Stable
 
-1. Build and release version A (e.g., 0.2.17)
-2. Install it on your machine
-3. Build and release version B (e.g., 0.2.18)
-4. Run version A and wait for the update check
-5. You should see a prompt to download version B
+1. Install version A (e.g. `0.2.18`)
+2. Release version B (`v0.2.19`)
+3. Run version A
+4. Update prompt should appear
+
+### Stable → Beta
+
+1. Install stable version
+2. Enable beta updates:
+
+   ```bash
+   VIDEO_STITCHER_BETA_UPDATES=1
+   ```
+3. Release `v0.2.19-beta.1`
+4. Update prompt should appear
+
+---
 
 ## Troubleshooting
 
 ### Updates Not Working?
 
-1. **Check Settings**: Make sure auto-update is enabled in Settings → Updates
-2. **Check Console**: Look for `[Updater]` logs in the Electron console
-3. **Check Release**: Ensure the release is published (not draft) and includes the `latest*.yml` files
-4. **Check Network**: Some networks may block GitHub downloads
+1. **Check version**
+   Settings → About
+2. **Check logs**
 
-### Manual Update Check
+   * Windows: `%APPDATA%\VideoStitcher\logs\`
+3. **Check release**
 
-Users can manually trigger an update check from the Help menu (if implemented) or by restarting the app.
+   * Must be published (not draft)
+   * Must include `latest*.yml`
+   * Windows must include `RELEASES`
+4. **Network**
 
-## Security
+   * GitHub downloads must be reachable
 
-- All downloads are verified using SHA512 checksums
-- Downloads are only fetched from official GitHub releases
-- Code signing is recommended (see Windows certificate setup in workflow)
+⚠️ Older versions with a broken updater may require **one manual install** to get back on the update path.
+
+---
+
+## Important Rules
+
+* ❌ Do not manually bump `package.json` for releases
+* ❌ Do not retag existing versions
+* ✅ Always create a new tag
+* ✅ Use prereleases for testing
+* ✅ CI handles versioning and packaging
+
+---
 
 ## References
 
-- [electron-updater documentation](https://www.electron.build/auto-update)
-- [GitHub Actions workflow](.github/workflows/build.yml)
-- [Update script](scripts/generate-latest-yml.cjs)
+* electron-updater documentation
+* GitHub Actions workflow: `.github/workflows/build.yml`
+* Update metadata generator: `scripts/generate-latest-yml.cjs`

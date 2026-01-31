@@ -1,5 +1,6 @@
 import { dialog } from 'electron';
 import { readSettings } from './settings.js';
+import log from 'electron-log';
 
 let autoUpdater = null;
 let updaterAvailable = false;
@@ -7,29 +8,55 @@ let updateAvailable = false;
 let mainWindow = null;
 let appInstance = null;
 
+// Check if beta updates are enabled via environment variable
+const betaUpdatesEnabled = process.env.VIDEO_STITCHER_BETA_UPDATES === '1';
+
+// Constants for log truncation
+const MAX_RELEASE_NOTES_LENGTH = 100;
+const MAX_STACK_TRACE_LENGTH = 200;
+
 // Try to load electron-updater (may not be available in all builds)
 try {
     const pkg = await import('electron-updater');
     autoUpdater = pkg.autoUpdater || pkg.default?.autoUpdater;
-    console.log('[Updater] electron-updater loaded successfully');
+    log.info('[Updater] electron-updater loaded successfully');
+    
+    // Log the electron-log file path for diagnostics
+    const logFilePath = log.transports.file.getFile()?.path || 'unknown';
+    log.info('[Updater] Log file location:', logFilePath);
+    
     if (autoUpdater) {
         updaterAvailable = true;
 
-        // Configure update server (GitHub releases)
-        autoUpdater.setFeedURL({
-            provider: 'github',
-            owner: 'reco-project',
-            repo: 'video-stitcher',
-        });
-
-        // Configure logging
-        autoUpdater.logger = console;
+        // Configure logging - electron-log for persistent logs (especially important on Windows)
+        autoUpdater.logger = log;
+        autoUpdater.logger.transports.file.level = 'info';
         autoUpdater.autoDownload = false; // Don't download automatically, ask user first
         autoUpdater.autoInstallOnAppQuit = true;
+        
+        // Configure beta/prerelease updates
+        if (betaUpdatesEnabled) {
+            autoUpdater.allowPrerelease = true;
+            log.info('[Updater] Beta updates ENABLED - will receive prerelease versions');
+        } else {
+            autoUpdater.allowPrerelease = false;
+            log.info('[Updater] Beta updates DISABLED - stable releases only');
+        }
+
+        // Checking for update
+        autoUpdater.on('checking-for-update', () => {
+            log.info('[Updater] Event: checking-for-update');
+        });
 
         // Update available
         autoUpdater.on('update-available', (info) => {
-            console.log('[Updater] Update available:', info.version);
+            log.info('[Updater] Event: update-available');
+            log.info('[Updater] Update available:', JSON.stringify({
+                version: info.version,
+                releaseDate: info.releaseDate,
+                releaseName: info.releaseName,
+                releaseNotes: info.releaseNotes?.substring(0, MAX_RELEASE_NOTES_LENGTH) || 'N/A'
+            }, null, 2));
             updateAvailable = true;
 
             dialog
@@ -44,21 +71,34 @@ try {
                 })
                 .then((result) => {
                     if (result.response === 0) {
-                        console.log('[Updater] User chose to download update');
-                        autoUpdater.downloadUpdate();
+                        log.info('[Updater] User chose to download update');
+                        autoUpdater.downloadUpdate().catch((err) => {
+                            log.error('[Updater] Error downloading update:', err.message);
+                            if (mainWindow && !mainWindow.isDestroyed()) {
+                                dialog.showMessageBox(mainWindow, {
+                                    type: 'error',
+                                    title: 'Download Error',
+                                    message: 'Failed to download update',
+                                    detail: err.message,
+                                });
+                            }
+                        });
                     }
                 });
         });
 
         // No update available
         autoUpdater.on('update-not-available', (info) => {
-            console.log('[Updater] No update available. Current version is latest.');
+            log.info('[Updater] Event: update-not-available');
+            log.info('[Updater] No update available. Current version is latest:', JSON.stringify({
+                version: info.version
+            }, null, 2));
         });
 
         // Download progress
         autoUpdater.on('download-progress', (progress) => {
             const percent = Math.round(progress.percent);
-            console.log(`[Updater] Download progress: ${percent}%`);
+            log.info(`[Updater] Event: download-progress - ${percent}% (${progress.transferred}/${progress.total} bytes, speed: ${Math.round(progress.bytesPerSecond / 1024)} KB/s)`);
 
             // Send progress to renderer if needed
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -68,7 +108,12 @@ try {
 
         // Update downloaded
         autoUpdater.on('update-downloaded', (info) => {
-            console.log('[Updater] Update downloaded:', info.version);
+            log.info('[Updater] Event: update-downloaded');
+            log.info('[Updater] Update downloaded successfully:', JSON.stringify({
+                version: info.version,
+                releaseDate: info.releaseDate,
+                downloadedFile: info.downloadedFile || 'N/A'
+            }, null, 2));
 
             // Clear progress bar
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -87,7 +132,7 @@ try {
                 })
                 .then((result) => {
                     if (result.response === 0) {
-                        console.log('[Updater] Quitting and installing update...');
+                        log.info('[Updater] Quitting and installing update...');
                         autoUpdater.quitAndInstall();
                     }
                 });
@@ -95,11 +140,24 @@ try {
 
         // Error handling
         autoUpdater.on('error', (err) => {
-            console.error('[Updater] Error:', err.message);
+            log.error('[Updater] Event: error');
+            log.error('[Updater] Error details:', JSON.stringify({
+                message: err.message,
+                stack: err.stack?.substring(0, MAX_STACK_TRACE_LENGTH) || 'N/A'
+            }, null, 2));
+            // Show error to user if window is available
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                dialog.showMessageBox(mainWindow, {
+                    type: 'error',
+                    title: 'Update Error',
+                    message: 'An error occurred with the auto-updater',
+                    detail: err.message,
+                });
+            }
         });
     }
 } catch (err) {
-    console.log('[Updater] electron-updater not available:', err.message);
+    log.info('[Updater] electron-updater not available:', err.message);
 }
 
 export function initAutoUpdater(window, app) {
@@ -107,14 +165,14 @@ export function initAutoUpdater(window, app) {
     appInstance = app;
 
     if (!updaterAvailable) {
-        console.log('[Updater] Auto-updater not available in this build');
+        log.info('[Updater] Auto-updater not available in this build');
         return;
     }
 
     // Read settings to check if auto-update is enabled
     const settings = readSettings(app);
     if (settings.autoUpdateEnabled === false) {
-        console.log('[Updater] Auto-update is disabled in settings');
+        log.info('[Updater] Auto-update is disabled in settings');
         return;
     }
 
@@ -139,14 +197,17 @@ export function initAutoUpdater(window, app) {
 
 export function checkForUpdates(showNoUpdateDialog = true) {
     if (!updaterAvailable || !autoUpdater) {
-        console.log('[Updater] Auto-updater not available');
+        log.info('[Updater] Auto-updater not available');
         return;
     }
 
-    console.log('[Updater] Checking for updates...');
+    log.info('[Updater] Checking for updates...');
+    log.info('[Updater] Beta mode:', betaUpdatesEnabled ? 'ENABLED' : 'DISABLED');
+    log.info('[Updater] allowPrerelease:', autoUpdater.allowPrerelease);
 
     autoUpdater.checkForUpdates().catch((err) => {
-        console.error('[Updater] Error checking for updates:', err.message);
+        log.error('[Updater] Error checking for updates:', err.message);
+        log.error('[Updater] Error stack:', err.stack);
         if (showNoUpdateDialog) {
             dialog.showMessageBox(mainWindow, {
                 type: 'error',
