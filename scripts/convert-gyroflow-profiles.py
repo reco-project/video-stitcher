@@ -51,6 +51,152 @@ def normalize_camera_name(name: str) -> str:
     return name
 
 
+def normalize_brand_name(brand: str) -> str:
+    """Normalize brand names to Title Case for consistency.
+    
+    Handles common variations like 'GOPRO' -> 'GoPro', 'DJI' stays 'DJI', etc.
+    """
+    # Known brand name mappings (uppercase key -> proper casing)
+    BRAND_MAPPINGS = {
+        # Action cameras
+        "GOPRO": "GoPro",
+        "DJI": "DJI",
+        "SJCAM": "SJCAM",
+        "AKASO": "Akaso",
+        "EKEN": "Eken",
+        "COOAU": "Cooau",
+        "COTUO": "Cotuo",
+        "FIMI": "Fimi",
+        "INSTA360": "Insta360",
+        "INSTA TITAN": "Insta360",
+        "ACTIVEON": "Activeon",
+        "AIKUCAM": "Aikucam",
+        "AXNEN": "Axnen",
+        "RUNCAM": "RunCam",
+        "WALKSNAIL": "Walksnail",
+        "WALKSNAIL AVATAR V2": "Walksnail",
+        "WALKSNAIL AVATAR V2 PRO": "Walksnail",
+        "THIEYE": "ThiEYE",
+        
+        # FPV drones
+        "BETAFPV": "BetaFPV",
+        "HDZERO": "HDZero",
+        "CADDX": "Caddx",
+        "FOXEER": "Foxeer",
+        "HAWKEYE": "Hawkeye",
+        
+        # Smartphones - Xiaomi ecosystem
+        "XIAOMI": "Xiaomi",
+        "MI": "Xiaomi",
+        "REDMI": "Xiaomi",
+        "POCO": "Xiaomi",
+        
+        # Smartphones - Other Chinese
+        "ONEPLUS": "OnePlus",
+        "OPPO": "Oppo",
+        "VIVO": "Vivo",
+        "REALME": "Realme",
+        "HONOR": "Honor",
+        "HONOR 80": "Honor",
+        "HUAWEI": "Huawei",
+        "MATE40PRO": "Huawei",
+        "NOVA7": "Huawei",
+        "IQOO": "iQOO",
+        "IQOO 9": "iQOO",
+        "IQOO Z3": "iQOO",
+        "ZTE": "ZTE",
+        "NUBIA": "ZTE",
+        "MEIZU": "Meizu",
+        "TECNO": "Tecno",
+        "TECHNO SPARK": "Tecno",
+        "INFINIX": "Infinix",
+        "INFINIX HOT 30": "Infinix",
+        
+        # Smartphones - Korean/Japanese
+        "SAMSUNG": "Samsung",
+        "LG": "LG",
+        "LGE": "LG",
+        "LG V30": "LG",
+        "SONY": "Sony",
+        
+        # Smartphones - Western
+        "APPLE": "Apple",
+        "GOOGLE": "Google",
+        "MOTOROLA": "Motorola",
+        "NOKIA": "Nokia",
+        "BLACKBERRY": "Blackberry",
+        
+        # Professional cameras
+        "BLACKMAGIC": "Blackmagic",
+        "BMD": "Blackmagic",
+        "RED": "RED",
+        "ARRI": "Arri",
+        "CANON": "Canon",
+        "NIKON": "Nikon",
+        "SONY": "Sony",
+        "PANASONIC": "Panasonic",
+        "FUJIFILM": "Fujifilm",
+        "FUFIFILM": "Fujifilm",  # Common typo
+        "OLYMPUS": "Olympus",
+        "PENTAX": "Pentax",
+        "LEICA": "Leica",
+        "HASSELBLAD": "Hasselblad",
+        "SIGMA": "Sigma",
+        "RICOH": "Ricoh",
+        "Z CAM": "Z-Cam",
+        "KINEFINITY": "Kinefinity",
+        
+        # Other
+        "AEE": "AEE",
+        "HP": "HP",
+        "HTC": "HTC",
+        "JVC": "JVC",
+        "TCL": "TCL",
+        "DDPAI": "DDPAI",
+        "YI": "YI",
+        "HOLY STONE": "Holystone",
+        "HOLYSTONE": "Holystone",
+        "FEIYU TECH": "Feiyu Tech",
+        "FEIYU-TECH": "Feiyu Tech",
+        "GARMIN": "Garmin",
+        "TOMTOM": "TomTom",
+        "RASPBERRY PI": "Raspberry Pi",
+        "SKYDIO": "Skydio",
+        "DRIFT": "Drift",
+        "MOBIUS": "Mobius",
+        "GITUP": "GitUp",
+        "ROLLEI": "Rollei",
+        "ROLLEI (禄来)": "Rollei",
+    }
+    
+    # Major brands to keep separate (all others go to "Others")
+    # These are brands with 10+ profiles or well-known camera brands
+    MAJOR_BRANDS = {
+        "GoPro", "DJI", "SJCAM", "Akaso", "Insta360", "RunCam", "Walksnail",
+        "BetaFPV", "HDZero", "Caddx", "Foxeer", "Hawkeye",  # Action/FPV
+        "Xiaomi", "OnePlus", "Oppo", "Vivo", "Realme", "Honor", "Huawei",
+        "Samsung", "LG", "Sony", "Apple", "Google", "Motorola",  # Smartphones
+        "Blackmagic", "RED", "Arri", "Canon", "Nikon", "Panasonic",
+        "Fujifilm", "Olympus", "Sigma", "Z-Cam", "Kinefinity",  # Pro cameras
+        "XTU", "Apeman", "Generic",  # Other major
+    }
+    
+    # Check for known mapping first (case-insensitive)
+    brand_upper = brand.upper().strip()
+    if brand_upper in BRAND_MAPPINGS:
+        normalized = BRAND_MAPPINGS[brand_upper]
+    elif len(brand) <= 3 and brand.isupper():
+        normalized = brand
+    else:
+        normalized = brand.title()
+    
+    # If not a major brand, put in "Others"
+    if normalized not in MAJOR_BRANDS:
+        return "Others"
+    
+    return normalized
+
+
 def parse_gyroflow_json(data: Dict[str, Any], file_path: str) -> Optional[Tuple[str, str, str]]:
     """
     Parse Gyroflow JSON and extract brand, model, preset info.
@@ -105,8 +251,8 @@ def convert_to_our_format(data: Dict[str, Any], preset_name: str) -> Dict[str, A
     try:
         fisheye = data.get("fisheye_params", {})
         
-        # Get camera info
-        camera_brand = data.get("camera_brand", "Unknown")
+        # Get camera info and normalize
+        camera_brand = normalize_brand_name(data.get("camera_brand", "Unknown"))
         camera_model = data.get("camera_model", "Unknown")
         
         # Normalize camera model to avoid duplicates

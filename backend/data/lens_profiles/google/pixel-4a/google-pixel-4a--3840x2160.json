@@ -2,26 +2,26 @@
 	"id": "google-pixel-4a--3840x2160",
 	"camera_brand": "Google",
 	"camera_model": "Pixel 4a",
-	"lens_model": null,
+	"lens_model": "28mm",
 	"resolution": {
 		"width": 3840,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 2995.9909479590374,
-		"fy": 2999.184423318274,
-		"cx": 1890.0674835754064,
-		"cy": 1024.1456202308104
+		"fx": 3140.8757418247387,
+		"fy": 3110.4235539704455,
+		"cx": 1919.900692325789,
+		"cy": 1078.555522045865
 	},
 	"distortion_coeffs": [
-		0.5644074437630566,
-		-1.3729975787319928,
-		4.700933957144085,
-		-4.958663640073503
+		0.6214034761518125,
+		-2.0536428047702913,
+		7.309444920782366,
+		-8.516643471575865
 	],
 	"metadata": {
-		"calibrated_by": "Marek Koc\u00far",
+		"calibrated_by": "Windows",
 		"source": "gyroflow",
 		"official": true
 	}

@@ -2,26 +2,26 @@
 	"id": "nikon-z8--1920x1080",
 	"camera_brand": "Nikon",
 	"camera_model": "Z8",
-	"lens_model": "z 24-120 f4.0",
+	"lens_model": "NIKKOR z24-70 F2.8s",
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1652.2317608243975,
-		"fy": 1644.881064543921,
-		"cx": 965.5612711649636,
-		"cy": 559.5538252175443
+		"fx": 2000.897631869314,
+		"fy": 2001.546075419366,
+		"cx": 972.4214742633302,
+		"cy": 508.304817641148
 	},
 	"distortion_coeffs": [
-		0.3920005512635956,
-		2.3993994232359364,
-		-17.4821630277449,
-		35.47645265786211
+		0.29220213801957945,
+		0.9029962135099168,
+		-6.317889768856066,
+		19.49653502134663
 	],
 	"metadata": {
-		"calibrated_by": "ShiYuan",
+		"calibrated_by": "\u7fdf\u6893\u6862",
 		"source": "gyroflow",
 		"official": true
 	}

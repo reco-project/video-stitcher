@@ -2,26 +2,26 @@
 	"id": "blackmagic-micro-studio-camera-4k-g2--3840x2160",
 	"camera_brand": "Blackmagic",
 	"camera_model": "Micro Studio Camera 4K G2",
-	"lens_model": "DJI MFT 15mm",
+	"lens_model": "Laowa 7.5mm",
 	"resolution": {
 		"width": 3840,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 3200.572760095045,
-		"fy": 3207.9243339499094,
-		"cx": 1934.5815226621237,
-		"cy": 1132.0399763612345
+		"fx": 1644.741707111311,
+		"fy": 1645.8254324875684,
+		"cx": 1900.8752585529287,
+		"cy": 1074.7941182356794
 	},
 	"distortion_coeffs": [
-		0.10873881126285467,
-		0.10485260053576828,
-		-0.3621395594573128,
-		0.8406526341777711
+		0.3250437108380779,
+		0.11829144074359478,
+		-0.050914367211252066,
+		0.09851052624662414
 	],
 	"metadata": {
-		"calibrated_by": "William Genovese",
+		"calibrated_by": "Manuel Diaz Mantra Aerials",
 		"source": "gyroflow",
 		"official": true
 	}

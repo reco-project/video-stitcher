@@ -2,26 +2,26 @@
 	"id": "sony-a7siii--3840x2160",
 	"camera_brand": "Sony",
 	"camera_model": "a7sIII",
-	"lens_model": "Sigma 24-70 - 24.00mm",
+	"lens_model": "Great Joy 85mm 1.8x",
 	"resolution": {
 		"width": 3840,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 2894.3989009530605,
-		"fy": 2893.119571100565,
-		"cx": 1920.6294343975292,
-		"cy": 1082.7237296750668
+		"fx": 9200.806912925022,
+		"fy": 18627.251943054605,
+		"cx": 696.4188189915466,
+		"cy": 1486.4005255562722
 	},
 	"distortion_coeffs": [
-		0.30466111834848214,
-		0.16758737284988004,
-		0.6085646683148801,
-		-0.9103100227800685
+		0.49301959116746474,
+		-5.798967901080299,
+		37.10777219545091,
+		-100.9020400208736
 	],
 	"metadata": {
-		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0430\u043d\u0434\u0440 \u0421\u0435\u043d\u0430\u0442\u043e\u0432",
+		"calibrated_by": "rapha",
 		"source": "gyroflow",
 		"official": true
 	}

@@ -2,26 +2,26 @@
 	"id": "red-komodo-6k--6910x3645",
 	"camera_brand": "RED",
 	"camera_model": "KOMODO 6K",
-	"lens_model": "DULENS",
+	"lens_model": "Meike FF 50mm Cine, Canon Speedbooster, 40FPSi",
 	"resolution": {
 		"width": 6910,
 		"height": 3645
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 10889.552162402271,
-		"fy": 10888.417573624083,
-		"cx": 3448.2013094031886,
-		"cy": 1810.1743132805632
+		"fx": 9197.069957741924,
+		"fy": 9204.957091247508,
+		"cx": 3443.988505088574,
+		"cy": 1828.2507360983757
 	},
 	"distortion_coeffs": [
-		0.1337358428688672,
-		3.4311209526786666,
-		-34.74775687767055,
-		212.28178867930737
+		0.20496609596395607,
+		0.6356661171272872,
+		-1.7761133877603954,
+		16.936931853255064
 	],
 	"metadata": {
-		"calibrated_by": "LIAN",
+		"calibrated_by": "Miko\u0142aj Szczepka",
 		"source": "gyroflow",
 		"official": true
 	}

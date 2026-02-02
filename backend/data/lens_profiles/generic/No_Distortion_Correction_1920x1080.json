@@ -1,0 +1,29 @@
+{
+    "id": "generic-no-correction--1920x1080",
+    "camera_brand": "Generic",
+    "camera_model": "No Correction",
+    "lens_model": "Passthrough",
+    "resolution": {
+        "width": 1920,
+        "height": 1080
+    },
+    "distortion_model": "opencv_fisheye",
+    "camera_matrix": {
+        "fx": 960.0,
+        "fy": 960.0,
+        "cx": 960.0,
+        "cy": 540.0
+    },
+    "distortion_coeffs": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+    ],
+    "metadata": {
+        "official": true,
+        "source": "Video Stitcher",
+        "source_file": "No_Distortion_Correction_1920x1080.json",
+        "notes": "Use this profile when your video is already corrected or doesn't need lens distortion correction. Applies zero distortion adjustment."
+    }
+}

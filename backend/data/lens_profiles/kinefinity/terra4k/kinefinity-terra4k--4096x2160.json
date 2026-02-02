@@ -1,24 +1,24 @@
 {
 	"id": "kinefinity-terra4k--4096x2160",
-	"camera_brand": "kinefinity",
-	"camera_model": "terra4k",
-	"lens_model": "canonEF24-105(24mm)",
+	"camera_brand": "Kinefinity",
+	"camera_model": "Terra4k",
+	"lens_model": "canonEF24-105(50mm)",
 	"resolution": {
 		"width": 4096,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 3979.185824718634,
-		"fy": 3982.100345834805,
-		"cx": 2061.3539344758933,
-		"cy": 1099.1302119208588
+		"fx": 7447.260242988734,
+		"fy": 7453.513996678934,
+		"cx": 2132.6865305365036,
+		"cy": 1119.0120612657895
 	},
 	"distortion_coeffs": [
-		0.16118480025259646,
-		0.11022755301507084,
-		0.11562137172557178,
-		0.3935162148575219
+		0.42677991469461646,
+		0.007336250480803501,
+		-9.378265518469377,
+		126.54866873077836
 	],
 	"metadata": {
 		"calibrated_by": "Javier John",

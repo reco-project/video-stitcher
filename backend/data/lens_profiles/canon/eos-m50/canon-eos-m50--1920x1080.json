@@ -2,26 +2,26 @@
 	"id": "canon-eos-m50--1920x1080",
 	"camera_brand": "Canon",
 	"camera_model": "EOS M50",
-	"lens_model": "Canon 50mm f1.8",
+	"lens_model": "Sigma 30mm f1.4 EF-M",
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 3263.8487459688936,
-		"fy": 3264.604581886628,
-		"cx": 967.1790797139008,
-		"cy": 529.3155715453937
+		"fx": 2799.737026810301,
+		"fy": 2805.211403131305,
+		"cx": 951.0718889609686,
+		"cy": 522.7764835332996
 	},
 	"distortion_coeffs": [
-		0.19402621308668577,
-		-7.540449602132336,
-		132.72714121079392,
-		-709.064712905533
+		0.22151890978626956,
+		-0.5181909276355943,
+		0.4955643049906572,
+		18.124010905198972
 	],
 	"metadata": {
-		"calibrated_by": "CurrySausage",
+		"calibrated_by": "Niklas",
 		"source": "gyroflow",
 		"official": true
 	}

@@ -1,27 +1,27 @@
 {
 	"id": "canon-r6--1920x1080",
 	"camera_brand": "Canon",
-	"camera_model": "R6",
-	"lens_model": "50MM STM",
+	"camera_model": "r6",
+	"lens_model": "sigma 24-70",
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 3072.3524281970576,
-		"fy": 3072.9470576004205,
-		"cx": 905.9972307178784,
-		"cy": 497.5912864891657
+		"fx": 2159.5925569114206,
+		"fy": 2111.569047007851,
+		"cx": 1010.2417696147434,
+		"cy": 1113.1929961804044
 	},
 	"distortion_coeffs": [
-		0.1774591067461005,
-		2.364773388500243,
-		-35.50703264839997,
-		154.61882723849826
+		-0.47765904585960134,
+		6.259967182960115,
+		-28.329401694030093,
+		50.747873231716405
 	],
 	"metadata": {
-		"calibrated_by": "Mu'izz Zahari",
+		"calibrated_by": "ROG",
 		"source": "gyroflow",
 		"official": true
 	}

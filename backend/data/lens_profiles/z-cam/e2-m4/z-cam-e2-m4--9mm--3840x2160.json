@@ -1,27 +1,27 @@
 {
 	"id": "z-cam-e2-m4--9mm--3840x2160",
-	"camera_brand": "Z CAM",
+	"camera_brand": "Z-Cam",
 	"camera_model": "E2-M4",
-	"lens_model": "Panasonic Leica DG Vario-Elmarit 8-18mm",
+	"lens_model": "Laowa",
 	"resolution": {
 		"width": 3840,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1770.2988110257156,
-		"fy": 1772.5292270390526,
-		"cx": 1916.891075773303,
-		"cy": 1097.781344893397
+		"fx": 2186.7059741093535,
+		"fy": 2184.516658604367,
+		"cx": 1938.722858619524,
+		"cy": 1055.3900643180723
 	},
 	"distortion_coeffs": [
-		0.3242290080481511,
-		0.10210284700832845,
-		-0.11890753789830052,
-		0.10138533076610076
+		0.3609204633703956,
+		0.018807501835925534,
+		0.5899080621935666,
+		-1.0567820172207525
 	],
 	"metadata": {
-		"calibrated_by": "Joshua Hardee",
+		"calibrated_by": "\ucc28\ubc94\uc900",
 		"notes": "9mm",
 		"source": "gyroflow",
 		"official": true

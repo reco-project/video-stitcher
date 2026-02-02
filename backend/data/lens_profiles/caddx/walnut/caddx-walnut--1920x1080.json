@@ -2,26 +2,26 @@
 	"id": "caddx-walnut--1920x1080",
 	"camera_brand": "Caddx",
 	"camera_model": "Walnut",
-	"lens_model": "Caddx/Caddx_Walnut_NO-LDC_1080P120_1080p_16by9_1920x1080-120fps wide",
+	"lens_model": "wide",
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 893.3353724864148,
-		"fy": 883.3810952133,
-		"cx": 958.637588736749,
-		"cy": 594.8675588164
+		"fx": 765.5772797544518,
+		"fy": 765.5239999205644,
+		"cx": 947.0026446052896,
+		"cy": 537.443739040753
 	},
 	"distortion_coeffs": [
-		0.04385446938023046,
-		0.029881875187061833,
-		-0.011700917760428637,
-		-0.0005796920249234274
+		0.04416902648034033,
+		-0.03732350799506871,
+		0.009210898277263188,
+		-0.002134848546362542
 	],
 	"metadata": {
-		"calibrated_by": "Bartek",
+		"calibrated_by": "\u5c0f",
 		"source": "gyroflow",
 		"official": true
 	}

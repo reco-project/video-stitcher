@@ -2,26 +2,26 @@
 	"id": "realme-c2--1920x1080",
 	"camera_brand": "Realme",
 	"camera_model": "C2",
-	"lens_model": "PDAF",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1318.3832004268004,
-		"fy": 1321.770104624322,
-		"cx": 979.487441452002,
-		"cy": 538.6299255439677
+		"fx": 1424.3601874499177,
+		"fy": 1424.1274061618824,
+		"cx": 973.0740126955294,
+		"cy": 550.5567683290617
 	},
 	"distortion_coeffs": [
-		0.5369874453896489,
-		-1.3199547777458862,
-		5.343570440082176,
-		-6.7864697057027925
+		0.581651357921559,
+		-2.0591041526890472,
+		9.362166297502364,
+		-13.903283360832727
 	],
 	"metadata": {
-		"calibrated_by": "PANJI NUGROHO",
+		"calibrated_by": "Alika Jehan",
 		"source": "gyroflow",
 		"official": true
 	}

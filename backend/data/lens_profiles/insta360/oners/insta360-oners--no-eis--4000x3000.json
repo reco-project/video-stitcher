@@ -2,26 +2,26 @@
 	"id": "insta360-oners--no-eis--4000x3000",
 	"camera_brand": "Insta360",
 	"camera_model": "OneRS",
-	"lens_model": "Unknown1 104",
+	"lens_model": "Wide 86",
 	"resolution": {
 		"width": 4000,
 		"height": 3000
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1856.6244269173608,
-		"fy": 1855.2124546880011,
-		"cx": 1989.9660512079593,
-		"cy": 1493.392181240683
+		"fx": 1842.749993164675,
+		"fy": 1843.1406977629904,
+		"cx": 2007.6225195081183,
+		"cy": 1485.5022300511698
 	},
 	"distortion_coeffs": [
-		0.08720472427265596,
-		-0.09135166114775103,
-		0.0950280701485394,
-		-0.04410398661834533
+		0.08653297559956172,
+		-0.07765568736383133,
+		0.0842552547812827,
+		-0.043101072478055495
 	],
 	"metadata": {
-		"calibrated_by": "Jason moussa",
+		"calibrated_by": "RRec Studio",
 		"notes": "NO-EIS",
 		"source": "gyroflow",
 		"official": true

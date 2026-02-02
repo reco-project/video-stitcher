@@ -113,12 +113,28 @@ def test_count_profiles():
 
 def test_get_profile_by_id():
     """Test GET /api/profiles/{id} - Get specific profile"""
-    response = client.get("/api/profiles/gopro-hero10-black-linear-3840x2160")
+    # First create a test profile
+    test_profile = {
+        "id": "test-get-by-id-profile",
+        "camera_brand": "TestBrand",
+        "camera_model": "TestModel",
+        "resolution": {"width": 1920, "height": 1080},
+        "distortion_model": "fisheye_kb4",
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
+    }
+    client.post("/api/profiles", json=test_profile)
+    
+    # Now test get by id
+    response = client.get("/api/profiles/test-get-by-id-profile")
     assert response.status_code == 200
     profile = response.json()
-    assert profile['id'] == 'gopro-hero10-black-linear-3840x2160'
-    assert profile['camera_brand'] == 'GoPro'
-    assert profile['camera_model'] == 'HERO10 Black'
+    assert profile['id'] == 'test-get-by-id-profile'
+    assert profile['camera_brand'] == 'TestBrand'
+    assert profile['camera_model'] == 'TestModel'
+    
+    # Cleanup
+    client.delete("/api/profiles/test-get-by-id-profile")
 
 
 def test_get_nonexistent_profile():
@@ -279,43 +295,102 @@ def test_validation_wrong_coefficient_count():
 
 def test_toggle_favorite_add():
     """Test PATCH /api/profiles/{id}/favorite - Add to favorites"""
-    response = client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
+    # First create a test profile
+    test_profile = {
+        "id": "test-favorite-add-profile",
+        "camera_brand": "TestBrand",
+        "camera_model": "TestModel",
+        "resolution": {"width": 1920, "height": 1080},
+        "distortion_model": "fisheye_kb4",
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
+    }
+    client.post("/api/profiles", json=test_profile)
+    
+    response = client.patch("/api/profiles/test-favorite-add-profile/favorite", json={"is_favorite": True})
     assert response.status_code == 200
     profile = response.json()
     assert profile["is_favorite"] is True
     print("Added profile to favorites")
+    
+    # Cleanup
+    client.patch("/api/profiles/test-favorite-add-profile/favorite", json={"is_favorite": False})
+    client.delete("/api/profiles/test-favorite-add-profile")
 
 
 def test_toggle_favorite_remove():
     """Test PATCH /api/profiles/{id}/favorite - Remove from favorites"""
-    # First add
-    client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
+    # First create a test profile
+    test_profile = {
+        "id": "test-favorite-remove-profile",
+        "camera_brand": "TestBrand",
+        "camera_model": "TestModel",
+        "resolution": {"width": 1920, "height": 1080},
+        "distortion_model": "fisheye_kb4",
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
+    }
+    client.post("/api/profiles", json=test_profile)
+    
+    # First add to favorites
+    client.patch("/api/profiles/test-favorite-remove-profile/favorite", json={"is_favorite": True})
 
     # Then remove
-    response = client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": False})
+    response = client.patch("/api/profiles/test-favorite-remove-profile/favorite", json={"is_favorite": False})
     assert response.status_code == 200
     profile = response.json()
     assert profile["is_favorite"] is False
     print("Removed profile from favorites")
+    
+    # Cleanup
+    client.delete("/api/profiles/test-favorite-remove-profile")
 
 
 def test_list_favorite_ids():
     """Test GET /api/profiles/favorites/ids - List favorite IDs"""
-    # Add some favorites first
-    client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
+    # First create a test profile
+    test_profile = {
+        "id": "test-list-favorite-ids-profile",
+        "camera_brand": "TestBrand",
+        "camera_model": "TestModel",
+        "resolution": {"width": 1920, "height": 1080},
+        "distortion_model": "fisheye_kb4",
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
+    }
+    client.post("/api/profiles", json=test_profile)
+    
+    # Add to favorites
+    client.patch("/api/profiles/test-list-favorite-ids-profile/favorite", json={"is_favorite": True})
 
     response = client.get("/api/profiles/favorites/ids")
     assert response.status_code == 200
     favorite_ids = response.json()
     assert isinstance(favorite_ids, list)
-    assert "gopro-hero10-black-linear-3840x2160" in favorite_ids
+    assert "test-list-favorite-ids-profile" in favorite_ids
     print(f"Favorite IDs: {favorite_ids}")
+    
+    # Cleanup
+    client.patch("/api/profiles/test-list-favorite-ids-profile/favorite", json={"is_favorite": False})
+    client.delete("/api/profiles/test-list-favorite-ids-profile")
 
 
 def test_list_favorite_profiles():
     """Test GET /api/profiles/favorites/list - List favorite profiles"""
-    # Add a favorite
-    client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
+    # First create a test profile
+    test_profile = {
+        "id": "test-list-favorite-profiles-profile",
+        "camera_brand": "TestBrand",
+        "camera_model": "TestModel",
+        "resolution": {"width": 1920, "height": 1080},
+        "distortion_model": "fisheye_kb4",
+        "camera_matrix": {"fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0},
+        "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
+    }
+    client.post("/api/profiles", json=test_profile)
+    
+    # Add to favorites
+    client.patch("/api/profiles/test-list-favorite-profiles-profile/favorite", json={"is_favorite": True})
 
     response = client.get("/api/profiles/favorites/list")
     assert response.status_code == 200
@@ -327,6 +402,10 @@ def test_list_favorite_profiles():
     for profile in favorites:
         assert profile.get("is_favorite") is True
     print(f"Found {len(favorites)} favorite profile(s)")
+    
+    # Cleanup
+    client.patch("/api/profiles/test-list-favorite-profiles-profile/favorite", json={"is_favorite": False})
+    client.delete("/api/profiles/test-list-favorite-profiles-profile")
 
 
 def test_pagination_with_limit():

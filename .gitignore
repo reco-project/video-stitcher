@@ -29,3 +29,4 @@ Thumbs.db
 *.log
 # Build artifacts
 electron/resources/lens_profiles.sqlite
+backend/data/lens_profiles.sqlite

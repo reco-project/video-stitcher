@@ -2,23 +2,23 @@
 	"id": "sony-xperia-pro-i--4k-with-219--3840x1644",
 	"camera_brand": "Sony",
 	"camera_model": "Xperia PRO-I",
-	"lens_model": "50mm Telephoto (Exmos RS IMX663)",
+	"lens_model": "24mm Wide (Exmos RS IMX478)",
 	"resolution": {
 		"width": 3840,
 		"height": 1644
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 5743.1507771825345,
-		"fy": 5776.194179195809,
-		"cx": 1990.918219900484,
-		"cy": 800.8836922682136
+		"fx": 2723.854556106205,
+		"fy": 2723.2814399556196,
+		"cx": 1921.9036736444984,
+		"cy": 829.101362809024
 	},
 	"distortion_coeffs": [
-		0.39208307510912704,
-		0.7747254882589503,
-		-6.771803292699667,
-		15.067528065729336
+		0.353379111412859,
+		-0.38623772239883375,
+		2.8528126515003964,
+		-3.972799126275101
 	],
 	"metadata": {
 		"calibrated_by": "RaguSaucy",

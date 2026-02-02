@@ -2,26 +2,26 @@
 	"id": "canon-r6-mark-ii--3840x2160",
 	"camera_brand": "Canon",
 	"camera_model": "R6 Mark II",
-	"lens_model": "2470RF24mm",
+	"lens_model": "EF 24-105mm F4 105mm",
 	"resolution": {
 		"width": 3840,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 2273.6259923953717,
-		"fy": 2274.0559652150528,
-		"cx": 1956.031553517132,
-		"cy": 982.8819034705566
+		"fx": 11489.083033335211,
+		"fy": 11523.970151234633,
+		"cx": 1916.1366341425953,
+		"cy": 1119.3934005230474
 	},
 	"distortion_coeffs": [
-		0.3709441580170343,
-		-0.16079208275829207,
-		1.0130285121878937,
-		-0.9999627240992826
+		1.130991317241384,
+		-6.4284528860614865,
+		535.2872728790682,
+		-7921.054917045988
 	],
 	"metadata": {
-		"calibrated_by": "ADMST",
+		"calibrated_by": "Lenovo",
 		"source": "gyroflow",
 		"official": true
 	}
