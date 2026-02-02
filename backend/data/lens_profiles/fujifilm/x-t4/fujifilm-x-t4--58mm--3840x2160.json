@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t4--58mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T4",
+	"lens_model": "helios 44-2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10341.863682631016,
+		"fy": 10301.82881162695,
+		"cx": 1975.220206576822,
+		"cy": 1340.0968012981232
+	},
+	"distortion_coeffs": [
+		0.24059582521089773,
+		5.942263258965213,
+		-161.99818339642232,
+		1859.87956096308
+	],
+	"metadata": {
+		"calibrated_by": "Aleksandar Manasiev",
+		"notes": "58mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

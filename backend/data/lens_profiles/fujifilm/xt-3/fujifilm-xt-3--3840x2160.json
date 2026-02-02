@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt-3--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT-3",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4793.3977552455235,
+		"fy": 4787.515595488447,
+		"cx": 1927.4665420482504,
+		"cy": 1197.039028790779
+	},
+	"distortion_coeffs": [
+		0.11647815531099572,
+		2.863013867277317,
+		-8.767593005397543,
+		-37.13528222205744
+	],
+	"metadata": {
+		"calibrated_by": "Giuseppe Velardi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

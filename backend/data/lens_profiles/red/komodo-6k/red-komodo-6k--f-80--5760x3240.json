@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--f-80--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF-S10-18mm f/4.5-5.6 IS STM 10.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2349.1195130396377,
+		"fy": 2349.483136479302,
+		"cx": 2876.026685800088,
+		"cy": 1545.1746942645452
+	},
+	"distortion_coeffs": [
+		0.3026748453851208,
+		0.2825450196259586,
+		-0.2889773545746177,
+		0.17794823644122096
+	],
+	"metadata": {
+		"calibrated_by": "Esteban Rivera",
+		"notes": "f 8.0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

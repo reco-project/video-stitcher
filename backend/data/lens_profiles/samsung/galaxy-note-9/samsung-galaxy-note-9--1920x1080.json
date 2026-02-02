@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-note-9--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Note 9",
+	"lens_model": "12 \u041c\u043f - Samsung S5K2L3",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1453.462043070942,
+		"fy": 1452.9211571675455,
+		"cx": 962.7940523587138,
+		"cy": 517.4838008298561
+	},
+	"distortion_coeffs": [
+		0.7509378569217695,
+		-2.887971072096557,
+		9.275907501370062,
+		-9.441443051323771
+	],
+	"metadata": {
+		"calibrated_by": "Tesla",
+		"source": "gyroflow",
+		"official": true
+	}
+}

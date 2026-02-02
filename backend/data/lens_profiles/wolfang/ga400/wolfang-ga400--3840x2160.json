@@ -1,0 +1,28 @@
+{
+	"id": "wolfang-ga400--3840x2160",
+	"camera_brand": "wolfang",
+	"camera_model": "ga400",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2408.2197687175494,
+		"fy": 2406.731315975184,
+		"cx": 1920.862756587787,
+		"cy": 1020.7222895803584
+	},
+	"distortion_coeffs": [
+		-0.04988820345973671,
+		0.002225453068859586,
+		0.03862810721501089,
+		-0.0415292756291023
+	],
+	"metadata": {
+		"calibrated_by": "gaetan dome",
+		"source": "gyroflow",
+		"official": true
+	}
+}

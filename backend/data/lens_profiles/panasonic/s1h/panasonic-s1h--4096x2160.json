@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s1h--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "Lumix s 20-60",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4469.355438468678,
+		"fy": 4494.899575650238,
+		"cx": 2033.9117612812236,
+		"cy": 957.0726211385864
+	},
+	"distortion_coeffs": [
+		0.5198279273882962,
+		0.6334047027604934,
+		-0.009473525302352282,
+		0.5538776321563679
+	],
+	"metadata": {
+		"calibrated_by": "Lucas Sirianos",
+		"source": "gyroflow",
+		"official": true
+	}
+}

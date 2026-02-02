@@ -1,0 +1,28 @@
+{
+	"id": "akaso-v50-pro--3840x2160",
+	"camera_brand": "AKASO",
+	"camera_model": "v50 pro",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2389.467743464906,
+		"fy": 2393.9090117606765,
+		"cx": 1873.4275928151897,
+		"cy": 1085.3519127687655
+	},
+	"distortion_coeffs": [
+		-0.033832241870659585,
+		0.03391031704324242,
+		-0.10813764918565066,
+		0.08595693636208233
+	],
+	"metadata": {
+		"calibrated_by": "sunday mystery",
+		"source": "gyroflow",
+		"official": true
+	}
+}

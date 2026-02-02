@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--ntsc-mode--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Samyang 8mm f/2.8 II",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1665.6826430800156,
+		"fy": 1663.4854010948975,
+		"cx": 1921.287520853939,
+		"cy": 1080.767506768409
+	},
+	"distortion_coeffs": [
+		0.045717295137391,
+		-0.006423068950822934,
+		0.010211694352779788,
+		-0.0025144141654888236
+	],
+	"metadata": {
+		"calibrated_by": "Colin Zenger",
+		"notes": "NTSC mode",
+		"source": "gyroflow",
+		"official": true
+	}
+}

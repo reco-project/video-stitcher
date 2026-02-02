@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-xz1-compact-so-02k--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia XZ1 Compact SO-02K",
+	"lens_model": "normal",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3643.345191195219,
+		"fy": 3644.9796090031905,
+		"cx": 1909.1459149763712,
+		"cy": 1074.868714189308
+	},
+	"distortion_coeffs": [
+		0.6463054019223584,
+		-0.7138131767848243,
+		0.9946437244270184,
+		0.4881894017801536
+	],
+	"metadata": {
+		"calibrated_by": "\u6771\u672a\u6765\u7fd4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

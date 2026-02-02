@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--18--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Olympus 45mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7706.618672558781,
+		"fy": 7816.50877499212,
+		"cx": 1157.3378556861958,
+		"cy": 544.43760511458
+	},
+	"distortion_coeffs": [
+		0.9451889206035168,
+		-55.075514078582046,
+		6371.537787231032,
+		-190993.91927222375
+	],
+	"metadata": {
+		"calibrated_by": "David alcaide camacho",
+		"notes": "1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

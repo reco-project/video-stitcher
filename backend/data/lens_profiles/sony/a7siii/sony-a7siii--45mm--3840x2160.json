@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--45mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Samyang Cine V-AF 45.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4972.569437287305,
+		"fy": 4975.764707693232,
+		"cx": 1912.9904744637345,
+		"cy": 1113.7213905566575
+	},
+	"distortion_coeffs": [
+		0.2508820351893233,
+		2.4267027521041844,
+		-21.196516882319067,
+		67.9479915041963
+	],
+	"metadata": {
+		"calibrated_by": "Shashank @rockstardhiman",
+		"notes": "45mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

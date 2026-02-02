@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--ibis-walk-panning--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Samyang FE 18mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1929.6048453802223,
+		"fy": 1930.9522951951833,
+		"cx": 1901.709956292376,
+		"cy": 1052.8849531705864
+	},
+	"distortion_coeffs": [
+		0.3214157917009667,
+		0.12534986672390191,
+		0.07921378471008773,
+		-0.018824632777222145
+	],
+	"metadata": {
+		"calibrated_by": "Rio A7C Yogyakarta",
+		"notes": "IBIS Walk & Panning",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt30--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT30",
+	"lens_model": "xc15-45",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2352.9245566545274,
+		"fy": 2353.2039144483097,
+		"cx": 1910.3138605043264,
+		"cy": 1064.1361286891688
+	},
+	"distortion_coeffs": [
+		0.29520000333551777,
+		0.41413661562549337,
+		-0.8493349213148901,
+		1.0511002400551706
+	],
+	"metadata": {
+		"calibrated_by": "Shigure",
+		"source": "gyroflow",
+		"official": true
+	}
+}

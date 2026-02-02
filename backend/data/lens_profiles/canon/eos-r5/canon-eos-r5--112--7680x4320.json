@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--112--7680x4320",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "RF 24mmF/1.8 IS STM",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6379.989800695568,
+		"fy": 6379.687219227637,
+		"cx": 3872.091727284962,
+		"cy": 2142.462708170135
+	},
+	"distortion_coeffs": [
+		0.3891413366075005,
+		-0.7554387543891474,
+		5.4315599478933985,
+		-11.718484001568244
+	],
+	"metadata": {
+		"calibrated_by": "WangZiChang",
+		"notes": "1.12",
+		"source": "gyroflow",
+		"official": true
+	}
+}

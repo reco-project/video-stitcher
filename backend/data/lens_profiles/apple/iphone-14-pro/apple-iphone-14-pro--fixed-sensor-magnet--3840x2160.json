@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-14-pro--fixed-sensor-magnet--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14 Pro",
+	"lens_model": "Wide + Magnet",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2600.144437775621,
+		"fy": 2601.709424392666,
+		"cx": 1912.9889498143743,
+		"cy": 1092.1896031049405
+	},
+	"distortion_coeffs": [
+		0.5112475736184953,
+		0.3481579053654342,
+		-4.738465992397632,
+		9.155757970683592
+	],
+	"metadata": {
+		"calibrated_by": "cinematiX.flights",
+		"notes": "fixed sensor (magnet)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-nx30--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "NX30",
+	"lens_model": "Samsung nx 30 mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2456.331815482742,
+		"fy": 2473.680571193589,
+		"cx": 950.0753784879964,
+		"cy": 500.24656264338427
+	},
+	"distortion_coeffs": [
+		0.2780999880799063,
+		1.7609648219821794,
+		-17.983761221420192,
+		68.42036209358315
+	],
+	"metadata": {
+		"calibrated_by": "BB",
+		"source": "gyroflow",
+		"official": true
+	}
+}

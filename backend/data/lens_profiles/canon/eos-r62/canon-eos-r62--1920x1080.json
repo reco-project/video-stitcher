@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r62--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R62",
+	"lens_model": "RF35-1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1958.957514004752,
+		"fy": 1960.4476922184965,
+		"cx": 961.0388412920432,
+		"cy": 529.9697620631382
+	},
+	"distortion_coeffs": [
+		0.33374765000847006,
+		0.7053007877386893,
+		-7.940848558106471,
+		32.57363908329408
+	],
+	"metadata": {
+		"calibrated_by": "guoji",
+		"source": "gyroflow",
+		"official": true
+	}
+}

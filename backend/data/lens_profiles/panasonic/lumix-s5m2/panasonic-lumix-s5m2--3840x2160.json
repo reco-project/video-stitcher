@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-s5m2--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S5M2",
+	"lens_model": "TTArtisan",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1608.651291345471,
+		"fy": 1609.347932497666,
+		"cx": 1902.4071745459464,
+		"cy": 1078.8963683223462
+	},
+	"distortion_coeffs": [
+		0.010393658591267308,
+		-0.005006208698379731,
+		-0.0009300268900756898,
+		6.526286598487151e-05
+	],
+	"metadata": {
+		"calibrated_by": "WX",
+		"source": "gyroflow",
+		"official": true
+	}
+}

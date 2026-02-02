@@ -1,0 +1,28 @@
+{
+	"id": "wolfang-ga320--3840x2160",
+	"camera_brand": "Wolfang",
+	"camera_model": "GA320",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1979.5468983303945,
+		"fy": 1978.8441529349896,
+		"cx": 1965.9734110851884,
+		"cy": 1001.139899402678
+	},
+	"distortion_coeffs": [
+		0.11367893152879782,
+		0.015611749980986932,
+		-0.04010026090085022,
+		0.03147298511783524
+	],
+	"metadata": {
+		"calibrated_by": "BURBAN G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

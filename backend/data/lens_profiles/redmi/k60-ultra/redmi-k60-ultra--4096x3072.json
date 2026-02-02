@@ -1,0 +1,28 @@
+{
+	"id": "redmi-k60-ultra--4096x3072",
+	"camera_brand": "Redmi",
+	"camera_model": "K60 Ultra",
+	"lens_model": "22mm \u0192/ 1.79",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2849.83266219717,
+		"fy": 2864.2108137386745,
+		"cx": 2118.9406803372053,
+		"cy": 1524.471578208813
+	},
+	"distortion_coeffs": [
+		0.26523622744785685,
+		0.7485299658164517,
+		-0.17631195159550328,
+		-2.726210849596313
+	],
+	"metadata": {
+		"calibrated_by": "\u0414\u0435\u043b\u044e\u0441 \u0413\u0430\u044f\u0437\u043e\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

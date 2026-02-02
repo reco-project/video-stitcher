@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7cii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7CII",
+	"lens_model": "YN 85.00mm 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17259.529167566405,
+		"fy": 17684.06320534675,
+		"cx": 1939.923006833393,
+		"cy": 1100.4085319933038
+	},
+	"distortion_coeffs": [
+		2.535459463684022,
+		245.0517611281115,
+		-39335.86810007608,
+		1797064.2090131273
+	],
+	"metadata": {
+		"calibrated_by": "HFun",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "realme-3-pro--rmx1851--3840x2160",
+	"camera_brand": "Realme",
+	"camera_model": "3 Pro",
+	"lens_model": "28mm F1.7",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2799.588999856385,
+		"fy": 2809.648800890874,
+		"cx": 1939.79160996334,
+		"cy": 1017.0718097400464
+	},
+	"distortion_coeffs": [
+		0.39769357872860345,
+		-0.4795893057155388,
+		2.883187644860082,
+		-3.9102430926575944
+	],
+	"metadata": {
+		"calibrated_by": "Mert",
+		"notes": "Rmx1851",
+		"source": "gyroflow",
+		"official": true
+	}
+}

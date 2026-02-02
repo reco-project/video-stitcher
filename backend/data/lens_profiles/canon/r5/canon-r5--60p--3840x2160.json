@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--60p--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "EF16-35 F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1437.7718872029857,
+		"fy": 1416.6168919406127,
+		"cx": 2053.1829325391695,
+		"cy": 1213.9729133710794
+	},
+	"distortion_coeffs": [
+		0.3142652294726848,
+		0.15880996290719104,
+		0.05536364842541319,
+		0.02763873340327178
+	],
+	"metadata": {
+		"calibrated_by": "Lan",
+		"notes": "60P",
+		"source": "gyroflow",
+		"official": true
+	}
+}

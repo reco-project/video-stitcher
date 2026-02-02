@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh2s--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "xh2s",
+	"lens_model": "vzs 27 1.2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2302.049047875743,
+		"fy": 2300.2041083563454,
+		"cx": 985.5663736423016,
+		"cy": 549.1090654094096
+	},
+	"distortion_coeffs": [
+		0.19203954187411024,
+		0.6340346710685041,
+		-1.401254243907346,
+		3.565728177944694
+	],
+	"metadata": {
+		"calibrated_by": "\u80e1\u632f\u950b",
+		"source": "gyroflow",
+		"official": true
+	}
+}

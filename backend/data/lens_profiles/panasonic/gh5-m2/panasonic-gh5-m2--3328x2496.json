@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh5-m2--3328x2496",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5 m2",
+	"lens_model": "Leica",
+	"resolution": {
+		"width": 3328,
+		"height": 2496
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2403.4125008654055,
+		"fy": 2404.317386539255,
+		"cx": 1668.1576774202524,
+		"cy": 1199.1901593748266
+	},
+	"distortion_coeffs": [
+		0.2827908344035112,
+		0.08185210734652991,
+		0.027872389523967107,
+		0.18576525046666537
+	],
+	"metadata": {
+		"calibrated_by": "dr00",
+		"source": "gyroflow",
+		"official": true
+	}
+}

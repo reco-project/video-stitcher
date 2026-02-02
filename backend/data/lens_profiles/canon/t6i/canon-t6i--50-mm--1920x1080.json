@@ -1,0 +1,29 @@
+{
+	"id": "canon-t6i--50-mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "T6i",
+	"lens_model": "Canon 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6022.113571727803,
+		"fy": 6079.024435385076,
+		"cx": 1017.4681185928644,
+		"cy": 547.0243295533453
+	},
+	"distortion_coeffs": [
+		-1.0427923252627131,
+		262.31165262310117,
+		-19354.348869796708,
+		466712.2358457976
+	],
+	"metadata": {
+		"calibrated_by": "lizzet",
+		"notes": "50 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

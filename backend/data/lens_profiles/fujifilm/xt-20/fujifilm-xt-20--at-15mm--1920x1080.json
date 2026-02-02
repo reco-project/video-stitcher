@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-xt-20--at-15mm--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT-20",
+	"lens_model": "XC 15-45MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1513.1979277658895,
+		"fy": 1510.3857924640586,
+		"cx": 967.917876725732,
+		"cy": 555.7765250571481
+	},
+	"distortion_coeffs": [
+		0.3412775857653166,
+		0.22635429642713015,
+		0.05336215970375714,
+		-0.4613679688197958
+	],
+	"metadata": {
+		"calibrated_by": "Quan Nguyen",
+		"notes": "at 15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

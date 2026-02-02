@@ -1,0 +1,28 @@
+{
+	"id": "denver-ack-8062w--3840x2160",
+	"camera_brand": "Denver",
+	"camera_model": "ACK-8062W",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2727.330870582141,
+		"fy": 2722.656681907284,
+		"cx": 1937.1464703405695,
+		"cy": 1171.3220495794242
+	},
+	"distortion_coeffs": [
+		-0.11541552240987522,
+		-0.07074237800101102,
+		0.26300053847156557,
+		-0.3300408056699483
+	],
+	"metadata": {
+		"calibrated_by": "Jarkko Pitk\u00e4nen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

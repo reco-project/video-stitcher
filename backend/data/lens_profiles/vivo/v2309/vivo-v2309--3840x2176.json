@@ -1,0 +1,28 @@
+{
+	"id": "vivo-v2309--3840x2176",
+	"camera_brand": "Vivo",
+	"camera_model": "V2309",
+	"lens_model": "16",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1866.2327233654169,
+		"fy": 1864.101827405202,
+		"cx": 1926.7509911518987,
+		"cy": 1087.1629189903572
+	},
+	"distortion_coeffs": [
+		0.2193146631994194,
+		0.2699317363294803,
+		0.18878701750860932,
+		-0.34065471124363617
+	],
+	"metadata": {
+		"calibrated_by": "Florian Koch",
+		"source": "gyroflow",
+		"official": true
+	}
+}

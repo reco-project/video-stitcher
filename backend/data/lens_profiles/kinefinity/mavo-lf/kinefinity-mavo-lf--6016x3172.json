@@ -1,0 +1,28 @@
+{
+	"id": "kinefinity-mavo-lf--6016x3172",
+	"camera_brand": "Kinefinity",
+	"camera_model": "MAVO LF",
+	"lens_model": "takumar 35mm f2.0",
+	"resolution": {
+		"width": 6016,
+		"height": 3172
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6075.779986537839,
+		"fy": 6076.406988430071,
+		"cx": 3014.233726181043,
+		"cy": 1552.138050004872
+	},
+	"distortion_coeffs": [
+		0.14949877284587818,
+		0.8478983251234979,
+		-2.838293563836898,
+		5.139856244346595
+	],
+	"metadata": {
+		"calibrated_by": "\u9a6c\u5929\u7ffc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s24--vertical-orientation--4032x3008",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S24",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 4032,
+		"height": 3008
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2645.67242812002,
+		"fy": 2646.938069285842,
+		"cx": 2005.6439074423809,
+		"cy": 1483.1967297725648
+	},
+	"distortion_coeffs": [
+		0.43291653340510583,
+		-0.09207667595979496,
+		0.4960741604234297,
+		-0.3529742158384046
+	],
+	"metadata": {
+		"calibrated_by": "db",
+		"notes": "vertical orientation",
+		"source": "gyroflow",
+		"official": true
+	}
+}

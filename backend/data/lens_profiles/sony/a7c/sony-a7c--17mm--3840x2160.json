@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--17mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Tamron 17-28 A046",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2867.1545842925852,
+		"fy": 2866.9929755974463,
+		"cx": 1866.5415980985688,
+		"cy": 1048.890961095232
+	},
+	"distortion_coeffs": [
+		0.3304563133554696,
+		0.09090887690725503,
+		0.1652788898257098,
+		-0.0964805162608786
+	],
+	"metadata": {
+		"calibrated_by": "\u6842\u9999",
+		"notes": "17mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

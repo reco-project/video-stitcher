@@ -1,0 +1,28 @@
+{
+	"id": "apeman-a87--2720x1520",
+	"camera_brand": "Apeman",
+	"camera_model": "A87",
+	"lens_model": null,
+	"resolution": {
+		"width": 2720,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1127.1635099646635,
+		"fy": 1133.691912895022,
+		"cx": 1394.2215571766696,
+		"cy": 785.2136390357084
+	},
+	"distortion_coeffs": [
+		0.14067445652745694,
+		0.07560604614909519,
+		-0.1786770050486804,
+		0.1417010410308445
+	],
+	"metadata": {
+		"calibrated_by": "Parcka",
+		"source": "gyroflow",
+		"official": true
+	}
+}

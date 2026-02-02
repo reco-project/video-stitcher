@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s25-ultra--reprojection-043115--4080x3064",
+	"camera_brand": "Samsung",
+	"camera_model": "S25 Ultra",
+	"lens_model": "14mm (0-2)",
+	"resolution": {
+		"width": 4080,
+		"height": 3064
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1622.9056111911798,
+		"fy": 1623.116449456691,
+		"cx": 2034.348464733601,
+		"cy": 1511.8507797886798
+	},
+	"distortion_coeffs": [
+		0.37490023483222557,
+		0.010427338647017706,
+		0.2952881933517694,
+		-0.14448687655423567
+	],
+	"metadata": {
+		"calibrated_by": "Arnaud Fonteix",
+		"notes": "Reprojection: 0,43115",
+		"source": "gyroflow",
+		"official": true
+	}
+}

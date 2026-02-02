@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--\u8bef\u5dee105198--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "VILTROX 20MM  F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4968.719242981347,
+		"fy": 4960.527886410264,
+		"cx": 1848.5604357142731,
+		"cy": 1008.6994041099244
+	},
+	"distortion_coeffs": [
+		0.2312521156369421,
+		-0.08276826001290545,
+		6.222054645859307,
+		-55.9150259206048
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "\u8bef\u5dee1.05198",
+		"source": "gyroflow",
+		"official": true
+	}
+}

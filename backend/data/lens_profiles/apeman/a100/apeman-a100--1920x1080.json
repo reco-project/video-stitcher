@@ -1,0 +1,28 @@
+{
+	"id": "apeman-a100--1920x1080",
+	"camera_brand": "Apeman",
+	"camera_model": "A100",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1354.996453350015,
+		"fy": 1355.5604092793833,
+		"cx": 969.399411329435,
+		"cy": 487.7408293241604
+	},
+	"distortion_coeffs": [
+		-0.0934648446401124,
+		-0.2654738083593652,
+		0.5581581544180712,
+		-0.39263996762599856
+	],
+	"metadata": {
+		"calibrated_by": "HP",
+		"source": "gyroflow",
+		"official": true
+	}
+}

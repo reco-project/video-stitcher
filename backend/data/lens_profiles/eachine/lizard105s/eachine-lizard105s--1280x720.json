@@ -1,0 +1,28 @@
+{
+	"id": "eachine-lizard105s--1280x720",
+	"camera_brand": "Eachine",
+	"camera_model": "Lizard105S",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 407.9992403120742,
+		"fy": 398.4518280971559,
+		"cx": 594.6226217070597,
+		"cy": 339.24746995800666
+	},
+	"distortion_coeffs": [
+		0.4635199840193856,
+		0.5517707830491159,
+		-1.1237423907627784,
+		0.5178799217271638
+	],
+	"metadata": {
+		"calibrated_by": "dudu du76",
+		"source": "gyroflow",
+		"official": true
+	}
+}

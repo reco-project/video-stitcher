@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--40mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Tamron 20-40.00",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4234.348109017988,
+		"fy": 4241.73961950254,
+		"cx": 1913.2546949815,
+		"cy": 1002.7886109060466
+	},
+	"distortion_coeffs": [
+		0.33299996588610575,
+		0.06129366157435124,
+		0.7938155758916758,
+		-2.581618818693989
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"notes": "40mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

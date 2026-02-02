@@ -1,0 +1,28 @@
+{
+	"id": "infinix-hot-30-infinix-hot-30--1920x1080",
+	"camera_brand": "infinix hot 30",
+	"camera_model": "infinix hot 30",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1484.1967901501223,
+		"fy": 1479.1128285456882,
+		"cx": 964.5202552560608,
+		"cy": 532.0709991973173
+	},
+	"distortion_coeffs": [
+		0.5372779022016861,
+		0.9248820094455804,
+		-14.19553323231384,
+		36.20310849289904
+	],
+	"metadata": {
+		"calibrated_by": "J Natera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

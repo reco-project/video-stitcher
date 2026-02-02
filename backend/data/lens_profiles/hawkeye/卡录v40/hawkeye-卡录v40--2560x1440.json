@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-\u5361\u5f55v40--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "\u5361\u5f55V4.0",
+	"lens_model": "SONY 12MP",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1162.5594602808133,
+		"fy": 1160.085822615286,
+		"cx": 1300.3234501202246,
+		"cy": 675.1762524056957
+	},
+	"distortion_coeffs": [
+		0.12460284240929942,
+		0.026493526372957227,
+		-0.07564670456044413,
+		0.0282170832760093
+	],
+	"metadata": {
+		"calibrated_by": "\u548c\u8c10\u6c47\u805a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

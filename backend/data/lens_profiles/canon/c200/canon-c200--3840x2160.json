@@ -1,0 +1,28 @@
+{
+	"id": "canon-c200--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "C200",
+	"lens_model": "Samyang 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2518.5060119447644,
+		"fy": 2520.3374767956648,
+		"cx": 1941.9402621015936,
+		"cy": 1078.959687239078
+	},
+	"distortion_coeffs": [
+		0.23464539635550505,
+		0.17171256246905237,
+		0.06627173253842815,
+		-0.047402459378278326
+	],
+	"metadata": {
+		"calibrated_by": "\u884c\u6444\u8d35\u5dde",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r6--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R6",
+	"lens_model": "RF 24-105 F/4-7.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3106.583029824948,
+		"fy": 3032.665371361066,
+		"cx": 1941.016148776228,
+		"cy": 1112.939706947606
+	},
+	"distortion_coeffs": [
+		0.3091329164420782,
+		0.11953835581706827,
+		0.2871422170354657,
+		-0.3998392599846503
+	],
+	"metadata": {
+		"calibrated_by": "Iv\u00e1n Mata",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--used-with-canon-71-speedbooster--6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Nikon AIS 50mm 1.2",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8427.456762192667,
+		"fy": 8425.145885637028,
+		"cx": 3062.8686103335845,
+		"cy": 1254.250816799483
+	},
+	"distortion_coeffs": [
+		0.08119970311443428,
+		2.0236442026265897,
+		-21.020104595743497,
+		97.83438713391836
+	],
+	"metadata": {
+		"calibrated_by": "Felix M\u00fcller",
+		"notes": "Used with Canon .71 SpeedBooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

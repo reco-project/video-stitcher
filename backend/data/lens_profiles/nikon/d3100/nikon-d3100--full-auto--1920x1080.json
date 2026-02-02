@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d3100--full-auto--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D3100",
+	"lens_model": "NIKKOR 18mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1521.3655195509157,
+		"fy": 1521.2434570928797,
+		"cx": 973.17603554932,
+		"cy": 544.7842113019896
+	},
+	"distortion_coeffs": [
+		0.18697429901555215,
+		0.002417696131544186,
+		0.7724308854321469,
+		-1.5287218927965638
+	],
+	"metadata": {
+		"calibrated_by": "julien Rives",
+		"notes": "Full auto",
+		"source": "gyroflow",
+		"official": true
+	}
+}

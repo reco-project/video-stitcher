@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-200pro--2560x1440",
+	"camera_brand": "SJCAM",
+	"camera_model": "200pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1185.3174828606009,
+		"fy": 1195.1492470444036,
+		"cx": 1121.2715587330222,
+		"cy": 927.0776915282444
+	},
+	"distortion_coeffs": [
+		0.3900233249015984,
+		-0.030208668844435058,
+		0.3665071365766619,
+		-0.11408594461845266
+	],
+	"metadata": {
+		"calibrated_by": "U0 A208",
+		"source": "gyroflow",
+		"official": true
+	}
+}

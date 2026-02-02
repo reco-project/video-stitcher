@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--canon-ef-35-14-l-with-7artisan-ef-se-adapter--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3624.924229115682,
+		"fy": 3625.172169856725,
+		"cx": 1821.3605293037529,
+		"cy": 1062.5769766830028
+	},
+	"distortion_coeffs": [
+		0.24919572013300123,
+		-0.22121631991396076,
+		3.1330951506734945,
+		-7.065249373910575
+	],
+	"metadata": {
+		"calibrated_by": "Kaos",
+		"notes": "Canon EF 35 1.4 L with 7Artisan EF-SE Adapter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

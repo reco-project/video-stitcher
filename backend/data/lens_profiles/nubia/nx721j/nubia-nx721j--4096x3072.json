@@ -1,0 +1,28 @@
+{
+	"id": "nubia-nx721j--4096x3072",
+	"camera_brand": "Nubia",
+	"camera_model": "NX721J",
+	"lens_model": "36",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4194.864409279286,
+		"fy": 4195.1055143178955,
+		"cx": 2083.5777513934136,
+		"cy": 1566.0624346280167
+	},
+	"distortion_coeffs": [
+		0.5896300781963452,
+		0.4756012391814417,
+		-18.12951596832319,
+		54.9564125221829
+	],
+	"metadata": {
+		"calibrated_by": "nino",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--5994--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "75.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12159.070391145897,
+		"fy": 12175.279440637649,
+		"cx": 1897.4505614112152,
+		"cy": 1169.883273182684
+	},
+	"distortion_coeffs": [
+		0.2397753938001246,
+		25.24617675306188,
+		-1510.852462023346,
+		29496.57808895598
+	],
+	"metadata": {
+		"calibrated_by": "Jony_Xv",
+		"notes": "59.94",
+		"source": "gyroflow",
+		"official": true
+	}
+}

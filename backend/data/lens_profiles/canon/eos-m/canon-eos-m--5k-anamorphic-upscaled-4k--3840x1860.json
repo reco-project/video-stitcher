@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--5k-anamorphic-upscaled-4k--3840x1860",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "15-45mm f3.5-5.6",
+	"resolution": {
+		"width": 3840,
+		"height": 1860
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3287.932055313957,
+		"fy": 3294.1030070358097,
+		"cx": 1912.0720427279475,
+		"cy": 908.1579400219543
+	},
+	"distortion_coeffs": [
+		0.29092397004411086,
+		-0.5707258728258517,
+		2.5620772335110065,
+		-3.2375444683242445
+	],
+	"metadata": {
+		"calibrated_by": "Oleksandr M\u00fcller",
+		"notes": "5k anamorphic upscaled 4k",
+		"source": "gyroflow",
+		"official": true
+	}
+}

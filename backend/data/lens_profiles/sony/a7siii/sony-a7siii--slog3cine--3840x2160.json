@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--slog3cine--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Canon 24-70mm @35m",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3702.754392540882,
+		"fy": 3705.120055895072,
+		"cx": 1930.027503293436,
+		"cy": 1097.0666785159535
+	},
+	"distortion_coeffs": [
+		0.2981987685603857,
+		-0.507062569956749,
+		4.221015204780992,
+		-7.846315015464084
+	],
+	"metadata": {
+		"calibrated_by": "Mauro",
+		"notes": "Slog3cine",
+		"source": "gyroflow",
+		"official": true
+	}
+}

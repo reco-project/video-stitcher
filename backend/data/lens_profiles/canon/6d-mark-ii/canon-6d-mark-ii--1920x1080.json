@@ -1,0 +1,28 @@
+{
+	"id": "canon-6d-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "6D Mark II",
+	"lens_model": "Canon 50 mm 1/4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2765.6302038657527,
+		"fy": 2764.8736565364807,
+		"cx": 985.0354143694108,
+		"cy": 555.131274937356
+	},
+	"distortion_coeffs": [
+		0.18076105321226024,
+		-0.8595653721682038,
+		10.469555283176122,
+		-34.54647184747913
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0435\u0439 \u042f\u043c\u0448\u0430\u043d\u043e\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

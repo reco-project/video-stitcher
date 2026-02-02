@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--16mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "Nikkor DX 16-50 3.5-6.3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2674.4853848849352,
+		"fy": 2676.7004734690804,
+		"cx": 1935.9746928754764,
+		"cy": 1067.0674215736888
+	},
+	"distortion_coeffs": [
+		0.3515986846761282,
+		-0.07774460219732325,
+		0.944629546280708,
+		-1.2191841830356318
+	],
+	"metadata": {
+		"calibrated_by": "Romain Schindler",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-nico--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Nico",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4450.161042387522,
+		"fy": 4455.55588146072,
+		"cx": 1872.7069895988463,
+		"cy": 1116.7450117631352
+	},
+	"distortion_coeffs": [
+		0.6670489947496527,
+		-4.84256495361036,
+		38.34864008050651,
+		-104.83040184978276
+	],
+	"metadata": {
+		"calibrated_by": "niko990 niko990",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "vivo-x100-pro--3840x2176",
+	"camera_brand": "Vivo",
+	"camera_model": "X100 Pro",
+	"lens_model": "23mm Main",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2561.816457092621,
+		"fy": 2560.7044804154434,
+		"cx": 1907.6605006504617,
+		"cy": 1072.284077955993
+	},
+	"distortion_coeffs": [
+		0.6655912887691233,
+		-2.29910236856156,
+		6.902545569118944,
+		-6.651845827527983
+	],
+	"metadata": {
+		"calibrated_by": "Trevor Siebe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

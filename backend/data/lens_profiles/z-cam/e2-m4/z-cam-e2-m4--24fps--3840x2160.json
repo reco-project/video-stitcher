@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--24fps--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Laowa 7.5mm F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1635.5959917700852,
+		"fy": 1636.1005471338349,
+		"cx": 1904.8347420395023,
+		"cy": 1055.3808135292895
+	},
+	"distortion_coeffs": [
+		0.3372134687989408,
+		0.04776480449731568,
+		0.06999828969518773,
+		0.0346680825212154
+	],
+	"metadata": {
+		"calibrated_by": "Jon Riley",
+		"notes": "24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

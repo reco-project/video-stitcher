@@ -1,0 +1,29 @@
+{
+	"id": "vivo-a119-v3--mp4-bitrate-high-firmware-v26--2560x1440",
+	"camera_brand": "Vivo",
+	"camera_model": "A119 V3",
+	"lens_model": "original",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1671.0563175412171,
+		"fy": 1671.1026580235468,
+		"cx": 1287.8062019457952,
+		"cy": 890.7706594791341
+	},
+	"distortion_coeffs": [
+		-0.05327796381464608,
+		0.008082808029207746,
+		-0.02642460131760531,
+		0.00939595888711349
+	],
+	"metadata": {
+		"calibrated_by": "Vladimir Kostenko",
+		"notes": "mp4 | bitrate, high | firmware v2.6",
+		"source": "gyroflow",
+		"official": true
+	}
+}

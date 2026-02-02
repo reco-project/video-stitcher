@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-mini-vtx--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "mini vtx",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 801.7476902290224,
+		"fy": 799.9314950081119,
+		"cx": 941.8276220578311,
+		"cy": 552.1820251101972
+	},
+	"distortion_coeffs": [
+		0.006251137993577823,
+		-0.08479768033405723,
+		0.07433603977696523,
+		-0.027340594173228587
+	],
+	"metadata": {
+		"calibrated_by": "christophe Hein",
+		"source": "gyroflow",
+		"official": true
+	}
+}

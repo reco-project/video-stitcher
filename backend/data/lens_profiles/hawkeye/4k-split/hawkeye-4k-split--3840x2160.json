@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-4k-split--3840x2160",
+	"camera_brand": "Hawkeye",
+	"camera_model": "4k split",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2166.3996172899992,
+		"fy": 2159.6926927313457,
+		"cx": 1960.721605551406,
+		"cy": 1082.0828864303355
+	},
+	"distortion_coeffs": [
+		-0.072329981762203,
+		0.00037688205703740826,
+		0.002125164542448156,
+		-5.805637768939355e-05
+	],
+	"metadata": {
+		"calibrated_by": "Peter H",
+		"source": "gyroflow",
+		"official": true
+	}
+}

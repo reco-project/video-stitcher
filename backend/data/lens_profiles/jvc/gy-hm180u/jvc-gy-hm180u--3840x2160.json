@@ -1,0 +1,28 @@
+{
+	"id": "jvc-gy-hm180u--3840x2160",
+	"camera_brand": "JVC",
+	"camera_model": "GY-HM180U",
+	"lens_model": "4.6MM-56MM 1:1.2~3.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6305.645013218607,
+		"fy": 6291.022610295901,
+		"cx": 1959.5004965669357,
+		"cy": 1475.2664796274669
+	},
+	"distortion_coeffs": [
+		0.22705442676976673,
+		-0.8229456836373528,
+		67.16559248149493,
+		-676.0630154422754
+	],
+	"metadata": {
+		"calibrated_by": "Paul Skinner",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-v-raptor-8k-vv--single-coated-f35--8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Mir 20m 20mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4154.154724612554,
+		"fy": 4154.487092117936,
+		"cx": 4031.3734178602,
+		"cy": 2225.608546052696
+	},
+	"distortion_coeffs": [
+		0.17538464510103957,
+		0.34982256933687356,
+		-0.6581260579630567,
+		0.9881636214048466
+	],
+	"metadata": {
+		"calibrated_by": "Bryan Alejandro Oliveira Echaverry",
+		"notes": "Single Coated F3,5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

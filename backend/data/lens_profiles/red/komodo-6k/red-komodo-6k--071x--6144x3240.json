@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--071x--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF24-70mm f/2.8L II USM 35.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5606.829710334046,
+		"fy": 5608.843562457523,
+		"cx": 3101.6188195791938,
+		"cy": 1656.5855818234502
+	},
+	"distortion_coeffs": [
+		0.2753961026933566,
+		0.35831331039820025,
+		-0.13163246090302985,
+		2.1910835455987994
+	],
+	"metadata": {
+		"calibrated_by": "CCC",
+		"notes": "0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

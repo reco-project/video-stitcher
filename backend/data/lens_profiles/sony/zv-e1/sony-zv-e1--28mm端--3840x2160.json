@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--28mm\u7aef--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "SIGMA 16-28mm F2.8 DG DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4138.605081452264,
+		"fy": 4141.700182844542,
+		"cx": 1916.0713550832616,
+		"cy": 1135.0213599268614
+	},
+	"distortion_coeffs": [
+		0.24539949418299148,
+		1.155330120161724,
+		-6.287939924265434,
+		14.896921844377214
+	],
+	"metadata": {
+		"calibrated_by": "QIO",
+		"notes": "28mm\u7aef",
+		"source": "gyroflow",
+		"official": true
+	}
+}

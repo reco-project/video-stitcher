@@ -1,0 +1,28 @@
+{
+	"id": "gitup-git2p--2560x1440",
+	"camera_brand": "Gitup",
+	"camera_model": "Git2P",
+	"lens_model": "90 degree",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1681.446033681406,
+		"fy": 1861.9621058866956,
+		"cx": 1318.7418662908506,
+		"cy": 702.1225992243463
+	},
+	"distortion_coeffs": [
+		0.33081498703328743,
+		0.30374043474446644,
+		-0.9803992131062316,
+		1.1443662355154192
+	],
+	"metadata": {
+		"calibrated_by": "trxdick",
+		"source": "gyroflow",
+		"official": true
+	}
+}

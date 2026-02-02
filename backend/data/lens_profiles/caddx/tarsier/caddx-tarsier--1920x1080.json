@@ -1,0 +1,28 @@
+{
+	"id": "caddx-tarsier--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "Tarsier",
+	"lens_model": "\u53cc\u6444",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1269.7030342911978,
+		"fy": 1271.532897173895,
+		"cx": 951.7303784310274,
+		"cy": 563.1674256514668
+	},
+	"distortion_coeffs": [
+		-0.11467414358636596,
+		0.08907740681076583,
+		-0.31173627246779906,
+		0.4217616376627683
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

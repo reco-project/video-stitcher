@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-10t-lite--1280x720",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 10T lite",
+	"lens_model": "Sony IMX682",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 808.6235607588602,
+		"fy": 812.3954963156418,
+		"cx": 629.4237196454778,
+		"cy": 386.8608129723376
+	},
+	"distortion_coeffs": [
+		0.4016221746335699,
+		-0.04518431403187389,
+		0.6324610677296065,
+		-0.7099240877233882
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--reprojection-error-049--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa 9mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1419.7918932089024,
+		"fy": 1419.3357367107026,
+		"cx": 1931.8692111863409,
+		"cy": 1085.1523011519976
+	},
+	"distortion_coeffs": [
+		0.3555996235994066,
+		0.09229155560649256,
+		0.015187816201917769,
+		0.10044727793892358
+	],
+	"metadata": {
+		"calibrated_by": "USER",
+		"notes": "reprojection error 0.49",
+		"source": "gyroflow",
+		"official": true
+	}
+}

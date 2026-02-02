@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-q6--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly Q6",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1580.0720687066637,
+		"fy": 1575.3499545348775,
+		"cx": 1247.4883456358289,
+		"cy": 713.3609663127536
+	},
+	"distortion_coeffs": [
+		-0.1019019059543627,
+		0.0043578573440313136,
+		0.030410831521931695,
+		-0.04406501330333265
+	],
+	"metadata": {
+		"calibrated_by": "jcdub",
+		"source": "gyroflow",
+		"official": true
+	}
+}

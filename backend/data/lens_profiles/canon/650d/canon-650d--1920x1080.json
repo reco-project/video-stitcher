@@ -1,0 +1,28 @@
+{
+	"id": "canon-650d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "650D",
+	"lens_model": "Canon 50mm STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4611.343914010737,
+		"fy": 4623.092973802993,
+		"cx": 992.6761555369008,
+		"cy": 485.2165275047287
+	},
+	"distortion_coeffs": [
+		0.15475873859308312,
+		13.579881879420975,
+		-359.891814088692,
+		403.7113639015277
+	],
+	"metadata": {
+		"calibrated_by": "Andre Zamith Selvaggio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

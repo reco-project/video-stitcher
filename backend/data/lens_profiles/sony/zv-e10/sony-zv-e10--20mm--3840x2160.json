@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "10-20mm F4 G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4203.4197855999055,
+		"fy": 4148.538347546632,
+		"cx": 1879.000896800607,
+		"cy": 1060.3294968831633
+	},
+	"distortion_coeffs": [
+		0.3692103093375883,
+		-0.4921234673203749,
+		3.312468187695749,
+		-6.340484107167675
+	],
+	"metadata": {
+		"calibrated_by": "Oliver K",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

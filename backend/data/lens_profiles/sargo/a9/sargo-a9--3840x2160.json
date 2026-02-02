@@ -1,0 +1,28 @@
+{
+	"id": "sargo-a9--3840x2160",
+	"camera_brand": "SARGO",
+	"camera_model": "A9",
+	"lens_model": "IMX 386",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2301.7431421086385,
+		"fy": 2301.4487076107944,
+		"cx": 1962.25345918878,
+		"cy": 1112.194134814872
+	},
+	"distortion_coeffs": [
+		-0.0022686504449122586,
+		0.08364024477975948,
+		-0.22188036556118473,
+		0.20232306261283436
+	],
+	"metadata": {
+		"calibrated_by": "Peachjx",
+		"source": "gyroflow",
+		"official": true
+	}
+}

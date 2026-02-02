@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t200--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T200",
+	"lens_model": "kit15-45",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1226.93905235132,
+		"fy": 1221.221238143466,
+		"cx": 961.1469169389416,
+		"cy": 528.2269894687308
+	},
+	"distortion_coeffs": [
+		0.2324860114149544,
+		0.8142834301710434,
+		-1.8978362037392649,
+		1.9734175331147592
+	],
+	"metadata": {
+		"calibrated_by": "Vikker",
+		"source": "gyroflow",
+		"official": true
+	}
+}

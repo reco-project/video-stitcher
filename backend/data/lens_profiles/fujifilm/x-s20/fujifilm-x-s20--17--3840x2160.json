@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-s20--17--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S20",
+	"lens_model": "Tamron ",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3204.5412016054065,
+		"fy": 3205.7323400996775,
+		"cx": 1944.1271773171825,
+		"cy": 1059.0892235331785
+	},
+	"distortion_coeffs": [
+		0.4226872845373225,
+		-0.7287508145662174,
+		3.0933090427742367,
+		-3.7211819578583496
+	],
+	"metadata": {
+		"calibrated_by": "7115",
+		"notes": "17",
+		"source": "gyroflow",
+		"official": true
+	}
+}

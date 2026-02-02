@@ -1,0 +1,28 @@
+{
+	"id": "canon-m6-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "M6 II",
+	"lens_model": "Sigma 30 1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3222.019957094544,
+		"fy": 3234.7178016686744,
+		"cx": 1014.7337176139118,
+		"cy": 521.6302965465171
+	},
+	"distortion_coeffs": [
+		0.2577409211228035,
+		-0.8041529753240259,
+		8.72108767585888,
+		-57.22880983632388
+	],
+	"metadata": {
+		"calibrated_by": "Vysco Zyza",
+		"source": "gyroflow",
+		"official": true
+	}
+}

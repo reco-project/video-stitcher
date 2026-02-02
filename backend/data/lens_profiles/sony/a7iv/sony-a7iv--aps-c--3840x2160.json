@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--aps-c--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "E 3.5-5.6/PZ 16-50 OSS SELP1650",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2881.9582762305768,
+		"fy": 2874.7701032761665,
+		"cx": 1927.2909460029875,
+		"cy": 1073.2868542444637
+	},
+	"distortion_coeffs": [
+		0.32034005493382817,
+		-0.09350047913796714,
+		0.8405529937450225,
+		-0.72022919376113
+	],
+	"metadata": {
+		"calibrated_by": "Kei Kato",
+		"notes": "APS-C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

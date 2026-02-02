@@ -2,7 +2,7 @@
 	"id": "xiaomi-yio--2304x1296",
 	"camera_brand": "Xiaomi",
 	"camera_model": "Yio",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 2304,
 		"height": 1296
@@ -21,13 +21,8 @@
 		0.007791458021596857
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Xiaomi_Yio___2k_16by9_2304x1296-25.00fps",
 		"calibrated_by": "\u5f20\u6817\u9492",
-		"original_resolution": "2304x1296",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--v4--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Brightin Star 10mm F5.6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2435.2853508706803,
+		"fy": 2434.202336820289,
+		"cx": 1957.9190730854016,
+		"cy": 1015.4813729385728
+	},
+	"distortion_coeffs": [
+		-0.003437306935167409,
+		-0.029677952134233805,
+		0.022912935884525764,
+		-0.008520538031727056
+	],
+	"metadata": {
+		"calibrated_by": "Ed",
+		"notes": "V4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

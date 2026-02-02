@@ -1,0 +1,28 @@
+{
+	"id": "sigma-fp-l--1920x1080",
+	"camera_brand": "Sigma",
+	"camera_model": "fp L",
+	"lens_model": "Olympus Zuiko 50mm f1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3059.916085758805,
+		"fy": 3055.105875048194,
+		"cx": 913.0546888329123,
+		"cy": 509.73523741899584
+	},
+	"distortion_coeffs": [
+		-0.14008680044650118,
+		10.249140134533128,
+		-157.16225910603174,
+		894.6256862817388
+	],
+	"metadata": {
+		"calibrated_by": "Henry Arnn",
+		"source": "gyroflow",
+		"official": true
+	}
+}

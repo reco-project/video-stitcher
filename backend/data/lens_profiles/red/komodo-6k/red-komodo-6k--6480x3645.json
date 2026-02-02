@@ -2,7 +2,7 @@
 	"id": "red-komodo-6k--6480x3645",
 	"camera_brand": "RED",
 	"camera_model": "KOMODO 6K",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 6480,
 		"height": 3645
@@ -21,13 +21,8 @@
 		0.7433043967118177
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "RED_KOMODO 6K__6K_6k_16by9_6480x3645-25.00fps",
 		"calibrated_by": "Martin Olsen",
-		"original_resolution": "6480x3645",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-fz2000--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "FZ2000",
+	"lens_model": "LEICA F2.8-4.5 24-480mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3927.228372396606,
+		"fy": 3924.425881025417,
+		"cx": 2059.0904701358863,
+		"cy": 1118.9182055978174
+	},
+	"distortion_coeffs": [
+		0.28874985594904934,
+		0.5977408688266203,
+		-2.2628460076796553,
+		4.17769292642644
+	],
+	"metadata": {
+		"calibrated_by": "Giovanni Liuzzi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

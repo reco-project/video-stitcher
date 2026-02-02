@@ -1,0 +1,28 @@
+{
+	"id": "runcam-hybrid-2--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "Hybrid 2",
+	"lens_model": "16:9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2033.8207273880344,
+		"fy": 2035.1718199612176,
+		"cx": 1927.1756420643976,
+		"cy": 1143.343928803273
+	},
+	"distortion_coeffs": [
+		-0.05904510598688092,
+		0.006964339949378384,
+		0.009583773622679323,
+		-0.01291316238632781
+	],
+	"metadata": {
+		"calibrated_by": "Pierce Schmeichel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

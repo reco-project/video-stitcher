@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-10t-pro--1926x1084",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 10T Pro",
+	"lens_model": "108MP 1080p Main",
+	"resolution": {
+		"width": 1926,
+		"height": 1084
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2046.6616383927696,
+		"fy": 2045.8482695634368,
+		"cx": 979.7334638706808,
+		"cy": 550.1248598128349
+	},
+	"distortion_coeffs": [
+		0.5566905878474121,
+		-1.1630513946944008,
+		3.4689284216561593,
+		-4.844626773961243
+	],
+	"metadata": {
+		"calibrated_by": "Muhamad Ardiyansah",
+		"source": "gyroflow",
+		"official": true
+	}
+}

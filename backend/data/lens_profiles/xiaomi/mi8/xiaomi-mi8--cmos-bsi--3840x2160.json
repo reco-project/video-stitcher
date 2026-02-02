@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mi8--cmos-bsi--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi8",
+	"lens_model": "Sony IMX363 Exmor RS",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3357.0972653150343,
+		"fy": 3356.7898507613795,
+		"cx": 1925.1897046983372,
+		"cy": 1054.8312766467354
+	},
+	"distortion_coeffs": [
+		0.9522383511148091,
+		-4.999082499393931,
+		17.319915865462406,
+		-22.93818637395513
+	],
+	"metadata": {
+		"calibrated_by": "ArtSky",
+		"notes": "CMOS BSI",
+		"source": "gyroflow",
+		"official": true
+	}
+}

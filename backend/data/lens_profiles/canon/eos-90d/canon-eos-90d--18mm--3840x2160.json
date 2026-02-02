@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-90d--18mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 90D",
+	"lens_model": "Sigma 18-35mm DC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3302.217476767646,
+		"fy": 3314.107633714056,
+		"cx": 1927.3322119071995,
+		"cy": 1086.6786999280926
+	},
+	"distortion_coeffs": [
+		0.1423096510509807,
+		0.9355582534303604,
+		-2.9667493141557033,
+		4.418707770475109
+	],
+	"metadata": {
+		"calibrated_by": "Arnold Caballero",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

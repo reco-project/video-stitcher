@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-m4--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "10mm Meike Mini Prime",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2333.70109249131,
+		"fy": 2333.788897653915,
+		"cx": 2058.8169387820867,
+		"cy": 1101.5497968721918
+	},
+	"distortion_coeffs": [
+		0.3803555450713583,
+		0.1472329099983012,
+		-0.03150124516435613,
+		2.078345049847659e-05
+	],
+	"metadata": {
+		"calibrated_by": "Shikijo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

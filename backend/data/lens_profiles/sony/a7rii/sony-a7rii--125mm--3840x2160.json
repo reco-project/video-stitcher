@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rii--125mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rII",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1248.3353580703692,
+		"fy": 1236.5253653694904,
+		"cx": 1930.9569837269607,
+		"cy": 1090.9250747998703
+	},
+	"distortion_coeffs": [
+		0.3312920344636919,
+		0.029217974617372043,
+		0.20621905650862807,
+		-0.040855269762267984
+	],
+	"metadata": {
+		"calibrated_by": "SUMGLE",
+		"notes": "12.5MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

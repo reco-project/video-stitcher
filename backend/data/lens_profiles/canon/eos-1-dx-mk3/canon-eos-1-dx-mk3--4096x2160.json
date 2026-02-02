@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-1-dx-mk3--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 1 DX MK3",
+	"lens_model": "16-35 EF 2.8 mk2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2292.6627838456843,
+		"fy": 2300.3111579328092,
+		"cx": 2004.9779222525472,
+		"cy": 998.7526621639132
+	},
+	"distortion_coeffs": [
+		0.2406086507271721,
+		0.6000989032149039,
+		-1.0707140723560395,
+		0.95641969374455
+	],
+	"metadata": {
+		"calibrated_by": "Joyo Soetomo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

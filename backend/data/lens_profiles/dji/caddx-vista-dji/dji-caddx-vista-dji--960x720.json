@@ -2,7 +2,7 @@
 	"id": "dji-caddx-vista-dji--960x720",
 	"camera_brand": "DJI",
 	"camera_model": "caddx vista dji",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 960,
 		"height": 720
@@ -21,13 +21,8 @@
 		-0.0036240703185754816
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_caddx vista dji___480p_4by3_960x720-60.00fps",
 		"calibrated_by": "admin",
-		"original_resolution": "960x720",
-		"calibrated_fps": "60.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

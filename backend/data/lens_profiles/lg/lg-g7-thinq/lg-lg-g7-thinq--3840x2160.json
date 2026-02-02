@@ -1,0 +1,28 @@
+{
+	"id": "lg-lg-g7-thinq--3840x2160",
+	"camera_brand": "LG",
+	"camera_model": "LG G7 ThinQ",
+	"lens_model": "Main camera f1.6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3416.82084264867,
+		"fy": 3405.342911685532,
+		"cx": 1982.613435456468,
+		"cy": 1105.6302108728023
+	},
+	"distortion_coeffs": [
+		0.8097397759540599,
+		-3.2397184498974037,
+		6.458590053682714,
+		3.4072759048432633
+	],
+	"metadata": {
+		"calibrated_by": "VinhNguyen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

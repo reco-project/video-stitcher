@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--magic-lantern--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "22MM F2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1909.50133929985,
+		"fy": 1905.946484702904,
+		"cx": 951.9246681119556,
+		"cy": 581.4265692741291
+	},
+	"distortion_coeffs": [
+		0.32243804452547536,
+		0.16755293696723708,
+		0.7229155522830075,
+		-2.3003073932024303
+	],
+	"metadata": {
+		"calibrated_by": "MAD",
+		"notes": "Magic Lantern",
+		"source": "gyroflow",
+		"official": true
+	}
+}

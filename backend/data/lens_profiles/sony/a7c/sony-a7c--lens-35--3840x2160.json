@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--lens-35--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "EF 28-60mm F4-5.6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3757.399003184249,
+		"fy": 3755.194847658619,
+		"cx": 1935.452969699998,
+		"cy": 1059.8761628047696
+	},
+	"distortion_coeffs": [
+		0.3489746019860873,
+		-0.3009569125356705,
+		4.949016467803027,
+		-15.795593424823148
+	],
+	"metadata": {
+		"calibrated_by": "Joe",
+		"notes": "Lens 35",
+		"source": "gyroflow",
+		"official": true
+	}
+}

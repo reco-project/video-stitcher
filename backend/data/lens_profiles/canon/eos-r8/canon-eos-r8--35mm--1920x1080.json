@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r8--35mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "RF 24-105 F4-7.1 @ 35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2090.74459120624,
+		"fy": 2089.7671610069333,
+		"cx": 964.3105397869704,
+		"cy": 568.1480990799511
+	},
+	"distortion_coeffs": [
+		0.2509995276473375,
+		1.0350239877896028,
+		-5.379510423944222,
+		14.914162375723846
+	],
+	"metadata": {
+		"calibrated_by": "Hongye Deng",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

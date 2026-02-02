@@ -1,0 +1,28 @@
+{
+	"id": "lg-v30-motion--2016x1504",
+	"camera_brand": "LG V30",
+	"camera_model": "Motion",
+	"lens_model": "Ultra Wide",
+	"resolution": {
+		"width": 2016,
+		"height": 1504
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 967.9091239496764,
+		"fy": 968.085248942474,
+		"cx": 1016.7993566235205,
+		"cy": 728.7975935623547
+	},
+	"distortion_coeffs": [
+		0.3313035855242307,
+		-0.18604088792194828,
+		0.7893285330226555,
+		-0.5563129650995245
+	],
+	"metadata": {
+		"calibrated_by": "max yurakh",
+		"source": "gyroflow",
+		"official": true
+	}
+}

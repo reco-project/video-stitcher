@@ -1,0 +1,28 @@
+{
+	"id": "nokia-7-plus--3840x2160",
+	"camera_brand": "Nokia",
+	"camera_model": "7 Plus",
+	"lens_model": "Main lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2953.4718556796615,
+		"fy": 2953.6146226421592,
+		"cx": 1923.8116575251256,
+		"cy": 1068.6105677949556
+	},
+	"distortion_coeffs": [
+		0.6437795460434682,
+		-1.774745304135954,
+		5.225797524911402,
+		-5.076146051753801
+	],
+	"metadata": {
+		"calibrated_by": "Jan Alwin de Jong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

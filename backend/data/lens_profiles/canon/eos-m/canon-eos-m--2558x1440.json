@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--2558x1440",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Samyang 8mm",
+	"resolution": {
+		"width": 2558,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 793.5959159746833,
+		"fy": 795.1270257394789,
+		"cx": 1278.3606772239318,
+		"cy": 730.5417624705262
+	},
+	"distortion_coeffs": [
+		0.035331986930731016,
+		0.014193955891099702,
+		-0.009409972346162232,
+		0.004300001538873064
+	],
+	"metadata": {
+		"calibrated_by": "mine",
+		"source": "gyroflow",
+		"official": true
+	}
+}

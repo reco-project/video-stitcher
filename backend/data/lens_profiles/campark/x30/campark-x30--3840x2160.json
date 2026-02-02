@@ -1,0 +1,28 @@
+{
+	"id": "campark-x30--3840x2160",
+	"camera_brand": "CamPark",
+	"camera_model": "X30",
+	"lens_model": "150",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2131.212452160844,
+		"fy": 2131.1318387113324,
+		"cx": 2012.8465628881183,
+		"cy": 1129.6618165930058
+	},
+	"distortion_coeffs": [
+		-0.04377933113545624,
+		0.00018537373465058048,
+		0.001214512185660757,
+		0.0008905224900148635
+	],
+	"metadata": {
+		"calibrated_by": "MarkFpv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

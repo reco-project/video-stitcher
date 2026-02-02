@@ -2,32 +2,27 @@
 	"id": "sony-fdr-ax700--1920x1080",
 	"camera_brand": "Sony",
 	"camera_model": "FDR-AX700",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1447.9273127761226,
-		"fy": 1448.3839111411091,
-		"cx": 975.658316236292,
-		"cy": 516.8775457491331
+		"fx": 1481.8118818016314,
+		"fy": 1480.7138009297294,
+		"cx": 954.8335462961692,
+		"cy": 545.5351515279162
 	},
 	"distortion_coeffs": [
-		0.27802977445488375,
-		0.380712787334284,
-		-0.5416499661041072,
-		0.5320853737738778
+		0.2536756228887705,
+		0.40406255368885113,
+		-0.3182522565104555,
+		0.16382080028787907
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_FDR-AX700___1080p_16by9_1920x1080-100.00fps",
 		"calibrated_by": "\u9f99\u6709\u7b1b",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "100.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

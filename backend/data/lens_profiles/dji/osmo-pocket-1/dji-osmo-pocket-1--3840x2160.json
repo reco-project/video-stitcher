@@ -2,7 +2,7 @@
 	"id": "dji-osmo-pocket-1--3840x2160",
 	"camera_brand": "DJI",
 	"camera_model": "Osmo Pocket 1",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		29.42898560629719
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Osmo Pocket 1___4k_16by9_3840x2160-59.94fps",
 		"calibrated_by": "Aldo Emanuele Castellani",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "59.94006",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

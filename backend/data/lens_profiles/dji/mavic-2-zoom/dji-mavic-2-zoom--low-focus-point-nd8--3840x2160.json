@@ -1,0 +1,29 @@
+{
+	"id": "dji-mavic-2-zoom--low-focus-point-nd8--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic 2 Zoom",
+	"lens_model": "DJI Mavic 2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2553.21529466171,
+		"fy": 2553.134159889782,
+		"cx": 1942.1396081222056,
+		"cy": 1051.5975346711164
+	},
+	"distortion_coeffs": [
+		0.3254171329092503,
+		-0.02651378575149156,
+		0.5129897285382642,
+		-0.4466556537371363
+	],
+	"metadata": {
+		"calibrated_by": "Azore",
+		"notes": "Low Focus Point ND8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-g2--18mm--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K G2",
+	"lens_model": "Canon EF-S 18-135mm f/3.5-5.6 IS 18mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4879.247805427656,
+		"fy": 4885.340636583763,
+		"cx": 2086.326686569237,
+		"cy": 1131.4150742079653
+	},
+	"distortion_coeffs": [
+		0.17107304289208608,
+		-0.40847712202204384,
+		3.912050341129631,
+		-8.939349755985283
+	],
+	"metadata": {
+		"calibrated_by": "Anton Jacobsson",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--magic-lantern-use--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Canon 2MM F2 STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1919.3158829861268,
+		"fy": 1917.5545804453284,
+		"cx": 949.8097758682314,
+		"cy": 581.4729352171755
+	},
+	"distortion_coeffs": [
+		0.35221030814389187,
+		-0.013775213612374092,
+		0.4027955898874408,
+		0.6418143643844505
+	],
+	"metadata": {
+		"calibrated_by": "MAD",
+		"notes": "Magic Lantern Use",
+		"source": "gyroflow",
+		"official": true
+	}
+}

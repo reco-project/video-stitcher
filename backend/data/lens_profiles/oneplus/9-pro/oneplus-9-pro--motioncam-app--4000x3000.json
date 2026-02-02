@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-9-pro--motioncam-app--4000x3000",
+	"camera_brand": "OnePlus",
+	"camera_model": "9 Pro",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2808.852901134326,
+		"fy": 2811.7120797962266,
+		"cx": 2001.275334411726,
+		"cy": 1475.1034569142198
+	},
+	"distortion_coeffs": [
+		0.27333929400914736,
+		0.462237370128826,
+		-0.27604669330901516,
+		-0.27579265296075417
+	],
+	"metadata": {
+		"calibrated_by": "maga.fpv",
+		"notes": "MotionCam App",
+		"source": "gyroflow",
+		"official": true
+	}
+}

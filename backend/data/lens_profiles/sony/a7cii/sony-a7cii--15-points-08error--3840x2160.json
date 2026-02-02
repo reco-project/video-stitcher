@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7cii--15-points-08error--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7CII",
+	"lens_model": "kit FE 3.5-5.6 28-70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4744.161106599395,
+		"fy": 4749.8110615271235,
+		"cx": 1995.609559882731,
+		"cy": 1064.883389514928
+	},
+	"distortion_coeffs": [
+		0.3114302900011203,
+		0.09330456838604492,
+		2.5024408025041533,
+		-14.04933183141922
+	],
+	"metadata": {
+		"calibrated_by": "Christopher Buzicky",
+		"notes": "15 Points, 0.8error",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--bilals-crop-mood--2560x1440",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "TTArtisan 17mm f/1.4",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4273.326808207571,
+		"fy": 4167.737321236377,
+		"cx": 1172.7254335714674,
+		"cy": 664.247335097931
+	},
+	"distortion_coeffs": [
+		0.1975247110349886,
+		2.04861574272505,
+		-29.562092033769105,
+		143.97974973543944
+	],
+	"metadata": {
+		"calibrated_by": "Ahmed Ma",
+		"notes": "Bilal's Crop Mood",
+		"source": "gyroflow",
+		"official": true
+	}
+}

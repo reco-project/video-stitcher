@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d810--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "d810",
+	"lens_model": "24-70",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13023.350121208872,
+		"fy": 13486.960128216968,
+		"cx": 1153.9884718229523,
+		"cy": 529.1514924999389
+	},
+	"distortion_coeffs": [
+		3.3300149019977745,
+		-225.2121852241925,
+		49049.48346393095,
+		-1565285.6430495975
+	],
+	"metadata": {
+		"calibrated_by": "Administrator-gql",
+		"source": "gyroflow",
+		"official": true
+	}
+}

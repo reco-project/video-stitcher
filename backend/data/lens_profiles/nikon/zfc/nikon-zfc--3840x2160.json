@@ -1,0 +1,28 @@
+{
+	"id": "nikon-zfc--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "ZFC",
+	"lens_model": "Viltrox 13mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2167.3280453959956,
+		"fy": 2165.604607180922,
+		"cx": 1950.1628654037415,
+		"cy": 1075.6201441016606
+	},
+	"distortion_coeffs": [
+		0.28904161513976284,
+		0.26056584092522994,
+		-0.22334859158306983,
+		0.3466902071111978
+	],
+	"metadata": {
+		"calibrated_by": "John Papa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

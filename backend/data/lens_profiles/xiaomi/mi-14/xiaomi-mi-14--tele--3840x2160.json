@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mi-14--tele--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 14",
+	"lens_model": "62mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6988.623586123507,
+		"fy": 6997.300887767444,
+		"cx": 1931.9541355375684,
+		"cy": 1056.9984393876946
+	},
+	"distortion_coeffs": [
+		0.43415277255942814,
+		4.401099724655346,
+		-53.24706745860115,
+		227.82791506584425
+	],
+	"metadata": {
+		"calibrated_by": "Dmitry Shirokov",
+		"notes": "Tele",
+		"source": "gyroflow",
+		"official": true
+	}
+}

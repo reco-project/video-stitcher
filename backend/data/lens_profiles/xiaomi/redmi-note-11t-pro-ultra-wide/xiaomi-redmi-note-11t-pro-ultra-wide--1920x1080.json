@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-11t-pro-ultra-wide--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi note 11t pro +ultra wide",
+	"lens_model": "120\u00b0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1073.55858526722,
+		"fy": 1073.1253725766271,
+		"cx": 948.4115734094956,
+		"cy": 528.2604818762445
+	},
+	"distortion_coeffs": [
+		0.3543857546865719,
+		0.07329968547836371,
+		-0.18853787457065152,
+		0.611671579334654
+	],
+	"metadata": {
+		"calibrated_by": "ERIRI",
+		"source": "gyroflow",
+		"official": true
+	}
+}

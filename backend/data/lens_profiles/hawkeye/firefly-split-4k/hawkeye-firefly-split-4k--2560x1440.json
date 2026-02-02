@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-split-4k--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly Split 4K",
+	"lens_model": "Hawkeye/HawkeyeNaked2K5_16_9_50fps.json",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1377.4397572206149,
+		"fy": 1375.7616667026816,
+		"cx": 1261.8412836732437,
+		"cy": 757.5373052960043
+	},
+	"distortion_coeffs": [
+		-0.03366049398162817,
+		0.015637671829423484,
+		-0.023058199256647212,
+		0.011472392990771973
+	],
+	"metadata": {
+		"calibrated_by": "\u7530\u4e2d\u6709\u7d00",
+		"source": "gyroflow",
+		"official": true
+	}
+}

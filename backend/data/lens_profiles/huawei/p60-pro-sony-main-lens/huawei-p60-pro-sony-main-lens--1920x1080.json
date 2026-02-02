@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p60-pro-sony-main-lens--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "p60 pro sony main lens",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1493.0718444693484,
+		"fy": 1491.6308018522711,
+		"cx": 956.158561762476,
+		"cy": 539.8783328247026
+	},
+	"distortion_coeffs": [
+		0.6954912440868095,
+		-2.7184817325347863,
+		10.196208162174118,
+		-13.30476334439221
+	],
+	"metadata": {
+		"calibrated_by": "Samer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

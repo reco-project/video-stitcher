@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-k30pro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi K30pro",
+	"lens_model": "\u4e3b\u6444\u6a2a\u5c4f",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1451.3454329342903,
+		"fy": 1451.3468450940825,
+		"cx": 972.5658704339857,
+		"cy": 534.3920459469821
+	},
+	"distortion_coeffs": [
+		0.4074536617876083,
+		0.023566133924837116,
+		0.11904379162970202,
+		-0.034518737031273485
+	],
+	"metadata": {
+		"calibrated_by": "Ming",
+		"source": "gyroflow",
+		"official": true
+	}
+}

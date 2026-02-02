@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x-6k-s35--6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "EF24-70mm f/2.8L II USM 24.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5346.34509823199,
+		"fy": 5345.558830376394,
+		"cx": 3075.9286188197084,
+		"cy": 1299.6519941571266
+	},
+	"distortion_coeffs": [
+		0.20352148448747912,
+		0.1467214812868552,
+		-0.08803216057702548,
+		0.5757014749091023
+	],
+	"metadata": {
+		"calibrated_by": "FASTFOKUS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

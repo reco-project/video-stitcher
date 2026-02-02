@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--metabones-ef-bmpcc4k-t-cine-x071--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "SAMYANG 25mm T1.5 UMCII",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3820.3919255535343,
+		"fy": 3824.800452693149,
+		"cx": 2019.6059215667444,
+		"cy": 1067.4289752732273
+	},
+	"distortion_coeffs": [
+		0.2654680148402522,
+		-0.5371567832142885,
+		3.1846754408286024,
+		-5.9272587773892775
+	],
+	"metadata": {
+		"calibrated_by": "\u80e1\u6c5f\u6d9b",
+		"notes": "metabones EF-BMPCC4K T CINE X0.71",
+		"source": "gyroflow",
+		"official": true
+	}
+}

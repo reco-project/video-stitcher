@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s1--5952x3968",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1",
+	"lens_model": "Canon NFD 28mm",
+	"resolution": {
+		"width": 5952,
+		"height": 3968
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4985.141612386395,
+		"fy": 4984.377196508218,
+		"cx": 2999.3363350953823,
+		"cy": 1975.4477329521465
+	},
+	"distortion_coeffs": [
+		0.24360692194769243,
+		0.1733690248370628,
+		0.08104140718537224,
+		-0.1025905851823172
+	],
+	"metadata": {
+		"calibrated_by": "@_ldro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

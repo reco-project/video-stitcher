@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-13--iphone-13-fhd-60fps-169--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 13",
+	"lens_model": "Wide angle",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1720.541800897392,
+		"fy": 1717.7657755236637,
+		"cx": 952.4998907247788,
+		"cy": 548.897482368813
+	},
+	"distortion_coeffs": [
+		0.6429530492797632,
+		-2.70724869241925,
+		11.473413352746912,
+		-15.709952190098464
+	],
+	"metadata": {
+		"calibrated_by": "Aditya kn",
+		"notes": "iPhone 13 FHD 60FPS 16:9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

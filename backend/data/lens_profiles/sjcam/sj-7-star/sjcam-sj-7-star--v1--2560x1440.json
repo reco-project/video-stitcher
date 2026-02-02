@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-sj-7-star--v1--2560x1440",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ 7 STAR",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1353.7771815829635,
+		"fy": 1352.4121932479857,
+		"cx": 1345.518918007112,
+		"cy": 752.218825875919
+	},
+	"distortion_coeffs": [
+		-0.03624409365805722,
+		0.0014898517593953053,
+		-0.014063730351764218,
+		0.008666600417622142
+	],
+	"metadata": {
+		"calibrated_by": "VeeoN",
+		"notes": "V1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

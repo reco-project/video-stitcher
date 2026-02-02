@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-poco-x3-pro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Poco X3 pro",
+	"lens_model": "padr\u00e3o",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1456.232586011238,
+		"fy": 1453.8339416196127,
+		"cx": 961.286289723148,
+		"cy": 543.7897809792469
+	},
+	"distortion_coeffs": [
+		0.5376552452965463,
+		-0.8367775551124584,
+		3.113934403821542,
+		-4.8012232358144225
+	],
+	"metadata": {
+		"calibrated_by": "Lucas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

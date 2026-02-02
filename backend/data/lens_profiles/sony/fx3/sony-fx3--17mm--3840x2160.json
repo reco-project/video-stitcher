@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--17mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Tamron 17-28",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1864.534235531928,
+		"fy": 1864.5027844437,
+		"cx": 1904.1509848900173,
+		"cy": 1068.5517618136575
+	},
+	"distortion_coeffs": [
+		0.3084435510280749,
+		0.1442111028438607,
+		0.0559232070027315,
+		0.026524225665149115
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u5f66",
+		"notes": "17mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

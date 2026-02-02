@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro--18mm--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k Pro",
+	"lens_model": "Sigma 18-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3055.56746137584,
+		"fy": 3049.7891090058515,
+		"cx": 1910.3086657366568,
+		"cy": 1112.6926764824275
+	},
+	"distortion_coeffs": [
+		0.22592675282426863,
+		0.1451398459662545,
+		0.1079190925414316,
+		0.2690512283662591
+	],
+	"metadata": {
+		"calibrated_by": "Aerial Division",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

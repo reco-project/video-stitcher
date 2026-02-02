@@ -1,0 +1,29 @@
+{
+	"id": "huawei-p40-pro--jp--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "p40 pro",
+	"lens_model": "Laica",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3285.112981031403,
+		"fy": 3283.7985197366456,
+		"cx": 1906.115420714154,
+		"cy": 1048.6175272560522
+	},
+	"distortion_coeffs": [
+		0.757925855344434,
+		-6.047933470758758,
+		32.91394042200233,
+		-57.75974880837868
+	],
+	"metadata": {
+		"calibrated_by": "Joao Cruz",
+		"notes": "jp",
+		"source": "gyroflow",
+		"official": true
+	}
+}

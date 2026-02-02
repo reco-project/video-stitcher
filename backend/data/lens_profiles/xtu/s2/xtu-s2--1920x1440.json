@@ -1,0 +1,28 @@
+{
+	"id": "xtu-s2--1920x1440",
+	"camera_brand": "XTU",
+	"camera_model": "S2",
+	"lens_model": "\u6807\u51c6",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1395.512597424716,
+		"fy": 1395.336664696966,
+		"cx": 1143.1195141887536,
+		"cy": 792.0708135444037
+	},
+	"distortion_coeffs": [
+		-0.02955768241358042,
+		0.07174629244410162,
+		-0.15468163388231723,
+		0.06908719560640193
+	],
+	"metadata": {
+		"calibrated_by": "\u5510\u660c\u94ed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

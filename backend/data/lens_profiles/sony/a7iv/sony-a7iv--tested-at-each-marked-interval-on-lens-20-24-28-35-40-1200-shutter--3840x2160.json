@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--tested-at-each-marked-interval-on-lens-20-24-28-35-40-1200-shutter--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Tamron 20-40mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2514.8370813904044,
+		"fy": 2503.3366503571124,
+		"cx": 2001.0488637800456,
+		"cy": 1044.258668216412
+	},
+	"distortion_coeffs": [
+		0.24081389066652836,
+		0.40452362165416295,
+		-0.33845142331140865,
+		0.39285302716982207
+	],
+	"metadata": {
+		"calibrated_by": "Tim Belchamber",
+		"notes": "Tested at each marked interval on lens: 20, 24, 28, 35, 40) 1/200 shutter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

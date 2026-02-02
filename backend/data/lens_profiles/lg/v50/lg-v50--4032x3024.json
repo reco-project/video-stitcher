@@ -1,0 +1,28 @@
+{
+	"id": "lg-v50--4032x3024",
+	"camera_brand": "LG",
+	"camera_model": "V50",
+	"lens_model": "27mm",
+	"resolution": {
+		"width": 4032,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3056.9933181845563,
+		"fy": 3064.6672746792387,
+		"cx": 2027.364220390465,
+		"cy": 1536.4655253624765
+	},
+	"distortion_coeffs": [
+		0.7063647507665521,
+		-2.08181247377459,
+		1.4192706247454805,
+		11.88002847891088
+	],
+	"metadata": {
+		"calibrated_by": "Nando Y",
+		"source": "gyroflow",
+		"official": true
+	}
+}

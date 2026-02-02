@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x-6k-s35--20mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "DZO Film 20-55 T2.8",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4683.554836708985,
+		"fy": 4684.764627370218,
+		"cx": 3073.694091555806,
+		"cy": 1611.3841883164976
+	},
+	"distortion_coeffs": [
+		0.15346344589849167,
+		0.24990001403634135,
+		-0.5847264708694271,
+		1.1249443112990198
+	],
+	"metadata": {
+		"calibrated_by": "Raymond Francisco",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

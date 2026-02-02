@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-11-pro-5g--1920x1080",
+	"camera_brand": "Redmi",
+	"camera_model": "note 11 pro 5G",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1694.013836941843,
+		"fy": 1692.4929637643725,
+		"cx": 961.3473904800036,
+		"cy": 535.7429107246802
+	},
+	"distortion_coeffs": [
+		0.6861469673983172,
+		-3.476850640361522,
+		15.556679571152424,
+		-23.81024291474604
+	],
+	"metadata": {
+		"calibrated_by": "Jan Darski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

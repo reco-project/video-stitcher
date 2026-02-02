@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh4--1920x1012",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Laowa 9mm 2.8 Zero-D",
+	"resolution": {
+		"width": 1920,
+		"height": 1012
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1135.7691829464793,
+		"fy": 1134.78778015469,
+		"cx": 956.3299635249834,
+		"cy": 492.77224500843187
+	},
+	"distortion_coeffs": [
+		0.3344826473404479,
+		0.2360159862088234,
+		-0.4428863421322866,
+		0.5514927112528591
+	],
+	"metadata": {
+		"calibrated_by": "Ansel Luchau",
+		"source": "gyroflow",
+		"official": true
+	}
+}

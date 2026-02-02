@@ -2,7 +2,7 @@
 	"id": "sony-fdr-x1000v--3840x2160",
 	"camera_brand": "Sony",
 	"camera_model": "FDR-X1000V",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		-6.077321067489928e-06
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_FDR-X1000V___4k_16by9_3840x2160-29.97fps",
 		"calibrated_by": "Dmitry Nosov",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

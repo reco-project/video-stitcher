@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7cii--viltrox_20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7CII",
+	"lens_model": "20.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3539.456512493975,
+		"fy": 3540.8396221461285,
+		"cx": 1887.134431655484,
+		"cy": 1057.5953414363523
+	},
+	"distortion_coeffs": [
+		0.23125125034210528,
+		0.22951306633401675,
+		-0.7262044031462618,
+		1.7706516961924836
+	],
+	"metadata": {
+		"calibrated_by": "\u5f90\u677e",
+		"notes": "viltrox_20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

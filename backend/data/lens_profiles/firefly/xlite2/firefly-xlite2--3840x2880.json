@@ -1,0 +1,28 @@
+{
+	"id": "firefly-xlite2--3840x2880",
+	"camera_brand": "Firefly",
+	"camera_model": "Xlite2",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1939.1835422627696,
+		"fy": 1935.9568558864664,
+		"cx": 1951.0448115732968,
+		"cy": 1496.5453303961667
+	},
+	"distortion_coeffs": [
+		-0.05819210314513568,
+		0.09472511864593824,
+		-0.20986193060300712,
+		0.17315339979668143
+	],
+	"metadata": {
+		"calibrated_by": "Pavel FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

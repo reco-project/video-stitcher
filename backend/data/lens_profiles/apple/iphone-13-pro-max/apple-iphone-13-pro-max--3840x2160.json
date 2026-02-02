@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-13-pro-max--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 13 Pro Max",
+	"lens_model": "26 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3193.843334248924,
+		"fy": 3194.038087018016,
+		"cx": 1919.940890174622,
+		"cy": 1092.892947772447
+	},
+	"distortion_coeffs": [
+		0.5679001807283698,
+		-0.4104695907927713,
+		-4.4629709180608925,
+		19.23416534714323
+	],
+	"metadata": {
+		"calibrated_by": "hxg",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s5kgm1--for-xiaomi-redmi-note-7--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S5KGM1",
+	"lens_model": "1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2995.958944100911,
+		"fy": 2992.746501101473,
+		"cx": 1912.571125472965,
+		"cy": 1069.9495268282094
+	},
+	"distortion_coeffs": [
+		0.23247120747425828,
+		1.4596466050184378,
+		-4.439725058620361,
+		4.664428504578088
+	],
+	"metadata": {
+		"calibrated_by": "dauff",
+		"notes": "for Xiaomi Redmi Note 7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

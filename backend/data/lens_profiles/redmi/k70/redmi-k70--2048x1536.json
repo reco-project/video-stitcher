@@ -1,0 +1,28 @@
+{
+	"id": "redmi-k70--2048x1536",
+	"camera_brand": "Redmi",
+	"camera_model": "K70",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 2048,
+		"height": 1536
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1487.1761734316692,
+		"fy": 1487.5344384506398,
+		"cx": 1035.6339537747313,
+		"cy": 749.5312517249106
+	},
+	"distortion_coeffs": [
+		0.4848531854347179,
+		-0.5112421609926403,
+		1.1823671417293569,
+		-0.9735724580124756
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

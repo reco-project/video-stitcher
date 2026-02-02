@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "22mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4885.930518933815,
+		"fy": 4887.201221451435,
+		"cx": 1816.376233296813,
+		"cy": 1066.935991615339
+	},
+	"distortion_coeffs": [
+		0.28998677327499506,
+		-0.07848697590505806,
+		4.597971213847883,
+		-17.971624044815226
+	],
+	"metadata": {
+		"calibrated_by": "Redson ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

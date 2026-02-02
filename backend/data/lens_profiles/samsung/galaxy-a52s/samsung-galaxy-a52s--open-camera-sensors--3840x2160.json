@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-a52s--open-camera-sensors--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A52s",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2738.4191646559043,
+		"fy": 2739.110174524907,
+		"cx": 1899.040071121996,
+		"cy": 1070.2963406216531
+	},
+	"distortion_coeffs": [
+		0.6079626866588703,
+		-1.438157819974049,
+		5.245053445762051,
+		-6.793308867899066
+	],
+	"metadata": {
+		"calibrated_by": "Josiah Mos",
+		"notes": "Open Camera Sensors",
+		"source": "gyroflow",
+		"official": true
+	}
+}

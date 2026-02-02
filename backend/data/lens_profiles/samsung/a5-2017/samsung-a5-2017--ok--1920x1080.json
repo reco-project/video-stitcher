@@ -1,0 +1,29 @@
+{
+	"id": "samsung-a5-2017--ok--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A5 2017",
+	"lens_model": "10",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1457.198542318812,
+		"fy": 1453.877703793061,
+		"cx": 954.2737667329196,
+		"cy": 539.0549413948821
+	},
+	"distortion_coeffs": [
+		0.6207788137068649,
+		-0.8007229212884847,
+		-1.2601354274950574,
+		7.841818720707996
+	],
+	"metadata": {
+		"calibrated_by": "HF",
+		"notes": "ok",
+		"source": "gyroflow",
+		"official": true
+	}
+}

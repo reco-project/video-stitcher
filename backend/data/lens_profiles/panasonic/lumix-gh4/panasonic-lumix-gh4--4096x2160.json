@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh4--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH4",
+	"lens_model": "Laowa 7.5mm MFT",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1988.860293665511,
+		"fy": 1987.4093996646875,
+		"cx": 2025.503197513895,
+		"cy": 1021.7993236076276
+	},
+	"distortion_coeffs": [
+		0.364625767487831,
+		-0.10804398201867384,
+		0.5990890708458309,
+		-0.5113891332982632
+	],
+	"metadata": {
+		"calibrated_by": "Tenzin Rawog",
+		"source": "gyroflow",
+		"official": true
+	}
+}

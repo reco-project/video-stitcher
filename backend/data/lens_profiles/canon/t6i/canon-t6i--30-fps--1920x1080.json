@@ -1,0 +1,29 @@
+{
+	"id": "canon-t6i--30-fps--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "T6i",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4751.495892515538,
+		"fy": 4748.907286803248,
+		"cx": 958.5303124346714,
+		"cy": 490.6427984661133
+	},
+	"distortion_coeffs": [
+		0.11316533781851466,
+		-2.5620115395980885,
+		279.7254949185681,
+		-5435.276019268881
+	],
+	"metadata": {
+		"calibrated_by": "lizze",
+		"notes": "30 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

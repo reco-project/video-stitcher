@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a71--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "A71",
+	"lens_model": "0.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1856.6948894524712,
+		"fy": 1854.9901091253637,
+		"cx": 1942.0011516424831,
+		"cy": 1091.818845219266
+	},
+	"distortion_coeffs": [
+		0.18789145525127535,
+		0.8887436893443604,
+		-1.6264793401796052,
+		1.2566973077343424
+	],
+	"metadata": {
+		"calibrated_by": "Rafael Gustavo Pacios",
+		"source": "gyroflow",
+		"official": true
+	}
+}

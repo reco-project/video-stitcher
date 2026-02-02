@@ -1,0 +1,28 @@
+{
+	"id": "tracer-sj-4000le--1920x1080",
+	"camera_brand": "Tracer",
+	"camera_model": "SJ 4000LE",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2417.617718440976,
+		"fy": 2414.9033244044444,
+		"cx": 977.773364000982,
+		"cy": 645.1416297339116
+	},
+	"distortion_coeffs": [
+		-0.5217882580381858,
+		-1.4272730995616694,
+		13.352408224036733,
+		-33.11953995387299
+	],
+	"metadata": {
+		"calibrated_by": "S\u0142awomir K\u0142opot",
+		"source": "gyroflow",
+		"official": true
+	}
+}

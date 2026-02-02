@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s22--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S22",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1253.8053548532853,
+		"fy": 1249.0375475040007,
+		"cx": 945.9021780641152,
+		"cy": 522.7680091368408
+	},
+	"distortion_coeffs": [
+		0.4575118115303295,
+		-0.29495318532592024,
+		1.0348872744508235,
+		-0.8491938402064154
+	],
+	"metadata": {
+		"calibrated_by": "Vu Minh",
+		"source": "gyroflow",
+		"official": true
+	}
+}

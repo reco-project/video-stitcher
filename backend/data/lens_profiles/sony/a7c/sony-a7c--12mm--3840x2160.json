@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--12mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "SEL1224GM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2070.6235641661874,
+		"fy": 2070.2250741403714,
+		"cx": 1915.0271158697249,
+		"cy": 1057.1338936071277
+	},
+	"distortion_coeffs": [
+		0.32528385352705247,
+		0.16901388826096367,
+		-0.10488931681561207,
+		0.1800035802713857
+	],
+	"metadata": {
+		"calibrated_by": "\u6842\u9999",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

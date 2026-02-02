@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6-mk-ii--24-m--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6 Mk II",
+	"lens_model": "Canon 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2728.7895378126073,
+		"fy": 2722.4551091079484,
+		"cx": 1917.8951994899417,
+		"cy": 1047.8122424040037
+	},
+	"distortion_coeffs": [
+		0.34483179200533254,
+		-0.0193933326721039,
+		0.7170379837980387,
+		-0.7973956014306354
+	],
+	"metadata": {
+		"calibrated_by": "Mohammad Khalid",
+		"notes": "24 m",
+		"source": "gyroflow",
+		"official": true
+	}
+}

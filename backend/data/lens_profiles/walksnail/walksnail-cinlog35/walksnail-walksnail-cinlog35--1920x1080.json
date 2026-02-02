@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-walksnail-cinlog35--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "walksnail cinlog35",
+	"lens_model": "walksnail cinlog35",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 729.6008964462451,
+		"fy": 730.339811725867,
+		"cx": 937.7797550997548,
+		"cy": 548.2215627014644
+	},
+	"distortion_coeffs": [
+		0.012195006963161316,
+		0.02159710479077161,
+		-0.013212434203100703,
+		0.0024095801405211387
+	],
+	"metadata": {
+		"calibrated_by": "ho leo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

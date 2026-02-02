@@ -1,0 +1,28 @@
+{
+	"id": "firefly-firefly-8se--3840x2160",
+	"camera_brand": "Firefly",
+	"camera_model": "Firefly 8SE",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2507.3647113114457,
+		"fy": 2507.092983449408,
+		"cx": 1979.589400028882,
+		"cy": 1045.474563569187
+	},
+	"distortion_coeffs": [
+		0.22243273586316015,
+		-0.3366699859943041,
+		1.8130137865478817,
+		-2.122171761950024
+	],
+	"metadata": {
+		"calibrated_by": "Joaquin Peyronel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

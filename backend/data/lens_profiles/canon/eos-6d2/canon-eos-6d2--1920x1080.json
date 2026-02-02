@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-6d2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6D2",
+	"lens_model": "EF 24-105",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1298.1648979040392,
+		"fy": 1272.1890657921936,
+		"cx": 962.2997189096236,
+		"cy": 513.7200152911607
+	},
+	"distortion_coeffs": [
+		0.20084782849803137,
+		0.12600011743466272,
+		0.05589099347541244,
+		0.23288627531694203
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

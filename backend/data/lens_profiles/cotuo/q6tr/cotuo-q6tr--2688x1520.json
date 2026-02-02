@@ -1,0 +1,28 @@
+{
+	"id": "cotuo-q6tr--2688x1520",
+	"camera_brand": "COTUO",
+	"camera_model": "Q6TR",
+	"lens_model": "F1.8F2.66",
+	"resolution": {
+		"width": 2688,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1863.960239969314,
+		"fy": 1854.8193703395364,
+		"cx": 1341.7848970147345,
+		"cy": 798.3928450265352
+	},
+	"distortion_coeffs": [
+		-0.0012339227679017584,
+		0.14629731311214425,
+		-0.49691988952071486,
+		0.5189507734238211
+	],
+	"metadata": {
+		"calibrated_by": "ZXQ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

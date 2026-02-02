@@ -1,0 +1,28 @@
+{
+	"id": "runcam-3s--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "3S",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 942.637663066276,
+		"fy": 943.306138365697,
+		"cx": 946.1254254900526,
+		"cy": 528.1850805322899
+	},
+	"distortion_coeffs": [
+		-0.0774513877956834,
+		0.0014920381684052466,
+		-0.000953213879290965,
+		-0.00022937842507152057
+	],
+	"metadata": {
+		"calibrated_by": "mark",
+		"source": "gyroflow",
+		"official": true
+	}
+}

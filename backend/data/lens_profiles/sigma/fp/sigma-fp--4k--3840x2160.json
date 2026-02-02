@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--4k--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "20-60mm  When20",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2222.917237343067,
+		"fy": 2221.2793214765943,
+		"cx": 1920.3449236559377,
+		"cy": 1092.9485207864716
+	},
+	"distortion_coeffs": [
+		0.2843635337904871,
+		0.155286525648247,
+		0.0007244778457091334,
+		0.05703869860617149
+	],
+	"metadata": {
+		"calibrated_by": "\u7267\u660e",
+		"notes": "4K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

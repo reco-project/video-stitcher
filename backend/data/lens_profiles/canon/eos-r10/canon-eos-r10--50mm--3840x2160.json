@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r10--50mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R10",
+	"lens_model": "RF",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11356.548487051705,
+		"fy": 11127.093628840876,
+		"cx": 2015.6453710106148,
+		"cy": 1247.8490544413798
+	},
+	"distortion_coeffs": [
+		0.483663298604924,
+		-0.610012870625575,
+		-25.19822464361509,
+		818.358468358764
+	],
+	"metadata": {
+		"calibrated_by": "Ernest Oliver Casanes",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

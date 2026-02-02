@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7rii--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "a7RII",
+	"lens_model": "50f2",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1978.2102522824616,
+		"fy": 1966.9404135836455,
+		"cx": 679.8214805997865,
+		"cy": 396.1059261035246
+	},
+	"distortion_coeffs": [
+		0.2784287004409797,
+		-1.6003815762298672,
+		29.046098468710777,
+		-195.9402006630161
+	],
+	"metadata": {
+		"calibrated_by": "\u4e9a\u91cc\u58eb\u7f3a\u5fb7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

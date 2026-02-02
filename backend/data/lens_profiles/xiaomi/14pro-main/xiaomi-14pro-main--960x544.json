@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-14pro-main--960x544",
+	"camera_brand": "Xiaomi",
+	"camera_model": "14Pro main",
+	"lens_model": null,
+	"resolution": {
+		"width": 960,
+		"height": 544
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 806.2122896819337,
+		"fy": 788.1553121267831,
+		"cx": 479.101181406973,
+		"cy": 278.03462976782936
+	},
+	"distortion_coeffs": [
+		0.4010382997139957,
+		-0.6489252052370517,
+		2.926806046126599,
+		-3.3909291420913386
+	],
+	"metadata": {
+		"calibrated_by": "XF H",
+		"source": "gyroflow",
+		"official": true
+	}
+}

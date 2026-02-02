@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x-6k-s35--6144x3072",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "EF16-35mm f/2.8L II USM 16.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3790.514650811467,
+		"fy": 3789.725818592219,
+		"cx": 3102.783611366942,
+		"cy": 1508.516108503898
+	},
+	"distortion_coeffs": [
+		0.21564450323156675,
+		0.2955631734478607,
+		-0.24124010504137303,
+		0.21290390403054207
+	],
+	"metadata": {
+		"calibrated_by": "FASTFOKUS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

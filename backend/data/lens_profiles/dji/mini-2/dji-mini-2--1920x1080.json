@@ -1,0 +1,28 @@
+{
+	"id": "dji-mini-2--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Mini 2",
+	"lens_model": "FOV: 83\u00b0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1415.5740051795217,
+		"fy": 1413.1096297359868,
+		"cx": 970.8934921309911,
+		"cy": 523.9144612117803
+	},
+	"distortion_coeffs": [
+		0.34839145762140944,
+		0.03334327194060061,
+		-0.005690395971532902,
+		0.38650028693516214
+	],
+	"metadata": {
+		"calibrated_by": "israel romero",
+		"source": "gyroflow",
+		"official": true
+	}
+}

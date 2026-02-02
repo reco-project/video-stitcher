@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action--lens-f28-angle-145--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action",
+	"lens_model": "standard",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1720.047448790203,
+		"fy": 1719.727634498801,
+		"cx": 1961.057107190364,
+		"cy": 1115.9720333759024
+	},
+	"distortion_coeffs": [
+		0.23235420275722848,
+		0.3992699013183501,
+		-0.3304148549504581,
+		0.279016521846284
+	],
+	"metadata": {
+		"calibrated_by": "Silver",
+		"notes": "lens f2,8, angle 145",
+		"source": "gyroflow",
+		"official": true
+	}
+}

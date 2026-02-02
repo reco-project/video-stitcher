@@ -1,0 +1,28 @@
+{
+	"id": "garmin-virb-ultra30--3840x2160",
+	"camera_brand": "Garmin",
+	"camera_model": "Virb Ultra30",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1758.701950389977,
+		"fy": 1759.142298165327,
+		"cx": 1935.0373150843704,
+		"cy": 1071.630355435554
+	},
+	"distortion_coeffs": [
+		0.03930192116683801,
+		0.000575069992347604,
+		0.014820221664757492,
+		-0.007849829052239264
+	],
+	"metadata": {
+		"calibrated_by": "MarvinX",
+		"source": "gyroflow",
+		"official": true
+	}
+}

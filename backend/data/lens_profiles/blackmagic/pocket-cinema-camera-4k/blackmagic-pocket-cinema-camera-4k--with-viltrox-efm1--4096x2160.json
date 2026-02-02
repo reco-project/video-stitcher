@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--with-viltrox-efm1--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "SP AF 17-50/2.8 XR Di II LD Asp. IF A16",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3849.26672250904,
+		"fy": 3844.0117770277466,
+		"cx": 2051.7925862411103,
+		"cy": 1074.5626147596925
+	},
+	"distortion_coeffs": [
+		0.17165198616354616,
+		0.3153565189718852,
+		-0.7845271078283808,
+		1.8271265312311329
+	],
+	"metadata": {
+		"calibrated_by": "ufhy",
+		"notes": "With Viltrox EFM1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

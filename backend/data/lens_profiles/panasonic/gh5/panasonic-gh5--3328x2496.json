@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh5--3328x2496",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "251.4+TPK-16Z",
+	"resolution": {
+		"width": 3328,
+		"height": 2496
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2730.0051802329126,
+		"fy": 4950.870075899119,
+		"cx": 1652.043247245645,
+		"cy": 1243.568543327327
+	},
+	"distortion_coeffs": [
+		-0.4563478779578503,
+		9.886146470091726,
+		-126.51013930700638,
+		505.9796446900378
+	],
+	"metadata": {
+		"calibrated_by": "yi Peter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

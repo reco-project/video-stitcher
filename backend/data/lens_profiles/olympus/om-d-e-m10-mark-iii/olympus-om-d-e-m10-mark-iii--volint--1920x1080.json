@@ -1,0 +1,29 @@
+{
+	"id": "olympus-om-d-e-m10-mark-iii--volint--1920x1080",
+	"camera_brand": "Olympus",
+	"camera_model": "OM-D E-M10 Mark III",
+	"lens_model": "Olympus M.Zuiko Digital ED 40-150mm f/4-5.6 R @ 40mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5499.192705842881,
+		"fy": 5505.611676526657,
+		"cx": 909.670336103898,
+		"cy": 559.0384331043645
+	},
+	"distortion_coeffs": [
+		-0.1403531193111003,
+		45.45109954232215,
+		-2316.3486703665694,
+		37112.72430492813
+	],
+	"metadata": {
+		"calibrated_by": "C",
+		"notes": "volint",
+		"source": "gyroflow",
+		"official": true
+	}
+}

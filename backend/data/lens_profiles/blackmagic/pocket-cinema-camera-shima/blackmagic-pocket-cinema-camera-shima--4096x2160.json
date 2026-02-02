@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-shima--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera SHIMA",
+	"lens_model": "18-35",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6552.786985344245,
+		"fy": 6530.105133620633,
+		"cx": 2057.2109023963912,
+		"cy": 1176.7849836583025
+	},
+	"distortion_coeffs": [
+		0.4414332035392584,
+		1.8865513812117487,
+		-44.68912509383296,
+		416.5622184949431
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

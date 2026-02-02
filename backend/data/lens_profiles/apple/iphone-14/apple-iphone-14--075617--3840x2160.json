@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-14--075617--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14",
+	"lens_model": "\u524d\u7f6e",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2659.75259095715,
+		"fy": 2660.7645784179344,
+		"cx": 1942.013279643444,
+		"cy": 1084.317136664108
+	},
+	"distortion_coeffs": [
+		0.5793049831151854,
+		-0.7527623593505984,
+		-0.9760515042727635,
+		8.418025505059447
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "0.75617",
+		"source": "gyroflow",
+		"official": true
+	}
+}

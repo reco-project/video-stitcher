@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-whoop-split--1280x720",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly Whoop Split",
+	"lens_model": "165 degrees",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 638.0604081547788,
+		"fy": 637.9020707846896,
+		"cx": 646.9454934870271,
+		"cy": 375.1591309736224
+	},
+	"distortion_coeffs": [
+		-0.06609998451041334,
+		0.023679555539892774,
+		-0.040297109430200706,
+		0.016790229998419545
+	],
+	"metadata": {
+		"calibrated_by": "WizzX",
+		"source": "gyroflow",
+		"official": true
+	}
+}

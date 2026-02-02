@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bs1h--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "BS1H",
+	"lens_model": "16-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2657.775437519273,
+		"fy": 2653.6952025798973,
+		"cx": 1932.6700108503117,
+		"cy": 1077.4390768430046
+	},
+	"distortion_coeffs": [
+		0.2636356283320565,
+		0.815386180372133,
+		-4.190133229808422,
+		8.597690412652499
+	],
+	"metadata": {
+		"calibrated_by": "ShootGuru",
+		"source": "gyroflow",
+		"official": true
+	}
+}

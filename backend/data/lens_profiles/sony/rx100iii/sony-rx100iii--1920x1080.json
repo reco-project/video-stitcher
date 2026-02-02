@@ -2,32 +2,27 @@
 	"id": "sony-rx100iii--1920x1080",
 	"camera_brand": "Sony",
 	"camera_model": "RX100III",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1370.389606893487,
-		"fy": 1365.6409543867694,
-		"cx": 947.8218297735528,
-		"cy": 539.6208076878693
+		"fx": 1339.1053440969426,
+		"fy": 1303.8750538609202,
+		"cx": 956.4436609320886,
+		"cy": 531.23699747994
 	},
 	"distortion_coeffs": [
-		0.3508601572229663,
-		-0.07044967178278999,
-		1.161501121120864,
-		-1.8438827656699703
+		0.33825781744584726,
+		-0.02761298588607108,
+		0.8166855100936415,
+		-1.33554495727362
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_RX100III___1080p_16by9_1920x1080-50.00fps",
-		"calibrated_by": "Vincent Lublink",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "50.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
 	}
 }

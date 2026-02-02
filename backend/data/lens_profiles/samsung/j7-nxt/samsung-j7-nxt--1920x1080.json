@@ -1,0 +1,28 @@
+{
+	"id": "samsung-j7-nxt--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "J7 NXT",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1616.3195637985352,
+		"fy": 1615.2542439350254,
+		"cx": 929.5584273993107,
+		"cy": 512.0227861053925
+	},
+	"distortion_coeffs": [
+		0.6752696997293952,
+		-1.5919755019195976,
+		0.7621122052609862,
+		6.402225829339119
+	],
+	"metadata": {
+		"calibrated_by": "Sreehari nandanan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

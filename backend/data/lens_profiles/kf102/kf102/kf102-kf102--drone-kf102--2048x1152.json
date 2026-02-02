@@ -1,0 +1,29 @@
+{
+	"id": "kf102-kf102--drone-kf102--2048x1152",
+	"camera_brand": "KF102",
+	"camera_model": "KF102",
+	"lens_model": null,
+	"resolution": {
+		"width": 2048,
+		"height": 1152
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1397.2690082630445,
+		"fy": 1402.5073500078092,
+		"cx": 1031.8806559642082,
+		"cy": 608.1418514894577
+	},
+	"distortion_coeffs": [
+		-0.07353495628378105,
+		-0.03934661890414529,
+		0.2658362269628838,
+		-0.3671254038436038
+	],
+	"metadata": {
+		"calibrated_by": "Adalto Calixto",
+		"notes": "Drone KF102",
+		"source": "gyroflow",
+		"official": true
+	}
+}

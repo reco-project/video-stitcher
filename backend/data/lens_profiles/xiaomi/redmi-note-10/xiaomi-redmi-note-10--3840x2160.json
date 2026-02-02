@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-10--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 10",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2988.945243320285,
+		"fy": 2987.796335175702,
+		"cx": 1915.400358519794,
+		"cy": 1072.2794271524156
+	},
+	"distortion_coeffs": [
+		0.35233801565692324,
+		0.16332947622269897,
+		2.230953289786898,
+		-6.6617003129837205
+	],
+	"metadata": {
+		"calibrated_by": "kaem1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-xr--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone XR",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1646.1696845007748,
+		"fy": 1646.729005617869,
+		"cx": 954.825469437106,
+		"cy": 528.9449393285289
+	},
+	"distortion_coeffs": [
+		0.6263459836998126,
+		-1.411410320824393,
+		2.0165727452233315,
+		2.5531669604278715
+	],
+	"metadata": {
+		"calibrated_by": "Rich",
+		"source": "gyroflow",
+		"official": true
+	}
+}

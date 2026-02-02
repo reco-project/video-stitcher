@@ -1,0 +1,27 @@
+{
+	"id": "panasonic-s1--5888x3312",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1",
+	"lens_model": "Nikon Serie E 28mm",
+	"resolution": {
+		"width": 5888,
+		"height": 3312
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4598.95763727969,
+		"fy": 4601.622960455017,
+		"cx": 3001.312672022955,
+		"cy": 1768.214136614409
+	},
+	"distortion_coeffs": [
+		0.18554521870453,
+		0.5771410388406523,
+		-2.3204842586297403,
+		4.205247502944525
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

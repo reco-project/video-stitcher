@@ -1,0 +1,28 @@
+{
+	"id": "red-raven--4608x2160",
+	"camera_brand": "RED",
+	"camera_model": "Raven",
+	"lens_model": "Canon EF 100mm L f2.8",
+	"resolution": {
+		"width": 4608,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 88412.66264215548,
+		"fy": 89591.59750618483,
+		"cx": 2587.2341334383714,
+		"cy": 1381.1045691809263
+	},
+	"distortion_coeffs": [
+		-1.5753623967801318,
+		17409.1451964303,
+		-17548738.500493094,
+		5865615020.571919
+	],
+	"metadata": {
+		"calibrated_by": "re4mat0r",
+		"source": "gyroflow",
+		"official": true
+	}
+}

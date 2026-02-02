@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--43-a736x1160-viltrox-speed-booster--1736x1160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Takumar 28mm 3.5",
+	"resolution": {
+		"width": 1736,
+		"height": 1160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1629.986815088458,
+		"fy": 1628.0804162894312,
+		"cx": 873.940025652958,
+		"cy": 571.3464733316081
+	},
+	"distortion_coeffs": [
+		0.1837254004686985,
+		-0.2662299331368727,
+		2.91908295938404,
+		-5.396116411378936
+	],
+	"metadata": {
+		"calibrated_by": "Abdul Mateen",
+		"notes": "4:3 a736x1160 Viltrox Speed Booster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

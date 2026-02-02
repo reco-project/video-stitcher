@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-8--1920x1080",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 8",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1703.339663457729,
+		"fy": 1615.1897511260038,
+		"cx": 739.2151802999302,
+		"cy": 564.1421996373988
+	},
+	"distortion_coeffs": [
+		0.7979899138475454,
+		1.495231795174922,
+		-14.271452948831294,
+		43.9145572399117
+	],
+	"metadata": {
+		"calibrated_by": "U0 A405",
+		"source": "gyroflow",
+		"official": true
+	}
+}

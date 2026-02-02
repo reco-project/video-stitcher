@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gx9--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GX9",
+	"lens_model": "8mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 986.036744247229,
+		"fy": 984.1739897175876,
+		"cx": 948.9574785406346,
+		"cy": 531.6323035486831
+	},
+	"distortion_coeffs": [
+		0.2581281936211185,
+		0.2272753334161267,
+		-0.1530498841275525,
+		0.17472871654168529
+	],
+	"metadata": {
+		"calibrated_by": "wanghai",
+		"source": "gyroflow",
+		"official": true
+	}
+}

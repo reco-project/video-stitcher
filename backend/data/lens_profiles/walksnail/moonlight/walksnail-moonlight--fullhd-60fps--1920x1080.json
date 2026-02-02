@@ -1,0 +1,29 @@
+{
+	"id": "walksnail-moonlight--fullhd-60fps--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Moonlight",
+	"lens_model": "AvatarMoonlight__1080p_16by9_1920x1080-60.00fps",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 887.7073571575778,
+		"fy": 887.3470827740275,
+		"cx": 956.110805335181,
+		"cy": 542.1197502340273
+	},
+	"distortion_coeffs": [
+		-0.04596491207900436,
+		0.022412040236393767,
+		-0.022762541572631953,
+		0.007074211514079668
+	],
+	"metadata": {
+		"calibrated_by": "korshun 4568",
+		"notes": "FullHD 60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

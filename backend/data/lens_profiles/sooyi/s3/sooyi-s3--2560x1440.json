@@ -1,0 +1,28 @@
+{
+	"id": "sooyi-s3--2560x1440",
+	"camera_brand": "Sooyi",
+	"camera_model": "S3",
+	"lens_model": "Sony",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1651.6947779674513,
+		"fy": 1652.42346123502,
+		"cx": 1295.947195715063,
+		"cy": 662.2561869716836
+	},
+	"distortion_coeffs": [
+		-0.1041991369446425,
+		-0.017592939792042024,
+		0.005456646077479626,
+		0.0008397839402361269
+	],
+	"metadata": {
+		"calibrated_by": "John",
+		"source": "gyroflow",
+		"official": true
+	}
+}

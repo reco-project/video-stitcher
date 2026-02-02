@@ -1,0 +1,28 @@
+{
+	"id": "dji-mavic-mini-2-se-27-k--2720x1530",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic mini 2 se 2.7 k",
+	"lens_model": "Mavic mini 2 se",
+	"resolution": {
+		"width": 2720,
+		"height": 1530
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4042.439817789241,
+		"fy": 4031.475662733121,
+		"cx": 599.5122772310228,
+		"cy": 961.5722588474912
+	},
+	"distortion_coeffs": [
+		-0.0420245681558844,
+		-0.20578549569136229,
+		12.144277643291158,
+		-29.8323509231264
+	],
+	"metadata": {
+		"calibrated_by": "Barrios Medina Santiago Senpai",
+		"source": "gyroflow",
+		"official": true
+	}
+}

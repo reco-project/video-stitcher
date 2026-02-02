@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d3100--1280x720",
+	"camera_brand": "Nikon",
+	"camera_model": "D3100",
+	"lens_model": "NIKKOR 18mm",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 990.6700379349088,
+		"fy": 989.844359685332,
+		"cx": 648.8565088510727,
+		"cy": 371.00025571733704
+	},
+	"distortion_coeffs": [
+		0.17262426343573253,
+		0.053654780691244255,
+		0.4616750208075486,
+		-0.4741332732124512
+	],
+	"metadata": {
+		"calibrated_by": "julien Rives",
+		"source": "gyroflow",
+		"official": true
+	}
+}

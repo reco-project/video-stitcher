@@ -1,0 +1,28 @@
+{
+	"id": "kinefinity-mavo-lf--3840x2160",
+	"camera_brand": "Kinefinity",
+	"camera_model": "MAVO LF",
+	"lens_model": "Samyang 24mm t1.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2913.17999578692,
+		"fy": 2914.672248660808,
+		"cx": 1925.4314148582944,
+		"cy": 1116.866681010914
+	},
+	"distortion_coeffs": [
+		0.2517820317795835,
+		-0.055395758403502256,
+		1.1432287816818247,
+		-1.756916311436444
+	],
+	"metadata": {
+		"calibrated_by": "Sound Scavenger",
+		"source": "gyroflow",
+		"official": true
+	}
+}

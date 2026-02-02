@@ -1,0 +1,28 @@
+{
+	"id": "samsung-fold-3--3840x2176",
+	"camera_brand": "Samsung",
+	"camera_model": "Fold 3",
+	"lens_model": "Ultrawide",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1608.1391156645182,
+		"fy": 1607.118740998036,
+		"cx": 1906.092156696826,
+		"cy": 1070.047051263366
+	},
+	"distortion_coeffs": [
+		0.23195323549087876,
+		0.6137984132242414,
+		-0.9728304023686256,
+		0.7025602735050503
+	],
+	"metadata": {
+		"calibrated_by": "U0 A415",
+		"source": "gyroflow",
+		"official": true
+	}
+}

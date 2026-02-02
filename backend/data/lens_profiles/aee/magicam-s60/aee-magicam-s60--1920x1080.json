@@ -1,0 +1,28 @@
+{
+	"id": "aee-magicam-s60--1920x1080",
+	"camera_brand": "AEE",
+	"camera_model": "Magicam s60",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1010.8000516577414,
+		"fy": 1037.2717250136886,
+		"cx": 1016.9241793661848,
+		"cy": 493.60010480960926
+	},
+	"distortion_coeffs": [
+		-0.011425909040064831,
+		-0.013915044634200275,
+		0.011777204659108935,
+		-0.004652364583152867
+	],
+	"metadata": {
+		"calibrated_by": "Milan Rot",
+		"source": "gyroflow",
+		"official": true
+	}
+}

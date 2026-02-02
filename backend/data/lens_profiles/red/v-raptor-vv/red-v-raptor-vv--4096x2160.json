@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor-vv--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR VV",
+	"lens_model": "ZEISS CP.3 100MM",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10273.27953023938,
+		"fy": 10238.920283413629,
+		"cx": 1794.4386004093187,
+		"cy": 894.533282603434
+	},
+	"distortion_coeffs": [
+		0.400472673553254,
+		-3.466386210942633,
+		124.49925527704336,
+		-1437.036408688864
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-nord-2-5g-fhd-opencamera-sensors--1920x1080",
+	"camera_brand": "Oneplus",
+	"camera_model": "Nord 2 5G FHD OpenCamera Sensors",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1278.1375897110097,
+		"fy": 1264.446975723506,
+		"cx": 951.741878042577,
+		"cy": 538.5712540788547
+	},
+	"distortion_coeffs": [
+		0.5724921570634264,
+		-1.7176381199679154,
+		5.634242669560681,
+		-5.856367440829349
+	],
+	"metadata": {
+		"calibrated_by": "Lucifer480X",
+		"source": "gyroflow",
+		"official": true
+	}
+}

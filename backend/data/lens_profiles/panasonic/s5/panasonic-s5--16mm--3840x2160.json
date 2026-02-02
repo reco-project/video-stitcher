@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--16mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5",
+	"lens_model": "Sigma 16-28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1874.5354841102708,
+		"fy": 1834.5056935166804,
+		"cx": 1905.0412859792489,
+		"cy": 1092.9856575601095
+	},
+	"distortion_coeffs": [
+		0.2705548945244155,
+		0.4384343855085995,
+		-0.43313913371366,
+		0.3065838651807375
+	],
+	"metadata": {
+		"calibrated_by": "A. Wesome",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

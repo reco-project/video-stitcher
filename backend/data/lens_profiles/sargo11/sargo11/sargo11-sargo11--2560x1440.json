@@ -1,0 +1,28 @@
+{
+	"id": "sargo11-sargo11--2560x1440",
+	"camera_brand": "sargo11",
+	"camera_model": "sargo11",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1517.1739836188608,
+		"fy": 1530.851469786266,
+		"cx": 1062.2323466329483,
+		"cy": 791.9437722243118
+	},
+	"distortion_coeffs": [
+		0.23602286573287437,
+		0.5116373405405845,
+		-0.836574700224367,
+		0.7974012661452181
+	],
+	"metadata": {
+		"calibrated_by": "\u8881\u5efa\u8bbe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

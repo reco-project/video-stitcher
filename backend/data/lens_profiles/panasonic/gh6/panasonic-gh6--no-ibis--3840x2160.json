@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh6--no-ibis--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "Laowa 7.5 F2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1705.3852059179776,
+		"fy": 1706.9247438935006,
+		"cx": 1903.8392989338008,
+		"cy": 1088.7264462821877
+	},
+	"distortion_coeffs": [
+		0.3303500448046284,
+		0.08510505303202633,
+		0.004121703710747538,
+		0.09843734812624884
+	],
+	"metadata": {
+		"calibrated_by": "FREE FP V FILMS",
+		"notes": "NO IBIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6-mk2--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6 mk2",
+	"lens_model": "Sigma",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2648.165718743467,
+		"fy": 2645.1717234714274,
+		"cx": 1946.9657325161104,
+		"cy": 1084.3962270544323
+	},
+	"distortion_coeffs": [
+		0.21591341486423457,
+		-0.11151564897818508,
+		1.057206430209147,
+		-1.047523179146634
+	],
+	"metadata": {
+		"calibrated_by": "Chico Gorman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

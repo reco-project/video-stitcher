@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23-ultra--motion-cam--4032x1728",
+	"camera_brand": "Samsung",
+	"camera_model": "S23 Ultra",
+	"lens_model": "23mm",
+	"resolution": {
+		"width": 4032,
+		"height": 1728
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2653.14678446318,
+		"fy": 2654.334218225994,
+		"cx": 2000.493008372668,
+		"cy": 849.0559303145071
+	},
+	"distortion_coeffs": [
+		0.59825599941437,
+		-1.5888292584504022,
+		5.915620745725545,
+		-7.481546776674429
+	],
+	"metadata": {
+		"calibrated_by": "U0 A427",
+		"notes": "Motion Cam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

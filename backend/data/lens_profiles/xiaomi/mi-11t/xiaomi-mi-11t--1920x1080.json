@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-11t--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "mi 11t",
+	"lens_model": "none",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1077.5577069313606,
+		"fy": 1077.8485289317923,
+		"cx": 968.1631067645257,
+		"cy": 542.0694533481554
+	},
+	"distortion_coeffs": [
+		0.24728288959637065,
+		0.873433944558785,
+		-2.2772102479561576,
+		2.3962766923793275
+	],
+	"metadata": {
+		"calibrated_by": "T\u00e9ano Krywak",
+		"source": "gyroflow",
+		"official": true
+	}
+}

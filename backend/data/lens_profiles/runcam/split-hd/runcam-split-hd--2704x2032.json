@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-hd--2704x2032",
+	"camera_brand": "RunCam",
+	"camera_model": "Split HD",
+	"lens_model": "gopro",
+	"resolution": {
+		"width": 2704,
+		"height": 2032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1408.984641912912,
+		"fy": 1415.2126069422798,
+		"cx": 1394.3182161188815,
+		"cy": 1052.1879383533608
+	},
+	"distortion_coeffs": [
+		0.03596451190191626,
+		0.12223648043361796,
+		-0.26391050901320406,
+		0.200096328992064
+	],
+	"metadata": {
+		"calibrated_by": "jaanus",
+		"source": "gyroflow",
+		"official": true
+	}
+}

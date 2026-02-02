@@ -1,0 +1,28 @@
+{
+	"id": "leica-sl2--4096x2160",
+	"camera_brand": "LEICA",
+	"camera_model": "SL2",
+	"lens_model": "SUPER VARIO ELMAR 16-35 ASPH",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4538.346215898847,
+		"fy": 4539.004223292633,
+		"cx": 2060.1831051331083,
+		"cy": 1089.9756814100504
+	},
+	"distortion_coeffs": [
+		0.35763831969418836,
+		-0.34334024283428793,
+		3.7695931438094417,
+		-10.254252064028794
+	],
+	"metadata": {
+		"calibrated_by": "Olivier Lattuga-Duyck",
+		"source": "gyroflow",
+		"official": true
+	}
+}

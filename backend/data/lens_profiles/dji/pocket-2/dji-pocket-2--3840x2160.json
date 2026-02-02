@@ -2,32 +2,27 @@
 	"id": "dji-pocket-2--3840x2160",
 	"camera_brand": "DJI",
 	"camera_model": "Pocket 2",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 2325.4866743672123,
-		"fy": 2322.105912806868,
-		"cx": 1922.2655257575543,
-		"cy": 1088.5236851354073
+		"fx": 2289.32417198834,
+		"fy": 2287.934396123293,
+		"cx": 1914.2655229761267,
+		"cy": 1084.492788032664
 	},
 	"distortion_coeffs": [
-		0.5178344095920231,
-		-0.4313179261034938,
-		-0.8911432232590959,
-		3.047600324029294
+		0.5536137337675437,
+		-0.7889394963407428,
+		0.5964849571318211,
+		1.0139224685395205
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Pocket 2___4k_16by9_3840x2160-25.00fps",
 		"calibrated_by": "\u0410\u0440\u0442\u0451\u043c",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,28 @@
+{
+	"id": "niceboy-vega-6--3840x2160",
+	"camera_brand": "Niceboy",
+	"camera_model": "VEGA 6",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2151.460962878283,
+		"fy": 2150.5256490687675,
+		"cx": 2052.914068638683,
+		"cy": 1097.4500481982154
+	},
+	"distortion_coeffs": [
+		-0.006692569207355673,
+		0.018406638404184,
+		-0.024983748228930045,
+		0.012776876882917036
+	],
+	"metadata": {
+		"calibrated_by": "R S",
+		"source": "gyroflow",
+		"official": true
+	}
+}

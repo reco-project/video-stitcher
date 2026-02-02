@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z9--4128x2322",
+	"camera_brand": "Nikon",
+	"camera_model": "Z9",
+	"lens_model": "Z 50mm F1.8",
+	"resolution": {
+		"width": 4128,
+		"height": 2322
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5926.007795472507,
+		"fy": 5928.6046504187825,
+		"cx": 2086.5267814395343,
+		"cy": 1197.232143436724
+	},
+	"distortion_coeffs": [
+		0.34747747336697,
+		-0.03402629023816045,
+		-0.04821975518761923,
+		4.900677687881529
+	],
+	"metadata": {
+		"calibrated_by": "Rao",
+		"source": "gyroflow",
+		"official": true
+	}
+}

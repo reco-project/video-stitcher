@@ -1,0 +1,28 @@
+{
+	"id": "chronos-cr14-10--608x400",
+	"camera_brand": "Chronos",
+	"camera_model": "CR14-1.0",
+	"lens_model": "Comutar TV Zoom Lens",
+	"resolution": {
+		"width": 608,
+		"height": 400
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5753.402514347601,
+		"fy": 5759.862717473868,
+		"cx": 274.34717381935536,
+		"cy": 186.16882597015655
+	},
+	"distortion_coeffs": [
+		2.7052939363274153,
+		-1599.7408054403888,
+		875580.3795070609,
+		-149432833.63502648
+	],
+	"metadata": {
+		"calibrated_by": "Dustin Westerfeld",
+		"source": "gyroflow",
+		"official": true
+	}
+}

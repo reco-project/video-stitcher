@@ -1,0 +1,28 @@
+{
+	"id": "caddx-polar-starlight--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "Polar Starlight",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 864.4029466805966,
+		"fy": 868.6036807754269,
+		"cx": 961.6448125703458,
+		"cy": 525.6953165821496
+	},
+	"distortion_coeffs": [
+		-0.03832322425342566,
+		0.044364217463237925,
+		-0.05565320072960999,
+		0.02038414635800924
+	],
+	"metadata": {
+		"calibrated_by": "Giuseppe V.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

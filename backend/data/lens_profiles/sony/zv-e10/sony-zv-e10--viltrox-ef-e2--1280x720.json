@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--viltrox-ef-e2--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "CANON16-35 F2.8( 16MM)",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 649.9222551845531,
+		"fy": 648.9744845178865,
+		"cx": 641.0860334947498,
+		"cy": 372.2866931741754
+	},
+	"distortion_coeffs": [
+		0.17870997002935085,
+		0.24911987033308505,
+		-0.25188602066085103,
+		0.23207678315929745
+	],
+	"metadata": {
+		"calibrated_by": "Leo Lian",
+		"notes": "Viltrox EF-E2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

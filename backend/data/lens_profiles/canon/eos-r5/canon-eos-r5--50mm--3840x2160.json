@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--50mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "50mm 1.2 USM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9356.821881379614,
+		"fy": 9352.76196184934,
+		"cx": 1462.200662097794,
+		"cy": 1096.5375479973025
+	},
+	"distortion_coeffs": [
+		-0.06006947566590972,
+		-5.754967184830709,
+		154.4425668562681,
+		-1112.898818314093
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Osmond",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

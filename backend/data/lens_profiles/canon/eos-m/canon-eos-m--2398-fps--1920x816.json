@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--2398-fps--1920x816",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "TTArtisans 35mm f1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 816
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3049.0276972627553,
+		"fy": 3049.221592552423,
+		"cx": 985.3384426669276,
+		"cy": 439.72528531844927
+	},
+	"distortion_coeffs": [
+		0.09562225136342478,
+		1.6043576552679042,
+		-30.54303352236321,
+		199.66812894231825
+	],
+	"metadata": {
+		"calibrated_by": "amit kattal",
+		"notes": "23.98 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

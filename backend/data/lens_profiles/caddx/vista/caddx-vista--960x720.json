@@ -1,0 +1,28 @@
+{
+	"id": "caddx-vista--960x720",
+	"camera_brand": "Caddx",
+	"camera_model": "Vista",
+	"lens_model": null,
+	"resolution": {
+		"width": 960,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 448.5275889514456,
+		"fy": 448.573193120688,
+		"cx": 483.1365290830068,
+		"cy": 367.88766679790433
+	},
+	"distortion_coeffs": [
+		0.010820901199506967,
+		0.02927800599242853,
+		-0.02924705257450585,
+		0.011676923837520172
+	],
+	"metadata": {
+		"calibrated_by": "Tu Vuong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

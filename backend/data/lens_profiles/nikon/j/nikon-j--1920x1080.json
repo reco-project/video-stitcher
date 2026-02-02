@@ -1,0 +1,28 @@
+{
+	"id": "nikon-j--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "j",
+	"lens_model": "10mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1501.062193774712,
+		"fy": 1501.010324522793,
+		"cx": 972.3975039777978,
+		"cy": 531.5466068695501
+	},
+	"distortion_coeffs": [
+		0.24547359277936776,
+		0.1477112109378993,
+		-0.09108435413263204,
+		0.34283306599438446
+	],
+	"metadata": {
+		"calibrated_by": "vm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "blackberry-key2--1920x1080",
+	"camera_brand": "Blackberry",
+	"camera_model": "Key2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1824.2708321329344,
+		"fy": 1822.2255772973388,
+		"cx": 964.0907739952968,
+		"cy": 567.6179801956566
+	},
+	"distortion_coeffs": [
+		0.5559346167767932,
+		0.2684786882470523,
+		-10.04387914421541,
+		32.77311925694266
+	],
+	"metadata": {
+		"calibrated_by": "lgnap",
+		"source": "gyroflow",
+		"official": true
+	}
+}

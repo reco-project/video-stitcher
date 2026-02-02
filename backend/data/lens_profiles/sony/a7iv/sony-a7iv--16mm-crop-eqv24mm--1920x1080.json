@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--16mm-crop-eqv24mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sony 16-50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1503.8399314348894,
+		"fy": 1501.9407428399595,
+		"cx": 950.1613838835189,
+		"cy": 546.649527823299
+	},
+	"distortion_coeffs": [
+		0.3120449446657072,
+		0.0047922116894368524,
+		0.7925497465048277,
+		-1.0476723012238895
+	],
+	"metadata": {
+		"calibrated_by": "Kamil Nikodem",
+		"notes": "16mm crop eqv.24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

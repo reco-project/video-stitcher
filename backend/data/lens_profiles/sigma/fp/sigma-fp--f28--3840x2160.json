@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--f28--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "45mm f2.8 dg dn",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3707.051597889301,
+		"fy": 3708.615034414161,
+		"cx": 1923.2908423074184,
+		"cy": 1052.0135578704355
+	},
+	"distortion_coeffs": [
+		0.31866780659038935,
+		0.5786063438942077,
+		-2.068997500325521,
+		6.693086010184317
+	],
+	"metadata": {
+		"calibrated_by": "koji nakano",
+		"notes": "f2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

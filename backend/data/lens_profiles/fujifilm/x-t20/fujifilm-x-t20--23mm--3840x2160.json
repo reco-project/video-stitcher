@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t20--23mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T20",
+	"lens_model": "XF 18-55mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3973.945300604017,
+		"fy": 3971.431434975436,
+		"cx": 1873.42542587173,
+		"cy": 1236.8645516360427
+	},
+	"distortion_coeffs": [
+		0.2653957586036715,
+		0.9020282080480996,
+		-4.386100782529251,
+		10.027780215383048
+	],
+	"metadata": {
+		"calibrated_by": "steffen faustmann",
+		"notes": "@23mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

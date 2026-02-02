@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--m42-mount--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "SMC Takumar 50mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5576.426671565631,
+		"fy": 5554.480105253011,
+		"cx": 1989.365140173956,
+		"cy": 1059.485995254656
+	},
+	"distortion_coeffs": [
+		0.04670197918055576,
+		3.774062416256083,
+		-41.12989664339967,
+		172.15514769930152
+	],
+	"metadata": {
+		"calibrated_by": "davideo",
+		"notes": "M42 mount",
+		"source": "gyroflow",
+		"official": true
+	}
+}

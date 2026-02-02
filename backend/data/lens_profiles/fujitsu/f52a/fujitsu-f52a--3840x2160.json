@@ -1,0 +1,28 @@
+{
+	"id": "fujitsu-f52a--3840x2160",
+	"camera_brand": "fujitsu",
+	"camera_model": "f52a",
+	"lens_model": "\u901a\u5e38\u5e83\u89d2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2665.2981628710327,
+		"fy": 2664.363249260172,
+		"cx": 1888.8022785580904,
+		"cy": 1046.73140582666
+	},
+	"distortion_coeffs": [
+		0.42784869451806024,
+		-0.31879830722066116,
+		2.0818111400255117,
+		-3.335465217234662
+	],
+	"metadata": {
+		"calibrated_by": "koji nakano",
+		"source": "gyroflow",
+		"official": true
+	}
+}

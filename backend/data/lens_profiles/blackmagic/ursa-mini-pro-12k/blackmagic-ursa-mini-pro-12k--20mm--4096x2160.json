@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-ursa-mini-pro-12k--20mm--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Ursa Mini Pro 12k",
+	"lens_model": "DZO 20-55",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3268.597213199143,
+		"fy": 3193.7698718322567,
+		"cx": 2068.4017434769003,
+		"cy": 1028.35498458605
+	},
+	"distortion_coeffs": [
+		0.1625346399705275,
+		0.13938588138347008,
+		-0.12985954508806638,
+		0.6257660099706757
+	],
+	"metadata": {
+		"calibrated_by": "OCTO",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

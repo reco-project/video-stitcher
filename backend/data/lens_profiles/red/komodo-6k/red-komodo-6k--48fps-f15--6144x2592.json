@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--48fps-f15--6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CN-E24mm T1.5 L F 24.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5584.522281559227,
+		"fy": 5580.85166682185,
+		"cx": 3091.174011629259,
+		"cy": 1255.117850818723
+	},
+	"distortion_coeffs": [
+		0.29224520202515314,
+		-0.20666466332515443,
+		2.473678154249675,
+		-5.227747570026712
+	],
+	"metadata": {
+		"calibrated_by": "Bryan Alejandro Oliveira Echaverry",
+		"notes": "48FPS F1,5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

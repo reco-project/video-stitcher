@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-hc-x1500--5994-fps--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "HC-X1500",
+	"lens_model": "Leica Dicomar",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2611.33336619658,
+		"fy": 2612.6433360413557,
+		"cx": 1924.9164866505575,
+		"cy": 1077.5832278436962
+	},
+	"distortion_coeffs": [
+		0.3286218078385537,
+		0.118139021369184,
+		0.07044185199275933,
+		0.03910872281280968
+	],
+	"metadata": {
+		"calibrated_by": "Stephen Connolly",
+		"notes": "59.94 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

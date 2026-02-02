@@ -1,0 +1,28 @@
+{
+	"id": "digital-bolex-d16--2048x1152",
+	"camera_brand": "Digital Bolex",
+	"camera_model": "D16",
+	"lens_model": "Carl Zeiss Jena Tevidon 10mm",
+	"resolution": {
+		"width": 2048,
+		"height": 1152
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1914.2819135146049,
+		"fy": 1914.3555692963205,
+		"cx": 1033.3735646823518,
+		"cy": 571.6741257011005
+	},
+	"distortion_coeffs": [
+		0.20440994397754145,
+		0.36501281807172975,
+		-0.8487577524270126,
+		2.3423302389778837
+	],
+	"metadata": {
+		"calibrated_by": "Clark Nikolai",
+		"source": "gyroflow",
+		"official": true
+	}
+}

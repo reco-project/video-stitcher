@@ -1,0 +1,28 @@
+{
+	"id": "sony-blackshark4--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "blackshark4",
+	"lens_model": "imx582",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3801.8737154381465,
+		"fy": 3803.0586051031673,
+		"cx": 1932.3096388866131,
+		"cy": 1047.551122358574
+	},
+	"distortion_coeffs": [
+		0.7132875696998118,
+		-5.086273749364038,
+		32.739118654928625,
+		-69.08919834342602
+	],
+	"metadata": {
+		"calibrated_by": "U0 A238",
+		"source": "gyroflow",
+		"official": true
+	}
+}

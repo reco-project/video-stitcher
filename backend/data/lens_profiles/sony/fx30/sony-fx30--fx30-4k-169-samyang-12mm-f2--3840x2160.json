@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--fx30-4k-169-samyang-12mm-f2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "12.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2168.672604136015,
+		"fy": 2170.214393667102,
+		"cx": 1924.6095770073716,
+		"cy": 1065.6110824540187
+	},
+	"distortion_coeffs": [
+		0.27207639427496105,
+		0.27430844547094324,
+		-0.4170074174852133,
+		0.46552758519024906
+	],
+	"metadata": {
+		"calibrated_by": "Chad Rank",
+		"notes": "FX30 4k 16:9 samyang 12mm f2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

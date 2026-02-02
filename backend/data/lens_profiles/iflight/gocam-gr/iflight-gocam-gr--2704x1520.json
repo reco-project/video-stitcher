@@ -1,0 +1,28 @@
+{
+	"id": "iflight-gocam-gr--2704x1520",
+	"camera_brand": "iFlight",
+	"camera_model": "GOCam GR",
+	"lens_model": "Sony IMX577 12MP 1/2.3\u201d",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1629.1858927384308,
+		"fy": 1637.9109726040742,
+		"cx": 1393.6789736792236,
+		"cy": 851.8950550754464
+	},
+	"distortion_coeffs": [
+		-0.041975205414067136,
+		0.022017245386745883,
+		-0.03637630227241374,
+		0.01749090661289032
+	],
+	"metadata": {
+		"calibrated_by": "HALCON",
+		"source": "gyroflow",
+		"official": true
+	}
+}

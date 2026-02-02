@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-11-ultra--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "11 Ultra",
+	"lens_model": "xiaomi 11 ultra",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1631.16605701523,
+		"fy": 1629.8327250900018,
+		"cx": 954.3661903513596,
+		"cy": 530.5563310746222
+	},
+	"distortion_coeffs": [
+		0.3408989864721203,
+		-0.3696043411708811,
+		4.9407530146668295,
+		-13.457660031095026
+	],
+	"metadata": {
+		"calibrated_by": "Charles",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "oppo-reno5--1920x1080",
+	"camera_brand": "OPPO",
+	"camera_model": "reno5",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 858.2192826664979,
+		"fy": 862.6752900989426,
+		"cx": 956.8384735179563,
+		"cy": 546.8060312773431
+	},
+	"distortion_coeffs": [
+		0.3314676631647685,
+		0.1268886268751623,
+		0.06961040772507959,
+		0.022101679427653603
+	],
+	"metadata": {
+		"calibrated_by": "\u30af\u30ed\u30b3\u30a6",
+		"source": "gyroflow",
+		"official": true
+	}
+}

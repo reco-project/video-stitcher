@@ -1,0 +1,28 @@
+{
+	"id": "red-epic--6593x2700",
+	"camera_brand": "RED",
+	"camera_model": "EPIC",
+	"lens_model": "ATLAS ANAMORPHIC 40mm",
+	"resolution": {
+		"width": 6593,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8217.369163889101,
+		"fy": 8217.244362011033,
+		"cx": 2800.6272313832096,
+		"cy": 1739.5005530564224
+	},
+	"distortion_coeffs": [
+		0.17259929264298093,
+		0.48737987288919826,
+		-0.3483996907262914,
+		-0.9367164518527398
+	],
+	"metadata": {
+		"calibrated_by": "David Pou",
+		"source": "gyroflow",
+		"official": true
+	}
+}

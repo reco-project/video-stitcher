@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z-6--50mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z 6",
+	"lens_model": "AF Nikkor 35-70mm F2.8 D",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5802.827109960221,
+		"fy": 5803.805235086478,
+		"cx": 1935.4638827256083,
+		"cy": 1023.165482338873
+	},
+	"distortion_coeffs": [
+		0.26132865757366225,
+		2.3775449517503953,
+		-25.971119103174058,
+		120.3738322333212
+	],
+	"metadata": {
+		"calibrated_by": "Raymond J Evans",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

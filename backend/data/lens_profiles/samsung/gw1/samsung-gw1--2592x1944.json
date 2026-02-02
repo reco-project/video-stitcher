@@ -1,0 +1,28 @@
+{
+	"id": "samsung-gw1--2592x1944",
+	"camera_brand": "Samsung",
+	"camera_model": "gw1",
+	"lens_model": "gw1",
+	"resolution": {
+		"width": 2592,
+		"height": 1944
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1955.3213158932003,
+		"fy": 1955.0688356926164,
+		"cx": 1287.5313121751742,
+		"cy": 964.4632794867324
+	},
+	"distortion_coeffs": [
+		0.36291559539459867,
+		0.3459008873637759,
+		-1.0403419732992718,
+		1.1591581140578868
+	],
+	"metadata": {
+		"calibrated_by": "Tulpar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

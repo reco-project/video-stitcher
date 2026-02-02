@@ -1,0 +1,28 @@
+{
+	"id": "fimi-plam-2--3840x2160",
+	"camera_brand": "FIMI",
+	"camera_model": "plam 2",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1922.7106688236424,
+		"fy": 1922.1207865597,
+		"cx": 1918.171120765741,
+		"cy": 1055.5512997442445
+	},
+	"distortion_coeffs": [
+		0.3043235947004452,
+		-0.03439363233085795,
+		0.8063076506856419,
+		-0.6875754482119035
+	],
+	"metadata": {
+		"calibrated_by": "Tsao Yen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

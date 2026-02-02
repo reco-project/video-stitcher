@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-h2s--open-gate--6240x4160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2s",
+	"lens_model": "Tamron 17-70mm f2.8",
+	"resolution": {
+		"width": 6240,
+		"height": 4160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4475.389944513648,
+		"fy": 4474.438571350555,
+		"cx": 3125.6189901258003,
+		"cy": 2063.153051176606
+	},
+	"distortion_coeffs": [
+		0.3943247591826582,
+		-0.2983591303507025,
+		0.7690348367230738,
+		0.11930064070044402
+	],
+	"metadata": {
+		"calibrated_by": "jaime augusto",
+		"notes": "Open Gate",
+		"source": "gyroflow",
+		"official": true
+	}
+}

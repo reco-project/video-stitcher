@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z50--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z50",
+	"lens_model": "NIKKOR 16-50 f/3.5-6.3",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1334.5768635995746,
+		"fy": 1334.8831674667813,
+		"cx": 973.1973636744642,
+		"cy": 546.9580231968857
+	},
+	"distortion_coeffs": [
+		0.3275249009408081,
+		0.15635010603988744,
+		0.13887018028025663,
+		-0.28157713170641696
+	],
+	"metadata": {
+		"calibrated_by": "QINMU",
+		"source": "gyroflow",
+		"official": true
+	}
+}

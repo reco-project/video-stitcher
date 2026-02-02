@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r8--70mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "RF 24-105 F4-7.1 @ 70mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3971.5229936698433,
+		"fy": 3979.4198339194713,
+		"cx": 975.4644441573772,
+		"cy": 544.7883806946522
+	},
+	"distortion_coeffs": [
+		0.2622633488275988,
+		3.0829622825122525,
+		-40.810423949883415,
+		190.56131270106215
+	],
+	"metadata": {
+		"calibrated_by": "Hongye Deng",
+		"notes": "70mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

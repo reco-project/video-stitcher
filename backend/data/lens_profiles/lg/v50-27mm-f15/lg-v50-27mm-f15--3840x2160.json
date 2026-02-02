@@ -1,0 +1,28 @@
+{
+	"id": "lg-v50-27mm-f15--3840x2160",
+	"camera_brand": "LG",
+	"camera_model": "v50 27mm f1.5",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2917.25134244904,
+		"fy": 2917.553783145088,
+		"cx": 1915.3509941241196,
+		"cy": 1097.7352055604856
+	},
+	"distortion_coeffs": [
+		0.7437702371852916,
+		-3.15193831489827,
+		9.351892586100275,
+		-7.876028580649421
+	],
+	"metadata": {
+		"calibrated_by": "Kyi Thar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

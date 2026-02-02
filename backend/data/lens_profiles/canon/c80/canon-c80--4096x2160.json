@@ -1,0 +1,28 @@
+{
+	"id": "canon-c80--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "C80",
+	"lens_model": "Nisi Athena 18mm PL",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2113.6430508199683,
+		"fy": 2114.377782854595,
+		"cx": 2058.2200264995276,
+		"cy": 1068.108480404359
+	},
+	"distortion_coeffs": [
+		0.3355459896579953,
+		0.16991606243743224,
+		-0.17741412904524134,
+		0.195995895228495
+	],
+	"metadata": {
+		"calibrated_by": "\u949f\u715c\u5d69",
+		"source": "gyroflow",
+		"official": true
+	}
+}

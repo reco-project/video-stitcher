@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--non--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Canon EF 24-70ii (24)",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3553.6202965651864,
+		"fy": 3553.730015013126,
+		"cx": 2043.0330327008423,
+		"cy": 1069.7372334171414
+	},
+	"distortion_coeffs": [
+		0.19870160627800357,
+		0.06884940746053363,
+		0.40501094762461465,
+		-0.5698859451801094
+	],
+	"metadata": {
+		"calibrated_by": "vladimir mikhaylov",
+		"notes": "non",
+		"source": "gyroflow",
+		"official": true
+	}
+}

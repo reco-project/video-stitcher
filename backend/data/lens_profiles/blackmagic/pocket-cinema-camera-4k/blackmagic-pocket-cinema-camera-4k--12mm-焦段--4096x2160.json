@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--12mm-\u7126\u6bb5--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Panasonic 12-35 II",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2602.840635648853,
+		"fy": 2602.605971881551,
+		"cx": 2017.1120451509453,
+		"cy": 1110.339186422412
+	},
+	"distortion_coeffs": [
+		0.10642636578484696,
+		0.15280754936830215,
+		-0.1596580215877034,
+		0.3023664169239434
+	],
+	"metadata": {
+		"calibrated_by": "\u5f90\u73ae",
+		"notes": "12mm \u7126\u6bb5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

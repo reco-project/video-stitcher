@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5ii--35mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5ii",
+	"lens_model": "Sigma 28-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4039.86710298507,
+		"fy": 4053.488598967256,
+		"cx": 1934.2151403867924,
+		"cy": 1108.5330398888511
+	},
+	"distortion_coeffs": [
+		0.3091730504987852,
+		0.6108597750990793,
+		-3.3094247039559495,
+		6.928083151105007
+	],
+	"metadata": {
+		"calibrated_by": "ADRI\u00c0",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

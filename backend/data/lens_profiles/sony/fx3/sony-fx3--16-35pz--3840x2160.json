@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--16-35pz--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4547.388647706625,
+		"fy": 4411.41263451157,
+		"cx": 1901.5914483720371,
+		"cy": 1326.3237663853818
+	},
+	"distortion_coeffs": [
+		0.3269096445526605,
+		-0.1401198896391229,
+		2.2194816880874724,
+		-3.0908773805744723
+	],
+	"metadata": {
+		"calibrated_by": "\u5f20\u9e4f",
+		"notes": "16-35PZ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

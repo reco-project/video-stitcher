@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s9--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S9",
+	"lens_model": "Lumix S50 1:1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8505.263204644893,
+		"fy": 8516.893491901164,
+		"cx": 2008.608639549484,
+		"cy": 1141.3896547702775
+	},
+	"distortion_coeffs": [
+		0.255606650040413,
+		5.958156668147945,
+		-242.99216126351783,
+		3355.0255101144044
+	],
+	"metadata": {
+		"calibrated_by": "Shihan Zhang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

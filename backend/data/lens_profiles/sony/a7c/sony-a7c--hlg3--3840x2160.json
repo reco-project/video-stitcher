@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--hlg3--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "LAOWA 15mm f/4 MAcro",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1551.3268808112025,
+		"fy": 1552.4168153083642,
+		"cx": 1912.105016545096,
+		"cy": 1082.8440575482798
+	},
+	"distortion_coeffs": [
+		0.22239445056880125,
+		0.1258543491359541,
+		-0.04727858494336003,
+		0.13810798808150948
+	],
+	"metadata": {
+		"calibrated_by": "giuseppe mirigliano",
+		"notes": "HLG3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

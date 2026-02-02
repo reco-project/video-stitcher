@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-sj5000--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ5000",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1398.0277484714093,
+		"fy": 1406.2706754897297,
+		"cx": 906.491271441063,
+		"cy": 475.65712771801816
+	},
+	"distortion_coeffs": [
+		-0.04931511561185871,
+		0.006803255018110789,
+		0.01809007753350494,
+		-0.04010685718825769
+	],
+	"metadata": {
+		"calibrated_by": "kkozu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

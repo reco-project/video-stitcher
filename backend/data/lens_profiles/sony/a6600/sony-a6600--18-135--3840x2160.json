@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6600--18-135--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6600",
+	"lens_model": "sony 3.5-5.6 / 18-135",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2593.620364662984,
+		"fy": 2615.5196972207063,
+		"cx": 1904.0073736047432,
+		"cy": 1228.0394158645963
+	},
+	"distortion_coeffs": [
+		0.28862362573654754,
+		0.2143420809375577,
+		0.09954776035904668,
+		-0.34254631444279005
+	],
+	"metadata": {
+		"calibrated_by": "Nishan Fernando",
+		"notes": "18-135",
+		"source": "gyroflow",
+		"official": true
+	}
+}

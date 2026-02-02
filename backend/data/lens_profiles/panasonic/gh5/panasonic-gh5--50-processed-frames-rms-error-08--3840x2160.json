@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--50-processed-frames-rms-error-08--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "Leica DG Vario 12-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2569.735203551061,
+		"fy": 2573.2335178455287,
+		"cx": 1920.0,
+		"cy": 1080.0
+	},
+	"distortion_coeffs": [
+		0.29585182465151233,
+		-0.09379707067820582,
+		1.0246428843094215,
+		-1.4057293637942498
+	],
+	"metadata": {
+		"calibrated_by": "Nico.FPV",
+		"notes": "50 processed Frames, RMS Error 0.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

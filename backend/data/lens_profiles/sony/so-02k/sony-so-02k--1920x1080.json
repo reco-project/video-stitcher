@@ -1,0 +1,28 @@
+{
+	"id": "sony-so-02k--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "SO-02K",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1292.056896609472,
+		"fy": 1290.6574911669973,
+		"cx": 960.7517998820008,
+		"cy": 529.3351470996256
+	},
+	"distortion_coeffs": [
+		0.6460111237157574,
+		-0.6269869156269525,
+		0.5551788628519874,
+		-0.5649513333868563
+	],
+	"metadata": {
+		"calibrated_by": "takeru takeuchi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

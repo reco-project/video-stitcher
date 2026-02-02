@@ -1,0 +1,28 @@
+{
+	"id": "runcam-hybrid--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "HYBRID",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 976.4635551474648,
+		"fy": 975.1418576112776,
+		"cx": 953.7083222390928,
+		"cy": 516.15926160674
+	},
+	"distortion_coeffs": [
+		-0.04300054603407116,
+		0.029533861733152204,
+		-0.050295815931242695,
+		0.021047472131140648
+	],
+	"metadata": {
+		"calibrated_by": "ZJY",
+		"source": "gyroflow",
+		"official": true
+	}
+}

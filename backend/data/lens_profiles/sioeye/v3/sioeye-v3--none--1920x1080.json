@@ -1,0 +1,29 @@
+{
+	"id": "sioeye-v3--none--1920x1080",
+	"camera_brand": "Sioeye",
+	"camera_model": "v3",
+	"lens_model": "none",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 934.441113986704,
+		"fy": 935.6777217533574,
+		"cx": 965.9283357547572,
+		"cy": 563.3437045502558
+	},
+	"distortion_coeffs": [
+		0.007147971344031396,
+		-0.05927643517804352,
+		0.10481219080370031,
+		-0.06113930760595046
+	],
+	"metadata": {
+		"calibrated_by": "MOUYYFPV",
+		"notes": "none",
+		"source": "gyroflow",
+		"official": true
+	}
+}

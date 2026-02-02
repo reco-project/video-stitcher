@@ -1,0 +1,28 @@
+{
+	"id": "motorola-g7-plus--640x352",
+	"camera_brand": "Motorola",
+	"camera_model": "G7 Plus",
+	"lens_model": "12px",
+	"resolution": {
+		"width": 640,
+		"height": 352
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 400.610703157111,
+		"fy": 389.0826015496406,
+		"cx": 323.8179562584273,
+		"cy": 176.7040183863806
+	},
+	"distortion_coeffs": [
+		0.47577951557094167,
+		-0.45959132646895107,
+		1.500370104643021,
+		-1.7297558206954493
+	],
+	"metadata": {
+		"calibrated_by": "daniel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

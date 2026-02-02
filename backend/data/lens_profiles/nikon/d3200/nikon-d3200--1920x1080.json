@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d3200--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D3200",
+	"lens_model": "NIKON DX 18-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1590.507839814438,
+		"fy": 1586.8476380004508,
+		"cx": 931.9940059167418,
+		"cy": 565.5343837439063
+	},
+	"distortion_coeffs": [
+		0.2479386927154742,
+		0.14360201181467386,
+		-0.4455480874647475,
+		0.713269752778871
+	],
+	"metadata": {
+		"calibrated_by": "Dj Hinds",
+		"source": "gyroflow",
+		"official": true
+	}
+}

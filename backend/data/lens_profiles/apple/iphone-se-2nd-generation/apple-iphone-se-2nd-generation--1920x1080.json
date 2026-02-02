@@ -1,0 +1,27 @@
+{
+	"id": "apple-iphone-se-2nd-generation--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone SE (2nd generation)",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1635.1006206124011,
+		"fy": 1709.045815954393,
+		"cx": 944.7846010321812,
+		"cy": 722.9112685938475
+	},
+	"distortion_coeffs": [
+		0.5046353842177722,
+		0.4304592731176664,
+		-2.3804024566699007,
+		-1.585813729387728
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p20-pro--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "P20 Pro",
+	"lens_model": "Leica",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3036.5115556470732,
+		"fy": 3031.4875088052186,
+		"cx": 1891.7681938061844,
+		"cy": 1088.5122207519742
+	},
+	"distortion_coeffs": [
+		0.4551998925115665,
+		-0.9111928821197828,
+		5.152356065444423,
+		-8.926581361721807
+	],
+	"metadata": {
+		"calibrated_by": "Andrius",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--6144x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Laowa Nanomorph 20mm",
+	"resolution": {
+		"width": 6144,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4583.525517765529,
+		"fy": 4554.848917188803,
+		"cx": 3118.725425802292,
+		"cy": 1122.259634589588
+	},
+	"distortion_coeffs": [
+		0.22405489066098724,
+		-0.3816332357906395,
+		0.8441826495578518,
+		0.44112846284827417
+	],
+	"metadata": {
+		"calibrated_by": "Shikijo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

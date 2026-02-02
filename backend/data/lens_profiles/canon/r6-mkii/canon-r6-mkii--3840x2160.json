@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6-mkii--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "r6 mkii",
+	"lens_model": "tamron",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3593.138410245988,
+		"fy": 3590.589471079044,
+		"cx": 1931.9326359972272,
+		"cy": 1072.4496084966495
+	},
+	"distortion_coeffs": [
+		0.2668311074798867,
+		0.13745522994769557,
+		1.7033362798581675,
+		-4.357175159419678
+	],
+	"metadata": {
+		"calibrated_by": "Elisha Coray",
+		"source": "gyroflow",
+		"official": true
+	}
+}

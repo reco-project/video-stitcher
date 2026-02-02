@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-100d--4992x2268",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 100d",
+	"lens_model": "18-55",
+	"resolution": {
+		"width": 4992,
+		"height": 2268
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6619.79424361839,
+		"fy": 6623.513279029881,
+		"cx": 2502.188755374783,
+		"cy": 928.8164988774852
+	},
+	"distortion_coeffs": [
+		0.13150833062178888,
+		4.105410840179336,
+		-38.974452009598615,
+		145.89944156689418
+	],
+	"metadata": {
+		"calibrated_by": "jules.p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

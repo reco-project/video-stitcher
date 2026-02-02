@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-action-4k--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi Action 4k",
+	"lens_model": "SONY FDR X3000",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 993.8300453160864,
+		"fy": 992.722108981406,
+		"cx": 956.6694385521828,
+		"cy": 561.5350073095025
+	},
+	"distortion_coeffs": [
+		0.362055447947087,
+		0.12527186703482507,
+		-0.021941468803525557,
+		0.15558970263235514
+	],
+	"metadata": {
+		"calibrated_by": "Demon",
+		"source": "gyroflow",
+		"official": true
+	}
+}

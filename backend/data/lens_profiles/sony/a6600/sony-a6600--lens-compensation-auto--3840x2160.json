@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6600--lens-compensation-auto--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6600",
+	"lens_model": "SELP18105G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3646.107925383713,
+		"fy": 3639.551499420621,
+		"cx": 1920.5097939130237,
+		"cy": 1064.402177531548
+	},
+	"distortion_coeffs": [
+		0.3358475518596387,
+		0.025492308159706815,
+		-0.0735095986778496,
+		1.3525708182490093
+	],
+	"metadata": {
+		"calibrated_by": "Davide Projetto",
+		"notes": "Lens Compensation: Auto",
+		"source": "gyroflow",
+		"official": true
+	}
+}

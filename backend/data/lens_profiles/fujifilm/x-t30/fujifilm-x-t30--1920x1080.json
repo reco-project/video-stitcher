@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t30--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T30",
+	"lens_model": "27mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2289.844727771,
+		"fy": 2292.3312509157895,
+		"cx": 951.675879030081,
+		"cy": 520.1695284289698
+	},
+	"distortion_coeffs": [
+		0.06541093523677584,
+		4.602099248726958,
+		-36.8332051528434,
+		107.30984215304738
+	],
+	"metadata": {
+		"calibrated_by": "U0 A533",
+		"source": "gyroflow",
+		"official": true
+	}
+}

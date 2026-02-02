@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--150mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Samyang 35-150",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17976.772999728168,
+		"fy": 18421.988734074912,
+		"cx": 3079.625075254256,
+		"cy": 1142.076658045476
+	},
+	"distortion_coeffs": [
+		0.15123424306370928,
+		-11.475618608809375,
+		383.386663562743,
+		-3228.3330453988456
+	],
+	"metadata": {
+		"calibrated_by": "Ro Diaz",
+		"notes": "150mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "supremo-premere-4k--3840x2160",
+	"camera_brand": "supremo",
+	"camera_model": "premere 4k",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2732.6163079695425,
+		"fy": 2732.655071877458,
+		"cx": 2081.3997369103377,
+		"cy": 972.7754461493724
+	},
+	"distortion_coeffs": [
+		-0.014181698382902024,
+		-0.02972341635110986,
+		0.17506742336016876,
+		-0.4084566715060742
+	],
+	"metadata": {
+		"calibrated_by": "ACER",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "yicam-yicam--1920x1080",
+	"camera_brand": "YiCam",
+	"camera_model": "Yicam",
+	"lens_model": "Superview",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 910.5438280024732,
+		"fy": 916.1303170176142,
+		"cx": 931.4400706259588,
+		"cy": 555.134518720847
+	},
+	"distortion_coeffs": [
+		0.1243995783434941,
+		0.11333395805060704,
+		-0.20646784245332372,
+		0.05403173457431435
+	],
+	"metadata": {
+		"calibrated_by": "Server",
+		"source": "gyroflow",
+		"official": true
+	}
+}

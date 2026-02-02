@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--pal--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 16mm f/1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2269.941821191302,
+		"fy": 2269.8122195084966,
+		"cx": 1963.4643763611912,
+		"cy": 1032.2645736228976
+	},
+	"distortion_coeffs": [
+		0.36580625008667594,
+		-0.14230661634265818,
+		0.8679029627844335,
+		-0.7500707762699916
+	],
+	"metadata": {
+		"calibrated_by": "Ji\u0159\u00ed Soukup",
+		"notes": "PAL",
+		"source": "gyroflow",
+		"official": true
+	}
+}

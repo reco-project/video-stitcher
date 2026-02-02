@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--50mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Nikkor 24-70 f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5810.600710484394,
+		"fy": 5810.460137097834,
+		"cx": 1990.1944344361548,
+		"cy": 1125.1078775340038
+	},
+	"distortion_coeffs": [
+		0.40118151885160863,
+		2.143106228569452,
+		-6.507325519529988,
+		-98.9315817136235
+	],
+	"metadata": {
+		"calibrated_by": "alejandro ram\u00edrez",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

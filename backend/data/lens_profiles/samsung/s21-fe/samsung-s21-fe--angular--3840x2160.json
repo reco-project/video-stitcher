@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s21-fe--angular--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S21 FE",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1503.8068778002507,
+		"fy": 1501.3563300003673,
+		"cx": 1856.2613183199744,
+		"cy": 1137.134312686101
+	},
+	"distortion_coeffs": [
+		0.2927091295996868,
+		0.2486652640464822,
+		-0.1007832262927506,
+		-0.012874114727614022
+	],
+	"metadata": {
+		"calibrated_by": "Jhondy",
+		"notes": "angular",
+		"source": "gyroflow",
+		"official": true
+	}
+}

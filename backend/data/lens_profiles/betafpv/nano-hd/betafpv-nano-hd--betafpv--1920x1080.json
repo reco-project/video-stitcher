@@ -1,0 +1,29 @@
+{
+	"id": "betafpv-nano-hd--betafpv--1920x1080",
+	"camera_brand": "BetaFPV",
+	"camera_model": "Nano HD",
+	"lens_model": "nano hd",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 817.079599387199,
+		"fy": 818.1364353066241,
+		"cx": 942.8599861926068,
+		"cy": 537.5456306318756
+	},
+	"distortion_coeffs": [
+		0.01647179065647536,
+		-0.07435042665775779,
+		0.04762101014098896,
+		-0.012881588370543578
+	],
+	"metadata": {
+		"calibrated_by": "roger",
+		"notes": "betafpv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

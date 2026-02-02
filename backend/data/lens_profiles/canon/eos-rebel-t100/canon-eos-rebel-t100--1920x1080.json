@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-rebel-t100--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS Rebel T100",
+	"lens_model": "EF-S 18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1613.5353070913834,
+		"fy": 1613.780952867407,
+		"cx": 947.4987147846284,
+		"cy": 522.5765088620282
+	},
+	"distortion_coeffs": [
+		0.15050094861950272,
+		0.24130965008930208,
+		-0.22877893535133537,
+		0.6988621478324317
+	],
+	"metadata": {
+		"calibrated_by": "David Salazar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

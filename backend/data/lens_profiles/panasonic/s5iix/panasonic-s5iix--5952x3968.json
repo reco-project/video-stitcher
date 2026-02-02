@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5iix--5952x3968",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5IIX",
+	"lens_model": "DZOFILM Vespid Prime 50mm T2.1",
+	"resolution": {
+		"width": 5952,
+		"height": 3968
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9136.023522245632,
+		"fy": 9164.030867881947,
+		"cx": 2888.5626872055977,
+		"cy": 1972.0817547036324
+	},
+	"distortion_coeffs": [
+		0.16814544531238632,
+		-0.9897016332038842,
+		21.192944360944033,
+		-106.81155195631148
+	],
+	"metadata": {
+		"calibrated_by": "Tartaglia",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--with-viltrox-ef-m2-adapter--672x378",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "EF Sigma 18-35mm f/1.8 om 20mm F4.8",
+	"resolution": {
+		"width": 672,
+		"height": 378
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 723.574770852849,
+		"fy": 724.7967112585416,
+		"cx": 344.84843101624443,
+		"cy": 219.8117704879081
+	},
+	"distortion_coeffs": [
+		0.23551186065643603,
+		-0.17218452087583583,
+		2.7571429356454815,
+		-6.60696338794379
+	],
+	"metadata": {
+		"calibrated_by": "Igors Orlovs",
+		"notes": "with Viltrox EF-M2 adapter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

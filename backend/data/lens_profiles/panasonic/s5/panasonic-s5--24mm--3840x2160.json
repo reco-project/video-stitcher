@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--24mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5",
+	"lens_model": "24-105",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2609.6725457837597,
+		"fy": 2617.2199624760947,
+		"cx": 1934.5415926255728,
+		"cy": 1031.5542899356917
+	},
+	"distortion_coeffs": [
+		0.27813323249336513,
+		0.25111064066148103,
+		-0.23617759260249568,
+		0.19317230051768863
+	],
+	"metadata": {
+		"calibrated_by": "L2004",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

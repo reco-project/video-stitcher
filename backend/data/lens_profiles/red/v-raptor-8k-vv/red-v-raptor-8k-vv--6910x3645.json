@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor-8k-vv--6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "DZO Vespid 35mm",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7896.248506340793,
+		"fy": 7906.420747917738,
+		"cx": 3486.149559176474,
+		"cy": 1861.9013714967148
+	},
+	"distortion_coeffs": [
+		0.13829889604622878,
+		0.8438323042630639,
+		-4.958515171033374,
+		15.617387551224446
+	],
+	"metadata": {
+		"calibrated_by": "salvatore allotta",
+		"source": "gyroflow",
+		"official": true
+	}
+}

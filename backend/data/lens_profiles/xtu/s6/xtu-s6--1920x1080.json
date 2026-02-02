@@ -1,0 +1,28 @@
+{
+	"id": "xtu-s6--1920x1080",
+	"camera_brand": "XTU",
+	"camera_model": "S6",
+	"lens_model": "1080p60",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 611.1549814728781,
+		"fy": 611.1549814728781,
+		"cx": 959.5,
+		"cy": 539.5
+	},
+	"distortion_coeffs": [
+		0.0,
+		0.0,
+		0.0,
+		0.0
+	],
+	"metadata": {
+		"calibrated_by": "U0 A269",
+		"source": "gyroflow",
+		"official": true
+	}
+}

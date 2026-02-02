@@ -1,0 +1,28 @@
+{
+	"id": "akaso-v50x--1920x1080",
+	"camera_brand": "AKASO",
+	"camera_model": "V50x",
+	"lens_model": "Caddx LS108",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1343.220713555737,
+		"fy": 1345.8434284600626,
+		"cx": 1003.9837481566708,
+		"cy": 537.1749729788883
+	},
+	"distortion_coeffs": [
+		-0.08852005354985965,
+		0.026576072930129917,
+		-0.04261921307278385,
+		0.025682499131094483
+	],
+	"metadata": {
+		"calibrated_by": "Dicky Soeliantoro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

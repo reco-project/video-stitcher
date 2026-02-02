@@ -1,0 +1,28 @@
+{
+	"id": "nikon-coolpix-w300--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "CoolPix W300",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1385.5560868819664,
+		"fy": 1384.0605695375325,
+		"cx": 954.517297932304,
+		"cy": 535.5799633138431
+	},
+	"distortion_coeffs": [
+		0.3574169378794891,
+		-0.07873793092591701,
+		0.8830769053229588,
+		-0.9781678231868276
+	],
+	"metadata": {
+		"calibrated_by": "Joakim S\u00f6derlind",
+		"source": "gyroflow",
+		"official": true
+	}
+}

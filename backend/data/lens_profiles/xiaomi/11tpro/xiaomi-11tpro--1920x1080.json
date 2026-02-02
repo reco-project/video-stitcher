@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-11tpro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "11Tpro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1732.244527826199,
+		"fy": 1733.5421303901126,
+		"cx": 954.7422731235666,
+		"cy": 530.9149677829607
+	},
+	"distortion_coeffs": [
+		0.6487087921023329,
+		-3.7951877014774,
+		20.05559915612495,
+		-33.92397478278368
+	],
+	"metadata": {
+		"calibrated_by": "U0 A550",
+		"source": "gyroflow",
+		"official": true
+	}
+}

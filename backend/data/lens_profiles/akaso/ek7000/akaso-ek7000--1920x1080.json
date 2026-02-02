@@ -1,0 +1,28 @@
+{
+	"id": "akaso-ek7000--1920x1080",
+	"camera_brand": "AKASO",
+	"camera_model": "EK7000",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1151.0931143954824,
+		"fy": 1149.7652375006278,
+		"cx": 949.8544177513812,
+		"cy": 569.6086079549995
+	},
+	"distortion_coeffs": [
+		-0.04796756940462096,
+		-0.009760218166976278,
+		0.03123053895051283,
+		-0.019087678099198268
+	],
+	"metadata": {
+		"calibrated_by": "Jeromy Nichols",
+		"source": "gyroflow",
+		"official": true
+	}
+}

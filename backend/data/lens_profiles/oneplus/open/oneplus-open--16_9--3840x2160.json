@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-open--16_9--3840x2160",
+	"camera_brand": "OnePlus",
+	"camera_model": "Open",
+	"lens_model": "OnePlusOpen",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2699.074288956241,
+		"fy": 2706.646746320664,
+		"cx": 1927.7114675874093,
+		"cy": 1098.8389582290934
+	},
+	"distortion_coeffs": [
+		0.5333802218528971,
+		-1.1888262653900443,
+		4.717794906236089,
+		-5.718874389291099
+	],
+	"metadata": {
+		"calibrated_by": "Andr\u00e9",
+		"notes": "16_9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

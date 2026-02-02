@@ -1,0 +1,28 @@
+{
+	"id": "blackberry-bb2--1920x1080",
+	"camera_brand": "Blackberry",
+	"camera_model": "BB2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1006.5903587786364,
+		"fy": 1004.4266700449152,
+		"cx": 1004.3862021525364,
+		"cy": 474.4373658598509
+	},
+	"distortion_coeffs": [
+		0.3837927412695903,
+		0.3253509509672298,
+		-0.7464692222552234,
+		0.7270459323684321
+	],
+	"metadata": {
+		"calibrated_by": "lgnap",
+		"source": "gyroflow",
+		"official": true
+	}
+}

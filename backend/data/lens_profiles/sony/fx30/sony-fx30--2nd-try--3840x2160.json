@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--2nd-try--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "85mm Samyang",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13994.140213602235,
+		"fy": 13953.931949885053,
+		"cx": 1218.2853178218318,
+		"cy": 1485.3135553027814
+	},
+	"distortion_coeffs": [
+		0.570137377634049,
+		-34.43247221610812,
+		1705.0947082364817,
+		-27138.55618186126
+	],
+	"metadata": {
+		"calibrated_by": "Isaac Quezada",
+		"notes": "2nd try",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-hc-1500x--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "HC-1500X",
+	"lens_model": "25-600",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2569.716005265377,
+		"fy": 2570.431769633547,
+		"cx": 1924.8395702680668,
+		"cy": 1086.4961898314368
+	},
+	"distortion_coeffs": [
+		0.3298334206606362,
+		0.10432684992701197,
+		0.12676713742526857,
+		-0.05879959513865467
+	],
+	"metadata": {
+		"calibrated_by": "Dai wei Li",
+		"source": "gyroflow",
+		"official": true
+	}
+}

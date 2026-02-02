@@ -2,32 +2,27 @@
 	"id": "gopro-hero5-black--1920x1080",
 	"camera_brand": "GoPro",
 	"camera_model": "HERO5 Black",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 881.1648744888821,
-		"fy": 880.5580867826209,
-		"cx": 966.0561246206464,
-		"cy": 527.5812143104977
+		"fx": 879.6915039177966,
+		"fy": 879.2656359469211,
+		"cx": 966.3257017482198,
+		"cy": 526.9040098066471
 	},
 	"distortion_coeffs": [
-		0.05147197113940017,
-		0.012722515002963532,
-		-0.001995396710842133,
-		-0.004122541795726268
+		0.05315613599734342,
+		0.01312846343150766,
+		-0.00863273902878668,
+		0.003644163748992576
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "GoPro_HERO5 Black___1080p_16by9_1920x1080-119.88fps",
 		"calibrated_by": "SX2",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "119.880119",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

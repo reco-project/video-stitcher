@@ -1,0 +1,28 @@
+{
+	"id": "xtu-xtumax2--5376x3024",
+	"camera_brand": "XTU",
+	"camera_model": "XTUMAX2",
+	"lens_model": "GK766",
+	"resolution": {
+		"width": 5376,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2471.368467518257,
+		"fy": 2470.68353403799,
+		"cx": 2713.228200617978,
+		"cy": 1633.3703475919467
+	},
+	"distortion_coeffs": [
+		0.053576215959896194,
+		0.004712013852421006,
+		0.005056562642673013,
+		-0.0043404418239835815
+	],
+	"metadata": {
+		"calibrated_by": "YUTU",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--4k-dci-constant-bit-rate--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Laowa 12mm 2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2379.1338096595646,
+		"fy": 2381.321934227294,
+		"cx": 2122.8151058147223,
+		"cy": 1054.5589924800158
+	},
+	"distortion_coeffs": [
+		0.3045189668505251,
+		0.15675831610792496,
+		0.10671124192268054,
+		-0.07807239979716873
+	],
+	"metadata": {
+		"calibrated_by": "Leroy Button",
+		"notes": "4K DCI Constant Bit Rate",
+		"source": "gyroflow",
+		"official": true
+	}
+}

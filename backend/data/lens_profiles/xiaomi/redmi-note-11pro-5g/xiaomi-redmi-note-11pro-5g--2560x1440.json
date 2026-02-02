@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-11pro-5g--2560x1440",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 11Pro+ 5G",
+	"lens_model": "OpenCamera Sensors",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1777.6763499827866,
+		"fy": 1780.4667436152977,
+		"cx": 1295.8813130424626,
+		"cy": 662.6965608390047
+	},
+	"distortion_coeffs": [
+		0.5076754111352418,
+		-1.3194830806491629,
+		4.667505690971313,
+		-3.711451513230098
+	],
+	"metadata": {
+		"calibrated_by": "\u041b\u0435\u043e\u043d\u0438\u0434 \u0414\u0435\u043c\u0438\u0434\u043e\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-s6g--6144x3240",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-S6G",
+	"lens_model": "24MM XEEN CF + VILTROX 0.71",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5143.577101635937,
+		"fy": 5144.2889837677885,
+		"cx": 3059.38257506681,
+		"cy": 1633.3476782926018
+	},
+	"distortion_coeffs": [
+		0.2178946536166965,
+		0.03593770209376471,
+		0.5890468566762722,
+		-0.787971515332404
+	],
+	"metadata": {
+		"calibrated_by": "SHIKIJO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

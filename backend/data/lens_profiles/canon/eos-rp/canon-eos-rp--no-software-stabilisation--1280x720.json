@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-rp--no-software-stabilisation--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS RP",
+	"lens_model": "EF-S 24mm f2.8 STM",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1554.4532991164997,
+		"fy": 1553.6429330595165,
+		"cx": 642.6504726959769,
+		"cy": 351.569967291691
+	},
+	"distortion_coeffs": [
+		0.16792365432255618,
+		0.2906558522057483,
+		-0.3715248048641598,
+		0.7122430815396075
+	],
+	"metadata": {
+		"calibrated_by": "Roman",
+		"notes": "No Software Stabilisation",
+		"source": "gyroflow",
+		"official": true
+	}
+}

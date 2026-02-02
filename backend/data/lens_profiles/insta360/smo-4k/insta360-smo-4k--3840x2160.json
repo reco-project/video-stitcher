@@ -2,7 +2,7 @@
 	"id": "insta360-smo-4k--3840x2160",
 	"camera_brand": "Insta360",
 	"camera_model": "SMO 4K",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		-0.02245902814416183
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Insta360_SMO 4K___4k_16by9_3840x2160-0.00fps",
 		"calibrated_by": "Anonymous",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "unknown",
-		"official": true,
-		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,29 @@
+{
+	"id": "vivo-x90-pro--sensor-size-1311-x-983--4096x3072",
+	"camera_brand": "Vivo",
+	"camera_model": "x90 Pro+",
+	"lens_model": "24 mm main",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2688.5005802787737,
+		"fy": 2696.0349771277315,
+		"cx": 2046.0005134889611,
+		"cy": 1560.643161908932
+	},
+	"distortion_coeffs": [
+		0.5630338206097358,
+		-1.8677559507953136,
+		5.749714062364659,
+		-5.530828503143338
+	],
+	"metadata": {
+		"calibrated_by": "Steven Winters, Jr",
+		"notes": "Sensor size 13.11 x 9.83",
+		"source": "gyroflow",
+		"official": true
+	}
+}

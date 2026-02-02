@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p60pro-4k24mm--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "P60pro 4K24mm",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3399.251223602397,
+		"fy": 3409.0790449312703,
+		"cx": 1968.467181537355,
+		"cy": 1064.5597618805389
+	},
+	"distortion_coeffs": [
+		0.34258428497442206,
+		-0.08298132236183671,
+		2.336165578568079,
+		-5.926580266334853
+	],
+	"metadata": {
+		"calibrated_by": "\u54e6~\u662f\u672c\u672c\u5450~",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--flat-profile--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "MZUIKO 9-18",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2007.9963746021135,
+		"fy": 2007.8220043033307,
+		"cx": 1902.601470261185,
+		"cy": 1061.8049032386032
+	},
+	"distortion_coeffs": [
+		0.328006552454233,
+		0.11798236650444303,
+		-0.2086007086001964,
+		0.08389266512154318
+	],
+	"metadata": {
+		"calibrated_by": "Dario Della Mora",
+		"notes": "FLAT PROFILE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

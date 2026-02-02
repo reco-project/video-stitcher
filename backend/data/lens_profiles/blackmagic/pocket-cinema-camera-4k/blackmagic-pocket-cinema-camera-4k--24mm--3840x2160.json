@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--24mm--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Sigma 24-105 f/4 with Viltrox 0.71x Speedbooster",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3796.526680217685,
+		"fy": 3807.053507531353,
+		"cx": 1900.308237718544,
+		"cy": 1047.1478909263155
+	},
+	"distortion_coeffs": [
+		0.17369273586190834,
+		0.28176048399366954,
+		-1.2878995928095618,
+		3.495291817700948
+	],
+	"metadata": {
+		"calibrated_by": "Joseph Shrimpton",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

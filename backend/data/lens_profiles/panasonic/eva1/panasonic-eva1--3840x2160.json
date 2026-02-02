@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-eva1--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "EVA1",
+	"lens_model": "31mm Dulens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5791.811360560905,
+		"fy": 5784.869538897393,
+		"cx": 1930.1906115879067,
+		"cy": 1027.4200800099377
+	},
+	"distortion_coeffs": [
+		0.22643185089959444,
+		0.7477126535176998,
+		-4.51139351349411,
+		25.281961817562493
+	],
+	"metadata": {
+		"calibrated_by": "User-PC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

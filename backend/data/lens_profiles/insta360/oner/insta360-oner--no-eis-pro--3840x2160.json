@@ -1,0 +1,29 @@
+{
+	"id": "insta360-oner--no-eis-pro--3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "OneR",
+	"lens_model": "1inch (Linear)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2232.978153570523,
+		"fy": 2232.938399559221,
+		"cx": 2021.8365266420387,
+		"cy": 1132.069387248555
+	},
+	"distortion_coeffs": [
+		0.020570585192534203,
+		0.3696437592130268,
+		-1.6943834360947556,
+		2.6454390048270615
+	],
+	"metadata": {
+		"calibrated_by": "Eduard Berdi\u00e9 Farr\u00e9s",
+		"notes": "NO-EIS (PRO)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

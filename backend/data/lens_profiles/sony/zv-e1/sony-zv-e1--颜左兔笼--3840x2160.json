@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--\u989c\u5de6\u5154\u7b3c--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Sonyt 35mm F1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3811.0845221079862,
+		"fy": 3809.483063236773,
+		"cx": 1944.8219972937095,
+		"cy": 1052.4729646835403
+	},
+	"distortion_coeffs": [
+		0.35513264961950247,
+		-0.18114383139924423,
+		2.8336094030630288,
+		-8.319710677725858
+	],
+	"metadata": {
+		"calibrated_by": "An Hu",
+		"notes": "\u989c\u5de6\u5154\u7b3c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

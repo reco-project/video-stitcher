@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--25p--7680x4320",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "Laowa 14mm F4.0",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3391.289033113229,
+		"fy": 3387.2137078402793,
+		"cx": 3865.3839635996687,
+		"cy": 2144.401199548069
+	},
+	"distortion_coeffs": [
+		0.3578617693806772,
+		0.04343697903756682,
+		0.1356260731240258,
+		-0.0028954977461038874
+	],
+	"metadata": {
+		"calibrated_by": "His_FPV",
+		"notes": "25P",
+		"source": "gyroflow",
+		"official": true
+	}
+}

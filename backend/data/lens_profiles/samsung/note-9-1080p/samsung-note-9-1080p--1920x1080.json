@@ -1,0 +1,28 @@
+{
+	"id": "samsung-note-9-1080p--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 9 1080p",
+	"lens_model": "Open Camera",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1506.1575883734763,
+		"fy": 1509.5983874863869,
+		"cx": 974.1175047479225,
+		"cy": 545.5339764113014
+	},
+	"distortion_coeffs": [
+		0.9376384752996276,
+		-5.056611849744328,
+		19.53789269284498,
+		-27.001380531715174
+	],
+	"metadata": {
+		"calibrated_by": "U0 A1312",
+		"source": "gyroflow",
+		"official": true
+	}
+}

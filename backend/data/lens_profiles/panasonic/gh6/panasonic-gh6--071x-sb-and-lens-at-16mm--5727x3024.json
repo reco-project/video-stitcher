@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh6--071x-sb-and-lens-at-16mm--5727x3024",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "Tamaron 11-16mm",
+	"resolution": {
+		"width": 5727,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3623.7168744426735,
+		"fy": 3625.1430806306544,
+		"cx": 2821.8068013671555,
+		"cy": 1510.6671655783368
+	},
+	"distortion_coeffs": [
+		0.348695624502954,
+		-0.06109460732854273,
+		0.41440107058715886,
+		-0.3442472936124973
+	],
+	"metadata": {
+		"calibrated_by": "Cyprian Lewicki",
+		"notes": "0.71x SB and lens at 16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

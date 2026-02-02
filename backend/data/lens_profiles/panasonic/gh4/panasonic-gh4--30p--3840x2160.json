@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--30p--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "25f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7218.936292912033,
+		"fy": 7233.87346389349,
+		"cx": 1898.5453135613857,
+		"cy": 1053.9741301938152
+	},
+	"distortion_coeffs": [
+		0.21955614721192793,
+		3.5802948102947947,
+		-89.69053554120983,
+		651.0314737069092
+	],
+	"metadata": {
+		"calibrated_by": "WX",
+		"notes": "30p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

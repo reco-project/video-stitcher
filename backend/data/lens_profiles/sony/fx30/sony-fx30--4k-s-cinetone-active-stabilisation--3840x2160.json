@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--4k-s-cinetone-active-stabilisation--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "sigma 16.00mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3182.3937665858616,
+		"fy": 3181.938522355968,
+		"cx": 1974.243616924792,
+		"cy": 1073.2353702752691
+	},
+	"distortion_coeffs": [
+		0.3719504745805856,
+		-0.3053277313774724,
+		2.2085407300055495,
+		-3.4213592811575597
+	],
+	"metadata": {
+		"calibrated_by": "Bonart Pecani",
+		"notes": "4k, s-cinetone, active stabilisation",
+		"source": "gyroflow",
+		"official": true
+	}
+}

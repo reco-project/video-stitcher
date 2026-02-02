@@ -2,32 +2,27 @@
 	"id": "xiaomi-yi--2304x1296",
 	"camera_brand": "Xiaomi",
 	"camera_model": "Yi",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 2304,
 		"height": 1296
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 992.5775750480196,
-		"fy": 991.879625457097,
-		"cx": 1145.217980025542,
-		"cy": 644.8261706677602
+		"fx": 996.2323770286746,
+		"fy": 995.7491968617968,
+		"cx": 1114.5057817886773,
+		"cy": 661.9501804963917
 	},
 	"distortion_coeffs": [
-		0.09453243631837573,
-		-0.002112710495120326,
-		-0.01305761301921689,
-		0.004789932935212896
+		0.0932923579081636,
+		0.005830800163109133,
+		-0.024784015704867737,
+		0.008861199516699418
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Xiaomi_Yi___2k_16by9_2304x1296-29.97fps",
-		"calibrated_by": "Jesse van Gorkum",
-		"original_resolution": "2304x1296",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"calibrated_by": "Gigabyte",
+		"source": "gyroflow",
+		"official": true
 	}
 }

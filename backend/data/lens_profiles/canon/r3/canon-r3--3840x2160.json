@@ -1,0 +1,28 @@
+{
+	"id": "canon-r3--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R3",
+	"lens_model": "RF 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2800.8749029088613,
+		"fy": 2801.50297337971,
+		"cx": 1958.2079758546984,
+		"cy": 1073.4733656973542
+	},
+	"distortion_coeffs": [
+		0.29693533766412605,
+		0.45141159944046905,
+		-1.0305387467594869,
+		1.4188315304026884
+	],
+	"metadata": {
+		"calibrated_by": "Matt Young",
+		"source": "gyroflow",
+		"official": true
+	}
+}

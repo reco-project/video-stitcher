@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--at-16mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sony 16-55mm GM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2519.734094258683,
+		"fy": 2519.312765684742,
+		"cx": 1990.455488272524,
+		"cy": 1053.8803202586353
+	},
+	"distortion_coeffs": [
+		0.3022140809748271,
+		0.0263920537938767,
+		0.7250333608087849,
+		-0.6834295492476817
+	],
+	"metadata": {
+		"calibrated_by": "kobe weyts",
+		"notes": "at 16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

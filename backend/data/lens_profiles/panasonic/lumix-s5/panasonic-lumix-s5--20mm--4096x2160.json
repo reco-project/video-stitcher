@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-s5--20mm--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S5",
+	"lens_model": "Lumix 20-60",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2513.1535522237145,
+		"fy": 2452.7164099816514,
+		"cx": 2021.7206113880304,
+		"cy": 1102.2891568759608
+	},
+	"distortion_coeffs": [
+		0.29345087206515147,
+		0.14687141572544596,
+		0.21372755329942103,
+		-0.1619703735700471
+	],
+	"metadata": {
+		"calibrated_by": "Juster Wang",
+		"notes": "@20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

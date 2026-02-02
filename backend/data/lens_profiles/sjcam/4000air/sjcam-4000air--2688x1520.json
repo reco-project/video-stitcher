@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-4000air--2688x1520",
+	"camera_brand": "SJCAM",
+	"camera_model": "4000air",
+	"lens_model": null,
+	"resolution": {
+		"width": 2688,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1370.0327396681582,
+		"fy": 1374.0090370846883,
+		"cx": 1518.0796022188813,
+		"cy": 858.5416487566526
+	},
+	"distortion_coeffs": [
+		-0.01262522798717782,
+		0.03985217874799226,
+		-0.09423816124328492,
+		0.12999637066765887
+	],
+	"metadata": {
+		"calibrated_by": "JayDeePee",
+		"source": "gyroflow",
+		"official": true
+	}
+}

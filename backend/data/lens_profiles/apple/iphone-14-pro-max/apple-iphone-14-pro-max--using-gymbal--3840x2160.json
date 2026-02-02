@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-14-pro-max--using-gymbal--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14 Pro Max",
+	"lens_model": "pro max",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3151.336917014946,
+		"fy": 3144.0267914967976,
+		"cx": 1918.6236921620273,
+		"cy": 1066.2968456747217
+	},
+	"distortion_coeffs": [
+		0.41879814828818207,
+		1.6037423565326352,
+		-11.090329431447044,
+		20.681325550085287
+	],
+	"metadata": {
+		"calibrated_by": "Asus",
+		"notes": "using gymbal",
+		"source": "gyroflow",
+		"official": true
+	}
+}

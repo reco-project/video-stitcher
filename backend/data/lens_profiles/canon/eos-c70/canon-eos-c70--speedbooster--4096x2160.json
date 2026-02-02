@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-c70--speedbooster--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS C70",
+	"lens_model": "16-35 2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1804.239234183494,
+		"fy": 1803.479968361186,
+		"cx": 2036.9539828314523,
+		"cy": 1060.457072139975
+	},
+	"distortion_coeffs": [
+		0.2506402420586541,
+		0.28669505090686453,
+		-0.40259351088772216,
+		0.31412970597631257
+	],
+	"metadata": {
+		"calibrated_by": "Jonas Be",
+		"notes": "Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

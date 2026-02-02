@@ -1,0 +1,29 @@
+{
+	"id": "redmi-note-9-pro-max--phone-camera--3840x2160",
+	"camera_brand": "Redmi",
+	"camera_model": "note 9 pro max",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3686.639798260568,
+		"fy": 3649.1491142535847,
+		"cx": 1922.7310130598803,
+		"cy": 986.5462899012048
+	},
+	"distortion_coeffs": [
+		0.43530350787492433,
+		0.20103829987275337,
+		-3.084167263512529,
+		6.75112117180326
+	],
+	"metadata": {
+		"calibrated_by": "Rohan Ayush",
+		"notes": "Phone camera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

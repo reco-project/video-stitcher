@@ -1,0 +1,29 @@
+{
+	"id": "sony-rx0ii--c-mount_mod--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "ZumLain_8mm_LH0811-12MP",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7003.3147488645845,
+		"fy": 7160.059907877601,
+		"cx": 3763.587308953857,
+		"cy": 481.7346519049916
+	},
+	"distortion_coeffs": [
+		1.4164014529508282,
+		-13.151929378773367,
+		64.23114270284434,
+		-102.02735456038468
+	],
+	"metadata": {
+		"calibrated_by": "Nicecrash_22",
+		"notes": "C-Mount_MOD",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t2--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T2",
+	"lens_model": "Meike 35mm 1.7",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7102.34054679944,
+		"fy": 7103.640829577139,
+		"cx": 2033.0384056159155,
+		"cy": 1075.430486801104
+	},
+	"distortion_coeffs": [
+		0.25506213011494916,
+		-1.2064239810496158,
+		43.36264889338436,
+		-379.6236605981742
+	],
+	"metadata": {
+		"calibrated_by": "Oleg Vybornov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

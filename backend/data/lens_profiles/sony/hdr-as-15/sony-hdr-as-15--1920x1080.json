@@ -1,0 +1,28 @@
+{
+	"id": "sony-hdr-as-15--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HDR AS 15",
+	"lens_model": "170",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 791.4993037771882,
+		"fy": 790.865061969288,
+		"cx": 965.7026687587625,
+		"cy": 566.5209392087218
+	},
+	"distortion_coeffs": [
+		-0.007088300509831148,
+		0.0222608758586149,
+		-0.018961694620670645,
+		0.005354754487454232
+	],
+	"metadata": {
+		"calibrated_by": "StAdolph",
+		"source": "gyroflow",
+		"official": true
+	}
+}

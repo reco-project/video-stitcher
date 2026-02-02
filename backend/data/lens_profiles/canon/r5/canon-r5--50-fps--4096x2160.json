@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--50-fps--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "35 mm 1.8 RF",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4177.572126481862,
+		"fy": 4180.694381911736,
+		"cx": 2046.7447595128804,
+		"cy": 1081.7739134566957
+	},
+	"distortion_coeffs": [
+		0.2485572700309228,
+		0.1199131029586863,
+		0.2414410773080545,
+		-0.5360266847657872
+	],
+	"metadata": {
+		"calibrated_by": "luca giorgio barone",
+		"notes": "50 FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

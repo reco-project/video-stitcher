@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6000--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6000",
+	"lens_model": "16-50 at 16mm",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 992.4424189256896,
+		"fy": 1323.2188725468748,
+		"cx": 718.7381662325436,
+		"cy": 535.9639914762645
+	},
+	"distortion_coeffs": [
+		0.3435877605060937,
+		-0.623242878840113,
+		3.142308448751161,
+		-3.8500216613108345
+	],
+	"metadata": {
+		"calibrated_by": "user",
+		"source": "gyroflow",
+		"official": true
+	}
+}

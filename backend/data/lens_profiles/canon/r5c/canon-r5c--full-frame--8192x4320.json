@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--full-frame--8192x4320",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "Laowa 12mm f/2.8 Zero-D",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2848.4496433393306,
+		"fy": 2850.9693158984164,
+		"cx": 4049.345549032502,
+		"cy": 2104.805846388146
+	},
+	"distortion_coeffs": [
+		0.30432852303112773,
+		0.199527187412246,
+		-0.04349577790601876,
+		0.0661403234638825
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Jackson",
+		"notes": "Full Frame",
+		"source": "gyroflow",
+		"official": true
+	}
+}

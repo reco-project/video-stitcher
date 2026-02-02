@@ -1,0 +1,29 @@
+{
+	"id": "canon-200d-mark-ii--lens-and-body-stabilization-on--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "200d Mark II",
+	"lens_model": "EFS 17-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1672.4188601991846,
+		"fy": 1677.6413802774082,
+		"cx": 933.6098162432148,
+		"cy": 539.4748019935479
+	},
+	"distortion_coeffs": [
+		0.25149531135525693,
+		-0.4430334263157348,
+		3.9251216996331664,
+		-8.164669122998902
+	],
+	"metadata": {
+		"calibrated_by": "Kane McCarthy",
+		"notes": "Lens And Body Stabilization on",
+		"source": "gyroflow",
+		"official": true
+	}
+}

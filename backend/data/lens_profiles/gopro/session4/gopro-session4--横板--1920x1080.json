@@ -1,0 +1,29 @@
+{
+	"id": "gopro-session4--\u6a2a\u677f--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "Session4",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 835.5899201354224,
+		"fy": 834.7183598015909,
+		"cx": 996.4103401277282,
+		"cy": 556.5066760779225
+	},
+	"distortion_coeffs": [
+		0.09657113025197112,
+		0.0511591275326101,
+		-0.2059693726328058,
+		0.15093876420605637
+	],
+	"metadata": {
+		"calibrated_by": "\u6781",
+		"notes": "\u6a2a\u677f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

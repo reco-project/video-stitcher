@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--35-mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sigma 24-70 DG-DN Art",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5592.513919094376,
+		"fy": 5589.4330588942485,
+		"cx": 1970.0831134745024,
+		"cy": 1083.2409575143397
+	},
+	"distortion_coeffs": [
+		0.2825659213206529,
+		-0.39607421886026223,
+		6.845548182182735,
+		-22.147677992862263
+	],
+	"metadata": {
+		"calibrated_by": "Fabio Scarparo",
+		"notes": "35 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

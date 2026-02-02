@@ -1,0 +1,28 @@
+{
+	"id": "canon-700d-t5i--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "700D / T5i",
+	"lens_model": "50mm 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15771.61315200558,
+		"fy": 15733.22801795624,
+		"cx": 947.3661775694044,
+		"cy": 501.2759277417015
+	},
+	"distortion_coeffs": [
+		-2.574572381526345,
+		742.3087612245147,
+		-210142.17254574157,
+		25340011.960348357
+	],
+	"metadata": {
+		"calibrated_by": "Xunas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

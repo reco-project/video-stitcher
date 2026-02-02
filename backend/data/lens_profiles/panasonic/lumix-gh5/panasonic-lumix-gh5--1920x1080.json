@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh5--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5",
+	"lens_model": "Olympus 12-200",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1479.0042290493132,
+		"fy": 1477.4336953085365,
+		"cx": 948.411140675786,
+		"cy": 552.1679541997154
+	},
+	"distortion_coeffs": [
+		0.3299568760131572,
+		0.005989597309727633,
+		0.41956692738569634,
+		-0.2868503944917523
+	],
+	"metadata": {
+		"calibrated_by": "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

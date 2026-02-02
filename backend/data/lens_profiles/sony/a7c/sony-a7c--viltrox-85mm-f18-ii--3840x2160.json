@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--viltrox-85mm-f18-ii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "eca95ab9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8179.134915399624,
+		"fy": 8016.24196524568,
+		"cx": 1386.4067879354554,
+		"cy": 1138.8556975275376
+	},
+	"distortion_coeffs": [
+		0.6255377229231964,
+		8.888244499088898,
+		-99.11529444060008,
+		290.546986238936
+	],
+	"metadata": {
+		"calibrated_by": "Jan Muller",
+		"notes": "Viltrox 85mm f1.8 II",
+		"source": "gyroflow",
+		"official": true
+	}
+}

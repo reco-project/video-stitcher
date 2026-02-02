@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-850d--18mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 850D",
+	"lens_model": "Canon 18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1712.881342203047,
+		"fy": 1715.5596556634732,
+		"cx": 955.8299129228844,
+		"cy": 515.3970681453708
+	},
+	"distortion_coeffs": [
+		0.1784534790224402,
+		-0.043605189223561706,
+		0.7066369936333198,
+		-0.4358316525462732
+	],
+	"metadata": {
+		"calibrated_by": "ferbus_ww",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "campark-x40--1920x1080",
+	"camera_brand": "CamPark",
+	"camera_model": "X40",
+	"lens_model": "170\u00b0HD Wide-angle fish-eye",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1125.3540886319572,
+		"fy": 1124.511636818079,
+		"cx": 952.0440170981192,
+		"cy": 537.8757930232919
+	},
+	"distortion_coeffs": [
+		0.004626142788096809,
+		0.06563174770464301,
+		-0.09051193238432476,
+		0.036322056399565705
+	],
+	"metadata": {
+		"calibrated_by": "Rene",
+		"source": "gyroflow",
+		"official": true
+	}
+}

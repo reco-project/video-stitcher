@@ -1,0 +1,29 @@
+{
+	"id": "necker-v5--080p-sport-dv--1920x1080",
+	"camera_brand": "NECKER",
+	"camera_model": "v5",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 618.8753759378208,
+		"fy": 620.2770890311483,
+		"cx": 964.8307661905988,
+		"cy": 569.7144189817254
+	},
+	"distortion_coeffs": [
+		0.1899339956634623,
+		-0.014771107786505174,
+		0.03269085863597577,
+		-0.021699475146273517
+	],
+	"metadata": {
+		"calibrated_by": "ZCWU",
+		"notes": "080p sport dv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

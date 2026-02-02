@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--104--7680x4320",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "Rf 35mm F1.8 Macro IS STM",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9792.43911638219,
+		"fy": 9836.756949649136,
+		"cx": 3940.908815834072,
+		"cy": 2098.935799406761
+	},
+	"distortion_coeffs": [
+		0.2820126905762011,
+		-0.7964880175826764,
+		6.00594631298339,
+		-10.926659870271164
+	],
+	"metadata": {
+		"calibrated_by": "WangZiChang",
+		"notes": "1.04",
+		"source": "gyroflow",
+		"official": true
+	}
+}

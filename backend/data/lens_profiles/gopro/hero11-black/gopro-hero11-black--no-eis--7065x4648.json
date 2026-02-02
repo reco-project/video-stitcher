@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero11-black--no-eis--7065x4648",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO11 Black",
+	"lens_model": "Wide + Neweer Anamorphic 1.33x",
+	"resolution": {
+		"width": 7065,
+		"height": 4648
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2861.199967511397,
+		"fy": 2494.944836460017,
+		"cx": 3521.9367020980967,
+		"cy": 2341.84209917066
+	},
+	"distortion_coeffs": [
+		-0.05569441715879823,
+		0.03981772340245039,
+		-0.024345713144910727,
+		-4.0208151689079624e-05
+	],
+	"metadata": {
+		"calibrated_by": "Luis Cardenas (SKYLABS)",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

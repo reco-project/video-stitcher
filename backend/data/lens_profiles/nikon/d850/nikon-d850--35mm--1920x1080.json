@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d850--35mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D850",
+	"lens_model": "24-70 2.8G ED",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1779.9958359996476,
+		"fy": 1780.6650336249434,
+		"cx": 970.5721846373636,
+		"cy": 547.478955702769
+	},
+	"distortion_coeffs": [
+		0.34187436079125655,
+		0.08795542924128386,
+		0.5897906617173633,
+		-1.140672466741887
+	],
+	"metadata": {
+		"calibrated_by": "Kartik Sharma",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

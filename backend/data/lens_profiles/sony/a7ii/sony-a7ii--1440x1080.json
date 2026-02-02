@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7ii--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7II",
+	"lens_model": "Viltrox  viltrox 85 F1.8 STM ED IF",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3782.672291503868,
+		"fy": 5040.258053248277,
+		"cx": 735.5077950947624,
+		"cy": 551.9917748040358
+	},
+	"distortion_coeffs": [
+		1.1291897491959744,
+		-22.87805229540925,
+		1457.1978356964075,
+		-36797.84456486386
+	],
+	"metadata": {
+		"calibrated_by": "\u5c0f\u6653\u6ce2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

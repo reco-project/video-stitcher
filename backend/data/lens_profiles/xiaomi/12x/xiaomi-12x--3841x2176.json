@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-12x--3841x2176",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12x",
+	"lens_model": "Motion cam",
+	"resolution": {
+		"width": 3841,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2716.9362073826296,
+		"fy": 2713.5352347935163,
+		"cx": 1900.8875168752968,
+		"cy": 1075.3268088388347
+	},
+	"distortion_coeffs": [
+		0.4971245995858538,
+		-0.9747427796066646,
+		3.588125847076711,
+		-3.9445597204333698
+	],
+	"metadata": {
+		"calibrated_by": "Mirko v.s",
+		"source": "gyroflow",
+		"official": true
+	}
+}

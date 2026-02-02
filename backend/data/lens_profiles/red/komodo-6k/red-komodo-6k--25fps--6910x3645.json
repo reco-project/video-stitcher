@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--25fps--6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma18-35 @ 20.00mm",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4964.541372355325,
+		"fy": 4964.398401505646,
+		"cx": 3453.3845170290188,
+		"cy": 1811.3617018568643
+	},
+	"distortion_coeffs": [
+		0.24842828619750795,
+		0.1162228561578968,
+		0.19218453998809,
+		0.06920955237398665
+	],
+	"metadata": {
+		"calibrated_by": "CloudSurfer",
+		"notes": "25fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "runcam-thumb--lens-from-caddx-ant--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Thumb",
+	"lens_model": "caddx 1.8mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 824.5021126386018,
+		"fy": 822.1986102565107,
+		"cx": 995.864787965784,
+		"cy": 586.3798012478494
+	},
+	"distortion_coeffs": [
+		0.023601011871714227,
+		-0.093525220210951,
+		0.07635383588118254,
+		-0.026243090539812643
+	],
+	"metadata": {
+		"calibrated_by": "MATT",
+		"notes": "lens from caddx ant",
+		"source": "gyroflow",
+		"official": true
+	}
+}

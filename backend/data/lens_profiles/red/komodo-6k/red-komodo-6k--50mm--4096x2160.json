@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--50mm--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "TT ARTISAN",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7249.385222908192,
+		"fy": 7251.841705417743,
+		"cx": 2045.4366840778655,
+		"cy": 1034.2651926130393
+	},
+	"distortion_coeffs": [
+		0.07405083853621651,
+		-2.6794882122015884,
+		6.214891244147619,
+		-53.601783109510784
+	],
+	"metadata": {
+		"calibrated_by": "Andreas Varsakopoulos",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

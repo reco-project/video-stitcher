@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-11-lite-5g-ne--4641x3472",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 11 Lite 5G NE",
+	"lens_model": "26mm f/1.8",
+	"resolution": {
+		"width": 4641,
+		"height": 3472
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3422.8130443831074,
+		"fy": 3420.6100198058753,
+		"cx": 2315.0602252741905,
+		"cy": 1726.338442723942
+	},
+	"distortion_coeffs": [
+		0.4793785353736525,
+		-0.8568906563426028,
+		3.9837471797228714,
+		-5.259250563743961
+	],
+	"metadata": {
+		"calibrated_by": "AfoHT",
+		"source": "gyroflow",
+		"official": true
+	}
+}

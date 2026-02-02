@@ -1,0 +1,28 @@
+{
+	"id": "canon-t6i--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "T6i",
+	"lens_model": "18-135@18mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1547.0518711884904,
+		"fy": 1548.205822620834,
+		"cx": 960.333428577977,
+		"cy": 475.4626153658256
+	},
+	"distortion_coeffs": [
+		0.14051322530602398,
+		0.3790458725366323,
+		-0.6834026068415701,
+		-0.5028651608098843
+	],
+	"metadata": {
+		"calibrated_by": "Andrea Castrillon Rave",
+		"source": "gyroflow",
+		"official": true
+	}
+}

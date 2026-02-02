@@ -1,0 +1,28 @@
+{
+	"id": "xtu-x2--2704x2028",
+	"camera_brand": "XTU",
+	"camera_model": "X2",
+	"lens_model": "2.7K30P",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1382.290501568956,
+		"fy": 1381.108955255209,
+		"cx": 1204.5658658326934,
+		"cy": 1017.5638394222174
+	},
+	"distortion_coeffs": [
+		-0.02661148696581935,
+		0.001443621658476618,
+		-0.005385703971361625,
+		0.002400764974600757
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

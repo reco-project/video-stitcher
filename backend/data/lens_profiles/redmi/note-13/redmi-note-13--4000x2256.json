@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-13--4000x2256",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 13",
+	"lens_model": "Smartphone 25 mm",
+	"resolution": {
+		"width": 4000,
+		"height": 2256
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2815.0691843533796,
+		"fy": 2812.425747476415,
+		"cx": 1982.7687493536648,
+		"cy": 1108.6009026240404
+	},
+	"distortion_coeffs": [
+		0.6066669029526178,
+		-2.4166675453978175,
+		9.223961978363416,
+		-10.94937686652229
+	],
+	"metadata": {
+		"calibrated_by": "mmtprjct",
+		"source": "gyroflow",
+		"official": true
+	}
+}

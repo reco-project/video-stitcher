@@ -1,0 +1,28 @@
+{
+	"id": "oppo-iqoo--3840x2160",
+	"camera_brand": "OPPO",
+	"camera_model": "IQOO",
+	"lens_model": "12",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1767.7791804479075,
+		"fy": 1767.539460966688,
+		"cx": 1921.994563176556,
+		"cy": 1094.4694686517685
+	},
+	"distortion_coeffs": [
+		0.18626802762396177,
+		-0.005672953211391756,
+		-0.13488402759544668,
+		0.06161394621538084
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u8f89",
+		"source": "gyroflow",
+		"official": true
+	}
+}

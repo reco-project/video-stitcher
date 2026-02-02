@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t20--35mm-59940-fps--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T20",
+	"lens_model": "XC 16-50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3456.516033160157,
+		"fy": 3456.898459464312,
+		"cx": 939.7969500977237,
+		"cy": 518.3699944071244
+	},
+	"distortion_coeffs": [
+		-0.10782059386042504,
+		16.309928475667167,
+		-261.49012437835364,
+		1501.3152926591702
+	],
+	"metadata": {
+		"calibrated_by": "Wendy",
+		"notes": "@35mm 59.940 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

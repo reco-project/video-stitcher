@@ -1,0 +1,28 @@
+{
+	"id": "samsung-xcover-5--1472x720",
+	"camera_brand": "Samsung",
+	"camera_model": "Xcover 5",
+	"lens_model": null,
+	"resolution": {
+		"width": 1472,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1131.5952475739653,
+		"fy": 1132.99339951643,
+		"cx": 741.9412193740077,
+		"cy": 359.39473999061863
+	},
+	"distortion_coeffs": [
+		0.7563330647197021,
+		-2.853069556470386,
+		8.334807975129547,
+		-7.729579960125656
+	],
+	"metadata": {
+		"calibrated_by": "U0 A362",
+		"source": "gyroflow",
+		"official": true
+	}
+}

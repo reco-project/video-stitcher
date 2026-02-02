@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--11mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "TOKINA 11-20 T2.9",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2550.708406562954,
+		"fy": 2550.4336157675084,
+		"cx": 3071.9634729926825,
+		"cy": 1662.9477659850031
+	},
+	"distortion_coeffs": [
+		0.33525591741452115,
+		0.07357993112772447,
+		0.04218848457284606,
+		0.011373040029332477
+	],
+	"metadata": {
+		"calibrated_by": "\u0413\u0435\u0440\u043c\u0430\u043d \u0428\u0435\u043b\u0435\u0432\u043e\u0439",
+		"notes": "11MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

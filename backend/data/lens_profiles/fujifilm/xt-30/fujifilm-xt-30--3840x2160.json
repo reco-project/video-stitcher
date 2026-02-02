@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt-30--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT-30",
+	"lens_model": "xc 35mm f2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6496.796638100398,
+		"fy": 6530.7632300776095,
+		"cx": 1810.2386163248727,
+		"cy": 1047.5487902742989
+	},
+	"distortion_coeffs": [
+		0.16111001974465525,
+		12.03907474285126,
+		-184.20485886375175,
+		1028.722208335308
+	],
+	"metadata": {
+		"calibrated_by": "tangx",
+		"source": "gyroflow",
+		"official": true
+	}
+}

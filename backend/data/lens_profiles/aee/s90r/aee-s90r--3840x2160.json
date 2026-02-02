@@ -1,0 +1,28 @@
+{
+	"id": "aee-s90r--3840x2160",
+	"camera_brand": "AEE",
+	"camera_model": "S90R",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2192.085536569443,
+		"fy": 2190.1991671834157,
+		"cx": 1945.074403785158,
+		"cy": 1092.4698768767917
+	},
+	"distortion_coeffs": [
+		-0.04715732350035493,
+		0.051318123446597405,
+		-0.17395474313557402,
+		0.1496284221672122
+	],
+	"metadata": {
+		"calibrated_by": "yuantao xie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

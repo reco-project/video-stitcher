@@ -1,0 +1,28 @@
+{
+	"id": "pentax-k3--1920x1080",
+	"camera_brand": "Pentax",
+	"camera_model": "K3",
+	"lens_model": "Tamron 17-50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1390.2956001462849,
+		"fy": 1390.1743474804005,
+		"cx": 985.4878271625132,
+		"cy": 503.6498341351923
+	},
+	"distortion_coeffs": [
+		0.18950716754724473,
+		0.2015908190664139,
+		-0.06447737795770099,
+		0.30877745753949143
+	],
+	"metadata": {
+		"calibrated_by": "Armen Bogush",
+		"source": "gyroflow",
+		"official": true
+	}
+}

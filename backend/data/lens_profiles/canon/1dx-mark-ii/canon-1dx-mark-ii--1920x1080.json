@@ -1,0 +1,28 @@
+{
+	"id": "canon-1dx-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "1DX Mark II",
+	"lens_model": "16-35 F4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 861.479999299532,
+		"fy": 861.3130309286018,
+		"cx": 944.3266320820826,
+		"cy": 536.3229189611742
+	},
+	"distortion_coeffs": [
+		0.2880376264173747,
+		0.1447571477131681,
+		-0.1623907321871774,
+		0.2235719749087285
+	],
+	"metadata": {
+		"calibrated_by": "BERGA",
+		"source": "gyroflow",
+		"official": true
+	}
+}

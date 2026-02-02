@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-rp--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS RP",
+	"lens_model": "RF 16mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3301.7577900745787,
+		"fy": 3301.0702544272604,
+		"cx": 1941.6858327766631,
+		"cy": 1073.7654704978936
+	},
+	"distortion_coeffs": [
+		0.33605278552296125,
+		0.6052355230087307,
+		-4.020676069174524,
+		8.819166897874783
+	],
+	"metadata": {
+		"calibrated_by": "Przemys\u0142aw Kuci\u0144ski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

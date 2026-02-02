@@ -1,0 +1,29 @@
+{
+	"id": "canon-6d-mark-ii--24mm--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "6d Mark ii",
+	"lens_model": "canon zoom lens ef 24-70 1:2.8 l ii usm",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1203.782968015565,
+		"fy": 1197.744495516348,
+		"cx": 637.2624666732293,
+		"cy": 372.1357840454688
+	},
+	"distortion_coeffs": [
+		0.19225922024105735,
+		0.35592552516610965,
+		-0.9628549728008172,
+		1.792030495283613
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"notes": "24MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

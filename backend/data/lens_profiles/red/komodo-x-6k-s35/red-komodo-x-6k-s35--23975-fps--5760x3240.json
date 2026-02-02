@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x-6k-s35--23975-fps--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "Contax Zeiss 28mm F2.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2095.7805147275167,
+		"fy": 2097.990198445156,
+		"cx": 2872.1954659167677,
+		"cy": 1597.9315039792189
+	},
+	"distortion_coeffs": [
+		0.34602597318772277,
+		0.11498166739952428,
+		-0.022701361575730414,
+		0.1210724468041074
+	],
+	"metadata": {
+		"calibrated_by": "Raymond Francisco",
+		"notes": "23.975 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

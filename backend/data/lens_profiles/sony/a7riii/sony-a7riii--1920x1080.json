@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7riii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIII",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2865.417739268264,
+		"fy": 2867.4772469437685,
+		"cx": 955.4574173319623,
+		"cy": 527.3903682696777
+	},
+	"distortion_coeffs": [
+		0.31972999160626175,
+		0.17430326048592115,
+		-2.7239564124567077,
+		24.47920899412533
+	],
+	"metadata": {
+		"calibrated_by": "servet bozoglu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

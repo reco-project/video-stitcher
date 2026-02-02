@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-s10_t3_t30_t4--18mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S10_T3_T30_T4",
+	"lens_model": "Sigma 18-35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3028.841619167502,
+		"fy": 3026.919998809052,
+		"cx": 1914.40564908636,
+		"cy": 1041.3986857997045
+	},
+	"distortion_coeffs": [
+		0.18744604041792137,
+		0.7208936386330164,
+		-2.713579616331733,
+		4.6803080621449835
+	],
+	"metadata": {
+		"calibrated_by": "David Hoult",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

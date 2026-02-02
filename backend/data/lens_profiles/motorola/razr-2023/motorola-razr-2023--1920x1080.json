@@ -1,0 +1,28 @@
+{
+	"id": "motorola-razr-2023--1920x1080",
+	"camera_brand": "Motorola",
+	"camera_model": "RAZR 2023",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1379.855160681096,
+		"fy": 1382.7201154528543,
+		"cx": 970.7089438928456,
+		"cy": 540.3999699009479
+	},
+	"distortion_coeffs": [
+		0.385339933380553,
+		1.042090345864918,
+		-5.236777776952457,
+		7.827454014952883
+	],
+	"metadata": {
+		"calibrated_by": "U0 A522",
+		"source": "gyroflow",
+		"official": true
+	}
+}

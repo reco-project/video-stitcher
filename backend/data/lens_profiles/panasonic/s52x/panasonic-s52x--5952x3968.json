@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s52x--5952x3968",
+	"camera_brand": "Panasonic",
+	"camera_model": "s52x",
+	"lens_model": "20-60",
+	"resolution": {
+		"width": 5952,
+		"height": 3968
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3519.435420735644,
+		"fy": 3520.7287932030317,
+		"cx": 2961.881193510873,
+		"cy": 2000.4911616905429
+	},
+	"distortion_coeffs": [
+		0.29087006273036314,
+		0.15584021710551602,
+		0.09414401311504028,
+		-0.06743923331108684
+	],
+	"metadata": {
+		"calibrated_by": "\u9ec4\u697c\u4e00\u9738",
+		"source": "gyroflow",
+		"official": true
+	}
+}

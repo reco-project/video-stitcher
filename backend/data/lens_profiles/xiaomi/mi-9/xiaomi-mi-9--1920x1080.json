@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-9--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 9",
+	"lens_model": "Wide (1x)",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1428.113637913793,
+		"fy": 1429.1072565563886,
+		"cx": 968.353778683578,
+		"cy": 530.1010107013177
+	},
+	"distortion_coeffs": [
+		0.45411498706856906,
+		-0.5842446579297793,
+		3.830739892130825,
+		-7.370257290406327
+	],
+	"metadata": {
+		"calibrated_by": "Speeter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5c--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "r5c",
+	"lens_model": "rf 24-70mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3969.379056706788,
+		"fy": 3969.0754963137288,
+		"cx": 2002.7220902841136,
+		"cy": 1050.4323942915653
+	},
+	"distortion_coeffs": [
+		0.2266057288835711,
+		-0.1634721565913155,
+		1.7798970786339787,
+		-2.5370891325720573
+	],
+	"metadata": {
+		"calibrated_by": "Lev",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--18mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Sigma 18-35 Aputure Lens regain",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3831.6310865253104,
+		"fy": 3830.889026812852,
+		"cx": 1939.7773103739744,
+		"cy": 1073.3944343567084
+	},
+	"distortion_coeffs": [
+		0.1838858190906195,
+		0.4400167202109037,
+		-1.449613294268571,
+		3.2116461296023413
+	],
+	"metadata": {
+		"calibrated_by": "Jasper Bleeker",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

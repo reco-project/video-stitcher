@@ -1,0 +1,29 @@
+{
+	"id": "realme-c67--239_1--1920x1088",
+	"camera_brand": "Realme",
+	"camera_model": "C67",
+	"lens_model": "Samsung",
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1759.6991241339424,
+		"fy": 1757.441510301956,
+		"cx": 630.3159517016254,
+		"cy": 546.5913947731875
+	},
+	"distortion_coeffs": [
+		0.6368782417385811,
+		-1.6822555769565757,
+		5.688430893861816,
+		-6.780117954536091
+	],
+	"metadata": {
+		"calibrated_by": "Andrey Nikolaev",
+		"notes": "2.39_1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

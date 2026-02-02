@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--2192x1234",
+	"camera_brand": "Canon",
+	"camera_model": "EOS m",
+	"lens_model": "C\u53e335mm",
+	"resolution": {
+		"width": 2192,
+		"height": 1234
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2792.0656569178145,
+		"fy": 2796.7785307843988,
+		"cx": 980.7130652223512,
+		"cy": 668.1643620146174
+	},
+	"distortion_coeffs": [
+		0.02264693309509076,
+		3.8335363493403714,
+		-30.572141102882696,
+		92.3796693828791
+	],
+	"metadata": {
+		"calibrated_by": "qh sun",
+		"source": "gyroflow",
+		"official": true
+	}
+}

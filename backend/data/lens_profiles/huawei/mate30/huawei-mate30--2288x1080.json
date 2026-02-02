@@ -1,0 +1,28 @@
+{
+	"id": "huawei-mate30--2288x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "mate30",
+	"lens_model": null,
+	"resolution": {
+		"width": 2288,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1462.4210679529235,
+		"fy": 1466.6813862156646,
+		"cx": 1143.170411963819,
+		"cy": 534.0977990419734
+	},
+	"distortion_coeffs": [
+		0.5717733774126601,
+		-0.9361661091018671,
+		0.7072615946450254,
+		1.4637285580658763
+	],
+	"metadata": {
+		"calibrated_by": "\u8096\u516c\u6770",
+		"source": "gyroflow",
+		"official": true
+	}
+}

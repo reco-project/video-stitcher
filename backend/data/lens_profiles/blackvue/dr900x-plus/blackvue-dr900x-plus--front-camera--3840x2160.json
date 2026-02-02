@@ -1,0 +1,29 @@
+{
+	"id": "blackvue-dr900x-plus--front-camera--3840x2160",
+	"camera_brand": "Blackvue",
+	"camera_model": "DR900x Plus",
+	"lens_model": "Blackvue",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2005.6512302951112,
+		"fy": 1997.993689544124,
+		"cx": 1902.5420765273143,
+		"cy": 1108.794686022782
+	},
+	"distortion_coeffs": [
+		-0.11975448801702458,
+		0.04301771352100724,
+		-0.008841171757812393,
+		-0.003719737402344141
+	],
+	"metadata": {
+		"calibrated_by": "owner",
+		"notes": "Front Camera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

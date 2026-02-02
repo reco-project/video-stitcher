@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d850--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "D850",
+	"lens_model": "35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3908.455896573194,
+		"fy": 3908.380008056507,
+		"cx": 1892.89796209322,
+		"cy": 1094.571123213955
+	},
+	"distortion_coeffs": [
+		0.3037778923081345,
+		-0.4579467353840826,
+		3.250064002432804,
+		-6.471065492754956
+	],
+	"metadata": {
+		"calibrated_by": "kuaileqie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

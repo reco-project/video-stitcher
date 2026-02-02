@@ -1,0 +1,28 @@
+{
+	"id": "caddx-polar-nano--1280x720",
+	"camera_brand": "Caddx",
+	"camera_model": "Polar Nano",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 578.541168406805,
+		"fy": 577.735377934379,
+		"cx": 640.0,
+		"cy": 360.0
+	},
+	"distortion_coeffs": [
+		0.010676665723531736,
+		-0.06403221206529124,
+		0.03793970757104014,
+		-0.009933056803489436
+	],
+	"metadata": {
+		"calibrated_by": "jesuslg123",
+		"source": "gyroflow",
+		"official": true
+	}
+}

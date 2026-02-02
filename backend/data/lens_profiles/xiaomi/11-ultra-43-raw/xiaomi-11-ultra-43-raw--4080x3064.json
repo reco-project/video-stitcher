@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-11-ultra-43-raw--4080x3064",
+	"camera_brand": "Xiaomi",
+	"camera_model": "11 Ultra 4:3 RAW",
+	"lens_model": "24 mm",
+	"resolution": {
+		"width": 4080,
+		"height": 3064
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2701.890097859158,
+		"fy": 2706.503905046942,
+		"cx": 2036.5583051242909,
+		"cy": 1494.7665158265454
+	},
+	"distortion_coeffs": [
+		0.3957597765493997,
+		0.4565288150715323,
+		-1.065353272524972,
+		0.9841112750581228
+	],
+	"metadata": {
+		"calibrated_by": "Tony Santana Inglott",
+		"source": "gyroflow",
+		"official": true
+	}
+}

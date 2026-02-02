@@ -1,0 +1,28 @@
+{
+	"id": "surfola-530--2704x1520",
+	"camera_brand": "Surfola",
+	"camera_model": "530",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1442.66727733077,
+		"fy": 1441.952659639261,
+		"cx": 1405.9389363895557,
+		"cy": 797.233164839078
+	},
+	"distortion_coeffs": [
+		0.10711196354545566,
+		-0.008669208983432378,
+		-0.000506974007453998,
+		0.008184526612224807
+	],
+	"metadata": {
+		"calibrated_by": "Leonardo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

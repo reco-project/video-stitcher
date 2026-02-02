@@ -1,0 +1,29 @@
+{
+	"id": "canon-r8--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R8",
+	"lens_model": "24mm-50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2919.5623108235545,
+		"fy": 2932.7911328390846,
+		"cx": 1939.221290506473,
+		"cy": 1038.0200315712873
+	},
+	"distortion_coeffs": [
+		0.4279542030715091,
+		-0.727426536593073,
+		3.550793083784148,
+		-4.6640421169182265
+	],
+	"metadata": {
+		"calibrated_by": "ZhouXianrui",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

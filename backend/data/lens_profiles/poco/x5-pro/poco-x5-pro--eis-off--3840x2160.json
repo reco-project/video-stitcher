@@ -1,0 +1,29 @@
+{
+	"id": "poco-x5-pro--eis-off--3840x2160",
+	"camera_brand": "POCO",
+	"camera_model": "x5 pro",
+	"lens_model": "main lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2849.3235835978285,
+		"fy": 2846.135121363422,
+		"cx": 1868.6263644269843,
+		"cy": 1109.0737412588817
+	},
+	"distortion_coeffs": [
+		0.5650236556981411,
+		-1.755238317825787,
+		6.630478946502904,
+		-8.305008668507504
+	],
+	"metadata": {
+		"calibrated_by": "Abhik Sadhukhan",
+		"notes": "eis off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

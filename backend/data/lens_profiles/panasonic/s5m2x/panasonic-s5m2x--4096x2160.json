@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5m2x--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5M2X",
+	"lens_model": "28-105",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3063.8258557384024,
+		"fy": 3064.54060838712,
+		"cx": 1989.693186880613,
+		"cy": 1100.3772955195102
+	},
+	"distortion_coeffs": [
+		0.3512920647240925,
+		0.06484770653406155,
+		0.7005733418966313,
+		-1.502704371194326
+	],
+	"metadata": {
+		"calibrated_by": "Fan Yang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

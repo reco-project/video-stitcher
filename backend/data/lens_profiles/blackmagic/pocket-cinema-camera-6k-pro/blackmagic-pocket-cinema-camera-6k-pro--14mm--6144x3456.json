@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro--14mm--6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Dzofilm Pictor Zoom 14-30 T2.8",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4010.537377175637,
+		"fy": 4009.398530732393,
+		"cx": 3136.6530402784265,
+		"cy": 1742.848394110678
+	},
+	"distortion_coeffs": [
+		0.11030367079467954,
+		1.8972489033704556,
+		-11.312583016295884,
+		24.70359597414606
+	],
+	"metadata": {
+		"calibrated_by": "Kin",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

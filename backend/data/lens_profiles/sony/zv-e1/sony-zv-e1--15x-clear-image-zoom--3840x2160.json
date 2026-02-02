@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--15x-clear-image-zoom--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Laowa Nanomorph 27 f2.8 (1.5x Anamorphic)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3411.4203388571595,
+		"fy": 5113.373528410747,
+		"cx": 1992.659148008697,
+		"cy": 1190.7759749584156
+	},
+	"distortion_coeffs": [
+		0.3916052334109216,
+		-1.2405908430817063,
+		5.160748667031536,
+		-6.474298673324155
+	],
+	"metadata": {
+		"calibrated_by": "David Zhou",
+		"notes": "1.5x Clear Image Zoom",
+		"source": "gyroflow",
+		"official": true
+	}
+}

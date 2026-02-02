@@ -1,0 +1,28 @@
+{
+	"id": "canon-eosd-1-dx-mk3--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOSD 1 DX MK3",
+	"lens_model": "EF 16-35mm 2.8 MK2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2418.2947343126243,
+		"fy": 2426.47673007624,
+		"cx": 2022.9742945336136,
+		"cy": 1154.1864612097804
+	},
+	"distortion_coeffs": [
+		0.32899749538376916,
+		0.06513027584972263,
+		0.18356652109148455,
+		0.00906449731322526
+	],
+	"metadata": {
+		"calibrated_by": "Joyo Soetomo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

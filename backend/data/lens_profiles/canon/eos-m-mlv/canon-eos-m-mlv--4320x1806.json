@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m-mlv--4320x1806",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M MLV",
+	"lens_model": "35mm Fujian TV",
+	"resolution": {
+		"width": 4320,
+		"height": 1806
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7974.348166074931,
+		"fy": 7995.824304078394,
+		"cx": 2073.8735186509693,
+		"cy": 424.35995734029575
+	},
+	"distortion_coeffs": [
+		0.6523768290797505,
+		-12.470397683457092,
+		291.4116863173949,
+		-2241.738616779067
+	],
+	"metadata": {
+		"calibrated_by": "Martyn Day MP",
+		"source": "gyroflow",
+		"official": true
+	}
+}

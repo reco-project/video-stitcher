@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-mini-2--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Split Mini 2",
+	"lens_model": "130 fov",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 823.039495746112,
+		"fy": 822.8009052483718,
+		"cx": 957.4385671976306,
+		"cy": 496.3134885043078
+	},
+	"distortion_coeffs": [
+		-0.01792101190639718,
+		-0.007049520420897377,
+		0.007734838511920608,
+		-0.0068988201602722945
+	],
+	"metadata": {
+		"calibrated_by": "putimir",
+		"source": "gyroflow",
+		"official": true
+	}
+}

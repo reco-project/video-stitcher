@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m6-mark-ii--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M6 Mark II",
+	"lens_model": "Canon 50mm f/1.8 II",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10853.213146285674,
+		"fy": 10847.543815311024,
+		"cx": 1633.923470994342,
+		"cy": 1206.1360297943252
+	},
+	"distortion_coeffs": [
+		-0.0664658085975999,
+		38.55105944952226,
+		-1766.2276330233317,
+		26167.44992420315
+	],
+	"metadata": {
+		"calibrated_by": "Marshall Guillory",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r6--clog3--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R6",
+	"lens_model": "Canon 16 mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1984.0948920590824,
+		"fy": 1982.7248875416904,
+		"cx": 1946.771980513016,
+		"cy": 1047.2605844855273
+	},
+	"distortion_coeffs": [
+		0.34920447703580093,
+		0.011009456473593356,
+		0.3627675955718704,
+		-0.22505154535304864
+	],
+	"metadata": {
+		"calibrated_by": "Matteo mirandola",
+		"notes": "Clog3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

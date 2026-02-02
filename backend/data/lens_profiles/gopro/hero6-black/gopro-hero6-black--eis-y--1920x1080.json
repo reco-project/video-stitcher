@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero6-black--eis-y--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO6 Black",
+	"lens_model": "Linear",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1036.616538497242,
+		"fy": 1035.8780314442486,
+		"cx": 962.7254427368008,
+		"cy": 538.3821175675579
+	},
+	"distortion_coeffs": [
+		0.34827091567273294,
+		0.021190256158352683,
+		0.4170190212653061,
+		-0.31133704157688163
+	],
+	"metadata": {
+		"calibrated_by": "goxkif",
+		"notes": "EIS-Y",
+		"source": "gyroflow",
+		"official": true
+	}
+}

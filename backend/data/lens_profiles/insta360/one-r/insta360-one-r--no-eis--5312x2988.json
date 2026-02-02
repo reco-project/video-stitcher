@@ -1,0 +1,29 @@
+{
+	"id": "insta360-one-r--no-eis--5312x2988",
+	"camera_brand": "Insta360",
+	"camera_model": "ONE R",
+	"lens_model": "1-inch Wide F3.2 14.4mm",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2205.437777636217,
+		"fy": 2204.180856195559,
+		"cx": 2749.8232275076193,
+		"cy": 1567.7503586584646
+	},
+	"distortion_coeffs": [
+		0.07391553765593643,
+		-0.033415292042406515,
+		0.036749857403262025,
+		-0.012264295345917548
+	],
+	"metadata": {
+		"calibrated_by": "George Marshall",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

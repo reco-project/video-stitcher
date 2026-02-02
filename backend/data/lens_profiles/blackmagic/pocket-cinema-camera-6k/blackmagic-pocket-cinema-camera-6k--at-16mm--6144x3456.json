@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--at-16mm--6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Canon EF L 16-35mm f2.8 II USM",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4487.253566296601,
+		"fy": 4372.027316597411,
+		"cx": 3114.115196857824,
+		"cy": 1743.0281167659343
+	},
+	"distortion_coeffs": [
+		0.21626551646368472,
+		0.2429395812323833,
+		0.2755787850787243,
+		-1.028468532231165
+	],
+	"metadata": {
+		"calibrated_by": "Gabriel F.M",
+		"notes": "At 16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

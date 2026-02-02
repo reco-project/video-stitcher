@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x-6k-s35--60fps--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "LAOWA Nanomorph 27mm T2.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4007.4537109020753,
+		"fy": 6036.085894049322,
+		"cx": 2868.0061464173477,
+		"cy": 1739.3103922711264
+	},
+	"distortion_coeffs": [
+		0.3628805807615331,
+		-1.0556793171424117,
+		3.466036741979162,
+		-3.2039997788221237
+	],
+	"metadata": {
+		"calibrated_by": "Kiwi Tom",
+		"notes": "60FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

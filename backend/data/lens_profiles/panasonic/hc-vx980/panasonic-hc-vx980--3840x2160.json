@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-hc-vx980--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "HC-VX980",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3734.16551796963,
+		"fy": 3504.3753028289557,
+		"cx": 1966.4424053048992,
+		"cy": 1167.1810290064343
+	},
+	"distortion_coeffs": [
+		0.35193155250950653,
+		-0.3116758264931469,
+		2.9386438266722523,
+		-5.471531429729799
+	],
+	"metadata": {
+		"calibrated_by": "Master",
+		"source": "gyroflow",
+		"official": true
+	}
+}

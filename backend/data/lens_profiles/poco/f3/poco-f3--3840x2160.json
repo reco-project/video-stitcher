@@ -1,0 +1,28 @@
+{
+	"id": "poco-f3--3840x2160",
+	"camera_brand": "Poco",
+	"camera_model": "F3",
+	"lens_model": "Vertical",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3742.225300986818,
+		"fy": 3513.7660741528725,
+		"cx": 1981.0199159131269,
+		"cy": 1096.2200927831543
+	},
+	"distortion_coeffs": [
+		0.5863201604307324,
+		-2.029275055414455,
+		9.148684830346264,
+		-7.962062021158771
+	],
+	"metadata": {
+		"calibrated_by": "Rubens Gabriel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

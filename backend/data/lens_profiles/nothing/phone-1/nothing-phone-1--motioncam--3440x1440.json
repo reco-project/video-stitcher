@@ -1,0 +1,29 @@
+{
+	"id": "nothing-phone-1--motioncam--3440x1440",
+	"camera_brand": "Nothing",
+	"camera_model": "Phone 1",
+	"lens_model": "IMX776",
+	"resolution": {
+		"width": 3440,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2863.370225827468,
+		"fy": 2877.270929570428,
+		"cx": 1719.955371850288,
+		"cy": 689.2023299617847
+	},
+	"distortion_coeffs": [
+		0.5388966323825694,
+		-1.4823016214137856,
+		5.205052495253782,
+		-5.225280959595895
+	],
+	"metadata": {
+		"calibrated_by": "\u0414\u0430\u043d\u0438\u0438\u043b \u0427\u0443\u0433\u0430\u0435\u0432",
+		"notes": "MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

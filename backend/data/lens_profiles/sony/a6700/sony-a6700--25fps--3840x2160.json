@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--25fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "VILTROX 27.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5590.098013340763,
+		"fy": 5608.89380254125,
+		"cx": 1939.7213181003056,
+		"cy": 1190.117010987839
+	},
+	"distortion_coeffs": [
+		0.1834655230194546,
+		0.2644263478150147,
+		17.233600536913908,
+		-120.71796501779498
+	],
+	"metadata": {
+		"calibrated_by": "yinpeng",
+		"notes": "25fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

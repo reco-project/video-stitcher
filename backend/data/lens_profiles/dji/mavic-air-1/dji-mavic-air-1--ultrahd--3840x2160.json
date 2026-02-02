@@ -1,0 +1,29 @@
+{
+	"id": "dji-mavic-air-1--ultrahd--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic Air 1",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2935.7920415067615,
+		"fy": 2937.085305024736,
+		"cx": 1933.2586685269016,
+		"cy": 1036.1878431900038
+	},
+	"distortion_coeffs": [
+		0.7320874123378193,
+		-1.6937428304408575,
+		2.044191997772265,
+		1.1171365849814383
+	],
+	"metadata": {
+		"calibrated_by": "Daivison Cardoso",
+		"notes": "UltraHD",
+		"source": "gyroflow",
+		"official": true
+	}
+}

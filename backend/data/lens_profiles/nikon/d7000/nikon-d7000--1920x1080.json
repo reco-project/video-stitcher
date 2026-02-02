@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d7000--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "d7000",
+	"lens_model": "vr 18-105",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1577.8130122390485,
+		"fy": 1571.066080262073,
+		"cx": 959.8032288459848,
+		"cy": 555.2538161409755
+	},
+	"distortion_coeffs": [
+		0.18745464785880217,
+		0.09856104262887794,
+		0.24113148719068425,
+		0.1426421890367242
+	],
+	"metadata": {
+		"calibrated_by": "Shevin Fernando",
+		"source": "gyroflow",
+		"official": true
+	}
+}

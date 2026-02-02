@@ -1,0 +1,28 @@
+{
+	"id": "apeman-4k--3840x2160",
+	"camera_brand": "apeman",
+	"camera_model": "4k",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2289.847977510623,
+		"fy": 2287.0870009508344,
+		"cx": 2027.240936426129,
+		"cy": 1073.5686035105175
+	},
+	"distortion_coeffs": [
+		-0.07633752993409981,
+		0.11106531219815076,
+		-0.1895038499197697,
+		0.12235491499307036
+	],
+	"metadata": {
+		"calibrated_by": "Giovanni Riccio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-4x--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 4X",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1493.6149440125448,
+		"fy": 1495.5518300028448,
+		"cx": 964.9008958710598,
+		"cy": 553.1218534812779
+	},
+	"distortion_coeffs": [
+		0.42877653152056544,
+		0.26031697034030804,
+		0.14219650003333045,
+		-3.632627526618128
+	],
+	"metadata": {
+		"calibrated_by": "U0 A127",
+		"source": "gyroflow",
+		"official": true
+	}
+}

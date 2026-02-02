@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt-30-ii--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT-30 II",
+	"lens_model": "XC35MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3159.8156151602507,
+		"fy": 3160.797655601693,
+		"cx": 932.4568581061562,
+		"cy": 517.6069270583237
+	},
+	"distortion_coeffs": [
+		0.2286764745389956,
+		5.6133847894743205,
+		-91.50576913231367,
+		601.3699828380695
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

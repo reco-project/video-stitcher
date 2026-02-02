@@ -1,0 +1,28 @@
+{
+	"id": "canon-t7i--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "T7i",
+	"lens_model": "Canon 50mm 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4671.665742887174,
+		"fy": 4674.029139476954,
+		"cx": 933.404811965557,
+		"cy": 526.8927702932178
+	},
+	"distortion_coeffs": [
+		0.30257457771156354,
+		-7.127344623237668,
+		202.93311291123177,
+		-1809.968092791632
+	],
+	"metadata": {
+		"calibrated_by": "Yan Lima",
+		"source": "gyroflow",
+		"official": true
+	}
+}

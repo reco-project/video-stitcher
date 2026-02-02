@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-action-camera-4k--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi Action camera 4k",
+	"lens_model": "9:16",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 990.3582330596432,
+		"fy": 989.1209237201824,
+		"cx": 959.4454949383996,
+		"cy": 548.8471549493767
+	},
+	"distortion_coeffs": [
+		0.4186887369685197,
+		-0.2722158622734676,
+		1.0932815444772648,
+		-0.8715398022582904
+	],
+	"metadata": {
+		"calibrated_by": "Demon",
+		"source": "gyroflow",
+		"official": true
+	}
+}

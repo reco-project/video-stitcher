@@ -1,0 +1,28 @@
+{
+	"id": "nikon-zf--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "ZF",
+	"lens_model": "Nikkor Z 24-70 f4 S @ 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2518.714850422559,
+		"fy": 2511.824569756472,
+		"cx": 1905.9075727470497,
+		"cy": 1063.7732625901565
+	},
+	"distortion_coeffs": [
+		0.31596294319190854,
+		0.1226321298595104,
+		0.675372537776237,
+		-1.8484997551213305
+	],
+	"metadata": {
+		"calibrated_by": "Andy Sheng",
+		"source": "gyroflow",
+		"official": true
+	}
+}

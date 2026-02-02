@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-6a--3840x2176",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6a",
+	"lens_model": "Sony a7",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3503.776822308312,
+		"fy": 3505.2703047147365,
+		"cx": 1895.9170837622055,
+		"cy": 1049.3321708926833
+	},
+	"distortion_coeffs": [
+		0.438438295020095,
+		1.185406262542537,
+		-18.048719950458317,
+		56.04457856459097
+	],
+	"metadata": {
+		"calibrated_by": "U0 A378",
+		"source": "gyroflow",
+		"official": true
+	}
+}

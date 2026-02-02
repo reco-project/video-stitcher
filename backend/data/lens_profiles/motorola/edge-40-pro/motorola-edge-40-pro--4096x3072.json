@@ -1,0 +1,28 @@
+{
+	"id": "motorola-edge-40-pro--4096x3072",
+	"camera_brand": "Motorola",
+	"camera_model": "Edge 40 Pro",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2591.152820628308,
+		"fy": 2585.747009508015,
+		"cx": 2040.7568492836024,
+		"cy": 1520.4003382477902
+	},
+	"distortion_coeffs": [
+		0.24362350941516123,
+		1.1145852556390965,
+		-3.1075098234869585,
+		3.0576374906657597
+	],
+	"metadata": {
+		"calibrated_by": "Luis Fernandes",
+		"source": "gyroflow",
+		"official": true
+	}
+}

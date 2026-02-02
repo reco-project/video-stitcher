@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e10m2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10M2",
+	"lens_model": "Laowa 9mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1682.112274239045,
+		"fy": 1683.096381028016,
+		"cx": 1901.7593674515508,
+		"cy": 1070.8686246289105
+	},
+	"distortion_coeffs": [
+		0.35395307691008016,
+		0.1061531735363551,
+		-0.02570299095763031,
+		0.13819625706365643
+	],
+	"metadata": {
+		"calibrated_by": "David Gu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

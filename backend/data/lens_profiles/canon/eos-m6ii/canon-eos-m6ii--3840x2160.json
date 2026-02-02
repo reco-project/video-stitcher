@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m6ii--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M6II",
+	"lens_model": "EFM22",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3807.933457285839,
+		"fy": 3726.9674191772338,
+		"cx": 1905.0070743487995,
+		"cy": 1093.2771399124408
+	},
+	"distortion_coeffs": [
+		0.30894902291627363,
+		0.34186606207200204,
+		-0.9996692455830808,
+		3.008263009013426
+	],
+	"metadata": {
+		"calibrated_by": "coolber",
+		"source": "gyroflow",
+		"official": true
+	}
+}

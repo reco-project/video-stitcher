@@ -1,33 +1,28 @@
 {
 	"id": "blackmagic-pocket-cinema-camera-6k--4096x2160",
 	"camera_brand": "Blackmagic",
-	"camera_model": "Pocket Cinema Camera 6K",
-	"lens_model": "",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "BMPCC 4K DZOFILM  35mm",
 	"resolution": {
 		"width": 4096,
 		"height": 2160
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 2555.619777252334,
-		"fy": 2553.185874037831,
-		"cx": 2041.588162689954,
-		"cy": 1029.4995064963714
+		"fx": 10838.05473780475,
+		"fy": 10829.61131143322,
+		"cx": 2021.3507055719856,
+		"cy": 855.8623798253168
 	},
 	"distortion_coeffs": [
-		0.3657040750617722,
-		0.01872266543233142,
-		0.2418044087691093,
-		-0.10744156932152636
+		0.2373517279662094,
+		-4.514540993230903,
+		129.374633368026,
+		-1112.9313090911023
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Blackmagic_Pocket Cinema Camera 6K__25 180\u02da_C4k_1.90by1_4096x2160-25.00fps",
-		"calibrated_by": "Carmine Arrichiello",
-		"original_resolution": "4096x2160",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"calibrated_by": "\u5c1a\u6587",
+		"source": "gyroflow",
+		"official": true
 	}
 }

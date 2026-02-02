@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rv--25mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7RV",
+	"lens_model": "BATIS 2/25",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2654.9430542883174,
+		"fy": 2627.4753055273804,
+		"cx": 1928.5788860523428,
+		"cy": 1070.7239814039958
+	},
+	"distortion_coeffs": [
+		0.3226468755271684,
+		0.1384781988361536,
+		0.07084322886888283,
+		-0.04549034572901771
+	],
+	"metadata": {
+		"calibrated_by": "WerewolfXiu",
+		"notes": "25mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

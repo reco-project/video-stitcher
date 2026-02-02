@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s24-ultra--63mm--3840x2880",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S24 Ultra",
+	"lens_model": "Aperture",
+	"resolution": {
+		"width": 3840,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7403.3745452486755,
+		"fy": 7407.390226970259,
+		"cx": 1919.3308228200085,
+		"cy": 1378.9865717170203
+	},
+	"distortion_coeffs": [
+		-1.3052242468206428,
+		50.739956540552875,
+		-646.7077602230873,
+		2949.0844808254024
+	],
+	"metadata": {
+		"calibrated_by": "Yan PC-i9",
+		"notes": "63mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

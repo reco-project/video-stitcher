@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K",
+	"lens_model": "Olympus Zuiko 12-40mm f2.8 PRO",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3877.641446604511,
+		"fy": 3877.96199422456,
+		"cx": 1855.454338123354,
+		"cy": 1039.7527091744385
+	},
+	"distortion_coeffs": [
+		0.13387149081599348,
+		0.06508418207672821,
+		0.3604523180526449,
+		-0.3014832846811274
+	],
+	"metadata": {
+		"calibrated_by": "Stefan Bechtel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

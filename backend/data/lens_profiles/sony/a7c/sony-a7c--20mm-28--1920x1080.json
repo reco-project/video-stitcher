@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--20mm-28--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sony SEL28FE20",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1519.0101463550834,
+		"fy": 1518.9076138034466,
+		"cx": 960.8202160023116,
+		"cy": 543.4827456980611
+	},
+	"distortion_coeffs": [
+		0.32414302112153115,
+		0.08853212018783442,
+		0.2687341720368664,
+		-0.23994543984380928
+	],
+	"metadata": {
+		"calibrated_by": "Christian M\u00f6ller",
+		"notes": "20mm 2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

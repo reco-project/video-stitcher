@@ -1,0 +1,28 @@
+{
+	"id": "motorola-edge-s-pro--4000x2250",
+	"camera_brand": "Motorola",
+	"camera_model": "Edge S Pro",
+	"lens_model": "main 24mm",
+	"resolution": {
+		"width": 4000,
+		"height": 2250
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2861.2447036131975,
+		"fy": 2846.9045603490104,
+		"cx": 2022.0963174936096,
+		"cy": 1113.6736157941766
+	},
+	"distortion_coeffs": [
+		0.510660710706837,
+		-1.0429199791013757,
+		3.9447305514495663,
+		-4.737152658602816
+	],
+	"metadata": {
+		"calibrated_by": "Charles",
+		"source": "gyroflow",
+		"official": true
+	}
+}

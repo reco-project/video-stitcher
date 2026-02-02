@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--35mm-f14--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "7artisans",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6530.625968170654,
+		"fy": 6547.811105985214,
+		"cx": 1868.820024165884,
+		"cy": 973.968982968478
+	},
+	"distortion_coeffs": [
+		0.10311335047753688,
+		5.344806756117746,
+		-171.25901299164326,
+		1175.632146842854
+	],
+	"metadata": {
+		"calibrated_by": "Ioannis Karazournias",
+		"notes": "35mm F1.4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

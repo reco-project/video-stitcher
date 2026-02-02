@@ -1,0 +1,29 @@
+{
+	"id": "motorola-moto-g200-5g--motioncam-pro--4000x3000",
+	"camera_brand": "Motorola",
+	"camera_model": "Moto G200 5G",
+	"lens_model": "25 mm",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2781.0868339243034,
+		"fy": 2780.675444171661,
+		"cx": 2015.284041265303,
+		"cy": 1479.7256665935813
+	},
+	"distortion_coeffs": [
+		0.47865558893378646,
+		-1.205742606629778,
+		3.9693430663388303,
+		-4.145595125466154
+	],
+	"metadata": {
+		"calibrated_by": "JoHuam",
+		"notes": "MotionCam Pro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

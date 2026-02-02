@@ -1,0 +1,28 @@
+{
+	"id": "oppo-a16--1920x1080",
+	"camera_brand": "Oppo",
+	"camera_model": "A16",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1540.8270995976127,
+		"fy": 1538.7941702929131,
+		"cx": 966.792143314581,
+		"cy": 551.8914017314759
+	},
+	"distortion_coeffs": [
+		0.5029009881641182,
+		-1.216402118870616,
+		5.19649971205627,
+		-7.126892788344425
+	],
+	"metadata": {
+		"calibrated_by": "U0 A386",
+		"source": "gyroflow",
+		"official": true
+	}
+}

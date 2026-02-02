@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x-6k-s35--mount-adapter-ef-eos-r-071x--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "EF17-40mm f/4L USM 24mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3795.851957128021,
+		"fy": 3796.6200409241287,
+		"cx": 3070.559062556002,
+		"cy": 1609.6718934675314
+	},
+	"distortion_coeffs": [
+		0.2607545224703199,
+		0.09866689219338332,
+		0.23845704056134903,
+		0.07631383238712161
+	],
+	"metadata": {
+		"calibrated_by": "Yeh chia chen",
+		"notes": "Mount Adapter EF-EOS R 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

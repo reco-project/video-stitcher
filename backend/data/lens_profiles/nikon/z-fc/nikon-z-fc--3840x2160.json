@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z-fc--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z fc",
+	"lens_model": "Sigma 16mm f/1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2785.435067326542,
+		"fy": 2782.676622618048,
+		"cx": 1911.8018769412297,
+		"cy": 1028.984642592339
+	},
+	"distortion_coeffs": [
+		0.34893284048028383,
+		0.1810455567266762,
+		-0.30694339187837455,
+		0.5587897794571987
+	],
+	"metadata": {
+		"calibrated_by": "Pietro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

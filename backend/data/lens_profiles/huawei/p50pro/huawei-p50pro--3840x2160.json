@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p50pro--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "P50pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3406.129252231349,
+		"fy": 3403.3243180044974,
+		"cx": 1927.523421575199,
+		"cy": 1094.3639493868664
+	},
+	"distortion_coeffs": [
+		0.4425011542015005,
+		0.011460749584360908,
+		-1.876705916359677,
+		6.945300021167184
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

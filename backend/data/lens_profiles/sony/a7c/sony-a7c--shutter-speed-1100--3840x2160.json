@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--shutter-speed-1100--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sony 20mm f1.8 G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2133.2184445105095,
+		"fy": 2129.5185221960123,
+		"cx": 1924.2102274532283,
+		"cy": 1065.6088295085449
+	},
+	"distortion_coeffs": [
+		0.34347774680203774,
+		0.05883624758985476,
+		0.2789580208021639,
+		-0.1476394249533111
+	],
+	"metadata": {
+		"calibrated_by": "Din Osman",
+		"notes": "Shutter Speed 1/100",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx6--4128x2192",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Leica Elmarit R 28mm",
+	"resolution": {
+		"width": 4128,
+		"height": 2192
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3337.006230717981,
+		"fy": 3338.7824166916503,
+		"cx": 2071.7771018696226,
+		"cy": 1079.8204533708915
+	},
+	"distortion_coeffs": [
+		0.26357298902976056,
+		-0.05542728711686211,
+		0.6916479067392197,
+		-0.22055115081548105
+	],
+	"metadata": {
+		"calibrated_by": "Alban Cousini\u00e9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

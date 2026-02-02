@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-4--1280x720",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 4",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 321.3111121647679,
+		"fy": 322.9215510835257,
+		"cx": 663.8036069007454,
+		"cy": 345.4293406434337
+	},
+	"distortion_coeffs": [
+		0.31353664116850427,
+		0.27569120760893673,
+		-0.1628672717744702,
+		0.14332520659593023
+	],
+	"metadata": {
+		"calibrated_by": "JY-2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

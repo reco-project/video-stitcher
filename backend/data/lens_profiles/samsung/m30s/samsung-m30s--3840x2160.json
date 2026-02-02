@@ -1,0 +1,28 @@
+{
+	"id": "samsung-m30s--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "M30s",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2917.1995922287156,
+		"fy": 2918.018372218586,
+		"cx": 1907.1773953132945,
+		"cy": 1050.0516274863649
+	},
+	"distortion_coeffs": [
+		0.4544422276138543,
+		-0.3002740352981435,
+		1.1001887382648323,
+		-1.1231880949705575
+	],
+	"metadata": {
+		"calibrated_by": "HP",
+		"source": "gyroflow",
+		"official": true
+	}
+}

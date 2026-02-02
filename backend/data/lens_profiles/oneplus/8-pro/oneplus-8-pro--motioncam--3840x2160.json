@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-8-pro--motioncam--3840x2160",
+	"camera_brand": "OnePlus",
+	"camera_model": "8 Pro",
+	"lens_model": "26 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3022.188913363094,
+		"fy": 2947.431658096443,
+		"cx": 1969.7132988536473,
+		"cy": 1105.5664528411037
+	},
+	"distortion_coeffs": [
+		0.42161552144843567,
+		-0.5647918156275129,
+		3.4494445473672544,
+		-4.616590745757839
+	],
+	"metadata": {
+		"calibrated_by": "toto moul's",
+		"notes": "motioncam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m50-mark-ii--24mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M50 Mark II",
+	"lens_model": "Kit 15-45mm IS STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2086.6356490615563,
+		"fy": 2086.623577161859,
+		"cx": 975.8465945268324,
+		"cy": 520.5594800154665
+	},
+	"distortion_coeffs": [
+		0.30751275811308876,
+		0.233200746394863,
+		1.2263305610018669,
+		-2.5597294347300665
+	],
+	"metadata": {
+		"calibrated_by": "Alexey Proschenko",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-rx0m2--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "RX0M2",
+	"lens_model": "0.45x lens",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 666.1171483526932,
+		"fy": 664.867095893862,
+		"cx": 654.4281304887814,
+		"cy": 364.12020781284633
+	},
+	"distortion_coeffs": [
+		0.01601609487756508,
+		0.06249479376397761,
+		-0.3088707032722732,
+		0.1631600085271184
+	],
+	"metadata": {
+		"calibrated_by": "CP FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

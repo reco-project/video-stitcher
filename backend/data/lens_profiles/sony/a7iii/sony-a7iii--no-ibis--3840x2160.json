@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--no-ibis--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Vivtar 28mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3177.476545838961,
+		"fy": 3179.848205113397,
+		"cx": 1934.6518909068,
+		"cy": 1076.5695871572782
+	},
+	"distortion_coeffs": [
+		0.2138860821756013,
+		0.11656188173643296,
+		0.1650992447957892,
+		0.2500234197870027
+	],
+	"metadata": {
+		"calibrated_by": "Berno",
+		"notes": "No Ibis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

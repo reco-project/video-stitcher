@@ -1,0 +1,28 @@
+{
+	"id": "motorola-edge--3264x2448",
+	"camera_brand": "Motorola",
+	"camera_model": "Edge+",
+	"lens_model": "Telephoto 84mm",
+	"resolution": {
+		"width": 3264,
+		"height": 2448
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15848.278224464271,
+		"fy": 16416.217771099182,
+		"cx": 1459.669619740603,
+		"cy": 1194.155099614772
+	},
+	"distortion_coeffs": [
+		3.344226352223294,
+		181.10565255957036,
+		-28050.471987367324,
+		851219.0678994652
+	],
+	"metadata": {
+		"calibrated_by": "@luivitoo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "iflight-gocam-pmgr--3840x2160",
+	"camera_brand": "iFlight",
+	"camera_model": "GOCam PMGR",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2205.9496644566148,
+		"fy": 2196.672994981819,
+		"cx": 1952.412789746423,
+		"cy": 1138.251688015272
+	},
+	"distortion_coeffs": [
+		-0.05331859916422617,
+		0.2630783892027566,
+		-0.5066648750066403,
+		0.3389481067964306
+	],
+	"metadata": {
+		"calibrated_by": "HALCON",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-8-pro--60fps--3840x2160",
+	"camera_brand": "OnePlus",
+	"camera_model": "8 Pro",
+	"lens_model": "Wide lens 26mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2902.418366748721,
+		"fy": 2886.4059422088844,
+		"cx": 1899.8021418235876,
+		"cy": 1083.5638842847245
+	},
+	"distortion_coeffs": [
+		0.4693485452098751,
+		-1.161125103862764,
+		5.629724830657633,
+		-7.387717811314805
+	],
+	"metadata": {
+		"calibrated_by": "Oleg Plaksin",
+		"notes": "60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

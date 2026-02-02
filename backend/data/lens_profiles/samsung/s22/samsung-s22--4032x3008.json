@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s22--4032x3008",
+	"camera_brand": "Samsung",
+	"camera_model": "s22+",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 4032,
+		"height": 3008
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4852.695672901691,
+		"fy": 4861.201217871812,
+		"cx": 2010.0993852459417,
+		"cy": 1540.0690508570738
+	},
+	"distortion_coeffs": [
+		0.5006049041268158,
+		0.2586737037168859,
+		-20.35627885509801,
+		106.16322694459116
+	],
+	"metadata": {
+		"calibrated_by": "Akshay kumar Saini",
+		"source": "gyroflow",
+		"official": true
+	}
+}

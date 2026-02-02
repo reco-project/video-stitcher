@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-m20--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "M20",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1223.5128726780083,
+		"fy": 1233.200946573797,
+		"cx": 941.4548448087784,
+		"cy": 555.1639575666211
+	},
+	"distortion_coeffs": [
+		-0.0001530829607086134,
+		-0.11870667625738744,
+		0.03265256920606762,
+		0.25064802183754714
+	],
+	"metadata": {
+		"calibrated_by": "OOg Images",
+		"source": "gyroflow",
+		"official": true
+	}
+}

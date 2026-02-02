@@ -1,0 +1,28 @@
+{
+	"id": "runcam-hdzero-nano--1280x720",
+	"camera_brand": "RunCam",
+	"camera_model": "HDZero Nano",
+	"lens_model": "Stock",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 634.1159878830376,
+		"fy": 619.5077540266692,
+		"cx": 640.2970834467097,
+		"cy": 365.90682738985174
+	},
+	"distortion_coeffs": [
+		-0.0626307400419735,
+		-0.02664453852037359,
+		0.021619383354189725,
+		-0.005574838320097032
+	],
+	"metadata": {
+		"calibrated_by": "dudu du76",
+		"source": "gyroflow",
+		"official": true
+	}
+}

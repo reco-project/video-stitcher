@@ -1,0 +1,29 @@
+{
+	"id": "foxeer-hs1177--general-ful-siye-fpv-cam--725x480",
+	"camera_brand": "Foxeer",
+	"camera_model": "HS1177",
+	"lens_model": "2.5mm",
+	"resolution": {
+		"width": 725,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 560.8155245963663,
+		"fy": 529.0942125511925,
+		"cx": 346.4325208607575,
+		"cy": 306.69946750879643
+	},
+	"distortion_coeffs": [
+		-0.395005211273747,
+		0.3771253712971771,
+		-0.12573021516480518,
+		-0.2442268790090625
+	],
+	"metadata": {
+		"calibrated_by": "KM|fpv",
+		"notes": "general ful siye fpv cam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

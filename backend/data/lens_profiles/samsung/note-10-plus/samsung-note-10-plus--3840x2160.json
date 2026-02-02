@@ -1,0 +1,28 @@
+{
+	"id": "samsung-note-10-plus--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 10 plus",
+	"lens_model": "UltraWide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1545.668472307845,
+		"fy": 1545.4835299395622,
+		"cx": 1957.369252250175,
+		"cy": 1082.9363190637655
+	},
+	"distortion_coeffs": [
+		0.30831664349184723,
+		0.28665972342564733,
+		-0.12309125341888634,
+		-0.00127060002996037
+	],
+	"metadata": {
+		"calibrated_by": "Jackmin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

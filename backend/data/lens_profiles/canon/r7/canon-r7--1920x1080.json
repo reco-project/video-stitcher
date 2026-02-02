@@ -1,0 +1,28 @@
+{
+	"id": "canon-r7--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R7",
+	"lens_model": "Sigma18-35",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3047.882429083719,
+		"fy": 3055.017079295222,
+		"cx": 975.9938442467496,
+		"cy": 511.3781357046642
+	},
+	"distortion_coeffs": [
+		0.3614089988182804,
+		0.9052664166814204,
+		0.6949800080639472,
+		-24.163640284250636
+	],
+	"metadata": {
+		"calibrated_by": "YIM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

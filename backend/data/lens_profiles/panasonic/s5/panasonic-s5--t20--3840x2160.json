@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--t20--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5",
+	"lens_model": "7 Artisans 25mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4384.775717465561,
+		"fy": 4389.052590877631,
+		"cx": 1934.1076266688751,
+		"cy": 1057.8866491743354
+	},
+	"distortion_coeffs": [
+		0.1011628126715464,
+		0.7889768325576657,
+		-2.7732762544914693,
+		13.048910218124242
+	],
+	"metadata": {
+		"calibrated_by": "David Swan",
+		"notes": "T2.0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

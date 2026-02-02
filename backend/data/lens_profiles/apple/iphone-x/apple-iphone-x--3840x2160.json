@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-x--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone X",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3351.69681509813,
+		"fy": 3349.1462764835983,
+		"cx": 1997.995577259813,
+		"cy": 958.3604776514404
+	},
+	"distortion_coeffs": [
+		0.6434200108678718,
+		-1.8698519833374012,
+		3.8162177132619903,
+		1.296630498919505
+	],
+	"metadata": {
+		"calibrated_by": "Vsevolod",
+		"source": "gyroflow",
+		"official": true
+	}
+}

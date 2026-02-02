@@ -1,0 +1,28 @@
+{
+	"id": "holy-stone-hs510--2560x1440",
+	"camera_brand": "Holy Stone",
+	"camera_model": "HS510",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1923.0535104197536,
+		"fy": 1922.2444205267795,
+		"cx": 1443.557924641232,
+		"cy": 834.7617537018974
+	},
+	"distortion_coeffs": [
+		0.06525739576402328,
+		-0.21556750322504295,
+		0.3386906244860243,
+		-0.25286793374742406
+	],
+	"metadata": {
+		"calibrated_by": "Bret Rowlinson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "huawei-mate60-pro--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "Mate60 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1748.497204212452,
+		"fy": 1749.1954846092162,
+		"cx": 1918.757826394708,
+		"cy": 1082.0483398961514
+	},
+	"distortion_coeffs": [
+		0.3072367937969484,
+		0.24498570267928052,
+		-0.2945090752184278,
+		0.31547589791303104
+	],
+	"metadata": {
+		"calibrated_by": "LordCasser",
+		"source": "gyroflow",
+		"official": true
+	}
+}

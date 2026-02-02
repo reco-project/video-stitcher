@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-8--1080x1920",
+	"camera_brand": "OnePlus",
+	"camera_model": "8",
+	"lens_model": "Sony IMX 586",
+	"resolution": {
+		"width": 1080,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1901.949424780638,
+		"fy": 1898.508823526606,
+		"cx": 517.9990922810956,
+		"cy": 992.506271479486
+	},
+	"distortion_coeffs": [
+		0.5361003557483596,
+		0.08254079623659999,
+		-17.71285115185801,
+		86.77200849040067
+	],
+	"metadata": {
+		"calibrated_by": "Vicky",
+		"source": "gyroflow",
+		"official": true
+	}
+}

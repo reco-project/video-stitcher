@@ -1,0 +1,29 @@
+{
+	"id": "canon-rp--43mm-8bit--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "RP",
+	"lens_model": "RF 50mm F1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2805.351893218884,
+		"fy": 2802.97580041088,
+		"cx": 941.9577649342956,
+		"cy": 557.0895386562498
+	},
+	"distortion_coeffs": [
+		0.3924348754015806,
+		-1.701843931179326,
+		15.366900200163524,
+		-54.785152357939815
+	],
+	"metadata": {
+		"calibrated_by": "Mamad_Kakah",
+		"notes": "43mm-8bit",
+		"source": "gyroflow",
+		"official": true
+	}
+}

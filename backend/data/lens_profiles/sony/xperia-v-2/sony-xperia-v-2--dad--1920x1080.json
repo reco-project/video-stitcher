@@ -1,0 +1,29 @@
+{
+	"id": "sony-xperia-v-2--dad--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia V 2",
+	"lens_model": "Medium",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1677.6686874399477,
+		"fy": 1676.934507718299,
+		"cx": 956.6553514303016,
+		"cy": 539.7494617637545
+	},
+	"distortion_coeffs": [
+		0.4544810144453473,
+		-1.128574740815609,
+		5.44571546074275,
+		-8.303170354103578
+	],
+	"metadata": {
+		"calibrated_by": "Nikolajs Gorbacevskis",
+		"notes": "DAD",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--071--4095x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "Helios44-2",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7120.429409596562,
+		"fy": 7138.582266685286,
+		"cx": 2143.447097492123,
+		"cy": 999.1743590715756
+	},
+	"distortion_coeffs": [
+		-0.037856764445567626,
+		27.686859553217413,
+		-1283.2210128037837,
+		23942.07824625238
+	],
+	"metadata": {
+		"calibrated_by": "lengwen",
+		"notes": "0.71",
+		"source": "gyroflow",
+		"official": true
+	}
+}

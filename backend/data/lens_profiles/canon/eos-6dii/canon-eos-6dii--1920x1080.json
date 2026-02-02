@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-6dii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6DII",
+	"lens_model": "canon EF 24-70 F4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1280.5358803594709,
+		"fy": 1280.842145288375,
+		"cx": 951.2029219555346,
+		"cy": 528.9580156559357
+	},
+	"distortion_coeffs": [
+		0.1969471386327848,
+		0.16726352871504457,
+		0.1154063754128682,
+		-0.19269902796019076
+	],
+	"metadata": {
+		"calibrated_by": "ldh",
+		"source": "gyroflow",
+		"official": true
+	}
+}

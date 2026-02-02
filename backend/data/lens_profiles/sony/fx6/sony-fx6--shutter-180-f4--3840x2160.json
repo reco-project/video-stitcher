@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--shutter-180-f4--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sigma 24-70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2866.933724589323,
+		"fy": 2865.7446832374103,
+		"cx": 1920.459144136632,
+		"cy": 1102.5801085697774
+	},
+	"distortion_coeffs": [
+		0.2546786792453032,
+		-0.7050746076996003,
+		2.9910224183135536,
+		-2.6026978049723577
+	],
+	"metadata": {
+		"calibrated_by": "Mauro",
+		"notes": "shutter 180 f4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

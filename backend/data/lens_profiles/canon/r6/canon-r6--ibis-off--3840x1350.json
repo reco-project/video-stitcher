@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6--ibis-off--3840x1350",
+	"camera_brand": "Canon",
+	"camera_model": "R6",
+	"lens_model": "Sirui 35mm T2.9 Saturn",
+	"resolution": {
+		"width": 3840,
+		"height": 1350
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2548.3349696826344,
+		"fy": 2571.041571962418,
+		"cx": 1754.7195972783531,
+		"cy": 534.092125009904
+	},
+	"distortion_coeffs": [
+		0.36651462287323183,
+		-0.34419267856475727,
+		1.5046540282183858,
+		-1.8006345057812094
+	],
+	"metadata": {
+		"calibrated_by": "YAOCHEN GUO",
+		"notes": "IBIS OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

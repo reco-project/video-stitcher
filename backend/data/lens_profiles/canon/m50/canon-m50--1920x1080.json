@@ -1,0 +1,28 @@
+{
+	"id": "canon-m50--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "M50",
+	"lens_model": "Canon 15-45 @ 15mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1337.065613183284,
+		"fy": 1341.4810221947375,
+		"cx": 958.2444951602922,
+		"cy": 534.9711178737891
+	},
+	"distortion_coeffs": [
+		0.18256235975568225,
+		0.3616038971812138,
+		-0.8409666197384194,
+		1.2787231333305609
+	],
+	"metadata": {
+		"calibrated_by": "Patrick White",
+		"source": "gyroflow",
+		"official": true
+	}
+}

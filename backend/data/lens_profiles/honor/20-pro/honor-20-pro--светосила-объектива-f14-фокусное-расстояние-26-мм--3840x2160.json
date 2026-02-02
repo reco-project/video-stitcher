@@ -1,0 +1,29 @@
+{
+	"id": "honor-20-pro--\u0441\u0432\u0435\u0442\u043e\u0441\u0438\u043b\u0430-\u043e\u0431\u044a\u0435\u043a\u0442\u0438\u0432\u0430-f14-\u0444\u043e\u043a\u0443\u0441\u043d\u043e\u0435-\u0440\u0430\u0441\u0441\u0442\u043e\u044f\u043d\u0438\u0435-26-\u043c\u043c--3840x2160",
+	"camera_brand": "Honor",
+	"camera_model": "20 pro",
+	"lens_model": "Sony IMX586",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3729.701390298856,
+		"fy": 3728.5861222907743,
+		"cx": 1987.527187954557,
+		"cy": 1058.0628961445684
+	},
+	"distortion_coeffs": [
+		0.680869764295963,
+		-2.730692032618818,
+		10.483518749880714,
+		-14.992696538281056
+	],
+	"metadata": {
+		"calibrated_by": "Edem Ablivapov",
+		"notes": "\u0421\u0432\u0435\u0442\u043e\u0441\u0438\u043b\u0430 \u043e\u0431\u044a\u0435\u043a\u0442\u0438\u0432\u0430 - F/1,4, \u0444\u043e\u043a\u0443\u0441\u043d\u043e\u0435 \u0440\u0430\u0441\u0441\u0442\u043e\u044f\u043d\u0438\u0435 \u2013 26 \u043c\u043c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

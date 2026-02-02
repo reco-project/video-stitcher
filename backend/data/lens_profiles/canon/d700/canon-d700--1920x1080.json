@@ -1,0 +1,28 @@
+{
+	"id": "canon-d700--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "d700",
+	"lens_model": "EFS 18-55MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1530.9686724460755,
+		"fy": 1512.620322763856,
+		"cx": 950.719550931384,
+		"cy": 542.1204523420354
+	},
+	"distortion_coeffs": [
+		0.15718243762890752,
+		0.13188456478782778,
+		0.2674379848634885,
+		-0.17842527493022617
+	],
+	"metadata": {
+		"calibrated_by": "Jose Luis Hernandez Hernandez",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-100s-07x--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "100S 0.7X",
+	"lens_model": "75MM F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8806.134274355723,
+		"fy": 8776.889034666272,
+		"cx": 1958.264700165496,
+		"cy": 904.8969357523832
+	},
+	"distortion_coeffs": [
+		-0.552726093518849,
+		14.674043564926908,
+		-231.11889590365712,
+		1602.892765689608
+	],
+	"metadata": {
+		"calibrated_by": "\u5f20\u5a01",
+		"source": "gyroflow",
+		"official": true
+	}
+}

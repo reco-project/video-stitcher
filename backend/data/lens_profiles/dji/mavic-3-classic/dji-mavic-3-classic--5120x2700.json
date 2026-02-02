@@ -2,7 +2,7 @@
 	"id": "dji-mavic-3-classic--5120x2700",
 	"camera_brand": "DJI",
 	"camera_model": "Mavic 3 Classic",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 5120,
 		"height": 2700
@@ -21,13 +21,8 @@
 		1.0386279154917613
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Mavic 3 Classic___5k_1.90by1_5120x2700-50.00fps",
 		"calibrated_by": "Administrator",
-		"original_resolution": "5120x2700",
-		"calibrated_fps": "50.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5m2--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5M2",
+	"lens_model": "16-35 F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3307.442580993128,
+		"fy": 3316.7378923385104,
+		"cx": 1957.8959337767503,
+		"cy": 1057.8670659417555
+	},
+	"distortion_coeffs": [
+		0.3231221545028783,
+		0.3365190210659278,
+		-0.7857162167400279,
+		1.2274943206233997
+	],
+	"metadata": {
+		"calibrated_by": "GPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

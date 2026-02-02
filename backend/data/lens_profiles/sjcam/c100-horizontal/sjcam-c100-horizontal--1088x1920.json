@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-c100-horizontal--1088x1920",
+	"camera_brand": "SJCAM",
+	"camera_model": "c100+ Horizontal",
+	"lens_model": null,
+	"resolution": {
+		"width": 1088,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 22839.91416007931,
+		"fy": 23166.95890123801,
+		"cx": 621.8210880946855,
+		"cy": 995.0176048170626
+	},
+	"distortion_coeffs": [
+		-38.07267436051448,
+		6062.643144087595,
+		-4753000.912614965,
+		1762442272.834571
+	],
+	"metadata": {
+		"calibrated_by": "Panda DLor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

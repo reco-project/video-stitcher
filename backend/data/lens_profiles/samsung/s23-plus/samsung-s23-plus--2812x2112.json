@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s23-plus--2812x2112",
+	"camera_brand": "Samsung",
+	"camera_model": "S23 Plus",
+	"lens_model": "69mm crop",
+	"resolution": {
+		"width": 2812,
+		"height": 2112
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7203.981489304032,
+		"fy": 7209.037708631145,
+		"cx": 1478.2225414275945,
+		"cy": 1000.9530191898468
+	},
+	"distortion_coeffs": [
+		-1.1833672683352012,
+		43.215462711145264,
+		-248.6779480416691,
+		-2870.078620694821
+	],
+	"metadata": {
+		"calibrated_by": "The Mandalorian",
+		"source": "gyroflow",
+		"official": true
+	}
+}

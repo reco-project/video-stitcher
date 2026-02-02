@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-xr--4k-60-fps--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone XR",
+	"lens_model": "28mm equivalent",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3043.159850693495,
+		"fy": 3042.360098241262,
+		"cx": 1952.556799784152,
+		"cy": 1003.6374099313864
+	},
+	"distortion_coeffs": [
+		0.638746685296537,
+		-1.695920611668287,
+		4.2042873927738444,
+		-2.2827166356544586
+	],
+	"metadata": {
+		"calibrated_by": "M Griesbauer",
+		"notes": "4k 60 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

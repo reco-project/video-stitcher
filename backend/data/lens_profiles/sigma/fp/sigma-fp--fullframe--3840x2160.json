@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--fullframe--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Sigma20mm_f2_DN_ART",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2270.607883922027,
+		"fy": 2332.921918711456,
+		"cx": 2122.3993516705045,
+		"cy": 1067.3733765643285
+	},
+	"distortion_coeffs": [
+		0.19873485305139416,
+		0.11066159369770392,
+		-0.11642221611061532,
+		0.2210506769483357
+	],
+	"metadata": {
+		"calibrated_by": "Edward Robison",
+		"notes": "FullFrame",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "raspberry-pi-camera-module-3--1920x1080",
+	"camera_brand": "Raspberry Pi",
+	"camera_model": "Camera Module 3",
+	"lens_model": "IMX708",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1420.6571314054495,
+		"fy": 1420.3747993882823,
+		"cx": 972.347039212074,
+		"cy": 533.3394482123973
+	},
+	"distortion_coeffs": [
+		0.23543545987322104,
+		1.693805865300036,
+		-5.743565004563036,
+		6.853732568881692
+	],
+	"metadata": {
+		"calibrated_by": "Jude Pereira",
+		"source": "gyroflow",
+		"official": true
+	}
+}

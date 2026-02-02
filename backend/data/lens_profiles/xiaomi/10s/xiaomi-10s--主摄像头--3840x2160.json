@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-10s--\u4e3b\u6444\u50cf\u5934--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "10s",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3440.206954460018,
+		"fy": 3433.181304759746,
+		"cx": 1930.1730881689855,
+		"cy": 1130.0841955477708
+	},
+	"distortion_coeffs": [
+		0.5926493458569442,
+		-1.9304496243400155,
+		8.00265320973782,
+		-11.636204053386844
+	],
+	"metadata": {
+		"calibrated_by": "Fanke",
+		"notes": "\u4e3b\u6444\u50cf\u5934",
+		"source": "gyroflow",
+		"official": true
+	}
+}

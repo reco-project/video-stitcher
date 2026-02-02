@@ -1,0 +1,28 @@
+{
+	"id": "canon-c100--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "C100",
+	"lens_model": "18-135",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1140.0017136925744,
+		"fy": 1138.008162385666,
+		"cx": 973.4609518138868,
+		"cy": 556.3687395387376
+	},
+	"distortion_coeffs": [
+		0.23909939431599583,
+		0.2022815980410848,
+		-0.4097546594060776,
+		0.8813702447115197
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

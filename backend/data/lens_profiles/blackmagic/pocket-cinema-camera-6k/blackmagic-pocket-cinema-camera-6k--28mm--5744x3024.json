@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--28mm--5744x3024",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Tokina 28-70 2.8-4.3",
+	"resolution": {
+		"width": 5744,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6769.228595081674,
+		"fy": 6780.344490926744,
+		"cx": 2718.4012251660365,
+		"cy": 1277.977303524537
+	},
+	"distortion_coeffs": [
+		0.24681785248713087,
+		0.36889709233073814,
+		-3.605386479968512,
+		13.552774440536998
+	],
+	"metadata": {
+		"calibrated_by": "Foothill7tv",
+		"notes": "28mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

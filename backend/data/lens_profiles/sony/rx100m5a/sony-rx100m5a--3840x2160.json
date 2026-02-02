@@ -2,7 +2,7 @@
 	"id": "sony-rx100m5a--3840x2160",
 	"camera_brand": "Sony",
 	"camera_model": "RX100M5A",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		1.023779468504138
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_RX100M5A___4k_16by9_3840x2160-29.97fps",
 		"calibrated_by": "Gary Johnson",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

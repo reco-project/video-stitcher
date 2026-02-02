@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--samyang--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3984.5024814071176,
+		"fy": 3987.347029920003,
+		"cx": 1892.3970640846856,
+		"cy": 1091.2953683768046
+	},
+	"distortion_coeffs": [
+		0.32952223201994146,
+		0.6282364766645776,
+		-3.1831427118612297,
+		7.08141831332518
+	],
+	"metadata": {
+		"calibrated_by": "wu",
+		"notes": "samyang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

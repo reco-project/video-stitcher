@@ -1,0 +1,29 @@
+{
+	"id": "poco-m5s--vertical--1920x1080",
+	"camera_brand": "POCO",
+	"camera_model": "M5S",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1569.900335513889,
+		"fy": 1579.5643449755569,
+		"cx": 1017.7362804886834,
+		"cy": 515.0054657997381
+	},
+	"distortion_coeffs": [
+		0.48968191012410567,
+		-1.0193774337086812,
+		3.672921745253645,
+		-3.9460292085451223
+	],
+	"metadata": {
+		"calibrated_by": "Csongor",
+		"notes": "vertical",
+		"source": "gyroflow",
+		"official": true
+	}
+}

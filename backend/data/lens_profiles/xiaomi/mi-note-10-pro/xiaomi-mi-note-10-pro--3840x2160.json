@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-note-10-pro--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi Note 10 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3558.1902909481523,
+		"fy": 3555.770922296538,
+		"cx": 1924.485340696772,
+		"cy": 1079.6288258896802
+	},
+	"distortion_coeffs": [
+		0.552175301973922,
+		-2.450601172839032,
+		11.991182353051151,
+		-19.08458118325417
+	],
+	"metadata": {
+		"calibrated_by": "Gianni Zacchia",
+		"source": "gyroflow",
+		"official": true
+	}
+}

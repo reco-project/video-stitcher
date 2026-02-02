@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-s5-mark-2--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S5 Mark 2",
+	"lens_model": "20 - 60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7233.798136749222,
+		"fy": 7238.992660710306,
+		"cx": 1901.6120908134408,
+		"cy": 1036.8385431759457
+	},
+	"distortion_coeffs": [
+		0.3315471482175162,
+		0.46681553897815126,
+		-7.3235369003729005,
+		60.039711257308696
+	],
+	"metadata": {
+		"calibrated_by": "Sardar Anmol Singh Ji",
+		"source": "gyroflow",
+		"official": true
+	}
+}

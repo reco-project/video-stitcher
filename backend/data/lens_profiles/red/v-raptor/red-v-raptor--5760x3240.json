@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR",
+	"lens_model": "LAOWA 9MM",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1838.445637048488,
+		"fy": 1838.3888539000377,
+		"cx": 2886.6683729942665,
+		"cy": 1624.8536402910731
+	},
+	"distortion_coeffs": [
+		0.338565191647415,
+		0.1278516875996556,
+		-0.02646687489447924,
+		0.1075697665851286
+	],
+	"metadata": {
+		"calibrated_by": "teodor g\u00f6rtz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

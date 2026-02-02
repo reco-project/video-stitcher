@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--xavc-s-i-4k-500mbps--6048x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Sirui 35mm T2.9 Anamorhipc Carbon Fiber",
+	"resolution": {
+		"width": 6048,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7084.487454800829,
+		"fy": 7387.30750306992,
+		"cx": 3452.27438987098,
+		"cy": 1083.5140906020126
+	},
+	"distortion_coeffs": [
+		1.019988210658896,
+		-7.038856322122825,
+		40.77260895249115,
+		-91.7887710833403
+	],
+	"metadata": {
+		"calibrated_by": "Kostas Gur",
+		"notes": "XAVC S-I 4K 500mbps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

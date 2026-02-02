@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--zoom-24mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7SIII",
+	"lens_model": "sony f2.8 24-70mm G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1384.6778686097855,
+		"fy": 1480.8404074053926,
+		"cx": 930.510349968494,
+		"cy": 528.7453039517773
+	},
+	"distortion_coeffs": [
+		0.2572141306581101,
+		0.6377362329750812,
+		-3.6356637048522047,
+		8.528760881846484
+	],
+	"metadata": {
+		"calibrated_by": "Hello",
+		"notes": "zoom 24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

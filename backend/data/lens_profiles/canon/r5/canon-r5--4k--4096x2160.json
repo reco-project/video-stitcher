@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--4k--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "16 mm Rf f2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1909.4079012017544,
+		"fy": 1911.3814545810792,
+		"cx": 2048.4013387843133,
+		"cy": 1074.5064521888182
+	},
+	"distortion_coeffs": [
+		0.3639459108663384,
+		-0.06368764905342794,
+		0.49602854233108506,
+		-0.2868697530756023
+	],
+	"metadata": {
+		"calibrated_by": "luca giorgio barone",
+		"notes": "4K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

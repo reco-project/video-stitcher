@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--50p-200m--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "laowa11mm F4.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1220.2175866430991,
+		"fy": 1220.6801903519492,
+		"cx": 1916.7219669439685,
+		"cy": 1074.57297047744
+	},
+	"distortion_coeffs": [
+		0.326134193165851,
+		0.15137157764504278,
+		-0.08669786396115602,
+		0.1304860442503446
+	],
+	"metadata": {
+		"calibrated_by": "\u96f7\u77f3Mac studio display",
+		"notes": "50P 200M",
+		"source": "gyroflow",
+		"official": true
+	}
+}

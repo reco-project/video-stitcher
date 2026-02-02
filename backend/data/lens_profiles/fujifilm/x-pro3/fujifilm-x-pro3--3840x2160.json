@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-pro3--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-Pro3",
+	"lens_model": "XF16-55",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2719.9884619790714,
+		"fy": 2718.42385996641,
+		"cx": 1905.3256679584315,
+		"cy": 1068.851998681119
+	},
+	"distortion_coeffs": [
+		0.17785911098611085,
+		3.956811931387144,
+		-36.77908845090365,
+		125.02893223538696
+	],
+	"metadata": {
+		"calibrated_by": "Michal Mr\u00e1zek",
+		"source": "gyroflow",
+		"official": true
+	}
+}

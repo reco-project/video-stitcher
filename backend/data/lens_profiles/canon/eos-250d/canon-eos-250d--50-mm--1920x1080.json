@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-250d--50-mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 250D",
+	"lens_model": "Prime 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5611.507148902772,
+		"fy": 5565.097008152027,
+		"cx": 923.9894971227714,
+		"cy": 254.17796860691857
+	},
+	"distortion_coeffs": [
+		0.0948550037786106,
+		15.706295849364729,
+		-576.3059202158516,
+		7411.577624518491
+	],
+	"metadata": {
+		"calibrated_by": "user-",
+		"notes": "50 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-k50-\u5e7f\u89d2--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi K50 \u5e7f\u89d2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1160.9317062665414,
+		"fy": 1160.4447769625503,
+		"cx": 961.6805176645644,
+		"cy": 535.6694301776881
+	},
+	"distortion_coeffs": [
+		0.28189162001445295,
+		0.2575304629665234,
+		-0.2246748334698637,
+		0.3179449255233891
+	],
+	"metadata": {
+		"calibrated_by": "yanshen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

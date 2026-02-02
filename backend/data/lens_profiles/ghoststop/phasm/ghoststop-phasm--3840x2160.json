@@ -1,0 +1,28 @@
+{
+	"id": "ghoststop-phasm--3840x2160",
+	"camera_brand": "GhostStop",
+	"camera_model": "Phasm",
+	"lens_model": "Unknown",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2995.6553343070887,
+		"fy": 2996.811488940504,
+		"cx": 1935.61650777272,
+		"cy": 1206.6870856501228
+	},
+	"distortion_coeffs": [
+		-0.36734114546083696,
+		0.3503430916595941,
+		-0.34760941217239477,
+		0.19758463026717485
+	],
+	"metadata": {
+		"calibrated_by": "Brandon Sutton",
+		"source": "gyroflow",
+		"official": true
+	}
+}

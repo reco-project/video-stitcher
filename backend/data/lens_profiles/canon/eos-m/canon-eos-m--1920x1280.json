@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--1920x1280",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "7Artisans25mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1280
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6237.267162915431,
+		"fy": 6250.157316303872,
+		"cx": 747.414797878514,
+		"cy": 611.8567031065296
+	},
+	"distortion_coeffs": [
+		0.15013772147379925,
+		-5.345462296725162,
+		386.9805170918944,
+		-8774.572292415909
+	],
+	"metadata": {
+		"calibrated_by": "Simone Rampichini",
+		"source": "gyroflow",
+		"official": true
+	}
+}

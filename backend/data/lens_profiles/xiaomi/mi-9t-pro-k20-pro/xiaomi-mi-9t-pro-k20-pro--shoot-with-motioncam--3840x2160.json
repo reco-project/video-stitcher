@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mi-9t-pro-k20-pro--shoot-with-motioncam--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 9T Pro / K20 Pro",
+	"lens_model": "Main 27mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3147.3330219749664,
+		"fy": 3148.6765727674656,
+		"cx": 1922.9740391934429,
+		"cy": 1061.0778381715822
+	},
+	"distortion_coeffs": [
+		0.42375660834271456,
+		-0.05628459156956141,
+		0.43913671761614753,
+		-1.5416784981301137
+	],
+	"metadata": {
+		"calibrated_by": "Caio Capela",
+		"notes": "shoot with MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

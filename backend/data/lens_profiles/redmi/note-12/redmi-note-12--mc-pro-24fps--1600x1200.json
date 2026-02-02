@@ -1,0 +1,29 @@
+{
+	"id": "redmi-note-12--mc-pro-24fps--1600x1200",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 12",
+	"lens_model": "Ultra Wide 0,6",
+	"resolution": {
+		"width": 1600,
+		"height": 1200
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 748.3111258192424,
+		"fy": 748.5945940159227,
+		"cx": 802.8336984758963,
+		"cy": 600.3842429010743
+	},
+	"distortion_coeffs": [
+		0.30575678690339847,
+		-0.149119774817563,
+		0.957583814878408,
+		-0.731494568701323
+	],
+	"metadata": {
+		"calibrated_by": "Mada AS",
+		"notes": "MC pro 24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

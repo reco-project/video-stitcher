@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-cinema-camera-6k--24mm--6048x4032",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "Sigma 24-70mm F2.8 DG DN | Art 019 24mm",
+	"resolution": {
+		"width": 6048,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4123.921407927034,
+		"fy": 4122.729776020287,
+		"cx": 3083.4227530707744,
+		"cy": 1996.425406513159
+	},
+	"distortion_coeffs": [
+		0.13432518728976325,
+		0.23274393028409215,
+		-0.2738122827233415,
+		0.6492022188016696
+	],
+	"metadata": {
+		"calibrated_by": "Storytime Films",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

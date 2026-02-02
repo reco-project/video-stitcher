@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-x-lite-ii--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly X Lite II",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1804.9118559221977,
+		"fy": 1804.3128482769328,
+		"cx": 1312.2148749306896,
+		"cy": 754.4436110248469
+	},
+	"distortion_coeffs": [
+		-0.0809618276055741,
+		0.03924093280108997,
+		0.0021243126982560165,
+		-0.0363198050519307
+	],
+	"metadata": {
+		"calibrated_by": "Pavel FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

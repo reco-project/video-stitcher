@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-xr--promovie--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone XR",
+	"lens_model": "SIRUI 18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1881.9934618021623,
+		"fy": 1881.719057407479,
+		"cx": 1906.7919911104057,
+		"cy": 1025.7176339533082
+	},
+	"distortion_coeffs": [
+		0.4121365280628456,
+		-0.19928510638915617,
+		0.24542175737752275,
+		0.14049546654500786
+	],
+	"metadata": {
+		"calibrated_by": "\u041c\u0430\u043a\u0441\u0438\u043c \u0417\u043e\u043b\u043e\u0442\u0430\u0440\u0451\u0432",
+		"notes": "ProMovie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

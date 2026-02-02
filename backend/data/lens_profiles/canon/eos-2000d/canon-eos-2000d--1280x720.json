@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-2000d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 2000D",
+	"lens_model": "CANON 18-55mm Kitlens",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1063.9377051555257,
+		"fy": 1064.680415995789,
+		"cx": 651.4646821406275,
+		"cy": 336.51599014846875
+	},
+	"distortion_coeffs": [
+		0.16730518764015295,
+		0.2032699695962247,
+		-0.2658063383608586,
+		0.9982262755670008
+	],
+	"metadata": {
+		"calibrated_by": "Darence Alcala",
+		"source": "gyroflow",
+		"official": true
+	}
+}

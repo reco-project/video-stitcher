@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-micro-v1--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar Micro V1",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 733.8141107963836,
+		"fy": 734.3055746905669,
+		"cx": 952.4136830228134,
+		"cy": 578.1734382858924
+	},
+	"distortion_coeffs": [
+		0.04189906915452564,
+		-0.0716608748420229,
+		0.1482324046959679,
+		-0.09491338950976765
+	],
+	"metadata": {
+		"calibrated_by": "Amos Wong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

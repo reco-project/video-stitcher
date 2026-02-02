@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-dc-s5--5184x3456",
+	"camera_brand": "Panasonic",
+	"camera_model": "LUMIX DC-S5",
+	"lens_model": "AstrHori 10mm F8",
+	"resolution": {
+		"width": 5184,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2064.063590252288,
+		"fy": 2063.3128609312907,
+		"cx": 2554.1417844328853,
+		"cy": 1753.064925862233
+	},
+	"distortion_coeffs": [
+		0.06867594824790109,
+		0.003752175990469247,
+		-0.017652481707812768,
+		0.0028942128706377296
+	],
+	"metadata": {
+		"calibrated_by": "CoffeeLake",
+		"source": "gyroflow",
+		"official": true
+	}
+}

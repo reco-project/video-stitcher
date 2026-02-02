@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--clear-zoom-14--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "SIRUI 1.33x 24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1321.1133318046373,
+		"fy": 1698.0234895063863,
+		"cx": 863.2021823359759,
+		"cy": 492.4534929895032
+	},
+	"distortion_coeffs": [
+		0.24003760362632695,
+		-0.08084764937898334,
+		0.716220224579212,
+		-0.4356170116440519
+	],
+	"metadata": {
+		"calibrated_by": "Sanei",
+		"notes": "Clear Zoom 1.4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

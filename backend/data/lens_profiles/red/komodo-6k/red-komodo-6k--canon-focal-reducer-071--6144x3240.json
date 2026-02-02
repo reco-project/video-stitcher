@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-focal-reducer-071--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CN-E24mm T1.5 L F 24mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3970.496859839018,
+		"fy": 3969.695679816803,
+		"cx": 3073.121574148264,
+		"cy": 1587.136766433959
+	},
+	"distortion_coeffs": [
+		0.232162052823877,
+		0.3845847895956156,
+		-0.6112927301630757,
+		1.0093643275963706
+	],
+	"metadata": {
+		"calibrated_by": "Christoffer Glans",
+		"notes": "Canon Focal Reducer 0.71",
+		"source": "gyroflow",
+		"official": true
+	}
+}

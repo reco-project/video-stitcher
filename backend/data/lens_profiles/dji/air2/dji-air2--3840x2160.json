@@ -2,7 +2,7 @@
 	"id": "dji-air2--3840x2160",
 	"camera_brand": "DJI",
 	"camera_model": "Air2",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		-2.7807948889318177
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Air2___4k_16by9_3840x2160-29.97fps",
 		"calibrated_by": "Jason Levy",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-10-ultra--full-frame-by-mcpro24fps--4000x3000",
+	"camera_brand": "Xiaomi",
+	"camera_model": "10 Ultra",
+	"lens_model": "MainCam 25mm F1.85",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2984.1022347353733,
+		"fy": 2983.3991814322812,
+		"cx": 2043.2782943657155,
+		"cy": 1467.1747402953165
+	},
+	"distortion_coeffs": [
+		0.39430253693092143,
+		0.5063138143849306,
+		-2.747880212471828,
+		4.379957506068343
+	],
+	"metadata": {
+		"calibrated_by": "Xenon",
+		"notes": "Full Frame by mcpro24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

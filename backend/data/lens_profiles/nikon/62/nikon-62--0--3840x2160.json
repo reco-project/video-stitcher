@@ -1,0 +1,29 @@
+{
+	"id": "nikon-62--0--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "62",
+	"lens_model": "501.2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 45755.53971379316,
+		"fy": 45626.10058605895,
+		"cx": 1602.395003113908,
+		"cy": 3930.098194937992
+	},
+	"distortion_coeffs": [
+		-0.9193636283516748,
+		466.8428919833451,
+		-67422.86544763391,
+		3283265.7737162253
+	],
+	"metadata": {
+		"calibrated_by": "\u8d75\u6d77\u6ce2",
+		"notes": "0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

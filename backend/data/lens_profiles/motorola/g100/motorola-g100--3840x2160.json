@@ -1,0 +1,28 @@
+{
+	"id": "motorola-g100--3840x2160",
+	"camera_brand": "Motorola",
+	"camera_model": "G100",
+	"lens_model": "Main lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8543.731561941308,
+		"fy": 9128.79578517468,
+		"cx": 2029.0841961640024,
+		"cy": 1356.002949480364
+	},
+	"distortion_coeffs": [
+		2.0393965815972614,
+		-127.10847775759404,
+		5728.568182350295,
+		-76752.68288682833
+	],
+	"metadata": {
+		"calibrated_by": "Calu_\u00b0-\u00b0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

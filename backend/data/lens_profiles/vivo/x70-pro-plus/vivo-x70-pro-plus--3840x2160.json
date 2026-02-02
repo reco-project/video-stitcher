@@ -1,0 +1,28 @@
+{
+	"id": "vivo-x70-pro-plus--3840x2160",
+	"camera_brand": "Vivo",
+	"camera_model": "X70 Pro Plus",
+	"lens_model": "Ultra Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1587.2250469872306,
+		"fy": 1586.1030531248862,
+		"cx": 1909.4236530750231,
+		"cy": 1067.285069020662
+	},
+	"distortion_coeffs": [
+		0.2006769826486762,
+		0.6318807676088924,
+		-0.6485424340395608,
+		0.3629036377753145
+	],
+	"metadata": {
+		"calibrated_by": "Liam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

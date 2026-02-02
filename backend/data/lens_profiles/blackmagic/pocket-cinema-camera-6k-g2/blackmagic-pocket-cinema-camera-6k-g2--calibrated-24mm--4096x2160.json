@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-g2--calibrated-24mm--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K G2",
+	"lens_model": "Sigma 18-35mm f/1.8 DC HSM Art",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6940.5506005791085,
+		"fy": 6947.791548893698,
+		"cx": 2128.533991225191,
+		"cy": 1116.1347546409952
+	},
+	"distortion_coeffs": [
+		0.3566812921701579,
+		-0.270279368491277,
+		6.0653736618699945,
+		-23.734669815516018
+	],
+	"metadata": {
+		"calibrated_by": "Tobias Thorne",
+		"notes": "Calibrated @ 24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero9--stretched-by-121-in-post-gyroflow-output-stretched-by-133--5120x2880",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO9",
+	"lens_model": "SkyReat Anamorphic",
+	"resolution": {
+		"width": 5120,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2043.879498880604,
+		"fy": 2349.799221644396,
+		"cx": 2547.3559065582945,
+		"cy": 1444.710675695661
+	},
+	"distortion_coeffs": [
+		0.006864274809244093,
+		0.024639496063407144,
+		-0.029880758079902408,
+		0.0008756210958810411
+	],
+	"metadata": {
+		"calibrated_by": "Addison",
+		"notes": "Stretched by 1.21 in post, gyroflow output stretched by 1.33",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-\u5c0f\u8681\u76f8\u673a--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "\u5c0f\u8681\u76f8\u673a",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 843.7983604172045,
+		"fy": 851.8888106516355,
+		"cx": 943.7543372391592,
+		"cy": 538.6897708488099
+	},
+	"distortion_coeffs": [
+		0.03547927340081008,
+		0.07871987602769803,
+		-0.0956455230956856,
+		0.04309562160617483
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "huawei-nova-7i--slight-blurry-but-works--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "nova 7i",
+	"lens_model": "unknown",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1455.123571183438,
+		"fy": 1452.913427171762,
+		"cx": 955.7916322711676,
+		"cy": 529.0853722601861
+	},
+	"distortion_coeffs": [
+		0.26938215023041495,
+		1.096186482948866,
+		-3.420730266921514,
+		4.226108286015976
+	],
+	"metadata": {
+		"calibrated_by": "Unknown Person",
+		"notes": "Slight blurry, but works",
+		"source": "gyroflow",
+		"official": true
+	}
+}

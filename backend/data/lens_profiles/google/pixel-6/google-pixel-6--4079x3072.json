@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-6--4079x3072",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6",
+	"lens_model": "Main",
+	"resolution": {
+		"width": 4079,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2891.5878781277584,
+		"fy": 2889.413751405455,
+		"cx": 2044.8829770027075,
+		"cy": 1521.878014409776
+	},
+	"distortion_coeffs": [
+		0.530281601389254,
+		-1.2989887634910158,
+		5.203385519586422,
+		-6.54802530332622
+	],
+	"metadata": {
+		"calibrated_by": "Kol",
+		"source": "gyroflow",
+		"official": true
+	}
+}

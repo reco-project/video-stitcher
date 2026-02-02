@@ -1,0 +1,28 @@
+{
+	"id": "canon-r3--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R3",
+	"lens_model": "35mm 1.8 RF",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4240.546452303541,
+		"fy": 4243.966990281918,
+		"cx": 2006.8112940926335,
+		"cy": 1057.342261620786
+	},
+	"distortion_coeffs": [
+		0.2647781678338522,
+		-0.15850692066725264,
+		2.058858893587996,
+		-4.96405551624041
+	],
+	"metadata": {
+		"calibrated_by": "Irving De Jong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

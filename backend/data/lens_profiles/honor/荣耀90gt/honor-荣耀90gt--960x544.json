@@ -1,0 +1,28 @@
+{
+	"id": "honor-\u8363\u800090gt--960x544",
+	"camera_brand": "Honor",
+	"camera_model": "\u8363\u800090gt",
+	"lens_model": null,
+	"resolution": {
+		"width": 960,
+		"height": 544
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 871.6515913155002,
+		"fy": 879.2556454172665,
+		"cx": 480.4975256751169,
+		"cy": 271.3403588901854
+	},
+	"distortion_coeffs": [
+		0.45927749259045,
+		-2.00177178331167,
+		10.289949230498245,
+		-16.492646232800727
+	],
+	"metadata": {
+		"calibrated_by": "yihang shang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

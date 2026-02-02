@@ -1,0 +1,28 @@
+{
+	"id": "runcam-hdzero-micro-v2--1280x720",
+	"camera_brand": "RunCam",
+	"camera_model": "HDZero Micro V2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 671.7666847898338,
+		"fy": 653.4145027029952,
+		"cx": 691.3339698609277,
+		"cy": 378.60319159723247
+	},
+	"distortion_coeffs": [
+		-0.07574276603352348,
+		-0.0021376223394701955,
+		-0.002938153547031858,
+		0.004936342211038855
+	],
+	"metadata": {
+		"calibrated_by": "https://052.jp",
+		"source": "gyroflow",
+		"official": true
+	}
+}

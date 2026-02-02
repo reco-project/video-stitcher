@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7riii--50mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7RIII",
+	"lens_model": "PLANAR 50MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4383.749611270142,
+		"fy": 4383.34866042898,
+		"cx": 922.0635016663708,
+		"cy": 553.4406512498298
+	},
+	"distortion_coeffs": [
+		0.39079646435059273,
+		-5.286870136772674,
+		199.5772407463948,
+		-2529.1537313437875
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan Espindola",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

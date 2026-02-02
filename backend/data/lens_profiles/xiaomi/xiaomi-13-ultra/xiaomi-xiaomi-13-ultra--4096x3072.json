@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-xiaomi-13-ultra--4096x3072",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Xiaomi 13 Ultra",
+	"lens_model": "24mm\u4e3b\u6444",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2729.912223119268,
+		"fy": 2731.5385983185483,
+		"cx": 2042.2861445267624,
+		"cy": 1493.737795023295
+	},
+	"distortion_coeffs": [
+		0.5101578938052522,
+		-1.001482720036855,
+		2.997039646041494,
+		-2.714700242471312
+	],
+	"metadata": {
+		"calibrated_by": "\u5c0f\u84dd\u540c\u5b66",
+		"source": "gyroflow",
+		"official": true
+	}
+}

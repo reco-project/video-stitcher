@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-g92--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "G92",
+	"lens_model": "\u5965\u6797\u5df4\u65af 17F1.2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3765.2227766484634,
+		"fy": 3771.744133265952,
+		"cx": 1938.6195119172733,
+		"cy": 1072.2984298809863
+	},
+	"distortion_coeffs": [
+		0.34620634986995835,
+		0.05644845685310855,
+		0.265403409350417,
+		-0.15745130371419375
+	],
+	"metadata": {
+		"calibrated_by": "Lucky",
+		"source": "gyroflow",
+		"official": true
+	}
+}

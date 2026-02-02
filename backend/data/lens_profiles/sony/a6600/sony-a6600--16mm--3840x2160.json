@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6600--16mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6600",
+	"lens_model": "Sigma 16-28mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2678.3515936469835,
+		"fy": 2678.4889496810797,
+		"cx": 1913.4061164781256,
+		"cy": 1074.831335529092
+	},
+	"distortion_coeffs": [
+		0.26767980132226193,
+		0.5438922397955195,
+		-0.9916877414525602,
+		1.0468459732285484
+	],
+	"metadata": {
+		"calibrated_by": "Andreas Vanhoutte",
+		"notes": "@16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

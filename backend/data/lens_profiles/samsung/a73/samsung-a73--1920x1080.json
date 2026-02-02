@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a73--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A73",
+	"lens_model": "1x Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1565.0077191208495,
+		"fy": 1563.703893130246,
+		"cx": 966.84957981273,
+		"cy": 536.7509385428164
+	},
+	"distortion_coeffs": [
+		0.7392512899207421,
+		-3.381248156457642,
+		13.7795079642856,
+		-20.74959499762275
+	],
+	"metadata": {
+		"calibrated_by": "Leo Barua",
+		"source": "gyroflow",
+		"official": true
+	}
+}

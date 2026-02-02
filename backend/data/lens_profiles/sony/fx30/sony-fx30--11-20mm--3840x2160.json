@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--11-20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Tamron11.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1927.2231999920505,
+		"fy": 1924.929584966863,
+		"cx": 1905.7091337236825,
+		"cy": 1072.430456664848
+	},
+	"distortion_coeffs": [
+		0.3059897479578102,
+		0.22276766094248132,
+		-0.12579505522706025,
+		0.16895354907575327
+	],
+	"metadata": {
+		"calibrated_by": "HuSir",
+		"notes": "11-20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

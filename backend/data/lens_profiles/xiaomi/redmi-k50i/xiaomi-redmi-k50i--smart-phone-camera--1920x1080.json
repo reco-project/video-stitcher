@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-redmi-k50i--smart-phone-camera--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi k50i",
+	"lens_model": "wide/main  lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1780.0649245141658,
+		"fy": 1780.4417150003294,
+		"cx": 953.4583100068596,
+		"cy": 548.2762531192041
+	},
+	"distortion_coeffs": [
+		0.5279468229140104,
+		-2.7742043782743853,
+		14.70794968063414,
+		-26.08441007221466
+	],
+	"metadata": {
+		"calibrated_by": "Puneeth Goud",
+		"notes": "smart phone camera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

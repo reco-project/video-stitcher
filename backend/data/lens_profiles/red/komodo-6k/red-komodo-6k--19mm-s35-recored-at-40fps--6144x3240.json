@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--19mm-s35-recored-at-40fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 19mm f/2.8 Elmarit-R II",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4358.459034777096,
+		"fy": 4358.084348234235,
+		"cx": 3073.649150976736,
+		"cy": 1620.9078228580404
+	},
+	"distortion_coeffs": [
+		0.23860487243990008,
+		0.16469332480921622,
+		-0.04950932171625475,
+		0.26967745912155555
+	],
+	"metadata": {
+		"calibrated_by": "windcine",
+		"notes": "19mm, S35, recored at 40fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

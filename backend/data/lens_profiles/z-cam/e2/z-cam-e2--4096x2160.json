@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Olympus 45mm f1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7673.789115021819,
+		"fy": 7665.758281487076,
+		"cx": 1808.292328901475,
+		"cy": 1032.425489941562
+	},
+	"distortion_coeffs": [
+		0.4324223118404669,
+		-0.35101557976065434,
+		12.248059236260003,
+		-83.3726256420993
+	],
+	"metadata": {
+		"calibrated_by": "Jarek",
+		"source": "gyroflow",
+		"official": true
+	}
+}

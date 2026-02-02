@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--70mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "24-70mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7485.197372795772,
+		"fy": 7495.436303787995,
+		"cx": 1902.6187921445687,
+		"cy": 1086.364248051039
+	},
+	"distortion_coeffs": [
+		0.27213375028873954,
+		4.295484164422239,
+		-64.04035353768758,
+		198.53007196011265
+	],
+	"metadata": {
+		"calibrated_by": "scott vuilleumier",
+		"notes": "70mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

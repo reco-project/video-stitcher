@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-rebel-t8i--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS Rebel t8i",
+	"lens_model": "ef 50 mm f/1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4717.4705108075195,
+		"fy": 4731.613261012827,
+		"cx": 961.8584112837924,
+		"cy": 566.7679736155528
+	},
+	"distortion_coeffs": [
+		0.06961650600254075,
+		18.463865637881305,
+		-888.2062570946352,
+		13846.823084109948
+	],
+	"metadata": {
+		"calibrated_by": "Antonio Cruz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

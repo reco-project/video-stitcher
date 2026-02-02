@@ -1,0 +1,29 @@
+{
+	"id": "realme-gt-master--no-eis--3840x2160",
+	"camera_brand": "REALME",
+	"camera_model": "GT MASTER",
+	"lens_model": "64MP MAIN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2857.274821708916,
+		"fy": 2853.7293566456,
+		"cx": 1911.2699627952911,
+		"cy": 1048.6619458064815
+	},
+	"distortion_coeffs": [
+		0.32970981841514796,
+		0.33001835089867043,
+		0.749912983295033,
+		-2.996480951174308
+	],
+	"metadata": {
+		"calibrated_by": "FishBallFPV",
+		"notes": "NO EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

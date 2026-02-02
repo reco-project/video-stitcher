@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7rii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7RII",
+	"lens_model": "Samyang FE AF 35mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4044.3122513598346,
+		"fy": 4041.381539390218,
+		"cx": 1829.8347364328877,
+		"cy": 1054.0865555101536
+	},
+	"distortion_coeffs": [
+		0.3354516393888668,
+		1.070535475474854,
+		-9.837606923313128,
+		32.21922520133596
+	],
+	"metadata": {
+		"calibrated_by": "Adrian W",
+		"source": "gyroflow",
+		"official": true
+	}
+}

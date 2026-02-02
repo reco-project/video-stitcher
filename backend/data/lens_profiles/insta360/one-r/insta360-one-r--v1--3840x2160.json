@@ -1,0 +1,29 @@
+{
+	"id": "insta360-one-r--v1--3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "One R",
+	"lens_model": "1 inch",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2235.348130079217,
+		"fy": 2243.919509652018,
+		"cx": 1983.3214030536255,
+		"cy": 1120.476962067205
+	},
+	"distortion_coeffs": [
+		0.03169468306516604,
+		0.06801863635863228,
+		-0.18220714384637135,
+		0.22164628899206176
+	],
+	"metadata": {
+		"calibrated_by": "alexjania",
+		"notes": "V1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "my-geko-gear-orbit-960--3840x2160",
+	"camera_brand": "My GEKO Gear",
+	"camera_model": "ORBIT 960",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2175.2774195607385,
+		"fy": 2176.976368720429,
+		"cx": 1864.180551629149,
+		"cy": 1090.645139230582
+	},
+	"distortion_coeffs": [
+		-0.03717634157393549,
+		0.08484472477163696,
+		-0.18577219817134177,
+		0.1287380295381898
+	],
+	"metadata": {
+		"calibrated_by": "Gary",
+		"source": "gyroflow",
+		"official": true
+	}
+}

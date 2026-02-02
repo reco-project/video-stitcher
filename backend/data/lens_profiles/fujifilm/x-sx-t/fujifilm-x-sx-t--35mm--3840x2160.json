@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-sx-t--35mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S/X-T",
+	"lens_model": "Sigma 18-35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5594.190014880877,
+		"fy": 5592.369483199944,
+		"cx": 1911.8152193567637,
+		"cy": 1074.8993905156312
+	},
+	"distortion_coeffs": [
+		0.38315170009620114,
+		1.4480896034903263,
+		-0.09025026735084073,
+		-74.80954499846966
+	],
+	"metadata": {
+		"calibrated_by": "David Hoult",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

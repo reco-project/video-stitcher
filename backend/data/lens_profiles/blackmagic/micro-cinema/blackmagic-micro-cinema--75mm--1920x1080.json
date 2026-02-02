@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-micro-cinema--75mm--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Cinema",
+	"lens_model": "Laowa 7.5mm F2.0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1689.3003367392332,
+		"fy": 1688.6284444951832,
+		"cx": 996.2542829767384,
+		"cy": 546.0421723860644
+	},
+	"distortion_coeffs": [
+		0.5487167385571277,
+		-0.16609017671465215,
+		2.100178979325907,
+		-3.19232522211173
+	],
+	"metadata": {
+		"calibrated_by": "PC",
+		"notes": "7.5mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

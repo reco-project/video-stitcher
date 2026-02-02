@@ -1,0 +1,28 @@
+{
+	"id": "oppo-a15--1280x720",
+	"camera_brand": "Oppo",
+	"camera_model": "A15",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 939.6843188777792,
+		"fy": 941.6665619328998,
+		"cx": 635.041501992916,
+		"cy": 367.3309290556915
+	},
+	"distortion_coeffs": [
+		0.5188094102742918,
+		-1.3764973707177677,
+		6.169544684161458,
+		-9.005353082129036
+	],
+	"metadata": {
+		"calibrated_by": "ASUS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-6s--1920x1080",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly 6s",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1522.518672006893,
+		"fy": 1513.2792487245492,
+		"cx": 1083.558948647977,
+		"cy": 482.6905717318264
+	},
+	"distortion_coeffs": [
+		-0.30935177899600025,
+		1.33415464318164,
+		-4.359350054008568,
+		5.161136081542687
+	],
+	"metadata": {
+		"calibrated_by": "Shmulik",
+		"source": "gyroflow",
+		"official": true
+	}
+}

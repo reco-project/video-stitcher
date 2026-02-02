@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bgh1--4095x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "BGH1",
+	"lens_model": "Olympus 8-18@14",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2975.6003855503923,
+		"fy": 2968.704914547503,
+		"cx": 2050.0482899437334,
+		"cy": 1106.744726815782
+	},
+	"distortion_coeffs": [
+		0.309554083157176,
+		0.12750950088086874,
+		0.4104832771338411,
+		-0.8700852971084725
+	],
+	"metadata": {
+		"calibrated_by": "csk",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6400--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "55-210",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3181.909543585354,
+		"fy": 3175.8833050947846,
+		"cx": 601.923583974228,
+		"cy": 284.545885420643
+	},
+	"distortion_coeffs": [
+		0.2971636743773947,
+		17.7945726501887,
+		-618.3373843213795,
+		7937.022593358608
+	],
+	"metadata": {
+		"calibrated_by": "haohan fang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

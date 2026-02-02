@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-6d-mark-ii--lens-is-off--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6D mark ii",
+	"lens_model": "Canon EF 24-105 f4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1285.1382905642783,
+		"fy": 1256.1647795834808,
+		"cx": 954.6077719423968,
+		"cy": 540.1436773537858
+	},
+	"distortion_coeffs": [
+		0.1864080891609195,
+		0.14318631459658443,
+		-0.1077738421439664,
+		0.24714320212311103
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan Boone",
+		"notes": "Lens IS off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

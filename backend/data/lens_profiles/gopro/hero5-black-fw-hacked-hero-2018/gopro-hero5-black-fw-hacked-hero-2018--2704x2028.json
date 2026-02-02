@@ -1,0 +1,28 @@
+{
+	"id": "gopro-hero5-black-fw-hacked-hero-2018--2704x2028",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO5 Black (FW-hacked Hero 2018)",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1188.007809246158,
+		"fy": 1189.8932422703415,
+		"cx": 1328.4506644352953,
+		"cy": 1006.4676555772786
+	},
+	"distortion_coeffs": [
+		0.055933700048658115,
+		-0.007135884091202705,
+		0.03090930814958344,
+		-0.01810787094658434
+	],
+	"metadata": {
+		"calibrated_by": "Sidux",
+		"source": "gyroflow",
+		"official": true
+	}
+}

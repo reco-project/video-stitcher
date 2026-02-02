@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--zoom-17mm-viltrox-speedbooster-071x--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Tamron SP 17 - 50 mm F/2.8 (Nikon F)",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2628.747133092752,
+		"fy": 2631.230437455566,
+		"cx": 2032.5958788965063,
+		"cy": 1102.6493966928424
+	},
+	"distortion_coeffs": [
+		0.1737854406669038,
+		0.1904242275862423,
+		-0.2758509372719612,
+		0.6328979323233528
+	],
+	"metadata": {
+		"calibrated_by": "exploREDer",
+		"notes": "Zoom: 17mm;  Viltrox Speedbooster 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

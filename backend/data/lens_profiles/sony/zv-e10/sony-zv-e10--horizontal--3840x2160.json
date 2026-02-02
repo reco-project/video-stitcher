@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--horizontal--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "TTArtisan 50mm f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12355.694854729503,
+		"fy": 12446.352153740132,
+		"cx": 1696.2846269750244,
+		"cy": 749.175706814574
+	},
+	"distortion_coeffs": [
+		0.36930722623352025,
+		7.104368873769662,
+		-475.81759520249886,
+		9286.542659338083
+	],
+	"metadata": {
+		"calibrated_by": "Anthony Bui",
+		"notes": "Horizontal",
+		"source": "gyroflow",
+		"official": true
+	}
+}

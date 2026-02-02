@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s1h--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "Canon EF 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2609.614696418984,
+		"fy": 2615.529811268588,
+		"cx": 1949.6448016095403,
+		"cy": 1089.245933246801
+	},
+	"distortion_coeffs": [
+		0.22141960812070635,
+		0.16568778889701832,
+		-0.0917132819309874,
+		0.42896179201295215
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--pp8-slog3--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "7artisans 10mm fisheye",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1362.7368550241456,
+		"fy": 1363.8115000202058,
+		"cx": 1900.6543664646724,
+		"cy": 1083.968794248481
+	},
+	"distortion_coeffs": [
+		0.07178965995579509,
+		-0.008191585565368038,
+		0.010205369280931652,
+		-0.002613903733796177
+	],
+	"metadata": {
+		"calibrated_by": "Mark Alexander",
+		"notes": "pp8 slog3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

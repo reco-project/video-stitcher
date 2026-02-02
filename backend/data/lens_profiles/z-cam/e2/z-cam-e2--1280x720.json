@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2--1280x720",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Loawa 7.5mm f2",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 562.0793910281886,
+		"fy": 561.4668598098949,
+		"cx": 644.6547847525742,
+		"cy": 352.76461241980894
+	},
+	"distortion_coeffs": [
+		0.34570374510950685,
+		-0.05150875538663599,
+		0.4725007502923861,
+		-0.39325567211122064
+	],
+	"metadata": {
+		"calibrated_by": "Eu Junn",
+		"source": "gyroflow",
+		"official": true
+	}
+}

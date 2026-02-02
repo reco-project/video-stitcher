@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m50-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M50 Mark II",
+	"lens_model": "15 - 45 mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12180.779242186742,
+		"fy": 18205.425197060387,
+		"cx": 829.8855032519114,
+		"cy": 200.9521552632332
+	},
+	"distortion_coeffs": [
+		3.7919923152634007,
+		3532.233276188943,
+		-998224.8096020616,
+		92503063.3981519
+	],
+	"metadata": {
+		"calibrated_by": "Rodolfo Garavito",
+		"source": "gyroflow",
+		"official": true
+	}
+}

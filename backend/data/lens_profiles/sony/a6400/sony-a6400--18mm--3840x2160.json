@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--18mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "SELP18105F4G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3153.9996873860864,
+		"fy": 3149.907924001558,
+		"cx": 1872.9900369544532,
+		"cy": 1047.8548201173885
+	},
+	"distortion_coeffs": [
+		0.3702133584612363,
+		-0.3248154429041637,
+		2.428441429301853,
+		-4.202165916963021
+	],
+	"metadata": {
+		"calibrated_by": "Victor Tong",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

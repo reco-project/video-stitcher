@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d7100--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D7100",
+	"lens_model": "Nikkor 1:4-5.6G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7068.9696883200595,
+		"fy": 7062.939120599935,
+		"cx": 778.1229542781392,
+		"cy": 622.3127039503976
+	},
+	"distortion_coeffs": [
+		0.6664005848585073,
+		-87.97022651686495,
+		5836.404617289383,
+		-120424.16364247692
+	],
+	"metadata": {
+		"calibrated_by": "tato",
+		"source": "gyroflow",
+		"official": true
+	}
+}

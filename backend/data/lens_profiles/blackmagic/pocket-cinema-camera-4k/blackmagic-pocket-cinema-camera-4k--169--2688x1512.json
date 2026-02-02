@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--169--2688x1512",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Meike 25mm f2.2",
+	"resolution": {
+		"width": 2688,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5248.024998914075,
+		"fy": 5235.188619289515,
+		"cx": 1490.9120480022368,
+		"cy": 760.1742955689263
+	},
+	"distortion_coeffs": [
+		0.24499595011220288,
+		1.4502325366989506,
+		-22.913137102645234,
+		143.66300841842602
+	],
+	"metadata": {
+		"calibrated_by": "DiWhite",
+		"notes": "16:9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

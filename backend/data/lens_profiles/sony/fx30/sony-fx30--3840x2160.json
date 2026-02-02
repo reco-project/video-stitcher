@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx30--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "viltrox 23.00mm 1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3850.1488573125976,
+		"fy": 3847.8047853189046,
+		"cx": 1966.4321497630967,
+		"cy": 1139.1575900289004
+	},
+	"distortion_coeffs": [
+		0.21767279480839277,
+		-0.38761648860323633,
+		4.338311396096507,
+		-9.337360434171044
+	],
+	"metadata": {
+		"calibrated_by": "@samiebuka",
+		"source": "gyroflow",
+		"official": true
+	}
+}

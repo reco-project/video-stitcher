@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--tamron-2-2835-150mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "150.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 36970.58502026243,
+		"fy": 37609.0359257324,
+		"cx": 1819.956910027121,
+		"cy": 1083.36740089865
+	},
+	"distortion_coeffs": [
+		10.891083793952994,
+		2098.515397759094,
+		-793051.5564418647,
+		150099015.12591314
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u58a8",
+		"notes": "TAMRON 2-2.8/35-150MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

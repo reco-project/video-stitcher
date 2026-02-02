@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-700d--magic-lantern-crop-mood--4416x1846",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 700D",
+	"lens_model": "Sigma 18-250 OS HSM",
+	"resolution": {
+		"width": 4416,
+		"height": 1846
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5573.755708442907,
+		"fy": 5541.343283249578,
+		"cx": 2239.1032009205164,
+		"cy": 1203.2149560745588
+	},
+	"distortion_coeffs": [
+		0.2700303052806926,
+		0.4737691368785899,
+		-2.0230401172911785,
+		10.858611383371324
+	],
+	"metadata": {
+		"calibrated_by": "Folium",
+		"notes": "Magic Lantern Crop Mood",
+		"source": "gyroflow",
+		"official": true
+	}
+}

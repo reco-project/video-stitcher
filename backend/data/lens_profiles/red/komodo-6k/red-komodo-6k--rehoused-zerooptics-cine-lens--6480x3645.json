@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--rehoused-zerooptics-cine-lens--6480x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "CANON FD 20mm",
+	"resolution": {
+		"width": 6480,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5123.749461276907,
+		"fy": 5123.164370246366,
+		"cx": 3293.9466032055248,
+		"cy": 1825.9328183215032
+	},
+	"distortion_coeffs": [
+		0.2190163534775065,
+		0.34803716198305745,
+		-0.7406286365027381,
+		1.1032458972481003
+	],
+	"metadata": {
+		"calibrated_by": "Angelo Felchle / CINEQUADS",
+		"notes": "Rehoused ZeroOptics CINE Lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-600d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 600D",
+	"lens_model": "18",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2159.6856878653984,
+		"fy": 2161.559073650629,
+		"cx": 982.7746428218196,
+		"cy": 525.9869252295813
+	},
+	"distortion_coeffs": [
+		0.2334514852370552,
+		0.007180400468837821,
+		2.842368830615031,
+		-7.691988263620142
+	],
+	"metadata": {
+		"calibrated_by": "Elia Mangili",
+		"source": "gyroflow",
+		"official": true
+	}
+}

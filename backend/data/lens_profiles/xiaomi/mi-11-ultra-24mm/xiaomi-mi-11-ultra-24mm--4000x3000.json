@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-11-ultra-24mm--4000x3000",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 11 Ultra 24mm",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2806.1973356921044,
+		"fy": 2805.1786148749516,
+		"cx": 2029.3466250618892,
+		"cy": 1475.7622717646327
+	},
+	"distortion_coeffs": [
+		0.30806379706668857,
+		0.69897406299156,
+		-2.066156077322498,
+		2.4035851356670364
+	],
+	"metadata": {
+		"calibrated_by": "\u9ad8\u5d8b\u6052\u5e0c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

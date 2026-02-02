@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--28\u7aef--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "\u817e\u9f9928-75",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1507.39880081289,
+		"fy": 1508.5162498271725,
+		"cx": 964.9335193903509,
+		"cy": 546.3161158869892
+	},
+	"distortion_coeffs": [
+		0.3133161862273116,
+		0.3006979099116897,
+		-0.986389598367825,
+		1.788904256946175
+	],
+	"metadata": {
+		"calibrated_by": "\u9b4f\u96f7",
+		"notes": "28\u7aef",
+		"source": "gyroflow",
+		"official": true
+	}
+}

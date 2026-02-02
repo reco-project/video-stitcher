@@ -1,0 +1,29 @@
+{
+	"id": "xtu-s6--\u5f00\u542f\u955c\u5934\u77eb\u6b63--1920x1080",
+	"camera_brand": "XTU",
+	"camera_model": "S6",
+	"lens_model": "f2.8-170\u00b0\u5e7f\u89d2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1033.3218805007002,
+		"fy": 1038.293024005994,
+		"cx": 913.0422522710649,
+		"cy": 528.210942743633
+	},
+	"distortion_coeffs": [
+		0.33557228177014337,
+		0.20443616387932895,
+		-0.015318225660109276,
+		0.0898214962916289
+	],
+	"metadata": {
+		"calibrated_by": "xianxiao lin",
+		"notes": "\u5f00\u542f\u955c\u5934\u77eb\u6b63",
+		"source": "gyroflow",
+		"official": true
+	}
+}

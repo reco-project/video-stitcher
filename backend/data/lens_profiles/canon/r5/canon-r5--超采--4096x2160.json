@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--\u8d85\u91c7--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "\u4e03\u5de5\u532010mm\u9c7c\u773c",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1481.30822283513,
+		"fy": 1480.9629423037577,
+		"cx": 2045.1286987729875,
+		"cy": 1101.9705230682926
+	},
+	"distortion_coeffs": [
+		0.08665554939309877,
+		-0.019938456022560527,
+		0.0070809806150996255,
+		-0.0002969753879993023
+	],
+	"metadata": {
+		"calibrated_by": "\u8d75\u56fd\u6881",
+		"notes": "\u8d85\u91c7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

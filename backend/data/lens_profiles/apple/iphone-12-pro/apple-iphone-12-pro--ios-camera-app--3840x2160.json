@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-12-pro--ios-camera-app--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 12 Pro",
+	"lens_model": "Back Telephoto camera (51mm equiv.)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6322.804010879457,
+		"fy": 6323.141224292245,
+		"cx": 1946.6302861778809,
+		"cy": 1056.9896688496872
+	},
+	"distortion_coeffs": [
+		0.38180022048159334,
+		-2.2295144588159466,
+		79.13003065929205,
+		-578.016730658399
+	],
+	"metadata": {
+		"calibrated_by": "Tom.my",
+		"notes": "iOS Camera app",
+		"source": "gyroflow",
+		"official": true
+	}
+}

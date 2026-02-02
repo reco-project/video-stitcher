@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-14u--4096x3072",
+	"camera_brand": "Xiaomi",
+	"camera_model": "14u",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2881.6555789151507,
+		"fy": 2880.528926506201,
+		"cx": 2027.2884388153575,
+		"cy": 1522.0429460165014
+	},
+	"distortion_coeffs": [
+		0.5693822959799599,
+		-2.0313400333986675,
+		7.551552703557315,
+		-8.740130049498951
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a52-5g--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "A52 5G",
+	"lens_model": "64 MP, 26mm (wide), 1/1.7X\"",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2680.3505128022102,
+		"fy": 2681.5416956093013,
+		"cx": 1946.8867767579968,
+		"cy": 1016.9908846673436
+	},
+	"distortion_coeffs": [
+		0.5838212199207401,
+		-0.8952518871944962,
+		2.0873873024175595,
+		-1.28471382139515
+	],
+	"metadata": {
+		"calibrated_by": "MrChris",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--11mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tokina 11-16",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2727.1079181361097,
+		"fy": 2723.2627219120445,
+		"cx": 1947.469012962803,
+		"cy": 1095.4548033026167
+	},
+	"distortion_coeffs": [
+		0.3515207577426919,
+		-0.02166108784379162,
+		0.3134665069493369,
+		-0.25613223616106184
+	],
+	"metadata": {
+		"calibrated_by": "Pablo Urba",
+		"notes": "11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh5s--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5S",
+	"lens_model": "SLR 8mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1906.79732966509,
+		"fy": 1907.413246959139,
+		"cx": 2075.0189921577385,
+		"cy": 1058.454643797053
+	},
+	"distortion_coeffs": [
+		0.26992868138921566,
+		0.21772427888867305,
+		-0.2083087559310013,
+		0.25741024621906455
+	],
+	"metadata": {
+		"calibrated_by": "Shao Mingxin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-7-plus--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 7 Plus",
+	"lens_model": "wide angle 28 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3017.4206423823452,
+		"fy": 3020.230485899252,
+		"cx": 1884.415359612586,
+		"cy": 1054.9420731605817
+	},
+	"distortion_coeffs": [
+		0.6456688981724775,
+		-1.928116910211346,
+		4.341191970478219,
+		0.33162481182463377
+	],
+	"metadata": {
+		"calibrated_by": "Al Minz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

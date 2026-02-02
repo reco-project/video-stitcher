@@ -1,0 +1,28 @@
+{
+	"id": "huawei-mate-40pro--1280x720",
+	"camera_brand": "Huawei",
+	"camera_model": "mate 40pro+",
+	"lens_model": "\u8d85\u5e7f\u89d2",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 932.863331925329,
+		"fy": 920.0503842606964,
+		"cx": 639.9186517449624,
+		"cy": 347.66510311756133
+	},
+	"distortion_coeffs": [
+		0.511189818893345,
+		-0.5578091684311964,
+		2.849762558365989,
+		-5.064082326916388
+	],
+	"metadata": {
+		"calibrated_by": "\u8c22",
+		"source": "gyroflow",
+		"official": true
+	}
+}

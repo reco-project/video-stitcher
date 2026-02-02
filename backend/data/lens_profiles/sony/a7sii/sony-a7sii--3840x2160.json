@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7sii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sII",
+	"lens_model": "samyang 24 T1.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2721.355888476724,
+		"fy": 2716.358126535511,
+		"cx": 1923.0246873425435,
+		"cy": 1099.25135203418
+	},
+	"distortion_coeffs": [
+		0.21857709531837743,
+		0.3212560808658779,
+		-0.5912155705079036,
+		0.7704149788078827
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--35mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "TTArtisans",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3621.2307328231386,
+		"fy": 3619.763226134722,
+		"cx": 950.4620806462374,
+		"cy": 519.259952596134
+	},
+	"distortion_coeffs": [
+		0.11924516973145338,
+		1.8223596949478744,
+		-48.66972573767666,
+		474.20182824688806
+	],
+	"metadata": {
+		"calibrated_by": "Nomar",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

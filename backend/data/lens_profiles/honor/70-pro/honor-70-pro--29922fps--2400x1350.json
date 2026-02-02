@@ -1,0 +1,29 @@
+{
+	"id": "honor-70-pro--29922fps--2400x1350",
+	"camera_brand": "Honor",
+	"camera_model": "70 pro",
+	"lens_model": "Sony IMX800",
+	"resolution": {
+		"width": 2400,
+		"height": 1350
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1609.2524674287556,
+		"fy": 1611.903071105418,
+		"cx": 1206.1386668199098,
+		"cy": 668.9398461418125
+	},
+	"distortion_coeffs": [
+		0.2905956725056948,
+		-0.04086282162624565,
+		2.364025793218895,
+		-4.085091114716488
+	],
+	"metadata": {
+		"calibrated_by": "Jack Liu",
+		"notes": "29.922fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

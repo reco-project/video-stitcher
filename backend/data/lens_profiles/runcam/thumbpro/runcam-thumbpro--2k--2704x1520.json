@@ -1,0 +1,29 @@
+{
+	"id": "runcam-thumbpro--2k--2704x1520",
+	"camera_brand": "RunCam",
+	"camera_model": "ThumbPro",
+	"lens_model": "caddx ratel v1",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1216.0859631273595,
+		"fy": 1219.3544148860788,
+		"cx": 1346.5726131220033,
+		"cy": 841.7648832973089
+	},
+	"distortion_coeffs": [
+		-0.04029734159195686,
+		0.0071964968180885935,
+		-0.04008053722461487,
+		0.022818727696187625
+	],
+	"metadata": {
+		"calibrated_by": "Gerald Ong",
+		"notes": "2k",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5s--10bit-422--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5S",
+	"lens_model": "Laowa7.5mm f2.0",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1658.6256023911571,
+		"fy": 1659.625618572555,
+		"cx": 2041.2652497700224,
+		"cy": 1079.3616153187363
+	},
+	"distortion_coeffs": [
+		0.2953826149629294,
+		0.3761760544930434,
+		-1.0309271531453923,
+		1.2968017997981942
+	],
+	"metadata": {
+		"calibrated_by": "ykn",
+		"notes": "10bit 422",
+		"source": "gyroflow",
+		"official": true
+	}
+}

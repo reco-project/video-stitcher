@@ -1,0 +1,29 @@
+{
+	"id": "runcam-thumbpro--no-distortion-21mm-1-27-sensor--3840x2160",
+	"camera_brand": "Runcam",
+	"camera_model": "ThumbPro",
+	"lens_model": "Goveisee 2.1mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1457.0763975355176,
+		"fy": 1456.7319348037952,
+		"cx": 1901.2130389909591,
+		"cy": 1124.1169564997808
+	},
+	"distortion_coeffs": [
+		0.32971854875106665,
+		0.1351403508775901,
+		-0.17748744420870363,
+		0.11141179532783184
+	],
+	"metadata": {
+		"calibrated_by": "Pretentiousmess",
+		"notes": "No Distortion 2.1mm 1-2.7 sensor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

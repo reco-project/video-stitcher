@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx30--5107x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sirui 35mm F1.8",
+	"resolution": {
+		"width": 5107,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6903.609689315404,
+		"fy": 6446.120951038424,
+		"cx": 2832.123804094406,
+		"cy": 978.398487027462
+	},
+	"distortion_coeffs": [
+		0.08200586764559618,
+		0.1937301396490588,
+		5.90620613221047,
+		-34.69155349183051
+	],
+	"metadata": {
+		"calibrated_by": "Leon Knarr",
+		"source": "gyroflow",
+		"official": true
+	}
+}

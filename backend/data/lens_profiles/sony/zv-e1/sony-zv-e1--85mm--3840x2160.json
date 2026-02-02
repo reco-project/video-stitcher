@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--85mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "85.00mm F1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7762.085956710644,
+		"fy": 7739.699316050704,
+		"cx": 1941.8428996692735,
+		"cy": 1077.441406245911
+	},
+	"distortion_coeffs": [
+		0.4579904090374751,
+		3.411845423568629,
+		44.39960592860116,
+		-1358.8025780390574
+	],
+	"metadata": {
+		"calibrated_by": "\u5b59\u660e\u6d69",
+		"notes": "85mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "xtu-s2-pro--no-eis--1920x1080",
+	"camera_brand": "XTU",
+	"camera_model": "S2 PRO",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1062.56493686385,
+		"fy": 1061.4574671195928,
+		"cx": 980.2644602217906,
+		"cy": 531.7627069267132
+	},
+	"distortion_coeffs": [
+		-0.04623428897792946,
+		0.017034778894120462,
+		-0.03955328295231259,
+		0.038963233623428066
+	],
+	"metadata": {
+		"calibrated_by": "yoshihiro",
+		"notes": "NO EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

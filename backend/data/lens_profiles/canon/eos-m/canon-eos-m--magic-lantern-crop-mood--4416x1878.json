@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--magic-lantern-crop-mood--4416x1878",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "55mm F1.4 7Artisans",
+	"resolution": {
+		"width": 4416,
+		"height": 1878
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15272.928199848142,
+		"fy": 15294.580069274203,
+		"cx": 2064.448671050946,
+		"cy": 954.6413838669316
+	},
+	"distortion_coeffs": [
+		0.4473983617087325,
+		9.617807680348356,
+		-172.88173046296333,
+		-3607.825021226043
+	],
+	"metadata": {
+		"calibrated_by": "Salam",
+		"notes": "Magic Lantern Crop Mood",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-original--with-ndf-filter--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera Original",
+	"lens_model": "Tamron SP 35mm F/1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3890.0383864722135,
+		"fy": 3892.519640222488,
+		"cx": 931.2641458721424,
+		"cy": 537.7228920053002
+	},
+	"distortion_coeffs": [
+		0.157139559575257,
+		3.720205886353793,
+		-94.805446065903,
+		828.4260235026053
+	],
+	"metadata": {
+		"calibrated_by": "Dante D",
+		"notes": "With NDF Filter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

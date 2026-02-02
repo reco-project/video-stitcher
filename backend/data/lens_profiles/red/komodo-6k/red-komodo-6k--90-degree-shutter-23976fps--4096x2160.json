@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--90-degree-shutter-23976fps--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Helios 44-2 58MM T2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13667.890685273163,
+		"fy": 13616.057925144058,
+		"cx": 2031.5496603129027,
+		"cy": 794.1531367059372
+	},
+	"distortion_coeffs": [
+		0.374118914084588,
+		6.733884001454117,
+		-884.0030620205924,
+		22155.65828040492
+	],
+	"metadata": {
+		"calibrated_by": "Joel Gagne",
+		"notes": "90 degree shutter, 23.976fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

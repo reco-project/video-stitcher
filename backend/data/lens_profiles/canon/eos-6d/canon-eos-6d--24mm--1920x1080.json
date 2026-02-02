@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-6d--24mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6D",
+	"lens_model": "24-105 f/4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1270.3492676471883,
+		"fy": 1270.810360819998,
+		"cx": 959.6856636178582,
+		"cy": 551.6700510002933
+	},
+	"distortion_coeffs": [
+		0.1771919422116921,
+		0.16823194137641587,
+		-0.18915967111281337,
+		0.26137541437445705
+	],
+	"metadata": {
+		"calibrated_by": "Niccol\u00f2 Beretti",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

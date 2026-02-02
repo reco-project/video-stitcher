@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gx5s--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GX5S",
+	"lens_model": "Lumix G X Vario 12-35/2,8 II ASPH",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3434.1790690015505,
+		"fy": 3436.6030061058905,
+		"cx": 1899.657216236816,
+		"cy": 1087.9285582918997
+	},
+	"distortion_coeffs": [
+		0.34477522963929974,
+		-0.04576425888899972,
+		0.847618030520721,
+		-1.2620283130872925
+	],
+	"metadata": {
+		"calibrated_by": "TrickyFPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

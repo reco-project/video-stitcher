@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t30--2048x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T30",
+	"lens_model": "samyang 12 mmf",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1116.551853390967,
+		"fy": 1115.4222341070315,
+		"cx": 1032.378313422167,
+		"cy": 525.4162373307947
+	},
+	"distortion_coeffs": [
+		0.3010593932789534,
+		0.32055976248616386,
+		-1.7360524662628771,
+		3.9254583574040383
+	],
+	"metadata": {
+		"calibrated_by": "Cedric Raulet",
+		"source": "gyroflow",
+		"official": true
+	}
+}

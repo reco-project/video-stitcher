@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh5-ii--25p-cinelike-d2--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5 II",
+	"lens_model": "OM System 12 - 40mm 1:2.8 II Pro",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1421.2103241245425,
+		"fy": 1419.5472466138883,
+		"cx": 965.7469920414044,
+		"cy": 532.0586772115536
+	},
+	"distortion_coeffs": [
+		0.3242423257870547,
+		0.05057099404758576,
+		0.2479792200681875,
+		-0.0831224883324486
+	],
+	"metadata": {
+		"calibrated_by": "james gilna",
+		"notes": "25p Cinelike D2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

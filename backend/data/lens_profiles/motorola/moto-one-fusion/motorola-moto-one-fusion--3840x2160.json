@@ -1,0 +1,28 @@
+{
+	"id": "motorola-moto-one-fusion--3840x2160",
+	"camera_brand": "Motorola",
+	"camera_model": "Moto One Fusion+",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3569.1649478039667,
+		"fy": 3571.6227832260124,
+		"cx": 1937.792780043535,
+		"cy": 1106.9129449526977
+	},
+	"distortion_coeffs": [
+		0.380342327317066,
+		-0.07031232592349966,
+		1.7954847426723914,
+		-4.552126882039725
+	],
+	"metadata": {
+		"calibrated_by": "Jomon Sebastian",
+		"source": "gyroflow",
+		"official": true
+	}
+}

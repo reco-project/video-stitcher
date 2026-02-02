@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z62--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z62",
+	"lens_model": "24-70f4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1537.6002846936617,
+		"fy": 1535.0346241879488,
+		"cx": 944.4718131798828,
+		"cy": 512.0893368446473
+	},
+	"distortion_coeffs": [
+		0.35503819979122714,
+		-0.06554457095097146,
+		0.7537831070570467,
+		-0.7975163210732639
+	],
+	"metadata": {
+		"calibrated_by": "Taylor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

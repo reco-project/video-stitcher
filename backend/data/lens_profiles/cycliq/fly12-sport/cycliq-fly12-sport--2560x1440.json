@@ -1,0 +1,28 @@
+{
+	"id": "cycliq-fly12-sport--2560x1440",
+	"camera_brand": "Cycliq",
+	"camera_model": "Fly12 sport",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1765.776359915961,
+		"fy": 1766.5689507251625,
+		"cx": 1340.0232140059525,
+		"cy": 676.4902156508193
+	},
+	"distortion_coeffs": [
+		-0.03827669438978242,
+		-0.11071157147421684,
+		0.27672149539022906,
+		-0.2338247372800963
+	],
+	"metadata": {
+		"calibrated_by": "G M",
+		"source": "gyroflow",
+		"official": true
+	}
+}

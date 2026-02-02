@@ -1,0 +1,28 @@
+{
+	"id": "canon-7d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "7D",
+	"lens_model": "16-35F4",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 955.3860592028882,
+		"fy": 956.1561391661688,
+		"cx": 621.9315324181003,
+		"cy": 357.2439825587501
+	},
+	"distortion_coeffs": [
+		0.2803758747745018,
+		0.27762494325206155,
+		-0.8392141125008585,
+		1.1623183473407497
+	],
+	"metadata": {
+		"calibrated_by": "BERGA",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-a51-ultra-wide--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A51 Ultra Wide",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 703.6668543318798,
+		"fy": 702.7276407220056,
+		"cx": 959.1186865042592,
+		"cy": 531.9048713508307
+	},
+	"distortion_coeffs": [
+		0.286062043269142,
+		0.2711575378666453,
+		-0.11619501932731832,
+		0.04327086846724358
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6000--1920x968",
+	"camera_brand": "Sony",
+	"camera_model": "a6000",
+	"lens_model": "ttartisan 50mm f1.2",
+	"resolution": {
+		"width": 1920,
+		"height": 968
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4552.521208688444,
+		"fy": 4548.579398156336,
+		"cx": 923.9088237183717,
+		"cy": 543.2475706562553
+	},
+	"distortion_coeffs": [
+		0.016018765610632327,
+		17.04847955858318,
+		-855.595447905306,
+		9027.272179799364
+	],
+	"metadata": {
+		"calibrated_by": "dikapc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

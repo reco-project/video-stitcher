@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action-1--4k-43--4000x3000",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action 1",
+	"lens_model": "DJI",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1409.1239475205575,
+		"fy": 1407.1937284735498,
+		"cx": 2015.6151965535196,
+		"cy": 1504.445114067078
+	},
+	"distortion_coeffs": [
+		0.24502311298536672,
+		0.07251719664452654,
+		-0.0455526077812482,
+		-0.004675071014263569
+	],
+	"metadata": {
+		"calibrated_by": "RealgMedia",
+		"notes": "4K 4:3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

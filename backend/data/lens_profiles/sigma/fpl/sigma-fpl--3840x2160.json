@@ -1,0 +1,28 @@
+{
+	"id": "sigma-fpl--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "FPL",
+	"lens_model": "LUMIX 20-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2140.974024845783,
+		"fy": 2142.7137490577593,
+		"cx": 1917.7977722304645,
+		"cy": 1077.2285324399804
+	},
+	"distortion_coeffs": [
+		0.30674962190697713,
+		0.05574813888231989,
+		0.16332811587336254,
+		0.05693741647762741
+	],
+	"metadata": {
+		"calibrated_by": "\u7f57\u5f6c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

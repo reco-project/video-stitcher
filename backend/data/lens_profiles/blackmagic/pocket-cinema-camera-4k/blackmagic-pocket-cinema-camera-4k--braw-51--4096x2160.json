@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--braw-51--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "7Artisans 25mm F1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5575.902370235803,
+		"fy": 5549.1354893569915,
+		"cx": 2125.131889866007,
+		"cy": 1080.9179771644244
+	},
+	"distortion_coeffs": [
+		0.10755124888432754,
+		4.517576634139366,
+		-84.66967572473145,
+		565.113136189328
+	],
+	"metadata": {
+		"calibrated_by": "Migu",
+		"notes": "BRAW 5:1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

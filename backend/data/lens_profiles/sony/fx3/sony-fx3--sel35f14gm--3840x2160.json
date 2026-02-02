@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--sel35f14gm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3691.354005761768,
+		"fy": 3695.622828884305,
+		"cx": 1902.7023918010811,
+		"cy": 1087.2362410390158
+	},
+	"distortion_coeffs": [
+		0.30198478126428613,
+		0.24508102540500817,
+		-0.36015104892103655,
+		0.5587676513457707
+	],
+	"metadata": {
+		"calibrated_by": "Norman Lee",
+		"notes": "SEL35F14GM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

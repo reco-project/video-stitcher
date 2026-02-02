@@ -1,0 +1,29 @@
+{
+	"id": "runcam-hybrid-2--no-rolling-shutter-correction--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "Hybrid 2",
+	"lens_model": "m10",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1999.084278320087,
+		"fy": 2000.3112412722428,
+		"cx": 1905.4766973540932,
+		"cy": 1145.4743376105862
+	},
+	"distortion_coeffs": [
+		-0.03244607229097096,
+		-0.017596237571602186,
+		0.011766650364196106,
+		-0.0062229787421706866
+	],
+	"metadata": {
+		"calibrated_by": "Pierce Schmeichel",
+		"notes": "(no rolling shutter correction)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

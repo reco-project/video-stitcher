@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5s--2500-iso--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5S",
+	"lens_model": "7artisans  M43 25mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5973.924007074923,
+		"fy": 5983.825826621607,
+		"cx": 2062.0694290140787,
+		"cy": 1179.609210963193
+	},
+	"distortion_coeffs": [
+		0.14624351473645336,
+		0.5497151691650093,
+		-3.1060340402296744,
+		32.46689629397034
+	],
+	"metadata": {
+		"calibrated_by": "Shao Mingxin",
+		"notes": "2500 ISO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

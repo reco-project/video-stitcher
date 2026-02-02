@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--slog3cine--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Canon 16-35mm @28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2996.8065519850406,
+		"fy": 2993.5344395622287,
+		"cx": 1942.716182187864,
+		"cy": 1064.6385292252246
+	},
+	"distortion_coeffs": [
+		0.3589287607163816,
+		-0.8835731571551028,
+		6.46050594227478,
+		-11.733914147038904
+	],
+	"metadata": {
+		"calibrated_by": "Mauro",
+		"notes": "Slog3cine",
+		"source": "gyroflow",
+		"official": true
+	}
+}

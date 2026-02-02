@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--70mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5",
+	"lens_model": "Sigma 70 200 2.8 l mount",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 30538.435373260196,
+		"fy": 30525.916108798076,
+		"cx": 1518.2048971320698,
+		"cy": 1277.021176802779
+	},
+	"distortion_coeffs": [
+		0.5676834163563022,
+		538.5216330489259,
+		-116712.33957876184,
+		8188781.329722333
+	],
+	"metadata": {
+		"calibrated_by": "jvc-1",
+		"notes": "70mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

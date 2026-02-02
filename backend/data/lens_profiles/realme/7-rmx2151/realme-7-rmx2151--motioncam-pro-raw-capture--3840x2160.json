@@ -1,0 +1,29 @@
+{
+	"id": "realme-7-rmx2151--motioncam-pro-raw-capture--3840x2160",
+	"camera_brand": "Realme",
+	"camera_model": "7 (RMX2151)",
+	"lens_model": "Sony IMX682 f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3456.1348387556473,
+		"fy": 3455.5270717525377,
+		"cx": 1921.6345326834144,
+		"cy": 1068.1780354715663
+	},
+	"distortion_coeffs": [
+		0.3924793253294199,
+		-0.27649675674984925,
+		2.872120940840043,
+		-5.934092113821491
+	],
+	"metadata": {
+		"calibrated_by": "Akshay Nagar",
+		"notes": "MotionCam Pro RAW Capture",
+		"source": "gyroflow",
+		"official": true
+	}
+}

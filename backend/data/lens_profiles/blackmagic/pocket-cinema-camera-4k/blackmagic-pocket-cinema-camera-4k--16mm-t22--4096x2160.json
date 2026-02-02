@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--16mm-t22--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "MEIKE MICRO CINE",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3429.995452106958,
+		"fy": 3427.054944601781,
+		"cx": 2073.402288591198,
+		"cy": 1051.966246273153
+	},
+	"distortion_coeffs": [
+		0.2377219861093151,
+		0.044917826267954895,
+		0.5084421706597072,
+		-0.4554732302086368
+	],
+	"metadata": {
+		"calibrated_by": "SIRIUS",
+		"notes": "16mm T2.2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

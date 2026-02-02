@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-6d-mk2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6D mk2",
+	"lens_model": "150mm canon",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 18010.139833261142,
+		"fy": 17935.328420535436,
+		"cx": 2039.016557268371,
+		"cy": 871.0532511223472
+	},
+	"distortion_coeffs": [
+		-3.405478520653475,
+		563.603169372033,
+		-48985.28508523893,
+		1709890.401277704
+	],
+	"metadata": {
+		"calibrated_by": "W\u00e4in\u00f6 Talvitie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

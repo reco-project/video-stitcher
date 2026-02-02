@@ -1,0 +1,28 @@
+{
+	"id": "poco-x6-5g--1920x1088",
+	"camera_brand": "POCO",
+	"camera_model": "X6 5G",
+	"lens_model": "1080p Landscape",
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1709.63771813598,
+		"fy": 1708.6123695794313,
+		"cx": 941.825017930596,
+		"cy": 543.2369839672231
+	},
+	"distortion_coeffs": [
+		0.18847296237362207,
+		3.1134733033503257,
+		-14.925831520006495,
+		22.70100188094423
+	],
+	"metadata": {
+		"calibrated_by": "U0 A324",
+		"source": "gyroflow",
+		"official": true
+	}
+}

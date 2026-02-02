@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d-mark-iv--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark IV",
+	"lens_model": "24-105",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 853.2302998312447,
+		"fy": 853.0013083207141,
+		"cx": 643.2826584569768,
+		"cy": 361.7451045250517
+	},
+	"distortion_coeffs": [
+		0.18953868691312808,
+		0.21375201695755464,
+		-0.24751092572968636,
+		0.3818002423860278
+	],
+	"metadata": {
+		"calibrated_by": "Samko",
+		"source": "gyroflow",
+		"official": true
+	}
+}

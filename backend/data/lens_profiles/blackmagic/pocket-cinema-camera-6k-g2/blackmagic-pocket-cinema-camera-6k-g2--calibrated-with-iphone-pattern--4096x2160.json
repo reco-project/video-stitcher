@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-g2--calibrated-with-iphone-pattern--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k G2",
+	"lens_model": "Carl Zeiss Planar 50mm f/1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 25841.554775462464,
+		"fy": 25857.259145037995,
+		"cx": 1944.5454156267197,
+		"cy": 935.4000103171117
+	},
+	"distortion_coeffs": [
+		2.037902398800403,
+		-630.3593571170338,
+		99324.78144316006,
+		-5488571.899804445
+	],
+	"metadata": {
+		"calibrated_by": "Tobias Thorne",
+		"notes": "Calibrated with iPhone pattern",
+		"source": "gyroflow",
+		"official": true
+	}
+}

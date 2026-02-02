@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-26mm--1920x1072",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 26mm",
+	"lens_model": "4k",
+	"resolution": {
+		"width": 1920,
+		"height": 1072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1528.566443276073,
+		"fy": 1516.9916598152877,
+		"cx": 960.706346531467,
+		"cy": 530.5801806378915
+	},
+	"distortion_coeffs": [
+		0.607147375308858,
+		-1.446168489897283,
+		3.661444593993053,
+		-2.3184425031028364
+	],
+	"metadata": {
+		"calibrated_by": "Nikita Sharov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

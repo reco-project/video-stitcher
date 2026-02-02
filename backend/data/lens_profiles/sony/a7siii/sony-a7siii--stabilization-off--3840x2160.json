@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--stabilization-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Laowa 15mm f2 zero-D",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1679.3329259624395,
+		"fy": 1680.6705004770608,
+		"cx": 1926.1518467618976,
+		"cy": 1077.4679290209926
+	},
+	"distortion_coeffs": [
+		0.32902937704499813,
+		0.08140955310188716,
+		0.10479470775034525,
+		0.022052620790886605
+	],
+	"metadata": {
+		"calibrated_by": "Zuofu Wang",
+		"notes": "Stabilization off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

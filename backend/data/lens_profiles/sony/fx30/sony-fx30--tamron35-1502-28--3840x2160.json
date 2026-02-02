@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--tamron35-1502-28--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "150.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 29297.736563539027,
+		"fy": 29145.055916275214,
+		"cx": 2920.005321020521,
+		"cy": 1235.327768166603
+	},
+	"distortion_coeffs": [
+		-1.472964808292368,
+		489.2230378247272,
+		-74665.89284113793,
+		4063141.462400991
+	],
+	"metadata": {
+		"calibrated_by": "Jay",
+		"notes": "TAMRON35-150/2-2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

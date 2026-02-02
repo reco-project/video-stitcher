@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--sony-a7iii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "samyang 18 f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1004.4975159515656,
+		"fy": 1003.4681071179908,
+		"cx": 959.7126477953132,
+		"cy": 530.5056361800931
+	},
+	"distortion_coeffs": [
+		0.28082691224213024,
+		0.04881332399602895,
+		0.22728659354419475,
+		-0.0856685285477172
+	],
+	"metadata": {
+		"calibrated_by": "Hatem Saed",
+		"notes": "sony a7iii",
+		"source": "gyroflow",
+		"official": true
+	}
+}

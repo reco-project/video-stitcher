@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-10--2592x1940",
+	"camera_brand": "Xiaomi",
+	"camera_model": "10",
+	"lens_model": "25MM",
+	"resolution": {
+		"width": 2592,
+		"height": 1940
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1884.8363637119096,
+		"fy": 1883.5883908237945,
+		"cx": 1273.2978171199916,
+		"cy": 984.2697388042724
+	},
+	"distortion_coeffs": [
+		0.3341118282523441,
+		0.8984295610448326,
+		-3.8399149115403466,
+		5.508766699032451
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

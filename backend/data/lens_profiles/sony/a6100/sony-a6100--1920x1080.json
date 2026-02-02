@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6100--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6100",
+	"lens_model": "Sigma 18-50 2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1497.4378522354746,
+		"fy": 1497.6746425003366,
+		"cx": 964.5068268275768,
+		"cy": 524.5199775019921
+	},
+	"distortion_coeffs": [
+		0.31866469749557974,
+		-0.10688263013719848,
+		2.1619362301341263,
+		-3.541505336909802
+	],
+	"metadata": {
+		"calibrated_by": "cs p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

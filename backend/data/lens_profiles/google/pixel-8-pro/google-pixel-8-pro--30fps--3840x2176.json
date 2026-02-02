@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-8-pro--30fps--3840x2176",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 8 pro",
+	"lens_model": "115mm Telephoto",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12809.901860526435,
+		"fy": 12740.835525754625,
+		"cx": 1967.607475636797,
+		"cy": 1034.3256201641314
+	},
+	"distortion_coeffs": [
+		0.28803120092128065,
+		59.04319881572615,
+		-3392.3752327015395,
+		68953.31863915107
+	],
+	"metadata": {
+		"calibrated_by": "Poupougne",
+		"notes": "30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

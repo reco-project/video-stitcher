@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bgh6--5727x3024",
+	"camera_brand": "Panasonic",
+	"camera_model": "BGH6",
+	"lens_model": "LAOWA 9MM T2.9 CINE",
+	"resolution": {
+		"width": 5727,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3072.902678891698,
+		"fy": 3071.139390086302,
+		"cx": 2837.4484289151756,
+		"cy": 1490.9770027632237
+	},
+	"distortion_coeffs": [
+		0.30998968436962165,
+		0.3065888743640384,
+		-0.5257504346483527,
+		0.5540403481452558
+	],
+	"metadata": {
+		"calibrated_by": "\u5b09\u76ae\u54b8\u9c7c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

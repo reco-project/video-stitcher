@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--no-crop--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "Viltrox 13mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2186.9783392217237,
+		"fy": 2184.478795632597,
+		"cx": 1941.9194786914484,
+		"cy": 1047.4836825553566
+	},
+	"distortion_coeffs": [
+		0.29471604141564745,
+		0.06207317040790349,
+		0.2895629829695638,
+		-0.1336361615348781
+	],
+	"metadata": {
+		"calibrated_by": "Oskar Lohse",
+		"notes": "(no crop)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

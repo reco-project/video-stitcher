@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lx100--24mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "lx100",
+	"lens_model": "Leica",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3052.893278474234,
+		"fy": 3051.673302491336,
+		"cx": 1983.9358026851917,
+		"cy": 974.616474309695
+	},
+	"distortion_coeffs": [
+		0.2618226157298907,
+		0.45234647853082216,
+		-0.6817624837233299,
+		0.4960149374190353
+	],
+	"metadata": {
+		"calibrated_by": "Krystian",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

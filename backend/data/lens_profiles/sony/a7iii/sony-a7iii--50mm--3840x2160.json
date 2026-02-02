@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--50mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Tamron 28-74",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6534.709190676428,
+		"fy": 6503.688626409521,
+		"cx": 1755.263165775239,
+		"cy": 1045.081192680229
+	},
+	"distortion_coeffs": [
+		0.37621460353313185,
+		1.5816053332267348,
+		0.7879854962271872,
+		-83.0063066666019
+	],
+	"metadata": {
+		"calibrated_by": "stas",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

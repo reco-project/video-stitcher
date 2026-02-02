@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-s10--fish-eye--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S10",
+	"lens_model": "7Artisan 7.5mm F/2.8 II X",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1394.5564437746084,
+		"fy": 1394.0250197442908,
+		"cx": 1924.3456165389907,
+		"cy": 1069.5045803941557
+	},
+	"distortion_coeffs": [
+		0.00400295608140316,
+		0.029164076920600357,
+		-0.037511547706098144,
+		0.0157143470505375
+	],
+	"metadata": {
+		"calibrated_by": "Andrea Villata",
+		"notes": "FISH-EYE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

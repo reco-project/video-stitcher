@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "16mm 2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 773.781437929983,
+		"fy": 773.6995559699668,
+		"cx": 948.4339290741312,
+		"cy": 530.8934255794455
+	},
+	"distortion_coeffs": [
+		0.3729759285791768,
+		-0.0387664536921248,
+		0.3430783338744382,
+		-0.12389228287290265
+	],
+	"metadata": {
+		"calibrated_by": "Steppen Wolf",
+		"source": "gyroflow",
+		"official": true
+	}
+}

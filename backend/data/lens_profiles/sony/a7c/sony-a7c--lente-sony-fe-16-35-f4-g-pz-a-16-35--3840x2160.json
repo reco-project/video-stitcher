@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--lente-sony-fe-16-35-f4-g-pz-a-16-35--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "24e23644",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1736.816569650767,
+		"fy": 1743.0733417271197,
+		"cx": 1964.702854468018,
+		"cy": 1082.7435313961698
+	},
+	"distortion_coeffs": [
+		0.3151203702174103,
+		0.1588487552668251,
+		-0.01098974533851802,
+		0.12977858633744885
+	],
+	"metadata": {
+		"calibrated_by": "Stefano Bertolone",
+		"notes": "lente Sony FE 16-35 F/4 G PZ a 16-35",
+		"source": "gyroflow",
+		"official": true
+	}
+}

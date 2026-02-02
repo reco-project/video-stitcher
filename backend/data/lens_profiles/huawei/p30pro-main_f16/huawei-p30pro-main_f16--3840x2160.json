@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p30pro-main_f16--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "P30pro main_F1.6",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3654.7985734917006,
+		"fy": 3654.332392320929,
+		"cx": 1920.124127090756,
+		"cy": 1065.8606484672516
+	},
+	"distortion_coeffs": [
+		0.6816530398302534,
+		-6.1865234027473175,
+		45.34806942031361,
+		-105.46628189101608
+	],
+	"metadata": {
+		"calibrated_by": "Anton",
+		"source": "gyroflow",
+		"official": true
+	}
+}

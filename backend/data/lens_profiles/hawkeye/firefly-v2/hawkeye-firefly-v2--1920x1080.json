@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-v2--1920x1080",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly V2",
+	"lens_model": "2.8 160 DEGREE",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1244.1941883489092,
+		"fy": 1243.724099109077,
+		"cx": 936.5749531848209,
+		"cy": 527.1049746535151
+	},
+	"distortion_coeffs": [
+		-0.0716668567610757,
+		-0.04286900982888225,
+		0.04881488713614437,
+		-0.031105248931501767
+	],
+	"metadata": {
+		"calibrated_by": "John Sylvester",
+		"source": "gyroflow",
+		"official": true
+	}
+}

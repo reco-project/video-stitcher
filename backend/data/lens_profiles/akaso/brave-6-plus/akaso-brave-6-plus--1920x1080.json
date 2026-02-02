@@ -1,0 +1,28 @@
+{
+	"id": "akaso-brave-6-plus--1920x1080",
+	"camera_brand": "AKASO",
+	"camera_model": "Brave 6 Plus",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 873.7486496115839,
+		"fy": 959.767009804606,
+		"cx": 999.5732020737504,
+		"cy": 538.2737513464042
+	},
+	"distortion_coeffs": [
+		0.2219748759528286,
+		0.08472141372854794,
+		-0.15079065798361468,
+		0.17056027710352584
+	],
+	"metadata": {
+		"calibrated_by": "thebigbigboss",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t2--12mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T2",
+	"lens_model": "Samyang MF 12mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2374.018300675569,
+		"fy": 2376.782355182476,
+		"cx": 1932.003301661391,
+		"cy": 1104.3453465822793
+	},
+	"distortion_coeffs": [
+		0.26714060498452497,
+		0.3499748503715903,
+		-0.7460890317956571,
+		0.8914343816155864
+	],
+	"metadata": {
+		"calibrated_by": "Sam K\u00e4nner",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

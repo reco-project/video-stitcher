@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--071x-speedbooster--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Helios 44-2 58mm f2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12645.294077720191,
+		"fy": 12684.190553282977,
+		"cx": 1874.441351610088,
+		"cy": 1235.308336158551
+	},
+	"distortion_coeffs": [
+		0.03637475798426062,
+		14.227361606484443,
+		-292.5655605645461,
+		4578.966691502536
+	],
+	"metadata": {
+		"calibrated_by": "Oleksandr M\u00fcller",
+		"notes": "0.71x Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

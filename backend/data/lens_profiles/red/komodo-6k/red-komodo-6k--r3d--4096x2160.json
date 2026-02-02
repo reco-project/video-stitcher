@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--r3d--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "Komodo 6K",
+	"lens_model": "Laowa 14mm FF",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2157.0964827625335,
+		"fy": 2157.928940774765,
+		"cx": 2042.6632812809307,
+		"cy": 1072.157215553089
+	},
+	"distortion_coeffs": [
+		0.32295806781893904,
+		0.10938067045760602,
+		0.00934665211381449,
+		0.06955822842406197
+	],
+	"metadata": {
+		"calibrated_by": "Charlie Locke",
+		"notes": "R3D",
+		"source": "gyroflow",
+		"official": true
+	}
+}

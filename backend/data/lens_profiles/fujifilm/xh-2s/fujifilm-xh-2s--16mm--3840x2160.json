@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-xh-2s--16mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XH-2S",
+	"lens_model": "FX 16-55mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2628.512813305649,
+		"fy": 2623.436269359455,
+		"cx": 1929.05111256868,
+		"cy": 1072.5812137210935
+	},
+	"distortion_coeffs": [
+		0.30727631822563667,
+		0.13613354069992778,
+		0.00259952053777668,
+		0.02651261772744098
+	],
+	"metadata": {
+		"calibrated_by": "Berk Ar\u0131",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

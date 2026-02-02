@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-fz10002--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "FZ10002",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3875.3637011641167,
+		"fy": 3833.59760739824,
+		"cx": 1857.3396060421971,
+		"cy": 1110.4828296798496
+	},
+	"distortion_coeffs": [
+		0.2821069604534667,
+		0.429472404561977,
+		0.19726515431214217,
+		-12.511482855196174
+	],
+	"metadata": {
+		"calibrated_by": "\u6b66\u6c49\u706b\u661f\u4eba",
+		"source": "gyroflow",
+		"official": true
+	}
+}

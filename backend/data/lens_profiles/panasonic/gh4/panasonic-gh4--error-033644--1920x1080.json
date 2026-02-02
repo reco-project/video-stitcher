@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--error-033644--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Olympus M.ZUIKO 12mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1383.333908913154,
+		"fy": 1383.7893383693015,
+		"cx": 965.8531619948184,
+		"cy": 549.491217529766
+	},
+	"distortion_coeffs": [
+		0.3237658870747489,
+		0.013897276945234524,
+		0.4234500124699458,
+		-0.4183291386672841
+	],
+	"metadata": {
+		"calibrated_by": "PeliFly",
+		"notes": "Error: 0,33644",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--30fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Zeiss 55.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9612.43963114549,
+		"fy": 9636.280690140376,
+		"cx": 1688.646643452312,
+		"cy": 1350.4287247006516
+	},
+	"distortion_coeffs": [
+		0.5112117185290256,
+		3.2997870723714526,
+		-90.18773929290896,
+		1001.7912895388536
+	],
+	"metadata": {
+		"calibrated_by": "Thodoris Tsakalos",
+		"notes": "30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

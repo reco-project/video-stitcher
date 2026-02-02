@@ -1,0 +1,29 @@
+{
+	"id": "canon-r7--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R7",
+	"lens_model": "RFS18-150",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5467.444086483392,
+		"fy": 5418.635448010342,
+		"cx": 1827.3034002957288,
+		"cy": 1145.6513740810624
+	},
+	"distortion_coeffs": [
+		0.5415669317803792,
+		-5.237899559450442,
+		68.35652153861714,
+		-264.5174427087642
+	],
+	"metadata": {
+		"calibrated_by": "\u7f57\u660e\u665f",
+		"notes": "24MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

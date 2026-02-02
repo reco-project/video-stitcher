@@ -1,0 +1,28 @@
+{
+	"id": "iqoo-z3-samsung-isocell-gw3-sensor--4608x3456",
+	"camera_brand": "Iqoo Z3",
+	"camera_model": "Samsung ISOCELL GW3 sensor",
+	"lens_model": "26mm",
+	"resolution": {
+		"width": 4608,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2958.796983031618,
+		"fy": 2953.0505325693343,
+		"cx": 2472.747877998257,
+		"cy": 1720.4574891529628
+	},
+	"distortion_coeffs": [
+		0.4255778533124335,
+		0.03649450068544528,
+		-0.26943966426470756,
+		0.5642726355008466
+	],
+	"metadata": {
+		"calibrated_by": "Kishon Mahanty",
+		"source": "gyroflow",
+		"official": true
+	}
+}

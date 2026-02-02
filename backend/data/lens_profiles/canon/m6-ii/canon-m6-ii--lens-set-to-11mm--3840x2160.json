@@ -1,0 +1,29 @@
+{
+	"id": "canon-m6-ii--lens-set-to-11mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "M6 II",
+	"lens_model": "Tamron 11-18",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1933.6574811333903,
+		"fy": 1940.019985492886,
+		"cx": 1963.4237956260467,
+		"cy": 1121.146405804899
+	},
+	"distortion_coeffs": [
+		0.21629264933235112,
+		0.1732152932088299,
+		0.049556649180610673,
+		0.025457022405604456
+	],
+	"metadata": {
+		"calibrated_by": "Marshall Guillory",
+		"notes": "Lens set to 11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

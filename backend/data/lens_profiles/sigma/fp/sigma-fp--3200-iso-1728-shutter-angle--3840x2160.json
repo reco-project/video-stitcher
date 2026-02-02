@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--3200-iso-1728-shutter-angle--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Helios-44\u043c-4 2/58mm h113-a",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6866.941001445353,
+		"fy": 6856.276982241054,
+		"cx": 1942.0320224368245,
+		"cy": 1073.606555124875
+	},
+	"distortion_coeffs": [
+		0.41560522910152325,
+		-2.5601919611218413,
+		54.41920146738902,
+		-394.2122259055862
+	],
+	"metadata": {
+		"calibrated_by": "Viv Jos",
+		"notes": "3200 ISO, 172.8 Shutter Angle",
+		"source": "gyroflow",
+		"official": true
+	}
+}

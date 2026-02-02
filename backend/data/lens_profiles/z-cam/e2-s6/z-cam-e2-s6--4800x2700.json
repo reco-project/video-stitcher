@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-s6--4800x2700",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-S6",
+	"lens_model": "Samyang 24mm",
+	"resolution": {
+		"width": 4800,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6861.472251081729,
+		"fy": 6873.4146835789015,
+		"cx": 2521.491249778118,
+		"cy": 1404.088569958047
+	},
+	"distortion_coeffs": [
+		0.20746683709775507,
+		0.8352014888671409,
+		-6.718166210553573,
+		24.63243597307936
+	],
+	"metadata": {
+		"calibrated_by": "Koshkin Vladimir",
+		"source": "gyroflow",
+		"official": true
+	}
+}

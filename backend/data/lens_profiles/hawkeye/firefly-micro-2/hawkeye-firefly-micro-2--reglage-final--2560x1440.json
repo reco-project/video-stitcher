@@ -1,0 +1,29 @@
+{
+	"id": "hawkeye-firefly-micro-2--reglage-final--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly micro 2",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2371.739033858705,
+		"fy": 2373.1509530191324,
+		"cx": 1275.667060715437,
+		"cy": 739.6718843313809
+	},
+	"distortion_coeffs": [
+		-0.5106630899837483,
+		1.4541975123066466,
+		-12.538778919762793,
+		39.80372750679928
+	],
+	"metadata": {
+		"calibrated_by": "OneBadFPV",
+		"notes": "reglage final",
+		"source": "gyroflow",
+		"official": true
+	}
+}

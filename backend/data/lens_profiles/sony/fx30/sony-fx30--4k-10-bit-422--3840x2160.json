@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--4k-10-bit-422--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sigma 24-70 DG DN (@ 24mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4419.758206991792,
+		"fy": 4421.300902394066,
+		"cx": 1958.644269150443,
+		"cy": 1066.9887188038697
+	},
+	"distortion_coeffs": [
+		0.2970286357453315,
+		0.6711366225446146,
+		-4.521654113525707,
+		13.167248392106334
+	],
+	"metadata": {
+		"calibrated_by": "JT Clark",
+		"notes": "4K 10 bit 4.2.2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

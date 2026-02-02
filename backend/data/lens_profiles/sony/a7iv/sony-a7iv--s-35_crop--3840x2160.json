@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--s-35_crop--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Minolta_35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5734.803026760158,
+		"fy": 5735.652375255319,
+		"cx": 1959.420562735718,
+		"cy": 1057.041822678855
+	},
+	"distortion_coeffs": [
+		0.1766497248961534,
+		2.3558518337526784,
+		-30.36983430924915,
+		151.08228240102352
+	],
+	"metadata": {
+		"calibrated_by": "Ulrich Plank",
+		"notes": "S-35_Crop",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--6910x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Meike S35 18mm",
+	"resolution": {
+		"width": 6910,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4626.051988497455,
+		"fy": 4627.476837312604,
+		"cx": 3414.365319018433,
+		"cy": 1824.9606103380552
+	},
+	"distortion_coeffs": [
+		0.2698931884925972,
+		0.2307740494735273,
+		-0.32466660169368955,
+		0.2974481770656274
+	],
+	"metadata": {
+		"calibrated_by": "Shikijo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

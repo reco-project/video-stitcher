@@ -1,0 +1,28 @@
+{
+	"id": "sony-a77--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a77",
+	"lens_model": "16",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1870.524764875857,
+		"fy": 1871.5093573006611,
+		"cx": 962.5247413084676,
+		"cy": 535.9848051976878
+	},
+	"distortion_coeffs": [
+		0.6213079440757938,
+		-2.4976167482783724,
+		16.298359398455794,
+		-32.68756128353693
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

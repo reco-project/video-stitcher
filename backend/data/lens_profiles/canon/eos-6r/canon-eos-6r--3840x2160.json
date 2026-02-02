@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-6r--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6R",
+	"lens_model": "EF 50 f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7849.651449430374,
+		"fy": 7850.780623559946,
+		"cx": 1779.8131904552974,
+		"cy": 1139.6741662211546
+	},
+	"distortion_coeffs": [
+		0.1148304821447596,
+		3.522187041162267,
+		-86.37740843586526,
+		654.8904521812321
+	],
+	"metadata": {
+		"calibrated_by": "Alviigo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

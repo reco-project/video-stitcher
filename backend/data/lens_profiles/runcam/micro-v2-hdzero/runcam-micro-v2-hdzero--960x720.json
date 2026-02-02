@@ -1,0 +1,28 @@
+{
+	"id": "runcam-micro-v2-hdzero--960x720",
+	"camera_brand": "RunCam",
+	"camera_model": "Micro V2 HDZero",
+	"lens_model": "Ratel 1 1.66mm",
+	"resolution": {
+		"width": 960,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 378.8147975793054,
+		"fy": 378.537717241425,
+		"cx": 505.6679409727535,
+		"cy": 361.1576744772437
+	},
+	"distortion_coeffs": [
+		-0.0060283886133321585,
+		-0.0003436478968737243,
+		-0.006577126105332019,
+		0.0035937289729559784
+	],
+	"metadata": {
+		"calibrated_by": "Ondrej Slachta",
+		"source": "gyroflow",
+		"official": true
+	}
+}

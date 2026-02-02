@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7s--25p--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7S",
+	"lens_model": "35mm f1.8",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2041.8289645995353,
+		"fy": 2710.7032183543615,
+		"cx": 825.6826422246872,
+		"cy": 284.009062979553
+	},
+	"distortion_coeffs": [
+		0.22473414895852611,
+		1.2368558800041234,
+		-3.0071524232666715,
+		-3.1544798241126717
+	],
+	"metadata": {
+		"calibrated_by": "Nathaniel Chan",
+		"notes": "25p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

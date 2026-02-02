@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-redmi-note-10-pro--motioncam--3852x2192",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 10 pro",
+	"lens_model": "main 26mm",
+	"resolution": {
+		"width": 3852,
+		"height": 2192
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3552.302767861,
+		"fy": 3548.283340357233,
+		"cx": 1936.9637712972549,
+		"cy": 1078.4211461529674
+	},
+	"distortion_coeffs": [
+		0.3394044145073393,
+		0.11448756621330788,
+		3.819929349810392,
+		-12.15312259269295
+	],
+	"metadata": {
+		"calibrated_by": "Inzamam",
+		"notes": "MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

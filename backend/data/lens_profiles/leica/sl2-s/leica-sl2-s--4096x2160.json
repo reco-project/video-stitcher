@@ -1,0 +1,28 @@
+{
+	"id": "leica-sl2-s--4096x2160",
+	"camera_brand": "Leica",
+	"camera_model": "sl2-s",
+	"lens_model": "m50+1.5x",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4074.9026689651578,
+		"fy": 6199.873395654822,
+		"cx": 1549.713763230665,
+		"cy": 1064.0692420908383
+	},
+	"distortion_coeffs": [
+		0.10984649653397374,
+		-0.6252731359986128,
+		0.6042224699646809,
+		-0.3855746279749347
+	],
+	"metadata": {
+		"calibrated_by": "Beck Tang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

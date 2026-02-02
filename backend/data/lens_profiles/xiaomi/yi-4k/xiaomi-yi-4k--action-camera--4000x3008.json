@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-yi-4k--action-camera--4000x3008",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi 4k+",
+	"lens_model": null,
+	"resolution": {
+		"width": 4000,
+		"height": 3008
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1746.8382384752697,
+		"fy": 1751.3342947970025,
+		"cx": 1979.7168249256963,
+		"cy": 1489.5921299611816
+	},
+	"distortion_coeffs": [
+		0.0941477737726631,
+		-0.021425243126503048,
+		-0.004004827109539429,
+		0.0043754087588244225
+	],
+	"metadata": {
+		"calibrated_by": "ubuntu",
+		"notes": "action-camera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

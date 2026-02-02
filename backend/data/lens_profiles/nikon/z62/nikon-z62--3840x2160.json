@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z62--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z62",
+	"lens_model": "50 1.4G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2967.277294235465,
+		"fy": 2967.034184107663,
+		"cx": 2086.116460618697,
+		"cy": 1122.350631551554
+	},
+	"distortion_coeffs": [
+		0.26501867894170045,
+		0.16544980571691764,
+		-0.10411640698667228,
+		0.05956190299728439
+	],
+	"metadata": {
+		"calibrated_by": "joey lee",
+		"source": "gyroflow",
+		"official": true
+	}
+}

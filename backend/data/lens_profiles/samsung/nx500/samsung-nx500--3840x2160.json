@@ -1,0 +1,28 @@
+{
+	"id": "samsung-nx500--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "NX500",
+	"lens_model": "Meike Optics MK 8mm f3.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2524.4947600948894,
+		"fy": 2523.253278933004,
+		"cx": 1978.8752619530517,
+		"cy": 1073.9675702150205
+	},
+	"distortion_coeffs": [
+		-0.02516857543632412,
+		0.04072045625183044,
+		-0.11392445951135964,
+		0.0956333138457469
+	],
+	"metadata": {
+		"calibrated_by": "LegoRJ35",
+		"source": "gyroflow",
+		"official": true
+	}
+}

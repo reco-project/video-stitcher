@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh-2--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XH-2",
+	"lens_model": "TT Artisans 25mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4407.08019537911,
+		"fy": 4399.4530119933115,
+		"cx": 1963.3197005794384,
+		"cy": 1081.412420900774
+	},
+	"distortion_coeffs": [
+		0.1765577022666769,
+		-0.37595276503164615,
+		5.607648814396222,
+		-9.310173648312745
+	],
+	"metadata": {
+		"calibrated_by": "Carpentiers",
+		"source": "gyroflow",
+		"official": true
+	}
+}

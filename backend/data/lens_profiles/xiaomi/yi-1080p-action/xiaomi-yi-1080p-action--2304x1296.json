@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-yi-1080p-action--2304x1296",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi 1080p Action",
+	"lens_model": null,
+	"resolution": {
+		"width": 2304,
+		"height": 1296
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1104.5047173078094,
+		"fy": 1102.5161833635625,
+		"cx": 1132.0534391800716,
+		"cy": 676.0275949152557
+	},
+	"distortion_coeffs": [
+		0.09257258243086491,
+		-0.06184283749332706,
+		0.20042197869977857,
+		-0.16576047165392033
+	],
+	"metadata": {
+		"calibrated_by": "Brian Rimer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

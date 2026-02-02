@@ -1,0 +1,29 @@
+{
+	"id": "runcam-split-mini-1--ver10--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Split Mini 1",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 880.1035077662613,
+		"fy": 879.766549506691,
+		"cx": 960.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		-0.03739187642722807,
+		-0.02041002669600952,
+		0.01522906759566953,
+		-0.004594216496577972
+	],
+	"metadata": {
+		"calibrated_by": "Diego Carrasco V\u00e1squez",
+		"notes": "ver1.0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

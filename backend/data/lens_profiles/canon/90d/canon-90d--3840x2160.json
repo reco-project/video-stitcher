@@ -1,0 +1,28 @@
+{
+	"id": "canon-90d--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "90D",
+	"lens_model": "CANON ULTASONIC EF 50mm 1:1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9455.408850301794,
+		"fy": 9494.27531086401,
+		"cx": 1965.8401562849176,
+		"cy": 1262.0107167476483
+	},
+	"distortion_coeffs": [
+		0.10530180714663838,
+		6.390014151928813,
+		-203.24411193043912,
+		2611.4376991613512
+	],
+	"metadata": {
+		"calibrated_by": "pierre seurey",
+		"source": "gyroflow",
+		"official": true
+	}
+}

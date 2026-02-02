@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-12-turbo--3840x2160",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 12 Turbo",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2702.8791336013956,
+		"fy": 2706.241043908766,
+		"cx": 1927.0569651941369,
+		"cy": 1043.937894065253
+	},
+	"distortion_coeffs": [
+		0.4677930697956678,
+		-0.39699686309348325,
+		1.2187611608048683,
+		-1.320447476794845
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

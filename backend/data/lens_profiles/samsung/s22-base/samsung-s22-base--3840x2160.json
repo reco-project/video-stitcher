@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s22-base--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S22 Base",
+	"lens_model": "Wide 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2515.020386496565,
+		"fy": 2512.835158888952,
+		"cx": 1884.7711680759755,
+		"cy": 1105.7062829425192
+	},
+	"distortion_coeffs": [
+		0.42733354804195806,
+		-0.06351017268654534,
+		0.3529933146667953,
+		-0.13108738617107438
+	],
+	"metadata": {
+		"calibrated_by": "Mark Amadeo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

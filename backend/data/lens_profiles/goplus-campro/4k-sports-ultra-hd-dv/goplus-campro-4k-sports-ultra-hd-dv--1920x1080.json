@@ -1,0 +1,28 @@
+{
+	"id": "goplus-campro-4k-sports-ultra-hd-dv--1920x1080",
+	"camera_brand": "GoPlus CamPro",
+	"camera_model": "4K Sports Ultra HD DV",
+	"lens_model": "170",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1592.6136860625772,
+		"fy": 1591.4902911506724,
+		"cx": 913.0266365566962,
+		"cy": 539.4977274150083
+	},
+	"distortion_coeffs": [
+		-0.18652474669548685,
+		0.6167846885175555,
+		-1.4189797988854076,
+		1.151510465024925
+	],
+	"metadata": {
+		"calibrated_by": "Samaritan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

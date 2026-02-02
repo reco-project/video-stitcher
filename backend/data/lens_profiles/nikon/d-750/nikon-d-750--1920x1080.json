@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d-750--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D-750",
+	"lens_model": "Nikon 24-120 F4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1254.4479324958038,
+		"fy": 1254.052962912018,
+		"cx": 952.3009796026208,
+		"cy": 539.7888465608527
+	},
+	"distortion_coeffs": [
+		0.19087700427286644,
+		0.07002860504929752,
+		0.1682373391924233,
+		-0.10117403023106356
+	],
+	"metadata": {
+		"calibrated_by": "Trevor Lyons",
+		"source": "gyroflow",
+		"official": true
+	}
+}

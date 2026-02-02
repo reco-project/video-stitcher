@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--59fps--2048x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "10-24 f4",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 876.7248449379852,
+		"fy": 877.6814491750874,
+		"cx": 1029.456618566387,
+		"cy": 532.779733875814
+	},
+	"distortion_coeffs": [
+		0.3182886095858399,
+		0.18573546787513232,
+		-0.09346701388929228,
+		0.1461754283936655
+	],
+	"metadata": {
+		"calibrated_by": "Elis Taflaj",
+		"notes": "59fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

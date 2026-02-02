@@ -1,0 +1,28 @@
+{
+	"id": "sony-ilme-fx6v--6144x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILME-FX6V",
+	"lens_model": "SIRUI ANAMORPHIC x1.6 35mm T2.9",
+	"resolution": {
+		"width": 6144,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3759.5770907949304,
+		"fy": 3723.2844782090915,
+		"cx": 3046.636250243252,
+		"cy": 1062.8204286101366
+	},
+	"distortion_coeffs": [
+		0.31888707492369084,
+		-0.6701465289271974,
+		2.292147091039214,
+		-2.2359542069568406
+	],
+	"metadata": {
+		"calibrated_by": "Brieuc LE MERCIER",
+		"source": "gyroflow",
+		"official": true
+	}
+}

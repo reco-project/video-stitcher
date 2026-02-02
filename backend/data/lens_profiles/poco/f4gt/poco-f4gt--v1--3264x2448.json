@@ -1,0 +1,29 @@
+{
+	"id": "poco-f4gt--v1--3264x2448",
+	"camera_brand": "POCO",
+	"camera_model": "F4GT",
+	"lens_model": "Wide 26mm",
+	"resolution": {
+		"width": 3264,
+		"height": 2448
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2403.0929295923347,
+		"fy": 2403.6913187081223,
+		"cx": 1641.273010109211,
+		"cy": 1242.9639853364083
+	},
+	"distortion_coeffs": [
+		0.4124568837025672,
+		0.28636766663828495,
+		-1.1556430488721552,
+		1.8400162862706648
+	],
+	"metadata": {
+		"calibrated_by": "paulotwain",
+		"notes": "v.1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

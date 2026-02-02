@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-sj8-plus--not-for-original-lens--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ8 PLUS",
+	"lens_model": "90\u00b0 Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2718.2756774174013,
+		"fy": 2703.865707807321,
+		"cx": 1958.2818478003892,
+		"cy": 1092.7539568642126
+	},
+	"distortion_coeffs": [
+		0.40413905664632327,
+		0.27535093214644724,
+		-0.5333747623051768,
+		-0.2996057597619174
+	],
+	"metadata": {
+		"calibrated_by": "Martin",
+		"notes": "Not for original Lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

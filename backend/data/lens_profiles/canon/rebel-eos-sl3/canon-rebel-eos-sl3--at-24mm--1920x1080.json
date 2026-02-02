@@ -1,0 +1,29 @@
+{
+	"id": "canon-rebel-eos-sl3--at-24mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Rebel EOS SL3",
+	"lens_model": "Canon EF-S 18-55mm f/4-5.6 IS STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1864.3670978899468,
+		"fy": 1870.740902711244,
+		"cx": 943.9608863210336,
+		"cy": 543.9517835252615
+	},
+	"distortion_coeffs": [
+		0.313251269542803,
+		-0.972890637288462,
+		6.555932547709494,
+		-11.573210729943302
+	],
+	"metadata": {
+		"calibrated_by": "fernandobocutti",
+		"notes": "at 24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

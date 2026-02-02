@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-original--speedboosterupscaled-from-1080p--2560x1440",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera Original",
+	"lens_model": "Tamron 35mm F/1.8 VC",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5150.712368060783,
+		"fy": 5144.749812570416,
+		"cx": 1308.8100498107233,
+		"cy": 703.9709841271397
+	},
+	"distortion_coeffs": [
+		0.1376885159715893,
+		4.533303268694998,
+		-111.24764354455884,
+		981.240372555141
+	],
+	"metadata": {
+		"calibrated_by": "Dante D",
+		"notes": "Speedbooster/Upscaled from 1080p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

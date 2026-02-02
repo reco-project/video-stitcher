@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-c100--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "c100+",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1893.478806910102,
+		"fy": 1896.3517394717703,
+		"cx": 924.4666777032872,
+		"cy": 525.7760832380545
+	},
+	"distortion_coeffs": [
+		-0.6893050549105075,
+		0.9284430135058958,
+		-2.4314827048378027,
+		4.033883200165735
+	],
+	"metadata": {
+		"calibrated_by": "U0 A43",
+		"source": "gyroflow",
+		"official": true
+	}
+}

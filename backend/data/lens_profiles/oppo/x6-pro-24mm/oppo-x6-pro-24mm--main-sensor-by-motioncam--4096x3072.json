@@ -1,0 +1,29 @@
+{
+	"id": "oppo-x6-pro-24mm--main-sensor-by-motioncam--4096x3072",
+	"camera_brand": "OPPO",
+	"camera_model": "X6 pro 24mm",
+	"lens_model": "24mm_4 x 3",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2668.1032181724054,
+		"fy": 2667.6491268201225,
+		"cx": 2038.9267965527129,
+		"cy": 1531.0428309228705
+	},
+	"distortion_coeffs": [
+		0.6675750665810395,
+		-2.3475635326743816,
+		7.669004611783356,
+		-8.195593145802963
+	],
+	"metadata": {
+		"calibrated_by": "DfoX",
+		"notes": "Main sensor by MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

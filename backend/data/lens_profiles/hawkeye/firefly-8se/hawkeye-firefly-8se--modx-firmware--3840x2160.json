@@ -1,0 +1,29 @@
+{
+	"id": "hawkeye-firefly-8se--modx-firmware--3840x2160",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly 8SE",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1973.2100785746,
+		"fy": 1973.5714200617344,
+		"cx": 1881.4854418902275,
+		"cy": 1041.0879809151222
+	},
+	"distortion_coeffs": [
+		-0.029380641221084556,
+		-0.027022092391882163,
+		0.028104090975879337,
+		-0.011621504959699285
+	],
+	"metadata": {
+		"calibrated_by": "Shaun Ortman",
+		"notes": "modx firmware",
+		"source": "gyroflow",
+		"official": true
+	}
+}

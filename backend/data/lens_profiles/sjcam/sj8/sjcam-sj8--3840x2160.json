@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-sj8--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ8",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1946.6438782498783,
+		"fy": 1938.994711094694,
+		"cx": 1897.5306831737523,
+		"cy": 1226.0171383923482
+	},
+	"distortion_coeffs": [
+		0.13544378762898787,
+		-0.10593627073436004,
+		0.11136749545128828,
+		-0.07051142104956909
+	],
+	"metadata": {
+		"calibrated_by": "dimon kabanets",
+		"source": "gyroflow",
+		"official": true
+	}
+}

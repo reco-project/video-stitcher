@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a52-5g--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A52 5G",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1918.673767073775,
+		"fy": 1919.1496540138005,
+		"cx": 962.1863872212072,
+		"cy": 533.8802265192005
+	},
+	"distortion_coeffs": [
+		0.8544719951852304,
+		-5.998029784775777,
+		35.41866792583071,
+		-74.88665933533224
+	],
+	"metadata": {
+		"calibrated_by": "Armin Vadlejch",
+		"source": "gyroflow",
+		"official": true
+	}
+}

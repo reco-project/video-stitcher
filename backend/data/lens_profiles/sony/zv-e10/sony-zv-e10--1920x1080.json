@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e10--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Helios 44-2 w/focal reducer",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4034.405707559137,
+		"fy": 4030.72395055632,
+		"cx": 1010.9997901074894,
+		"cy": 496.42725365654854
+	},
+	"distortion_coeffs": [
+		-0.05555640250285868,
+		7.012974232047507,
+		-89.46652701668332,
+		564.7280635709907
+	],
+	"metadata": {
+		"calibrated_by": "Chase Smith",
+		"source": "gyroflow",
+		"official": true
+	}
+}

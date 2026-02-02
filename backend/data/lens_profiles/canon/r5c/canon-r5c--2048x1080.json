@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5c--2048x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "Rf24-70F2.8l",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1391.3579314909896,
+		"fy": 1392.8857022513196,
+		"cx": 1017.0430103133416,
+		"cy": 506.773893827085
+	},
+	"distortion_coeffs": [
+		0.1745473240860285,
+		0.6368873143771935,
+		-2.4417817312546815,
+		4.997305753208186
+	],
+	"metadata": {
+		"calibrated_by": "\u59dc\u6f8d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

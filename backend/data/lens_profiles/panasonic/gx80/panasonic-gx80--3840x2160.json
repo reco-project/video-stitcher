@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gx80--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GX80",
+	"lens_model": "Sigma 30mm 1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8941.101387125698,
+		"fy": 8957.574785415847,
+		"cx": 1936.705288283663,
+		"cy": 1042.0472017581228
+	},
+	"distortion_coeffs": [
+		0.3742941252561534,
+		-4.096699890770355,
+		88.4174441568135,
+		-579.9122701763711
+	],
+	"metadata": {
+		"calibrated_by": "A G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

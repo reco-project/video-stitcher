@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero9-black--hs-boost--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO9 Black",
+	"lens_model": "Narrow",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2872.162019920751,
+		"fy": 2873.5072143038383,
+		"cx": 1919.5347444605757,
+		"cy": 1075.9714080150834
+	},
+	"distortion_coeffs": [
+		0.34189375509843417,
+		0.15108716881867157,
+		-0.2279942240369988,
+		0.582021159885556
+	],
+	"metadata": {
+		"calibrated_by": "German Zubovich",
+		"notes": "HS Boost",
+		"source": "gyroflow",
+		"official": true
+	}
+}

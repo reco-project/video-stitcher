@@ -1,0 +1,28 @@
+{
+	"id": "motorola-edge-20-pro--4000x3000",
+	"camera_brand": "Motorola",
+	"camera_model": "Edge 20 Pro",
+	"lens_model": "Motion Cam",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2831.732534565506,
+		"fy": 2830.78124368547,
+		"cx": 1979.847978789974,
+		"cy": 1510.2269403323014
+	},
+	"distortion_coeffs": [
+		0.4462340305479795,
+		-0.4617776570818578,
+		1.627168202404567,
+		-1.5094425473792008
+	],
+	"metadata": {
+		"calibrated_by": "Luis Fernandes",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-11-4g--1600x904",
+	"camera_brand": "Xiaomi",
+	"camera_model": "REDMI NOTE 11 4G",
+	"lens_model": "MotionCamPro",
+	"resolution": {
+		"width": 1600,
+		"height": 904
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1244.4907320765649,
+		"fy": 1247.023466037141,
+		"cx": 772.1107841219925,
+		"cy": 446.3200375566916
+	},
+	"distortion_coeffs": [
+		0.285093558910417,
+		0.8049183868416601,
+		-3.0134820207434263,
+		4.257215720503503
+	],
+	"metadata": {
+		"calibrated_by": "mathieu chantelat",
+		"source": "gyroflow",
+		"official": true
+	}
+}

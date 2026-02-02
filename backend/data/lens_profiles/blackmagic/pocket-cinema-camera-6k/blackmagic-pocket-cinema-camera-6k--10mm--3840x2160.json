@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--10mm--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Canon EF-S 10-18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1739.9764534031729,
+		"fy": 1717.312514727164,
+		"cx": 1941.7808662940413,
+		"cy": 1010.926719968858
+	},
+	"distortion_coeffs": [
+		0.2948880586641176,
+		0.281274777309919,
+		-0.2615845649465887,
+		0.16422135780847635
+	],
+	"metadata": {
+		"calibrated_by": "Ruben",
+		"notes": "10mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sigma-fp--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "CARL ZEISS JENA FLEKTOGON 20mmF2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2398.140166695427,
+		"fy": 2398.626446381104,
+		"cx": 1963.984160138327,
+		"cy": 1062.498433230562
+	},
+	"distortion_coeffs": [
+		0.2292005560566144,
+		-0.0542109419337124,
+		0.6534818516903866,
+		-0.5689446894630433
+	],
+	"metadata": {
+		"calibrated_by": "Yusuke Soi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

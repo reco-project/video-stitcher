@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z7--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z7",
+	"lens_model": "Tamron 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2462.6963167306385,
+		"fy": 2462.8430262481847,
+		"cx": 1987.356111145424,
+		"cy": 1087.6674608206094
+	},
+	"distortion_coeffs": [
+		0.1410958276262032,
+		0.3178002146085304,
+		-0.3915711919439066,
+		0.4607631096141304
+	],
+	"metadata": {
+		"calibrated_by": "Vladimir Fedotov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

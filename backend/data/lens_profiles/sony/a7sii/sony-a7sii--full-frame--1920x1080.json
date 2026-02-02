@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7sii--full-frame--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7SII",
+	"lens_model": "ROKINON 14MM 2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 781.5210332612992,
+		"fy": 781.556488344658,
+		"cx": 945.4006780092606,
+		"cy": 542.9320886560653
+	},
+	"distortion_coeffs": [
+		0.2361388802177214,
+		0.3955441231320312,
+		-0.46733117607192054,
+		0.29833995971634714
+	],
+	"metadata": {
+		"calibrated_by": "casey fera",
+		"notes": "FULL FRAME",
+		"source": "gyroflow",
+		"official": true
+	}
+}

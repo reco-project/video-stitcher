@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor-8k-vv--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "CN-E18-80mm T4.4 L IS KAS S 18.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3695.8864739205887,
+		"fy": 3696.7122053787953,
+		"cx": 2904.731261586579,
+		"cy": 1632.9673012893647
+	},
+	"distortion_coeffs": [
+		0.1511685802007264,
+		0.2527181709799885,
+		-0.0734696434294904,
+		0.19258138201844743
+	],
+	"metadata": {
+		"calibrated_by": "Mischfabrik",
+		"source": "gyroflow",
+		"official": true
+	}
+}

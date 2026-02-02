@@ -1,0 +1,28 @@
+{
+	"id": "runcam-2--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1242.461798554086,
+		"fy": 1239.9897686134868,
+		"cx": 990.6486856389824,
+		"cy": 467.8185328760044
+	},
+	"distortion_coeffs": [
+		0.02597585632702739,
+		0.15885026609914854,
+		-0.3631282420008983,
+		0.2938258192160195
+	],
+	"metadata": {
+		"calibrated_by": "C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

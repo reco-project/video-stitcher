@@ -1,0 +1,29 @@
+{
+	"id": "vivo-iqoo-z1--horizontal--1920x1080",
+	"camera_brand": "Vivo",
+	"camera_model": "iQOO Z1",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1747.4443011646188,
+		"fy": 1706.0064998751698,
+		"cx": 961.6524134517554,
+		"cy": 534.2778170870463
+	},
+	"distortion_coeffs": [
+		0.40146678807518954,
+		1.0634621331119554,
+		-7.744149600271669,
+		16.079452754592978
+	],
+	"metadata": {
+		"calibrated_by": "tonylinux",
+		"notes": "Horizontal",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "iqoo-z9-turbo--3840x2160",
+	"camera_brand": "IQOO",
+	"camera_model": "Z9 Turbo",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3797.223603078651,
+		"fy": 3796.7487226460617,
+		"cx": 1916.5093452420317,
+		"cy": 1105.597124253322
+	},
+	"distortion_coeffs": [
+		0.5212787758115552,
+		-1.7496143701680966,
+		16.706905488361762,
+		-52.482341427399106
+	],
+	"metadata": {
+		"calibrated_by": "U0 A239",
+		"source": "gyroflow",
+		"official": true
+	}
+}

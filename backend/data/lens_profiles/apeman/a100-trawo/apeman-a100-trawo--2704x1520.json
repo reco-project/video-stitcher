@@ -1,0 +1,28 @@
+{
+	"id": "apeman-a100-trawo--2704x1520",
+	"camera_brand": "Apeman",
+	"camera_model": "A100 Trawo",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2502.3624585513767,
+		"fy": 2501.537403584417,
+		"cx": 1255.74705571791,
+		"cy": 696.4459696714008
+	},
+	"distortion_coeffs": [
+		-0.0923108365712973,
+		0.0212065419109562,
+		-0.011743145300009162,
+		0.04105702234417332
+	],
+	"metadata": {
+		"calibrated_by": "Francesco Trasferti",
+		"source": "gyroflow",
+		"official": true
+	}
+}

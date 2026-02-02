@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--16mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sony E 16-50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2432.586610891301,
+		"fy": 2443.2292987497294,
+		"cx": 1909.157869479613,
+		"cy": 1148.1262143271326
+	},
+	"distortion_coeffs": [
+		0.3168613731074877,
+		-0.04181750780307088,
+		0.9062041718201904,
+		-1.1416529007475071
+	],
+	"metadata": {
+		"calibrated_by": "Nathan",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

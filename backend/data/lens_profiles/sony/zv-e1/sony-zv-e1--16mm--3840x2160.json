@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--16mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "PZ 16-35 G FE4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1782.6738243144312,
+		"fy": 1781.519160029687,
+		"cx": 1920.7984287457816,
+		"cy": 1084.0971715306712
+	},
+	"distortion_coeffs": [
+		0.33167372824886293,
+		0.13706655291554148,
+		0.07491911594288768,
+		0.0033818844935649597
+	],
+	"metadata": {
+		"calibrated_by": "MG",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

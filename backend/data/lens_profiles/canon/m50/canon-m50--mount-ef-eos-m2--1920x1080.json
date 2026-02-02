@@ -1,0 +1,29 @@
+{
+	"id": "canon-m50--mount-ef-eos-m2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "M50",
+	"lens_model": "EF 40mm F2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5558.321136718005,
+		"fy": 5565.805319700214,
+		"cx": 869.1372031133955,
+		"cy": 502.40628480927506
+	},
+	"distortion_coeffs": [
+		-0.8910224443601977,
+		89.54220986425373,
+		-4327.523684401792,
+		72529.59569774142
+	],
+	"metadata": {
+		"calibrated_by": "Peerapon Ngamkana",
+		"notes": "MOUNT EF-EOS M2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

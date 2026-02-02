@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z7ii--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z7II",
+	"lens_model": "14-30",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1833.274696798274,
+		"fy": 1833.7353960866683,
+		"cx": 1915.4296744756812,
+		"cy": 1064.4430709939593
+	},
+	"distortion_coeffs": [
+		0.31458273228339695,
+		0.22692050368375413,
+		-0.1419736670372731,
+		0.1540708580445054
+	],
+	"metadata": {
+		"calibrated_by": "\u5e84\u5927\u519b",
+		"source": "gyroflow",
+		"official": true
+	}
+}

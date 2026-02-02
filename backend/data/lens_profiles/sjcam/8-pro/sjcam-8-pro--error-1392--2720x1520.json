@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-8-pro--error-1392--2720x1520",
+	"camera_brand": "SJCAM",
+	"camera_model": "8 Pro",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 2720,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1490.882087613229,
+		"fy": 1489.8453894047032,
+		"cx": 1370.4235946583678,
+		"cy": 797.519718856047
+	},
+	"distortion_coeffs": [
+		0.3320143012486487,
+		0.21538796098797935,
+		-0.09861965841358418,
+		0.14150653814849382
+	],
+	"metadata": {
+		"calibrated_by": "\u041a\u0443\u0437\u043d\u0435\u0446\u043e\u0432 \u0415\u0432\u0433\u0435\u043d\u0438\u0439 \u0420\u043e\u043c\u0430\u043d\u043e\u0432\u0438\u0447",
+		"notes": "(error 1.392)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

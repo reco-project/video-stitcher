@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--s-log3-1080p-50mb--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2085.7099019961865,
+		"fy": 2085.9442207068273,
+		"cx": 951.268536151019,
+		"cy": 529.165885167008
+	},
+	"distortion_coeffs": [
+		0.28818953472707254,
+		0.5216358322215554,
+		-1.7501669063163456,
+		2.641683141988979
+	],
+	"metadata": {
+		"calibrated_by": "Roman Elizarenko",
+		"notes": "S-LOG3, 1080p 50Mb",
+		"source": "gyroflow",
+		"official": true
+	}
+}

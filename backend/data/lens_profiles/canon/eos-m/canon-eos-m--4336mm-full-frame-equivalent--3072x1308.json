@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--4336mm-full-frame-equivalent--3072x1308",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Sigma 16mm 1.4",
+	"resolution": {
+		"width": 3072,
+		"height": 1308
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3842.187027131796,
+		"fy": 3821.752498348861,
+		"cx": 1453.8188404632297,
+		"cy": 826.661708486756
+	},
+	"distortion_coeffs": [
+		0.1861877496293109,
+		-0.03885633886752112,
+		5.743516383807728,
+		-28.124425634099772
+	],
+	"metadata": {
+		"calibrated_by": "Dylan Kress",
+		"notes": "43.36MM Full Frame Equivalent",
+		"source": "gyroflow",
+		"official": true
+	}
+}

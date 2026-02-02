@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r7--1800-shutter-speed-f28-iso1600--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R7",
+	"lens_model": "Tamron 24-70 f/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4414.555662401225,
+		"fy": 4425.959480389085,
+		"cx": 1959.6812510361208,
+		"cy": 1033.0776316070328
+	},
+	"distortion_coeffs": [
+		0.20494540046492143,
+		-0.18436712729082963,
+		3.1654367924030633,
+		-9.057650277437569
+	],
+	"metadata": {
+		"calibrated_by": "Brian Pickerel",
+		"notes": "1/800 shutter speed, f2.8, iso1600",
+		"source": "gyroflow",
+		"official": true
+	}
+}

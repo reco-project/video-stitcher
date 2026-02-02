@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero10-black--no-eis--2327x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO10 Black",
+	"lens_model": "Anamorphic 1.212",
+	"resolution": {
+		"width": 2327,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 971.1436204179196,
+		"fy": 930.5167760829248,
+		"cx": 1115.628918327304,
+		"cy": 545.6104101553236
+	},
+	"distortion_coeffs": [
+		0.27810622945007185,
+		-0.014399339616477129,
+		0.03243042521761173,
+		0.000678427510481464
+	],
+	"metadata": {
+		"calibrated_by": "Mylez Molo",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

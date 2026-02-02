@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-h1--2048x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H1",
+	"lens_model": "XF 16-55 F/2.8",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1424.842085196734,
+		"fy": 1421.910554415516,
+		"cx": 1027.9506772262375,
+		"cy": 577.67755875235
+	},
+	"distortion_coeffs": [
+		0.32249203394065024,
+		0.09325155843230924,
+		0.07852956741251249,
+		0.21188671388684735
+	],
+	"metadata": {
+		"calibrated_by": "Mike",
+		"source": "gyroflow",
+		"official": true
+	}
+}

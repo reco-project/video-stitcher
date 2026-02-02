@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-9t--30fps--1920x1080",
+	"camera_brand": "OnePlus",
+	"camera_model": "9T",
+	"lens_model": "Mobile/wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1329.8672077218555,
+		"fy": 1326.1036164841455,
+		"cx": 947.2703754409824,
+		"cy": 526.3670978678831
+	},
+	"distortion_coeffs": [
+		0.5306854177848702,
+		-1.3887948380331343,
+		5.477147748975672,
+		-6.896101481995296
+	],
+	"metadata": {
+		"calibrated_by": "Clout.fx",
+		"notes": "30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

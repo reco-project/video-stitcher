@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--60mm-s35-recorded-at-40fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 60mm f/2.8 Macro-Elmarit-R",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14762.54768912505,
+		"fy": 14752.949387621627,
+		"cx": 3040.903594805173,
+		"cy": 1662.855118604262
+	},
+	"distortion_coeffs": [
+		0.3112824633115537,
+		2.813610277706683,
+		-102.23847262089112,
+		1065.7444826247045
+	],
+	"metadata": {
+		"calibrated_by": "windcine",
+		"notes": "60mm, S35, recorded at 40fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

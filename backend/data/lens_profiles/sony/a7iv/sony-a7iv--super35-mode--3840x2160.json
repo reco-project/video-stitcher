@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--super35-mode--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sony FE 35 mm F1.4 GM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6384.795723747689,
+		"fy": 6238.939282887302,
+		"cx": 1816.5264046708949,
+		"cy": 1026.308629261942
+	},
+	"distortion_coeffs": [
+		0.3031503848734372,
+		-0.3871691339672309,
+		29.0695386682667,
+		-249.6119509130347
+	],
+	"metadata": {
+		"calibrated_by": "Carsten Senkfeil",
+		"notes": "Super35 Mode",
+		"source": "gyroflow",
+		"official": true
+	}
+}

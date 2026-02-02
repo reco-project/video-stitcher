@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh2--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "xh2",
+	"lens_model": "1835",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1570.6666018522033,
+		"fy": 1569.0752256133262,
+		"cx": 971.4155174506868,
+		"cy": 533.5993717111298
+	},
+	"distortion_coeffs": [
+		0.19319980795757327,
+		0.4652780173377214,
+		-1.0589516689044798,
+		1.5409791849606904
+	],
+	"metadata": {
+		"calibrated_by": "yun yun",
+		"source": "gyroflow",
+		"official": true
+	}
+}

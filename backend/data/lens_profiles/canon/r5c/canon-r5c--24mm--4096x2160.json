@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--24mm--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "RF24 105 F4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2816.521120411752,
+		"fy": 2817.141252294336,
+		"cx": 2059.657397615817,
+		"cy": 1106.0326591132794
+	},
+	"distortion_coeffs": [
+		0.23243754576815803,
+		0.05619180534068277,
+		0.30145887750214745,
+		-0.1314755086746595
+	],
+	"metadata": {
+		"calibrated_by": "woo guns",
+		"notes": "@24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

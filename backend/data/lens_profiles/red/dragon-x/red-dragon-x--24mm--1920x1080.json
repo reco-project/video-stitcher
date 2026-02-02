@@ -1,0 +1,29 @@
+{
+	"id": "red-dragon-x--24mm--1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "DRAGON X",
+	"lens_model": "CANON 24-105 II",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2406.6537234323687,
+		"fy": 2405.2445734244984,
+		"cx": 956.534636610292,
+		"cy": 550.4540682343381
+	},
+	"distortion_coeffs": [
+		0.20092743811731148,
+		0.701626886474704,
+		-3.2113175771508553,
+		4.4064000533983405
+	],
+	"metadata": {
+		"calibrated_by": "vincent reynaud",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

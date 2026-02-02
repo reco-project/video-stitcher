@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t100--1920x1080",
+	"camera_brand": "fujifilm",
+	"camera_model": "X-T100",
+	"lens_model": "xc 50 203",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5251.900388418083,
+		"fy": 5257.225956372354,
+		"cx": 936.4312662499568,
+		"cy": 548.7640714533192
+	},
+	"distortion_coeffs": [
+		0.28043422278830166,
+		13.138636234649558,
+		-781.199774966147,
+		15760.031410957456
+	],
+	"metadata": {
+		"calibrated_by": "ENZO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

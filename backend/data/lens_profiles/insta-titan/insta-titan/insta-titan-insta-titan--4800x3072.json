@@ -1,0 +1,28 @@
+{
+	"id": "insta-titan-insta-titan--4800x3072",
+	"camera_brand": "Insta Titan",
+	"camera_model": "Insta Titan",
+	"lens_model": null,
+	"resolution": {
+		"width": 4800,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1723.774815255298,
+		"fy": 1641.8171049781522,
+		"cx": 2385.282435907384,
+		"cy": 1524.1914989354775
+	},
+	"distortion_coeffs": [
+		-0.014651351350284322,
+		-0.010512265217607982,
+		-0.011236027606174969,
+		0.004390003340855457
+	],
+	"metadata": {
+		"calibrated_by": "Wlodek Zieland",
+		"source": "gyroflow",
+		"official": true
+	}
+}

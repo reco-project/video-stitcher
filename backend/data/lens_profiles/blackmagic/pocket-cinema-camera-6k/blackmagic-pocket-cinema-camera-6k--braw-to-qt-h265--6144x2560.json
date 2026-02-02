@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--braw-to-qt-h265--6144x2560",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Rokinon 20mm T1.9",
+	"resolution": {
+		"width": 6144,
+		"height": 2560
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5598.142176493145,
+		"fy": 5596.112374779735,
+		"cx": 3046.115969547566,
+		"cy": 1280.6519414185718
+	},
+	"distortion_coeffs": [
+		0.2997857611074391,
+		-0.4084931469721744,
+		3.837892583430051,
+		-7.815239149383394
+	],
+	"metadata": {
+		"calibrated_by": "Chad Miller",
+		"notes": "BRAW TO QT H265",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--25k-frtp-21--2208x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Sigma 17-50 f2.8-4.5",
+	"resolution": {
+		"width": 2208,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5200.757716165427,
+		"fy": 5217.173425188811,
+		"cx": 1049.8452707348813,
+		"cy": 722.3748096799134
+	},
+	"distortion_coeffs": [
+		0.42081298921734567,
+		1.9723973998653928,
+		-56.25809498804176,
+		519.8338863104672
+	],
+	"metadata": {
+		"calibrated_by": "Oleksandr M\u00fcller",
+		"notes": "2.5k frtp 2:1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "oppo-find-x-6-pro--3852x2184",
+	"camera_brand": "Oppo",
+	"camera_model": "Find X 6 Pro",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3852,
+		"height": 2184
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2801.210384623819,
+		"fy": 2802.0011141434693,
+		"cx": 1919.7093713940108,
+		"cy": 1102.8767624559302
+	},
+	"distortion_coeffs": [
+		0.6794549008488279,
+		-3.0552753063904525,
+		10.256655442219907,
+		-11.280370654909586
+	],
+	"metadata": {
+		"calibrated_by": "OG",
+		"source": "gyroflow",
+		"official": true
+	}
+}

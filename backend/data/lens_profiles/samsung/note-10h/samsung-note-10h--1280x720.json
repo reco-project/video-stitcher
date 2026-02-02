@@ -1,0 +1,28 @@
+{
+	"id": "samsung-note-10h--1280x720",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 10H",
+	"lens_model": "\u6807\u51c6",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1266.199959210119,
+		"fy": 1265.1759354958667,
+		"cx": 644.7421335789542,
+		"cy": 351.9174560871771
+	},
+	"distortion_coeffs": [
+		0.7155079767532744,
+		-2.2043501333979045,
+		2.744413501049874,
+		7.386322458274312
+	],
+	"metadata": {
+		"calibrated_by": "sun",
+		"source": "gyroflow",
+		"official": true
+	}
+}

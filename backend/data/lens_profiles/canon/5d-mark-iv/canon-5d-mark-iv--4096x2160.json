@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d-mark-iv--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark IV",
+	"lens_model": "EF24-70f2.8 II",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7241.944310246504,
+		"fy": 7191.202616332456,
+		"cx": 2187.384668779141,
+		"cy": 833.8863046115839
+	},
+	"distortion_coeffs": [
+		0.2573618957637619,
+		2.3428869610680216,
+		-57.26098134142652,
+		476.3224593384258
+	],
+	"metadata": {
+		"calibrated_by": "apple",
+		"source": "gyroflow",
+		"official": true
+	}
+}

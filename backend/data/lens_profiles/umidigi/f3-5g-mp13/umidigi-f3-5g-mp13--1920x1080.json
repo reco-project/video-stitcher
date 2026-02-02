@@ -1,0 +1,28 @@
+{
+	"id": "umidigi-f3-5g-mp13--1920x1080",
+	"camera_brand": "UMIDIGI",
+	"camera_model": "F3 5G MP13",
+	"lens_model": "Sony 48MP Camera",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1536.6036380521798,
+		"fy": 1538.1530301999703,
+		"cx": 982.7276051000644,
+		"cy": 539.2326735046788
+	},
+	"distortion_coeffs": [
+		0.4304814130583636,
+		0.15880801726976732,
+		-0.413761009669758,
+		0.012214543844483094
+	],
+	"metadata": {
+		"calibrated_by": "Jeremy Blackwood",
+		"source": "gyroflow",
+		"official": true
+	}
+}

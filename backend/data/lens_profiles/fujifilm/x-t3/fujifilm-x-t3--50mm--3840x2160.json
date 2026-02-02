@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--50mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "Industar 61",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9035.089325352705,
+		"fy": 9029.800520244522,
+		"cx": 1948.0927644319404,
+		"cy": 987.5193464984618
+	},
+	"distortion_coeffs": [
+		0.23552402656585625,
+		-3.3781751020065456,
+		242.6272480936311,
+		-4188.419805507696
+	],
+	"metadata": {
+		"calibrated_by": "David Hoult",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

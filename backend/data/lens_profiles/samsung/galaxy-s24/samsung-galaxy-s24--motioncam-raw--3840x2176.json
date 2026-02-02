@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s24--motioncam-raw--3840x2176",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S24",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2663.403033670191,
+		"fy": 2664.0585157605633,
+		"cx": 1923.233532314496,
+		"cy": 1077.3863951766712
+	},
+	"distortion_coeffs": [
+		0.4318546073721344,
+		-0.05406706578864078,
+		0.2536007349046433,
+		0.05523963831530326
+	],
+	"metadata": {
+		"calibrated_by": "db",
+		"notes": "motioncam raw",
+		"source": "gyroflow",
+		"official": true
+	}
+}

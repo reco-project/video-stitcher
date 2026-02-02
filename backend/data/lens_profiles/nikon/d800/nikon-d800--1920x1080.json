@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d800--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D800",
+	"lens_model": "24-120mm f4 @ 120mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6007.246881651213,
+		"fy": 6018.166293338177,
+		"cx": 967.0026449740463,
+		"cy": 549.6267247130269
+	},
+	"distortion_coeffs": [
+		1.4199681388175367,
+		-36.314995836466935,
+		2956.8591989986303,
+		-81053.6303756257
+	],
+	"metadata": {
+		"calibrated_by": "chen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

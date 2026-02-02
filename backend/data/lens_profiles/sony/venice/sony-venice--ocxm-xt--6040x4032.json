@@ -1,0 +1,29 @@
+{
+	"id": "sony-venice--ocxm-xt--6040x4032",
+	"camera_brand": "Sony",
+	"camera_model": "Venice",
+	"lens_model": "Canon K35 50mm",
+	"resolution": {
+		"width": 6040,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8958.896419671744,
+		"fy": 8947.127235541595,
+		"cx": 3073.9922458965248,
+		"cy": 2042.4931888088631
+	},
+	"distortion_coeffs": [
+		0.1226990831293128,
+		0.41550585413960106,
+		-3.674188177114023,
+		14.318737547780795
+	],
+	"metadata": {
+		"calibrated_by": "Nikolai Zychowicz",
+		"notes": "OCXM XT",
+		"source": "gyroflow",
+		"official": true
+	}
+}

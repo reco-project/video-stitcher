@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--12mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Laowa",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1373.060209431026,
+		"fy": 1373.4706430252495,
+		"cx": 1895.7291516863288,
+		"cy": 1062.525657199329
+	},
+	"distortion_coeffs": [
+		0.2784435216869319,
+		0.3129071683487226,
+		-0.21377888949532753,
+		0.1611055004619681
+	],
+	"metadata": {
+		"calibrated_by": "Guillaume",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

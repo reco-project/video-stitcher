@@ -1,0 +1,28 @@
+{
+	"id": "visuo-zen-k1--1920x1080",
+	"camera_brand": "Visuo",
+	"camera_model": "Zen K1",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1498.3218775654975,
+		"fy": 1507.3194520760844,
+		"cx": 930.7368562804264,
+		"cy": 602.511310243159
+	},
+	"distortion_coeffs": [
+		-0.14772546725581318,
+		0.38535982156706344,
+		-1.821045036252371,
+		2.9945973247679993
+	],
+	"metadata": {
+		"calibrated_by": "rutger van zanten",
+		"source": "gyroflow",
+		"official": true
+	}
+}

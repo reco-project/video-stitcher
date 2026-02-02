@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh-2s--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XH-2s",
+	"lens_model": "xf18-200mmF4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2472.824157449704,
+		"fy": 2476.953272235097,
+		"cx": 1893.3316985013648,
+		"cy": 944.280008941152
+	},
+	"distortion_coeffs": [
+		0.31117226228683287,
+		0.23180973228678547,
+		-0.13546885268787284,
+		0.16779277232752204
+	],
+	"metadata": {
+		"calibrated_by": "tree",
+		"source": "gyroflow",
+		"official": true
+	}
+}

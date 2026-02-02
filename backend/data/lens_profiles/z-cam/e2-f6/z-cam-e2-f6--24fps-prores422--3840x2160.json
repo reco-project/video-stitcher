@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-f6--24fps-prores422--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "Sigma Art 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4044.824637887066,
+		"fy": 4059.699181856072,
+		"cx": 1884.1646643570964,
+		"cy": 1036.7533037707817
+	},
+	"distortion_coeffs": [
+		0.32770796930215984,
+		-0.516805166202471,
+		4.278267449452767,
+		-8.532885357430168
+	],
+	"metadata": {
+		"calibrated_by": "Skybound MBK",
+		"notes": "24fps ProRes422",
+		"source": "gyroflow",
+		"official": true
+	}
+}

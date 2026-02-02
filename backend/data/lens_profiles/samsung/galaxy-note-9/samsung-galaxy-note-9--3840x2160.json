@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-note-9--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Note 9",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2842.284613872125,
+		"fy": 2839.728864499471,
+		"cx": 1949.0934876434028,
+		"cy": 1066.4055617079878
+	},
+	"distortion_coeffs": [
+		0.7341155358973045,
+		-2.6207666963725043,
+		7.739410399066024,
+		-7.475636870062305
+	],
+	"metadata": {
+		"calibrated_by": "Sphelx",
+		"source": "gyroflow",
+		"official": true
+	}
+}

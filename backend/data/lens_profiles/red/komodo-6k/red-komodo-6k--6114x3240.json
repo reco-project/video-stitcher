@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-6k--6114x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DULENS58",
+	"resolution": {
+		"width": 6114,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9660.572145109503,
+		"fy": 9655.525512867098,
+		"cx": 3052.913242955402,
+		"cy": 1600.1105460312542
+	},
+	"distortion_coeffs": [
+		0.16436444301740702,
+		2.170232733073462,
+		-18.168894187856516,
+		141.5083578703833
+	],
+	"metadata": {
+		"calibrated_by": "LIAN",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bs1h--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "BS1H",
+	"lens_model": "Sigma 20mm DN NG",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2442.6640432086674,
+		"fy": 2439.7875863531094,
+		"cx": 2059.081300657899,
+		"cy": 1071.092997220933
+	},
+	"distortion_coeffs": [
+		0.3612666167872627,
+		0.02310879659898412,
+		0.47469363558182465,
+		-0.375163046195026
+	],
+	"metadata": {
+		"calibrated_by": "Robert Okker",
+		"source": "gyroflow",
+		"official": true
+	}
+}

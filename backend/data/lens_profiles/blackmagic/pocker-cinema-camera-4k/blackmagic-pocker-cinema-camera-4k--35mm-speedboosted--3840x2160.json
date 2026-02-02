@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocker-cinema-camera-4k--35mm-speedboosted--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocker Cinema Camera 4k",
+	"lens_model": "Sigma 18-50mm f2.8-4.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7918.673099921656,
+		"fy": 7924.071115977719,
+		"cx": 1929.939534206867,
+		"cy": 1115.7997406398315
+	},
+	"distortion_coeffs": [
+		0.30675528728436097,
+		6.7415538617150705,
+		-112.17008955575363,
+		817.7765909455993
+	],
+	"metadata": {
+		"calibrated_by": "Oleksandr",
+		"notes": "35mm Speedboosted",
+		"source": "gyroflow",
+		"official": true
+	}
+}

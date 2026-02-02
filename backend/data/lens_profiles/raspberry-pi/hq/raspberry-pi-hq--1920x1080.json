@@ -1,0 +1,28 @@
+{
+	"id": "raspberry-pi-hq--1920x1080",
+	"camera_brand": "Raspberry Pi",
+	"camera_model": "HQ",
+	"lens_model": "3.2mm Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1040.3775744906304,
+		"fy": 1040.5506316430435,
+		"cx": 972.1106775636208,
+		"cy": 555.9756776628125
+	},
+	"distortion_coeffs": [
+		0.018110437444395684,
+		0.01182047433476125,
+		-0.02026811638979129,
+		0.010572977402361478
+	],
+	"metadata": {
+		"calibrated_by": "Diego Hoyos Robles",
+		"source": "gyroflow",
+		"official": true
+	}
+}

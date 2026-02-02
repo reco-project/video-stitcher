@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-6-pro--24mm-f185--4032x2268",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6 Pro",
+	"lens_model": "Main Wide",
+	"resolution": {
+		"width": 4032,
+		"height": 2268
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1902.0747761717876,
+		"fy": 1906.3175401457345,
+		"cx": 1987.777308124608,
+		"cy": 1133.918842843417
+	},
+	"distortion_coeffs": [
+		0.3625706225903462,
+		-0.20056307832322265,
+		0.9664271922442892,
+		-0.5245062859795965
+	],
+	"metadata": {
+		"calibrated_by": "GrumpyGuy",
+		"notes": "24mm f/1.85",
+		"source": "gyroflow",
+		"official": true
+	}
+}

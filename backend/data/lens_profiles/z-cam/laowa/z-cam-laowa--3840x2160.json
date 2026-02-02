@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-laowa--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "laowa",
+	"lens_model": "MFT7.5mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1670.445899447816,
+		"fy": 1670.1926146612764,
+		"cx": 1954.4720491618991,
+		"cy": 1064.755952491408
+	},
+	"distortion_coeffs": [
+		0.32038338672180505,
+		0.17410659498275663,
+		-0.129749401805063,
+		0.1487431145665223
+	],
+	"metadata": {
+		"calibrated_by": "86152",
+		"source": "gyroflow",
+		"official": true
+	}
+}

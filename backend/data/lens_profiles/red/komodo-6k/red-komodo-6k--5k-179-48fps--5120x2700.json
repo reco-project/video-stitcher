@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--5k-179-48fps--5120x2700",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "LAOWA 11MM F4.5",
+	"resolution": {
+		"width": 5120,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2604.307937841147,
+		"fy": 2606.226163401908,
+		"cx": 2564.522355579354,
+		"cy": 1329.957762346657
+	},
+	"distortion_coeffs": [
+		0.3308197786732109,
+		0.11114694117384856,
+		0.004759315033578012,
+		0.06390913219107731
+	],
+	"metadata": {
+		"calibrated_by": "JAY RIVERA",
+		"notes": "5K 17:9 48FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

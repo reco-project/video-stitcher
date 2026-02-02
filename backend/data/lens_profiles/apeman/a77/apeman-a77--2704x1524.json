@@ -1,0 +1,28 @@
+{
+	"id": "apeman-a77--2704x1524",
+	"camera_brand": "apeman",
+	"camera_model": "A77",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1524
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1580.1347192250666,
+		"fy": 1577.343750257994,
+		"cx": 1432.1458772180126,
+		"cy": 763.479411318294
+	},
+	"distortion_coeffs": [
+		-0.03972075925477921,
+		-0.010612567997727008,
+		0.05937818007944879,
+		-0.05742811506629743
+	],
+	"metadata": {
+		"calibrated_by": "Giovanni Riccio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

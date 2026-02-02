@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-5-iii-cinema-pro--2520x1080",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 5 iii Cinema pro",
+	"lens_model": "Cinema pro",
+	"resolution": {
+		"width": 2520,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1277.6450991724842,
+		"fy": 1278.7389893900586,
+		"cx": 1258.9215209444285,
+		"cy": 550.4984485920216
+	},
+	"distortion_coeffs": [
+		0.23954022664589927,
+		0.7013527085729991,
+		-1.162207731998437,
+		0.976878819029543
+	],
+	"metadata": {
+		"calibrated_by": "U0 A499",
+		"source": "gyroflow",
+		"official": true
+	}
+}

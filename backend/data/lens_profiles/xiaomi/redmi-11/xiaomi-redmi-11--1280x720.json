@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-11--1280x720",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi 11",
+	"lens_model": "29",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 740.1074032710554,
+		"fy": 738.0934361711336,
+		"cx": 639.7943976708254,
+		"cy": 369.1086284643162
+	},
+	"distortion_coeffs": [
+		0.3106391717481538,
+		-0.21176597614018183,
+		1.1102803626615654,
+		-0.8177025729083525
+	],
+	"metadata": {
+		"calibrated_by": "fsb fsb",
+		"source": "gyroflow",
+		"official": true
+	}
+}

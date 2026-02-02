@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--plz-suck-my-dxck--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "70.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 27082.71126020184,
+		"fy": 27146.31208909176,
+		"cx": 1865.3700884406735,
+		"cy": 1084.0170955893243
+	},
+	"distortion_coeffs": [
+		3.467388715944117,
+		-188.64772978429497,
+		26423.541957954803,
+		-42246.1088034878
+	],
+	"metadata": {
+		"calibrated_by": "MattWorks",
+		"notes": "plz suck my dxck",
+		"source": "gyroflow",
+		"official": true
+	}
+}

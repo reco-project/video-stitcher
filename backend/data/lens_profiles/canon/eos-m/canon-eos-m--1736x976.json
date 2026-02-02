@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--1736x976",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "efm 15-45",
+	"resolution": {
+		"width": 1736,
+		"height": 976
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1201.9587206300894,
+		"fy": 1203.4297412588437,
+		"cx": 870.8211024902819,
+		"cy": 483.0322560079398
+	},
+	"distortion_coeffs": [
+		0.19999680463283387,
+		0.0654081535023124,
+		0.5386800869969613,
+		-0.7379307921503363
+	],
+	"metadata": {
+		"calibrated_by": "amit kattal",
+		"source": "gyroflow",
+		"official": true
+	}
+}

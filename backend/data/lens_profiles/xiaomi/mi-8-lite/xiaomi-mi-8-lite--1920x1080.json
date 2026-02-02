@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-8-lite--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 8 Lite",
+	"lens_model": "Sony IMX 363",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1488.1327439960064,
+		"fy": 1487.8692280666771,
+		"cx": 1016.1374818224804,
+		"cy": 544.6764376353452
+	},
+	"distortion_coeffs": [
+		0.5907797611102072,
+		-1.592584251962928,
+		4.692799575868951,
+		-4.5688013955114775
+	],
+	"metadata": {
+		"calibrated_by": "emboech",
+		"source": "gyroflow",
+		"official": true
+	}
+}

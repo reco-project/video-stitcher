@@ -1,0 +1,28 @@
+{
+	"id": "kinefinity-terra-4k--4096x2160",
+	"camera_brand": "Kinefinity",
+	"camera_model": "TERRA 4k",
+	"lens_model": "DULENS 31mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5164.373958746737,
+		"fy": 5163.492982054841,
+		"cx": 2123.477648913172,
+		"cy": 1090.6695254638698
+	},
+	"distortion_coeffs": [
+		0.18999011879688013,
+		0.631695477387115,
+		-1.792050465472662,
+		3.865310684987509
+	],
+	"metadata": {
+		"calibrated_by": "BenCoope",
+		"source": "gyroflow",
+		"official": true
+	}
+}

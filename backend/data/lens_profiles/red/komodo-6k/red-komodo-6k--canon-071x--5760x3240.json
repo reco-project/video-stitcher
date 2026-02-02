@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-071x--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF11-24mm f/4L USM 11.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1809.0815893904355,
+		"fy": 1807.784928042142,
+		"cx": 2877.837334192903,
+		"cy": 1611.4935259638326
+	},
+	"distortion_coeffs": [
+		0.31248908296883054,
+		0.20503283960370008,
+		-0.12348340967110095,
+		0.1081520975747362
+	],
+	"metadata": {
+		"calibrated_by": "Melvin Ong",
+		"notes": "Canon 0.71X",
+		"source": "gyroflow",
+		"official": true
+	}
+}

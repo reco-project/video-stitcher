@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--75mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "SAMYANG_V-AF 75mm T1.9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8602.075199126539,
+		"fy": 8597.525380039779,
+		"cx": 1879.2159423744065,
+		"cy": 1172.1931142066703
+	},
+	"distortion_coeffs": [
+		0.42912434340375666,
+		5.385748101828481,
+		-83.85085975598263,
+		-181.30245663794136
+	],
+	"metadata": {
+		"calibrated_by": "Norman Lee",
+		"notes": "75mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

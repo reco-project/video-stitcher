@@ -1,0 +1,28 @@
+{
+	"id": "samsung-nx300--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "NX300",
+	"lens_model": "18mm-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1546.1303011663,
+		"fy": 1554.023668361427,
+		"cx": 955.4608188187424,
+		"cy": 543.047404174022
+	},
+	"distortion_coeffs": [
+		0.06950896155146037,
+		1.0372374267380984,
+		-3.3018210679931186,
+		4.523818177254568
+	],
+	"metadata": {
+		"calibrated_by": "Noah Schmeissner",
+		"source": "gyroflow",
+		"official": true
+	}
+}

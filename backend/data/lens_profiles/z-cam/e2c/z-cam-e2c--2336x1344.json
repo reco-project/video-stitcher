@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2c--2336x1344",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2c",
+	"lens_model": "8mm",
+	"resolution": {
+		"width": 2336,
+		"height": 1344
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1205.6540557912017,
+		"fy": 1205.5745344902875,
+		"cx": 1181.972666969495,
+		"cy": 656.3779324129447
+	},
+	"distortion_coeffs": [
+		0.27203633623591167,
+		0.12866954768028213,
+		0.11259469856899249,
+		-0.06348601843907421
+	],
+	"metadata": {
+		"calibrated_by": "wanghai",
+		"source": "gyroflow",
+		"official": true
+	}
+}

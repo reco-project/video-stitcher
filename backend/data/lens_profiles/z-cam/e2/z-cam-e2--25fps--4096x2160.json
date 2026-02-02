@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2--25fps--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Laowa 12mm SB0.64",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1808.9088251252845,
+		"fy": 1808.5651012276471,
+		"cx": 2067.3017588068137,
+		"cy": 1069.4568879784235
+	},
+	"distortion_coeffs": [
+		0.3098501259778863,
+		0.21541821239531644,
+		-0.20414492554347716,
+		0.23622082339343137
+	],
+	"metadata": {
+		"calibrated_by": "John Koukouzis",
+		"notes": "25fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7",
+	"lens_model": "VILTROX AF 20mm F2.8 FE 56A11",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 907.0381968665448,
+		"fy": 1208.01500796019,
+		"cx": 706.3758239184428,
+		"cy": 535.4175363792444
+	},
+	"distortion_coeffs": [
+		0.22003934926318192,
+		0.26406476479354024,
+		-0.5742177425671097,
+		1.066101406191466
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u6df3\u9e6d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

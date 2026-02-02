@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-hd-mini-1s-lite--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar HD Mini 1s Lite",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 794.6692911638156,
+		"fy": 795.0526496016363,
+		"cx": 974.8093708899064,
+		"cy": 511.4581561182778
+	},
+	"distortion_coeffs": [
+		0.008064489207325052,
+		-0.058189813235494874,
+		0.032066357508787446,
+		-0.007640948146204431
+	],
+	"metadata": {
+		"calibrated_by": "Nohira Kosuke",
+		"source": "gyroflow",
+		"official": true
+	}
+}

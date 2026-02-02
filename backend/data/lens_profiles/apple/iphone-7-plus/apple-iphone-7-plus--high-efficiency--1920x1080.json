@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-7-plus--high-efficiency--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 7 Plus",
+	"lens_model": "HDR",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1784.4593154649006,
+		"fy": 1784.2860314695686,
+		"cx": 947.5881519734968,
+		"cy": 520.8455876371626
+	},
+	"distortion_coeffs": [
+		0.5992490713660215,
+		-1.2996438399124708,
+		0.8410191408861938,
+		8.065951315242105
+	],
+	"metadata": {
+		"calibrated_by": "La rry",
+		"notes": "High Efficiency",
+		"source": "gyroflow",
+		"official": true
+	}
+}

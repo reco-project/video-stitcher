@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lx100--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lx100",
+	"lens_model": "Vario 1:1.7 - 2.8/10.9-34",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2752.794047075776,
+		"fy": 2755.920882274237,
+		"cx": 1907.505060128154,
+		"cy": 1070.6172794966806
+	},
+	"distortion_coeffs": [
+		0.2646789744324759,
+		0.4314988147397816,
+		-0.9172489478455592,
+		1.2943057240355
+	],
+	"metadata": {
+		"calibrated_by": "1Bruno Polizzi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

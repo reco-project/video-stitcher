@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-e2--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-E2",
+	"lens_model": "16-50F3.5-5.6",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1469.3815742783647,
+		"fy": 1467.057035324343,
+		"cx": 921.2411842534792,
+		"cy": 562.7018709815238
+	},
+	"distortion_coeffs": [
+		0.16698590247627915,
+		0.5924590211442632,
+		-1.2867280663631249,
+		1.6009490823125747
+	],
+	"metadata": {
+		"calibrated_by": "Ignat",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s5kgm2--12mp--1280x720",
+	"camera_brand": "Samsung",
+	"camera_model": "s5kgm2",
+	"lens_model": "s5kgm2",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 939.7414341643602,
+		"fy": 942.8490724181962,
+		"cx": 657.8330550275609,
+		"cy": 359.7236988887843
+	},
+	"distortion_coeffs": [
+		0.41518771992411513,
+		-0.2878247383459585,
+		1.1324304123523146,
+		-1.3509460482005056
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"notes": "12MP",
+		"source": "gyroflow",
+		"official": true
+	}
+}

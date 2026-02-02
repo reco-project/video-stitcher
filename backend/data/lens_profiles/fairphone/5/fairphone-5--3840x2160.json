@@ -1,0 +1,28 @@
+{
+	"id": "fairphone-5--3840x2160",
+	"camera_brand": "Fairphone",
+	"camera_model": "5",
+	"lens_model": "13mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1461.3347047706543,
+		"fy": 1465.0211264561185,
+		"cx": 1911.4397939815085,
+		"cy": 1066.867981774616
+	},
+	"distortion_coeffs": [
+		0.2984088633112577,
+		0.24841800952671625,
+		-0.10295386419464304,
+		0.08039190870151912
+	],
+	"metadata": {
+		"calibrated_by": "ib",
+		"source": "gyroflow",
+		"official": true
+	}
+}

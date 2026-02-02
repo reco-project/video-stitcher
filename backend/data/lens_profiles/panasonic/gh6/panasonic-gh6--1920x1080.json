@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh6--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "Sigma 16mm f/1.4 DC DN Contemporary Lens (MFT)",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1864.0043034025691,
+		"fy": 1865.911612711534,
+		"cx": 979.3499086308476,
+		"cy": 529.987449883786
+	},
+	"distortion_coeffs": [
+		0.3302318619796275,
+		0.3800639216592335,
+		-1.8856256159808225,
+		3.735660895173309
+	],
+	"metadata": {
+		"calibrated_by": "Evanie Berio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

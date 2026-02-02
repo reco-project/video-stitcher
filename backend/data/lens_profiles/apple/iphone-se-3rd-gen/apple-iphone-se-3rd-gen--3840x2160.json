@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-se-3rd-gen--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone SE (3rd gen)",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3369.6924545569736,
+		"fy": 3364.972319055242,
+		"cx": 1927.185499268465,
+		"cy": 1043.55095034623
+	},
+	"distortion_coeffs": [
+		0.6689605246529157,
+		-2.2981234095043392,
+		5.396259859576416,
+		1.8777655440945904
+	],
+	"metadata": {
+		"calibrated_by": "\u59dc\u946b\u9053",
+		"source": "gyroflow",
+		"official": true
+	}
+}

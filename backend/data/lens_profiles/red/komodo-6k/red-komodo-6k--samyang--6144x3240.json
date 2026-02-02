@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--samyang--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "14.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2268.4852393403617,
+		"fy": 2268.794897846806,
+		"cx": 3068.6673916534414,
+		"cy": 1637.831171018945
+	},
+	"distortion_coeffs": [
+		0.2546915791865897,
+		0.2323435581394126,
+		-0.19880327719054505,
+		0.1940691525072789
+	],
+	"metadata": {
+		"calibrated_by": "Subae Haitham",
+		"notes": "samyang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

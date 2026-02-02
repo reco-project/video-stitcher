@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s8--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S8",
+	"lens_model": "rear",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1498.9501683731453,
+		"fy": 1498.3275235876197,
+		"cx": 925.1828884546838,
+		"cy": 507.4592658702605
+	},
+	"distortion_coeffs": [
+		0.46118906436648305,
+		0.24242545874143073,
+		-3.049820733423633,
+		6.091590422911428
+	],
+	"metadata": {
+		"calibrated_by": "Tiger Boy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

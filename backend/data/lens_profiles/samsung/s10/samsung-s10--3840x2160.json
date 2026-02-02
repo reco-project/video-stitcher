@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s10--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S10+",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3043.962352639375,
+		"fy": 3041.8221600702286,
+		"cx": 1863.4672529015927,
+		"cy": 1028.68064314369
+	},
+	"distortion_coeffs": [
+		0.8549901304789912,
+		-4.146361063947679,
+		14.154728705930046,
+		-15.679353013948724
+	],
+	"metadata": {
+		"calibrated_by": "yoga sabraina",
+		"source": "gyroflow",
+		"official": true
+	}
+}

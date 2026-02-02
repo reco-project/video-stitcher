@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-8-pro--1440x1080",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 8 Pro",
+	"lens_model": "Middle",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1095.2963164211762,
+		"fy": 1096.5047852317507,
+		"cx": 709.1917588334131,
+		"cy": 532.3608276008888
+	},
+	"distortion_coeffs": [
+		0.41718950856205345,
+		0.14483591308791294,
+		-0.5669646381379803,
+		1.074143493369906
+	],
+	"metadata": {
+		"calibrated_by": "Theo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

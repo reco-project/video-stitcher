@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh5ii--12mm-setting--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5ii",
+	"lens_model": "Leica DG 12-60",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3933.931685741552,
+		"fy": 3933.1018524882297,
+		"cx": 2094.8381174378787,
+		"cy": 1236.1515722472002
+	},
+	"distortion_coeffs": [
+		0.2588341754227835,
+		0.016214581770357582,
+		0.45667168083173,
+		-0.9683279457098548
+	],
+	"metadata": {
+		"calibrated_by": "dr000minFPV",
+		"notes": "12mm setting",
+		"source": "gyroflow",
+		"official": true
+	}
+}

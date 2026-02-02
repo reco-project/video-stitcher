@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--x128-crop-sensor--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "fujinon 14mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2876.7697931180005,
+		"fy": 2876.0034419447625,
+		"cx": 1898.7684148999383,
+		"cy": 1063.1997318163942
+	},
+	"distortion_coeffs": [
+		0.30616518856765673,
+		0.2845557313932949,
+		-0.5651842917119471,
+		0.8345150727593791
+	],
+	"metadata": {
+		"calibrated_by": "Florent CURK",
+		"notes": "x1.28 crop sensor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

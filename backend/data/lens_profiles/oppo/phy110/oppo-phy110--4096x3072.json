@@ -1,0 +1,28 @@
+{
+	"id": "oppo-phy110--4096x3072",
+	"camera_brand": "OPPO",
+	"camera_model": "PHY110",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2581.7195372371457,
+		"fy": 2582.1297710968506,
+		"cx": 2111.3165916876656,
+		"cy": 1464.4844544622083
+	},
+	"distortion_coeffs": [
+		0.5136229636578576,
+		-0.9408008484259632,
+		2.3788501687306853,
+		-1.6960264864977366
+	],
+	"metadata": {
+		"calibrated_by": "drnino",
+		"source": "gyroflow",
+		"official": true
+	}
+}

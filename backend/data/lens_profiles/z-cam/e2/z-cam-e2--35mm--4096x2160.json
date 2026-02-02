@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2--35mm--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Lumix 12-35 f2.8 DG",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8225.609887071452,
+		"fy": 8224.045822332624,
+		"cx": 2091.2669097164794,
+		"cy": 1102.942440257615
+	},
+	"distortion_coeffs": [
+		0.537782915288994,
+		3.1557539283629046,
+		-103.69755360197392,
+		1412.3484712119007
+	],
+	"metadata": {
+		"calibrated_by": "Jarek",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--35mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Sirui Saturn 35mm anamorphic",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2391.8874631758517,
+		"fy": 3801.901625995269,
+		"cx": 2025.173744243324,
+		"cy": 1156.342170663741
+	},
+	"distortion_coeffs": [
+		0.40006608105035874,
+		-0.7152244159360578,
+		1.8561578788516135,
+		-1.4096468608279789
+	],
+	"metadata": {
+		"calibrated_by": "PZ",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

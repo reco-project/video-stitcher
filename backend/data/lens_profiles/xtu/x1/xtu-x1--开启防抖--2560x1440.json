@@ -1,0 +1,29 @@
+{
+	"id": "xtu-x1--\u5f00\u542f\u9632\u6296--2560x1440",
+	"camera_brand": "XTU",
+	"camera_model": "X1",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1541.5956427574652,
+		"fy": 1519.175468128362,
+		"cx": 1368.1546602212452,
+		"cy": 721.7176566117099
+	},
+	"distortion_coeffs": [
+		-0.022570442501065657,
+		0.0351384514600115,
+		-0.08134117726159777,
+		0.040002068261764834
+	],
+	"metadata": {
+		"calibrated_by": "yinWhite",
+		"notes": "\u5f00\u542f\u9632\u6296",
+		"source": "gyroflow",
+		"official": true
+	}
+}

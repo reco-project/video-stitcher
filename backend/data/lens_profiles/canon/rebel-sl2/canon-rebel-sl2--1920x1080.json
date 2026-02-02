@@ -1,0 +1,28 @@
+{
+	"id": "canon-rebel-sl2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Rebel sl2",
+	"lens_model": "50mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6594.976032002384,
+		"fy": 6643.97063204407,
+		"cx": 565.5882156156795,
+		"cy": 1205.9852814209496
+	},
+	"distortion_coeffs": [
+		-0.8129970498740356,
+		25.06804673899956,
+		-262.484198851293,
+		728.7197358328773
+	],
+	"metadata": {
+		"calibrated_by": "Heitor Pagliosa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

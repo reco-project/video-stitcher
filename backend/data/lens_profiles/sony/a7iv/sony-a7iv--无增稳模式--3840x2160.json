@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--\u65e0\u589e\u7a33\u6a21\u5f0f--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Pentax 28mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3581.8441768485413,
+		"fy": 3611.4833038256033,
+		"cx": 1873.65521636477,
+		"cy": 1095.8173037641004
+	},
+	"distortion_coeffs": [
+		0.2962239536671452,
+		-0.3863904607523493,
+		2.305040573783563,
+		-2.9872529006430133
+	],
+	"metadata": {
+		"calibrated_by": "\u67ab\u6b4c",
+		"notes": "\u65e0\u589e\u7a33\u6a21\u5f0f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-xperia-1-v--v3045-pro--4000x3000",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 1 V",
+	"lens_model": "92MM",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9662.876904955849,
+		"fy": 9665.346973916035,
+		"cx": 1969.909391573612,
+		"cy": 1528.604206166805
+	},
+	"distortion_coeffs": [
+		0.5721802047317393,
+		-14.423767175831394,
+		500.8249672212618,
+		-5819.361414891793
+	],
+	"metadata": {
+		"calibrated_by": "WayLAN_Media",
+		"notes": "V3.0.45-pro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

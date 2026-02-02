@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-rebel-t5i--18-mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS REBEL T5i",
+	"lens_model": "EFS 18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1605.6361490872391,
+		"fy": 1602.396973908679,
+		"cx": 951.0326307509227,
+		"cy": 543.1374686556821
+	},
+	"distortion_coeffs": [
+		0.19017179234386988,
+		-0.0547947748442974,
+		1.8076461346417536,
+		-4.334060696013491
+	],
+	"metadata": {
+		"calibrated_by": "Aaron",
+		"notes": "18 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

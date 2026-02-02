@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--manual-focus-lens--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "7artisans",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 16269.529380452976,
+		"fy": 16326.015846360124,
+		"cx": 1238.7370461192656,
+		"cy": 816.0750253165229
+	},
+	"distortion_coeffs": [
+		0.091266350961452,
+		11.703868968155287,
+		-22.490114972486538,
+		-14266.850933958707
+	],
+	"metadata": {
+		"calibrated_by": "Doc Cap",
+		"notes": "manual focus lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

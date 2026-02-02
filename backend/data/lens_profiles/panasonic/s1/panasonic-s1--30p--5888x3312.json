@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s1--30p--5888x3312",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1",
+	"lens_model": "10mm",
+	"resolution": {
+		"width": 5888,
+		"height": 3312
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2112.0366513074187,
+		"fy": 2112.2934744431104,
+		"cx": 2918.570152767321,
+		"cy": 1682.34074052163
+	},
+	"distortion_coeffs": [
+		0.0684825839644661,
+		0.0022875744501913036,
+		0.012923119197823374,
+		-0.007482079033476489
+	],
+	"metadata": {
+		"calibrated_by": "LIYI",
+		"notes": "30P",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-dsc-rx0m2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "DSC-RX0M2",
+	"lens_model": "9fab2ee1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2656.5264134625795,
+		"fy": 2585.784318346603,
+		"cx": 1963.613739268712,
+		"cy": 1063.3349014030296
+	},
+	"distortion_coeffs": [
+		0.29177677009536745,
+		0.9336025404004938,
+		-4.937539259012411,
+		10.824895693516678
+	],
+	"metadata": {
+		"calibrated_by": "Mark Feiden",
+		"source": "gyroflow",
+		"official": true
+	}
+}

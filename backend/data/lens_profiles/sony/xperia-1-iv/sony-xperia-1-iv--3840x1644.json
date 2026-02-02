@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-1-iv--3840x1644",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 1 iv",
+	"lens_model": "85mm",
+	"resolution": {
+		"width": 3840,
+		"height": 1644
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8966.10437347719,
+		"fy": 8959.131623905207,
+		"cx": 1858.7427298129053,
+		"cy": 907.899238915151
+	},
+	"distortion_coeffs": [
+		0.926324376076842,
+		-79.53264741287364,
+		6598.264054394588,
+		-195691.4664996272
+	],
+	"metadata": {
+		"calibrated_by": "\u548c\u4e3d\u6c5f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

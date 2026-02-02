@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s22--4k-24fps--3840x2176",
+	"camera_brand": "Samsung",
+	"camera_model": "S22",
+	"lens_model": "14mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1622.5242347281312,
+		"fy": 1622.2287318726144,
+		"cx": 1940.3334211972835,
+		"cy": 1093.7646190178443
+	},
+	"distortion_coeffs": [
+		0.29208673869229895,
+		0.4171449981527735,
+		-0.5007282983859866,
+		0.4141793237505971
+	],
+	"metadata": {
+		"calibrated_by": "Mark Amadeo",
+		"notes": "4k 24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

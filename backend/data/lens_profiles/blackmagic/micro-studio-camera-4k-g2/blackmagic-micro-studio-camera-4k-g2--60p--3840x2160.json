@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2--60p--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "laowa 7.5mm F2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1710.378323795937,
+		"fy": 1670.74260445416,
+		"cx": 1932.4572719542573,
+		"cy": 1080.6933765799229
+	},
+	"distortion_coeffs": [
+		0.35232930291750353,
+		0.008004110606453963,
+		0.14100906275287614,
+		-0.005998120391644482
+	],
+	"metadata": {
+		"calibrated_by": "Xiong.Qingzhen",
+		"notes": "60p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

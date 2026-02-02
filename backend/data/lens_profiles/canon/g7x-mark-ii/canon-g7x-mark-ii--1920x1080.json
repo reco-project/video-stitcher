@@ -1,0 +1,28 @@
+{
+	"id": "canon-g7x-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "G7X Mark II",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1301.2888341235562,
+		"fy": 1302.9158801575238,
+		"cx": 967.1833608349418,
+		"cy": 484.3855389840616
+	},
+	"distortion_coeffs": [
+		0.35317808960231056,
+		0.13892092451823757,
+		-0.18511151083771796,
+		0.6321314499134362
+	],
+	"metadata": {
+		"calibrated_by": "Zay Payson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

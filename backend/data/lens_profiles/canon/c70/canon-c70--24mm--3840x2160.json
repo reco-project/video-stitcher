@@ -1,0 +1,29 @@
+{
+	"id": "canon-c70--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "C70",
+	"lens_model": "RF 24-70mm f/2.8L IS USM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3865.564641935721,
+		"fy": 3867.21692603886,
+		"cx": 1916.0771900928,
+		"cy": 1079.9542483664131
+	},
+	"distortion_coeffs": [
+		0.19958704877118252,
+		0.4416970500614942,
+		-2.4478736912073153,
+		6.831690469785558
+	],
+	"metadata": {
+		"calibrated_by": "Szymon Dybowski",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

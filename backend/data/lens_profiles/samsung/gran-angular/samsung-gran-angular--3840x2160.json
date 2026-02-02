@@ -1,0 +1,28 @@
+{
+	"id": "samsung-gran-angular--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Gran angular",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2723.207541059836,
+		"fy": 2724.395014496482,
+		"cx": 1934.2485579509855,
+		"cy": 1045.919889646056
+	},
+	"distortion_coeffs": [
+		0.4365622481569965,
+		-0.1880286784690559,
+		-0.28966462441591434,
+		2.0411465026336013
+	],
+	"metadata": {
+		"calibrated_by": "U0 A392",
+		"source": "gyroflow",
+		"official": true
+	}
+}

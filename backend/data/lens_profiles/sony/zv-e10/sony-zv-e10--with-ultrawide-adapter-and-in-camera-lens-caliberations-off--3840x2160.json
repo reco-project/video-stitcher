@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--with-ultrawide-adapter-and-in-camera-lens-caliberations-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sony E 16mm w/UWA (12mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1328.8585244252718,
+		"fy": 1327.7390210359174,
+		"cx": 1885.644440688051,
+		"cy": 1028.8294072387807
+	},
+	"distortion_coeffs": [
+		0.2953959350224565,
+		0.07806741779788416,
+		0.15867683688113304,
+		-0.05681452870011367
+	],
+	"metadata": {
+		"calibrated_by": "B2",
+		"notes": "With ultrawide adapter and in-camera lens caliberations OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

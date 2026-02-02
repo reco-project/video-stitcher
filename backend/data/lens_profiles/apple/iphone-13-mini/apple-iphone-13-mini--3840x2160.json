@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-13-mini--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 13 mini",
+	"lens_model": "ultra wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1711.2062413009496,
+		"fy": 1711.05881967432,
+		"cx": 1909.885941379526,
+		"cy": 1071.7813600716404
+	},
+	"distortion_coeffs": [
+		0.3116154498426524,
+		0.2618266147753302,
+		-0.2813496010879284,
+		0.2859442450307925
+	],
+	"metadata": {
+		"calibrated_by": "Luke Bredar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

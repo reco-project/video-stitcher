@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7riva--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIVa",
+	"lens_model": "FE24-105 G OSS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1364.0242380565246,
+		"fy": 1361.9831617622613,
+		"cx": 960.3396523435214,
+		"cy": 564.7207076200112
+	},
+	"distortion_coeffs": [
+		0.3758355861426336,
+		0.8425497055907112,
+		-2.4520504306957753,
+		3.3206077795704965
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u4f73\u6656",
+		"source": "gyroflow",
+		"official": true
+	}
+}

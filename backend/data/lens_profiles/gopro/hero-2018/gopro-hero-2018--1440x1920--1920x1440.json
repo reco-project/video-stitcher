@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero-2018--1440x1920--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO 2018",
+	"lens_model": "Factory Default",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 951.1423704465224,
+		"fy": 951.1708417009798,
+		"cx": 983.5378180315404,
+		"cy": 718.1854217451838
+	},
+	"distortion_coeffs": [
+		0.0350078823370189,
+		0.04198849959123068,
+		-0.036812031744655915,
+		0.01201222857756712
+	],
+	"metadata": {
+		"calibrated_by": "Ethan M",
+		"notes": "1440x1920",
+		"source": "gyroflow",
+		"official": true
+	}
+}

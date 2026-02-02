@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d7200--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D7200",
+	"lens_model": "AF-S 18-140mm f3.5-5.6G VR",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1472.865760793879,
+		"fy": 1441.2348316235873,
+		"cx": 954.2227884299604,
+		"cy": 521.493210495597
+	},
+	"distortion_coeffs": [
+		0.16323058163050336,
+		0.10522640889869038,
+		0.15910242583124973,
+		-0.1359172913597535
+	],
+	"metadata": {
+		"calibrated_by": "\u8d75\u71ca",
+		"source": "gyroflow",
+		"official": true
+	}
+}

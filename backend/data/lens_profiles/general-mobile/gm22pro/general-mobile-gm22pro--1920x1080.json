@@ -1,0 +1,28 @@
+{
+	"id": "general-mobile-gm22pro--1920x1080",
+	"camera_brand": "General Mobile",
+	"camera_model": "GM22Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1495.79507727004,
+		"fy": 1497.2545592543554,
+		"cx": 951.6598411806692,
+		"cy": 525.5703995016137
+	},
+	"distortion_coeffs": [
+		0.5471665125977463,
+		-1.4689446721686126,
+		5.755612903067803,
+		-7.296897141239271
+	],
+	"metadata": {
+		"calibrated_by": "suloserbest",
+		"source": "gyroflow",
+		"official": true
+	}
+}

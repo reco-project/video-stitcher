@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--916--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5",
+	"lens_model": "vario 20 60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3726.2852077961666,
+		"fy": 3741.86864099642,
+		"cx": 1864.209057880701,
+		"cy": 1099.4993104554987
+	},
+	"distortion_coeffs": [
+		0.3410224667191299,
+		-0.33406527140095416,
+		2.029107055406769,
+		-2.7545070213860403
+	],
+	"metadata": {
+		"calibrated_by": "jvc-1",
+		"notes": "9:16",
+		"source": "gyroflow",
+		"official": true
+	}
+}

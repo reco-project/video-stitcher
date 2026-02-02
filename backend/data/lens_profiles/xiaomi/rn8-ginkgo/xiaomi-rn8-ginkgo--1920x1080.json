@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-rn8-ginkgo--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "RN8 Ginkgo",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1453.0357256009847,
+		"fy": 1452.5236773404986,
+		"cx": 961.8885429520304,
+		"cy": 543.0815252866697
+	},
+	"distortion_coeffs": [
+		0.38625769012253186,
+		-0.26132340307003243,
+		4.1078324694238075,
+		-10.584484297927675
+	],
+	"metadata": {
+		"calibrated_by": "T430",
+		"source": "gyroflow",
+		"official": true
+	}
+}

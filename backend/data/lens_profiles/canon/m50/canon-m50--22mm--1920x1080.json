@@ -1,0 +1,29 @@
+{
+	"id": "canon-m50--22mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "m50",
+	"lens_model": "Canon EF-M 22mm f/2 STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1884.0364807392891,
+		"fy": 1887.4226099500804,
+		"cx": 959.5534846067457,
+		"cy": 545.7433547525288
+	},
+	"distortion_coeffs": [
+		0.2965293032298131,
+		0.882447868967938,
+		-9.562332293821624,
+		44.67236284207768
+	],
+	"metadata": {
+		"calibrated_by": "\u0421\u0435\u0440\u0433\u0435\u0439 \u041c\u0430\u043b\u044c\u0433\u043e\u0442\u0430",
+		"notes": "22mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

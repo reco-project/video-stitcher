@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-g7--3840x2160",
+	"camera_brand": "panasonic",
+	"camera_model": "G7",
+	"lens_model": "Laowa 7.5mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1899.5506164060264,
+		"fy": 1903.0516757391,
+		"cx": 1917.644365612613,
+		"cy": 1084.7225677806116
+	},
+	"distortion_coeffs": [
+		0.3256543613838798,
+		0.15292824675101757,
+		-0.21627877048797425,
+		0.2984218063529903
+	],
+	"metadata": {
+		"calibrated_by": "Georgi Tushev",
+		"source": "gyroflow",
+		"official": true
+	}
+}

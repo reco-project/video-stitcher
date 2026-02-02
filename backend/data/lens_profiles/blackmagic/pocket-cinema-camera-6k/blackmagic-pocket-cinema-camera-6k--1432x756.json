@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--1432x756",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Canon 10-18mm 4.6-5.6 IS STM",
+	"resolution": {
+		"width": 1432,
+		"height": 756
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1408.7695853023315,
+		"fy": 1409.1229028858531,
+		"cx": 774.385510365706,
+		"cy": 334.4809859535979
+	},
+	"distortion_coeffs": [
+		0.33680685750502937,
+		0.031247122058164444,
+		0.3268114830959699,
+		1.318227476609123
+	],
+	"metadata": {
+		"calibrated_by": "Sebastian K\u00f6ster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

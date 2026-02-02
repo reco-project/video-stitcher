@@ -1,0 +1,28 @@
+{
+	"id": "huawei-meta-50-pro-1x--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "meta 50 pro 1x",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3412.097107204803,
+		"fy": 3413.066899923945,
+		"cx": 1925.1579076677524,
+		"cy": 1042.9361167125014
+	},
+	"distortion_coeffs": [
+		0.5160433374666415,
+		-1.4306312322408723,
+		6.073804428285985,
+		-8.251907872495474
+	],
+	"metadata": {
+		"calibrated_by": "U0 A507",
+		"source": "gyroflow",
+		"official": true
+	}
+}

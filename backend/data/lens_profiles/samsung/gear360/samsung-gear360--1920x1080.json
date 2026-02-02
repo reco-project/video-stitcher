@@ -1,0 +1,28 @@
+{
+	"id": "samsung-gear360--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Gear360",
+	"lens_model": "360",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 634.3972846092184,
+		"fy": 634.7944106376525,
+		"cx": 963.3836508644234,
+		"cy": 550.1276148203314
+	},
+	"distortion_coeffs": [
+		0.118107678867752,
+		-0.02153974746791667,
+		-0.0010337523055496194,
+		-0.0008147217543407645
+	],
+	"metadata": {
+		"calibrated_by": "joabe Soares",
+		"source": "gyroflow",
+		"official": true
+	}
+}

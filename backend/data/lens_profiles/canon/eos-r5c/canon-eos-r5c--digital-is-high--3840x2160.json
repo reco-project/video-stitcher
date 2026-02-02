@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--digital-is-high--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5C",
+	"lens_model": "Laowa 12mm f/2.8 Zero-D",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2015.5143848525256,
+		"fy": 2015.8922540975736,
+		"cx": 1883.6522367392995,
+		"cy": 1040.8958392136692
+	},
+	"distortion_coeffs": [
+		0.30652724420237965,
+		0.2385367969049375,
+		-0.20903084981167053,
+		0.24091093711217673
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Jackson",
+		"notes": "Digital IS (High)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r8--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "RF 50MM F1.8 STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3872.037050940642,
+		"fy": 3873.311727837623,
+		"cx": 971.9050569903292,
+		"cy": 555.3953314246045
+	},
+	"distortion_coeffs": [
+		0.377837372502312,
+		-1.275379122237959,
+		3.9909853613340527,
+		133.8541560200354
+	],
+	"metadata": {
+		"calibrated_by": "54134",
+		"source": "gyroflow",
+		"official": true
+	}
+}

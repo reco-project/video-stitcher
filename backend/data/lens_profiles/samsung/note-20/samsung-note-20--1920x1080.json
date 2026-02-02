@@ -1,0 +1,28 @@
+{
+	"id": "samsung-note-20--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 20",
+	"lens_model": "sm-n981b",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1380.5541336039155,
+		"fy": 1380.3341421958016,
+		"cx": 950.759014095186,
+		"cy": 553.724143979055
+	},
+	"distortion_coeffs": [
+		0.3647150073882828,
+		-0.12391481031799108,
+		1.571015018805637,
+		-2.3417761712087284
+	],
+	"metadata": {
+		"calibrated_by": "ZA-IT-NBC-524",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s24-plus--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S24 Plus",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1187.214371788345,
+		"fy": 1188.93129683336,
+		"cx": 949.4171630094868,
+		"cy": 522.6721527265278
+	},
+	"distortion_coeffs": [
+		0.4117731494092659,
+		-0.14240127083355497,
+		0.6185594605964644,
+		-0.48424841905540217
+	],
+	"metadata": {
+		"calibrated_by": "matt",
+		"source": "gyroflow",
+		"official": true
+	}
+}

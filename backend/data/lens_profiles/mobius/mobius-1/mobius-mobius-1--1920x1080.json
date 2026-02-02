@@ -1,0 +1,28 @@
+{
+	"id": "mobius-mobius-1--1920x1080",
+	"camera_brand": "Mobius",
+	"camera_model": "Mobius 1",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1065.8960640854264,
+		"fy": 1063.7209572033823,
+		"cx": 986.5737609871755,
+		"cy": 553.6802948799516
+	},
+	"distortion_coeffs": [
+		-0.08402224613866825,
+		0.15845905609346528,
+		-0.30638130513085243,
+		0.21152728569467233
+	],
+	"metadata": {
+		"calibrated_by": "JLT",
+		"source": "gyroflow",
+		"official": true
+	}
+}

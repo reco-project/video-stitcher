@@ -1,0 +1,28 @@
+{
+	"id": "poco-x-3-pro--2016x1504",
+	"camera_brand": "POCO",
+	"camera_model": "X 3 pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 2016,
+		"height": 1504
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1505.9904358408978,
+		"fy": 1506.0541371180725,
+		"cx": 1008.5604934582444,
+		"cy": 763.4355874097519
+	},
+	"distortion_coeffs": [
+		0.484052100954072,
+		-0.8038430178360549,
+		4.301564565486289,
+		-7.899037868264918
+	],
+	"metadata": {
+		"calibrated_by": "Lucas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

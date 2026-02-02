@@ -1,0 +1,29 @@
+{
+	"id": "dji-fpv--eis-on-distortion-on-aircraft--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "FPV",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1957.7148200169704,
+		"fy": 1955.7972794727816,
+		"cx": 1921.3709439101797,
+		"cy": 1088.67692681412
+	},
+	"distortion_coeffs": [
+		0.34856371936566105,
+		0.11009487329019704,
+		0.0971951460233137,
+		0.0013740523600215956
+	],
+	"metadata": {
+		"calibrated_by": "DRONOZAUR",
+		"notes": "EIS ON | DISTORTION ON AIRCRAFT",
+		"source": "gyroflow",
+		"official": true
+	}
+}

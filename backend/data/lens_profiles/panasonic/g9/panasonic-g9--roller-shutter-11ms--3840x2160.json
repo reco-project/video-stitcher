@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-g9--roller-shutter-11ms--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "G9",
+	"lens_model": "H-X09",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2801.7376916461412,
+		"fy": 2796.8241741972447,
+		"cx": 1898.3599745579,
+		"cy": 1020.6961394153496
+	},
+	"distortion_coeffs": [
+		0.3168011999980241,
+		0.2253800724627797,
+		-0.5179331355536322,
+		0.8818695256829547
+	],
+	"metadata": {
+		"calibrated_by": "Verix",
+		"notes": "Roller Shutter 11ms",
+		"source": "gyroflow",
+		"official": true
+	}
+}

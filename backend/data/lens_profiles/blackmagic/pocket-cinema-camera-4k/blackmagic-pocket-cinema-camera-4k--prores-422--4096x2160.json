@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--prores-422--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "DJI 15mm F1.7",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3283.276660501788,
+		"fy": 3282.8333188389306,
+		"cx": 2041.6607189105043,
+		"cy": 1088.7059568382476
+	},
+	"distortion_coeffs": [
+		0.13698222271480678,
+		-0.155530175955536,
+		0.3206214651251571,
+		0.5400182166142237
+	],
+	"metadata": {
+		"calibrated_by": "\u80e1\u6c5f\u6d9b",
+		"notes": "PRORES 422",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "runcam-link-phoenix-hd-kit--1280x720",
+	"camera_brand": "RunCam",
+	"camera_model": "Link Phoenix HD Kit",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 598.2051243491268,
+		"fy": 597.5940525326861,
+		"cx": 656.9105683131429,
+		"cy": 373.203247812523
+	},
+	"distortion_coeffs": [
+		-0.044127472061309264,
+		-0.014391761380299918,
+		0.013489647366377233,
+		0.026016055991586247
+	],
+	"metadata": {
+		"calibrated_by": "casemag",
+		"source": "gyroflow",
+		"official": true
+	}
+}

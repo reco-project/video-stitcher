@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--sigma-art-35-mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3783.249873564372,
+		"fy": 3784.921180327326,
+		"cx": 1927.1701607629875,
+		"cy": 1066.1110389714636
+	},
+	"distortion_coeffs": [
+		0.3007096111992994,
+		0.459159631847731,
+		-1.4227136481592693,
+		2.6949072354860464
+	],
+	"metadata": {
+		"calibrated_by": "\u848b\u6b63\u8c6a",
+		"notes": "SIGMA ART 35 MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

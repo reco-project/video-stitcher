@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-se2--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone SE2",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3405.981604150092,
+		"fy": 3407.069978611046,
+		"cx": 1912.9961992682847,
+		"cy": 1024.3623442870485
+	},
+	"distortion_coeffs": [
+		0.6322495755892302,
+		-2.093810318525801,
+		6.254841672228003,
+		-5.222198818912716
+	],
+	"metadata": {
+		"calibrated_by": "Shadow",
+		"source": "gyroflow",
+		"official": true
+	}
+}

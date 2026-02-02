@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-4--2704x1520",
+	"camera_brand": "RunCam",
+	"camera_model": "Split 4",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1251.7747021971388,
+		"fy": 1141.806709560589,
+		"cx": 1343.0719185271228,
+		"cy": 744.2229201228415
+	},
+	"distortion_coeffs": [
+		-0.06074642614365393,
+		0.20533055194894903,
+		0.0915671184246152,
+		-0.12373502040369336
+	],
+	"metadata": {
+		"calibrated_by": "Live is FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

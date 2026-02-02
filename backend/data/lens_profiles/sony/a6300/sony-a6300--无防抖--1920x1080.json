@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--\u65e0\u9632\u6296--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "1650",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1319.668265792127,
+		"fy": 1319.7522544996336,
+		"cx": 967.6020040639272,
+		"cy": 530.9021364348254
+	},
+	"distortion_coeffs": [
+		0.35189359361620887,
+		-0.725491253938639,
+		4.22365872379703,
+		-6.574945999478213
+	],
+	"metadata": {
+		"calibrated_by": "\u5434\u91d1\u751f",
+		"notes": "\u65e0\u9632\u6296",
+		"source": "gyroflow",
+		"official": true
+	}
+}

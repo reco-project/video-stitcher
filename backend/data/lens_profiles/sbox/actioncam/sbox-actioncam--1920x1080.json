@@ -1,0 +1,28 @@
+{
+	"id": "sbox-actioncam--1920x1080",
+	"camera_brand": "SBOX",
+	"camera_model": "actioncam",
+	"lens_model": "170",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 953.0180472589687,
+		"fy": 967.0481214086232,
+		"cx": 956.3995011847244,
+		"cy": 568.8396085920764
+	},
+	"distortion_coeffs": [
+		0.0049983312399645066,
+		0.006099244077227319,
+		-0.007612043107519667,
+		0.0048680209979170795
+	],
+	"metadata": {
+		"calibrated_by": "mangcacan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

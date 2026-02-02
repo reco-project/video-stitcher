@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--magic-lantern--4800x2040",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "EF 28MM 2.8 IS USM",
+	"resolution": {
+		"width": 4800,
+		"height": 2040
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7025.1378287917305,
+		"fy": 6852.581925152416,
+		"cx": 2489.6128689226325,
+		"cy": 891.8391885926624
+	},
+	"distortion_coeffs": [
+		0.1935404935334406,
+		3.271655873506798,
+		-51.43425800359939,
+		282.4978121005548
+	],
+	"metadata": {
+		"calibrated_by": "Edgar Alvarado",
+		"notes": "Magic Lantern",
+		"source": "gyroflow",
+		"official": true
+	}
+}

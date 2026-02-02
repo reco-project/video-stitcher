@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r50--18mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R50",
+	"lens_model": "Canon 18-45",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2402.804641361074,
+		"fy": 2400.3956474254783,
+		"cx": 966.9599724872512,
+		"cy": 518.7102896738754
+	},
+	"distortion_coeffs": [
+		0.3406927439710625,
+		0.4798703264021471,
+		-2.6864927752961596,
+		8.371783370303282
+	],
+	"metadata": {
+		"calibrated_by": "Dhivyan",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

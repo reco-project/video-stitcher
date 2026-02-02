@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--5994fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Tamron 28-75 G2 64.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15795.443041847482,
+		"fy": 15613.120772944189,
+		"cx": 1934.742686795033,
+		"cy": 1128.5475519514398
+	},
+	"distortion_coeffs": [
+		3.358414675426598,
+		-128.13890295271457,
+		21036.553792422044,
+		-897986.8706523423
+	],
+	"metadata": {
+		"calibrated_by": "\u963f\u539fRyuan",
+		"notes": "59.94FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-12-mini--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 12 Mini",
+	"lens_model": "1x",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3185.360794320079,
+		"fy": 3184.924196959482,
+		"cx": 1914.0445534118348,
+		"cy": 1059.2432961873412
+	},
+	"distortion_coeffs": [
+		0.6274768345503496,
+		-2.2699790789607555,
+		10.1308089335325,
+		-15.778197570068384
+	],
+	"metadata": {
+		"calibrated_by": "Maxime Caron",
+		"source": "gyroflow",
+		"official": true
+	}
+}

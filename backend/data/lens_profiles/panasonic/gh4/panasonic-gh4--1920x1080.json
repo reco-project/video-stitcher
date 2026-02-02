@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh4--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Lumix 8mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 888.5993904613274,
+		"fy": 887.5929398095446,
+		"cx": 963.4587239731846,
+		"cy": 521.1477789787228
+	},
+	"distortion_coeffs": [
+		-0.03591008122406521,
+		0.01715937207688443,
+		-0.04302690732210438,
+		0.028576948183991577
+	],
+	"metadata": {
+		"calibrated_by": "xiaodong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

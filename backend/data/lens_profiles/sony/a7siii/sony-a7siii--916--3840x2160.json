@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--916--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "28.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3088.8804712501465,
+		"fy": 3091.2921752953166,
+		"cx": 1914.16156465788,
+		"cy": 1078.0408442324228
+	},
+	"distortion_coeffs": [
+		0.2213553283246321,
+		1.1108170408455165,
+		-27.170871197295245,
+		194.990189187894
+	],
+	"metadata": {
+		"calibrated_by": "shanlin",
+		"notes": "9:16",
+		"source": "gyroflow",
+		"official": true
+	}
+}

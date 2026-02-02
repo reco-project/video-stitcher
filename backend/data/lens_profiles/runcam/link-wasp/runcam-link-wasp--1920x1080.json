@@ -1,0 +1,28 @@
+{
+	"id": "runcam-link-wasp--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Link Wasp",
+	"lens_model": "Nano",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 627.4057946366894,
+		"fy": 628.1485798313813,
+		"cx": 957.0353710961788,
+		"cy": 545.2232002010638
+	},
+	"distortion_coeffs": [
+		0.019668454548242557,
+		0.013766100945022152,
+		-0.008606569781700704,
+		0.0012531939616688317
+	],
+	"metadata": {
+		"calibrated_by": "Robert Wiencek",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--4k60-fps-apsc--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5",
+	"lens_model": "vario 20 60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3909.966103998678,
+		"fy": 3909.438973258937,
+		"cx": 1890.6664157378943,
+		"cy": 1093.8301803140223
+	},
+	"distortion_coeffs": [
+		0.29759545280412847,
+		0.4343224512570906,
+		-1.780750651172808,
+		4.192804961308302
+	],
+	"metadata": {
+		"calibrated_by": "jvc-1",
+		"notes": "4k60 fps apsc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

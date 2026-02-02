@@ -1,0 +1,28 @@
+{
+	"id": "insta360-ace-pro--1920x1080",
+	"camera_brand": "Insta360",
+	"camera_model": "Ace Pro",
+	"lens_model": "Ultra",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 942.234481847255,
+		"fy": 942.086708920103,
+		"cx": 964.7337108102772,
+		"cy": 541.916648476742
+	},
+	"distortion_coeffs": [
+		0.07931382607292735,
+		0.028068952889179585,
+		-0.013032177968466264,
+		-0.0008673639493203822
+	],
+	"metadata": {
+		"calibrated_by": "Dmitry Nosov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

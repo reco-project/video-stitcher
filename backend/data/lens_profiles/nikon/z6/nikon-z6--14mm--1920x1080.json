@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--14mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "14-30mm F4S",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 896.3716346226028,
+		"fy": 897.6958362844434,
+		"cx": 961.7624597006752,
+		"cy": 550.1775044170671
+	},
+	"distortion_coeffs": [
+		0.31016760713784025,
+		0.2523734415673723,
+		-0.23444982435376144,
+		0.260790055820532
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u8d24\u950b",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

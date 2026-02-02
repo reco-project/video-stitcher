@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--hlg3--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "24-240",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1312.9141495126955,
+		"fy": 1314.4618253258482,
+		"cx": 960.2223270287076,
+		"cy": 523.9811230513365
+	},
+	"distortion_coeffs": [
+		0.3110804519102386,
+		0.1786506127027435,
+		-0.18186272187887903,
+		0.4204015495394065
+	],
+	"metadata": {
+		"calibrated_by": "\u55bb\u6cfd\u5929",
+		"notes": "hlg3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

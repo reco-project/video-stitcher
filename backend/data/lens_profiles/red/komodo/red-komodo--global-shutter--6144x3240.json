@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--global-shutter--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Voigtlander 15mm SW-H ASPiii",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3551.010036836704,
+		"fy": 3551.1501351221104,
+		"cx": 3031.969380856502,
+		"cy": 1634.2537231336355
+	},
+	"distortion_coeffs": [
+		0.3234783079034174,
+		0.08767896051182136,
+		0.01396389585536421,
+		0.19396795617883936
+	],
+	"metadata": {
+		"calibrated_by": "Aether Films",
+		"notes": "Global Shutter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

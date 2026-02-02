@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--ff-lens-on-aps-c-sensor--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Samyang AF 24mm F2.8 FE",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2069.244341788618,
+		"fy": 2067.4335387375672,
+		"cx": 954.156556674384,
+		"cy": 549.7366408496359
+	},
+	"distortion_coeffs": [
+		0.31696772249025634,
+		-0.2391292043827322,
+		2.648777875413759,
+		-4.227650947988915
+	],
+	"metadata": {
+		"calibrated_by": "CentralPier9",
+		"notes": "FF lens on APS-C sensor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

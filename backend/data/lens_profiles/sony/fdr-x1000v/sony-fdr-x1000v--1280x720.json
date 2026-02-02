@@ -1,0 +1,28 @@
+{
+	"id": "sony-fdr-x1000v--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "FDR-X1000V",
+	"lens_model": "ZEISS\u00ae Tessar\u00ae Lens",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 603.0236622820103,
+		"fy": 603.9108449852979,
+		"cx": 647.7659196004242,
+		"cy": 349.0755256184251
+	},
+	"distortion_coeffs": [
+		-0.05642296479196671,
+		-0.022817247428245584,
+		0.024637311676676103,
+		-0.011260560089824652
+	],
+	"metadata": {
+		"calibrated_by": "Carlos Salazar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

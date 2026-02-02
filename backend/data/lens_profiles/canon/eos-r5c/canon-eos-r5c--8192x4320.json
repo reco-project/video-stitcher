@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r5c--8192x4320",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5C",
+	"lens_model": "RF 24-70 f2.8",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5614.364058359405,
+		"fy": 5609.68350167016,
+		"cx": 4094.3086922167618,
+		"cy": 2129.566320749901
+	},
+	"distortion_coeffs": [
+		0.2232849613681663,
+		-0.06414479735839325,
+		0.9755009536268756,
+		-0.8627202137796974
+	],
+	"metadata": {
+		"calibrated_by": "ElSaso",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--sony-14mm-18-gm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "932993f",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1528.758095156736,
+		"fy": 1522.8733438559548,
+		"cx": 1917.5818413609209,
+		"cy": 1072.4304553923089
+	},
+	"distortion_coeffs": [
+		0.3415509314180559,
+		0.1504816866228409,
+		-0.035252326428979075,
+		0.11066833794851327
+	],
+	"metadata": {
+		"calibrated_by": "jai johns",
+		"notes": "Sony 14mm 1.8 GM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

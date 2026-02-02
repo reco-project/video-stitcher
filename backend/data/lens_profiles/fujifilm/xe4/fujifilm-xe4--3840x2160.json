@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xe4--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "xe4",
+	"lens_model": "14 f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2507.8373998989373,
+		"fy": 2505.2618452529123,
+		"cx": 1967.690273139539,
+		"cy": 1051.787652719378
+	},
+	"distortion_coeffs": [
+		0.30066309831874305,
+		0.3217334816254998,
+		-0.631915659019049,
+		0.8641719655411191
+	],
+	"metadata": {
+		"calibrated_by": "nathan zhang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-200d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "200d",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4929.454755652794,
+		"fy": 4915.4630305758565,
+		"cx": 964.2443036218384,
+		"cy": 582.1128885704923
+	},
+	"distortion_coeffs": [
+		0.3488762873992343,
+		-4.640664690369318,
+		3.822835895703979,
+		1615.862108125361
+	],
+	"metadata": {
+		"calibrated_by": "vishnu prahalathan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

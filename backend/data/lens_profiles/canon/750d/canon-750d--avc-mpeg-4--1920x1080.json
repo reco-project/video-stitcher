@@ -1,0 +1,29 @@
+{
+	"id": "canon-750d--avc-mpeg-4--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "750D",
+	"lens_model": "18-55mm IS-STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1494.6989968198711,
+		"fy": 1493.1446770259588,
+		"cx": 939.0153858935544,
+		"cy": 526.7692717370883
+	},
+	"distortion_coeffs": [
+		0.18007331371524554,
+		0.12576460865170028,
+		0.09931584086086144,
+		-0.010898863251986596
+	],
+	"metadata": {
+		"calibrated_by": "Edo Uno",
+		"notes": "AVC-MPEG-4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

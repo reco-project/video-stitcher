@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--50mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "shima 50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2795.142830610428,
+		"fy": 2795.855135545234,
+		"cx": 934.198143225973,
+		"cy": 580.6789001478695
+	},
+	"distortion_coeffs": [
+		0.2206930433152853,
+		-0.8257752393096521,
+		4.935080466311094,
+		-19.91966218034769
+	],
+	"metadata": {
+		"calibrated_by": "Leijiahui",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

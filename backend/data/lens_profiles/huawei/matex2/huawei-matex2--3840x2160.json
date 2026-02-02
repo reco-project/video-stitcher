@@ -1,0 +1,28 @@
+{
+	"id": "huawei-matex2--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "MateX2",
+	"lens_model": "Rear",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2729.7304669907767,
+		"fy": 2729.326599467912,
+		"cx": 1896.2262915905544,
+		"cy": 1093.0979865245035
+	},
+	"distortion_coeffs": [
+		0.24420113425949025,
+		0.5076529997389294,
+		0.6795564641010414,
+		-2.384595200035482
+	],
+	"metadata": {
+		"calibrated_by": "Benny Feng",
+		"source": "gyroflow",
+		"official": true
+	}
+}

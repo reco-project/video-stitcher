@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--35mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "Sigma 18-50",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6138.904895798424,
+		"fy": 6138.842353557879,
+		"cx": 2003.837882131122,
+		"cy": 1175.4691594319647
+	},
+	"distortion_coeffs": [
+		0.18670112412276244,
+		3.1697106543929454,
+		-25.54255730416642,
+		81.38450136182944
+	],
+	"metadata": {
+		"calibrated_by": "Jack Grasso",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

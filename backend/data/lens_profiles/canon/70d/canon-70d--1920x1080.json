@@ -1,0 +1,28 @@
+{
+	"id": "canon-70d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "70d",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8383.908321270235,
+		"fy": 8366.288126466503,
+		"cx": 876.2352283144953,
+		"cy": 1613.466401362919
+	},
+	"distortion_coeffs": [
+		-0.3603179940513062,
+		45.46921911138917,
+		-1317.2878674259402,
+		13015.256857361566
+	],
+	"metadata": {
+		"calibrated_by": "\u9ec4\u4ed5\u676d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

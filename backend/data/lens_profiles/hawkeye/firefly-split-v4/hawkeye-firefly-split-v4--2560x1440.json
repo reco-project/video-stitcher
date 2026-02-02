@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-split-v4--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly Split v4",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1112.8821277390416,
+		"fy": 1113.0734639115165,
+		"cx": 1287.758495290321,
+		"cy": 731.469712856332
+	},
+	"distortion_coeffs": [
+		0.1278522012736854,
+		0.06398469523594963,
+		-0.1090035300935773,
+		0.0403020838126586
+	],
+	"metadata": {
+		"calibrated_by": "GIOVI-FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

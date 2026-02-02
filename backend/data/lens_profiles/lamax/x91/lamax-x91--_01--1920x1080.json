@@ -1,0 +1,29 @@
+{
+	"id": "lamax-x91--_01--1920x1080",
+	"camera_brand": "LAMAX",
+	"camera_model": "X9.1",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1489.0160796424193,
+		"fy": 1489.4700629539195,
+		"cx": 1017.9969010384588,
+		"cy": 557.3373142711212
+	},
+	"distortion_coeffs": [
+		0.010000793889259767,
+		-0.2807141799939674,
+		1.0814886466526723,
+		-1.3067194707690597
+	],
+	"metadata": {
+		"calibrated_by": "Maty\u00e1\u0161 Fiman",
+		"notes": "_01",
+		"source": "gyroflow",
+		"official": true
+	}
+}

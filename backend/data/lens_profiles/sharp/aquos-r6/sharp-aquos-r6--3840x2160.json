@@ -1,0 +1,28 @@
+{
+	"id": "sharp-aquos-r6--3840x2160",
+	"camera_brand": "Sharp",
+	"camera_model": "aquos r6",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2662.0980308170756,
+		"fy": 2661.5479101959286,
+		"cx": 1913.9030523112656,
+		"cy": 1052.2673962451388
+	},
+	"distortion_coeffs": [
+		0.5386108671733325,
+		-2.1542141665028347,
+		11.066074390644316,
+		-16.014615887324673
+	],
+	"metadata": {
+		"calibrated_by": "U0 A430",
+		"source": "gyroflow",
+		"official": true
+	}
+}

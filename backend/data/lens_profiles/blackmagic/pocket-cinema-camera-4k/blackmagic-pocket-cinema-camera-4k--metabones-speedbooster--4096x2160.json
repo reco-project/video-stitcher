@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--metabones-speedbooster--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": ".7x Sigma DC 10-20/4-5.6 EX HSM 7mm @10mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1586.7029630631116,
+		"fy": 1584.4429350876533,
+		"cx": 2046.4636403061852,
+		"cy": 1130.2083155315706
+	},
+	"distortion_coeffs": [
+		0.26314063924564657,
+		0.29734744374244926,
+		-0.11958078260644324,
+		-0.010229342061385325
+	],
+	"metadata": {
+		"calibrated_by": "Akos Pajdusak",
+		"notes": "Metabones speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

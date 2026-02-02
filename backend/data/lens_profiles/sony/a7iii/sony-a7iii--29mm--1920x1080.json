@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--29mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "SELP18105G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1576.6513536454825,
+		"fy": 1575.0470873783067,
+		"cx": 963.0345949475624,
+		"cy": 550.2225962206021
+	},
+	"distortion_coeffs": [
+		0.2955989288950223,
+		0.6064678831317707,
+		-2.321992781351749,
+		2.9314460515711884
+	],
+	"metadata": {
+		"calibrated_by": "EC.captureyourmoments",
+		"notes": "29mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

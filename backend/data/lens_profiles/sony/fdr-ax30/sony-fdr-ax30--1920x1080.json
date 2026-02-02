@@ -2,7 +2,7 @@
 	"id": "sony-fdr-ax30--1920x1080",
 	"camera_brand": "Sony",
 	"camera_model": "FDR-AX30",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
@@ -21,13 +21,8 @@
 		2.4944538970302994
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_FDR-AX30___1080p_16by9_1920x1080-50.00fps",
 		"calibrated_by": "Administrator",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "50.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

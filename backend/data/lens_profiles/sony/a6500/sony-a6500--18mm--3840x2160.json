@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6500--18mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6500",
+	"lens_model": "Sony 10-18mm F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2778.193346929945,
+		"fy": 2786.031276584302,
+		"cx": 1884.193413383038,
+		"cy": 1003.7101896846518
+	},
+	"distortion_coeffs": [
+		0.3683675264917888,
+		0.08785881842944014,
+		0.4944568293509315,
+		-0.2930745497256386
+	],
+	"metadata": {
+		"calibrated_by": "Kai Vertigoh",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

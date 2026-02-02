@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-lx100--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix LX100",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2690.2022496983514,
+		"fy": 2690.658155021735,
+		"cx": 1914.9514086918043,
+		"cy": 1081.656725319356
+	},
+	"distortion_coeffs": [
+		0.259569084508048,
+		0.4668066349475246,
+		-1.0029411393021526,
+		1.16922301504869
+	],
+	"metadata": {
+		"calibrated_by": "Markant",
+		"source": "gyroflow",
+		"official": true
+	}
+}

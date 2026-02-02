@@ -1,0 +1,28 @@
+{
+	"id": "olympus-om-5--3840x2160",
+	"camera_brand": "Olympus",
+	"camera_model": "OM-5",
+	"lens_model": "17mm f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4969.04071717113,
+		"fy": 4967.749247161298,
+		"cx": 1927.784503373095,
+		"cy": 1116.5916393137218
+	},
+	"distortion_coeffs": [
+		0.37697307992688744,
+		-2.1416978578946524,
+		30.03555597462441,
+		-124.24379869813482
+	],
+	"metadata": {
+		"calibrated_by": "sunmingjie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

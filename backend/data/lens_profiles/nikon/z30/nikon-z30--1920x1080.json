@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z30--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z30",
+	"lens_model": "16-50 DX",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1314.6484200192483,
+		"fy": 1314.64296387358,
+		"cx": 964.2608640583328,
+		"cy": 535.3266667852112
+	},
+	"distortion_coeffs": [
+		0.34969672911416266,
+		-0.001177265570721362,
+		0.4371717599021595,
+		-0.32949751323195536
+	],
+	"metadata": {
+		"calibrated_by": "Jose",
+		"source": "gyroflow",
+		"official": true
+	}
+}

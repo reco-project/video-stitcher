@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--single-coated-f35--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Mir 20m 20mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4560.580632121593,
+		"fy": 4563.1459529713775,
+		"cx": 3061.0334396318804,
+		"cy": 1743.913034666538
+	},
+	"distortion_coeffs": [
+		0.17404183765975362,
+		0.5200271749769377,
+		-1.4878318108388369,
+		2.272768737886422
+	],
+	"metadata": {
+		"calibrated_by": "Bryan Alejandro Oliveira Echaverry",
+		"notes": "Single-coated F3,5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

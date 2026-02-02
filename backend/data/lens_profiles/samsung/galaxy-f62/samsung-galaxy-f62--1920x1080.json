@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-f62--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy F62",
+	"lens_model": "Main Rear Camera",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1420.8852218520085,
+		"fy": 1425.571262684438,
+		"cx": 973.0542246744864,
+		"cy": 530.8553112389297
+	},
+	"distortion_coeffs": [
+		0.6532373585328478,
+		-1.6473224152195998,
+		5.379281384536549,
+		-6.090943954947037
+	],
+	"metadata": {
+		"calibrated_by": "Meet",
+		"source": "gyroflow",
+		"official": true
+	}
+}

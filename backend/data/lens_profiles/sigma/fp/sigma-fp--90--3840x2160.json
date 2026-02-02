@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--90--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "\u5951\u536135mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4089.8685875697074,
+		"fy": 4079.174824643944,
+		"cx": 1989.114739719095,
+		"cy": 1062.733930875418
+	},
+	"distortion_coeffs": [
+		0.14859274301027953,
+		1.228843972480629,
+		-7.986230631104573,
+		17.501052374279567
+	],
+	"metadata": {
+		"calibrated_by": "alex",
+		"notes": "90",
+		"source": "gyroflow",
+		"official": true
+	}
+}

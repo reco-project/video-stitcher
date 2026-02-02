@@ -1,0 +1,28 @@
+{
+	"id": "motorola-moto-g60s--1920x1080",
+	"camera_brand": "Motorola",
+	"camera_model": "Moto G60s",
+	"lens_model": "1x",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1486.2062150934598,
+		"fy": 1483.2359720956308,
+		"cx": 962.5751265622152,
+		"cy": 538.9968816433503
+	},
+	"distortion_coeffs": [
+		0.3466162324581585,
+		1.256646963017983,
+		-5.662219162985743,
+		7.702484725877024
+	],
+	"metadata": {
+		"calibrated_by": "Chad",
+		"source": "gyroflow",
+		"official": true
+	}
+}

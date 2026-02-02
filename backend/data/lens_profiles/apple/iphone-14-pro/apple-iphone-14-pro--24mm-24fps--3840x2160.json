@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-14-pro--24mm-24fps--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14 Pro",
+	"lens_model": "Main 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3155.0933611986115,
+		"fy": 3154.3047253265872,
+		"cx": 1918.0458210046152,
+		"cy": 1066.5722808989103
+	},
+	"distortion_coeffs": [
+		0.32301779356698723,
+		3.457348192765895,
+		-23.520424901444464,
+		50.19406142627793
+	],
+	"metadata": {
+		"calibrated_by": "Ben Jumper",
+		"notes": "24mm 24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

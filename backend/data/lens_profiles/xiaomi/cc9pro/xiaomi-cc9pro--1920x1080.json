@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-cc9pro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "cc9pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1356.643562508415,
+		"fy": 1354.7316261403537,
+		"cx": 964.27406925489,
+		"cy": 543.9139056372233
+	},
+	"distortion_coeffs": [
+		0.6462695568965242,
+		-2.223375601192266,
+		8.555419948873988,
+		-10.943625546028278
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

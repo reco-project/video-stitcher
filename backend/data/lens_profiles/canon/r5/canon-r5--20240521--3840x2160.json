@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--20240521--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "7artisans 10mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1457.457210912415,
+		"fy": 1457.411764808134,
+		"cx": 1904.4786992528896,
+		"cy": 1094.6557346161603
+	},
+	"distortion_coeffs": [
+		0.055939400264282534,
+		0.009362201364508566,
+		-0.003203385419231145,
+		0.0006977555498163308
+	],
+	"metadata": {
+		"calibrated_by": "\u8d75\u56fd\u6881",
+		"notes": "20240521",
+		"source": "gyroflow",
+		"official": true
+	}
+}

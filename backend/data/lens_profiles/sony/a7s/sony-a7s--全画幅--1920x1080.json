@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7s--\u5168\u753b\u5e45--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7s",
+	"lens_model": "2860",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1539.6932287097368,
+		"fy": 1538.4247923337753,
+		"cx": 969.7212729192448,
+		"cy": 544.0240631129377
+	},
+	"distortion_coeffs": [
+		0.27851332717274746,
+		0.6587536298425933,
+		-2.4173189300482556,
+		4.221051830302704
+	],
+	"metadata": {
+		"calibrated_by": "mr.hongyuanzhang",
+		"notes": "\u5168\u753b\u5e45",
+		"source": "gyroflow",
+		"official": true
+	}
+}

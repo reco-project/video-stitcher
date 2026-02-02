@@ -1,0 +1,29 @@
+{
+	"id": "canon-200d-sl2--aps-c--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "200D / SL2",
+	"lens_model": "Sigma EX DC 18-50 f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1619.652110205389,
+		"fy": 1618.1975459492908,
+		"cx": 971.619616452854,
+		"cy": 564.7446701007464
+	},
+	"distortion_coeffs": [
+		0.17332108188867773,
+		0.8285663017876568,
+		-4.301379254544896,
+		9.187620687705182
+	],
+	"metadata": {
+		"calibrated_by": "Jan Darski",
+		"notes": "APS-C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

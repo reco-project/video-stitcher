@@ -1,0 +1,29 @@
+{
+	"id": "poco-m5s--landscape--3840x2160",
+	"camera_brand": "POCO",
+	"camera_model": "M5S",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2828.973396656898,
+		"fy": 2831.437807759279,
+		"cx": 1930.2530547443375,
+		"cy": 1069.2608683039243
+	},
+	"distortion_coeffs": [
+		0.46820347594173384,
+		-0.9915762716008516,
+		4.495938114052986,
+		-6.147894378717536
+	],
+	"metadata": {
+		"calibrated_by": "Csongor",
+		"notes": "Landscape",
+		"source": "gyroflow",
+		"official": true
+	}
+}

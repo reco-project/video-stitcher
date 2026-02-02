@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r8--200mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "RF 100-400 F5.6-8 @ 200mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14172.630839268006,
+		"fy": 14197.527700622582,
+		"cx": 1035.4085500929743,
+		"cy": 302.4332424189917
+	},
+	"distortion_coeffs": [
+		-0.219051596946804,
+		-70.36178313155037,
+		26239.596152256378,
+		-2117704.828227284
+	],
+	"metadata": {
+		"calibrated_by": "Hongye Deng",
+		"notes": "200mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

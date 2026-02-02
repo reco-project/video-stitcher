@@ -1,0 +1,28 @@
+{
+	"id": "sony-a1--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "A1",
+	"lens_model": "Sigma 14-24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 746.9760776157095,
+		"fy": 746.7797566653842,
+		"cx": 956.7919816017716,
+		"cy": 541.7293971035626
+	},
+	"distortion_coeffs": [
+		0.29528109722933743,
+		0.07863558734805647,
+		0.004237616542995663,
+		0.05612576993027919
+	],
+	"metadata": {
+		"calibrated_by": "Adam Larsen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

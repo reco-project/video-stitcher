@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2m4--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "e2m4",
+	"lens_model": "laowa7.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1681.4317546653551,
+		"fy": 1681.7095445729274,
+		"cx": 1885.8011498612311,
+		"cy": 1083.3633380392016
+	},
+	"distortion_coeffs": [
+		0.3036555171178971,
+		0.1756957290638702,
+		-0.12781336559598444,
+		0.12250430224332431
+	],
+	"metadata": {
+		"calibrated_by": "Benson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

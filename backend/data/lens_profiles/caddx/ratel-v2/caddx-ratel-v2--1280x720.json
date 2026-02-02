@@ -1,0 +1,28 @@
+{
+	"id": "caddx-ratel-v2--1280x720",
+	"camera_brand": "Caddx",
+	"camera_model": "Ratel V2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 552.9676619073659,
+		"fy": 392.3725198468129,
+		"cx": 606.7244852707634,
+		"cy": 394.07199555640966
+	},
+	"distortion_coeffs": [
+		0.022716287419487023,
+		0.01347514598090074,
+		-0.01957448267486071,
+		0.009900573524493007
+	],
+	"metadata": {
+		"calibrated_by": "Stephen Ogborne",
+		"source": "gyroflow",
+		"official": true
+	}
+}

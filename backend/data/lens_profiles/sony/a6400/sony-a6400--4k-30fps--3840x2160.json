@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--4k-30fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sigma 30mm f1.4 dc dn",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6074.909881547777,
+		"fy": 6085.9947363017145,
+		"cx": 1638.3066535192816,
+		"cy": 1251.4787483530913
+	},
+	"distortion_coeffs": [
+		0.15129187858450974,
+		1.972544492261734,
+		-20.068441528751972,
+		71.68431599858008
+	],
+	"metadata": {
+		"calibrated_by": "Ahsan Habib anik",
+		"notes": "4k 30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "thieye-t5--2720x1520",
+	"camera_brand": "thieye",
+	"camera_model": "t5",
+	"lens_model": null,
+	"resolution": {
+		"width": 2720,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1447.206204455872,
+		"fy": 1444.7866602313431,
+		"cx": 1362.2014222922628,
+		"cy": 758.3092659036523
+	},
+	"distortion_coeffs": [
+		-0.04005289159531221,
+		-0.04007115247573674,
+		0.05687711465280524,
+		-0.030519304221994673
+	],
+	"metadata": {
+		"calibrated_by": "\u0418\u0432\u0430\u043d \u0413\u0440\u0435\u0431\u0435\u043d\u044e\u043a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

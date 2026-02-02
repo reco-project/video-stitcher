@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--12mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Samyang 12mm f/2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2073.2551590516177,
+		"fy": 2075.8817478414976,
+		"cx": 1902.4816606036063,
+		"cy": 1080.0230952734628
+	},
+	"distortion_coeffs": [
+		0.30731814071601604,
+		0.0620125772506624,
+		0.13013316033631922,
+		-0.03161880855225421
+	],
+	"metadata": {
+		"calibrated_by": "Carlo Emmanuel Zambrano Boldo",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

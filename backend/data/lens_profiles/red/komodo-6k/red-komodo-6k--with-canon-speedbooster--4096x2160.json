@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--with-canon-speedbooster--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6k",
+	"lens_model": "Sigma 8mm-16mm @8mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1345.405723596419,
+		"fy": 1345.108652056741,
+		"cx": 2029.914311412363,
+		"cy": 1078.9516710288008
+	},
+	"distortion_coeffs": [
+		0.3264656842527578,
+		0.4393353204143948,
+		-0.5804067116678474,
+		0.3437105031391644
+	],
+	"metadata": {
+		"calibrated_by": "Florian Koch",
+		"notes": "with canon speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

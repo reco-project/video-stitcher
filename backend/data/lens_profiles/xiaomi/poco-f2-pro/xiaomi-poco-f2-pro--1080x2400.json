@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-poco-f2-pro--1080x2400",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Poco F2 Pro",
+	"lens_model": "IMX686",
+	"resolution": {
+		"width": 1080,
+		"height": 2400
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1387.310136035315,
+		"fy": 1359.162855565167,
+		"cx": 717.3564487901481,
+		"cy": 1202.8289514082107
+	},
+	"distortion_coeffs": [
+		0.4439937495039084,
+		0.2638994037023831,
+		0.1887824627464135,
+		-0.01152007619999313
+	],
+	"metadata": {
+		"calibrated_by": "Mart\u00edn N\u00f3voa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

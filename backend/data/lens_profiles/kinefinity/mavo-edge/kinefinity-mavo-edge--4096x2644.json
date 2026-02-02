@@ -1,0 +1,28 @@
+{
+	"id": "kinefinity-mavo-edge--4096x2644",
+	"camera_brand": "Kinefinity",
+	"camera_model": "Mavo Edge",
+	"lens_model": "Dulens 31",
+	"resolution": {
+		"width": 4096,
+		"height": 2644
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4341.070623202545,
+		"fy": 4345.800062304761,
+		"cx": 2053.202703257064,
+		"cy": 1286.9359752819012
+	},
+	"distortion_coeffs": [
+		0.4879176589034013,
+		-2.993757128722464,
+		23.4221952580412,
+		-46.9274918106728
+	],
+	"metadata": {
+		"calibrated_by": "\u6f58\u822a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

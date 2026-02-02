@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-sj8-plus--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ8 Plus",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2230.3633037150703,
+		"fy": 2226.2077438206293,
+		"cx": 1975.689972627474,
+		"cy": 1028.2171220497785
+	},
+	"distortion_coeffs": [
+		0.03432824677292115,
+		-0.1086807355842964,
+		0.1939054970234991,
+		-0.12697060289101014
+	],
+	"metadata": {
+		"calibrated_by": "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

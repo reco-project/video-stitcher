@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-f6--h264--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "Canon EF24mm f/2.8 is USM Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4558.894540400393,
+		"fy": 4580.903573362362,
+		"cx": 1936.6123148437616,
+		"cy": 1063.2763672477697
+	},
+	"distortion_coeffs": [
+		0.3739973326163511,
+		-0.8881438644136516,
+		4.466524521796204,
+		-5.108624893945962
+	],
+	"metadata": {
+		"calibrated_by": "Skybound_MBK",
+		"notes": "H2.64",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e10--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "sigma 30mm f1.4 dc dn contemporary",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1784.6915585279814,
+		"fy": 1781.1084575036075,
+		"cx": 649.9553454520444,
+		"cy": 364.5747084318839
+	},
+	"distortion_coeffs": [
+		0.3034862082617853,
+		3.181204241356673,
+		-55.22648302788315,
+		306.1857063294824
+	],
+	"metadata": {
+		"calibrated_by": "Leo Lian",
+		"source": "gyroflow",
+		"official": true
+	}
+}

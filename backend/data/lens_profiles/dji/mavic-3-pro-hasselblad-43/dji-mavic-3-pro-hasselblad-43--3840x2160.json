@@ -1,0 +1,28 @@
+{
+	"id": "dji-mavic-3-pro-hasselblad-43--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic 3 Pro Hasselblad 4/3",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2539.8373124525065,
+		"fy": 2542.898041070332,
+		"cx": 1935.583788652464,
+		"cy": 1117.2520163554375
+	},
+	"distortion_coeffs": [
+		0.3243963608574629,
+		0.34610252823642534,
+		-0.9760449035974832,
+		1.5654103456683377
+	],
+	"metadata": {
+		"calibrated_by": "Tom Herriman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

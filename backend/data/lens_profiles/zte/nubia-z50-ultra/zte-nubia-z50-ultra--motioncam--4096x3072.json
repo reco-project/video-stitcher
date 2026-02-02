@@ -1,0 +1,29 @@
+{
+	"id": "zte-nubia-z50-ultra--motioncam--4096x3072",
+	"camera_brand": "ZTE",
+	"camera_model": "Nubia z50 ultra",
+	"lens_model": "15mm",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1701.1056911446274,
+		"fy": 1700.3834435644765,
+		"cx": 2052.8753869297957,
+		"cy": 1536.2744993487104
+	},
+	"distortion_coeffs": [
+		0.2514328203616867,
+		0.3050297547416149,
+		0.02147055348275114,
+		-0.08706932440256931
+	],
+	"metadata": {
+		"calibrated_by": "Roman Lisin",
+		"notes": "MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

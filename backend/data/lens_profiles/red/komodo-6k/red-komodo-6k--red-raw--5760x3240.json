@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--red-raw--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa 14mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3316.639100047697,
+		"fy": 3320.7926236470303,
+		"cx": 2917.444149676121,
+		"cy": 1621.739868092788
+	},
+	"distortion_coeffs": [
+		0.3470421193986733,
+		0.04360117098196258,
+		0.15024511056802184,
+		-0.030171762554578666
+	],
+	"metadata": {
+		"calibrated_by": "Timothee Ferreira",
+		"notes": "RED RAW",
+		"source": "gyroflow",
+		"official": true
+	}
+}

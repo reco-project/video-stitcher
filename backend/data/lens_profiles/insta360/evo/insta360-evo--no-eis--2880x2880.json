@@ -1,0 +1,29 @@
+{
+	"id": "insta360-evo--no-eis--2880x2880",
+	"camera_brand": "Insta360",
+	"camera_model": "EVO",
+	"lens_model": "Unknown",
+	"resolution": {
+		"width": 2880,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 869.1582755977588,
+		"fy": 868.4250488704606,
+		"cx": 1441.3758444705966,
+		"cy": 1422.360054613191
+	},
+	"distortion_coeffs": [
+		-0.0020760214117440147,
+		-0.0030266544909939865,
+		-0.0007369470066610488,
+		-0.0004695878363621481
+	],
+	"metadata": {
+		"calibrated_by": "Per Hansen",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

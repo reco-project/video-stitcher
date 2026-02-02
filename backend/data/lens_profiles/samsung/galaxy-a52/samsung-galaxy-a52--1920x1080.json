@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-a52--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A52",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1635.3862455796843,
+		"fy": 1635.1917097710502,
+		"cx": 988.3798730449766,
+		"cy": 544.5922937213467
+	},
+	"distortion_coeffs": [
+		0.7056004513945904,
+		-2.831524893534891,
+		11.895535277302669,
+		-17.028512129300672
+	],
+	"metadata": {
+		"calibrated_by": "Farhan Anwar Shah",
+		"source": "gyroflow",
+		"official": true
+	}
+}

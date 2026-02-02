@@ -1,0 +1,29 @@
+{
+	"id": "blaupunkt-bp-6410--kdenlive-defish-amount-750--1920x1080",
+	"camera_brand": "Blaupunkt",
+	"camera_model": "bp 6410",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1352.8938016114307,
+		"fy": 1343.3963724514,
+		"cx": 971.7152586212728,
+		"cy": 544.5813777439395
+	},
+	"distortion_coeffs": [
+		0.31699852188361854,
+		0.00993812892438566,
+		0.44729455135279667,
+		-0.5509224929683096
+	],
+	"metadata": {
+		"calibrated_by": "Emmanuel Reznik",
+		"notes": "kdenlive defish amount-750",
+		"source": "gyroflow",
+		"official": true
+	}
+}

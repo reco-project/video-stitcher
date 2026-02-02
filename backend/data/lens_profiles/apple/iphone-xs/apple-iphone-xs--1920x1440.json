@@ -1,0 +1,27 @@
+{
+	"id": "apple-iphone-xs--1920x1440",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone XS",
+	"lens_model": "26mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1599.58988063342,
+		"fy": 1597.545518268992,
+		"cx": 949.043099987586,
+		"cy": 711.9318622592622
+	},
+	"distortion_coeffs": [
+		0.56729283174743,
+		-0.34495366108914877,
+		-4.9402586084454345,
+		17.437519803845863
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

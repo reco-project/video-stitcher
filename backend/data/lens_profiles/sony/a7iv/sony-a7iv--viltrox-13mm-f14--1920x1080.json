@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--viltrox-13mm-f14--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "13.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1073.53151872002,
+		"fy": 1076.503466993813,
+		"cx": 970.0382449743156,
+		"cy": 527.7366805553313
+	},
+	"distortion_coeffs": [
+		0.283136802729432,
+		0.17360689622298345,
+		-0.015472948936820543,
+		0.14319986490598344
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "VilTrox 13MM F1.4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

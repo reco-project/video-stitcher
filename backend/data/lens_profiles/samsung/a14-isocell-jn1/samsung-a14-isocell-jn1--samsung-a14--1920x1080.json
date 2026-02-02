@@ -1,0 +1,29 @@
+{
+	"id": "samsung-a14-isocell-jn1--samsung-a14--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A14 ISOCELL JN1",
+	"lens_model": "50mp",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1560.206346192311,
+		"fy": 1560.7730537065324,
+		"cx": 972.5347231559188,
+		"cy": 528.4383563802676
+	},
+	"distortion_coeffs": [
+		0.4604717557314985,
+		-0.22957323398943497,
+		3.1390209349371423,
+		-9.464984246735382
+	],
+	"metadata": {
+		"calibrated_by": "asvik br",
+		"notes": "Samsung  A14",
+		"source": "gyroflow",
+		"official": true
+	}
+}

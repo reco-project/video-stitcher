@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--25k-21-upscaled-to-4k--3840x1646",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "15-45mm f3.5-5.6 kit lens",
+	"resolution": {
+		"width": 3840,
+		"height": 1646
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4949.29038396125,
+		"fy": 4963.262715689259,
+		"cx": 1773.155567419929,
+		"cy": 827.0760839203228
+	},
+	"distortion_coeffs": [
+		0.21356962904374577,
+		-0.08544900442958492,
+		1.5732567398567536,
+		-4.114898812215724
+	],
+	"metadata": {
+		"calibrated_by": "Oleksandr M\u00fcller",
+		"notes": "2.5k 2:1 upscaled to 4k",
+		"source": "gyroflow",
+		"official": true
+	}
+}

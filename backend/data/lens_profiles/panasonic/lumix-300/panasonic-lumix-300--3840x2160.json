@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-300--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "lumix 300",
+	"lens_model": "leica 1:2.8/4.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2886.749430807695,
+		"fy": 2888.859451319306,
+		"cx": 1952.4454336132765,
+		"cy": 1102.1677431612602
+	},
+	"distortion_coeffs": [
+		0.3096664570326625,
+		0.07794375458361755,
+		-0.2033187183022394,
+		0.944989797765422
+	],
+	"metadata": {
+		"calibrated_by": "Paolo Chiavetta",
+		"source": "gyroflow",
+		"official": true
+	}
+}

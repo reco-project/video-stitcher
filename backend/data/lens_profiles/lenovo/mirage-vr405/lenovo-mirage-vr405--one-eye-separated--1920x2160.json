@@ -1,0 +1,29 @@
+{
+	"id": "lenovo-mirage-vr405--one-eye-separated--1920x2160",
+	"camera_brand": "Lenovo",
+	"camera_model": "Mirage VR405",
+	"lens_model": "VR180",
+	"resolution": {
+		"width": 1920,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 581.8313410751542,
+		"fy": 655.3028594395787,
+		"cx": 965.2220256792348,
+		"cy": 1088.1642140568586
+	},
+	"distortion_coeffs": [
+		0.0855471063935378,
+		0.012774929127363352,
+		-0.04956117298302154,
+		0.01816085035282997
+	],
+	"metadata": {
+		"calibrated_by": "Alexander Dr\u00e4benstedt",
+		"notes": "one eye separated",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "garmin-virb-xe--stabilizer-on--1920x1440",
+	"camera_brand": "Garmin",
+	"camera_model": "Virb XE",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 847.927770118926,
+		"fy": 848.9459612162427,
+		"cx": 943.979724259382,
+		"cy": 726.396923409739
+	},
+	"distortion_coeffs": [
+		0.09430287148066473,
+		0.055883072998204816,
+		-0.03973588007810967,
+		0.018416632852185037
+	],
+	"metadata": {
+		"calibrated_by": "Michael N",
+		"notes": "Stabilizer On",
+		"source": "gyroflow",
+		"official": true
+	}
+}

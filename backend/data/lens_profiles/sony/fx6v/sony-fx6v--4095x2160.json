@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx6v--4095x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "Leica R_35MM",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4179.855225485215,
+		"fy": 4184.682969364756,
+		"cx": 2059.256152722505,
+		"cy": 1054.8958453092955
+	},
+	"distortion_coeffs": [
+		0.20004059040045247,
+		0.8143687703759872,
+		-3.4884385320118247,
+		7.337935883878853
+	],
+	"metadata": {
+		"calibrated_by": "Robert McEnaney",
+		"source": "gyroflow",
+		"official": true
+	}
+}

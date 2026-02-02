@@ -1,0 +1,28 @@
+{
+	"id": "runcam-iflight-gocam-pmgr--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "Iflight Gocam PMGR",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1763.8186765307903,
+		"fy": 1764.980516707156,
+		"cx": 1920.0,
+		"cy": 1080.0
+	},
+	"distortion_coeffs": [
+		0.01982340571138965,
+		0.12744913844351966,
+		-0.15441160164969775,
+		0.07432577930089722
+	],
+	"metadata": {
+		"calibrated_by": "Elvin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

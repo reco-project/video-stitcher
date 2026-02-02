@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-c200--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "C200",
+	"lens_model": "SONY IMX335",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1307.9404547306206,
+		"fy": 1307.4777472825867,
+		"cx": 903.9530805854426,
+		"cy": 537.9590807950556
+	},
+	"distortion_coeffs": [
+		-0.10926032065803454,
+		0.07192469959922151,
+		-0.08940367315959483,
+		0.058268078916169704
+	],
+	"metadata": {
+		"calibrated_by": "\u5c0f\u9a6c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

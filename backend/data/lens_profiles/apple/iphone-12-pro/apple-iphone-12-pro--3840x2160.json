@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-12-pro--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 12 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1426.969581155094,
+		"fy": 1427.0087743725542,
+		"cx": 1914.9011510790071,
+		"cy": 1058.247433345384
+	},
+	"distortion_coeffs": [
+		0.6131421380276134,
+		-0.4626415733670574,
+		0.6316637488282183,
+		-0.30385443439919774
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Cabrera Zepeda",
+		"source": "gyroflow",
+		"official": true
+	}
+}

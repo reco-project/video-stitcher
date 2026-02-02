@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--kf-concept-m42-nex-adapter--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Pentax Super-Multi-Coated Takumar 24mm F3.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2705.00221017609,
+		"fy": 2706.490427791433,
+		"cx": 1934.1837087702836,
+		"cy": 1057.39146971786
+	},
+	"distortion_coeffs": [
+		0.22679112043655153,
+		0.0957908332007975,
+		0.26093894400103623,
+		-0.08226376733240243
+	],
+	"metadata": {
+		"calibrated_by": "Philipp Zakrzewski",
+		"notes": "K&F Concept M42-NEX Adapter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

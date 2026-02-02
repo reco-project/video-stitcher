@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-10t-pro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 10T PRO",
+	"lens_model": "Samsung Bright S5KHMX",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1779.062585892902,
+		"fy": 1785.6460219415833,
+		"cx": 956.7471928221772,
+		"cy": 521.9956068782069
+	},
+	"distortion_coeffs": [
+		0.4217167114712687,
+		-0.3804762835439404,
+		-3.062867877227976,
+		15.685810187565398
+	],
+	"metadata": {
+		"calibrated_by": "Pablo Cesar Fraga Rodriguez",
+		"source": "gyroflow",
+		"official": true
+	}
+}

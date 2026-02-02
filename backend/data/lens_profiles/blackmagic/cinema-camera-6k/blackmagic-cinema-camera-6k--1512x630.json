@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-cinema-camera-6k--1512x630",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "Leica Summilux-R 35-70mm",
+	"resolution": {
+		"width": 1512,
+		"height": 630
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2628.105447305886,
+		"fy": 2512.9969030265793,
+		"cx": 1006.9797840111306,
+		"cy": 314.10172892200336
+	},
+	"distortion_coeffs": [
+		0.4870667527447218,
+		-1.1847678610426229,
+		12.082483004936233,
+		-38.689916136402125
+	],
+	"metadata": {
+		"calibrated_by": "Boris Pruessmann",
+		"source": "gyroflow",
+		"official": true
+	}
+}

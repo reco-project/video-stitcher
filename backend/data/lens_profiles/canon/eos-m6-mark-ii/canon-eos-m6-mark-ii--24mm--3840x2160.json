@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m6-mark-ii--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M6 Mark II",
+	"lens_model": "Sigma 24-70 EX DG",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4059.173701137785,
+		"fy": 4063.9417506602354,
+		"cx": 1925.4196595893009,
+		"cy": 1140.4263226534244
+	},
+	"distortion_coeffs": [
+		0.19976977022197775,
+		0.6199618797444908,
+		-2.8632220849012504,
+		6.17856465584296
+	],
+	"metadata": {
+		"calibrated_by": "Ond\u0159ej Vali\u0161",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

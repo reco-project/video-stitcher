@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO X",
+	"lens_model": "Venus Optics Laowa 10mm f/2.8 Zero-D",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 789.9849382681413,
+		"fy": 790.0019592245142,
+		"cx": 1031.9703300434678,
+		"cy": 534.0908155597898
+	},
+	"distortion_coeffs": [
+		0.33852821175098363,
+		0.20242537856217063,
+		-0.093981402270336,
+		0.10184823122879996
+	],
+	"metadata": {
+		"calibrated_by": "Shawn",
+		"source": "gyroflow",
+		"official": true
+	}
+}

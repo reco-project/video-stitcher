@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--50-mm-f18--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sony 50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11969.754439894215,
+		"fy": 12053.972008282362,
+		"cx": 1363.194291022853,
+		"cy": 800.9695520513433
+	},
+	"distortion_coeffs": [
+		-0.593037385881916,
+		580.828413335014,
+		-66693.10673762097,
+		2633405.124302999
+	],
+	"metadata": {
+		"calibrated_by": "Marti Fischer",
+		"notes": "50 mm, f1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

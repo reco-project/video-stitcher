@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--xavc-s-i-4k--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Viltrox 85.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8608.600758837876,
+		"fy": 8606.401328566488,
+		"cx": 1947.0185813465248,
+		"cy": 1014.7652339165616
+	},
+	"distortion_coeffs": [
+		0.9836214223596652,
+		0.9084015165230548,
+		-37.00284003164127,
+		281.2968064620451
+	],
+	"metadata": {
+		"calibrated_by": "melvin mac studio",
+		"notes": "XAVC S-I 4k",
+		"source": "gyroflow",
+		"official": true
+	}
+}

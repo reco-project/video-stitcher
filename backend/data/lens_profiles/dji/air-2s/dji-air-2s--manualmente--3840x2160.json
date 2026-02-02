@@ -1,0 +1,29 @@
+{
+	"id": "dji-air-2s--manualmente--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Air 2S",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3544.826716820548,
+		"fy": 3534.326994184358,
+		"cx": 1923.471371533142,
+		"cy": 1095.765488887862
+	},
+	"distortion_coeffs": [
+		0.24897175750438535,
+		0.5816255823424843,
+		-2.6673524010365592,
+		4.638092434659178
+	],
+	"metadata": {
+		"calibrated_by": "Giuseppe Tomarchio",
+		"notes": "Manualmente",
+		"source": "gyroflow",
+		"official": true
+	}
+}

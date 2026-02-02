@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7siii--6144x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Sirui 50mm T2.9 FF Anamorphic",
+	"resolution": {
+		"width": 6144,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6376.772808838642,
+		"fy": 6079.383758532121,
+		"cx": 2860.1485124303103,
+		"cy": 1217.0564047947282
+	},
+	"distortion_coeffs": [
+		0.1522909202127802,
+		-0.040680527164960234,
+		4.694767667694283,
+		-18.080915515435507
+	],
+	"metadata": {
+		"calibrated_by": "Michael Lin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

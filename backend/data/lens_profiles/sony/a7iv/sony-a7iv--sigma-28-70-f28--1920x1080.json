@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--sigma-28-70-f28--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "59.20mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5590.666862156114,
+		"fy": 5655.45160711594,
+		"cx": 684.5143177746457,
+		"cy": 589.8948846506294
+	},
+	"distortion_coeffs": [
+		0.21980542297929329,
+		14.9432163465607,
+		-454.3914511015451,
+		4506.210281924383
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "Sigma 28-70 F2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

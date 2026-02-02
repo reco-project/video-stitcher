@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-12t-pro--auto-calibrated--5760x4320",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12T Pro",
+	"lens_model": "1/1.22\" 200mp 23mm f/1.69",
+	"resolution": {
+		"width": 5760,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5225.637820111226,
+		"fy": 5222.441162930591,
+		"cx": 2890.50639082049,
+		"cy": 2171.207478068397
+	},
+	"distortion_coeffs": [
+		0.5300399139726709,
+		-0.7321288014052817,
+		0.4057113912848025,
+		3.2524466905160136
+	],
+	"metadata": {
+		"calibrated_by": "Draco",
+		"notes": "Auto calibrated",
+		"source": "gyroflow",
+		"official": true
+	}
+}

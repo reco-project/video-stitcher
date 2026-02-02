@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t4--18mmf71--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T4",
+	"lens_model": "18-55@18mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3081.3694141426013,
+		"fy": 3079.251528573964,
+		"cx": 2000.6057011924877,
+		"cy": 1135.9908693237153
+	},
+	"distortion_coeffs": [
+		0.1982409753440195,
+		1.0833217218533815,
+		-3.4787879526246135,
+		4.774690919534194
+	],
+	"metadata": {
+		"calibrated_by": "csabeevs",
+		"notes": "18mm@f7.1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

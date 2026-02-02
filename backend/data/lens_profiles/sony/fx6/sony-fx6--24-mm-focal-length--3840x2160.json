@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--24-mm-focal-length--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sony GM 24-27 F2.8 Mk II",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3070.6527426290454,
+		"fy": 3074.310221776503,
+		"cx": 1910.520888206633,
+		"cy": 1091.0398241038924
+	},
+	"distortion_coeffs": [
+		0.3201998673185821,
+		0.013857089363628576,
+		0.8178199396916715,
+		-1.3557686748432642
+	],
+	"metadata": {
+		"calibrated_by": "Juri Verstappen",
+		"notes": "24 mm focal length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

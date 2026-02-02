@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "DJI MFT 15mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3200.572760095045,
+		"fy": 3207.9243339499094,
+		"cx": 1934.5815226621237,
+		"cy": 1132.0399763612345
+	},
+	"distortion_coeffs": [
+		0.10873881126285467,
+		0.10485260053576828,
+		-0.3621395594573128,
+		0.8406526341777711
+	],
+	"metadata": {
+		"calibrated_by": "William Genovese",
+		"source": "gyroflow",
+		"official": true
+	}
+}

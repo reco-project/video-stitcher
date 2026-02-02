@@ -1,0 +1,28 @@
+{
+	"id": "sharp-sh-r80--1920x1080",
+	"camera_brand": "SHARP",
+	"camera_model": "SH-R80",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1325.5043410474257,
+		"fy": 1327.5207311117545,
+		"cx": 951.7983618043002,
+		"cy": 536.2415812855251
+	},
+	"distortion_coeffs": [
+		0.5913574914551079,
+		-1.7815835984838655,
+		6.183805275162357,
+		-7.095850349002442
+	],
+	"metadata": {
+		"calibrated_by": "tt",
+		"source": "gyroflow",
+		"official": true
+	}
+}

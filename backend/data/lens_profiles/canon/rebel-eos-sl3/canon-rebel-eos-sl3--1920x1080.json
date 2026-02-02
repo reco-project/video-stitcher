@@ -1,0 +1,28 @@
+{
+	"id": "canon-rebel-eos-sl3--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Rebel EOS SL3",
+	"lens_model": "Canon EF 50mm STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5109.388994185519,
+		"fy": 5122.057738286482,
+		"cx": 976.8658319115724,
+		"cy": 543.0394697650036
+	},
+	"distortion_coeffs": [
+		0.27238062869611773,
+		-2.8075822847757967,
+		-11.261729789922976,
+		1703.7039212001175
+	],
+	"metadata": {
+		"calibrated_by": "fernandobocutti",
+		"source": "gyroflow",
+		"official": true
+	}
+}

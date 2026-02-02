@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--speed-booster-installed--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Helios 58mm F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7906.028302710959,
+		"fy": 7919.710126849044,
+		"cx": 1928.6875594810367,
+		"cy": 1002.7068160594072
+	},
+	"distortion_coeffs": [
+		0.06686671389947484,
+		5.706532959192324,
+		-119.91434817401992,
+		1061.0927131047445
+	],
+	"metadata": {
+		"calibrated_by": "carl bonifacio",
+		"notes": "Speed Booster Installed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

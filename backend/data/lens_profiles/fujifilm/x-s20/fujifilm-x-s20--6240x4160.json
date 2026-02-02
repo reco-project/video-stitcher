@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-s20--6240x4160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S20",
+	"lens_model": "Fuji",
+	"resolution": {
+		"width": 6240,
+		"height": 4160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4925.937258843187,
+		"fy": 4811.6635502306735,
+		"cx": 3110.608335728061,
+		"cy": 2081.6960959920884
+	},
+	"distortion_coeffs": [
+		0.20249215541444543,
+		1.2916382517921632,
+		-4.852916666447366,
+		6.974212212220066
+	],
+	"metadata": {
+		"calibrated_by": "iDude",
+		"source": "gyroflow",
+		"official": true
+	}
+}

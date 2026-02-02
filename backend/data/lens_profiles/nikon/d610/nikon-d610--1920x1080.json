@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d610--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D610",
+	"lens_model": "NIKON AFS 24-70mm @ 24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 880.2504561621964,
+		"fy": 880.8017227443507,
+		"cx": 940.1179522056432,
+		"cy": 542.0799144307803
+	},
+	"distortion_coeffs": [
+		0.284207894661836,
+		0.33283298713491216,
+		-0.6838932614849426,
+		0.7845849952021086
+	],
+	"metadata": {
+		"calibrated_by": "\u5468\u5f66",
+		"source": "gyroflow",
+		"official": true
+	}
+}

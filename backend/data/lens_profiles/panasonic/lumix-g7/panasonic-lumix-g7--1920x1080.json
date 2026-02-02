@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-g7--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix G7",
+	"lens_model": "Super-Takumar 35mm f3.5",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6442.314772030919,
+		"fy": 6210.163967268715,
+		"cx": 1074.2110240433483,
+		"cy": 907.8805294247196
+	},
+	"distortion_coeffs": [
+		0.7508789417172312,
+		-46.750942378945055,
+		2407.396677439667,
+		-38344.27462163162
+	],
+	"metadata": {
+		"calibrated_by": "eaaasun",
+		"source": "gyroflow",
+		"official": true
+	}
+}

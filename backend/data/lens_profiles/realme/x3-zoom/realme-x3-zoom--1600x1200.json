@@ -1,0 +1,28 @@
+{
+	"id": "realme-x3-zoom--1600x1200",
+	"camera_brand": "Realme",
+	"camera_model": "X3 Zoom",
+	"lens_model": null,
+	"resolution": {
+		"width": 1600,
+		"height": 1200
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1174.5749655446327,
+		"fy": 1172.856863106138,
+		"cx": 799.7173343578812,
+		"cy": 602.0828414892081
+	},
+	"distortion_coeffs": [
+		0.4193322848841298,
+		-0.3416388072462476,
+		2.720195643985987,
+		-5.684921336398576
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"source": "gyroflow",
+		"official": true
+	}
+}

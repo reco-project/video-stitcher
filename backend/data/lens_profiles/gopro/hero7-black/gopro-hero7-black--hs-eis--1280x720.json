@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero7-black--hs-eis--1280x720",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO7 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 649.4638983564389,
+		"fy": 661.8805075947882,
+		"cx": 634.2407080871454,
+		"cy": 360.7844572274148
+	},
+	"distortion_coeffs": [
+		0.021015025977066903,
+		0.13421894285875466,
+		-0.2163785788855724,
+		0.1555816519086281
+	],
+	"metadata": {
+		"calibrated_by": "MacBook Pro",
+		"notes": "HS EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

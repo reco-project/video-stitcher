@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-ag-dvx200--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "AG-DVX200",
+	"lens_model": "Leica Dicomar",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1437.0478455622615,
+		"fy": 1436.0252880539483,
+		"cx": 956.3215691726248,
+		"cy": 544.3226718816582
+	},
+	"distortion_coeffs": [
+		0.2645749339072242,
+		0.8412357111858105,
+		-4.039773050265917,
+		8.545984313204414
+	],
+	"metadata": {
+		"calibrated_by": "Ricardo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

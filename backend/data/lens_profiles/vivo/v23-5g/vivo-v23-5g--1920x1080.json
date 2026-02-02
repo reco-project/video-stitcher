@@ -1,0 +1,28 @@
+{
+	"id": "vivo-v23-5g--1920x1080",
+	"camera_brand": "VIVO",
+	"camera_model": "V23 5G",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1686.3743915681675,
+		"fy": 1701.2459200297685,
+		"cx": 953.24407133185,
+		"cy": 517.3076975283036
+	},
+	"distortion_coeffs": [
+		0.4439221976545757,
+		-1.173222194943646,
+		7.562035122365795,
+		-14.024997836431078
+	],
+	"metadata": {
+		"calibrated_by": "Carl Lucido",
+		"source": "gyroflow",
+		"official": true
+	}
+}

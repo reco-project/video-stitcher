@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z50--16mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z50",
+	"lens_model": "NIKKOR Z DX 16-50mm f/3.5-6.3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2711.4312129387117,
+		"fy": 2711.795866689633,
+		"cx": 1928.6989430063425,
+		"cy": 1076.1596832558264
+	},
+	"distortion_coeffs": [
+		0.362744822723273,
+		-0.16017596868842018,
+		1.1572586829818314,
+		-1.402945012187077
+	],
+	"metadata": {
+		"calibrated_by": "Jacob",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-g9--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "G9",
+	"lens_model": "H-FS12060",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2793.887127229546,
+		"fy": 2790.658158808942,
+		"cx": 1926.4016279737075,
+		"cy": 1100.2222106532165
+	},
+	"distortion_coeffs": [
+		0.2838190957038407,
+		0.1376794833933812,
+		-0.3040599498518106,
+		1.0517213764695028
+	],
+	"metadata": {
+		"calibrated_by": "Stephane Huguet",
+		"source": "gyroflow",
+		"official": true
+	}
+}

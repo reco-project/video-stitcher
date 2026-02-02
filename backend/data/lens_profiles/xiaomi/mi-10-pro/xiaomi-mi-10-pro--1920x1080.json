@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-10-pro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 10 Pro",
+	"lens_model": "Main",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1774.5123306918674,
+		"fy": 1772.889412783597,
+		"cx": 944.9073278067384,
+		"cy": 515.9168458564877
+	},
+	"distortion_coeffs": [
+		0.49707883856049767,
+		-2.3571520547149203,
+		11.964929904349964,
+		-19.416415970096924
+	],
+	"metadata": {
+		"calibrated_by": "\u8f66\u901a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

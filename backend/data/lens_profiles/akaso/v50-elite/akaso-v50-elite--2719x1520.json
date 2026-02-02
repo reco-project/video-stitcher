@@ -1,0 +1,28 @@
+{
+	"id": "akaso-v50-elite--2719x1520",
+	"camera_brand": "Akaso",
+	"camera_model": "V50 Elite",
+	"lens_model": "Factory",
+	"resolution": {
+		"width": 2719,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1213.5399874402876,
+		"fy": 1212.0778388379383,
+		"cx": 1357.1449576466136,
+		"cy": 736.6281951248766
+	},
+	"distortion_coeffs": [
+		0.046068672143637975,
+		0.03887230080844029,
+		-0.08689346907688185,
+		0.038554984216174225
+	],
+	"metadata": {
+		"calibrated_by": "Mate Vakadua",
+		"source": "gyroflow",
+		"official": true
+	}
+}

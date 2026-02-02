@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-12t-pro--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12T pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3333.240387334253,
+		"fy": 3335.653790881703,
+		"cx": 1882.100972937343,
+		"cy": 1092.9929145121212
+	},
+	"distortion_coeffs": [
+		0.5682971069848216,
+		-0.7223373980669727,
+		1.8261334075704945,
+		-4.51019954764427
+	],
+	"metadata": {
+		"calibrated_by": "\u0427\u0435\u0441\u043d\u043e\u043a\u043e\u0432 \u0410\u043d\u0442\u043e\u043d \u042e\u0440\u044c\u0435\u0432\u0438\u0447",
+		"source": "gyroflow",
+		"official": true
+	}
+}

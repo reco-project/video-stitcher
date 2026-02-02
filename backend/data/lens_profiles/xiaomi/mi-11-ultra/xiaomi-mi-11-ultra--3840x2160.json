@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-11-ultra--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 11 Ultra",
+	"lens_model": "Main 50 MP, f/2.0, 24mm (wide)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3153.4713256594987,
+		"fy": 3151.188435901536,
+		"cx": 1908.4198932929312,
+		"cy": 1082.0844080848374
+	},
+	"distortion_coeffs": [
+		0.573328953644595,
+		-2.946639899902626,
+		16.84133213096976,
+		-29.97767120842169
+	],
+	"metadata": {
+		"calibrated_by": "Alexey Koptev",
+		"source": "gyroflow",
+		"official": true
+	}
+}

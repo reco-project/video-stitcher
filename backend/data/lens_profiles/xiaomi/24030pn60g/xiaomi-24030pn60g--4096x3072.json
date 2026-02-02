@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-24030pn60g--4096x3072",
+	"camera_brand": "Xiaomi",
+	"camera_model": "24030PN60G",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1460.6149808615935,
+		"fy": 1461.375581420763,
+		"cx": 2043.4156012583248,
+		"cy": 1532.104857644007
+	},
+	"distortion_coeffs": [
+		0.2082555041332038,
+		0.6153156128385745,
+		-0.7150026928084153,
+		0.4420587493243868
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

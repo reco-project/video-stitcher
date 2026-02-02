@@ -1,0 +1,28 @@
+{
+	"id": "sony-fs7--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FS7",
+	"lens_model": "Canon EF24-105 with 1.7x Metabones Speedbooster",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2935.9272382101262,
+		"fy": 2935.881051365659,
+		"cx": 1917.2289076504585,
+		"cy": 1080.940098966952
+	},
+	"distortion_coeffs": [
+		0.19144623222550777,
+		-0.07163397581403483,
+		0.6649617067261738,
+		-0.6570941895229262
+	],
+	"metadata": {
+		"calibrated_by": "CFW_Zane",
+		"source": "gyroflow",
+		"official": true
+	}
+}

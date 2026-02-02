@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--portrait-orientation--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Sigma 24-70mm f/2.8 DG DN | A",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7897.105572668185,
+		"fy": 7887.166732673529,
+		"cx": 1922.44860498583,
+		"cy": 1079.598417430871
+	},
+	"distortion_coeffs": [
+		0.4545279108004509,
+		8.13315489777219,
+		-167.37526325373446,
+		1403.1046766179109
+	],
+	"metadata": {
+		"calibrated_by": "Dustin Niles",
+		"notes": "Portrait orientation",
+		"source": "gyroflow",
+		"official": true
+	}
+}

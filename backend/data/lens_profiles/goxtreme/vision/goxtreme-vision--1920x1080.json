@@ -1,0 +1,28 @@
+{
+	"id": "goxtreme-vision--1920x1080",
+	"camera_brand": "Goxtreme",
+	"camera_model": "Vision+",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1062.717500135244,
+		"fy": 958.5926658353794,
+		"cx": 941.6355587255148,
+		"cy": 525.5708558482253
+	},
+	"distortion_coeffs": [
+		-0.04880168029956283,
+		0.01048761867097004,
+		-0.04855551220960112,
+		0.04994410054879877
+	],
+	"metadata": {
+		"calibrated_by": "admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

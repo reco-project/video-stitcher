@@ -1,0 +1,28 @@
+{
+	"id": "niceboy-vega--1440x1080",
+	"camera_brand": "NICEBOY",
+	"camera_model": "VEGA",
+	"lens_model": null,
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1326.330867463662,
+		"fy": 1324.0810711834715,
+		"cx": 754.5414138122111,
+		"cy": 580.2610687783682
+	},
+	"distortion_coeffs": [
+		-0.18938820569669476,
+		-0.23684318680116537,
+		0.9069171778392928,
+		-1.3284235721893043
+	],
+	"metadata": {
+		"calibrated_by": "Jakub Pluta",
+		"source": "gyroflow",
+		"official": true
+	}
+}

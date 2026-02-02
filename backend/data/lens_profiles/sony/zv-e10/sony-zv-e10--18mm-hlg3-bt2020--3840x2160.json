@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--18mm-hlg3-bt2020--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "E 18-135mm@18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3023.707021321508,
+		"fy": 3019.584019427442,
+		"cx": 1913.9572320728437,
+		"cy": 1068.0341778311315
+	},
+	"distortion_coeffs": [
+		0.28264574421040733,
+		0.32549918321677435,
+		-0.6493443732897142,
+		1.2892382698424132
+	],
+	"metadata": {
+		"calibrated_by": "Lee Mike",
+		"notes": "18mm HLG3 BT2020",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "gadnic-extreme-13--1920x1080",
+	"camera_brand": "Gadnic",
+	"camera_model": "Extreme 13",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1402.0116640664926,
+		"fy": 1348.5022326757442,
+		"cx": 974.109867097776,
+		"cy": 530.3333540588369
+	},
+	"distortion_coeffs": [
+		-0.1104408987241313,
+		0.012708763248487796,
+		-0.019183855543284993,
+		0.08136774424411063
+	],
+	"metadata": {
+		"calibrated_by": "Thiago",
+		"source": "gyroflow",
+		"official": true
+	}
+}

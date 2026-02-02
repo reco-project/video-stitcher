@@ -1,0 +1,28 @@
+{
+	"id": "olympus-om-d-em-10-mark-iiis--1920x1080",
+	"camera_brand": "OLYMPUS",
+	"camera_model": "OM-D EM 10 MARK IIIS",
+	"lens_model": "ZUIKO 45MM 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5634.001457597536,
+		"fy": 5639.873747568586,
+		"cx": 975.5573612824192,
+		"cy": 521.7653590984173
+	},
+	"distortion_coeffs": [
+		0.3264914346394071,
+		17.37847499777643,
+		-591.5987836712397,
+		8295.467232029392
+	],
+	"metadata": {
+		"calibrated_by": "Emilio Duran Maestre",
+		"source": "gyroflow",
+		"official": true
+	}
+}

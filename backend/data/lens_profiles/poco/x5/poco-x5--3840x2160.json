@@ -1,0 +1,28 @@
+{
+	"id": "poco-x5--3840x2160",
+	"camera_brand": "POCO",
+	"camera_model": "X5",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3372.6781041617523,
+		"fy": 3373.4243357551395,
+		"cx": 1892.9300073440677,
+		"cy": 1092.793044217251
+	},
+	"distortion_coeffs": [
+		0.6024284769572827,
+		-2.560768741367476,
+		12.820004034264445,
+		-21.727298246871648
+	],
+	"metadata": {
+		"calibrated_by": "Karel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

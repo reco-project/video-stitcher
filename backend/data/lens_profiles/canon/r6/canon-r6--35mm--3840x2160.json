@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6--35mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6",
+	"lens_model": "ROKINON 35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4837.202057211826,
+		"fy": 4846.303167416407,
+		"cx": 1933.8450492581223,
+		"cy": 1072.9448227457126
+	},
+	"distortion_coeffs": [
+		0.18795306532677675,
+		0.27276429219713433,
+		-0.7210697288150983,
+		-0.6145153095865307
+	],
+	"metadata": {
+		"calibrated_by": "Sebasti\u00e1n  Enr\u00edquez ",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

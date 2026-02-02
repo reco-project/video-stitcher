@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7siii--6145x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Sirui 50mm T2.9 1.6x",
+	"resolution": {
+		"width": 6145,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5640.056943716337,
+		"fy": 5449.337030482466,
+		"cx": 3218.3813872294472,
+		"cy": 910.7749345322496
+	},
+	"distortion_coeffs": [
+		0.20405060018284213,
+		-0.11782379707065915,
+		0.2425566713159827,
+		2.1354356344376
+	],
+	"metadata": {
+		"calibrated_by": "Joshua Currer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-r62--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R62",
+	"lens_model": "RF 24-105mm F4-7.1",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7605.063628745714,
+		"fy": 7615.420299248734,
+		"cx": 1883.9974206650256,
+		"cy": 1170.4072140730611
+	},
+	"distortion_coeffs": [
+		0.4026724007797493,
+		-2.0200250239675226,
+		34.770655471429734,
+		-204.298051061667
+	],
+	"metadata": {
+		"calibrated_by": "Song haibo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

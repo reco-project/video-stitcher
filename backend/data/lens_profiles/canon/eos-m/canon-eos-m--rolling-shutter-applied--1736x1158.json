@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--rolling-shutter-applied--1736x1158",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "7 Artisans 25mm f.18",
+	"resolution": {
+		"width": 1736,
+		"height": 1158
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2152.8950923700263,
+		"fy": 2152.62308398616,
+		"cx": 892.5867787143155,
+		"cy": 559.2011405955882
+	},
+	"distortion_coeffs": [
+		0.24581272802038065,
+		-0.4429153851824792,
+		4.846582423186859,
+		-12.422344277312266
+	],
+	"metadata": {
+		"calibrated_by": "admin",
+		"notes": "rolling shutter applied",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-nx-30--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "NX-30",
+	"lens_model": "16-50 IOS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1343.6544957648705,
+		"fy": 1348.0091022568115,
+		"cx": 982.3986662589176,
+		"cy": 566.2418867451725
+	},
+	"distortion_coeffs": [
+		0.20682399574854077,
+		0.7309445770828711,
+		-2.6940674554383497,
+		4.581815751486783
+	],
+	"metadata": {
+		"calibrated_by": "Mert B\u00fclb\u00fclo\u011flu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

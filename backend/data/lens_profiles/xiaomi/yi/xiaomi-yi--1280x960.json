@@ -2,7 +2,7 @@
 	"id": "xiaomi-yi--1280x960",
 	"camera_brand": "Xiaomi",
 	"camera_model": "Yi",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1280,
 		"height": 960
@@ -21,13 +21,8 @@
 		0.04935438714333912
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Xiaomi_Yi___720p_4by3_1280x960-50.00fps",
 		"calibrated_by": "luca4",
-		"original_resolution": "1280x960",
-		"calibrated_fps": "50.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p40-10--1280x720",
+	"camera_brand": "Huawei",
+	"camera_model": "P40 1.0",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1125.5537978252587,
+		"fy": 1136.7236914471391,
+		"cx": 648.099362277177,
+		"cy": 369.88627081908066
+	},
+	"distortion_coeffs": [
+		0.4136324403109971,
+		-0.830462524605166,
+		5.70303458560083,
+		-10.823183852757808
+	],
+	"metadata": {
+		"calibrated_by": "omd2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

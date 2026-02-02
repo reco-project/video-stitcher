@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-poco-x3--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Poco X3",
+	"lens_model": "Sony IMX682",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3647.510727930514,
+		"fy": 3646.4759969358665,
+		"cx": 1929.027108839323,
+		"cy": 1092.1564849587114
+	},
+	"distortion_coeffs": [
+		0.5142160074120816,
+		-1.9013348006180135,
+		13.892124609988889,
+		-32.38153609624543
+	],
+	"metadata": {
+		"calibrated_by": "Chien de feu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

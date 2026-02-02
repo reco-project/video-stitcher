@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--distorted--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "rf24 105F4L",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2744.359244925081,
+		"fy": 2745.767273697686,
+		"cx": 1970.329500598528,
+		"cy": 1145.8760197492911
+	},
+	"distortion_coeffs": [
+		0.23771273510966304,
+		0.041858288798458855,
+		0.3015045779657301,
+		-0.07611899942899404
+	],
+	"metadata": {
+		"calibrated_by": "guns120",
+		"notes": "distorted",
+		"source": "gyroflow",
+		"official": true
+	}
+}

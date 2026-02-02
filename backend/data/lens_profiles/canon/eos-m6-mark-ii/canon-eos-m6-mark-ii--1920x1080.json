@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m6-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M6 Mark II",
+	"lens_model": "24-70",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1884.91725063252,
+		"fy": 1882.6409392384624,
+		"cx": 929.4144815898331,
+		"cy": 545.219916392839
+	},
+	"distortion_coeffs": [
+		0.3930235108988393,
+		-0.20796024439845612,
+		1.7084867811732551,
+		6.44006788750019
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

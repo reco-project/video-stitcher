@@ -1,0 +1,28 @@
+{
+	"id": "nikon-keymission-120--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Keymission 120",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1592.3369948729105,
+		"fy": 1593.643840880335,
+		"cx": 1929.3442728504808,
+		"cy": 1029.7966233510049
+	},
+	"distortion_coeffs": [
+		-0.013940452530990424,
+		0.005570206684881247,
+		-0.007348848539896057,
+		0.0018602091390131704
+	],
+	"metadata": {
+		"calibrated_by": "haotian xu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "dji-mini-2--na--2720x1530",
+	"camera_brand": "DJI",
+	"camera_model": "Mini 2",
+	"lens_model": "1/2.3\u201d CMOS FOV: 83\u00b0",
+	"resolution": {
+		"width": 2720,
+		"height": 1530
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2095.5042404670708,
+		"fy": 2096.0787565144506,
+		"cx": 1355.293962860707,
+		"cy": 778.2888551766641
+	},
+	"distortion_coeffs": [
+		0.7414125321059125,
+		-2.0483644135712504,
+		5.965620126234941,
+		-6.982533953242773
+	],
+	"metadata": {
+		"calibrated_by": "Thomasinstockport",
+		"notes": "n/a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

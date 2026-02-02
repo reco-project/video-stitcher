@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--halorc-naked-bmpcc-6k-e--6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Laowa 10mm Cookie Sony E Mount",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2729.4208606726856,
+		"fy": 2731.2528584717647,
+		"cx": 3086.7320716840286,
+		"cy": 1682.3926725634003
+	},
+	"distortion_coeffs": [
+		0.29550379451374853,
+		0.1627284675344513,
+		-0.028349386422579833,
+		0.10575610952317605
+	],
+	"metadata": {
+		"calibrated_by": "Chris Bludz Olah",
+		"notes": "HaloRC Naked BMPCC 6K-E",
+		"source": "gyroflow",
+		"official": true
+	}
+}

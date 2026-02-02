@@ -1,0 +1,28 @@
+{
+	"id": "caddx-nebula-pro--960x720",
+	"camera_brand": "Caddx",
+	"camera_model": "Nebula Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 960,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 446.461705677542,
+		"fy": 445.6678634609859,
+		"cx": 509.15330213834704,
+		"cy": 344.5550535284149
+	},
+	"distortion_coeffs": [
+		0.02014718295109985,
+		0.01290488183761824,
+		-0.008716601290043613,
+		0.0016157983383750158
+	],
+	"metadata": {
+		"calibrated_by": "Akos Pajdusak",
+		"source": "gyroflow",
+		"official": true
+	}
+}

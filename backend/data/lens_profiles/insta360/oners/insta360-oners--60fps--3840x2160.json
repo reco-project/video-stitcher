@@ -1,0 +1,29 @@
+{
+	"id": "insta360-oners--60fps--3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "1inch",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2308.337332935387,
+		"fy": 2307.1074630851094,
+		"cx": 1995.3837134603764,
+		"cy": 1128.295591834245
+	},
+	"distortion_coeffs": [
+		0.037240113151447464,
+		-0.03148392617026326,
+		0.09352958610399335,
+		-0.08674361494468663
+	],
+	"metadata": {
+		"calibrated_by": "gzzh",
+		"notes": "60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lx5--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "LX5",
+	"lens_model": "leica",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3533.6047056829234,
+		"fy": 3518.409024187081,
+		"cx": 935.5092444211276,
+		"cy": 520.4182427756848
+	},
+	"distortion_coeffs": [
+		0.5778834265884306,
+		-17.861907543920964,
+		370.649062893011,
+		-2468.3358224742633
+	],
+	"metadata": {
+		"calibrated_by": "mpod",
+		"source": "gyroflow",
+		"official": true
+	}
+}

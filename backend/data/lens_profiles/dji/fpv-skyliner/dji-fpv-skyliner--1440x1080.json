@@ -2,7 +2,7 @@
 	"id": "dji-fpv-skyliner--1440x1080",
 	"camera_brand": "DJI",
 	"camera_model": "FPV skyliner",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1440,
 		"height": 1080
@@ -21,13 +21,8 @@
 		0.007664697654760711
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_FPV skyliner___720p_4by3_1440x1080-60.04fps",
 		"calibrated_by": "family",
-		"original_resolution": "1440x1080",
-		"calibrated_fps": "60.040001",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

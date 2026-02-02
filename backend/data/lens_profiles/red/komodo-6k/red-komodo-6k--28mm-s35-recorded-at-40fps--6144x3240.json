@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--28mm-s35-recorded-at-40fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 28mm f/2.8 Elmarit-R II",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6534.575582546479,
+		"fy": 6534.166946644697,
+		"cx": 3100.87647596892,
+		"cy": 1623.2984814113315
+	},
+	"distortion_coeffs": [
+		0.23087523551651987,
+		0.1889295346372634,
+		-0.27801922171325083,
+		1.6623627998648498
+	],
+	"metadata": {
+		"calibrated_by": "windcine",
+		"notes": "28mm, S35, recorded at 40fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

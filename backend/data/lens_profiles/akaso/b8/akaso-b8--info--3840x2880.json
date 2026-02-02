@@ -1,0 +1,29 @@
+{
+	"id": "akaso-b8--info--3840x2880",
+	"camera_brand": "AKASO",
+	"camera_model": "B8",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1845.0757501432893,
+		"fy": 1843.0955545361512,
+		"cx": 1920.143390322993,
+		"cy": 1418.6853982539835
+	},
+	"distortion_coeffs": [
+		-0.13483927743399107,
+		0.3915742825426118,
+		-0.3362997237171629,
+		0.10112330282680418
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "INFO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s23-ultra--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S23 Ultra",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1732.8827588346553,
+		"fy": 1735.0903778464474,
+		"cx": 948.2281056134988,
+		"cy": 532.6997320840089
+	},
+	"distortion_coeffs": [
+		0.30460707397411124,
+		-0.36743229983295334,
+		3.39472760194941,
+		-8.118866283921362
+	],
+	"metadata": {
+		"calibrated_by": "Slevin Kelevra",
+		"source": "gyroflow",
+		"official": true
+	}
+}

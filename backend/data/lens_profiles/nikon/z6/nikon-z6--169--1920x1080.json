@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--169--1920x1080",
+	"camera_brand": "NIKON",
+	"camera_model": "Z6",
+	"lens_model": "ZEISS 21/2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1186.7791796707832,
+		"fy": 1189.0300661376057,
+		"cx": 941.7798668418442,
+		"cy": 538.1488444454997
+	},
+	"distortion_coeffs": [
+		0.271298645598603,
+		0.2596529406797706,
+		-0.33830463879085465,
+		0.6198601726044254
+	],
+	"metadata": {
+		"calibrated_by": "WYS",
+		"notes": "16:9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

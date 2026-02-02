@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--4096x1728",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Canon RF 16mm",
+	"resolution": {
+		"width": 4096,
+		"height": 1728
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2492.8668751266123,
+		"fy": 2493.333038055214,
+		"cx": 2051.2824377728425,
+		"cy": 873.8347718755289
+	},
+	"distortion_coeffs": [
+		0.15423396296234573,
+		0.08967466727346401,
+		-0.06127021332359256,
+		0.07112032134286828
+	],
+	"metadata": {
+		"calibrated_by": "Radovan Leitman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

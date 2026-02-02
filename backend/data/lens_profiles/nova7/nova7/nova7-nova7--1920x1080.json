@@ -1,0 +1,28 @@
+{
+	"id": "nova7-nova7--1920x1080",
+	"camera_brand": "Nova7",
+	"camera_model": "Nova7",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1676.1324179424826,
+		"fy": 1675.436447177554,
+		"cx": 995.1439903331412,
+		"cy": 541.2527799219849
+	},
+	"distortion_coeffs": [
+		0.35140239233059195,
+		0.18848387756811075,
+		1.0040259930263524,
+		-4.64700784949304
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

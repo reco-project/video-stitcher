@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt5--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT5",
+	"lens_model": "XF ZOOM 16-80",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3114.8352309640386,
+		"fy": 3113.05903431913,
+		"cx": 1883.0967776488617,
+		"cy": 1071.475501850081
+	},
+	"distortion_coeffs": [
+		0.3382322183044752,
+		0.3403204264367692,
+		-1.260988741949059,
+		3.3451211731612975
+	],
+	"metadata": {
+		"calibrated_by": "Samsun Haber",
+		"source": "gyroflow",
+		"official": true
+	}
+}

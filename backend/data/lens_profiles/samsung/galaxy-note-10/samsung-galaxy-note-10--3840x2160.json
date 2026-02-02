@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-note-10--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "galaxy note 10",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2910.440077378069,
+		"fy": 2909.430706313264,
+		"cx": 1941.260034822528,
+		"cy": 1064.3840392870993
+	},
+	"distortion_coeffs": [
+		0.7286702506527599,
+		-2.7958652662835695,
+		9.033232633216452,
+		-9.49809238650382
+	],
+	"metadata": {
+		"calibrated_by": "AHMET BERK G\u00dcLER",
+		"source": "gyroflow",
+		"official": true
+	}
+}

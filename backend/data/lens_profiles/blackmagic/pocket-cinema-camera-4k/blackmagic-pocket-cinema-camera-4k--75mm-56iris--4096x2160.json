@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--75mm-56iris--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Laowa 7.5mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1601.0577968526566,
+		"fy": 1601.610216124994,
+		"cx": 2008.8232943259827,
+		"cy": 1105.939858049459
+	},
+	"distortion_coeffs": [
+		0.3249165180751876,
+		0.10853428469818796,
+		-0.016848971493306518,
+		0.06967119379532141
+	],
+	"metadata": {
+		"calibrated_by": "Lindsay",
+		"notes": "7.5mm 5.6iris",
+		"source": "gyroflow",
+		"official": true
+	}
+}

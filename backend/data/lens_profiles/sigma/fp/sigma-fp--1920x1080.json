@@ -1,0 +1,28 @@
+{
+	"id": "sigma-fp--1920x1080",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Tamron 35mm VC",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1939.6791619429416,
+		"fy": 1935.9330136178064,
+		"cx": 968.8803369760076,
+		"cy": 531.9201027784308
+	},
+	"distortion_coeffs": [
+		0.2626836795170227,
+		0.47937167938521547,
+		-1.6730333164715268,
+		2.6826194855672467
+	],
+	"metadata": {
+		"calibrated_by": "B3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

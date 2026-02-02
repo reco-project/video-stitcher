@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2--metabones-speedbooster-xl-064--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Canon EF 17-40 f/4 @20mm_Equiv 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2802.689978741775,
+		"fy": 2803.450954263961,
+		"cx": 1897.852250541559,
+		"cy": 1062.7369488262466
+	},
+	"distortion_coeffs": [
+		0.2107105110937481,
+		0.07844195947617268,
+		0.26074663696351125,
+		-0.1695470224061003
+	],
+	"metadata": {
+		"calibrated_by": "Bob Beresh",
+		"notes": "Metabones Speedbooster XL 0.64",
+		"source": "gyroflow",
+		"official": true
+	}
+}

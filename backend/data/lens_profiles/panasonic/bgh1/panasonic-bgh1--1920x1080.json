@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bgh1--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "BGH1",
+	"lens_model": "Olympus 12mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1094.5463601057638,
+		"fy": 1097.3859346172835,
+		"cx": 979.5091106404144,
+		"cy": 536.4943899988698
+	},
+	"distortion_coeffs": [
+		0.32382699973233037,
+		0.03205525176658118,
+		0.2287708704087572,
+		-0.09711823075052813
+	],
+	"metadata": {
+		"calibrated_by": "DRFILMER.COM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

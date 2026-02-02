@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--4k-60--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Tamron 50-400mm F4.5-6.3 VC VXD (A067) 200mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 37529.039547316526,
+		"fy": 37408.23669164711,
+		"cx": 2353.0440465130932,
+		"cy": 1026.998761916621
+	},
+	"distortion_coeffs": [
+		-1.5531201469416038,
+		1133.86029221976,
+		-347491.2239900544,
+		37572986.54397325
+	],
+	"metadata": {
+		"calibrated_by": "Roger Wu",
+		"notes": "4k 60",
+		"source": "gyroflow",
+		"official": true
+	}
+}

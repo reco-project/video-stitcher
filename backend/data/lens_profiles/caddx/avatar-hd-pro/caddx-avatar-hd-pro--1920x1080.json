@@ -1,0 +1,28 @@
+{
+	"id": "caddx-avatar-hd-pro--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "AVATAR-HD PRO",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 922.4570876921596,
+		"fy": 921.833958746846,
+		"cx": 1017.0248616055214,
+		"cy": 516.8406965780288
+	},
+	"distortion_coeffs": [
+		-0.00635797270383523,
+		-0.06538468184848206,
+		0.13987450116926356,
+		-0.10560672733923011
+	],
+	"metadata": {
+		"calibrated_by": "Marcin W",
+		"source": "gyroflow",
+		"official": true
+	}
+}

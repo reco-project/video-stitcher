@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s10e--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "s10e",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2811.312508089721,
+		"fy": 2809.6500052730685,
+		"cx": 1860.508438466904,
+		"cy": 981.1307724717196
+	},
+	"distortion_coeffs": [
+		0.5738196191367928,
+		0.03564168678802627,
+		-9.997596133595891,
+		29.471903813770695
+	],
+	"metadata": {
+		"calibrated_by": "Mario Berges",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-m50-mark-1--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "M50 Mark 1",
+	"lens_model": "Laowa C-Dreamer 9mm F2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 801.2256739070182,
+		"fy": 801.2139116118781,
+		"cx": 969.4828482938776,
+		"cy": 530.3923097745408
+	},
+	"distortion_coeffs": [
+		0.3514727157814308,
+		0.1011985427963668,
+		0.021218437006383737,
+		0.0882547042565637
+	],
+	"metadata": {
+		"calibrated_by": "Caleb Dalziel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

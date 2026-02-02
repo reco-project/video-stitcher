@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-fireflyxlite-ii--2704x2028",
+	"camera_brand": "Hawkeye",
+	"camera_model": "FireflyXLite II",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1333.9608536065962,
+		"fy": 1332.679173878153,
+		"cx": 1352.9955290051118,
+		"cy": 945.0894773506308
+	},
+	"distortion_coeffs": [
+		-0.019492876503048776,
+		-0.018325859687757524,
+		0.02158999381380355,
+		-0.01807731580889891
+	],
+	"metadata": {
+		"calibrated_by": "Mathis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

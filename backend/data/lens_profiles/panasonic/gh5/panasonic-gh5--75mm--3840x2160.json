@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--75mm--3840x2160",
+	"camera_brand": "panasonic",
+	"camera_model": "GH5",
+	"lens_model": "Laowa",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1997.711989725462,
+		"fy": 1994.04153207332,
+		"cx": 1919.7595385649936,
+		"cy": 1111.1511411414615
+	},
+	"distortion_coeffs": [
+		0.37809106596553627,
+		-0.17112339880089145,
+		0.7552328207815513,
+		-0.6707746226715391
+	],
+	"metadata": {
+		"calibrated_by": "ROYFPV",
+		"notes": "7.5mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

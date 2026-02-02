@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7s--50-fps--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7s",
+	"lens_model": "Samyang T1.5 24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1316.3384422754457,
+		"fy": 1318.173957785903,
+		"cx": 959.0206823295644,
+		"cy": 520.5885649330291
+	},
+	"distortion_coeffs": [
+		0.2803314395432842,
+		-0.1561372243106692,
+		0.8380692185285632,
+		-0.7173275956010079
+	],
+	"metadata": {
+		"calibrated_by": "DnS",
+		"notes": "50 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

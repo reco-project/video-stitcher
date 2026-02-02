@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d5100--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D5100",
+	"lens_model": "Nikkor",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1569.8945902768553,
+		"fy": 1561.3769924227806,
+		"cx": 977.0669674158412,
+		"cy": 559.5654755331686
+	},
+	"distortion_coeffs": [
+		0.26683423972539627,
+		-0.2644998001404202,
+		1.4880222082456775,
+		-2.05189254319642
+	],
+	"metadata": {
+		"calibrated_by": "Moritz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

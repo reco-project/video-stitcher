@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-15--1920x1440",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 15",
+	"lens_model": "26mm Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 701.0767171808229,
+		"fy": 699.765927414623,
+		"cx": 976.822097232883,
+		"cy": 679.1338695632998
+	},
+	"distortion_coeffs": [
+		0.07594725610513232,
+		0.009600046006524796,
+		-0.07681377949678471,
+		0.04142157793331216
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

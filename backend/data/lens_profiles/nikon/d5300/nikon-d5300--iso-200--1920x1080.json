@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d5300--iso-200--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "d5300",
+	"lens_model": "50 mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4612.651974413286,
+		"fy": 4647.175809576186,
+		"cx": 946.4738242561868,
+		"cy": 589.2716652838138
+	},
+	"distortion_coeffs": [
+		0.118330828124283,
+		1.897755353256649,
+		7.090689219470492,
+		-717.9116301716582
+	],
+	"metadata": {
+		"calibrated_by": "farzin Karimi",
+		"notes": "iso 200",
+		"source": "gyroflow",
+		"official": true
+	}
+}

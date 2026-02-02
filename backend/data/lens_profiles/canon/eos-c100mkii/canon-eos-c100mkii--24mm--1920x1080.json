@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-c100mkii--24mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS C100mkii",
+	"lens_model": "Canon 24-105mm 3.5-5.6 IS STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2186.8264935980196,
+		"fy": 2221.4299257317443,
+		"cx": 905.799981270026,
+		"cy": 531.3997761595108
+	},
+	"distortion_coeffs": [
+		0.1866748814311483,
+		-0.6192133091566966,
+		7.2598653850898,
+		-22.25578695717569
+	],
+	"metadata": {
+		"calibrated_by": "Rowan McCann",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

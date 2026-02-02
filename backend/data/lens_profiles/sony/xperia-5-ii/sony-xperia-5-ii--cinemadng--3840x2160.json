@@ -1,0 +1,29 @@
+{
+	"id": "sony-xperia-5-ii--cinemadng--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 5 II",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2837.8008058220003,
+		"fy": 2838.224143007283,
+		"cx": 1912.4316056462524,
+		"cy": 1061.6934751500446
+	},
+	"distortion_coeffs": [
+		0.3782111969216565,
+		0.13349100337887082,
+		1.30417784792531,
+		-3.849672163585673
+	],
+	"metadata": {
+		"calibrated_by": "Eilie Hallak",
+		"notes": "CinemaDNG",
+		"source": "gyroflow",
+		"official": true
+	}
+}

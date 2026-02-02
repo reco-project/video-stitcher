@@ -1,0 +1,28 @@
+{
+	"id": "eken-h9--1920x1080",
+	"camera_brand": "Eken",
+	"camera_model": "h9",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1099.1976934579254,
+		"fy": 1097.8252031408222,
+		"cx": 956.8450472993754,
+		"cy": 546.4563472275624
+	},
+	"distortion_coeffs": [
+		-0.10964463028038872,
+		0.016123677852936606,
+		-0.014099459642217692,
+		0.005014717113237289
+	],
+	"metadata": {
+		"calibrated_by": "Unggoon01",
+		"source": "gyroflow",
+		"official": true
+	}
+}

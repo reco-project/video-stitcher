@@ -1,0 +1,28 @@
+{
+	"id": "canon-t6--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "t6",
+	"lens_model": "50 mm f/1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4841.063638669369,
+		"fy": 4864.141944469323,
+		"cx": 879.5939562003167,
+		"cy": 480.38033728913007
+	},
+	"distortion_coeffs": [
+		0.16624451551066446,
+		1.734909844957758,
+		-131.6223801985388,
+		1808.487192135898
+	],
+	"metadata": {
+		"calibrated_by": "andres flores",
+		"source": "gyroflow",
+		"official": true
+	}
+}

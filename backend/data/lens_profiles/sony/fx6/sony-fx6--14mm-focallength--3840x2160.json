@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--14mm-focallength--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sigma 14-24",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1536.5553247978837,
+		"fy": 1537.4000602592428,
+		"cx": 1918.9258737908697,
+		"cy": 1085.2834438020154
+	},
+	"distortion_coeffs": [
+		0.33551648001227063,
+		0.12933064725693685,
+		0.06688666531332013,
+		0.024615023026419068
+	],
+	"metadata": {
+		"calibrated_by": "Lukas Hauser",
+		"notes": "14mm focallength",
+		"source": "gyroflow",
+		"official": true
+	}
+}

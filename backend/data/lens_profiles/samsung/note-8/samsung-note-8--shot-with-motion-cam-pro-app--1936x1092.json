@@ -1,0 +1,29 @@
+{
+	"id": "samsung-note-8--shot-with-motion-cam-pro-app--1936x1092",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 8",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1936,
+		"height": 1092
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1543.643869096012,
+		"fy": 1541.667200537308,
+		"cx": 939.8176666168978,
+		"cy": 526.1731372885755
+	},
+	"distortion_coeffs": [
+		0.5345367300231433,
+		-0.8323104972262866,
+		2.113043593642325,
+		-1.679448544678745
+	],
+	"metadata": {
+		"calibrated_by": "levar",
+		"notes": "Shot with Motion Cam Pro App",
+		"source": "gyroflow",
+		"official": true
+	}
+}

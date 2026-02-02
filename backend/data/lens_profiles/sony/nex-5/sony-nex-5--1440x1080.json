@@ -1,0 +1,28 @@
+{
+	"id": "sony-nex-5--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "NEX 5",
+	"lens_model": "fuji 55mm",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6153.393213417563,
+		"fy": 7986.907869023818,
+		"cx": 381.4556312606707,
+		"cy": 312.9272850563561
+	},
+	"distortion_coeffs": [
+		-0.9128730172920748,
+		16.243108704864753,
+		111.57638661061264,
+		-8935.741934616039
+	],
+	"metadata": {
+		"calibrated_by": "iMac",
+		"source": "gyroflow",
+		"official": true
+	}
+}

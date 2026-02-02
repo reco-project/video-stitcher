@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-5--4032x3024",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 5",
+	"lens_model": null,
+	"resolution": {
+		"width": 4032,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3167.971098519288,
+		"fy": 3158.0300640330015,
+		"cx": 2031.7493087424896,
+		"cy": 1525.2545532121237
+	},
+	"distortion_coeffs": [
+		0.5785780363185903,
+		-1.1754620861370408,
+		3.228807395292083,
+		-2.4412951500277447
+	],
+	"metadata": {
+		"calibrated_by": "admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

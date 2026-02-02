@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--20mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "14-35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3549.8018521679232,
+		"fy": 3554.268483656731,
+		"cx": 1943.231547846121,
+		"cy": 1020.9763958323708
+	},
+	"distortion_coeffs": [
+		0.35045304014789336,
+		-0.13452529647260825,
+		1.565327124746732,
+		-2.6034224754553215
+	],
+	"metadata": {
+		"calibrated_by": "Corey Csaba",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

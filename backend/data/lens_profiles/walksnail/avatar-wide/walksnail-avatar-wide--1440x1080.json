@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-wide--1440x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar Wide",
+	"lens_model": null,
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 716.2058074831865,
+		"fy": 716.0415979765017,
+		"cx": 751.3355526103113,
+		"cy": 519.3995623933429
+	},
+	"distortion_coeffs": [
+		0.010417823603942462,
+		-0.07546384774237827,
+		0.061022923258585875,
+		-0.021597653554916826
+	],
+	"metadata": {
+		"calibrated_by": "\u5c0f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

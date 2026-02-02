@@ -2,7 +2,7 @@
 	"id": "dji-osmo-action-3--2688x2016",
 	"camera_brand": "DJI",
 	"camera_model": "Osmo Action 3",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 2688,
 		"height": 2016
@@ -21,13 +21,8 @@
 		-0.01625498864262108
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Osmo Action 3___2.5k_4by3_2688x2016-59.94fps",
 		"calibrated_by": "I7",
-		"original_resolution": "2688x2016",
-		"calibrated_fps": "59.94006",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

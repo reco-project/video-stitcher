@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action--rocksteady-off--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action",
+	"lens_model": "STOCK",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1736.2394820989678,
+		"fy": 1734.8585521500656,
+		"cx": 1914.887411270461,
+		"cy": 1066.890443338864
+	},
+	"distortion_coeffs": [
+		0.20670549121828577,
+		0.04011177215346045,
+		-0.12691337937279304,
+		0.038241480904215135
+	],
+	"metadata": {
+		"calibrated_by": "CinexFPV",
+		"notes": "Rocksteady off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

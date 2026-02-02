@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero12-black--wide-angle--3840x3360",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO12 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 3360
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1835.1691840050064,
+		"fy": 1833.509246753546,
+		"cx": 1916.325166818052,
+		"cy": 1679.120250330277
+	},
+	"distortion_coeffs": [
+		0.03607503926519248,
+		0.08399686773021976,
+		-0.08613811210883468,
+		0.029156107383665548
+	],
+	"metadata": {
+		"calibrated_by": "Bhavith  Potluri",
+		"notes": "Wide angle",
+		"source": "gyroflow",
+		"official": true
+	}
+}

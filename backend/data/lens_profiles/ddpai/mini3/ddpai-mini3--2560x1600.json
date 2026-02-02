@@ -1,0 +1,28 @@
+{
+	"id": "ddpai-mini3--2560x1600",
+	"camera_brand": "DDPAI",
+	"camera_model": "mini3",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1600
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1568.79914331079,
+		"fy": 1564.4460375018964,
+		"cx": 1301.4968457471612,
+		"cy": 827.240871494391
+	},
+	"distortion_coeffs": [
+		-0.09356108740913362,
+		-0.05280747863026621,
+		0.09468319764782324,
+		-0.058397057875487254
+	],
+	"metadata": {
+		"calibrated_by": "BDH",
+		"source": "gyroflow",
+		"official": true
+	}
+}

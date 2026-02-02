@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-800d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 800D",
+	"lens_model": "ef-s15-85",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1268.156482891069,
+		"fy": 1270.007844372419,
+		"cx": 945.6398753665798,
+		"cy": 544.3837044781015
+	},
+	"distortion_coeffs": [
+		0.16851330980257717,
+		0.2453067091586402,
+		-0.22248573080497397,
+		0.2899457344692839
+	],
+	"metadata": {
+		"calibrated_by": "\u9648\u9752",
+		"source": "gyroflow",
+		"official": true
+	}
+}

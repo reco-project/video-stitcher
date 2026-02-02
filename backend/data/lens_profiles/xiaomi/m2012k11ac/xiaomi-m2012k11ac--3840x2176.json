@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-m2012k11ac--3840x2176",
+	"camera_brand": "Xiaomi",
+	"camera_model": "M2012K11AC",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2927.8736690927853,
+		"fy": 2923.5296312549385,
+		"cx": 1927.235428885049,
+		"cy": 1103.4557134908343
+	},
+	"distortion_coeffs": [
+		0.4343400769237001,
+		-0.17921385188098068,
+		2.031526533810592,
+		-5.051775690540841
+	],
+	"metadata": {
+		"calibrated_by": "Chukuang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-70d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 70D",
+	"lens_model": "Fisheye 8mm",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 492.6718082237708,
+		"fy": 492.8125670307151,
+		"cx": 640.074113327523,
+		"cy": 359.16437913447714
+	},
+	"distortion_coeffs": [
+		0.037799992636853616,
+		0.0015631413281494678,
+		0.0064201690737828694,
+		-0.0007851702741517955
+	],
+	"metadata": {
+		"calibrated_by": "devamorph",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-15-pro-ga--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 15 PRO GA",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1648.1984206698164,
+		"fy": 1648.4166658062152,
+		"cx": 1912.5869632375936,
+		"cy": 1064.449143468918
+	},
+	"distortion_coeffs": [
+		0.32545250556391087,
+		0.16269969478301632,
+		-0.11158197338329012,
+		0.3030760928233809
+	],
+	"metadata": {
+		"calibrated_by": "GM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

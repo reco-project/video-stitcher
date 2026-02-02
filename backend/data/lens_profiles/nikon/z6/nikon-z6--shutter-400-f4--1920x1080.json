@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--shutter-400-f4--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "Nikkor Z35s 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1807.4636256286176,
+		"fy": 1811.1568070632215,
+		"cx": 957.4092364919288,
+		"cy": 524.756114697607
+	},
+	"distortion_coeffs": [
+		0.34111051888241267,
+		-0.0697929941645133,
+		1.4642172813523016,
+		-3.2302634612336387
+	],
+	"metadata": {
+		"calibrated_by": "Ilya",
+		"notes": "shutter 400 f4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--30p--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Voigtlander_10.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1105.9726612109498,
+		"fy": 1105.274079378744,
+		"cx": 1925.7970082697905,
+		"cy": 1075.885655668544
+	},
+	"distortion_coeffs": [
+		0.315010310754407,
+		0.1813964156145104,
+		-0.026140270201139796,
+		0.08482996391743572
+	],
+	"metadata": {
+		"calibrated_by": "Tetsuji Yoshida",
+		"notes": "30p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

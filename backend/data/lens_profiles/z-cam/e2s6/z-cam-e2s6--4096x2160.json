@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2s6--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2S6",
+	"lens_model": "Meike 24mm T2.1",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4327.551726718271,
+		"fy": 4335.241985349771,
+		"cx": 2094.645862939178,
+		"cy": 1095.4352780750448
+	},
+	"distortion_coeffs": [
+		0.31322693707201654,
+		0.19391416738946424,
+		-1.8874404804946985,
+		6.811152723921179
+	],
+	"metadata": {
+		"calibrated_by": "nova",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-dc-s5--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix dc-s5",
+	"lens_model": "24-105",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2952.298128275897,
+		"fy": 2960.6268081097587,
+		"cx": 1896.9481483317516,
+		"cy": 1046.6786536231552
+	},
+	"distortion_coeffs": [
+		0.29837485829896,
+		0.18649766421729191,
+		-0.09427809721960637,
+		0.08483692900753935
+	],
+	"metadata": {
+		"calibrated_by": "George2022",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s52--5952x3968",
+	"camera_brand": "Panasonic",
+	"camera_model": "S52",
+	"lens_model": "20-60mm",
+	"resolution": {
+		"width": 5952,
+		"height": 3968
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3375.850343719578,
+		"fy": 3382.5284175544107,
+		"cx": 2965.5540040567425,
+		"cy": 1981.408350563074
+	},
+	"distortion_coeffs": [
+		0.3012614054522918,
+		0.09824330462739111,
+		0.16020778162223656,
+		-0.06280150773164506
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u666f\u884c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "freefly-wave--4096x1536",
+	"camera_brand": "Freefly",
+	"camera_model": "Wave",
+	"lens_model": "Laowa 9mm",
+	"resolution": {
+		"width": 4096,
+		"height": 1536
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1685.4943308144416,
+		"fy": 1685.452179787874,
+		"cx": 2048.0,
+		"cy": 768.0
+	},
+	"distortion_coeffs": [
+		0.35467727058454696,
+		0.04408693034273848,
+		0.1421418876562,
+		-0.014193315792772524
+	],
+	"metadata": {
+		"calibrated_by": "Flow Motion Aerials",
+		"source": "gyroflow",
+		"official": true
+	}
+}

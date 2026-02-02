@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6v--24mm-5994p-all-correction-on-in-camera--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "SEL24-70GM2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1358.855411172599,
+		"fy": 1358.46176364324,
+		"cx": 960.5964022273356,
+		"cy": 542.43913112425
+	},
+	"distortion_coeffs": [
+		0.3061971511662668,
+		0.2542128027650952,
+		-0.4114859339442793,
+		0.6520898140380104
+	],
+	"metadata": {
+		"calibrated_by": "Alessandro Bartoletti",
+		"notes": "@24mm 59.94p all correction on in camera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

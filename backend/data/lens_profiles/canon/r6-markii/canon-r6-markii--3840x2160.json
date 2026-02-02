@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6-markii--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6 MarkII",
+	"lens_model": "RF24-105 F4 L",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2648.6106390138466,
+		"fy": 2651.340718223209,
+		"cx": 1936.134765580356,
+		"cy": 1075.2044608953224
+	},
+	"distortion_coeffs": [
+		0.24344186230085751,
+		0.0818950660312423,
+		0.19593697418900857,
+		-0.07468905972681802
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

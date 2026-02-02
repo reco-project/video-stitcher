@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2--50fps--960x540",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "Laowa 7.5mm",
+	"resolution": {
+		"width": 960,
+		"height": 540
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 413.21905450114554,
+		"fy": 413.0792337850525,
+		"cx": 469.41366921367467,
+		"cy": 266.4427811719872
+	},
+	"distortion_coeffs": [
+		0.3281856227349825,
+		0.07785307254874699,
+		0.05424461894705279,
+		0.015983174146445695
+	],
+	"metadata": {
+		"calibrated_by": "Ioannis koukouzis",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

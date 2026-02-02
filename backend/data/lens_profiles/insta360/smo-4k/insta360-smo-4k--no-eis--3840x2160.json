@@ -1,0 +1,29 @@
+{
+	"id": "insta360-smo-4k--no-eis--3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "SMO 4K",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1934.8698213990149,
+		"fy": 1933.189778278168,
+		"cx": 1893.238367090929,
+		"cy": 1060.2472740122762
+	},
+	"distortion_coeffs": [
+		0.007206596197199447,
+		-0.010663941786052253,
+		0.005397436576712498,
+		-0.003291459996626855
+	],
+	"metadata": {
+		"calibrated_by": "Hoffmann, Marc",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

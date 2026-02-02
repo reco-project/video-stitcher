@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--4800x2008",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Canon EF-M 15-45mm IS STM at 15mm",
+	"resolution": {
+		"width": 4800,
+		"height": 2008
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3405.8643300004364,
+		"fy": 3412.476439931296,
+		"cx": 2340.5165975915893,
+		"cy": 920.772295528853
+	},
+	"distortion_coeffs": [
+		0.20270240836443928,
+		-0.0005336707540596332,
+		0.45881573907703305,
+		-0.3356392653233675
+	],
+	"metadata": {
+		"calibrated_by": "Extreme Banding",
+		"source": "gyroflow",
+		"official": true
+	}
+}

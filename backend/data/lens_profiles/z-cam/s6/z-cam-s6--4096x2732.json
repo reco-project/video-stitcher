@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-s6--4096x2732",
+	"camera_brand": "Z CAM",
+	"camera_model": "S6",
+	"lens_model": "Taikuma 24mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2732
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5104.521475760961,
+		"fy": 5096.609186211412,
+		"cx": 1954.0573834067463,
+		"cy": 1406.5145725389405
+	},
+	"distortion_coeffs": [
+		0.24239082987847196,
+		0.8182351923002658,
+		-7.174876110575197,
+		22.45352924954222
+	],
+	"metadata": {
+		"calibrated_by": "qinyu gao",
+		"source": "gyroflow",
+		"official": true
+	}
+}

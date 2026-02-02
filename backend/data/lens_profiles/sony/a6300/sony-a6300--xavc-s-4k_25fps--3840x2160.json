@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--xavc-s-4k_25fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Rokinon 8mm Fisheye",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1380.969575601094,
+		"fy": 1381.593871949541,
+		"cx": 1896.3072652530268,
+		"cy": 1088.1079993821536
+	},
+	"distortion_coeffs": [
+		0.03959480472555792,
+		-0.004358058359770879,
+		0.008619962440123698,
+		-0.001942012490676944
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan",
+		"notes": "XAVC S 4K_25FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

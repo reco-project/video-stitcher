@@ -1,0 +1,28 @@
+{
+	"id": "runcam-5-orange--2704x1520",
+	"camera_brand": "RunCam",
+	"camera_model": "5 Orange",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1465.4123517002536,
+		"fy": 1478.9759225557889,
+		"cx": 1414.5711120161807,
+		"cy": 712.2862035174836
+	},
+	"distortion_coeffs": [
+		-0.04481899260677108,
+		0.016443229006565536,
+		-0.034494487217909,
+		0.0177194299577687
+	],
+	"metadata": {
+		"calibrated_by": "Eddy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

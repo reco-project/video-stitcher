@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-legend-1--1920x1080",
+	"camera_brand": "Foxeer",
+	"camera_model": "Legend 1",
+	"lens_model": "Sony",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1124.6128909770457,
+		"fy": 1122.6558402639446,
+		"cx": 964.2224439974726,
+		"cy": 568.7854854418579
+	},
+	"distortion_coeffs": [
+		-0.007249024319053526,
+		-0.13822230540439867,
+		0.3103973358327896,
+		-0.24055710756270585
+	],
+	"metadata": {
+		"calibrated_by": "RyzenVega",
+		"source": "gyroflow",
+		"official": true
+	}
+}

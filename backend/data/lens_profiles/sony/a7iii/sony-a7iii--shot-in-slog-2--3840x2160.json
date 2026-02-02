@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--shot-in-slog-2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Vivitar 28mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3090.3190986864715,
+		"fy": 3088.4114690817023,
+		"cx": 1906.719967988759,
+		"cy": 1063.2537488860817
+	},
+	"distortion_coeffs": [
+		0.20765379374121545,
+		0.2612780960932322,
+		-0.62284686062994,
+		1.6378106738935911
+	],
+	"metadata": {
+		"calibrated_by": "Berno Smit",
+		"notes": "shot in slog 2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

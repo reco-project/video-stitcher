@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--50fps--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Olympus 17mm f1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3732.583218441785,
+		"fy": 3732.171253132956,
+		"cx": 2111.0418190798655,
+		"cy": 1046.8339694370625
+	},
+	"distortion_coeffs": [
+		0.005617088642562816,
+		0.6320545980293528,
+		-2.217964695804917,
+		2.578627729825827
+	],
+	"metadata": {
+		"calibrated_by": "wt04_reddragon",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

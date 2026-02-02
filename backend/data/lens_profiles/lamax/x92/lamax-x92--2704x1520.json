@@ -1,0 +1,28 @@
+{
+	"id": "lamax-x92--2704x1520",
+	"camera_brand": "Lamax",
+	"camera_model": "X9.2",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2094.470521139681,
+		"fy": 2090.6306828814695,
+		"cx": 1213.7782075758698,
+		"cy": 1218.989024168265
+	},
+	"distortion_coeffs": [
+		0.06594715856437865,
+		-0.1325221003328364,
+		0.5005882517577959,
+		-0.8578370389035457
+	],
+	"metadata": {
+		"calibrated_by": "Ji\u0159\u00edk",
+		"source": "gyroflow",
+		"official": true
+	}
+}

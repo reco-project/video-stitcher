@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x-6k-s35--6480x3645",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "LAOWA ARGUS 18mm T1",
+	"resolution": {
+		"width": 6480,
+		"height": 3645
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4826.520725547679,
+		"fy": 4825.87916652487,
+		"cx": 3218.6724549941036,
+		"cy": 1818.9367287775517
+	},
+	"distortion_coeffs": [
+		0.21553691151776824,
+		0.06781136760255828,
+		0.21082608104305803,
+		0.3275834256764658
+	],
+	"metadata": {
+		"calibrated_by": "teodor g\u00f6rtz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

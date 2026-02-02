@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--danne-build--1736x976",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "MIR-24M",
+	"resolution": {
+		"width": 1736,
+		"height": 976
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2044.5975459283277,
+		"fy": 2038.8582443056205,
+		"cx": 836.5512260318708,
+		"cy": 499.1523322247086
+	},
+	"distortion_coeffs": [
+		0.1091927273567317,
+		-1.0344999361660243,
+		10.670060492293072,
+		-26.10889820611894
+	],
+	"metadata": {
+		"calibrated_by": "NoMad Filmmaker",
+		"notes": "Danne Build",
+		"source": "gyroflow",
+		"official": true
+	}
+}

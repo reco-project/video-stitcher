@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--desqueeze--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "SIRUI 35mm Anamorphic",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2107.3444062823746,
+		"fy": 2118.163413962249,
+		"cx": 1995.4172207156523,
+		"cy": 999.4009155584268
+	},
+	"distortion_coeffs": [
+		0.2747512232323398,
+		0.3250978865291979,
+		-1.4451516419955328,
+		2.360241602228463
+	],
+	"metadata": {
+		"calibrated_by": "Keita Hagiwara",
+		"notes": "desqueeze",
+		"source": "gyroflow",
+		"official": true
+	}
+}

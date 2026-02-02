@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--youngnuo-16mm-f18-aps-c-lens-on-ff-10-crop--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "16.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1919.685211913289,
+		"fy": 1920.1485190183405,
+		"cx": 1915.58285481034,
+		"cy": 1081.152051097666
+	},
+	"distortion_coeffs": [
+		0.2240945117870641,
+		0.15818229537118206,
+		-0.04410872997139148,
+		0.26523026222581547
+	],
+	"metadata": {
+		"calibrated_by": "Eric Ginsburg",
+		"notes": "Youngnuo 16mm F1.8 APS-C lens on FF (10% crop)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

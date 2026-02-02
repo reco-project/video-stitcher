@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5-c--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5 C",
+	"lens_model": "Meyer-Optik Gorlitz Biotar 58mm f/1.5",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7593.053356842039,
+		"fy": 7584.105728099501,
+		"cx": 2100.926115534009,
+		"cy": 1139.6901753944228
+	},
+	"distortion_coeffs": [
+		-0.01724837020326762,
+		-3.735249809993254,
+		90.3807897655432,
+		-770.2172763144999
+	],
+	"metadata": {
+		"calibrated_by": "Red Sea",
+		"source": "gyroflow",
+		"official": true
+	}
+}

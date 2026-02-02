@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-s20--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S20",
+	"lens_model": "Fijinon 15-55mm f3.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2361.5409930176315,
+		"fy": 2357.9363445415565,
+		"cx": 1903.9344281661713,
+		"cy": 1088.7303215585123
+	},
+	"distortion_coeffs": [
+		0.31352607854936176,
+		0.1860313390472509,
+		0.1018572502267086,
+		-0.2863334474488139
+	],
+	"metadata": {
+		"calibrated_by": "Anirudh Venkatesan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

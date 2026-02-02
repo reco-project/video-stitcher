@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero3--principiante--1280x720",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO3",
+	"lens_model": "NOSE",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 616.4000467256803,
+		"fy": 613.6801178854877,
+		"cx": 669.7050325639142,
+		"cy": 354.0182846721047
+	},
+	"distortion_coeffs": [
+		0.005898806255046761,
+		-0.003581702358796485,
+		0.0023138302839446267,
+		0.0017919722898424753
+	],
+	"metadata": {
+		"calibrated_by": "Martin Miguel",
+		"notes": "Principiante",
+		"source": "gyroflow",
+		"official": true
+	}
+}

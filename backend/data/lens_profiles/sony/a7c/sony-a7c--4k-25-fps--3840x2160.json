@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--4k-25-fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Tamron 20-40 f/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4896.410055227053,
+		"fy": 4878.529721313721,
+		"cx": 1933.294727778064,
+		"cy": 1241.891645177341
+	},
+	"distortion_coeffs": [
+		0.34827794055924416,
+		-0.2531116254321579,
+		6.8624203526336185,
+		-27.62631506217579
+	],
+	"metadata": {
+		"calibrated_by": "A",
+		"notes": "4K 25 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

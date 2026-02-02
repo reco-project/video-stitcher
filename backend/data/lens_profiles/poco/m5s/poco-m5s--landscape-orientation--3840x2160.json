@@ -1,0 +1,29 @@
+{
+	"id": "poco-m5s--landscape-orientation--3840x2160",
+	"camera_brand": "Poco",
+	"camera_model": "M5s",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2855.976358123765,
+		"fy": 2860.6053785441486,
+		"cx": 1928.2222311528544,
+		"cy": 1081.6428742810292
+	},
+	"distortion_coeffs": [
+		0.46382773951368056,
+		-1.0006049125113998,
+		4.722890523392037,
+		-6.6328525177283755
+	],
+	"metadata": {
+		"calibrated_by": "Csongor",
+		"notes": "Landscape orientation",
+		"source": "gyroflow",
+		"official": true
+	}
+}

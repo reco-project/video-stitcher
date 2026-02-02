@@ -1,0 +1,29 @@
+{
+	"id": "runcam-5-orange--distortion-correction-on--2704x1520",
+	"camera_brand": "RunCam",
+	"camera_model": "5 Orange",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1427.8464052818913,
+		"fy": 1439.3841199064948,
+		"cx": 1376.063848089909,
+		"cy": 722.3619885510369
+	},
+	"distortion_coeffs": [
+		0.24034995801626985,
+		0.22083511624305016,
+		-0.4755693244331933,
+		0.4590980370854649
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Seymour",
+		"notes": "Distortion Correction - ON",
+		"source": "gyroflow",
+		"official": true
+	}
+}

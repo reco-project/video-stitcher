@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d7500--16mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "d7500",
+	"lens_model": "16-80 f2.8-4E @ 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3615.6751634890898,
+		"fy": 3616.777013955931,
+		"cx": 1850.399102836321,
+		"cy": 1099.3805039948345
+	},
+	"distortion_coeffs": [
+		0.1992319713753962,
+		0.05837787250038581,
+		0.3170752108792212,
+		-0.5481799466552926
+	],
+	"metadata": {
+		"calibrated_by": "Juan San Martin Lledias",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

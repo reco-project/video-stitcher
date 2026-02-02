@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--9mm--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa T2.9",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2185.4767116910457,
+		"fy": 2186.451512747095,
+		"cx": 2879.2123845581687,
+		"cy": 1632.982661671252
+	},
+	"distortion_coeffs": [
+		0.35936505301563576,
+		0.07814969123033677,
+		0.03508944841789001,
+		0.07937976441768335
+	],
+	"metadata": {
+		"calibrated_by": "Leon Schubert",
+		"notes": "9mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

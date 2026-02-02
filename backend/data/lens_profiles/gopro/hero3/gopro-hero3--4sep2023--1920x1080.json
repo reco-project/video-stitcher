@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero3--4sep2023--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO3",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 871.2463121658338,
+		"fy": 886.1186893723869,
+		"cx": 952.065028800516,
+		"cy": 557.917216402088
+	},
+	"distortion_coeffs": [
+		-0.03375394171476983,
+		0.09569472040133128,
+		-0.0037648806206820097,
+		-0.020605837895751832
+	],
+	"metadata": {
+		"calibrated_by": "Andrew",
+		"notes": "4Sep2023",
+		"source": "gyroflow",
+		"official": true
+	}
+}

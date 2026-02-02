@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-hd1913--4032x2176",
+	"camera_brand": "OnePlus",
+	"camera_model": "HD1913",
+	"lens_model": null,
+	"resolution": {
+		"width": 4032,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2940.85508200856,
+		"fy": 2939.803983012334,
+		"cx": 1918.568939989416,
+		"cy": 1009.9562600113796
+	},
+	"distortion_coeffs": [
+		0.5926623617668337,
+		-2.2048617064673115,
+		8.973490135900429,
+		-11.26740626460201
+	],
+	"metadata": {
+		"calibrated_by": "Mateusz Polechonski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

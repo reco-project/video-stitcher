@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--f56--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Samayng 12mm f2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2602.2143796433284,
+		"fy": 2596.0730705603232,
+		"cx": 1932.762842090974,
+		"cy": 1056.9351076727417
+	},
+	"distortion_coeffs": [
+		0.29689750277098637,
+		0.1608298990381151,
+		-0.0882135835813233,
+		0.1419698709970023
+	],
+	"metadata": {
+		"calibrated_by": "Oleg M80",
+		"notes": "f5.6",
+		"source": "gyroflow",
+		"official": true
+	}
+}

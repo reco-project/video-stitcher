@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a30s--2336x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A30s",
+	"lens_model": null,
+	"resolution": {
+		"width": 2336,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1724.1378688547122,
+		"fy": 1721.9586363606606,
+		"cx": 1175.526560329448,
+		"cy": 501.8934455546143
+	},
+	"distortion_coeffs": [
+		0.6136509036102049,
+		-1.6211390034208275,
+		5.417668194638803,
+		-6.676417011718398
+	],
+	"metadata": {
+		"calibrated_by": "FAUZAN IQBAL",
+		"source": "gyroflow",
+		"official": true
+	}
+}

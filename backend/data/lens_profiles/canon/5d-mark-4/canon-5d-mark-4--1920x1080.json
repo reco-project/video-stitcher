@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d-mark-4--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark 4",
+	"lens_model": "ef16-35f2.8III",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 865.38567293906,
+		"fy": 865.4844532153033,
+		"cx": 964.8247381676111,
+		"cy": 537.5635166979572
+	},
+	"distortion_coeffs": [
+		0.27494668363865216,
+		0.14693714590585957,
+		-0.0770025539786668,
+		0.1334096466100442
+	],
+	"metadata": {
+		"calibrated_by": "\u6d77\u4e1c\u9752",
+		"source": "gyroflow",
+		"official": true
+	}
+}

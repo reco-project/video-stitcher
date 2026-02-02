@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-g2--20mm-focal-length--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K G2",
+	"lens_model": "Sigma 18-35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3047.436196040187,
+		"fy": 3049.381890535796,
+		"cx": 2016.627362120878,
+		"cy": 1073.700939540764
+	},
+	"distortion_coeffs": [
+		0.1916905955470335,
+		0.5613817501379781,
+		-2.25556002043507,
+		4.381390057879389
+	],
+	"metadata": {
+		"calibrated_by": "Olav Carter",
+		"notes": "20mm Focal Length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

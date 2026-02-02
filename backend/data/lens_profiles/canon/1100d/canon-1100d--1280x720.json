@@ -1,0 +1,28 @@
+{
+	"id": "canon-1100d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "1100D",
+	"lens_model": "Canon EF 18-55mm",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1263.051261805002,
+		"fy": 1260.0420247557142,
+		"cx": 626.7811948260659,
+		"cy": 323.06900876231686
+	},
+	"distortion_coeffs": [
+		0.14746371887508816,
+		-0.3687617330313503,
+		3.0801516272939287,
+		-4.367182046204133
+	],
+	"metadata": {
+		"calibrated_by": "Egehan ERTAN",
+		"source": "gyroflow",
+		"official": true
+	}
+}

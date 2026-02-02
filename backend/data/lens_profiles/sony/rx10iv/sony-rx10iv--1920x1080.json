@@ -2,7 +2,7 @@
 	"id": "sony-rx10iv--1920x1080",
 	"camera_brand": "Sony",
 	"camera_model": "RX10IV",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
@@ -21,13 +21,8 @@
 		3584.4794675548965
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_RX10IV___1080p_16by9_1920x1080-50.00fps",
 		"calibrated_by": "yu luo",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "50.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

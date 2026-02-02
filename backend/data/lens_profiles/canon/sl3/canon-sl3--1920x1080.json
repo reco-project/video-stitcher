@@ -1,0 +1,28 @@
+{
+	"id": "canon-sl3--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "SL3",
+	"lens_model": "EFS 10-18mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 878.1049188380358,
+		"fy": 879.0762958987226,
+		"cx": 969.2523455271636,
+		"cy": 546.8251013174164
+	},
+	"distortion_coeffs": [
+		0.30858786289034784,
+		0.19372390382133609,
+		-0.10529875052175394,
+		0.06445740039169766
+	],
+	"metadata": {
+		"calibrated_by": "Paulo Roberto",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "vivitar-dvr923-kit-blk--1920x1080",
+	"camera_brand": "VIVITAR",
+	"camera_model": "DVR923-KIT-BLK",
+	"lens_model": "N/A (Built in)",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1381.6962596894425,
+		"fy": 1397.7298933548116,
+		"cx": 959.4941348661408,
+		"cy": 560.8387042608601
+	},
+	"distortion_coeffs": [
+		-0.14566570886417646,
+		0.214962656333457,
+		-0.5280607254874441,
+		0.4547366605040731
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Laskowski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

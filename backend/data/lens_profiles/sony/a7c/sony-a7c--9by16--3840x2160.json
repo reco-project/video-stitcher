@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--9by16--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "28-60mm@60mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9007.11170015847,
+		"fy": 8980.593341765265,
+		"cx": 2121.372382883293,
+		"cy": 721.1358667692618
+	},
+	"distortion_coeffs": [
+		0.3946392679680372,
+		-1.9952836315585856,
+		91.4271772674027,
+		-979.1097333324273
+	],
+	"metadata": {
+		"calibrated_by": "CP",
+		"notes": "9by16",
+		"source": "gyroflow",
+		"official": true
+	}
+}

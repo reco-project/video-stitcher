@@ -1,0 +1,28 @@
+{
+	"id": "sony-7cii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "7CII",
+	"lens_model": "35mm ziess",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3584.592202183086,
+		"fy": 3591.912555701293,
+		"cx": 1918.0160150023037,
+		"cy": 1180.16417943718
+	},
+	"distortion_coeffs": [
+		0.2990395415714239,
+		0.37717960777860976,
+		-0.9144973742050976,
+		1.980924990873682
+	],
+	"metadata": {
+		"calibrated_by": "Mark",
+		"source": "gyroflow",
+		"official": true
+	}
+}

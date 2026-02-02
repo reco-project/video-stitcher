@@ -1,0 +1,29 @@
+{
+	"id": "axnen-a10--sensor-sony-imx386-12mp-123--2704x1520",
+	"camera_brand": "AXNEN",
+	"camera_model": "A10",
+	"lens_model": "F2.5, f2.68 mm",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1253.1526519176225,
+		"fy": 1268.355354172268,
+		"cx": 1366.1826578207629,
+		"cy": 719.0192769510745
+	},
+	"distortion_coeffs": [
+		0.132102587323238,
+		0.1280008094262486,
+		-0.381338999460382,
+		0.3709872459145909
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Chang",
+		"notes": "Sensor: Sony IMX386 12MP 1/2.3 \",",
+		"source": "gyroflow",
+		"official": true
+	}
+}

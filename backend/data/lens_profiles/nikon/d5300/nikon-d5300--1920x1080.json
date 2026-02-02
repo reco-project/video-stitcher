@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d5300--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D5300",
+	"lens_model": "50mm 1.8G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4360.722208929126,
+		"fy": 4389.84671554526,
+		"cx": 1047.3529542865576,
+		"cy": 618.072534754987
+	},
+	"distortion_coeffs": [
+		0.15448589353207332,
+		-2.828624588523592,
+		157.47572556957516,
+		-1644.3182153963796
+	],
+	"metadata": {
+		"calibrated_by": "Braian",
+		"source": "gyroflow",
+		"official": true
+	}
+}

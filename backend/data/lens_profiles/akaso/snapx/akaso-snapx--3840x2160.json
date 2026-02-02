@@ -1,0 +1,28 @@
+{
+	"id": "akaso-snapx--3840x2160",
+	"camera_brand": "AKASO",
+	"camera_model": "snapX",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1843.4465016244,
+		"fy": 1846.5958650205555,
+		"cx": 1937.9089737476113,
+		"cy": 1105.6024259737767
+	},
+	"distortion_coeffs": [
+		0.3117851644702154,
+		0.15347322715453754,
+		0.0325965650500775,
+		0.03767491788513476
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "honor-80-honor-80--1080-30p--1920x1080",
+	"camera_brand": "Honor 80",
+	"camera_model": "Honor 80",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1769.9364345716735,
+		"fy": 1769.503420804603,
+		"cx": 961.0720429692446,
+		"cy": 528.7615076288714
+	},
+	"distortion_coeffs": [
+		0.546437245277397,
+		-1.9690923080199996,
+		10.083064222508051,
+		-18.240183432287072
+	],
+	"metadata": {
+		"calibrated_by": "Raikvolt",
+		"notes": "1080 30P",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "35mm Canon FD f3.5",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2724.5322782470107,
+		"fy": 2726.5551735187055,
+		"cx": 1026.0970725369689,
+		"cy": 525.9634181057503
+	},
+	"distortion_coeffs": [
+		0.22678580289773545,
+		1.2572234175736623,
+		-12.857053041960404,
+		52.21010058955414
+	],
+	"metadata": {
+		"calibrated_by": "David Perkins",
+		"source": "gyroflow",
+		"official": true
+	}
+}

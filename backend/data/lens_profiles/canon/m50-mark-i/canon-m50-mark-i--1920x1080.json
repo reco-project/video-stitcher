@@ -1,0 +1,28 @@
+{
+	"id": "canon-m50-mark-i--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "M50 mark I",
+	"lens_model": "Ttartisan 35mm 1.4 ef-m",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3325.766687810786,
+		"fy": 3329.2283341256407,
+		"cx": 1033.9589285713992,
+		"cy": 543.2106075023023
+	},
+	"distortion_coeffs": [
+		0.08416528710304721,
+		2.806260815360175,
+		-41.966521694362825,
+		223.58945967415087
+	],
+	"metadata": {
+		"calibrated_by": "j d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

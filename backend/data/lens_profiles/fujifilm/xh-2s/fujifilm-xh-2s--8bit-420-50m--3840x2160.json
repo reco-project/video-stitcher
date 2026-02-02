@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-xh-2s--8bit-420-50m--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XH-2S",
+	"lens_model": "16-55 F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2615.207879828444,
+		"fy": 2612.253109969401,
+		"cx": 1925.1721966928696,
+		"cy": 1098.3414120081106
+	},
+	"distortion_coeffs": [
+		0.3041165303102678,
+		0.35465205814571227,
+		-1.1709950239889348,
+		1.8810839519246063
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "8bit 420 50m",
+		"source": "gyroflow",
+		"official": true
+	}
+}

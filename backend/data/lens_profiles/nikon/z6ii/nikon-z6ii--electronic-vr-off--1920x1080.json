@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6ii--electronic-vr-off--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6II",
+	"lens_model": "Nikkor Z 35 mm 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1812.4042408105447,
+		"fy": 1814.2782169426523,
+		"cx": 959.4815931544108,
+		"cy": 536.2045467640173
+	},
+	"distortion_coeffs": [
+		0.31231005541442247,
+		0.4173604419218731,
+		-0.966814835952726,
+		1.5975341089942297
+	],
+	"metadata": {
+		"calibrated_by": "Syam Krishna",
+		"notes": "ELECTRONIC VR OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

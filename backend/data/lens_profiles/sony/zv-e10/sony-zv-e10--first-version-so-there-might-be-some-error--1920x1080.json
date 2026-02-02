@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--first-version-so-there-might-be-some-error--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 16mm f1.4 zoom 2x v1",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2683.0563432592317,
+		"fy": 2679.709948493706,
+		"cx": 993.7933418438432,
+		"cy": 458.7644556130123
+	},
+	"distortion_coeffs": [
+		0.012917811875258334,
+		10.35365696315618,
+		-175.66619595023386,
+		1000.7252760612312
+	],
+	"metadata": {
+		"calibrated_by": "Zentarus111",
+		"notes": "First version so there might be some error",
+		"source": "gyroflow",
+		"official": true
+	}
+}

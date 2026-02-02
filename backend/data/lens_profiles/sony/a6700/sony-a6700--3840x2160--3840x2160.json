@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--3840x2160--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "17.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3066.3170553851633,
+		"fy": 3063.328876754948,
+		"cx": 1917.45692081586,
+		"cy": 1049.3489334646194
+	},
+	"distortion_coeffs": [
+		0.14856494324221503,
+		0.3830349712300709,
+		-0.8166955643473087,
+		1.207412382868874
+	],
+	"metadata": {
+		"calibrated_by": "\u5cb3\u7ee7\u5143",
+		"notes": "3840X2160",
+		"source": "gyroflow",
+		"official": true
+	}
+}

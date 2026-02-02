@@ -1,0 +1,28 @@
+{
+	"id": "caddx-loris--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Loris",
+	"lens_model": "1.8mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2044.9998706846857,
+		"fy": 2041.956455914796,
+		"cx": 1888.6433088868505,
+		"cy": 1179.5220592908995
+	},
+	"distortion_coeffs": [
+		-0.07322080117016905,
+		-0.00917205074738736,
+		0.02641015011995005,
+		-0.018246151943609103
+	],
+	"metadata": {
+		"calibrated_by": "anton",
+		"source": "gyroflow",
+		"official": true
+	}
+}

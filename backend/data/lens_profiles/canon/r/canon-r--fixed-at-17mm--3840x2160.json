@@ -1,0 +1,29 @@
+{
+	"id": "canon-r--fixed-at-17mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R",
+	"lens_model": "SIGMA 17-50 @ 17mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3286.289126171126,
+		"fy": 3296.6756433703126,
+		"cx": 1838.6636062733355,
+		"cy": 1009.6002824957054
+	},
+	"distortion_coeffs": [
+		0.18821833763735793,
+		0.20080232576068807,
+		-0.0795957872206741,
+		0.6843704917409883
+	],
+	"metadata": {
+		"calibrated_by": "Andrea Buonviso",
+		"notes": "Fixed At 17mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

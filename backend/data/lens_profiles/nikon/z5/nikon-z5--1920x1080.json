@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z5--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "z5",
+	"lens_model": "z 24-70 f4s",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1811.0267835535408,
+		"fy": 1811.7153128078835,
+		"cx": 957.101755676732,
+		"cy": 541.77364556028
+	},
+	"distortion_coeffs": [
+		0.29957193277083183,
+		0.3420089916208478,
+		-1.594071365025565,
+		3.796414201521157
+	],
+	"metadata": {
+		"calibrated_by": "\u8d75\u5e86\u78ca",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--35mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5c",
+	"lens_model": "Carl Zeiss Jena Flektogon",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4417.524481054211,
+		"fy": 4420.527992539291,
+		"cx": 1870.0182648334924,
+		"cy": 1046.9051156659973
+	},
+	"distortion_coeffs": [
+		0.24725939424208437,
+		0.47313280091086607,
+		-3.3786334098126773,
+		12.76437573139381
+	],
+	"metadata": {
+		"calibrated_by": "Gianluca",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

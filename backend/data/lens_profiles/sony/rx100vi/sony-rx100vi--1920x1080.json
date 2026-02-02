@@ -2,7 +2,7 @@
 	"id": "sony-rx100vi--1920x1080",
 	"camera_brand": "Sony",
 	"camera_model": "RX100VI",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
@@ -21,13 +21,8 @@
 		0.013033661291347988
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_RX100VI___1080p_16by9_1920x1080-59.94fps",
 		"calibrated_by": "Michel Bagard",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "59.94006",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

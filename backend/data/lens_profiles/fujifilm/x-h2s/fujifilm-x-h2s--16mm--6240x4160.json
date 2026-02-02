@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-h2s--16mm--6240x4160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2s",
+	"lens_model": "Fujinon XF 16-55mm F2.8 R LM WR @ 16mm",
+	"resolution": {
+		"width": 6240,
+		"height": 4160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4233.945896131842,
+		"fy": 4234.36302103478,
+		"cx": 3058.639778908342,
+		"cy": 2056.2584281560435
+	},
+	"distortion_coeffs": [
+		0.2892798808024992,
+		0.2961148904788445,
+		-0.6321606317638262,
+		1.072543739292347
+	],
+	"metadata": {
+		"calibrated_by": "David Re\u00df",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

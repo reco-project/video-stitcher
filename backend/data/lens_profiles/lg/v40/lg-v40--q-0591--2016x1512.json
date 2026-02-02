@@ -1,0 +1,29 @@
+{
+	"id": "lg-v40--q-0591--2016x1512",
+	"camera_brand": "LG",
+	"camera_model": "V40",
+	"lens_model": "Tele 53mm",
+	"resolution": {
+		"width": 2016,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2945.322076154003,
+		"fy": 2948.281997770526,
+		"cx": 1038.2332758818054,
+		"cy": 780.0975241248237
+	},
+	"distortion_coeffs": [
+		0.3613746732720563,
+		14.18882108919419,
+		-176.00269251069057,
+		613.4096907084021
+	],
+	"metadata": {
+		"calibrated_by": "David Barlow",
+		"notes": "Q 0.591",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--35mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "Nikkor Z 24-70 f2.8 @35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1807.0733135920768,
+		"fy": 1810.522358704894,
+		"cx": 959.5587432149006,
+		"cy": 551.0515670217351
+	},
+	"distortion_coeffs": [
+		0.3093205623583476,
+		0.5124907456359771,
+		-1.66112374536368,
+		2.76670205276749
+	],
+	"metadata": {
+		"calibrated_by": "Knotty",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

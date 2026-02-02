@@ -1,0 +1,28 @@
+{
+	"id": "crosstour-ct7000--2688x1520",
+	"camera_brand": "Crosstour",
+	"camera_model": "CT7000",
+	"lens_model": null,
+	"resolution": {
+		"width": 2688,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1588.4207801031084,
+		"fy": 1585.4626043052965,
+		"cx": 1377.5757842268742,
+		"cy": 752.7179726861483
+	},
+	"distortion_coeffs": [
+		0.009113140820501813,
+		0.01378496731832464,
+		-0.02835659071588521,
+		0.01832860718099184
+	],
+	"metadata": {
+		"calibrated_by": "Osman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

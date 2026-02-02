@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--2398-fps--4320x1836",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "efm 15-45",
+	"resolution": {
+		"width": 4320,
+		"height": 1836
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3623.602247189101,
+		"fy": 3627.5893409976447,
+		"cx": 2188.813320868216,
+		"cy": 494.0892133547773
+	},
+	"distortion_coeffs": [
+		0.1944285412631088,
+		0.13337908641469218,
+		0.2043562975446449,
+		-0.3236298029288832
+	],
+	"metadata": {
+		"calibrated_by": "amit kattal",
+		"notes": "23.98 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

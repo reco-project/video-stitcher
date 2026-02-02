@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--22mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sigma 16-28 F2_8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2362.7428188241515,
+		"fy": 2363.21772342607,
+		"cx": 1915.1865044361864,
+		"cy": 1071.761341069701
+	},
+	"distortion_coeffs": [
+		0.27167933992836757,
+		0.3738163616868392,
+		-0.06453320734724456,
+		0.22050443907246
+	],
+	"metadata": {
+		"calibrated_by": "Kaos",
+		"notes": "22mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-ace3--1920x1080",
+	"camera_brand": "oneplus",
+	"camera_model": "ace3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1656.207026871623,
+		"fy": 1660.1148421609423,
+		"cx": 951.6423260839448,
+		"cy": 549.1391505724041
+	},
+	"distortion_coeffs": [
+		0.5573142394114148,
+		-1.71683386505541,
+		6.129364818371181,
+		-6.958537706960316
+	],
+	"metadata": {
+		"calibrated_by": "swy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

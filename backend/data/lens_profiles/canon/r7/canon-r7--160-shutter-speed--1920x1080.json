@@ -1,0 +1,29 @@
+{
+	"id": "canon-r7--160-shutter-speed--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R7",
+	"lens_model": "EFS 10-18mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 855.8601363964423,
+		"fy": 858.5240522062854,
+		"cx": 973.042307718711,
+		"cy": 513.1993730401938
+	},
+	"distortion_coeffs": [
+		0.324511563122503,
+		0.1688971097259916,
+		-0.045275987213531585,
+		0.054014799016443765
+	],
+	"metadata": {
+		"calibrated_by": "Ivan Chan",
+		"notes": "1/60 Shutter Speed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

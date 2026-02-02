@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--with-standard-stabilization--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "SEL35F18F",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4194.274009174651,
+		"fy": 4209.277650886525,
+		"cx": 1931.8530439661963,
+		"cy": 887.9901231282997
+	},
+	"distortion_coeffs": [
+		0.5996309573301408,
+		-1.3973263675999386,
+		19.199143490522736,
+		-54.57632676688703
+	],
+	"metadata": {
+		"calibrated_by": "Michael Lam",
+		"notes": "with Standard Stabilization",
+		"source": "gyroflow",
+		"official": true
+	}
+}

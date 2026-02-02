@@ -1,0 +1,29 @@
+{
+	"id": "xtu-s3--1920x1440--1920x1440",
+	"camera_brand": "XTU",
+	"camera_model": "S3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1286.0846941255622,
+		"fy": 1276.9598466826071,
+		"cx": 961.4861950836848,
+		"cy": 665.614272638975
+	},
+	"distortion_coeffs": [
+		0.49172502383454647,
+		0.3456841294727334,
+		0.10946786109947632,
+		-0.042220303666815395
+	],
+	"metadata": {
+		"calibrated_by": "Igor Rand",
+		"notes": "1920x1440",
+		"source": "gyroflow",
+		"official": true
+	}
+}

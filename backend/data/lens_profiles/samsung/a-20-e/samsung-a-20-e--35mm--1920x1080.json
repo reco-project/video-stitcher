@@ -1,0 +1,29 @@
+{
+	"id": "samsung-a-20-e--35mm--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A 20 E",
+	"lens_model": "CMOS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3674.816662921998,
+		"fy": 3674.8344491626913,
+		"cx": 965.118090224824,
+		"cy": 551.5421152835264
+	},
+	"distortion_coeffs": [
+		0.832895352852467,
+		-6.670355634217136,
+		109.45437656092597,
+		-883.7847394076889
+	],
+	"metadata": {
+		"calibrated_by": "michel",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

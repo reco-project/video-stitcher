@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-g85--16x9--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix G85",
+	"lens_model": "50 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 19810.040736824965,
+		"fy": 95055.04953876504,
+		"cx": 1769.5842616820055,
+		"cy": 208.27773235007777
+	},
+	"distortion_coeffs": [
+		5.514720898247391,
+		-237.4130338014292,
+		-15871.297619935856,
+		6854474.366943442
+	],
+	"metadata": {
+		"calibrated_by": "Roel Sanchez",
+		"notes": "16x9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

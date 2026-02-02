@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-note-10--video-stabilization-off--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Note 10+",
+	"lens_model": "Main camera",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2957.988538753773,
+		"fy": 2958.953167278293,
+		"cx": 1877.0806159050708,
+		"cy": 1051.4318913457937
+	},
+	"distortion_coeffs": [
+		0.7827970726008392,
+		-2.970044134474094,
+		9.036563956472191,
+		-8.588462603233339
+	],
+	"metadata": {
+		"calibrated_by": "Jackmin",
+		"notes": "Video Stabilization Off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

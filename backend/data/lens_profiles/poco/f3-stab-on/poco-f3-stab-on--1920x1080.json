@@ -1,0 +1,28 @@
+{
+	"id": "poco-f3-stab-on--1920x1080",
+	"camera_brand": "POCO",
+	"camera_model": "f3 stab on",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1724.4845994356892,
+		"fy": 1725.5841892137717,
+		"cx": 965.8795095753226,
+		"cy": 530.323822472217
+	},
+	"distortion_coeffs": [
+		0.5923140517908345,
+		-1.8806204093130523,
+		7.000058088319035,
+		-1.8921790400860028
+	],
+	"metadata": {
+		"calibrated_by": "U0 A54",
+		"source": "gyroflow",
+		"official": true
+	}
+}

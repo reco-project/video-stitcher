@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-9-pro--4000x3008",
+	"camera_brand": "OnePlus",
+	"camera_model": "9 Pro",
+	"lens_model": "24 mm Main camera",
+	"resolution": {
+		"width": 4000,
+		"height": 3008
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2663.0287692054794,
+		"fy": 2665.586313311958,
+		"cx": 1966.2365664025965,
+		"cy": 1487.567687460764
+	},
+	"distortion_coeffs": [
+		0.2738834713022983,
+		0.5995297560989573,
+		-0.7082810414106417,
+		0.11481567372199313
+	],
+	"metadata": {
+		"calibrated_by": "Luca C.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-7--4096x3072",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2888.0803004717923,
+		"fy": 2886.8670551161204,
+		"cx": 2015.7635497715316,
+		"cy": 1546.465441015478
+	},
+	"distortion_coeffs": [
+		0.4834584932328864,
+		-0.888740511413309,
+		4.024599729133338,
+		-5.144057367066612
+	],
+	"metadata": {
+		"calibrated_by": "Domenico Ciavattone",
+		"source": "gyroflow",
+		"official": true
+	}
+}

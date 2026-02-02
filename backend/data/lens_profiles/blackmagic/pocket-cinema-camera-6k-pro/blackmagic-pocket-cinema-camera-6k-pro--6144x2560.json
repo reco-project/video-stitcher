@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro--6144x2560",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Canon EF 24-70mm f/2.8L II USM 24mm",
+	"resolution": {
+		"width": 6144,
+		"height": 2560
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6435.463940641884,
+		"fy": 6448.353248451172,
+		"cx": 3094.820918408875,
+		"cy": 1193.00711481624
+	},
+	"distortion_coeffs": [
+		0.20195614446638033,
+		0.541355229358629,
+		-3.2998195610206658,
+		11.525451029046213
+	],
+	"metadata": {
+		"calibrated_by": "Davis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

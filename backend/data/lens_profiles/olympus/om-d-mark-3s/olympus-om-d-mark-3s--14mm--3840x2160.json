@@ -1,0 +1,29 @@
+{
+	"id": "olympus-om-d-mark-3s--14mm--3840x2160",
+	"camera_brand": "Olympus",
+	"camera_model": "OM-D Mark 3s",
+	"lens_model": "M.Zuiko 14-42",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2907.9960433623237,
+		"fy": 2910.6721037375805,
+		"cx": 1873.691890823392,
+		"cy": 1001.8972704333588
+	},
+	"distortion_coeffs": [
+		0.2776469282516965,
+		0.16022609005070393,
+		-0.01199043948601556,
+		-0.1549067201411708
+	],
+	"metadata": {
+		"calibrated_by": "Alexis Limboy",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--916--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "A7III",
+	"lens_model": "Sony 35mm F1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5441.987563895169,
+		"fy": 5448.4829156818905,
+		"cx": 2020.6899705317212,
+		"cy": 1293.5043243473478
+	},
+	"distortion_coeffs": [
+		0.26682523205660563,
+		0.6790460100865446,
+		12.017699296147482,
+		-130.93615216856327
+	],
+	"metadata": {
+		"calibrated_by": "Lori",
+		"notes": "9:16",
+		"source": "gyroflow",
+		"official": true
+	}
+}

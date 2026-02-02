@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--calibrated-in-121--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "LAOWA 9mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 774.2024953902106,
+		"fy": 773.3524784130968,
+		"cx": 979.6228957916612,
+		"cy": 542.9702633874174
+	},
+	"distortion_coeffs": [
+		0.3421731924067896,
+		0.11519466014750786,
+		-0.021534015503084883,
+		0.10649790068329186
+	],
+	"metadata": {
+		"calibrated_by": "Giovanni Strondl",
+		"notes": "Calibrated in 12:1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

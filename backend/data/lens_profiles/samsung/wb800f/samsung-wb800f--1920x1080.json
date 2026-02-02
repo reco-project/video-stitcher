@@ -1,0 +1,28 @@
+{
+	"id": "samsung-wb800f--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "WB800F",
+	"lens_model": "4.1-86.1mm 1:2.8-5.9",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1324.930804376465,
+		"fy": 1322.6432355122083,
+		"cx": 956.6985206853834,
+		"cy": 546.869926566067
+	},
+	"distortion_coeffs": [
+		0.3105969616277949,
+		0.021782494614510005,
+		1.3765485109994453,
+		-2.6747635757299233
+	],
+	"metadata": {
+		"calibrated_by": "Flopster Flop",
+		"source": "gyroflow",
+		"official": true
+	}
+}

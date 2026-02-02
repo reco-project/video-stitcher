@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--1920x1012",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa 7.5mm RF Super 35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1012
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 544.5639607201418,
+		"fy": 544.9865285182268,
+		"cx": 965.0593585995476,
+		"cy": 508.7024154399301
+	},
+	"distortion_coeffs": [
+		0.3477667858211738,
+		0.09203379520591884,
+		0.08141896605884001,
+		0.01603619103600332
+	],
+	"metadata": {
+		"calibrated_by": "Holler Film LLC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--35mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "GM 16-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4189.184627960025,
+		"fy": 4181.765357660088,
+		"cx": 1897.2698596946016,
+		"cy": 1032.536355895984
+	},
+	"distortion_coeffs": [
+		0.3818964639083259,
+		0.22197590339565784,
+		-0.0902460528635998,
+		2.0929907981578575
+	],
+	"metadata": {
+		"calibrated_by": "Nicholas Scalabrino",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

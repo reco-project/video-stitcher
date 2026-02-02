@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--super35--3856x2170",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "AstrHori 10mm f.8 II",
+	"resolution": {
+		"width": 3856,
+		"height": 2170
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2083.2405381580147,
+		"fy": 2087.0547817739243,
+		"cx": 1954.8611538635137,
+		"cy": 1084.1385690739526
+	},
+	"distortion_coeffs": [
+		0.06053713894780549,
+		0.018242460201237265,
+		-0.02646408916017733,
+		-0.0065898824078049366
+	],
+	"metadata": {
+		"calibrated_by": "nicecrash-23",
+		"notes": "Super35",
+		"source": "gyroflow",
+		"official": true
+	}
+}

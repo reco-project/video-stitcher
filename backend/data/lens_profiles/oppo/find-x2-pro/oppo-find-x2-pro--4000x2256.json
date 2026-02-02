@@ -1,0 +1,28 @@
+{
+	"id": "oppo-find-x2-pro--4000x2256",
+	"camera_brand": "OPPO",
+	"camera_model": "Find X2 Pro",
+	"lens_model": "26mm",
+	"resolution": {
+		"width": 4000,
+		"height": 2256
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3141.9175449778672,
+		"fy": 3136.499632346349,
+		"cx": 2050.5739392263117,
+		"cy": 1122.5971322862451
+	},
+	"distortion_coeffs": [
+		0.4932531977907555,
+		-2.105326952169391,
+		11.825550743367224,
+		-19.071759823707787
+	],
+	"metadata": {
+		"calibrated_by": "Joe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

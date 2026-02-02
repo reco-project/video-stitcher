@@ -1,0 +1,28 @@
+{
+	"id": "sony-nex-5r--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "NEX-5R",
+	"lens_model": "16-50 Kit lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1453.2063715113172,
+		"fy": 1444.4192597270069,
+		"cx": 942.3142163366496,
+		"cy": 606.5197078233258
+	},
+	"distortion_coeffs": [
+		0.26165173210288306,
+		0.325883198920789,
+		-0.03635257237700775,
+		-0.3221604701891518
+	],
+	"metadata": {
+		"calibrated_by": "David Helbig",
+		"source": "gyroflow",
+		"official": true
+	}
+}

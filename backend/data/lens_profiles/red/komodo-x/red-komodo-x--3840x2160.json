@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "Komodo X",
+	"lens_model": "Vilrox Epic 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5154.668721625453,
+		"fy": 5291.134662259931,
+		"cx": 1903.3506358863197,
+		"cy": 990.9085080157402
+	},
+	"distortion_coeffs": [
+		0.2293530721588468,
+		-0.38533822704907417,
+		-3.0905915346416455,
+		29.303083936907456
+	],
+	"metadata": {
+		"calibrated_by": "Sir-Tay Jackson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

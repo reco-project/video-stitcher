@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-8pro--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "8Pro",
+	"lens_model": "Standart",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2100.956782433342,
+		"fy": 2100.878105073587,
+		"cx": 1928.3967232716795,
+		"cy": 1129.0083842365032
+	},
+	"distortion_coeffs": [
+		0.3901596991316153,
+		-0.2357440286398303,
+		1.3760989497114915,
+		-1.5243096680798691
+	],
+	"metadata": {
+		"calibrated_by": "\u0412\u043e\u0446\u0435\u043d\u0437\u0443\u043a \u0415\u0432\u0433\u0435\u043d\u0438\u0439",
+		"source": "gyroflow",
+		"official": true
+	}
+}

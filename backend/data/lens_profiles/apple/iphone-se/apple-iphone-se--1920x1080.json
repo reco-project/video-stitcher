@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-se--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone SE",
+	"lens_model": "se lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1952.884504130824,
+		"fy": 1949.5455154064016,
+		"cx": 942.2953864361268,
+		"cy": 583.6146101740111
+	},
+	"distortion_coeffs": [
+		0.31079708317530946,
+		1.19501207625877,
+		-4.506122408436477,
+		5.275148022237883
+	],
+	"metadata": {
+		"calibrated_by": "PRAKUL SAHUKAR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

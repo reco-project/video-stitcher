@@ -1,0 +1,29 @@
+{
+	"id": "insta360-ace-pro--eis--3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "Ace Pro",
+	"lens_model": "Pov 113",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1710.3025459834653,
+		"fy": 1480.9806778881152,
+		"cx": 1933.843303394954,
+		"cy": 1062.8759231199429
+	},
+	"distortion_coeffs": [
+		0.10288339548559376,
+		0.2568136681614202,
+		-0.1308481595849322,
+		0.026159685677603246
+	],
+	"metadata": {
+		"calibrated_by": "Andrii Shramko",
+		"notes": "EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

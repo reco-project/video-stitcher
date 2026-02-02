@@ -1,0 +1,29 @@
+{
+	"id": "huawei-p40-sx--shuxiang--2336x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "p40 sx",
+	"lens_model": null,
+	"resolution": {
+		"width": 2336,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2107.843774748699,
+		"fy": 2106.8884057456535,
+		"cx": 1186.2237271500142,
+		"cy": 542.1486758377235
+	},
+	"distortion_coeffs": [
+		0.43904459741187074,
+		-1.9571491934365348,
+		13.827303335120538,
+		-28.146811958666216
+	],
+	"metadata": {
+		"calibrated_by": "U0 A224",
+		"notes": "shuxiang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2--24-fps--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Laowa 9mm F2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1969.6689927219456,
+		"fy": 1968.7437963757857,
+		"cx": 2046.7391211714244,
+		"cy": 1052.3176227765557
+	},
+	"distortion_coeffs": [
+		0.34223436366419147,
+		0.11576666508523388,
+		-0.05765121324889061,
+		0.1689729272638545
+	],
+	"metadata": {
+		"calibrated_by": "Juan Sebastian Campos Zapata",
+		"notes": "24 FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

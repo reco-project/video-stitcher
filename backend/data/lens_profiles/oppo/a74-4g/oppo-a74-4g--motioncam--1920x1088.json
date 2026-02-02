@@ -1,0 +1,29 @@
+{
+	"id": "oppo-a74-4g--motioncam--1920x1088",
+	"camera_brand": "Oppo",
+	"camera_model": "A74 4G",
+	"lens_model": "Oppo",
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1467.9647331657543,
+		"fy": 1482.616792320354,
+		"cx": 974.9365907377354,
+		"cy": 528.0130827211718
+	},
+	"distortion_coeffs": [
+		0.42821633649913393,
+		0.6628591442513955,
+		-4.1227041386650125,
+		6.914975567096629
+	],
+	"metadata": {
+		"calibrated_by": "U0 A870",
+		"notes": "Motioncam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

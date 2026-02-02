@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--comiscar-c-mount--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Pentax 8.5mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1988.371803073014,
+		"fy": 1985.2098392596188,
+		"cx": 951.2242815379624,
+		"cy": 438.3950475001928
+	},
+	"distortion_coeffs": [
+		0.09951030602588912,
+		0.45506531633167263,
+		-1.597377267774719,
+		4.4086267278356654
+	],
+	"metadata": {
+		"calibrated_by": "davideo",
+		"notes": "COMISCAR C-mount",
+		"source": "gyroflow",
+		"official": true
+	}
+}

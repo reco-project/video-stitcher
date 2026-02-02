@@ -1,0 +1,29 @@
+{
+	"id": "huawei-p60--with-osme-se-on-mimo--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "P60",
+	"lens_model": "main",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2655.5062632043373,
+		"fy": 2654.467244198423,
+		"cx": 1936.6358231546776,
+		"cy": 1085.692115793831
+	},
+	"distortion_coeffs": [
+		0.6570447217097494,
+		-2.1726579024474444,
+		7.13067251284826,
+		-8.122499881570953
+	],
+	"metadata": {
+		"calibrated_by": "wei hwang",
+		"notes": "with osme se on mimo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

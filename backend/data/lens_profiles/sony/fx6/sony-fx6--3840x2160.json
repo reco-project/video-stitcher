@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx6--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Tamron 17-28 f2.8 @24.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2642.7615274632835,
+		"fy": 2641.6167197754085,
+		"cx": 1904.349219760404,
+		"cy": 1058.0284256847465
+	},
+	"distortion_coeffs": [
+		0.3016023904229938,
+		0.2615266541883228,
+		-0.1803378939992642,
+		0.12044314498855578
+	],
+	"metadata": {
+		"calibrated_by": "Lancelot Tintignies",
+		"source": "gyroflow",
+		"official": true
+	}
+}

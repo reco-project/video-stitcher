@@ -2,32 +2,27 @@
 	"id": "gopro-hero4-session--1920x1080",
 	"camera_brand": "GoPro",
 	"camera_model": "HERO4 Session",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1084.0715120588145,
-		"fy": 1078.8603602735743,
-		"cx": 949.7127645582136,
-		"cy": 528.196744808496
+		"fx": 1559.6868177964238,
+		"fy": 1546.9056069368537,
+		"cx": 1047.2179118802048,
+		"cy": 855.6490792571701
 	},
 	"distortion_coeffs": [
-		0.11161802209950676,
-		-0.045582812742239714,
-		0.023365661613678087,
-		-0.012672845867548691
+		0.2097804928233081,
+		-0.7742869634656672,
+		2.617364869345291,
+		-3.712345258916452
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "GoPro_HERO4 session___1080p_16by9_1920x1080-59.94fps",
-		"calibrated_by": "Administrator",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "59.94006",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"calibrated_by": "Grzegorz",
+		"source": "gyroflow",
+		"official": true
 	}
 }

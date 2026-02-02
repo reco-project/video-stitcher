@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-s2--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi S2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1471.9542499132922,
+		"fy": 1473.3936557938964,
+		"cx": 959.3131474760988,
+		"cy": 554.5947610975257
+	},
+	"distortion_coeffs": [
+		0.4244388449295077,
+		0.8098456042551301,
+		-7.425721796379039,
+		17.16507924917964
+	],
+	"metadata": {
+		"calibrated_by": "gawwsu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

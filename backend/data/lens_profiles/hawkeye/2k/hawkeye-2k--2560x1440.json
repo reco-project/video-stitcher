@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-2k--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "2k",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1262.0900293155971,
+		"fy": 1258.3601032201882,
+		"cx": 1289.6735792463433,
+		"cy": 728.5176790102274
+	},
+	"distortion_coeffs": [
+		-0.04315006853094356,
+		-0.01185935160494527,
+		-0.01784802057035357,
+		0.027142338765078985
+	],
+	"metadata": {
+		"calibrated_by": "laiqiuyu2100",
+		"source": "gyroflow",
+		"official": true
+	}
+}

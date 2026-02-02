@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-7a--motioncam-raw--4624x2608",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7a",
+	"lens_model": "Main",
+	"resolution": {
+		"width": 4624,
+		"height": 2608
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3366.468488629989,
+		"fy": 3369.6234106327224,
+		"cx": 2264.8706678175704,
+		"cy": 1276.436935991775
+	},
+	"distortion_coeffs": [
+		0.4602291558177809,
+		-0.8417022556996354,
+		5.078803716367592,
+		-9.193505000035724
+	],
+	"metadata": {
+		"calibrated_by": "Taiyakeys",
+		"notes": "Motioncam RAW",
+		"source": "gyroflow",
+		"official": true
+	}
+}

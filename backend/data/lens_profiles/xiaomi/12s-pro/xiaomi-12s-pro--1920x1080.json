@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-12s-pro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12S Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1646.1916134830146,
+		"fy": 1654.5965705245662,
+		"cx": 954.0291659711856,
+		"cy": 548.1856470707393
+	},
+	"distortion_coeffs": [
+		0.4084635695498228,
+		0.1025952363032912,
+		-0.74390732293135,
+		2.2975674480363764
+	],
+	"metadata": {
+		"calibrated_by": "\u7eaa\u6653\u4e1c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

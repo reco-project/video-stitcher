@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-5ii--1920x1080",
+	"camera_brand": "sony",
+	"camera_model": "xperia 5II",
+	"lens_model": "ultra wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 945.0034259457028,
+		"fy": 945.5486537609142,
+		"cx": 965.8800125299708,
+		"cy": 527.8429049014673
+	},
+	"distortion_coeffs": [
+		0.26415738661037236,
+		-0.3140065592683694,
+		0.9042686006894876,
+		-0.7149817547399442
+	],
+	"metadata": {
+		"calibrated_by": "Hajime T",
+		"source": "gyroflow",
+		"official": true
+	}
+}

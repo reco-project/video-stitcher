@@ -1,0 +1,28 @@
+{
+	"id": "caddx-orca--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Orca",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1931.0413908288233,
+		"fy": 1924.9455434300023,
+		"cx": 1970.8758912444948,
+		"cy": 1038.0730067699683
+	},
+	"distortion_coeffs": [
+		-0.02081238218969444,
+		-0.12566993075246238,
+		0.18434653665816453,
+		-0.0904662618686188
+	],
+	"metadata": {
+		"calibrated_by": "f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "motorola-moto-g8-power-omnivision-ov16e10--motioncam--2304x1728",
+	"camera_brand": "Motorola",
+	"camera_model": "Moto G8 Power Omnivision OV16E10",
+	"lens_model": "Main wide camera 28mm \u0192/ 1.7",
+	"resolution": {
+		"width": 2304,
+		"height": 1728
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1852.4533336565653,
+		"fy": 1852.3377799788573,
+		"cx": 1151.6552328926473,
+		"cy": 860.5878617215583
+	},
+	"distortion_coeffs": [
+		0.5601340068893654,
+		-1.0352124366670543,
+		2.9621212359129303,
+		-3.2665742429698432
+	],
+	"metadata": {
+		"calibrated_by": "ibra",
+		"notes": "Motioncam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--24mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Canon 24-105",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3888.6311122565608,
+		"fy": 3806.4301944930007,
+		"cx": 1943.7769678173504,
+		"cy": 1105.7909201298846
+	},
+	"distortion_coeffs": [
+		0.12082429293799678,
+		1.3013864771892685,
+		-7.4746192172146415,
+		15.91356428213782
+	],
+	"metadata": {
+		"calibrated_by": "Cerrudo",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

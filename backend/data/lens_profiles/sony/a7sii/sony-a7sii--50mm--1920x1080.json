@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7sii--50mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7SII",
+	"lens_model": "FE 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2747.3838877140292,
+		"fy": 2748.9327027295194,
+		"cx": 956.9006085780368,
+		"cy": 578.7662988912926
+	},
+	"distortion_coeffs": [
+		0.34322478825794406,
+		-1.4250558701766485,
+		11.963148091510106,
+		-13.733312399854489
+	],
+	"metadata": {
+		"calibrated_by": "M a j i d",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -2,7 +2,7 @@
 	"id": "dji-osmo-action--4000x3000",
 	"camera_brand": "DJI",
 	"camera_model": "Osmo Action",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 4000,
 		"height": 3000
@@ -21,13 +21,8 @@
 		0.11773988486386562
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Osmo Action___4k_4by3_4000x3000-29.97fps",
 		"calibrated_by": "cody anderson",
-		"original_resolution": "4000x3000",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

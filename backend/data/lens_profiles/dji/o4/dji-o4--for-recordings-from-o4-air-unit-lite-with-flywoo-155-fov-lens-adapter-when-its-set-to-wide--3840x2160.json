@@ -1,0 +1,29 @@
+{
+	"id": "dji-o4--for-recordings-from-o4-air-unit-lite-with-flywoo-155-fov-lens-adapter-when-its-set-to-wide--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "O4",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1600.170086171912,
+		"fy": 1605.3309875018936,
+		"cx": 1975.7631086984434,
+		"cy": 1137.4487377699184
+	},
+	"distortion_coeffs": [
+		0.42973494355962705,
+		-0.39821771646108833,
+		-0.028942216148094044,
+		0.10284901823836051
+	],
+	"metadata": {
+		"calibrated_by": "Andrew C",
+		"notes": "For recordings from O4 Air Unit (Lite) with Flywoo 155 FOV lens adapter, when its set to WIDE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

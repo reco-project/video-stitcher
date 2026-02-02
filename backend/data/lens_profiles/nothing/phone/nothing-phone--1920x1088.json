@@ -1,0 +1,28 @@
+{
+	"id": "nothing-phone--1920x1088",
+	"camera_brand": "Nothing",
+	"camera_model": "Phone",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1350.8523162959852,
+		"fy": 1352.1939962792026,
+		"cx": 932.700318624632,
+		"cy": 525.6239012600083
+	},
+	"distortion_coeffs": [
+		0.5022873286157283,
+		-1.125283955378237,
+		3.681283127175987,
+		-3.5728562900456673
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0435\u0439 \u0415\u0436\u043a\u043e\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

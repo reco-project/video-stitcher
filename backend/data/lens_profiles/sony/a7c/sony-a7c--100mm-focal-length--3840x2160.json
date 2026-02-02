@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--100mm-focal-length--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Tamron FE 28-200 @100mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 29938.61737905821,
+		"fy": 30378.371401024306,
+		"cx": 1932.969611535612,
+		"cy": 1457.304464165437
+	},
+	"distortion_coeffs": [
+		-0.23489899374219889,
+		1230.8062860096206,
+		-369547.7571152635,
+		42007518.548574254
+	],
+	"metadata": {
+		"calibrated_by": "Rio A7C Yogyakarta",
+		"notes": "100mm Focal Length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

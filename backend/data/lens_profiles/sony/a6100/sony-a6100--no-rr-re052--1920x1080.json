@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6100--no-rr-re052--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6100",
+	"lens_model": "7 artisans 25mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2291.504443840034,
+		"fy": 2283.0380053412064,
+		"cx": 959.9343661878484,
+		"cy": 586.7574497000937
+	},
+	"distortion_coeffs": [
+		0.3115532413569084,
+		-2.671544118710892,
+		29.34433437304088,
+		-102.92162810595978
+	],
+	"metadata": {
+		"calibrated_by": "Abhro Roy",
+		"notes": "NO RR | RE=0.52",
+		"source": "gyroflow",
+		"official": true
+	}
+}

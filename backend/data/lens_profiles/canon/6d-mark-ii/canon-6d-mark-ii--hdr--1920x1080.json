@@ -1,0 +1,29 @@
+{
+	"id": "canon-6d-mark-ii--hdr--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "6D Mark II",
+	"lens_model": "Canon 16-35 f 2.8L",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 281.0390475865145,
+		"fy": 280.48024328141645,
+		"cx": 953.816093957659,
+		"cy": 515.7136423380919
+	},
+	"distortion_coeffs": [
+		0.34148957369040367,
+		0.17300026695254614,
+		-0.10823456594145917,
+		0.14913806585540915
+	],
+	"metadata": {
+		"calibrated_by": "Brian Sprague",
+		"notes": "HDR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

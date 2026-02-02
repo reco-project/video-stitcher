@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor-x-8k-vv--8192x3456",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR [X] 8K VV",
+	"lens_model": "35mm V35 Athena OM",
+	"resolution": {
+		"width": 8192,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6956.046752095123,
+		"fy": 6955.930027316475,
+		"cx": 4083.739292978309,
+		"cy": 1676.0635519557038
+	},
+	"distortion_coeffs": [
+		0.25171057592994456,
+		0.3284849212525239,
+		-0.6222109724621651,
+		1.0861353437017345
+	],
+	"metadata": {
+		"calibrated_by": "Alexander Bracken",
+		"source": "gyroflow",
+		"official": true
+	}
+}

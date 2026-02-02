@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--ml-crop-mood-1x3-4k-uhd-danne-build--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "TTartisan 17mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4307.036250936268,
+		"fy": 4297.58035045262,
+		"cx": 1832.9507303121184,
+		"cy": 963.5233619372364
+	},
+	"distortion_coeffs": [
+		0.23411969301316377,
+		0.7626681670167871,
+		-5.467613268950771,
+		15.366739530862311
+	],
+	"metadata": {
+		"calibrated_by": "NoMad Filmmaker",
+		"notes": "ML CROP MOOD 1x3 4K UHD Danne Build",
+		"source": "gyroflow",
+		"official": true
+	}
+}

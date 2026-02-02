@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--magic-lantern-raw-25k-frtp-2351--2520x1072",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "EF-M 22MM",
+	"resolution": {
+		"width": 2520,
+		"height": 1072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5809.3428410317165,
+		"fy": 5800.706891447223,
+		"cx": 1346.56489478364,
+		"cy": 416.17680442050175
+	},
+	"distortion_coeffs": [
+		0.30262600924074606,
+		-9.207262979724854,
+		421.6096346017157,
+		-5394.105937238175
+	],
+	"metadata": {
+		"calibrated_by": "Azim Abd Razak",
+		"notes": "MAGIC LANTERN RAW 2.5K FRTP 2.35:1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

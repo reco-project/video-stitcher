@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rv--16mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rV",
+	"lens_model": "Sigma 16-28",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1808.6474489349373,
+		"fy": 1809.9320977114116,
+		"cx": 1894.699177720724,
+		"cy": 1082.2941492570394
+	},
+	"distortion_coeffs": [
+		0.22859658769138863,
+		0.8170463861583935,
+		-2.0853450739940422,
+		2.3544733740165817
+	],
+	"metadata": {
+		"calibrated_by": "fitzpb",
+		"notes": "@16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

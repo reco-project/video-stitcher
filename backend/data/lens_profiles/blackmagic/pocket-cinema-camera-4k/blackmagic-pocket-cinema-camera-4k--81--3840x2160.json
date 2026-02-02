@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--81--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Helios 44-2 58mm f2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12818.460314327382,
+		"fy": 12824.183178914413,
+		"cx": 1835.0555213379623,
+		"cy": 932.9119914358656
+	},
+	"distortion_coeffs": [
+		0.2770512440596497,
+		12.820126518371008,
+		-776.5447382445493,
+		15270.5619513135
+	],
+	"metadata": {
+		"calibrated_by": "Oleksandr",
+		"notes": "8:1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

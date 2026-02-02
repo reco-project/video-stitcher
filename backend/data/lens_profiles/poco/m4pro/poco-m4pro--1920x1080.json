@@ -1,0 +1,28 @@
+{
+	"id": "poco-m4pro--1920x1080",
+	"camera_brand": "POCO",
+	"camera_model": "M4Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1864.2873617406465,
+		"fy": 1862.5047183273348,
+		"cx": 959.029670311042,
+		"cy": 539.5038597744926
+	},
+	"distortion_coeffs": [
+		0.5646459774421392,
+		-2.459826137075317,
+		13.217605773079615,
+		-24.22282320119922
+	],
+	"metadata": {
+		"calibrated_by": "Aek EUC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

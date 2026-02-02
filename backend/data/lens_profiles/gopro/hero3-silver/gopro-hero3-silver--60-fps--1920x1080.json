@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero3-silver--60-fps--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO3+ Silver",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 843.4260342093361,
+		"fy": 844.047251153348,
+		"cx": 971.3704489364652,
+		"cy": 556.6320677885889
+	},
+	"distortion_coeffs": [
+		0.05386102717414228,
+		0.01646731690077271,
+		0.0009763307058028556,
+		-0.006147669864783484
+	],
+	"metadata": {
+		"calibrated_by": "Matmd97",
+		"notes": "60 Fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

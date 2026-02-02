@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z30--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z30",
+	"lens_model": "Viltrox 33mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7465.868884824163,
+		"fy": 7468.973703171406,
+		"cx": 1885.9156451638244,
+		"cy": 1196.0858856229058
+	},
+	"distortion_coeffs": [
+		0.3458918746755924,
+		8.11422296561269,
+		-136.6164966415878,
+		1144.2881803887722
+	],
+	"metadata": {
+		"calibrated_by": "AHost7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

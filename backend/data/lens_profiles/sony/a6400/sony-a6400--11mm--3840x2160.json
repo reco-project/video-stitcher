@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--11mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Tamron 11-20",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1856.6421409569432,
+		"fy": 1855.7244758031063,
+		"cx": 1915.2759758096695,
+		"cy": 1079.3719480464335
+	},
+	"distortion_coeffs": [
+		0.26222201582878013,
+		0.23046870297414665,
+		-0.24260533543587656,
+		0.2508028419115841
+	],
+	"metadata": {
+		"calibrated_by": "Mike",
+		"notes": "11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

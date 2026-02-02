@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-c200--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS C200",
+	"lens_model": "CinemaLens 14mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2228.739207600154,
+		"fy": 2229.2236835148806,
+		"cx": 2039.9808648759351,
+		"cy": 1076.688576854464
+	},
+	"distortion_coeffs": [
+		0.29875577947793086,
+		0.1507912360162287,
+		0.017583008791563236,
+		0.0011921616127984068
+	],
+	"metadata": {
+		"calibrated_by": "Sebastian Schieren",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-xa50--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "XA50",
+	"lens_model": "Shortest F",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2266.734336987286,
+		"fy": 2266.7500376529783,
+		"cx": 1904.9141770295632,
+		"cy": 1035.1285521039788
+	},
+	"distortion_coeffs": [
+		0.3008423024296646,
+		0.36884622157979513,
+		-0.6402894558289376,
+		0.7151299369127201
+	],
+	"metadata": {
+		"calibrated_by": "Przemek",
+		"source": "gyroflow",
+		"official": true
+	}
+}

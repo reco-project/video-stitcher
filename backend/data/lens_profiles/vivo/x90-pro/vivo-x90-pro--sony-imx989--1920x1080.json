@@ -1,0 +1,29 @@
+{
+	"id": "vivo-x90-pro--sony-imx989--1920x1080",
+	"camera_brand": "Vivo",
+	"camera_model": "x90 Pro+",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1652.603453138894,
+		"fy": 1661.561669105228,
+		"cx": 965.819038999378,
+		"cy": 559.303859931722
+	},
+	"distortion_coeffs": [
+		0.657425629248901,
+		-2.7296760674701948,
+		10.268826916863045,
+		-11.913855526823296
+	],
+	"metadata": {
+		"calibrated_by": "Steven Winters, Jr",
+		"notes": "Sony IMX989",
+		"source": "gyroflow",
+		"official": true
+	}
+}

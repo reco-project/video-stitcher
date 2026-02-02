@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lx15--59940-fps--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "LX15",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1417.1593546553536,
+		"fy": 1417.332779011385,
+		"cx": 972.0571137058358,
+		"cy": 539.3659074320442
+	},
+	"distortion_coeffs": [
+		0.2616507425036318,
+		0.3957378522611422,
+		-0.7754331846084087,
+		0.8831556157366613
+	],
+	"metadata": {
+		"calibrated_by": "ME",
+		"notes": "59.940 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

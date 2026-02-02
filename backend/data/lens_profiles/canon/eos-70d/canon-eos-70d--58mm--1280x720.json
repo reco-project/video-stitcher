@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-70d--58mm--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 70D",
+	"lens_model": "Gelios 44M4",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3483.3799042537225,
+		"fy": 3483.6986487951785,
+		"cx": 647.1279844865402,
+		"cy": 345.1404776826201
+	},
+	"distortion_coeffs": [
+		0.1903867331874955,
+		26.699600744305904,
+		-1247.7246753239274,
+		19985.807743245
+	],
+	"metadata": {
+		"calibrated_by": "devamorph",
+		"notes": "58mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

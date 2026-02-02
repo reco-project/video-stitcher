@@ -1,0 +1,29 @@
+{
+	"id": "insta360-one-rs--20-mm--3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "ONE RS",
+	"lens_model": "4K BOOST",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2127.47786054723,
+		"fy": 2123.611353013733,
+		"cx": 1905.27721774766,
+		"cy": 1080.7093152839714
+	},
+	"distortion_coeffs": [
+		0.06700197230674403,
+		0.02922312864901511,
+		-0.043104782657454245,
+		0.027637708518345516
+	],
+	"metadata": {
+		"calibrated_by": "Matias Reyes",
+		"notes": "20 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

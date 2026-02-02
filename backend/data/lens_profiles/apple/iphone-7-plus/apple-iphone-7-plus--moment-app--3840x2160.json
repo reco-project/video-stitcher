@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-7-plus--moment-app--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 7 Plus",
+	"lens_model": "wide angle 28 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3062.968486746032,
+		"fy": 3065.745506833141,
+		"cx": 1873.5861003144123,
+		"cy": 1047.0162463691493
+	},
+	"distortion_coeffs": [
+		0.6899743597330849,
+		-2.9198349832967017,
+		10.573856782079485,
+		-12.331570706875594
+	],
+	"metadata": {
+		"calibrated_by": "Al Minz",
+		"notes": "Moment app",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--tessar50mm28--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5889.149811921838,
+		"fy": 5879.950540851494,
+		"cx": 1862.5163444610937,
+		"cy": 1068.2179611307026
+	},
+	"distortion_coeffs": [
+		0.2830922184711656,
+		0.32432335894851394,
+		-7.3397418131930365,
+		49.76982370301123
+	],
+	"metadata": {
+		"calibrated_by": "Staffan Axelsson",
+		"notes": "tessar50mm2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

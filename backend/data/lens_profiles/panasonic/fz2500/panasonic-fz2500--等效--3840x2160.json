@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-fz2500--\u7b49\u6548--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "FZ2500",
+	"lens_model": "36",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3065.5663760535303,
+		"fy": 3078.222858420061,
+		"cx": 1965.2162843146943,
+		"cy": 1298.4661800327333
+	},
+	"distortion_coeffs": [
+		0.32098012999443426,
+		0.2047884662093701,
+		-0.4366568716155818,
+		1.142081513572219
+	],
+	"metadata": {
+		"calibrated_by": "\u6570\u5b57\u5a92\u4f53\u8bfe\u7a0b\u4e13\u7528",
+		"notes": "\u7b49\u6548",
+		"source": "gyroflow",
+		"official": true
+	}
+}

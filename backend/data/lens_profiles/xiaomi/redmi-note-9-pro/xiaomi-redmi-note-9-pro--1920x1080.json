@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-9-pro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 9 Pro",
+	"lens_model": "MotionCam Pro",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1524.1527151962118,
+		"fy": 1523.9475392466966,
+		"cx": 973.2703846902062,
+		"cy": 532.0700365581448
+	},
+	"distortion_coeffs": [
+		0.41660868176264,
+		0.43750862567473303,
+		-2.311661168730774,
+		3.1064193925306167
+	],
+	"metadata": {
+		"calibrated_by": "SS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

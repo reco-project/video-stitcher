@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-rebel-t6i--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS Rebel T6i",
+	"lens_model": "Canon EFS 18-55mm",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1064.1751987650102,
+		"fy": 1064.187352437027,
+		"cx": 639.8652620511252,
+		"cy": 366.8973400399475
+	},
+	"distortion_coeffs": [
+		0.17719123244122958,
+		0.05343835151551686,
+		0.4321619987670447,
+		-0.16424621867168948
+	],
+	"metadata": {
+		"calibrated_by": "Mo Jamila",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--16mm--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Rokinon",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3275.689113610311,
+		"fy": 3197.5908058472623,
+		"cx": 2029.6488844160535,
+		"cy": 1076.573005423691
+	},
+	"distortion_coeffs": [
+		0.2149245881963085,
+		0.34149947002288716,
+		-0.5144982483342286,
+		0.5915958937324017
+	],
+	"metadata": {
+		"calibrated_by": "Michael Armstrong",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

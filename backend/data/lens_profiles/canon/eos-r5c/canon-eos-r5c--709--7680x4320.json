@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--709--7680x4320",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "Laowa10mmF4",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2388.5214568929155,
+		"fy": 2386.2675003560416,
+		"cx": 3815.9558144298994,
+		"cy": 2136.376032221733
+	},
+	"distortion_coeffs": [
+		0.3386342606111999,
+		0.017524088811404364,
+		0.14834213877270166,
+		0.03751503937884668
+	],
+	"metadata": {
+		"calibrated_by": "His_FPV",
+		"notes": "709",
+		"source": "gyroflow",
+		"official": true
+	}
+}

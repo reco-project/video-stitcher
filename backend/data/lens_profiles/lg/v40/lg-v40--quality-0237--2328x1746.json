@@ -1,0 +1,29 @@
+{
+	"id": "lg-v40--quality-0237--2328x1746",
+	"camera_brand": "LG",
+	"camera_model": "v40",
+	"lens_model": "Wide 16mm f1.9",
+	"resolution": {
+		"width": 2328,
+		"height": 1746
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1113.607730712897,
+		"fy": 1112.0189952227097,
+		"cx": 1187.145420576181,
+		"cy": 886.218479350249
+	},
+	"distortion_coeffs": [
+		0.28108447787845614,
+		0.26406291552541017,
+		-0.16469930164770255,
+		0.08650091338068035
+	],
+	"metadata": {
+		"calibrated_by": "David Barlow",
+		"notes": "Quality 0.237",
+		"source": "gyroflow",
+		"official": true
+	}
+}

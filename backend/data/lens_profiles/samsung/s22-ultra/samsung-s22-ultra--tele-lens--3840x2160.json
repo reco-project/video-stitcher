@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s22-ultra--tele-lens--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S22 ultra",
+	"lens_model": "T series 58mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4579.054048328152,
+		"fy": 4541.7543730448215,
+		"cx": 1951.674483694658,
+		"cy": 1089.9193442278413
+	},
+	"distortion_coeffs": [
+		1.284866108952756,
+		-14.3075475215991,
+		116.37251942703968,
+		-335.160727918551
+	],
+	"metadata": {
+		"calibrated_by": "Israel hernandez",
+		"notes": "Tele lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

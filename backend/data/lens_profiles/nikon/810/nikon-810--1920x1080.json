@@ -1,0 +1,28 @@
+{
+	"id": "nikon-810--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "810",
+	"lens_model": "2470",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9971.45374712182,
+		"fy": 10141.521293146374,
+		"cx": 1087.4861709555837,
+		"cy": 559.8094273006328
+	},
+	"distortion_coeffs": [
+		1.6133123370196618,
+		-236.51776012150813,
+		68818.54681356288,
+		-4286930.461718995
+	],
+	"metadata": {
+		"calibrated_by": "Administrator-gql",
+		"source": "gyroflow",
+		"official": true
+	}
+}

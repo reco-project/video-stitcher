@@ -1,0 +1,29 @@
+{
+	"id": "insta360-oners--no-eis--6016x2560",
+	"camera_brand": "Insta360",
+	"camera_model": "OneRS",
+	"lens_model": "4K BOOST 6K",
+	"resolution": {
+		"width": 6016,
+		"height": 2560
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3320.70124496186,
+		"fy": 3325.114436267405,
+		"cx": 3007.612881280013,
+		"cy": 1247.590945036777
+	},
+	"distortion_coeffs": [
+		0.09072374065367866,
+		-0.0917987077570634,
+		0.07337787007068537,
+		-0.01780764121141884
+	],
+	"metadata": {
+		"calibrated_by": "maki",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

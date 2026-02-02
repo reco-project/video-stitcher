@@ -1,0 +1,28 @@
+{
+	"id": "mobius-mini-v1--1920x1080",
+	"camera_brand": "Mobius",
+	"camera_model": "Mini V1",
+	"lens_model": "B type (135\u00b0)",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1162.8329009730207,
+		"fy": 1162.331756219585,
+		"cx": 987.4769835173784,
+		"cy": 568.5866956081363
+	},
+	"distortion_coeffs": [
+		-0.07732441514297841,
+		-0.12922251335723034,
+		0.25399678029245826,
+		-0.197632140993328
+	],
+	"metadata": {
+		"calibrated_by": "Amos Wong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-ursa-mini-46k-pl--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Ursa Mini 4.6K PL",
+	"lens_model": "18-35 T2 PL",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2781.6076204727556,
+		"fy": 2779.2465418923375,
+		"cx": 1903.6320588207457,
+		"cy": 1058.7366169374309
+	},
+	"distortion_coeffs": [
+		0.239033793867906,
+		0.04450659234279028,
+		0.5047748240753159,
+		-0.4596912473773366
+	],
+	"metadata": {
+		"calibrated_by": "christoffer jonsson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

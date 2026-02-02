@@ -1,0 +1,28 @@
+{
+	"id": "huawei-matepad11--1920x1080",
+	"camera_brand": "HUAWEI",
+	"camera_model": "MATEPAD11",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1513.421433472005,
+		"fy": 1514.1379240406277,
+		"cx": 968.2772808702524,
+		"cy": 543.9518997051653
+	},
+	"distortion_coeffs": [
+		0.5268901472440115,
+		-0.7243509316625658,
+		1.763653791620042,
+		-1.317204663574799
+	],
+	"metadata": {
+		"calibrated_by": "Arako",
+		"source": "gyroflow",
+		"official": true
+	}
+}

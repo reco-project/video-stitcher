@@ -1,0 +1,29 @@
+{
+	"id": "dji-mini-3-pro--2997-frames-per-sec--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "MINI 3 PRO",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1446.025100579262,
+		"fy": 1442.3788019204972,
+		"cx": 960.7784829069844,
+		"cy": 543.1940984216606
+	},
+	"distortion_coeffs": [
+		0.6285576497201641,
+		-2.130370897735008,
+		8.482052868601492,
+		-10.982357601861132
+	],
+	"metadata": {
+		"calibrated_by": "Dre Dabars",
+		"notes": "29.97 frames per sec.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

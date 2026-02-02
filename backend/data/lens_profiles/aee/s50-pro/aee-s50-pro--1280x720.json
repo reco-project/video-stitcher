@@ -1,0 +1,28 @@
+{
+	"id": "aee-s50-pro--1280x720",
+	"camera_brand": "AEE",
+	"camera_model": "S50 pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 724.9895551548674,
+		"fy": 725.4232644529217,
+		"cx": 658.3694600163923,
+		"cy": 346.94849905486217
+	},
+	"distortion_coeffs": [
+		-0.0713386615456623,
+		-0.03460733784358403,
+		0.04284939632652589,
+		0.002194072499149197
+	],
+	"metadata": {
+		"calibrated_by": "CARDIN Noa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "biwond-ex3--3840x2160",
+	"camera_brand": "Biwond",
+	"camera_model": "EX3",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2354.898868108175,
+		"fy": 2378.207138550611,
+		"cx": 1909.594132650908,
+		"cy": 1082.126681324323
+	},
+	"distortion_coeffs": [
+		0.040874239069325545,
+		-0.10230417700159586,
+		0.2048562709547885,
+		-0.14862665515208623
+	],
+	"metadata": {
+		"calibrated_by": "Rich",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "skydio-2--886x1920",
+	"camera_brand": "Skydio",
+	"camera_model": "2+",
+	"lens_model": "Skydio 2+",
+	"resolution": {
+		"width": 886,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2055.2882593086792,
+		"fy": 2025.9910551154776,
+		"cx": 451.41148763794627,
+		"cy": 763.838634706471
+	},
+	"distortion_coeffs": [
+		0.4933752781987854,
+		0.2484682061473429,
+		-3.1633659355274526,
+		8.846411231656537
+	],
+	"metadata": {
+		"calibrated_by": "Skyler Rehl",
+		"source": "gyroflow",
+		"official": true
+	}
+}

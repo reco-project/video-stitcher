@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6600--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6600",
+	"lens_model": "Sigma 56mm F1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4650.906268158388,
+		"fy": 4643.122160221055,
+		"cx": 952.9142396637612,
+		"cy": 537.2117919015941
+	},
+	"distortion_coeffs": [
+		1.3474332374902864,
+		-24.365137996153596,
+		1178.5690649543062,
+		-14555.082590286122
+	],
+	"metadata": {
+		"calibrated_by": "Rakshan Kumar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

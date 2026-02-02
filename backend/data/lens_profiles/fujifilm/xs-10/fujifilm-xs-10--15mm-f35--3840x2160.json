@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-xs-10--15mm-f35--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XS-10",
+	"lens_model": "XC 15-45mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2447.3442591468415,
+		"fy": 2444.269709098346,
+		"cx": 1927.1144645982176,
+		"cy": 1070.3444364131951
+	},
+	"distortion_coeffs": [
+		0.3225251977986255,
+		0.13167015588715852,
+		0.21158345486222435,
+		-0.17438410571316898
+	],
+	"metadata": {
+		"calibrated_by": "Linus",
+		"notes": "15mm F3.5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

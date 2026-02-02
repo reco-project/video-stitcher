@@ -1,0 +1,29 @@
+{
+	"id": "sony-\u9ed1\u9ca84--log--3840x2176",
+	"camera_brand": "Sony",
+	"camera_model": "\u9ed1\u9ca84",
+	"lens_model": "imx582",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2911.280611859505,
+		"fy": 2915.199131509498,
+		"cx": 1912.2175912210168,
+		"cy": 1110.9284550670318
+	},
+	"distortion_coeffs": [
+		0.6460384471389955,
+		-2.8529452483468103,
+		15.369292562682372,
+		-27.35852593824656
+	],
+	"metadata": {
+		"calibrated_by": "U0 A238",
+		"notes": "log",
+		"source": "gyroflow",
+		"official": true
+	}
+}

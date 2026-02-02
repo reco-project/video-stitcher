@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--no-ff--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Leica R 21mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3332.825528966669,
+		"fy": 3333.2551619509745,
+		"cx": 1933.0574035328505,
+		"cy": 1092.3800447498847
+	},
+	"distortion_coeffs": [
+		0.22761070203320205,
+		0.19384693084805124,
+		-0.11790194753792266,
+		0.41204781174500776
+	],
+	"metadata": {
+		"calibrated_by": "Mark Helsel",
+		"notes": "No FF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

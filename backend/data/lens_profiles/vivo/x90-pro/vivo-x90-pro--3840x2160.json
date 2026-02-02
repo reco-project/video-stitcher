@@ -1,0 +1,28 @@
+{
+	"id": "vivo-x90-pro--3840x2160",
+	"camera_brand": "VIVO",
+	"camera_model": "x90 Pro+",
+	"lens_model": "\u4e3b\u6444",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2621.5549934706632,
+		"fy": 2622.4944234071227,
+		"cx": 1918.9743243962648,
+		"cy": 1094.2044248270654
+	},
+	"distortion_coeffs": [
+		0.6929810102841885,
+		-2.9670571457740316,
+		10.306656840822129,
+		-11.77462661532975
+	],
+	"metadata": {
+		"calibrated_by": "o'r p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

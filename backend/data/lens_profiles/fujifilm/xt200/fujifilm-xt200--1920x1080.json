@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt200--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT200",
+	"lens_model": "15-45mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 681.0996408625384,
+		"fy": 684.6531434393166,
+		"cx": 960.4693048888596,
+		"cy": 429.734090462073
+	},
+	"distortion_coeffs": [
+		0.3053347768812534,
+		0.17700531695928212,
+		0.0009900267143131292,
+		0.05010579387143419
+	],
+	"metadata": {
+		"calibrated_by": "Takasi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

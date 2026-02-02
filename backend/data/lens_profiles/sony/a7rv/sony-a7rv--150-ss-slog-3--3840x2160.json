@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rv--150-ss-slog-3--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rV",
+	"lens_model": "Sigma ART 35mm 1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3746.9507130322727,
+		"fy": 3740.325814251756,
+		"cx": 1893.9321224283735,
+		"cy": 1050.5268835891547
+	},
+	"distortion_coeffs": [
+		0.2033413013285629,
+		0.5491755481049582,
+		-1.3225733626305414,
+		2.529298978277128
+	],
+	"metadata": {
+		"calibrated_by": "Simon Ford",
+		"notes": "1/50 ss slog-3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

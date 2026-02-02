@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-h2--7680x4320",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2",
+	"lens_model": "Zeiss Touit 2.8/12mm",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4040.414185766312,
+		"fy": 4034.7833082558186,
+		"cx": 3794.345597804913,
+		"cy": 2159.529678934908
+	},
+	"distortion_coeffs": [
+		0.3513366583795588,
+		-0.005563901709330383,
+		0.34998990633852517,
+		-0.13328777938151723
+	],
+	"metadata": {
+		"calibrated_by": "Alexey Vasyunin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

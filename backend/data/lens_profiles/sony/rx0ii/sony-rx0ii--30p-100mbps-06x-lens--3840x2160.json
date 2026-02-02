@@ -1,0 +1,29 @@
+{
+	"id": "sony-rx0ii--30p-100mbps-06x-lens--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "f4c0498c",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2166.131652456737,
+		"fy": 2184.9585240025754,
+		"cx": 1960.2845152426332,
+		"cy": 1146.4580584658522
+	},
+	"distortion_coeffs": [
+		0.3087803170378548,
+		0.3432503294548932,
+		-1.1792190789512298,
+		1.314879326618741
+	],
+	"metadata": {
+		"calibrated_by": "Turner Hall",
+		"notes": "30p 100mbps 0.6x lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--vc-off-manual-focus-anam--5208x2180",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Tamron 15-30 F2.8",
+	"resolution": {
+		"width": 5208,
+		"height": 2180
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3927.875174839032,
+		"fy": 3941.425566493347,
+		"cx": 2651.053177392364,
+		"cy": 1017.847913024485
+	},
+	"distortion_coeffs": [
+		0.2935519702189095,
+		0.6143689940810346,
+		-2.233876166821166,
+		3.2685935663275707
+	],
+	"metadata": {
+		"calibrated_by": "Manuel_Carrera",
+		"notes": "VC off Manual Focus Anam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

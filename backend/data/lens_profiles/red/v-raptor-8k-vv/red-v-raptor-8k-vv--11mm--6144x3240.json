@@ -1,0 +1,29 @@
+{
+	"id": "red-v-raptor-8k-vv--11mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "TOKINA 11-16mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2252.0222826189624,
+		"fy": 2253.0482806010978,
+		"cx": 3075.8923715192977,
+		"cy": 1664.3631839305397
+	},
+	"distortion_coeffs": [
+		0.33459594108383817,
+		0.08705596932893298,
+		0.01460379960897584,
+		0.022134954005036248
+	],
+	"metadata": {
+		"calibrated_by": "Queen",
+		"notes": "11MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

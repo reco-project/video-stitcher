@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z6-i--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6 I",
+	"lens_model": "Nikkor 50mm f1.4 G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8508.471490994842,
+		"fy": 8512.13235528895,
+		"cx": 1948.19193086611,
+		"cy": 866.3004261676228
+	},
+	"distortion_coeffs": [
+		0.3137184336010705,
+		-4.6955553929365195,
+		120.87560141742765,
+		-1066.4599641463851
+	],
+	"metadata": {
+		"calibrated_by": "OOg Images",
+		"source": "gyroflow",
+		"official": true
+	}
+}

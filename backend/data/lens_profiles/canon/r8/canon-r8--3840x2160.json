@@ -1,0 +1,28 @@
+{
+	"id": "canon-r8--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R8",
+	"lens_model": "16-F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2514.1701870429383,
+		"fy": 2518.4866648005486,
+		"cx": 1935.218208765612,
+		"cy": 1102.8425138836735
+	},
+	"distortion_coeffs": [
+		0.5409854863368923,
+		0.17961405516095943,
+		1.9107945161721909,
+		-2.118921937554752
+	],
+	"metadata": {
+		"calibrated_by": "Lin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

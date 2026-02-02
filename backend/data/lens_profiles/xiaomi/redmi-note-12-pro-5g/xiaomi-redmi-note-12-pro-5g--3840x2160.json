@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-12-pro-5g--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 12 Pro (5G)",
+	"lens_model": "f/1.88, IMX766",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2656.3431017722555,
+		"fy": 2659.9445288459096,
+		"cx": 1918.9944319884391,
+		"cy": 1078.2600699278466
+	},
+	"distortion_coeffs": [
+		0.5373645801242218,
+		-1.5638480873016225,
+		5.61178003270671,
+		-6.192136000451972
+	],
+	"metadata": {
+		"calibrated_by": "rr",
+		"source": "gyroflow",
+		"official": true
+	}
+}

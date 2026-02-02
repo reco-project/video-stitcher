@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--sigma-85mm-f14--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "85.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7575.880153729528,
+		"fy": 7867.222345800155,
+		"cx": 79.19841721363916,
+		"cy": 93.17492706579068
+	},
+	"distortion_coeffs": [
+		0.7679927606799899,
+		-20.528567244390647,
+		394.3890893509081,
+		-2555.729522143334
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "Sigma 85MM F1.4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "caddx-dji--960x720",
+	"camera_brand": "Caddx",
+	"camera_model": "DJI",
+	"lens_model": "Standard Vista Camera",
+	"resolution": {
+		"width": 960,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 447.30807249949333,
+		"fy": 447.12758186054344,
+		"cx": 468.80491784894366,
+		"cy": 364.8312285800279
+	},
+	"distortion_coeffs": [
+		0.022576621969553404,
+		0.012757232868512613,
+		-0.007280325212393723,
+		0.0005665098739851054
+	],
+	"metadata": {
+		"calibrated_by": "Lethal_Paw",
+		"source": "gyroflow",
+		"official": true
+	}
+}

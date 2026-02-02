@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-t6s--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS T6S",
+	"lens_model": "Rokinon 35mm f1.5",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3241.5488605746805,
+		"fy": 3240.05704996415,
+		"cx": 946.8510092618428,
+		"cy": 527.7375456102887
+	},
+	"distortion_coeffs": [
+		0.2136588219489138,
+		-1.029923457602953,
+		11.709764898203286,
+		59.00157282044073
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"source": "gyroflow",
+		"official": true
+	}
+}

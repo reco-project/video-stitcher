@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e10--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "16-50 Kit Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3241.4571095358297,
+		"fy": 3236.220516874048,
+		"cx": 1888.9956865940217,
+		"cy": 1061.0300462582595
+	},
+	"distortion_coeffs": [
+		0.372189717489913,
+		-1.2950502199699,
+		10.051451033085964,
+		-22.657079641526483
+	],
+	"metadata": {
+		"calibrated_by": "Daniel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

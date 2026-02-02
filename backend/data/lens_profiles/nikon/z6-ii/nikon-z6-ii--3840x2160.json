@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z6-ii--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6 II",
+	"lens_model": "Z 28-75 f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7544.485678051998,
+		"fy": 7517.644253891096,
+		"cx": 2289.597897880666,
+		"cy": 822.8403367490125
+	},
+	"distortion_coeffs": [
+		0.08827570584127274,
+		6.8657000070626175,
+		-89.94683985939196,
+		443.0506854577475
+	],
+	"metadata": {
+		"calibrated_by": "Marco Levantesi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

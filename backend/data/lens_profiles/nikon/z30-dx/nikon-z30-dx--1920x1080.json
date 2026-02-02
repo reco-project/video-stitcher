@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z30-dx--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z30 DX",
+	"lens_model": "Z 40mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3355.049981483935,
+		"fy": 3352.8532685303812,
+		"cx": 963.6763824007382,
+		"cy": 519.1855545383452
+	},
+	"distortion_coeffs": [
+		0.34823223988515256,
+		-1.8246880954750304,
+		41.33658007252123,
+		-382.1614186360805
+	],
+	"metadata": {
+		"calibrated_by": "MatriX Jiang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sigma-sigma_fpl--1920x1080",
+	"camera_brand": "Sigma",
+	"camera_model": "SIGMA_FPL",
+	"lens_model": "32MM_F10_L",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1675.046589398945,
+		"fy": 1675.4029258485716,
+		"cx": 949.924903763834,
+		"cy": 537.9339601712097
+	},
+	"distortion_coeffs": [
+		0.4887123323322372,
+		0.39536884507116565,
+		-0.5313098205654737,
+		1.3636783582278795
+	],
+	"metadata": {
+		"calibrated_by": "Travis A.D.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

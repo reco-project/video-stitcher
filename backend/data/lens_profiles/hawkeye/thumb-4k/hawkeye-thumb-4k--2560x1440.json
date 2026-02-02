@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-thumb-4k--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "THUMB 4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1346.7749786491177,
+		"fy": 1318.4283750578647,
+		"cx": 1235.3531354208792,
+		"cy": 741.1729652125614
+	},
+	"distortion_coeffs": [
+		-0.060432215460174306,
+		-0.011814669771396277,
+		-0.024511359552378948,
+		0.02801957476508905
+	],
+	"metadata": {
+		"calibrated_by": "mac",
+		"source": "gyroflow",
+		"official": true
+	}
+}

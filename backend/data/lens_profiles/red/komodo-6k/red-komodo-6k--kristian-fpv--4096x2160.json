@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--kristian-fpv--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa 15mm T2.0 D-Dreamer",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2376.487787799631,
+		"fy": 2359.77804375384,
+		"cx": 2040.8257182600355,
+		"cy": 1066.898425051559
+	},
+	"distortion_coeffs": [
+		0.3233728782371209,
+		0.14558507276305777,
+		-0.07764001585339476,
+		0.19718056150657756
+	],
+	"metadata": {
+		"calibrated_by": "Christian Barckhahn Grau",
+		"notes": "Kristian FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

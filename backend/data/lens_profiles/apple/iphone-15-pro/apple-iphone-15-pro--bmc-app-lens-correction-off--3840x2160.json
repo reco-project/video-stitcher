@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-15-pro--bmc-app-lens-correction-off--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 15 Pro",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2504.7583422819725,
+		"fy": 2505.8754517662883,
+		"cx": 1920.9136489400612,
+		"cy": 1084.2961481725465
+	},
+	"distortion_coeffs": [
+		0.5859686075190991,
+		-0.853593005061343,
+		1.274324164180012,
+		-0.2762530573455433
+	],
+	"metadata": {
+		"calibrated_by": "Vladimir Kostenko",
+		"notes": "BMC app, lens correction off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7cr--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7CR",
+	"lens_model": "21.00mm NOKTON 21 mm F1.4 Aspherical",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2509.410476169088,
+		"fy": 2504.933145761268,
+		"cx": 1839.789334743447,
+		"cy": 1081.042203650463
+	},
+	"distortion_coeffs": [
+		0.3098450641942514,
+		-0.0003395511295421369,
+		0.2090855620895977,
+		0.31230878860286454
+	],
+	"metadata": {
+		"calibrated_by": "CRyder",
+		"source": "gyroflow",
+		"official": true
+	}
+}

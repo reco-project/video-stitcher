@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-80d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 80D",
+	"lens_model": "EFS 17-55 2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1460.5263351800568,
+		"fy": 1460.6050440217557,
+		"cx": 946.32192671122,
+		"cy": 522.2524990737031
+	},
+	"distortion_coeffs": [
+		0.2102906824994853,
+		0.10418276794344544,
+		0.35439619873913875,
+		-0.3530202057484787
+	],
+	"metadata": {
+		"calibrated_by": "Fabrizio Fasano",
+		"source": "gyroflow",
+		"official": true
+	}
+}

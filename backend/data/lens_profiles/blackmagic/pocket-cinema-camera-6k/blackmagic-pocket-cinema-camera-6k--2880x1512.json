@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--2880x1512",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "LAOWA 9mm Cine RF",
+	"resolution": {
+		"width": 2880,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2542.784870952778,
+		"fy": 2543.236135566032,
+		"cx": 1439.6681720971976,
+		"cy": 715.930712837283
+	},
+	"distortion_coeffs": [
+		0.3450303046408482,
+		0.24586839140205216,
+		-0.4438247760296435,
+		0.8767509012190279
+	],
+	"metadata": {
+		"calibrated_by": "Carmine Arrichiello",
+		"source": "gyroflow",
+		"official": true
+	}
+}

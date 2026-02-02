@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--20220927--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sigma2470",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3200.5848321501853,
+		"fy": 3189.757750398341,
+		"cx": 1914.3454070032903,
+		"cy": 1114.7476757296238
+	},
+	"distortion_coeffs": [
+		0.17232324893463083,
+		0.05905528109328347,
+		0.3319434102917001,
+		-0.5374441480499083
+	],
+	"metadata": {
+		"calibrated_by": "Leo TX",
+		"notes": "2022.09.27",
+		"source": "gyroflow",
+		"official": true
+	}
+}

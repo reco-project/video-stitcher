@@ -1,0 +1,29 @@
+{
+	"id": "canon-5d-mark-iv--lens-35mm--1080x1920",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark IV",
+	"lens_model": "24-105 f4",
+	"resolution": {
+		"width": 1080,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1733.7481621172342,
+		"fy": 1738.1921541440297,
+		"cx": 516.4264010415537,
+		"cy": 991.438130625165
+	},
+	"distortion_coeffs": [
+		0.3707408260610899,
+		-0.09991406001779816,
+		1.664036634240302,
+		-2.436072918155727
+	],
+	"metadata": {
+		"calibrated_by": "Miss Lola",
+		"notes": "lens @ 35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

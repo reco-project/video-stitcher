@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-6k--6144x2592",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "RF50mm F1.8 STM 50.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11695.640372769489,
+		"fy": 11692.899848363284,
+		"cx": 3134.032602692552,
+		"cy": 1279.079672239519
+	},
+	"distortion_coeffs": [
+		0.506879465872841,
+		-4.351645128250731,
+		78.22995264804764,
+		-551.8085843279957
+	],
+	"metadata": {
+		"calibrated_by": "Yeh chia chen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

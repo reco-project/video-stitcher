@@ -1,0 +1,29 @@
+{
+	"id": "realme-7-5g--open-camera-sensors--2560x1920",
+	"camera_brand": "Realme",
+	"camera_model": "7 5g",
+	"lens_model": "main",
+	"resolution": {
+		"width": 2560,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1886.7495445445336,
+		"fy": 1882.4371382247468,
+		"cx": 1281.413805488063,
+		"cy": 958.5572902325038
+	},
+	"distortion_coeffs": [
+		0.39727172161209184,
+		-0.12513862461857445,
+		0.7147773404495223,
+		-0.7204912264815944
+	],
+	"metadata": {
+		"calibrated_by": "Andrew Davidovich",
+		"notes": "Open Camera Sensors",
+		"source": "gyroflow",
+		"official": true
+	}
+}

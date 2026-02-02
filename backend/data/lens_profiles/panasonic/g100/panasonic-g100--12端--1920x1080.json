@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-g100--12\u7aef--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "G100",
+	"lens_model": "12-60 12\u7aef",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1986.2355317022707,
+		"fy": 1984.2958691713245,
+		"cx": 952.8928047061464,
+		"cy": 546.1022079911185
+	},
+	"distortion_coeffs": [
+		0.2529477496459984,
+		0.466536293604791,
+		-2.515469973699772,
+		6.145045012200517
+	],
+	"metadata": {
+		"calibrated_by": "\u9648\u666f\u9716",
+		"notes": "12\u7aef",
+		"source": "gyroflow",
+		"official": true
+	}
+}

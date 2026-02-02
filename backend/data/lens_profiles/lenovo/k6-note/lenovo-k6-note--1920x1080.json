@@ -1,0 +1,28 @@
+{
+	"id": "lenovo-k6-note--1920x1080",
+	"camera_brand": "Lenovo",
+	"camera_model": "K6 Note",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1315.230557696866,
+		"fy": 1314.4276466846522,
+		"cx": 968.2372689577538,
+		"cy": 520.8227921305274
+	},
+	"distortion_coeffs": [
+		0.43716952462770814,
+		0.1904858921286613,
+		-1.5160184016714424,
+		2.5640092284663
+	],
+	"metadata": {
+		"calibrated_by": "olo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

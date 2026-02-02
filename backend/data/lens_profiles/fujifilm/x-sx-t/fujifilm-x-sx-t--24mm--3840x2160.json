@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-sx-t--24mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S/X-T",
+	"lens_model": "Sigma 18-35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3956.746582842149,
+		"fy": 3952.3139545294553,
+		"cx": 1920.9539857966397,
+		"cy": 1061.0453429654715
+	},
+	"distortion_coeffs": [
+		0.2818623077846012,
+		0.5799888320998233,
+		-0.04459780108626124,
+		-5.860240319305611
+	],
+	"metadata": {
+		"calibrated_by": "David Hoult",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

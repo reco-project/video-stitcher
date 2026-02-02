@@ -1,0 +1,28 @@
+{
+	"id": "hdzero-hdzero_nano--1280x720",
+	"camera_brand": "HDZero",
+	"camera_model": "HDZero_Nano",
+	"lens_model": "Default",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 641.5932271638189,
+		"fy": 639.0543644101313,
+		"cx": 654.7766768654603,
+		"cy": 340.2374010541116
+	},
+	"distortion_coeffs": [
+		-0.08064194959378296,
+		0.012929333157900836,
+		-0.00907905779789974,
+		0.0007302175403954537
+	],
+	"metadata": {
+		"calibrated_by": "S\u00f6ren",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "odrvm-action--1920x1080",
+	"camera_brand": "ODRVM",
+	"camera_model": "Action",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 988.188332816566,
+		"fy": 988.6732811970452,
+		"cx": 943.623178335848,
+		"cy": 527.2676248733552
+	},
+	"distortion_coeffs": [
+		-0.043522537108859984,
+		0.049106768074801785,
+		-0.051278151842194426,
+		0.015053465350559934
+	],
+	"metadata": {
+		"calibrated_by": "daryl slack",
+		"source": "gyroflow",
+		"official": true
+	}
+}

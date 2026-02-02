@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7iv--1080x1920",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "FE4/24-105MM",
+	"resolution": {
+		"width": 1080,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1528.6061626464384,
+		"fy": 1528.9449578215892,
+		"cx": 544.6642235969338,
+		"cy": 969.398368096862
+	},
+	"distortion_coeffs": [
+		0.2990722200773815,
+		-0.014152233968957309,
+		1.1362358780491884,
+		-2.682956778244517
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

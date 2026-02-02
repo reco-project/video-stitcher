@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-14pm--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14pm",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1715.6225014438571,
+		"fy": 1716.1179621782096,
+		"cx": 961.4195674423312,
+		"cy": 535.122483536395
+	},
+	"distortion_coeffs": [
+		0.44192019684770834,
+		1.8194121127586933,
+		-14.698601354734086,
+		30.057587266628268
+	],
+	"metadata": {
+		"calibrated_by": "If Y",
+		"source": "gyroflow",
+		"official": true
+	}
+}

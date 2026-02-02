@@ -1,0 +1,28 @@
+{
+	"id": "huawei-nova7--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "Nova7",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1728.1438090241406,
+		"fy": 1673.4360932489408,
+		"cx": 957.1275030258066,
+		"cy": 505.15124957038216
+	},
+	"distortion_coeffs": [
+		0.33141320943453056,
+		0.6915724118205567,
+		-2.857072598916502,
+		5.862035807500518
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

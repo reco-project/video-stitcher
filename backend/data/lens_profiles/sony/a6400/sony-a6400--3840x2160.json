@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6400--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "\u552f\u5353\u4ed5 20mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8366.97074739996,
+		"fy": 8559.396034065352,
+		"cx": 1112.7065862411257,
+		"cy": 805.2946418660274
+	},
+	"distortion_coeffs": [
+		0.4929493572325096,
+		-6.661387918791353,
+		104.09532538590854,
+		-531.5810426534238
+	],
+	"metadata": {
+		"calibrated_by": "NINGMEI",
+		"source": "gyroflow",
+		"official": true
+	}
+}

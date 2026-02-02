@@ -1,0 +1,28 @@
+{
+	"id": "pentax-6x7--4096x2160",
+	"camera_brand": "Pentax",
+	"camera_model": "6x7",
+	"lens_model": "105mm f2.4 + MetaBones 0.71",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17314.305338982856,
+		"fy": 17315.79865740342,
+		"cx": 1950.3915532050623,
+		"cy": 1138.923048819498
+	},
+	"distortion_coeffs": [
+		-0.33419823041648483,
+		19.96811309832618,
+		-1493.148392021029,
+		75640.03848636938
+	],
+	"metadata": {
+		"calibrated_by": "Mark",
+		"source": "gyroflow",
+		"official": true
+	}
+}

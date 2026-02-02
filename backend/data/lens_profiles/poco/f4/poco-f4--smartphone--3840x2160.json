@@ -1,0 +1,29 @@
+{
+	"id": "poco-f4--smartphone--3840x2160",
+	"camera_brand": "POCO",
+	"camera_model": "F4",
+	"lens_model": "Inbuilt",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3320.669178048732,
+		"fy": 3325.3181838945125,
+		"cx": 1921.743595065606,
+		"cy": 1145.9804575642042
+	},
+	"distortion_coeffs": [
+		0.24189613208553937,
+		3.0118465515395325,
+		-17.18148240817027,
+		33.422691502246074
+	],
+	"metadata": {
+		"calibrated_by": "Akshansh Badhwar",
+		"notes": "Smartphone",
+		"source": "gyroflow",
+		"official": true
+	}
+}

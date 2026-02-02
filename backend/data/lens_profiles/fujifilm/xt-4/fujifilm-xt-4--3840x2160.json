@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt-4--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT-4",
+	"lens_model": "XF 16-55",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2734.622195178293,
+		"fy": 2737.1979817932374,
+		"cx": 1967.2443734901117,
+		"cy": 1103.4339981216851
+	},
+	"distortion_coeffs": [
+		0.304280003437048,
+		0.5016643369585343,
+		-2.246922071378534,
+		4.212886471013273
+	],
+	"metadata": {
+		"calibrated_by": "yunus emre pala",
+		"source": "gyroflow",
+		"official": true
+	}
+}

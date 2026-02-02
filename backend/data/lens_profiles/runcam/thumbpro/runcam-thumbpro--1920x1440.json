@@ -1,0 +1,28 @@
+{
+	"id": "runcam-thumbpro--1920x1440",
+	"camera_brand": "RunCam",
+	"camera_model": "ThumbPro",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1059.400944633149,
+		"fy": 1057.3125178447258,
+		"cx": 938.8055352052318,
+		"cy": 706.6129138746062
+	},
+	"distortion_coeffs": [
+		-0.04930252459961175,
+		-0.004022821676274352,
+		-0.02495260625744636,
+		0.013411824452045645
+	],
+	"metadata": {
+		"calibrated_by": "Elvin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

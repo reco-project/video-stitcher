@@ -1,0 +1,28 @@
+{
+	"id": "sony-fs5--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "fs5",
+	"lens_model": "10.-18",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1371.4936947682038,
+		"fy": 1367.533412853934,
+		"cx": 993.367713931918,
+		"cy": 548.5620103578065
+	},
+	"distortion_coeffs": [
+		0.31525668889602865,
+		0.23996637465749443,
+		-0.26942276158493667,
+		0.4300158314964628
+	],
+	"metadata": {
+		"calibrated_by": "D L",
+		"source": "gyroflow",
+		"official": true
+	}
+}

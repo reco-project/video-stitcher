@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d-mark-iv--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark IV",
+	"lens_model": "CANON EF 50MM 1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3366.0520642107235,
+		"fy": 3376.666478780328,
+		"cx": 1067.198102778664,
+		"cy": 611.489783678397
+	},
+	"distortion_coeffs": [
+		0.04013488741512612,
+		7.193747070137068,
+		-124.14800186602224,
+		748.7049472357438
+	],
+	"metadata": {
+		"calibrated_by": "Osman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

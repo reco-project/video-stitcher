@@ -1,0 +1,29 @@
+{
+	"id": "canon-600d--auto--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "600D",
+	"lens_model": "18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1574.5956661948258,
+		"fy": 1573.9232127562614,
+		"cx": 972.7923628637528,
+		"cy": 532.4114604667062
+	},
+	"distortion_coeffs": [
+		0.17989449417415238,
+		-0.17433277251662666,
+		4.185943786341624,
+		-15.524986045910936
+	],
+	"metadata": {
+		"calibrated_by": "Nildeep Jadav",
+		"notes": "Auto",
+		"source": "gyroflow",
+		"official": true
+	}
+}

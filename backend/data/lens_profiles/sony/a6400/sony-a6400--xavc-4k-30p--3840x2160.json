@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--xavc-4k-30p--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sony f3.5-5.6 16-50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3249.124648891963,
+		"fy": 3168.76894894511,
+		"cx": 1910.6562631682525,
+		"cy": 1099.5414888583523
+	},
+	"distortion_coeffs": [
+		0.37267327406461426,
+		-0.7551050795646228,
+		4.3925904769731305,
+		-6.973513573746548
+	],
+	"metadata": {
+		"calibrated_by": "JaviSeed FPV",
+		"notes": "XAVC 4K 30p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

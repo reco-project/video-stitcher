@@ -1,0 +1,28 @@
+{
+	"id": "dji-mavic-mini--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Mavic mini",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1523.5584785545364,
+		"fy": 1522.81060692934,
+		"cx": 972.017733203473,
+		"cy": 518.0618656512704
+	},
+	"distortion_coeffs": [
+		0.3847989552685038,
+		-0.3781560268090313,
+		2.317071997211872,
+		-3.5818604693894303
+	],
+	"metadata": {
+		"calibrated_by": "Joe Raven",
+		"source": "gyroflow",
+		"official": true
+	}
+}

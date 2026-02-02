@@ -2,7 +2,7 @@
 	"id": "dji-action--4096x3072",
 	"camera_brand": "DJI",
 	"camera_model": "Action",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 4096,
 		"height": 3072
@@ -21,13 +21,8 @@
 		-0.006106822739442429
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Action___C4k_4by3_4096x3072-50.00fps",
 		"calibrated_by": "chengchao sheng",
-		"original_resolution": "4096x3072",
-		"calibrated_fps": "50.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

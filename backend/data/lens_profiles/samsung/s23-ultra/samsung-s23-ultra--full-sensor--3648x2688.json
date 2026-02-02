@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23-ultra--full-sensor--3648x2688",
+	"camera_brand": "Samsung",
+	"camera_model": "S23 Ultra",
+	"lens_model": "70mm",
+	"resolution": {
+		"width": 3648,
+		"height": 2688
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7109.61343526426,
+		"fy": 7115.589384837708,
+		"cx": 1795.1292083400272,
+		"cy": 1400.862953566528
+	},
+	"distortion_coeffs": [
+		-1.4289275881146453,
+		67.22465209913867,
+		-1045.7270036940615,
+		5772.122742279845
+	],
+	"metadata": {
+		"calibrated_by": "6",
+		"notes": "Full Sensor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

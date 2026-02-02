@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6700--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "BRIGHTSTAR 12mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1119.7017203316575,
+		"fy": 1119.2349066770755,
+		"cx": 944.0984998165238,
+		"cy": 534.8965888098238
+	},
+	"distortion_coeffs": [
+		0.41954838816064943,
+		0.06212677504358969,
+		-0.2637273880252478,
+		0.42889887782192737
+	],
+	"metadata": {
+		"calibrated_by": "\u5341\u4e00\u5c11",
+		"source": "gyroflow",
+		"official": true
+	}
+}

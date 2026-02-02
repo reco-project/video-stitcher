@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-s1h--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S1H",
+	"lens_model": "Sigma 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3025.3852467205634,
+		"fy": 3028.662944592955,
+		"cx": 1980.7024097009448,
+		"cy": 1100.0523488105357
+	},
+	"distortion_coeffs": [
+		0.308959275821497,
+		0.553550136917528,
+		-1.3620202257678595,
+		1.4153293414251074
+	],
+	"metadata": {
+		"calibrated_by": "Sofia Taylor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

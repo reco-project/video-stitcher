@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-hx-a1h--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "HX A1H",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 993.7487685328772,
+		"fy": 993.4140912597744,
+		"cx": 973.4471982294726,
+		"cy": 541.7893674405811
+	},
+	"distortion_coeffs": [
+		-0.05677874026183433,
+		-0.043252594139707216,
+		0.05872959882382301,
+		-0.03986838278147197
+	],
+	"metadata": {
+		"calibrated_by": "\u5b89\u90e8\u548c\u5f81",
+		"source": "gyroflow",
+		"official": true
+	}
+}

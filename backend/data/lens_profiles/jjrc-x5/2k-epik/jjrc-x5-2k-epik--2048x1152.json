@@ -1,0 +1,28 @@
+{
+	"id": "jjrc-x5-2k-epik--2048x1152",
+	"camera_brand": "JJRC X5",
+	"camera_model": "2K Epik",
+	"lens_model": null,
+	"resolution": {
+		"width": 2048,
+		"height": 1152
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1233.0171794779667,
+		"fy": 1233.6261426739482,
+		"cx": 1020.6487990830864,
+		"cy": 576.5932252494639
+	},
+	"distortion_coeffs": [
+		-0.07870977039992233,
+		-0.03200019026743938,
+		-0.017116900583888414,
+		0.035396612958038344
+	],
+	"metadata": {
+		"calibrated_by": "mccarty",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s22-ultra--wide-stock-24mm--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S22 ultra",
+	"lens_model": "S22 ultra 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2644.1637951169027,
+		"fy": 2622.5235561272875,
+		"cx": 1936.1750106432717,
+		"cy": 1069.160867488712
+	},
+	"distortion_coeffs": [
+		0.6266036059324905,
+		-1.6091437469696692,
+		5.612176583625386,
+		-6.408311545910282
+	],
+	"metadata": {
+		"calibrated_by": "Israel hernandez",
+		"notes": "Wide stock 24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

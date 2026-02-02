@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--100m-12mm--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "gh5",
+	"lens_model": "12-40 2.8 pro",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1304.5332882907956,
+		"fy": 1306.5119852360922,
+		"cx": 956.6488329802462,
+		"cy": 531.3152568946102
+	},
+	"distortion_coeffs": [
+		0.3221168055236937,
+		0.09172054818131808,
+		0.46596986921331274,
+		-1.0407480688227462
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"notes": "100M 12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

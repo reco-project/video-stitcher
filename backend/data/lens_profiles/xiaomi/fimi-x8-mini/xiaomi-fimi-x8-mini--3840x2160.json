@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-fimi-x8-mini--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "fimi x8 mini",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3102.3590320918797,
+		"fy": 3104.0004545545394,
+		"cx": 1876.1511785642028,
+		"cy": 1097.2317605007715
+	},
+	"distortion_coeffs": [
+		0.5027006439689886,
+		-0.95367641953056,
+		4.201746604221989,
+		-6.012923383495557
+	],
+	"metadata": {
+		"calibrated_by": "HP",
+		"source": "gyroflow",
+		"official": true
+	}
+}

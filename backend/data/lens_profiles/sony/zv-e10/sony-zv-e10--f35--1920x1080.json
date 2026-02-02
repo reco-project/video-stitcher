@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--f35--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Canon 18-135mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1376.9429001075955,
+		"fy": 1377.4398806897814,
+		"cx": 932.9585264732297,
+		"cy": 505.21599810563305
+	},
+	"distortion_coeffs": [
+		0.15813497577314295,
+		0.0653805809900265,
+		0.2918993072894755,
+		-0.06926407701763612
+	],
+	"metadata": {
+		"calibrated_by": "Teo Oliveira",
+		"notes": "f3.5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

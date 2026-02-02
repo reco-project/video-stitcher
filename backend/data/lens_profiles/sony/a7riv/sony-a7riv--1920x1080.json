@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7riv--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIV",
+	"lens_model": "Sigma 20mm1:1.4 DG",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1122.4277445877208,
+		"fy": 1120.1149122406357,
+		"cx": 958.2194779822596,
+		"cy": 542.6515321727712
+	},
+	"distortion_coeffs": [
+		0.310438397695904,
+		0.05323686870830544,
+		0.19401929362363415,
+		-0.21255168318450407
+	],
+	"metadata": {
+		"calibrated_by": "Mar tin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

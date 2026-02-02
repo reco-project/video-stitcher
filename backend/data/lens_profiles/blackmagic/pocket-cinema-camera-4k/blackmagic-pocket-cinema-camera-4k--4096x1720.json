@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--4096x1720",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LAOWA C&D-Dreamer MFT6.0mm F2.0 6mm",
+	"resolution": {
+		"width": 4096,
+		"height": 1720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1366.311888692287,
+		"fy": 1364.2244003358858,
+		"cx": 2026.570704967988,
+		"cy": 880.0522238914374
+	},
+	"distortion_coeffs": [
+		0.3311933521051191,
+		0.11152894103459624,
+		0.07699534858449011,
+		0.010208898693064471
+	],
+	"metadata": {
+		"calibrated_by": "Timon Terzi\u0107",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--18mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 18-50mm f/2.8 DC DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3647.202593155034,
+		"fy": 3646.3515850582567,
+		"cx": 1931.247495784696,
+		"cy": 1062.892741151355
+	},
+	"distortion_coeffs": [
+		0.29144954678347607,
+		0.26215029181300126,
+		0.5856019597417567,
+		-2.155741666278409
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

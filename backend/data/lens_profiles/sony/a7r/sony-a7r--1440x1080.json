@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7r--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7R",
+	"lens_model": "50",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3587.9932922209023,
+		"fy": 5963.530629420144,
+		"cx": 559.5007702527798,
+		"cy": 532.6380942089611
+	},
+	"distortion_coeffs": [
+		0.6949946840814035,
+		-29.153660133061816,
+		814.4840437119291,
+		-5990.189738247511
+	],
+	"metadata": {
+		"calibrated_by": "\u767e\u91cc\u68e0\u9752",
+		"source": "gyroflow",
+		"official": true
+	}
+}

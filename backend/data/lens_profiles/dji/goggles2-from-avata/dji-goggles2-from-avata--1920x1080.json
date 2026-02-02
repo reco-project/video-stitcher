@@ -1,0 +1,28 @@
+{
+	"id": "dji-goggles2-from-avata--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Goggles2 From Avata",
+	"lens_model": "O3 air Unit",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 708.4384952272591,
+		"fy": 707.3729497061603,
+		"cx": 952.824224107703,
+		"cy": 542.6448272302996
+	},
+	"distortion_coeffs": [
+		0.2559608493853444,
+		0.01047833882442176,
+		-0.07547941661170574,
+		0.02296777082852691
+	],
+	"metadata": {
+		"calibrated_by": "Henry Zhang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

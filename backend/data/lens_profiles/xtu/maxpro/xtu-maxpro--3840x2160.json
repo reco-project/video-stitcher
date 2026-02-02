@@ -1,0 +1,28 @@
+{
+	"id": "xtu-maxpro--3840x2160",
+	"camera_brand": "XTU",
+	"camera_model": "MAXPRO",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2888.7012976913315,
+		"fy": 2756.901323082333,
+		"cx": 3137.70384288623,
+		"cy": 1114.2588452756916
+	},
+	"distortion_coeffs": [
+		-0.4485157331812577,
+		0.8538378616409126,
+		-0.6789664169178221,
+		0.25921778714329946
+	],
+	"metadata": {
+		"calibrated_by": "\u65b9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

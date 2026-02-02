@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--25mm-15t--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Artisan 7",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5691.881240979244,
+		"fy": 5693.674365186142,
+		"cx": 3095.6867067531102,
+		"cy": 1580.44311363525
+	},
+	"distortion_coeffs": [
+		0.08825377880593978,
+		0.8975673164323891,
+		-3.4770865287188166,
+		15.387740430168886
+	],
+	"metadata": {
+		"calibrated_by": "W B",
+		"notes": "25mm 1.5T",
+		"source": "gyroflow",
+		"official": true
+	}
+}

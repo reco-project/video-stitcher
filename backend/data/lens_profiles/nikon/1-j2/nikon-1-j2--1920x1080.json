@@ -1,0 +1,28 @@
+{
+	"id": "nikon-1-j2--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "1-J2",
+	"lens_model": "11-27.5mm f3.5-5.6",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 976.7754384161532,
+		"fy": 979.5377360746696,
+		"cx": 997.3397847698968,
+		"cy": 543.8607726587207
+	},
+	"distortion_coeffs": [
+		0.28731536738926444,
+		0.060139305686452794,
+		0.1160345079646215,
+		-0.03687469518985128
+	],
+	"metadata": {
+		"calibrated_by": "ex D",
+		"source": "gyroflow",
+		"official": true
+	}
+}

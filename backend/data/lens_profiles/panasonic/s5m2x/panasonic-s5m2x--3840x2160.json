@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5m2x--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5M2X",
+	"lens_model": "SIGMA2870",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13014.68950838708,
+		"fy": 13034.220766375547,
+		"cx": 1981.005131509816,
+		"cy": 1042.0103004430905
+	},
+	"distortion_coeffs": [
+		0.5265691214366816,
+		-28.6450409060261,
+		1918.3046700678744,
+		-39375.61553200507
+	],
+	"metadata": {
+		"calibrated_by": "Riddle",
+		"source": "gyroflow",
+		"official": true
+	}
+}

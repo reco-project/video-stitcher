@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Tokina 11-16",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1294.1596615499177,
+		"fy": 1294.7820611351294,
+		"cx": 944.7312922804324,
+		"cy": 549.2062916044086
+	},
+	"distortion_coeffs": [
+		0.33467655402732766,
+		0.10978599928710774,
+		-0.05729630687928983,
+		0.11951132946412964
+	],
+	"metadata": {
+		"calibrated_by": "Robert Marin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

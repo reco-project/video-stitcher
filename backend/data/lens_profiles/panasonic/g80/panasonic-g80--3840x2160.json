@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-g80--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "G80",
+	"lens_model": "12-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3277.139842625191,
+		"fy": 3285.7150757467775,
+		"cx": 1942.8794843449816,
+		"cy": 1098.880093715929
+	},
+	"distortion_coeffs": [
+		0.21971861025922057,
+		0.6692498253833404,
+		-2.286858705414515,
+		3.2423647435328187
+	],
+	"metadata": {
+		"calibrated_by": "Cezary Szydlik",
+		"source": "gyroflow",
+		"official": true
+	}
+}

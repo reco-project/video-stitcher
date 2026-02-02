@@ -1,0 +1,29 @@
+{
+	"id": "dji-action--43--2720x2040",
+	"camera_brand": "DJI",
+	"camera_model": "Action",
+	"lens_model": null,
+	"resolution": {
+		"width": 2720,
+		"height": 2040
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1128.1851963212985,
+		"fy": 1129.196122482346,
+		"cx": 1377.7365898130336,
+		"cy": 1031.0115563307058
+	},
+	"distortion_coeffs": [
+		0.2280328818045657,
+		0.3134107456068758,
+		-0.14157703460436544,
+		0.12814999824558546
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "4:3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

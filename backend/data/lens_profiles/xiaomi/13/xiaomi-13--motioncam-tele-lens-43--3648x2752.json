@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-13--motioncam-tele-lens-43--3648x2752",
+	"camera_brand": "Xiaomi",
+	"camera_model": "13",
+	"lens_model": "(75mm - 66mm tele lens)",
+	"resolution": {
+		"width": 3648,
+		"height": 2752
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6912.4083522578,
+		"fy": 6911.761473009317,
+		"cx": 1763.408260332637,
+		"cy": 1392.1660213215644
+	},
+	"distortion_coeffs": [
+		0.04800420162971321,
+		21.388554039063184,
+		-328.109812267553,
+		1751.9911339595894
+	],
+	"metadata": {
+		"calibrated_by": "Emre Dural",
+		"notes": "Motioncam Tele Lens 4:3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

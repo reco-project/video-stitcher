@@ -1,0 +1,28 @@
+{
+	"id": "caddx-nano-walksnail--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "Nano Walksnail",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1004.9539226063888,
+		"fy": 1004.0905615275188,
+		"cx": 958.1540176701598,
+		"cy": 512.0516328183835
+	},
+	"distortion_coeffs": [
+		0.06508551273267593,
+		-0.2758293760511206,
+		0.26412875206459635,
+		-0.03779389213692735
+	],
+	"metadata": {
+		"calibrated_by": "Benjamin Pina",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-lite--640x480",
+	"camera_brand": "Foxeer",
+	"camera_model": "Lite",
+	"lens_model": null,
+	"resolution": {
+		"width": 640,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 331.60038704743187,
+		"fy": 461.932989220219,
+		"cx": 324.8532130412209,
+		"cy": 156.31893638569565
+	},
+	"distortion_coeffs": [
+		-0.042540908466208414,
+		-0.03497317535869627,
+		-0.035666103623201884,
+		0.10269061330904758
+	],
+	"metadata": {
+		"calibrated_by": "Alvin Aufar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

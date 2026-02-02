@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--35mm-aps-c--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "7Artisans 35mm f/0.95 APS-C",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6887.3709928574945,
+		"fy": 6871.4446630263365,
+		"cx": 2012.0798165550116,
+		"cy": 1220.8989646680488
+	},
+	"distortion_coeffs": [
+		0.1128013762549157,
+		-1.805454042235631,
+		84.39125408340979,
+		-750.7198033231797
+	],
+	"metadata": {
+		"calibrated_by": "MogiYgJahat",
+		"notes": "35mm APS-C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s1h--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "24-105mm F4 MACRO O.I.S",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1354.7149735369244,
+		"fy": 1358.4528616927555,
+		"cx": 961.8140741851888,
+		"cy": 531.3195371848051
+	},
+	"distortion_coeffs": [
+		0.29124600821446023,
+		0.2721397037563321,
+		-0.491634461207276,
+		0.6504315491040664
+	],
+	"metadata": {
+		"calibrated_by": "Chan Tony",
+		"source": "gyroflow",
+		"official": true
+	}
+}

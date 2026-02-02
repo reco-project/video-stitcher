@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--25fps--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "tla007",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2789.608076982016,
+		"fy": 2789.0056960520706,
+		"cx": 1864.817821249855,
+		"cy": 1059.9987899572372
+	},
+	"distortion_coeffs": [
+		0.11181703510844324,
+		0.27210085049834704,
+		-0.5767910108028237,
+		1.0317487876643316
+	],
+	"metadata": {
+		"calibrated_by": "yf z",
+		"notes": "25fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

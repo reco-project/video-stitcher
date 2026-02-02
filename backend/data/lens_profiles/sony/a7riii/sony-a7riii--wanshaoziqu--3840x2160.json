@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7riii--wanshaoziqu--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIII",
+	"lens_model": "zeiss 18",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2001.8868003156051,
+		"fy": 2000.7169973480145,
+		"cx": 1913.8915614511525,
+		"cy": 1062.16038353882
+	},
+	"distortion_coeffs": [
+		0.2371984940314518,
+		0.21364823681608333,
+		-0.16417256459670204,
+		0.2995097206577052
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u73a5",
+		"notes": "wanshaoziqu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

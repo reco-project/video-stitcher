@@ -1,0 +1,28 @@
+{
+	"id": "sony-a5000--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a5000",
+	"lens_model": "SEL1650OSS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1334.2434110159109,
+		"fy": 1333.4815738938296,
+		"cx": 959.9879448354726,
+		"cy": 533.1385442864218
+	},
+	"distortion_coeffs": [
+		0.3202826479263988,
+		-0.07681424527491691,
+		0.9007511620714904,
+		-1.0119068493854404
+	],
+	"metadata": {
+		"calibrated_by": "Alfred",
+		"source": "gyroflow",
+		"official": true
+	}
+}

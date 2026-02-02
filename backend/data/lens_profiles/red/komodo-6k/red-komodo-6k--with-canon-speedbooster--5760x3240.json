@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--with-canon-speedbooster--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Samyang 14mm f2.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2311.6303006938997,
+		"fy": 2312.2630407485535,
+		"cx": 2897.9426349082864,
+		"cy": 1576.0273253131738
+	},
+	"distortion_coeffs": [
+		0.19278448827541747,
+		0.09298059879718867,
+		-0.0015990230509145122,
+		0.11360789972099963
+	],
+	"metadata": {
+		"calibrated_by": "GEE",
+		"notes": "with Canon Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

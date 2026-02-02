@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6-mii--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6 Mii",
+	"lens_model": "Sigma 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3933.4328474651807,
+		"fy": 3933.7433444543894,
+		"cx": 1909.5449286530936,
+		"cy": 1088.3067275737017
+	},
+	"distortion_coeffs": [
+		0.19337368279101852,
+		1.2802417536700823,
+		-6.782596398245725,
+		15.502273351235267
+	],
+	"metadata": {
+		"calibrated_by": "Luke Ring",
+		"source": "gyroflow",
+		"official": true
+	}
+}

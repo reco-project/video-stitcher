@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--distortion-uncorrected--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "24_105_F4_L@50mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5617.493031395303,
+		"fy": 5623.793151470828,
+		"cx": 2031.8750908795923,
+		"cy": 1087.3725265549758
+	},
+	"distortion_coeffs": [
+		0.4253232827913843,
+		1.4143721357345884,
+		-16.728610649093458,
+		108.40569164830924
+	],
+	"metadata": {
+		"calibrated_by": "guns",
+		"notes": "distortion uncorrected",
+		"source": "gyroflow",
+		"official": true
+	}
+}

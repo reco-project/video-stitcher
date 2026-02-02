@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--1920x816",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Pergear 10mm f5.6 fisheye",
+	"resolution": {
+		"width": 1920,
+		"height": 816
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 933.6426674506744,
+		"fy": 932.4708253321631,
+		"cx": 938.6746749238466,
+		"cy": 401.27550263298576
+	},
+	"distortion_coeffs": [
+		0.017195942548387712,
+		-0.035985871793037034,
+		0.03148775828400588,
+		-0.013880130376399978
+	],
+	"metadata": {
+		"calibrated_by": "Tolan Blundell",
+		"source": "gyroflow",
+		"official": true
+	}
+}

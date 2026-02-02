@@ -1,0 +1,29 @@
+{
+	"id": "samsung-nx2000--35mm--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "NX2000",
+	"lens_model": "NX 20-50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2813.0824622220516,
+		"fy": 2822.231967067693,
+		"cx": 947.4911048399542,
+		"cy": 500.5232709155581
+	},
+	"distortion_coeffs": [
+		0.36599430989667,
+		-1.8771581054075972,
+		21.866626781655235,
+		-78.12809455319665
+	],
+	"metadata": {
+		"calibrated_by": "Reza",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

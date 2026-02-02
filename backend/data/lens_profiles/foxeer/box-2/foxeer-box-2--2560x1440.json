@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-box-2--2560x1440",
+	"camera_brand": "Foxeer",
+	"camera_model": "Box 2",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1320.6611443780844,
+		"fy": 1402.9809192622213,
+		"cx": 1292.1562228444511,
+		"cy": 738.8601838068157
+	},
+	"distortion_coeffs": [
+		0.06727639108202244,
+		-0.014916396887378305,
+		0.026583593034223182,
+		-0.014451236367120514
+	],
+	"metadata": {
+		"calibrated_by": "Fabio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

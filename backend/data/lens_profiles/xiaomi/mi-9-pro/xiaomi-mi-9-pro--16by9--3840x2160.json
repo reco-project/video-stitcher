@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mi-9-pro--16by9--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 9 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3001.4654189894904,
+		"fy": 3000.3342246605093,
+		"cx": 1931.9110863456292,
+		"cy": 1078.5300997517384
+	},
+	"distortion_coeffs": [
+		0.5333738242706347,
+		-0.8900607319070714,
+		1.3549695435562703,
+		1.0434122103954406
+	],
+	"metadata": {
+		"calibrated_by": "WYY",
+		"notes": "16BY9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

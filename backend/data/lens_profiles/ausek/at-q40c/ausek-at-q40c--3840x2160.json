@@ -1,0 +1,28 @@
+{
+	"id": "ausek-at-q40c--3840x2160",
+	"camera_brand": "Ausek",
+	"camera_model": "AT-Q40C",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2267.4085095702494,
+		"fy": 2264.070066103318,
+		"cx": 1888.840449211271,
+		"cy": 1090.644894460195
+	},
+	"distortion_coeffs": [
+		0.0029099698967727647,
+		0.03678127609431545,
+		-0.03715518355247897,
+		0.005804547751455624
+	],
+	"metadata": {
+		"calibrated_by": "bossman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

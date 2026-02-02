@@ -2,7 +2,7 @@
 	"id": "sony-hxr-nx80--3840x2160",
 	"camera_brand": "Sony",
 	"camera_model": "HXR-NX80",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		0.4195083265639711
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_HXR-NX80___4k_16by9_3840x2160-29.97fps",
 		"calibrated_by": "FRANCISCO",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

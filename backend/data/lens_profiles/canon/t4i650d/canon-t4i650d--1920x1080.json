@@ -1,0 +1,28 @@
+{
+	"id": "canon-t4i650d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "T4i/650D",
+	"lens_model": "Cannon 50mm 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4779.834515140919,
+		"fy": 4799.004192912895,
+		"cx": 981.0029135382196,
+		"cy": 458.20350042199874
+	},
+	"distortion_coeffs": [
+		-0.05991658607364593,
+		16.313200508434765,
+		-411.3775079833511,
+		3877.700667315706
+	],
+	"metadata": {
+		"calibrated_by": "Joanna Larsen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

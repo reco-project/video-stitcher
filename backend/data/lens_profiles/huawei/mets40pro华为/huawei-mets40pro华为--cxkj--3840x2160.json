@@ -1,0 +1,29 @@
+{
+	"id": "huawei-mets40pro\u534e\u4e3a--cxkj--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "Mets40pro\u534e\u4e3a",
+	"lens_model": "\u534e\u4e3a",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2793.3038156882226,
+		"fy": 2796.1397161836708,
+		"cx": 1932.12932463476,
+		"cy": 1077.619813768471
+	},
+	"distortion_coeffs": [
+		0.1769431926220392,
+		2.233384763719744,
+		-7.291158259556869,
+		8.029866277773593
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u747e\u579a",
+		"notes": "cxkj",
+		"source": "gyroflow",
+		"official": true
+	}
+}

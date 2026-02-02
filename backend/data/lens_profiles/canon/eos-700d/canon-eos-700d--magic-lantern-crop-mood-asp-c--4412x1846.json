@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-700d--magic-lantern-crop-mood-asp-c--4412x1846",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 700D",
+	"lens_model": "Nikkor 35mm DX f/1.8G",
+	"resolution": {
+		"width": 4412,
+		"height": 1846
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8578.743241800665,
+		"fy": 8576.14585242171,
+		"cx": 1974.2544303169975,
+		"cy": 1045.5776554975148
+	},
+	"distortion_coeffs": [
+		0.35528535432516906,
+		-10.642098041947468,
+		253.1119280841791,
+		-2223.2448009675295
+	],
+	"metadata": {
+		"calibrated_by": "Folium",
+		"notes": "Magic Lantern Crop Mood ASP-C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

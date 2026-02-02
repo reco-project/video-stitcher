@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-5d-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 5D Mark II",
+	"lens_model": "Canon EF USM 16-35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 903.3609499283004,
+		"fy": 902.7962617657356,
+		"cx": 973.5088994101789,
+		"cy": 548.3220413791076
+	},
+	"distortion_coeffs": [
+		0.3008880659464968,
+		0.056873705541426595,
+		0.0029554076071668205,
+		0.1399637441307005
+	],
+	"metadata": {
+		"calibrated_by": "Carla Veronica Moscoso Yepez # 755",
+		"source": "gyroflow",
+		"official": true
+	}
+}

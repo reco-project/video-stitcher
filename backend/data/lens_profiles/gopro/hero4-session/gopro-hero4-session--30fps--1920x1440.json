@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero4-session--30fps--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4 Session",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 927.7494686436664,
+		"fy": 925.0732407826168,
+		"cx": 972.7419225852454,
+		"cy": 720.9826489942086
+	},
+	"distortion_coeffs": [
+		0.07367214890769301,
+		-0.1135368784482668,
+		0.08219094257194473,
+		-0.02280318595505989
+	],
+	"metadata": {
+		"calibrated_by": "Graham Parkinson",
+		"notes": "30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

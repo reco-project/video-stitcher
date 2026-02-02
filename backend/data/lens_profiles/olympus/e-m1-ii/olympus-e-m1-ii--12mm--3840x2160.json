@@ -1,0 +1,29 @@
+{
+	"id": "olympus-e-m1-ii--12mm--3840x2160",
+	"camera_brand": "Olympus",
+	"camera_model": "E-M1 II",
+	"lens_model": "Olympus 12-40mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2779.156864103714,
+		"fy": 2778.854357144935,
+		"cx": 1938.2972265839296,
+		"cy": 1080.0565201762142
+	},
+	"distortion_coeffs": [
+		0.2979056127466197,
+		0.2486784915766417,
+		-0.36168804167301066,
+		0.5216474036207863
+	],
+	"metadata": {
+		"calibrated_by": "Tomasz Turczynski",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

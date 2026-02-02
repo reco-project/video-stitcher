@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--11mm-viltrox-ef-m2-ii-071x--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Tokina 11-20mm f2.8 + Viltrox EF-M2 II",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1702.5631945959856,
+		"fy": 1701.6747502361595,
+		"cx": 2069.568297953814,
+		"cy": 1130.7615401927987
+	},
+	"distortion_coeffs": [
+		0.33475235282984017,
+		0.05436880612987305,
+		0.037980629179370715,
+		0.01711903092459331
+	],
+	"metadata": {
+		"calibrated_by": "Sandros94",
+		"notes": "@11mm + Viltrox EF-M2 II 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--24mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "Nikkor Z 24-70 f2.8 @24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1158.9000256807606,
+		"fy": 1161.031028160798,
+		"cx": 954.7273202991385,
+		"cy": 560.6574092072977
+	},
+	"distortion_coeffs": [
+		0.3135549464209269,
+		0.33392912406860864,
+		-0.8012364299662639,
+		1.5884548476870428
+	],
+	"metadata": {
+		"calibrated_by": "Knotty",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

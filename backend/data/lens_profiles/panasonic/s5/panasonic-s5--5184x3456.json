@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5--5184x3456",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5",
+	"lens_model": "Lumix 35mm f1.8",
+	"resolution": {
+		"width": 5184,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5693.028672411595,
+		"fy": 5678.986108506741,
+		"cx": 2606.708980937643,
+		"cy": 1713.2266236941016
+	},
+	"distortion_coeffs": [
+		0.29901708816519407,
+		0.22626846614605628,
+		-0.4568368039558063,
+		1.0923123642250894
+	],
+	"metadata": {
+		"calibrated_by": "Jeff K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

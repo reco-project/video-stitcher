@@ -1,0 +1,29 @@
+{
+	"id": "canon-c70--24--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "C70",
+	"lens_model": "CANON 24MM 1.2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2788.574569987345,
+		"fy": 2780.12262628118,
+		"cx": 2047.6035083281704,
+		"cy": 1078.1858460385713
+	},
+	"distortion_coeffs": [
+		0.23209727413754672,
+		0.20341132785692664,
+		-0.05925851110345829,
+		0.4802870088902142
+	],
+	"metadata": {
+		"calibrated_by": "Guilherme Cabral",
+		"notes": "24",
+		"source": "gyroflow",
+		"official": true
+	}
+}

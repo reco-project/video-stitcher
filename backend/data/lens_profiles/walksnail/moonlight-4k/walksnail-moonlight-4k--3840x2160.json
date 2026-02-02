@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-moonlight-4k--3840x2160",
+	"camera_brand": "Walksnail",
+	"camera_model": "Moonlight 4k",
+	"lens_model": "AvatarMoonlight___4k_16by9_3840x2160-60.00fps",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1736.5978749223848,
+		"fy": 1739.1260155442396,
+		"cx": 1963.1515382313696,
+		"cy": 1070.42841398189
+	},
+	"distortion_coeffs": [
+		-0.027771261488809144,
+		0.005582075046401638,
+		-0.01275898224624966,
+		0.004346393386132025
+	],
+	"metadata": {
+		"calibrated_by": "Gregor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-rebel-t6--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS Rebel T6",
+	"lens_model": "TAMRON",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1637.796915314092,
+		"fy": 1633.6316116854443,
+		"cx": 891.8198453131296,
+		"cy": 553.6638132638118
+	},
+	"distortion_coeffs": [
+		0.15196234493791133,
+		0.1149350010128488,
+		0.11827437409478352,
+		-0.002318083892127519
+	],
+	"metadata": {
+		"calibrated_by": "Oscar Samuel Casta\u00f1eda Gonzalez",
+		"source": "gyroflow",
+		"official": true
+	}
+}

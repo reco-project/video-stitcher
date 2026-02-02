@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-8se--1920x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly 8se",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 997.5152729758596,
+		"fy": 995.8856681668108,
+		"cx": 964.5776899620464,
+		"cy": 707.6648744992318
+	},
+	"distortion_coeffs": [
+		-0.046343262497990666,
+		0.012697622606699606,
+		-0.010941762982634454,
+		0.0016908842748274903
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

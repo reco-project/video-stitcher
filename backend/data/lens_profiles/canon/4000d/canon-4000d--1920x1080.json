@@ -1,0 +1,28 @@
+{
+	"id": "canon-4000d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "4000D",
+	"lens_model": "EF-S 18-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1799.582139141772,
+		"fy": 1800.2939646460254,
+		"cx": 954.0866729063182,
+		"cy": 578.6364092496074
+	},
+	"distortion_coeffs": [
+		0.1328342854385344,
+		-0.36610035086866016,
+		4.135215947235234,
+		-8.384660695523419
+	],
+	"metadata": {
+		"calibrated_by": "Giovanni Raiola",
+		"source": "gyroflow",
+		"official": true
+	}
+}

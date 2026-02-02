@@ -1,0 +1,28 @@
+{
+	"id": "olympus-tg-6--1920x1080",
+	"camera_brand": "Olympus",
+	"camera_model": "TG-6",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1834.2811180948252,
+		"fy": 1831.3966679145208,
+		"cx": 974.2137945648806,
+		"cy": 542.2118921932633
+	},
+	"distortion_coeffs": [
+		0.48559413502729504,
+		-2.3308003525917247,
+		15.461400890316046,
+		-33.04714817305658
+	],
+	"metadata": {
+		"calibrated_by": "Greg Mas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-23--4080x3060",
+	"camera_brand": "Samsung",
+	"camera_model": "23",
+	"lens_model": null,
+	"resolution": {
+		"width": 4080,
+		"height": 3060
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2599.4788243821617,
+		"fy": 2598.1301267468825,
+		"cx": 2044.4666264219184,
+		"cy": 1521.33711981117
+	},
+	"distortion_coeffs": [
+		0.5421101132234628,
+		-0.8351767036080042,
+		2.3843359609299837,
+		-2.041900140366645
+	],
+	"metadata": {
+		"calibrated_by": "Sergey Shirgin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

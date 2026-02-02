@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--ibis-active--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Venus Optics Laowa 12mm f/2.8 Zero-D",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1519.472691355867,
+		"fy": 1517.527577940029,
+		"cx": 2035.922520524029,
+		"cy": 1071.872487299664
+	},
+	"distortion_coeffs": [
+		0.2896398326561885,
+		0.28259882825436927,
+		-0.1931987790676388,
+		0.1533598232865649
+	],
+	"metadata": {
+		"calibrated_by": "Cosmo Free",
+		"notes": "IBIS Active",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "caddx-nebula-pro-vista-kit--960x720",
+	"camera_brand": "Caddx",
+	"camera_model": "nebula pro vista kit",
+	"lens_model": null,
+	"resolution": {
+		"width": 960,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 447.72008480540256,
+		"fy": 448.6960921049808,
+		"cx": 446.11712698864466,
+		"cy": 351.98947298782923
+	},
+	"distortion_coeffs": [
+		0.05529910544048217,
+		-0.09102557441301104,
+		0.11327318027369836,
+		-0.04936342376694856
+	],
+	"metadata": {
+		"calibrated_by": "ADRIAN",
+		"source": "gyroflow",
+		"official": true
+	}
+}

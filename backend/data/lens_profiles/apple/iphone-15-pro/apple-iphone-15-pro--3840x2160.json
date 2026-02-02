@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-15-pro--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 15 Pro",
+	"lens_model": "24mm 1.78",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3176.943967692562,
+		"fy": 3175.901002332801,
+		"cx": 1900.3558771151547,
+		"cy": 1094.46128866532
+	},
+	"distortion_coeffs": [
+		0.4918368121663814,
+		0.37906906372428034,
+		-4.085975378918101,
+		6.927405054979081
+	],
+	"metadata": {
+		"calibrated_by": "Sven Belz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

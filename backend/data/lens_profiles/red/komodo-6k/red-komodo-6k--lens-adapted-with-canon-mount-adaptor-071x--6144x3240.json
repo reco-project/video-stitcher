@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--lens-adapted-with-canon-mount-adaptor-071x--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6k",
+	"lens_model": "Super Takumar 35mm f/2",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5953.32852110906,
+		"fy": 5954.664247977349,
+		"cx": 3078.948986584381,
+		"cy": 1631.026448494658
+	},
+	"distortion_coeffs": [
+		0.10694178056341903,
+		1.1346261545625884,
+		-3.785149609582694,
+		8.071772779443762
+	],
+	"metadata": {
+		"calibrated_by": "Timothy Adamson",
+		"notes": "Lens adapted with Canon Mount Adaptor 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

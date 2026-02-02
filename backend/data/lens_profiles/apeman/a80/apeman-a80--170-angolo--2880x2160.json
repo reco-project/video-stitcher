@@ -1,0 +1,29 @@
+{
+	"id": "apeman-a80--170-angolo--2880x2160",
+	"camera_brand": "Apeman",
+	"camera_model": "A80",
+	"lens_model": null,
+	"resolution": {
+		"width": 2880,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1443.9514176299,
+		"fy": 1945.8323161418,
+		"cx": 1422.6211940986418,
+		"cy": 1095.219513059931
+	},
+	"distortion_coeffs": [
+		0.014206397918574268,
+		-0.03215403797634047,
+		0.05386263482535702,
+		-0.027360969767242265
+	],
+	"metadata": {
+		"calibrated_by": "Quesus",
+		"notes": "170\u00b0 angolo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

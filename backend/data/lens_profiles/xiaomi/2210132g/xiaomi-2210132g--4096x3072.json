@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-2210132g--4096x3072",
+	"camera_brand": "Xiaomi",
+	"camera_model": "2210132G",
+	"lens_model": "21mm",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2475.6465232839964,
+		"fy": 2474.303048974793,
+		"cx": 2016.9664572461052,
+		"cy": 1510.611790973468
+	},
+	"distortion_coeffs": [
+		0.32419237749526053,
+		-0.3704067376192041,
+		1.9959248534524228,
+		-2.2678525052216
+	],
+	"metadata": {
+		"calibrated_by": "Peta",
+		"source": "gyroflow",
+		"official": true
+	}
+}

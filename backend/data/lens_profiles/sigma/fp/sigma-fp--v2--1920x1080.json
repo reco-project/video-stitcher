@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--v2--1920x1080",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Vivitar Canon FD 135mm F2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7907.751853566836,
+		"fy": 7895.406358442292,
+		"cx": 1086.2983262650514,
+		"cy": 449.9027662272724
+	},
+	"distortion_coeffs": [
+		0.11224810094963886,
+		60.3666258430102,
+		-4847.434794022934,
+		119481.55424862528
+	],
+	"metadata": {
+		"calibrated_by": "Dominik Lange",
+		"notes": "V2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

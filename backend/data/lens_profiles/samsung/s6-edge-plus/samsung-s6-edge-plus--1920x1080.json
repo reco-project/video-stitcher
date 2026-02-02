@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s6-edge-plus--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S6 edge plus",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1459.534580497111,
+		"fy": 1459.4049701602612,
+		"cx": 938.7784287804697,
+		"cy": 548.6175669614947
+	},
+	"distortion_coeffs": [
+		0.6117595570173313,
+		0.6039126341025398,
+		-5.314065108867372,
+		9.053330738282655
+	],
+	"metadata": {
+		"calibrated_by": "Butas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

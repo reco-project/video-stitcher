@@ -1,0 +1,28 @@
+{
+	"id": "nikon-coolpix-p900--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "COOLPIX P900",
+	"lens_model": "2000 mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1418.9071721123444,
+		"fy": 1416.8775761455938,
+		"cx": 957.7079870036767,
+		"cy": 541.4093405639844
+	},
+	"distortion_coeffs": [
+		0.32390841321590147,
+		0.2508197492850284,
+		0.18176397976472505,
+		-0.8825917787994505
+	],
+	"metadata": {
+		"calibrated_by": "William",
+		"source": "gyroflow",
+		"official": true
+	}
+}

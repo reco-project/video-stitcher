@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-s10--15mm--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S10",
+	"lens_model": "XC15-45mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2525.1425067763385,
+		"fy": 2526.276716671677,
+		"cx": 2045.5925695053916,
+		"cy": 1131.4907564534972
+	},
+	"distortion_coeffs": [
+		0.29018647578588347,
+		0.3030183590666928,
+		-0.2962697816262183,
+		0.31325217904180563
+	],
+	"metadata": {
+		"calibrated_by": "Maurice M\u00fcller",
+		"notes": "15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

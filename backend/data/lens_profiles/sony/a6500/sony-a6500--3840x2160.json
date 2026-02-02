@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6500--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6500",
+	"lens_model": "16 mm 1.4 sigma",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2902.2650242663717,
+		"fy": 2899.601710479558,
+		"cx": 1819.074886310795,
+		"cy": 1073.9298629276127
+	},
+	"distortion_coeffs": [
+		0.21516774762190263,
+		0.34370585342109855,
+		-0.9211325373637246,
+		1.398051840499168
+	],
+	"metadata": {
+		"calibrated_by": "Max",
+		"source": "gyroflow",
+		"official": true
+	}
+}

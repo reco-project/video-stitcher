@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--viltrox-speedbooster-ef-eos-m2-071x--2320x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Tokina 12-24 F4",
+	"resolution": {
+		"width": 2320,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2422.034604422012,
+		"fy": 2418.9575034306317,
+		"cx": 1224.9468493835996,
+		"cy": 699.2609366046215
+	},
+	"distortion_coeffs": [
+		0.2819987866708486,
+		0.3518910303981611,
+		-1.539870056886901,
+		3.80394164061957
+	],
+	"metadata": {
+		"calibrated_by": "syntyp",
+		"notes": "Viltrox SpeedBooster EF-EOS M2  0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

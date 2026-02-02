@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--sony-vario-tessar-t-fe-24-70mm-f4-za-oss-lens--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7SIII",
+	"lens_model": "Sony Vario-Tessar T FE 24-70mm f4 ZA OSS @ 24.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2599.4269310362024,
+		"fy": 2597.1410049520023,
+		"cx": 1924.2302341309971,
+		"cy": 1079.1902836581512
+	},
+	"distortion_coeffs": [
+		0.2799876090500829,
+		0.4013636453056145,
+		-0.7873092315603807,
+		0.9352903342660956
+	],
+	"metadata": {
+		"calibrated_by": "Coby Mehler",
+		"notes": "Sony Vario-Tessar T FE 24-70mm f/4 ZA OSS Lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

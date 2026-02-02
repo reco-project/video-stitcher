@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6500--50fps--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6500",
+	"lens_model": "18/135mm 3.5-5.6",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1476.311453094114,
+		"fy": 1476.3719952303186,
+		"cx": 952.2447563964546,
+		"cy": 534.8380945820112
+	},
+	"distortion_coeffs": [
+		0.29337588500321987,
+		-0.0805540568923302,
+		2.3413360092979594,
+		-5.190739086114241
+	],
+	"metadata": {
+		"calibrated_by": "Agustin",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

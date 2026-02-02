@@ -1,0 +1,28 @@
+{
+	"id": "vivo-v2145a--3840x2880",
+	"camera_brand": "Vivo",
+	"camera_model": "V2145A",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2566.0900880600984,
+		"fy": 2562.3142052511403,
+		"cx": 1919.1635705817496,
+		"cy": 1413.6045672223795
+	},
+	"distortion_coeffs": [
+		0.5271954439278882,
+		-1.3506179870612125,
+		5.0096157343788335,
+		-5.4818793871642715
+	],
+	"metadata": {
+		"calibrated_by": "Mateusz Polechonski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

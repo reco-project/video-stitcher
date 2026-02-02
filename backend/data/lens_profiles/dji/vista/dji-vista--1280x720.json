@@ -1,0 +1,28 @@
+{
+	"id": "dji-vista--1280x720",
+	"camera_brand": "DJI",
+	"camera_model": "vista",
+	"lens_model": "\u51e4\u51f0HD",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 590.9348084975543,
+		"fy": 589.700608383617,
+		"cx": 662.4777289837207,
+		"cy": 371.5186407245172
+	},
+	"distortion_coeffs": [
+		-0.03821578040060843,
+		-0.004956667037071003,
+		0.009261877104111057,
+		-0.005357063288998404
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

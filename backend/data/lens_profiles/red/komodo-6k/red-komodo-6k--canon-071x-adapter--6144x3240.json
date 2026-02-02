@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-071x-adapter--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Rokinon 85mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 53861.31677167363,
+		"fy": 54040.40042323298,
+		"cx": 2660.735425950122,
+		"cy": 524.7916962817168
+	},
+	"distortion_coeffs": [
+		5.108021242951122,
+		-1287.8998245723797,
+		479614.72676399385,
+		-45283415.268454775
+	],
+	"metadata": {
+		"calibrated_by": "Bryan Redding",
+		"notes": "Canon 0.71x Adapter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "zoom-q2n--1920x1080",
+	"camera_brand": "Zoom",
+	"camera_model": "Q2n",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1900.5068070534928,
+		"fy": 1909.845483658718,
+		"cx": 1026.6989729782326,
+		"cy": 565.2648586013472
+	},
+	"distortion_coeffs": [
+		0.0958204114075759,
+		-0.5453941379614632,
+		2.582315792541905,
+		-4.719116414607026
+	],
+	"metadata": {
+		"calibrated_by": "Trace Cleveland",
+		"source": "gyroflow",
+		"official": true
+	}
+}

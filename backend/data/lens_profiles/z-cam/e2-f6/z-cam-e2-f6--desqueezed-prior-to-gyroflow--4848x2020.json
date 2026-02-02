@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-f6--desqueezed-prior-to-gyroflow--4848x2020",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "NIKKOR 85mm f2.0 Ai 2X Anamorphic",
+	"resolution": {
+		"width": 4848,
+		"height": 2020
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 27544.390472292453,
+		"fy": 26610.370722587217,
+		"cx": 2513.558624970661,
+		"cy": 986.6056329609188
+	},
+	"distortion_coeffs": [
+		-6.005338876982759,
+		985.3234647956176,
+		-231061.8444215998,
+		15147406.788267098
+	],
+	"metadata": {
+		"calibrated_by": "Lucas Weakley",
+		"notes": "Desqueezed Prior to GyroFlow",
+		"source": "gyroflow",
+		"official": true
+	}
+}

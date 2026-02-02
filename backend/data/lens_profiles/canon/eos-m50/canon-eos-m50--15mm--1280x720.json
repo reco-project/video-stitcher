@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m50--15mm--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M50",
+	"lens_model": "Canon 15-45",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 965.7223689607792,
+		"fy": 963.120901973558,
+		"cx": 671.3077804380246,
+		"cy": 358.55709797486566
+	},
+	"distortion_coeffs": [
+		0.2182902914584759,
+		0.1481341167389939,
+		0.16199966731041718,
+		-0.07736549847954707
+	],
+	"metadata": {
+		"calibrated_by": "sahil saleem",
+		"notes": "15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

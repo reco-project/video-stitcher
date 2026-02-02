@@ -1,0 +1,28 @@
+{
+	"id": "xtu-mini1--2704x1520",
+	"camera_brand": "XTU",
+	"camera_model": "Mini1",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1392.433322174945,
+		"fy": 1386.465205162321,
+		"cx": 1324.7521961014456,
+		"cy": 756.527324156552
+	},
+	"distortion_coeffs": [
+		-0.0740640612033807,
+		0.0036615818540562976,
+		-0.006896768305068946,
+		0.0030660067774366637
+	],
+	"metadata": {
+		"calibrated_by": "syon",
+		"source": "gyroflow",
+		"official": true
+	}
+}

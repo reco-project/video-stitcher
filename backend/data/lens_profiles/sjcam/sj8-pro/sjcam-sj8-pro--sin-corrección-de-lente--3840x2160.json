@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-sj8-pro--sin-correcci\u00f3n-de-lente--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ8 PRO",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1774.694360181618,
+		"fy": 1773.504132347604,
+		"cx": 1924.339146066028,
+		"cy": 1075.015838297011
+	},
+	"distortion_coeffs": [
+		0.04039782971498075,
+		0.05596864196171768,
+		-0.07332130582340303,
+		0.039208416516996025
+	],
+	"metadata": {
+		"calibrated_by": "VictorMPG83",
+		"notes": "sin correcci\u00f3n de lente",
+		"source": "gyroflow",
+		"official": true
+	}
+}

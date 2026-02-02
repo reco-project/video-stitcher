@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh5-ii--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5 II",
+	"lens_model": "Canon FD 50mm F/1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8417.641773001289,
+		"fy": 8407.457163033023,
+		"cx": 1935.336727956388,
+		"cy": 1064.4795863498705
+	},
+	"distortion_coeffs": [
+		0.13128428029322017,
+		1.1970367730909632,
+		-23.808213485949796,
+		249.7353280680588
+	],
+	"metadata": {
+		"calibrated_by": "A/V Workstation",
+		"source": "gyroflow",
+		"official": true
+	}
+}

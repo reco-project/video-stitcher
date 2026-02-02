@@ -1,0 +1,27 @@
+{
+	"id": "apple-iphone-se3--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone se3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1675.574205720117,
+		"fy": 1675.3016754609152,
+		"cx": 954.7603368723017,
+		"cy": 534.2310743906934
+	},
+	"distortion_coeffs": [
+		0.5633301032738982,
+		-0.6792746761681924,
+		-2.3679564988873234,
+		12.491791205680572
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

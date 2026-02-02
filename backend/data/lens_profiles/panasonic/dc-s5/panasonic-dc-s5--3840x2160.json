@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-dc-s5--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "DC-S5",
+	"lens_model": "laowa 15mm f/4.5 zero-d shift",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1657.2650350331448,
+		"fy": 1660.744115098327,
+		"cx": 1955.6712358889256,
+		"cy": 1053.0943642661523
+	},
+	"distortion_coeffs": [
+		0.3087828758371538,
+		0.17154727445169843,
+		0.03188573798402917,
+		0.015141033860342682
+	],
+	"metadata": {
+		"calibrated_by": "Yann",
+		"source": "gyroflow",
+		"official": true
+	}
+}

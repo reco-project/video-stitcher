@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--1100--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "50mm F1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8417.027703924308,
+		"fy": 8443.979894962313,
+		"cx": 2013.0550412178736,
+		"cy": 1068.5593331753532
+	},
+	"distortion_coeffs": [
+		0.543343025605373,
+		-8.666573549004733,
+		448.1510876280516,
+		-7425.050446168061
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u946b",
+		"notes": "1/100",
+		"source": "gyroflow",
+		"official": true
+	}
+}

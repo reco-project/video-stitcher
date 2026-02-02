@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--f14--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Sigma 35mm f/1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3909.475702516668,
+		"fy": 3916.523888360177,
+		"cx": 1971.6571254230944,
+		"cy": 1052.5056879287397
+	},
+	"distortion_coeffs": [
+		0.09392924346892938,
+		1.7666703610352552,
+		-13.54152027844465,
+		43.92345318843962
+	],
+	"metadata": {
+		"calibrated_by": "Josh Hayward",
+		"notes": "f/1.4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

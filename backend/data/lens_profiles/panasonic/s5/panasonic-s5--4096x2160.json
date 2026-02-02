@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5",
+	"lens_model": "lumix 50 1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6603.920201725039,
+		"fy": 6593.873090641408,
+		"cx": 2009.9430166697975,
+		"cy": 1206.112109017901
+	},
+	"distortion_coeffs": [
+		0.36020405944791045,
+		-1.4767546870229458,
+		36.683047649280226,
+		-232.7000753756214
+	],
+	"metadata": {
+		"calibrated_by": "Simon Chow",
+		"source": "gyroflow",
+		"official": true
+	}
+}

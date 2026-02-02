@@ -1,0 +1,28 @@
+{
+	"id": "xtu-s3pro--2688x1512",
+	"camera_brand": "XTU",
+	"camera_model": "S3pro",
+	"lens_model": "GK554",
+	"resolution": {
+		"width": 2688,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1493.0550466623392,
+		"fy": 1493.7047196984065,
+		"cx": 1299.787956503393,
+		"cy": 690.5828169089716
+	},
+	"distortion_coeffs": [
+		-0.035604913343228586,
+		-0.04514497651061404,
+		0.05936250668693364,
+		-0.025034898618684836
+	],
+	"metadata": {
+		"calibrated_by": "XTU",
+		"source": "gyroflow",
+		"official": true
+	}
+}

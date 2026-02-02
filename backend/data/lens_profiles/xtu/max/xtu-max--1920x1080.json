@@ -1,0 +1,28 @@
+{
+	"id": "xtu-max--1920x1080",
+	"camera_brand": "XTU",
+	"camera_model": "MAX",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1211.8779923419104,
+		"fy": 1186.2829515177482,
+		"cx": 937.0563558512926,
+		"cy": 539.6877052201658
+	},
+	"distortion_coeffs": [
+		0.23572092847359025,
+		0.05267096711860984,
+		-0.018878413150150077,
+		0.06832992060773713
+	],
+	"metadata": {
+		"calibrated_by": "P",
+		"source": "gyroflow",
+		"official": true
+	}
+}

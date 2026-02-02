@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s24--7680x4320",
+	"camera_brand": "Samsung",
+	"camera_model": "S24",
+	"lens_model": null,
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6419.372342223793,
+		"fy": 6454.451800956865,
+		"cx": 3810.461111287519,
+		"cy": 2231.1443693765045
+	},
+	"distortion_coeffs": [
+		0.1897075190742114,
+		2.9335362771434785,
+		-20.85879643300673,
+		45.65963830584968
+	],
+	"metadata": {
+		"calibrated_by": "conor forde",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--ibis--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sigma 14-24 @14",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1556.8281333297864,
+		"fy": 1555.9741671265658,
+		"cx": 1937.7817133705464,
+		"cy": 1094.2335362142333
+	},
+	"distortion_coeffs": [
+		0.2943498027126615,
+		0.17578190709306785,
+		-0.15544988677853327,
+		0.16657779993111
+	],
+	"metadata": {
+		"calibrated_by": "TheBalzer",
+		"notes": "IBIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

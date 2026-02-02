@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7cii--samyang--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7CII",
+	"lens_model": "18.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1990.4804068592296,
+		"fy": 1988.4434156469413,
+		"cx": 1922.68891111786,
+		"cy": 1089.0016825747125
+	},
+	"distortion_coeffs": [
+		0.3228562844212871,
+		0.12420768395980555,
+		0.12626184988988132,
+		-0.06566895917379506
+	],
+	"metadata": {
+		"calibrated_by": "masa",
+		"notes": "SAMYANG",
+		"source": "gyroflow",
+		"official": true
+	}
+}

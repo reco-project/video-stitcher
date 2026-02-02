@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-yi-4k--60-fps--2720x1520",
+	"camera_brand": "Xiaomi",
+	"camera_model": "YI 4K+",
+	"lens_model": null,
+	"resolution": {
+		"width": 2720,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1708.516447301388,
+		"fy": 1695.7385763669224,
+		"cx": 1358.3984982364975,
+		"cy": 749.9690545347901
+	},
+	"distortion_coeffs": [
+		0.37298022715145185,
+		-0.12349440991822862,
+		0.8822817328273456,
+		-0.8971713215597776
+	],
+	"metadata": {
+		"calibrated_by": "Francesco Rosini",
+		"notes": "60 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action-1--wide-angle-no-rocksteady-or-dewarp--4000x3000",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action 1",
+	"lens_model": "Default",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1718.702747346507,
+		"fy": 1721.4066083882883,
+		"cx": 2003.2882204737443,
+		"cy": 1482.0111461206764
+	},
+	"distortion_coeffs": [
+		0.20306071924163335,
+		0.04217581707175317,
+		-0.1327734042351801,
+		0.042190334221076105
+	],
+	"metadata": {
+		"calibrated_by": "Austin Tyler",
+		"notes": "Wide angle, No Rocksteady or dewarp",
+		"source": "gyroflow",
+		"official": true
+	}
+}

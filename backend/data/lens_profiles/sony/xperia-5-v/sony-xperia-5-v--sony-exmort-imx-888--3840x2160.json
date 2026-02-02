@@ -1,0 +1,29 @@
+{
+	"id": "sony-xperia-5-v--sony-exmort-imx-888--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 5 V",
+	"lens_model": "48mm f/1.9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5657.725162570184,
+		"fy": 5709.115502245953,
+		"cx": 1948.6271714528932,
+		"cy": 1247.1200277842966
+	},
+	"distortion_coeffs": [
+		0.4993244870430039,
+		7.324885980458915,
+		-225.73922726946057,
+		1976.6144924668
+	],
+	"metadata": {
+		"calibrated_by": "Pawel J.",
+		"notes": "Sony ExmorT IMX 888",
+		"source": "gyroflow",
+		"official": true
+	}
+}

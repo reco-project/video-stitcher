@@ -1,0 +1,29 @@
+{
+	"id": "canon-m6-ii--profile-neutro--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "M6 ii",
+	"lens_model": "Samyang 12 mm F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2189.9645036822344,
+		"fy": 2193.955208922296,
+		"cx": 1952.5728875339055,
+		"cy": 1075.2413972849056
+	},
+	"distortion_coeffs": [
+		0.2953469166419338,
+		0.11538322771628956,
+		0.3754377681054955,
+		-0.8754517911974141
+	],
+	"metadata": {
+		"calibrated_by": "Jos\u00e9 M1",
+		"notes": "Profile Neutro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

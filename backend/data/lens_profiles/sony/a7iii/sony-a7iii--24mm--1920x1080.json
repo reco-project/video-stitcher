@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--24mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Sony 24-105",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1181.9010753521247,
+		"fy": 1184.2182436509454,
+		"cx": 966.0862168571024,
+		"cy": 492.779176309111
+	},
+	"distortion_coeffs": [
+		0.3022339811828356,
+		0.039991929363956305,
+		0.2913745798160313,
+		-0.14475412164565263
+	],
+	"metadata": {
+		"calibrated_by": "Malicky Boaz",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

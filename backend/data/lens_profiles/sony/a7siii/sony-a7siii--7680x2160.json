@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7siii--7680x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Leica 90 anamorphic 2x",
+	"resolution": {
+		"width": 7680,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11078.97105717916,
+		"fy": 11588.14941760527,
+		"cx": 4009.276008842186,
+		"cy": 1057.15514245465
+	},
+	"distortion_coeffs": [
+		-0.3943089204947596,
+		19.386252449024884,
+		-1020.2374632503196,
+		16330.88608341478
+	],
+	"metadata": {
+		"calibrated_by": "iSmartBook",
+		"source": "gyroflow",
+		"official": true
+	}
+}

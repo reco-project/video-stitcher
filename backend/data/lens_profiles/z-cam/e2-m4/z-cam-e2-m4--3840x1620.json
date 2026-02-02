@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-m4--3840x1620",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "7artisans 7.5mm",
+	"resolution": {
+		"width": 3840,
+		"height": 1620
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1810.1179770592105,
+		"fy": 1808.693629482479,
+		"cx": 1897.782113321173,
+		"cy": 791.7060433712062
+	},
+	"distortion_coeffs": [
+		0.007165989961325042,
+		0.011131143772066584,
+		-0.011830316742851763,
+		0.004684230513015711
+	],
+	"metadata": {
+		"calibrated_by": "Sam Cook",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--\u661f\u6c49\u6c7d\u8f66--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "tamronTamron  17-28 f2.8  24.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2560.026159158926,
+		"fy": 2560.1425707141707,
+		"cx": 1894.18294968806,
+		"cy": 1063.553500327978
+	},
+	"distortion_coeffs": [
+		0.2954747940198025,
+		0.21130951993894295,
+		0.14225310876336175,
+		-0.0910344604316273
+	],
+	"metadata": {
+		"calibrated_by": "lin",
+		"notes": "\u661f\u6c49\u6c7d\u8f66",
+		"source": "gyroflow",
+		"official": true
+	}
+}

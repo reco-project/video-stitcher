@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--vertical-video--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tamron 17-70mm F/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3309.1741825940117,
+		"fy": 3276.1021676086,
+		"cx": 1957.427747233114,
+		"cy": 1091.6592685055969
+	},
+	"distortion_coeffs": [
+		0.283937073881746,
+		0.28326054779937404,
+		-0.23658037264656165,
+		0.19259821496416143
+	],
+	"metadata": {
+		"calibrated_by": "KING",
+		"notes": "VERTICAL VIDEO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

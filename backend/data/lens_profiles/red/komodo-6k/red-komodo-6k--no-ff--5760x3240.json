@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--no-ff--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 50mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12321.098376925453,
+		"fy": 12324.503966438517,
+		"cx": 2907.7204150250827,
+		"cy": 1674.4742878361592
+	},
+	"distortion_coeffs": [
+		0.2237242749302061,
+		-2.1125496113154068,
+		39.06133532401283,
+		-204.68391012424124
+	],
+	"metadata": {
+		"calibrated_by": "Mark Helsel",
+		"notes": "No FF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

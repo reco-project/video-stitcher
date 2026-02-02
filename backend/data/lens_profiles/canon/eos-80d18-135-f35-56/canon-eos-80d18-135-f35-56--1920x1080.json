@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-80d18-135-f35-56--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 80D18-135 f/3.5-5.6",
+	"lens_model": "canon efs",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1559.3430624262246,
+		"fy": 1560.3618336087868,
+		"cx": 930.2803295549732,
+		"cy": 551.4770270352709
+	},
+	"distortion_coeffs": [
+		0.13459744757744405,
+		0.1258972807346967,
+		0.09572938720594693,
+		0.24891644671494
+	],
+	"metadata": {
+		"calibrated_by": "Dominik Ivancik",
+		"source": "gyroflow",
+		"official": true
+	}
+}

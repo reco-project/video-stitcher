@@ -1,0 +1,28 @@
+{
+	"id": "motorola-edge-20--3840x1728",
+	"camera_brand": "Motorola",
+	"camera_model": "Edge 20",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 1728
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3451.69564013487,
+		"fy": 3452.487576500444,
+		"cx": 1930.6048237572445,
+		"cy": 867.7103244862769
+	},
+	"distortion_coeffs": [
+		0.689266809846243,
+		-4.264037907125894,
+		20.740011997545626,
+		-23.459524589234096
+	],
+	"metadata": {
+		"calibrated_by": "Nadine",
+		"source": "gyroflow",
+		"official": true
+	}
+}

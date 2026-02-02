@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh6--5760x4320",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "Laowa 6 mm",
+	"resolution": {
+		"width": 5760,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2115.046421428044,
+		"fy": 2110.347143333293,
+		"cx": 2886.975636865695,
+		"cy": 2161.059204588319
+	},
+	"distortion_coeffs": [
+		0.31914201020293104,
+		0.1876678963160775,
+		-0.0610530631764296,
+		0.07713382984245344
+	],
+	"metadata": {
+		"calibrated_by": "cedricnussli",
+		"source": "gyroflow",
+		"official": true
+	}
+}

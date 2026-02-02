@@ -1,0 +1,28 @@
+{
+	"id": "nikon-nikon-z5--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "NIKON Z5",
+	"lens_model": "VITROX 85mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13530.235536573058,
+		"fy": 13531.715640977904,
+		"cx": 1081.5209817411317,
+		"cy": 516.6150426016685
+	},
+	"distortion_coeffs": [
+		5.589116637758735,
+		-129.56730479371163,
+		-35316.954086467085,
+		7649045.181474661
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

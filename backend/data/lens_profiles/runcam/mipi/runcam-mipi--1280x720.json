@@ -1,0 +1,28 @@
+{
+	"id": "runcam-mipi--1280x720",
+	"camera_brand": "RunCam",
+	"camera_model": "MIPI",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 634.1665263818795,
+		"fy": 634.5227354126032,
+		"cx": 653.7012177967136,
+		"cy": 339.02099297836554
+	},
+	"distortion_coeffs": [
+		-0.0704504197107874,
+		-0.022844424841663172,
+		0.03326234565484444,
+		0.0056586462060909445
+	],
+	"metadata": {
+		"calibrated_by": "Dodfpv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

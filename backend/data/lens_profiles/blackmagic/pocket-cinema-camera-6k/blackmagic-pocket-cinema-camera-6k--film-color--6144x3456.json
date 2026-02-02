@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--film-color--6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Canon 16-35 2.8f II",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4612.073079139044,
+		"fy": 4633.752936004137,
+		"cx": 2749.9417474573756,
+		"cy": 1639.771527944831
+	},
+	"distortion_coeffs": [
+		0.23772936132321185,
+		-0.04634177183893154,
+		0.7549968948902563,
+		-0.762685794105554
+	],
+	"metadata": {
+		"calibrated_by": "Julian",
+		"notes": "Film Color",
+		"source": "gyroflow",
+		"official": true
+	}
+}

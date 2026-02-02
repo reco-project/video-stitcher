@@ -1,0 +1,28 @@
+{
+	"id": "olympus-om-d-10-mark-iii--1920x1080",
+	"camera_brand": "Olympus",
+	"camera_model": "OM-D 10 MARK III",
+	"lens_model": "M.ZUIKO 14-42",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1181.129784130546,
+		"fy": 1181.738927140255,
+		"cx": 967.9792183526308,
+		"cy": 627.0463446136918
+	},
+	"distortion_coeffs": [
+		0.3144941545681953,
+		0.25282666828042555,
+		-0.30768799559608306,
+		0.40724325685290086
+	],
+	"metadata": {
+		"calibrated_by": "Bruno CICCHELERO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

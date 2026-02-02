@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rii--cine-t31--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rII",
+	"lens_model": "Samyang 14mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1538.5541207684207,
+		"fy": 1525.522744450918,
+		"cx": 1881.8321576142716,
+		"cy": 1067.668194420988
+	},
+	"distortion_coeffs": [
+		0.1884202725296241,
+		0.1422678029309396,
+		-0.09931965671936288,
+		0.1581800405462443
+	],
+	"metadata": {
+		"calibrated_by": "SUMGLE",
+		"notes": "cine t3.1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

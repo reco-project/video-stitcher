@@ -1,0 +1,29 @@
+{
+	"id": "odrvm-1080p-wifi--f28--1920x1080",
+	"camera_brand": "ODRVM",
+	"camera_model": "1080P Wifi",
+	"lens_model": "6G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1045.6441862779163,
+		"fy": 1057.2395780148065,
+		"cx": 940.2495200094864,
+		"cy": 528.8438544902714
+	},
+	"distortion_coeffs": [
+		-0.029618599860650636,
+		0.02346236386708587,
+		-0.040223535387246094,
+		0.022337671929077055
+	],
+	"metadata": {
+		"calibrated_by": "mccarty",
+		"notes": "F2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--5997fps--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "RF16 2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1971.9557965605388,
+		"fy": 1972.9635950609193,
+		"cx": 2046.276968537088,
+		"cy": 1081.878575144499
+	},
+	"distortion_coeffs": [
+		0.4036429944673208,
+		-0.3360190086393958,
+		1.254505485972997,
+		-0.9835733478196936
+	],
+	"metadata": {
+		"calibrated_by": "guns120",
+		"notes": "59.97fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

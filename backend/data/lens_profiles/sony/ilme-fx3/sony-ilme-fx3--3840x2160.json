@@ -1,0 +1,28 @@
+{
+	"id": "sony-ilme-fx3--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILME-FX3",
+	"lens_model": "14.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1594.7304847859896,
+		"fy": 1594.091498849362,
+		"cx": 1922.711420903167,
+		"cy": 1084.2382221436878
+	},
+	"distortion_coeffs": [
+		0.32114785973214405,
+		0.1549123662796348,
+		-0.08756881856532783,
+		0.10575390712377004
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Wagner / thedrone.studio GmbH",
+		"source": "gyroflow",
+		"official": true
+	}
+}

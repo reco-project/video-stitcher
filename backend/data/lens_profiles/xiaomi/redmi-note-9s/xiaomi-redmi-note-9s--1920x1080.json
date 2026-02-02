@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-9s--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 9S",
+	"lens_model": "1080p 60fps",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1518.3384664169887,
+		"fy": 1517.0516020828584,
+		"cx": 965.0625586420005,
+		"cy": 536.6896034652993
+	},
+	"distortion_coeffs": [
+		0.4052052380999894,
+		0.24362653532309456,
+		-0.7421868130955768,
+		-0.031711776169340795
+	],
+	"metadata": {
+		"calibrated_by": "PC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

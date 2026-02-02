@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--169--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "VILTROX 20.00mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2296.403747758323,
+		"fy": 2294.050135969912,
+		"cx": 1905.2716467197667,
+		"cy": 1083.900773592235
+	},
+	"distortion_coeffs": [
+		0.28028255162391963,
+		0.02744304767283219,
+		0.1298901365657643,
+		0.41195684100527735
+	],
+	"metadata": {
+		"calibrated_by": "Kostas Gur",
+		"notes": "16:9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

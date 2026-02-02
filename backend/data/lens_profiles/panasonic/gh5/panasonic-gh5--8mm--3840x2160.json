@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--8mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "Olympus 16mm_M.ZUIKO DIGITAL_ED 8mm f1.8_Fisheye PRO",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1985.009036520361,
+		"fy": 1981.086369221703,
+		"cx": 1925.0983294257649,
+		"cy": 1081.4819294670986
+	},
+	"distortion_coeffs": [
+		-0.04791964876341718,
+		0.019734445201212487,
+		-0.03707806709225136,
+		0.02011876223543156
+	],
+	"metadata": {
+		"calibrated_by": "Telcean Mihai",
+		"notes": "8mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

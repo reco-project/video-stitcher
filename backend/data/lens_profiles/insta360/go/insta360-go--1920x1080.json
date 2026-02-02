@@ -2,7 +2,7 @@
 	"id": "insta360-go--1920x1080",
 	"camera_brand": "Insta360",
 	"camera_model": "Go",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
@@ -21,13 +21,8 @@
 		0.1784918448607769
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Insta360_Go___1080p_16by9_1920x1080-25.00fps",
 		"calibrated_by": "Jorge Escobedo",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

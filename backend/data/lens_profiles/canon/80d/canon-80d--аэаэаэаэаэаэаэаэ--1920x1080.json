@@ -1,0 +1,29 @@
+{
+	"id": "canon-80d--\u0430\u044d\u0430\u044d\u0430\u044d\u0430\u044d\u0430\u044d\u0430\u044d\u0430\u044d\u0430\u044d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "80d",
+	"lens_model": "sigma 18-35",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1586.3286312463135,
+		"fy": 1585.4068604292224,
+		"cx": 941.9918507203008,
+		"cy": 525.9563918505813
+	},
+	"distortion_coeffs": [
+		0.2351047918214552,
+		-0.21309116407444093,
+		1.8815006454474732,
+		-3.0249961147027067
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u0440\u0442\u0451\u043c \u0411\u044b\u043a\u043e\u0432",
+		"notes": "\u0410\u042d\u0410\u042d\u0410\u042d\u0410\u042d\u0410\u042d\u0410\u042d\u0410\u042d\u0410\u042d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

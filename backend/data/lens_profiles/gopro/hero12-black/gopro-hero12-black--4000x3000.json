@@ -1,0 +1,28 @@
+{
+	"id": "gopro-hero12-black--4000x3000",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO12 Black",
+	"lens_model": "Max Lens 2.0",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1399.6803736307895,
+		"fy": 1400.498497061806,
+		"cx": 2004.7236141815208,
+		"cy": 1484.8278814254866
+	},
+	"distortion_coeffs": [
+		0.14072288127534913,
+		-0.10227356350422467,
+		0.060765890095236794,
+		-0.0134999241919842
+	],
+	"metadata": {
+		"calibrated_by": "Alex Moraga",
+		"source": "gyroflow",
+		"official": true
+	}
+}

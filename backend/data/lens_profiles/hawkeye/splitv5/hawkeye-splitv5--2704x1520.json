@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-splitv5--2704x1520",
+	"camera_brand": "Hawkeye",
+	"camera_model": "SplitV5",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1289.5138394285032,
+		"fy": 1288.7807906859734,
+		"cx": 1375.4351934562103,
+		"cy": 800.2995640144991
+	},
+	"distortion_coeffs": [
+		-0.020308298630629128,
+		0.005017808650267743,
+		-0.008436144119190777,
+		0.00242994272261618
+	],
+	"metadata": {
+		"calibrated_by": "HAWKEYE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

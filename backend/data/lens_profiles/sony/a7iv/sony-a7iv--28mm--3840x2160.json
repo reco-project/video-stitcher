@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--28mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sigma 28-70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3322.2416010555557,
+		"fy": 3315.0769357470085,
+		"cx": 1937.304161615672,
+		"cy": 1110.0548796134544
+	},
+	"distortion_coeffs": [
+		0.10428519042615744,
+		0.2894421412393891,
+		-0.655186748532521,
+		2.2657991011449035
+	],
+	"metadata": {
+		"calibrated_by": "TianFeng",
+		"notes": "28mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

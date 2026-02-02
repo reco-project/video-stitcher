@@ -1,0 +1,29 @@
+{
+	"id": "xtu-s6--super-view--3840x2160",
+	"camera_brand": "XTU",
+	"camera_model": "S6",
+	"lens_model": "SONY IMX386",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2269.337219073983,
+		"fy": 1673.1317105710752,
+		"cx": 1825.163174927687,
+		"cy": 1011.1307283249972
+	},
+	"distortion_coeffs": [
+		-0.047866470446439616,
+		0.03937484843672606,
+		-0.05973922581485643,
+		0.028536159690578957
+	],
+	"metadata": {
+		"calibrated_by": "\u68ee\u8c37\u529f\u592a",
+		"notes": "super view",
+		"source": "gyroflow",
+		"official": true
+	}
+}

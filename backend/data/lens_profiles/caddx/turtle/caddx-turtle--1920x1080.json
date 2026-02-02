@@ -1,0 +1,28 @@
+{
+	"id": "caddx-turtle--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "Turtle",
+	"lens_model": "Caddx LS106",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1024.3399288691642,
+		"fy": 1024.0169495129226,
+		"cx": 985.3442539997257,
+		"cy": 552.1172007086305
+	},
+	"distortion_coeffs": [
+		-0.09074236783172934,
+		0.022272276467762992,
+		-0.0192857482182864,
+		0.005575696831419912
+	],
+	"metadata": {
+		"calibrated_by": "Xan86",
+		"source": "gyroflow",
+		"official": true
+	}
+}

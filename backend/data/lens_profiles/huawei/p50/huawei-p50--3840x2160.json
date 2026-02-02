@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p50--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "p50",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3246.201041760656,
+		"fy": 3245.9366491319506,
+		"cx": 1939.3322494701167,
+		"cy": 1080.2269198531949
+	},
+	"distortion_coeffs": [
+		0.4842716469004606,
+		-0.8526190766366487,
+		3.152463222317962,
+		-3.4672813128872675
+	],
+	"metadata": {
+		"calibrated_by": "James Lue",
+		"source": "gyroflow",
+		"official": true
+	}
+}

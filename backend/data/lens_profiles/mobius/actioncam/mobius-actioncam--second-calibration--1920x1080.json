@@ -1,0 +1,29 @@
+{
+	"id": "mobius-actioncam--second-calibration--1920x1080",
+	"camera_brand": "Mobius",
+	"camera_model": "ActionCam",
+	"lens_model": "B",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1380.8785305927038,
+		"fy": 1381.875135027344,
+		"cx": 1005.6066295598548,
+		"cy": 540.8978748141194
+	},
+	"distortion_coeffs": [
+		-0.047265019276804245,
+		-0.1677419373594924,
+		0.41422210563739315,
+		-0.3810066696901283
+	],
+	"metadata": {
+		"calibrated_by": "Kadir \u00d6zen",
+		"notes": "Second Calibration",
+		"source": "gyroflow",
+		"official": true
+	}
+}

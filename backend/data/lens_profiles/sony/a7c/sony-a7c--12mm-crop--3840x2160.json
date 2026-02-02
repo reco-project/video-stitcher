@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--12mm-crop--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Samyang 12mm f/2.0 CS E",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2148.105942969141,
+		"fy": 2147.07357646695,
+		"cx": 1916.1434500274545,
+		"cy": 1081.147537966336
+	},
+	"distortion_coeffs": [
+		0.31509972814825243,
+		0.0645988809643351,
+		0.1093143762775332,
+		0.031676207417896986
+	],
+	"metadata": {
+		"calibrated_by": "J\u00f6rg Niggli | niggli.com",
+		"notes": "12mm Crop",
+		"source": "gyroflow",
+		"official": true
+	}
+}

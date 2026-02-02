@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s1h--10bit-422--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "Laowa 12mm f2.8 Zero-D",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1346.5481387827567,
+		"fy": 1348.8224740834555,
+		"cx": 1915.3343114288557,
+		"cy": 1072.7626563807182
+	},
+	"distortion_coeffs": [
+		0.31224476023001174,
+		0.20137317902278157,
+		-0.05486266864421256,
+		0.07905707781829913
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Jackson",
+		"notes": "10bit 4:2:2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

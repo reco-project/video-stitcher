@@ -1,0 +1,28 @@
+{
+	"id": "caddx-loris-4k--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Loris 4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1843.7456038147984,
+		"fy": 1844.6825247328752,
+		"cx": 1920.0,
+		"cy": 1080.0
+	},
+	"distortion_coeffs": [
+		-0.07343413950283471,
+		-0.004878952888215493,
+		0.00907392232790347,
+		-0.006084702686665423
+	],
+	"metadata": {
+		"calibrated_by": "https://052.jp",
+		"source": "gyroflow",
+		"official": true
+	}
+}

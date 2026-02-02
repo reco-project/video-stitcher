@@ -1,0 +1,29 @@
+{
+	"id": "red-v-raptor-x-8k-vv--straight-probe--8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR [X] 8K VV",
+	"lens_model": "Laowa Pro2be 24mm T8 Straight",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4831.118198246573,
+		"fy": 4830.258649557719,
+		"cx": 4162.8486918370145,
+		"cy": 2126.588265395322
+	},
+	"distortion_coeffs": [
+		0.2265891741584705,
+		0.21291400736781305,
+		-0.2026594999352322,
+		0.2639355844483192
+	],
+	"metadata": {
+		"calibrated_by": "Ian T.",
+		"notes": "Straight Probe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "realme-gt-neo3-realme--3840x2160",
+	"camera_brand": "Realme",
+	"camera_model": "GT Neo3 Realme",
+	"lens_model": "Realme",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2393.2315744920515,
+		"fy": 2395.172338250357,
+		"cx": 1906.5357226310748,
+		"cy": 1064.6087141171877
+	},
+	"distortion_coeffs": [
+		0.43637474928767567,
+		-0.31619314895966444,
+		0.2290407939292908,
+		1.0360331068504596
+	],
+	"metadata": {
+		"calibrated_by": "i'mScuffs09. \u200e",
+		"source": "gyroflow",
+		"official": true
+	}
+}

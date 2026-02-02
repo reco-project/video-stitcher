@@ -1,0 +1,29 @@
+{
+	"id": "canon-m200--auto-focus--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "M200",
+	"lens_model": "Viltrox 23mm 1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2091.7836472184417,
+		"fy": 2095.266492563364,
+		"cx": 979.753983789166,
+		"cy": 537.892052117999
+	},
+	"distortion_coeffs": [
+		0.2594793506610311,
+		-0.7080910830499315,
+		9.523095886283445,
+		-29.25554035976273
+	],
+	"metadata": {
+		"calibrated_by": "vanessa capuyon",
+		"notes": "auto focus",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--12mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Leica 12-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1246.4391296273511,
+		"fy": 1254.5217091716936,
+		"cx": 1898.8638107741856,
+		"cy": 1478.0037450840289
+	},
+	"distortion_coeffs": [
+		0.3191061024077402,
+		0.1651802664107242,
+		-0.025913531555809857,
+		0.07479141222210309
+	],
+	"metadata": {
+		"calibrated_by": "ding vu hong",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

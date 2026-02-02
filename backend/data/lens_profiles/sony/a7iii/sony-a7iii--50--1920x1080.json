@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--50--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Tamron 28-75",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5413.359821373599,
+		"fy": 5375.0518198468835,
+		"cx": 898.917425083921,
+		"cy": 129.71528773675914
+	},
+	"distortion_coeffs": [
+		0.5360015637934777,
+		-12.374425975954994,
+		551.8850576908267,
+		-6017.201397831559
+	],
+	"metadata": {
+		"calibrated_by": "\u5f20\u5b50\u5fe0",
+		"notes": "50",
+		"source": "gyroflow",
+		"official": true
+	}
+}

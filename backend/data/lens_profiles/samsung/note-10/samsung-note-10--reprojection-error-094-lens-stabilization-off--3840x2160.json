@@ -1,0 +1,29 @@
+{
+	"id": "samsung-note-10--reprojection-error-094-lens-stabilization-off--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 10+",
+	"lens_model": "UltraWide (0.5x)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1747.7880408285582,
+		"fy": 1746.8962826531351,
+		"cx": 1917.95331696846,
+		"cy": 1112.3258521809428
+	},
+	"distortion_coeffs": [
+		0.31554418474976653,
+		0.19826047005689637,
+		0.02091536031545722,
+		-0.09258576987051632
+	],
+	"metadata": {
+		"calibrated_by": "TaleSlinger",
+		"notes": "Reprojection Error: 0.94; Lens Stabilization Off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

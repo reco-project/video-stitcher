@@ -1,0 +1,29 @@
+{
+	"id": "sony-a1--a150p-tamron35-1502-28--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a1",
+	"lens_model": "135.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 37089.37711116253,
+		"fy": 37799.47551253336,
+		"cx": 1862.536862291927,
+		"cy": 1099.5844492025378
+	},
+	"distortion_coeffs": [
+		9.825767976323997,
+		3235.1685924334374,
+		-781174.9884469175,
+		38644356.0712501
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u58a8",
+		"notes": "A1@50P- TAMRON35-150/2-2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

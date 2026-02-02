@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-6k--6143x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "15mm Voigtlander",
+	"resolution": {
+		"width": 6143,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3553.4925607233204,
+		"fy": 3552.192259814579,
+		"cx": 3061.6673783226843,
+		"cy": 1618.7405917581198
+	},
+	"distortion_coeffs": [
+		0.30624910558095303,
+		0.18214255081015737,
+		-0.11482813259367056,
+		0.18329615182921136
+	],
+	"metadata": {
+		"calibrated_by": "NikoFilmz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

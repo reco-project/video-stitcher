@@ -1,0 +1,28 @@
+{
+	"id": "motorola-moto-x30-pro--4096x2304",
+	"camera_brand": "Motorola",
+	"camera_model": "moto X30 Pro",
+	"lens_model": "23 f/1.95",
+	"resolution": {
+		"width": 4096,
+		"height": 2304
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2641.0888796557556,
+		"fy": 2619.9695972050063,
+		"cx": 2096.3493348511824,
+		"cy": 1080.7227646652373
+	},
+	"distortion_coeffs": [
+		0.2894149514212881,
+		0.9059648540929088,
+		-3.915195764808717,
+		5.7651519866197685
+	],
+	"metadata": {
+		"calibrated_by": "quan'ling",
+		"source": "gyroflow",
+		"official": true
+	}
+}

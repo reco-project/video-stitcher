@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6",
+	"lens_model": "Tamron SP VC 24-70mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2794.2087345541204,
+		"fy": 2788.1876940460374,
+		"cx": 1870.2934048181155,
+		"cy": 1079.9682229603109
+	},
+	"distortion_coeffs": [
+		0.1982405862789868,
+		-0.011615023357366024,
+		0.5128179351288588,
+		-0.3540324263825933
+	],
+	"metadata": {
+		"calibrated_by": "Javier Ho",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

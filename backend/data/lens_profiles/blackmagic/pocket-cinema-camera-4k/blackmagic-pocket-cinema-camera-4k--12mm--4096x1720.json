@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--12mm--4096x1720",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Panasonic Lumix G X Vario PZ 14-42mm f/3.5-5.6 ASPH. POWER O.I.S.",
+	"resolution": {
+		"width": 4096,
+		"height": 1720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3133.4802096479866,
+		"fy": 3136.6946329170473,
+		"cx": 2082.2678728172805,
+		"cy": 834.8920944439049
+	},
+	"distortion_coeffs": [
+		-0.0003026629640824858,
+		0.3832104876612904,
+		-0.38261147211876256,
+		0.3178129581168588
+	],
+	"metadata": {
+		"calibrated_by": "Bee",
+		"notes": "@12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

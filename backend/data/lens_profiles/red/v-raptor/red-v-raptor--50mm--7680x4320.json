@@ -1,0 +1,29 @@
+{
+	"id": "red-v-raptor--50mm--7680x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-Raptor",
+	"lens_model": "Arri Ultra Prime",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10934.069358080911,
+		"fy": 10933.40507939295,
+		"cx": 3711.6326766090174,
+		"cy": 2222.881759998444
+	},
+	"distortion_coeffs": [
+		0.04354423291875504,
+		-0.7625450022587106,
+		10.246634220657691,
+		-42.68961363434525
+	],
+	"metadata": {
+		"calibrated_by": "Cassidy Lichtenstein",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

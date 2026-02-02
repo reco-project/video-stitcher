@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-60d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 60D",
+	"lens_model": "Tamron 11-20 F2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 823.345891689267,
+		"fy": 823.9077632969273,
+		"cx": 953.216300570166,
+		"cy": 589.0821362408126
+	},
+	"distortion_coeffs": [
+		0.3348198254717736,
+		0.10602144049345522,
+		-0.10584851877154836,
+		0.7662036999690087
+	],
+	"metadata": {
+		"calibrated_by": "younes benbessa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

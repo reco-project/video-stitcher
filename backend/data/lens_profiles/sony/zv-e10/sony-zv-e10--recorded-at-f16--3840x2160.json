@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--recorded-at-f16--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Kamlan 28mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4378.750759243204,
+		"fy": 4376.514904404784,
+		"cx": 1968.9478158256209,
+		"cy": 1079.954203116482
+	},
+	"distortion_coeffs": [
+		0.23479239681357472,
+		-0.19077955302936844,
+		3.710151008947229,
+		-13.135539780523764
+	],
+	"metadata": {
+		"calibrated_by": "KING",
+		"notes": "Recorded at f/16",
+		"source": "gyroflow",
+		"official": true
+	}
+}

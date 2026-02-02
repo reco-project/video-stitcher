@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--semi-fisheye--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "TTArtisan 21mm f1.5 ASPH",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2396.2261654405447,
+		"fy": 2396.4354842594535,
+		"cx": 1934.7450711655215,
+		"cy": 1068.3132631536998
+	},
+	"distortion_coeffs": [
+		0.24308151842341053,
+		0.050466065890443494,
+		0.31614883268904986,
+		-0.07914090239908823
+	],
+	"metadata": {
+		"calibrated_by": "NiceCrash_22",
+		"notes": "Semi-Fisheye",
+		"source": "gyroflow",
+		"official": true
+	}
+}

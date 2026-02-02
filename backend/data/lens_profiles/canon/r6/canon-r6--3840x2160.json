@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6",
+	"lens_model": "24-105",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2964.343130400365,
+		"fy": 2961.6999422508406,
+		"cx": 1867.9133380930243,
+		"cy": 1015.3941926863828
+	},
+	"distortion_coeffs": [
+		0.1767104452917678,
+		0.7243005825657193,
+		-2.3963434714293643,
+		2.385293254803521
+	],
+	"metadata": {
+		"calibrated_by": "admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

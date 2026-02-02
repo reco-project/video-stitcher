@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--58mm-ff--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Helios 44M-4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10472.8228208686,
+		"fy": 10520.837709906304,
+		"cx": 1784.3961800627917,
+		"cy": 1334.6483255759708
+	},
+	"distortion_coeffs": [
+		0.31698870881790414,
+		2.8371412600655557,
+		-378.5106442032918,
+		10110.33239341482
+	],
+	"metadata": {
+		"calibrated_by": "Gabriel Greuter",
+		"notes": "58mm FF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

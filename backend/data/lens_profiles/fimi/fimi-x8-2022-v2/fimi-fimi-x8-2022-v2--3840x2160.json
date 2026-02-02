@@ -1,0 +1,28 @@
+{
+	"id": "fimi-fimi-x8-2022-v2--3840x2160",
+	"camera_brand": "Fimi",
+	"camera_model": "Fimi x8 2022 v2",
+	"lens_model": "soni f1/6 48mp",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3413.3623454860053,
+		"fy": 3415.657505680782,
+		"cx": 1940.759527149631,
+		"cy": 1043.497175968334
+	},
+	"distortion_coeffs": [
+		0.6079566497655317,
+		-0.7733768484842618,
+		0.3247534096116224,
+		2.7486882501008845
+	],
+	"metadata": {
+		"calibrated_by": "Nathan khouri",
+		"source": "gyroflow",
+		"official": true
+	}
+}

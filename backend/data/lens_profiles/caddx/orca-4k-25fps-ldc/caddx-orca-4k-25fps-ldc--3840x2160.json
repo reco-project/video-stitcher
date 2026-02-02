@@ -1,0 +1,28 @@
+{
+	"id": "caddx-orca-4k-25fps-ldc--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Orca 4K 25fps LDC",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1779.4145553012002,
+		"fy": 1777.2803461560102,
+		"cx": 1927.8429378342985,
+		"cy": 1034.4060055204627
+	},
+	"distortion_coeffs": [
+		0.1991564545598895,
+		0.12107129754413264,
+		-0.22556070429983716,
+		0.1995915717579992
+	],
+	"metadata": {
+		"calibrated_by": "Fabio Russo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

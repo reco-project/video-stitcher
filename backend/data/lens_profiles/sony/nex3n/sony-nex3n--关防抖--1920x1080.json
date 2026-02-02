@@ -1,0 +1,29 @@
+{
+	"id": "sony-nex3n--\u5173\u9632\u6296--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "nex3n",
+	"lens_model": "1650",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1312.656621331714,
+		"fy": 1310.3395387808566,
+		"cx": 955.6183204483928,
+		"cy": 548.995066664855
+	},
+	"distortion_coeffs": [
+		0.3089713177872148,
+		-0.005801946760733003,
+		0.44365492808900847,
+		-0.28717460475502604
+	],
+	"metadata": {
+		"calibrated_by": "mr.hongyuanzhang",
+		"notes": "\u5173\u9632\u6296",
+		"source": "gyroflow",
+		"official": true
+	}
+}

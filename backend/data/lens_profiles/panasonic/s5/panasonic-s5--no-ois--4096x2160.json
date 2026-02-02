@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--no-ois--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5",
+	"lens_model": "S20-60 @20mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2403.912833488392,
+		"fy": 2393.1357398567748,
+		"cx": 2053.5664047906935,
+		"cy": 1066.1311420608104
+	},
+	"distortion_coeffs": [
+		0.27734065571675576,
+		0.30558918621668746,
+		-0.8396768745243436,
+		1.4274005291599543
+	],
+	"metadata": {
+		"calibrated_by": "Max",
+		"notes": "NO OIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

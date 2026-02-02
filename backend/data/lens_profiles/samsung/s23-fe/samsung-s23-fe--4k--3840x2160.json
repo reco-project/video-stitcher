@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23-fe--4k--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S23 FE",
+	"lens_model": "73mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8412.814069989794,
+		"fy": 8442.440179747324,
+		"cx": 1925.0549318522017,
+		"cy": 1183.224245912407
+	},
+	"distortion_coeffs": [
+		0.10121160089299006,
+		-2.9049565333879475,
+		395.5573695333639,
+		-5601.005345808611
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan",
+		"notes": "4k",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "eken-hr9s--1920x1080",
+	"camera_brand": "EKEN",
+	"camera_model": "HR9S",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1109.7083873396386,
+		"fy": 1109.2552593098485,
+		"cx": 983.8719965807544,
+		"cy": 566.456814748616
+	},
+	"distortion_coeffs": [
+		-0.1015962287287108,
+		-0.02702833689038074,
+		0.03627827330647571,
+		-0.01399831333340496
+	],
+	"metadata": {
+		"calibrated_by": "Steve Black",
+		"source": "gyroflow",
+		"official": true
+	}
+}

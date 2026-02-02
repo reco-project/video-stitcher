@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--58mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Helios 44-2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 20570.671780149496,
+		"fy": 21865.353718002483,
+		"cx": 1790.5922761335935,
+		"cy": 1221.755807384791
+	},
+	"distortion_coeffs": [
+		2.2661796469934328,
+		952.8570297537216,
+		-216727.03805097064,
+		14349985.182469668
+	],
+	"metadata": {
+		"calibrated_by": "Malin Dean",
+		"notes": "58mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

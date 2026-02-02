@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-6d-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6D Mark II",
+	"lens_model": "24-70",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1755.0366710405342,
+		"fy": 1753.6320605806643,
+		"cx": 961.2464092545148,
+		"cy": 545.8306079229284
+	},
+	"distortion_coeffs": [
+		0.18459520737350976,
+		0.7590243175152567,
+		-4.828469264906954,
+		13.887269493665643
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

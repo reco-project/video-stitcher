@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-8-pro--1920x1088",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 8 Pro",
+	"lens_model": "13mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 713.9046906213221,
+		"fy": 714.0858144716751,
+		"cx": 957.1582478355372,
+		"cy": 535.7504216358557
+	},
+	"distortion_coeffs": [
+		0.2099381423708136,
+		0.875330623691455,
+		-1.4962431121200277,
+		0.9890759780967756
+	],
+	"metadata": {
+		"calibrated_by": "Jared Alasa-as",
+		"source": "gyroflow",
+		"official": true
+	}
+}

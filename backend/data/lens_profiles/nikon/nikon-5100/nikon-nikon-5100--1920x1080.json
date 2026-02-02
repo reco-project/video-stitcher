@@ -1,0 +1,28 @@
+{
+	"id": "nikon-nikon-5100--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Nikon 5100",
+	"lens_model": "Nikon 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4550.119115962204,
+		"fy": 4522.900313331917,
+		"cx": 960.8118382072914,
+		"cy": 521.7475027658509
+	},
+	"distortion_coeffs": [
+		0.31838090768408067,
+		-8.483716967625622,
+		314.12507072916037,
+		-3108.013598586432
+	],
+	"metadata": {
+		"calibrated_by": "Usuario",
+		"source": "gyroflow",
+		"official": true
+	}
+}

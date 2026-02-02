@@ -1,0 +1,28 @@
+{
+	"id": "poco-f1-wide--2016x1132",
+	"camera_brand": "POCO",
+	"camera_model": "f1 wide",
+	"lens_model": null,
+	"resolution": {
+		"width": 2016,
+		"height": 1132
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1421.756676546369,
+		"fy": 1427.5401309862928,
+		"cx": 1015.657080898106,
+		"cy": 565.7882785784459
+	},
+	"distortion_coeffs": [
+		0.5813897844691017,
+		-1.2664729570174114,
+		3.3212572335721817,
+		-2.7545119429775458
+	],
+	"metadata": {
+		"calibrated_by": "javi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

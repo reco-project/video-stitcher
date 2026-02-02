@@ -1,0 +1,27 @@
+{
+	"id": "red-komodo-6k--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "ZEISS Compact Prime CP.3 35 mm/T2.1",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2813.876630620843,
+		"fy": 2811.2057723864827,
+		"cx": 1006.293265677011,
+		"cy": 546.4713984632058
+	},
+	"distortion_coeffs": [
+		0.24804412066592288,
+		-0.4258863206138628,
+		6.056658888710966,
+		-17.015238377263458
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

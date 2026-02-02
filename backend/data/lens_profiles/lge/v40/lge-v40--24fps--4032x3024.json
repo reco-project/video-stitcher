@@ -1,0 +1,29 @@
+{
+	"id": "lge-v40--24fps--4032x3024",
+	"camera_brand": "LGE",
+	"camera_model": "V40",
+	"lens_model": "26mm 1.5",
+	"resolution": {
+		"width": 4032,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2911.646252900426,
+		"fy": 2915.9467263579636,
+		"cx": 2031.7139283527183,
+		"cy": 1483.511868768423
+	},
+	"distortion_coeffs": [
+		0.7913127469970045,
+		-3.3818608082210626,
+		10.064041107259596,
+		-9.842101778777034
+	],
+	"metadata": {
+		"calibrated_by": "Redson ",
+		"notes": "24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--fullframe--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "RF 24 105 f4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12185.282658440665,
+		"fy": 12208.329518197586,
+		"cx": 2079.5674987828047,
+		"cy": 1096.4165779385205
+	},
+	"distortion_coeffs": [
+		1.451871976265109,
+		-1.2380683798169476,
+		-1104.8632615191602,
+		58975.79817012377
+	],
+	"metadata": {
+		"calibrated_by": "guns120",
+		"notes": "fullframe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--calibratoin-2--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Sigma 18-35 1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4086.077934571073,
+		"fy": 4084.737643649895,
+		"cx": 2159.3367186535124,
+		"cy": 1039.5269800886413
+	},
+	"distortion_coeffs": [
+		0.19582783965098705,
+		0.47481465778504295,
+		-1.6627330802318774,
+		3.0624276802762056
+	],
+	"metadata": {
+		"calibrated_by": "RogStrix",
+		"notes": "calibratoin 2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-5100--169--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "5100",
+	"lens_model": "16-50",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 864.9814906245293,
+		"fy": 863.8591930722944,
+		"cx": 645.5335013383873,
+		"cy": 365.34554569570855
+	},
+	"distortion_coeffs": [
+		0.30050346858950316,
+		0.06604620171760318,
+		0.34826399785257933,
+		-0.2856206402446448
+	],
+	"metadata": {
+		"calibrated_by": "fpv singh",
+		"notes": "16.9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

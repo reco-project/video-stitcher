@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6ii--lens-14mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6II",
+	"lens_model": "Sigma 14-24mm f2.8 @ 14mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2385.0497709001575,
+		"fy": 2383.791204934756,
+		"cx": 1911.5811929397496,
+		"cy": 1094.0321623674577
+	},
+	"distortion_coeffs": [
+		0.34258142250253565,
+		-0.019190603103633574,
+		0.9584204990585404,
+		-1.9286076075393577
+	],
+	"metadata": {
+		"calibrated_by": "Artedaluz",
+		"notes": "Lens @ 14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

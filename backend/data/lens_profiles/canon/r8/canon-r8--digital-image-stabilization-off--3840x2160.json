@@ -1,0 +1,29 @@
+{
+	"id": "canon-r8--digital-image-stabilization-off--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R8",
+	"lens_model": "RF24mm1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3196.8318415818144,
+		"fy": 3197.193145024595,
+		"cx": 1931.3983954597877,
+		"cy": 1089.1442049233835
+	},
+	"distortion_coeffs": [
+		0.387083399472954,
+		-0.5431357639134522,
+		3.105541605701968,
+		-4.66928290333816
+	],
+	"metadata": {
+		"calibrated_by": "israel",
+		"notes": "Digital image stabilization OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--adaptateur-creux--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "nikkor 50 f1.4 ais",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9114.69042352464,
+		"fy": 9121.0548815794,
+		"cx": 1999.5616894789375,
+		"cy": 1105.1750253839728
+	},
+	"distortion_coeffs": [
+		0.09898129740545078,
+		8.445766067953622,
+		-242.09110412371257,
+		2147.241745649975
+	],
+	"metadata": {
+		"calibrated_by": "Alistair Lili",
+		"notes": "adaptateur creux",
+		"source": "gyroflow",
+		"official": true
+	}
+}

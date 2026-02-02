@@ -1,0 +1,28 @@
+{
+	"id": "xdv-action-sport--1920x1080",
+	"camera_brand": "XDV",
+	"camera_model": "Action Sport",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1084.4881870151623,
+		"fy": 1084.248422997407,
+		"cx": 986.849003464922,
+		"cy": 551.0197383242646
+	},
+	"distortion_coeffs": [
+		0.01854985694562583,
+		-0.012852864331236467,
+		0.017624951764312256,
+		-0.006417694241815422
+	],
+	"metadata": {
+		"calibrated_by": "linus kranz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

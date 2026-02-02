@@ -1,0 +1,28 @@
+{
+	"id": "blaupunkt-bp-6410--640x480",
+	"camera_brand": "Blaupunkt",
+	"camera_model": "bp 6410",
+	"lens_model": null,
+	"resolution": {
+		"width": 640,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 609.9955934587,
+		"fy": 614.0247424618901,
+		"cx": 327.35597226337376,
+		"cy": 237.6749208349156
+	},
+	"distortion_coeffs": [
+		-0.036159300820475325,
+		-0.724275775097882,
+		3.477316022756113,
+		-5.373294820959543
+	],
+	"metadata": {
+		"calibrated_by": "Emmanuel Reznik",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-hd--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "SPLIT-HD",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 843.4210302806838,
+		"fy": 843.9318117473161,
+		"cx": 966.8581173509006,
+		"cy": 540.9513756674621
+	},
+	"distortion_coeffs": [
+		0.10550437283053198,
+		0.11847749543585386,
+		-0.2391975027467743,
+		0.13006105315598518
+	],
+	"metadata": {
+		"calibrated_by": "\u8983\u94ed\u94ed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

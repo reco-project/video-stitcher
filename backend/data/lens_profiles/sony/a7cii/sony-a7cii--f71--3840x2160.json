@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7cii--f71--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7CII",
+	"lens_model": "FE 20-70mm F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2234.791695146045,
+		"fy": 2232.7872411853405,
+		"cx": 1936.9770882257912,
+		"cy": 1088.8019901505534
+	},
+	"distortion_coeffs": [
+		0.33161489403299,
+		0.09491102779407452,
+		0.22492772506532477,
+		-0.22899145306437707
+	],
+	"metadata": {
+		"calibrated_by": "Spyros",
+		"notes": "F7.1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

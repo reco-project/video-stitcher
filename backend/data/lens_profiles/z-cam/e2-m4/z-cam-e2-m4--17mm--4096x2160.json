@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--17mm--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Olympus 17mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3722.190644641708,
+		"fy": 3717.623617960458,
+		"cx": 2085.391916413568,
+		"cy": 1004.8334078050448
+	},
+	"distortion_coeffs": [
+		0.16171670092011295,
+		-0.6301113375470407,
+		2.7384537596255867,
+		-5.107594514054562
+	],
+	"metadata": {
+		"calibrated_by": "Axel BONAMI",
+		"notes": "17mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6500--35mm-f56--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6500",
+	"lens_model": "Sony SEL35F18",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7363.784542561189,
+		"fy": 7349.913098477331,
+		"cx": 2103.476726456864,
+		"cy": 1137.6997313013023
+	},
+	"distortion_coeffs": [
+		0.42582542673853113,
+		2.5679535263158337,
+		-20.91566155766356,
+		-27.82538869379148
+	],
+	"metadata": {
+		"calibrated_by": "Bart",
+		"notes": "35mm, F5,6",
+		"source": "gyroflow",
+		"official": true
+	}
+}

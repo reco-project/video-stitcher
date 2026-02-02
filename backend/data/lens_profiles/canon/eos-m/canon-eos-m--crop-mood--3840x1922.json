@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--crop-mood--3840x1922",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Sigma Super-Wide II 24mm f/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 1922
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3938.8965441798296,
+		"fy": 3941.679051683504,
+		"cx": 1887.3890053568755,
+		"cy": 901.5810514457248
+	},
+	"distortion_coeffs": [
+		0.1504959243116824,
+		0.08092349756462919,
+		0.6730868285764683,
+		-1.3780260572222678
+	],
+	"metadata": {
+		"calibrated_by": "Lilly Schwartz",
+		"notes": "Crop Mood",
+		"source": "gyroflow",
+		"official": true
+	}
+}

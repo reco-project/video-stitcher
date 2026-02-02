@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--metabones-speedbooster-xl-064--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Vespid Prime 40mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5610.299147416707,
+		"fy": 5629.494283066373,
+		"cx": 2033.015589565327,
+		"cy": 1002.3916857053335
+	},
+	"distortion_coeffs": [
+		0.049929054394599645,
+		1.6473842333399575,
+		-12.456567613982278,
+		47.20114910593093
+	],
+	"metadata": {
+		"calibrated_by": "Jason Warriner",
+		"notes": "Metabones speedbooster xl 0.64",
+		"source": "gyroflow",
+		"official": true
+	}
+}

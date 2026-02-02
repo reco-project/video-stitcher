@@ -1,0 +1,28 @@
+{
+	"id": "canon-6d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "6d",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3018.89581079555,
+		"fy": 3008.551202524054,
+		"cx": 938.9205582496826,
+		"cy": 598.867981738526
+	},
+	"distortion_coeffs": [
+		0.2466928699737901,
+		-2.7994693703375075,
+		58.00435861720172,
+		-318.8816708598575
+	],
+	"metadata": {
+		"calibrated_by": "UMR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

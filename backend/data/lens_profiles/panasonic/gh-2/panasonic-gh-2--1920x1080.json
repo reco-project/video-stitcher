@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh-2--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH-2",
+	"lens_model": "Panasonic 15mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1548.633975866666,
+		"fy": 1545.5924220462832,
+		"cx": 952.8710612091388,
+		"cy": 545.2928377986873
+	},
+	"distortion_coeffs": [
+		0.310893737553872,
+		0.1279333295079509,
+		-0.9940403923982114,
+		4.410395778828963
+	],
+	"metadata": {
+		"calibrated_by": "Christopher Kr\u00f6ner",
+		"source": "gyroflow",
+		"official": true
+	}
+}

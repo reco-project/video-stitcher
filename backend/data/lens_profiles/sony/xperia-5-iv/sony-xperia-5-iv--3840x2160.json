@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-5-iv--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 5 IV",
+	"lens_model": "16",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2343.7923546755896,
+		"fy": 2343.7101820670837,
+		"cx": 1939.4780502882809,
+		"cy": 1074.33885501052
+	},
+	"distortion_coeffs": [
+		0.22115905456862317,
+		1.076616829961684,
+		-2.4534075808934186,
+		2.3978241616838036
+	],
+	"metadata": {
+		"calibrated_by": "U0 A1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

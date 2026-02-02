@@ -1,0 +1,29 @@
+{
+	"id": "hawkeye-firefly-x-lite-ii--43-59940-fps--1920x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly X Lite II",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 956.9088907897496,
+		"fy": 956.211423708252,
+		"cx": 925.7501719824955,
+		"cy": 699.202285956305
+	},
+	"distortion_coeffs": [
+		-0.024414341819517155,
+		-0.041992226478641904,
+		0.055321526996057066,
+		-0.020288594375942895
+	],
+	"metadata": {
+		"calibrated_by": "edinho polastre",
+		"notes": "4:3 59,940 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "akaso-ek7000--170-fov--1920x1080",
+	"camera_brand": "AKASO",
+	"camera_model": "EK7000",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1209.4794256194662,
+		"fy": 1209.731218675353,
+		"cx": 959.2560693590189,
+		"cy": 612.4915096557022
+	},
+	"distortion_coeffs": [
+		-0.15282967845604592,
+		0.023752254782442212,
+		-0.013312994759425297,
+		0.00422512135866827
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "170\u00b0 FOV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

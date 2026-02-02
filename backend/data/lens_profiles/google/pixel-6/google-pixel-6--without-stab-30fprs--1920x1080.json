@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-6--without-stab-30fprs--1920x1080",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1270.321173126741,
+		"fy": 1268.559825298997,
+		"cx": 947.1358391775896,
+		"cy": 526.7959058070143
+	},
+	"distortion_coeffs": [
+		0.5364005743552605,
+		-1.388678040948902,
+		5.0151669206069895,
+		-5.638482521861057
+	],
+	"metadata": {
+		"calibrated_by": "\u0418\u0432\u0430\u043d \u0413\u0440\u0435\u0431\u0435\u043d\u044e\u043a",
+		"notes": "without stab, 30fprs",
+		"source": "gyroflow",
+		"official": true
+	}
+}

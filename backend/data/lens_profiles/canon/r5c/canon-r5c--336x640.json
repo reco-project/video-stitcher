@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5c--336x640",
+	"camera_brand": "Canon",
+	"camera_model": "r5c",
+	"lens_model": "35",
+	"resolution": {
+		"width": 336,
+		"height": 640
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 870.557613239245,
+		"fy": 874.6723892186096,
+		"cx": 183.1896647853752,
+		"cy": 306.89371647099085
+	},
+	"distortion_coeffs": [
+		0.17308510489001316,
+		1.2946821455229676,
+		-14.981146117328258,
+		79.81898846668658
+	],
+	"metadata": {
+		"calibrated_by": "admins",
+		"source": "gyroflow",
+		"official": true
+	}
+}

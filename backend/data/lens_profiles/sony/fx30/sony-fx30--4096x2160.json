@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx30--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Carl Zeiss Sonnar T* E 24mm f1.8 ZA",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4154.27392887447,
+		"fy": 4152.528199535552,
+		"cx": 2032.0921565076333,
+		"cy": 1104.9789893110285
+	},
+	"distortion_coeffs": [
+		0.30818825327454447,
+		0.7061275315582906,
+		-5.158678258395827,
+		13.790877023058169
+	],
+	"metadata": {
+		"calibrated_by": "Alex Huxley",
+		"source": "gyroflow",
+		"official": true
+	}
+}

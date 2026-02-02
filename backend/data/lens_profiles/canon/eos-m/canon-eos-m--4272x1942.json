@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--4272x1942",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "7Artisans 7.5mm 2.8f",
+	"resolution": {
+		"width": 4272,
+		"height": 1942
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1906.2781738655524,
+		"fy": 1908.396714064015,
+		"cx": 2177.342338282202,
+		"cy": 928.0893555518084
+	},
+	"distortion_coeffs": [
+		0.04454720451878776,
+		0.02171244898474357,
+		-0.032732958631224274,
+		0.018494072365603905
+	],
+	"metadata": {
+		"calibrated_by": "Simone Rampichini",
+		"source": "gyroflow",
+		"official": true
+	}
+}

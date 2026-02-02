@@ -1,0 +1,28 @@
+{
+	"id": "cyanchen-15-85--1920x1080",
+	"camera_brand": "cyanchen",
+	"camera_model": "15-85",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1907.172846932937,
+		"fy": 1911.8392674323864,
+		"cx": 956.83629335513,
+		"cy": 559.5868495788797
+	},
+	"distortion_coeffs": [
+		0.1841006656070061,
+		0.4242135641846364,
+		-1.306478198054029,
+		2.21317662688791
+	],
+	"metadata": {
+		"calibrated_by": "\u9648\u9752",
+		"source": "gyroflow",
+		"official": true
+	}
+}

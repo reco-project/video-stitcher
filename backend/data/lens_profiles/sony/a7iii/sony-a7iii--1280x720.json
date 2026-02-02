@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7iii--1280x720",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "55mm f1.8",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2096.4732193470795,
+		"fy": 2098.4744526430313,
+		"cx": 678.8540224662489,
+		"cy": 327.65530940551594
+	},
+	"distortion_coeffs": [
+		0.3720555300530552,
+		-2.3639850770245947,
+		18.842921376435932,
+		-46.7388499002858
+	],
+	"metadata": {
+		"calibrated_by": "ASUS 2023",
+		"source": "gyroflow",
+		"official": true
+	}
+}

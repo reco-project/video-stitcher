@@ -1,0 +1,28 @@
+{
+	"id": "infinix-open--2560x1440",
+	"camera_brand": "Infinix",
+	"camera_model": "Open",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1856.8837650341648,
+		"fy": 1856.333042815891,
+		"cx": 1274.5683385417956,
+		"cy": 745.8572448830248
+	},
+	"distortion_coeffs": [
+		0.6654152356437205,
+		-2.1456748309455125,
+		8.098506653384575,
+		-10.823520905932972
+	],
+	"metadata": {
+		"calibrated_by": "Giorno",
+		"source": "gyroflow",
+		"official": true
+	}
+}

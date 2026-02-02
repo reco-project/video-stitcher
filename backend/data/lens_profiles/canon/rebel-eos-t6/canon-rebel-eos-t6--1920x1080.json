@@ -1,0 +1,28 @@
+{
+	"id": "canon-rebel-eos-t6--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Rebel EOS T6",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1466.5480563208905,
+		"fy": 1468.5310531712762,
+		"cx": 991.0132489338796,
+		"cy": 603.9306793403915
+	},
+	"distortion_coeffs": [
+		0.31697854754347504,
+		0.008001150263746305,
+		0.6395777920402506,
+		-0.9408770373380302
+	],
+	"metadata": {
+		"calibrated_by": "William Weed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

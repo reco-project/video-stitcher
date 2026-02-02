@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--sigma-56f14--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "56.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13545.649434438685,
+		"fy": 13470.283243310643,
+		"cx": 1842.2185067014632,
+		"cy": 1737.42899027457
+	},
+	"distortion_coeffs": [
+		0.6100881364110702,
+		-24.67480878113951,
+		1033.0226688558632,
+		-13091.864391690224
+	],
+	"metadata": {
+		"calibrated_by": "JyaKe",
+		"notes": "SIGMA 56f1.4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

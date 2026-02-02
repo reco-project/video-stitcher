@@ -1,0 +1,27 @@
+{
+	"id": "samsung-note-10-plus--4032x3024",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 10 plus",
+	"lens_model": null,
+	"resolution": {
+		"width": 4032,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2935.6769939510696,
+		"fy": 2930.8610742140045,
+		"cx": 2022.228640485703,
+		"cy": 1518.1742953473877
+	},
+	"distortion_coeffs": [
+		0.6545906777647201,
+		-1.6003857159897557,
+		1.9188798673724563,
+		4.184298101266188
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

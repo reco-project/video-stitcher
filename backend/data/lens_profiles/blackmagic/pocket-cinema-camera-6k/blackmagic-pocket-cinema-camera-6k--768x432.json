@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--768x432",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Canon EF-S 17-55mm f/2.8 IS USM 17mm",
+	"resolution": {
+		"width": 768,
+		"height": 432
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 497.07947085530515,
+		"fy": 497.44454419922903,
+		"cx": 382.412703533645,
+		"cy": 227.5271272115233
+	},
+	"distortion_coeffs": [
+		0.2566763040642808,
+		-0.10331823142170828,
+		0.742834721396631,
+		-0.5493580087026964
+	],
+	"metadata": {
+		"calibrated_by": "Lukasz Szmigiera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt5--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT5",
+	"lens_model": "23 1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2189.692842175465,
+		"fy": 2190.349612147963,
+		"cx": 971.0618656383076,
+		"cy": 518.0669428666234
+	},
+	"distortion_coeffs": [
+		0.34227064059065065,
+		0.3971873269115773,
+		-2.0472663029587403,
+		6.9861136688172065
+	],
+	"metadata": {
+		"calibrated_by": "t\u00f9ng \u0110\u1eb7ng",
+		"source": "gyroflow",
+		"official": true
+	}
+}

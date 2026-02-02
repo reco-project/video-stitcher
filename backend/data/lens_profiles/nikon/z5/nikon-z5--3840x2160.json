@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z5--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "z5",
+	"lens_model": "24-70f4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 36719.07252939097,
+		"fy": 38804.63307473767,
+		"cx": 2552.0523573359433,
+		"cy": 736.5750862231314
+	},
+	"distortion_coeffs": [
+		14.008537714824037,
+		-9319.07208324056,
+		5454359.853703891,
+		-866459882.1519477
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

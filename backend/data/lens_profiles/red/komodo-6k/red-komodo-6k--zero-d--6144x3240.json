@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--zero-d--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "LAOWA 15",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3552.572735551508,
+		"fy": 3552.346053202472,
+		"cx": 3076.129265426421,
+		"cy": 1609.5486895979495
+	},
+	"distortion_coeffs": [
+		0.3126994216969394,
+		0.20449324832388424,
+		-0.2370688998377426,
+		0.3635798830629036
+	],
+	"metadata": {
+		"calibrated_by": "Andre Larsen",
+		"notes": "Zero-D",
+		"source": "gyroflow",
+		"official": true
+	}
+}

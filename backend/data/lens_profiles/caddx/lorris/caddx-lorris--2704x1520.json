@@ -1,0 +1,28 @@
+{
+	"id": "caddx-lorris--2704x1520",
+	"camera_brand": "Caddx",
+	"camera_model": "Lorris",
+	"lens_model": "Nano 4K",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1290.4122479001308,
+		"fy": 1288.9492462551311,
+		"cx": 1348.7632146321653,
+		"cy": 746.5868875472103
+	},
+	"distortion_coeffs": [
+		-0.06921548085611022,
+		-0.021573276411980705,
+		0.02708198994394852,
+		-0.012872809787034
+	],
+	"metadata": {
+		"calibrated_by": "Kirk Ramsey",
+		"source": "gyroflow",
+		"official": true
+	}
+}

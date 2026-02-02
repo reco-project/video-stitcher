@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5",
+	"lens_model": "S50 1.8 F4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2575.5321120917947,
+		"fy": 2579.9780819890243,
+		"cx": 986.6162968226944,
+		"cy": 543.1023159620461
+	},
+	"distortion_coeffs": [
+		0.30775720488000796,
+		1.4329202755010992,
+		-18.214161102130017,
+		89.24680045706873
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

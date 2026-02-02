@@ -1,0 +1,29 @@
+{
+	"id": "runcam-split-lite-3--mobula7--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Split lite 3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 798.0455685365569,
+		"fy": 798.103028160696,
+		"cx": 922.4503482805178,
+		"cy": 536.7654147895986
+	},
+	"distortion_coeffs": [
+		-0.038068812098783135,
+		0.05008467888483134,
+		-0.002048626267625238,
+		-0.013149057257853465
+	],
+	"metadata": {
+		"calibrated_by": "Mario Juchelka",
+		"notes": "Mobula7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

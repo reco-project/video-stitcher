@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--24mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sony 16-35mm G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2554.6557233992576,
+		"fy": 2553.565570736223,
+		"cx": 1912.6974802244697,
+		"cy": 1072.2990311166295
+	},
+	"distortion_coeffs": [
+		0.34267110123561006,
+		0.017854556906970655,
+		0.5388351196075845,
+		-0.5801260050675915
+	],
+	"metadata": {
+		"calibrated_by": "cyf",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

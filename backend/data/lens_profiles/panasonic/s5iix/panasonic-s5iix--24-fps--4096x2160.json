@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5iix--24-fps--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5iix",
+	"lens_model": "Sigma 24-70 DG DN",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2814.488983891351,
+		"fy": 2814.1448449976147,
+		"cx": 2050.0123183518367,
+		"cy": 1098.9751441588764
+	},
+	"distortion_coeffs": [
+		0.3372720303037493,
+		0.3175131578146373,
+		-0.49783271106251664,
+		0.2803094378954352
+	],
+	"metadata": {
+		"calibrated_by": "Jonas Jezreel Cena",
+		"notes": "24 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

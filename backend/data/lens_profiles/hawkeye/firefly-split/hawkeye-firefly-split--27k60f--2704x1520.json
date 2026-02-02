@@ -1,0 +1,29 @@
+{
+	"id": "hawkeye-firefly-split--27k60f--2704x1520",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly Split",
+	"lens_model": "170FOV",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1901.3669730266624,
+		"fy": 1900.5499038794592,
+		"cx": 1441.346981717575,
+		"cy": 666.5115167135743
+	},
+	"distortion_coeffs": [
+		-0.05680160630794272,
+		-0.09793987724537465,
+		0.20564590572369143,
+		-0.1196733343471222
+	],
+	"metadata": {
+		"calibrated_by": "Nathat",
+		"notes": "2.7K@60f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

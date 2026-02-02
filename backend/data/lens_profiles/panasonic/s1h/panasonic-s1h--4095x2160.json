@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s1h--4095x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "Schneider Arriflex cine xenon 75mm f2",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6939.755041870721,
+		"fy": 6949.865822517828,
+		"cx": 2119.493877911052,
+		"cy": 1464.9753498275488
+	},
+	"distortion_coeffs": [
+		0.3128917680937631,
+		-1.0806196786024058,
+		14.457674442038668,
+		-45.868993191268075
+	],
+	"metadata": {
+		"calibrated_by": "\ud83d\udcf7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

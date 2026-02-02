@@ -1,0 +1,29 @@
+{
+	"id": "nikon-keymission-170--\u5c3c\u5eb7--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "KeyMission 170",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1032.9995297053567,
+		"fy": 1032.562429103043,
+		"cx": 949.5782987575018,
+		"cy": 522.5371629859193
+	},
+	"distortion_coeffs": [
+		0.010412769053886438,
+		0.05941442113268575,
+		-0.18319391195596268,
+		0.16873490567246371
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "\u5c3c\u5eb7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

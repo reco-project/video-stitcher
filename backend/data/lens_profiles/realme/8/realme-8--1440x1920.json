@@ -1,0 +1,28 @@
+{
+	"id": "realme-8--1440x1920",
+	"camera_brand": "Realme",
+	"camera_model": "8",
+	"lens_model": "Film It",
+	"resolution": {
+		"width": 1440,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1398.3155430339664,
+		"fy": 1402.018793933163,
+		"cx": 717.1537199493962,
+		"cy": 954.2628261437576
+	},
+	"distortion_coeffs": [
+		0.4133572618467905,
+		0.4562260654748469,
+		-3.3283192191143045,
+		5.861204149972244
+	],
+	"metadata": {
+		"calibrated_by": "Rayhan Gazi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

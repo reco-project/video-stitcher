@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x-6k-s35--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "Sirui nightwalker 24mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5419.302558019817,
+		"fy": 5421.07180989183,
+		"cx": 3019.3721074468663,
+		"cy": 1604.513718713623
+	},
+	"distortion_coeffs": [
+		0.16090217050252265,
+		0.22220690590975548,
+		-0.25176419390765553,
+		1.0690635690450123
+	],
+	"metadata": {
+		"calibrated_by": "Maximilien Charlier",
+		"source": "gyroflow",
+		"official": true
+	}
+}

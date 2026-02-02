@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-g7--18mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "g7",
+	"lens_model": "sigma 18-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4484.806438838307,
+		"fy": 4517.51050740813,
+		"cx": 1187.982236783159,
+		"cy": 890.8836182929078
+	},
+	"distortion_coeffs": [
+		0.33574288732697105,
+		-0.8813808151316441,
+		2.837937273347,
+		-3.2453858256799215
+	],
+	"metadata": {
+		"calibrated_by": "v v",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

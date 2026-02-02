@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z8--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z8",
+	"lens_model": "z 24-120 f4.0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1652.2317608243975,
+		"fy": 1644.881064543921,
+		"cx": 965.5612711649636,
+		"cy": 559.5538252175443
+	},
+	"distortion_coeffs": [
+		0.3920005512635956,
+		2.3993994232359364,
+		-17.4821630277449,
+		35.47645265786211
+	],
+	"metadata": {
+		"calibrated_by": "ShiYuan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

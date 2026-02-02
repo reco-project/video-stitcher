@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7c--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sigma art 24-70",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1357.2938014443496,
+		"fy": 1357.4341643894334,
+		"cx": 956.5432331261208,
+		"cy": 527.111914487357
+	},
+	"distortion_coeffs": [
+		0.12933430378696112,
+		0.2948962526871628,
+		-0.500568331255895,
+		0.954187068642476
+	],
+	"metadata": {
+		"calibrated_by": "Wiwid Aolia",
+		"source": "gyroflow",
+		"official": true
+	}
+}

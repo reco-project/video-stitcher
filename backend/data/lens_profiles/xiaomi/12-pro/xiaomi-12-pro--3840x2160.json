@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-12-pro--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12 pro",
+	"lens_model": "tele-zoom x2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5796.06419170832,
+		"fy": 5796.252250045736,
+		"cx": 1883.3951531909568,
+		"cy": 1083.5718010706714
+	},
+	"distortion_coeffs": [
+		0.6347701529397923,
+		-0.4718282337723608,
+		2.803327047410286,
+		-45.02359179080003
+	],
+	"metadata": {
+		"calibrated_by": "R. T.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

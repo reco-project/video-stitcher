@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero7-silver--eis-y--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO7 Silver",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1917.4395110164571,
+		"fy": 1920.042173621822,
+		"cx": 1934.4146524722748,
+		"cy": 1097.6963555446175
+	},
+	"distortion_coeffs": [
+		0.1472988056436717,
+		-0.11508472961613792,
+		0.12347847302159803,
+		-0.06146463512732905
+	],
+	"metadata": {
+		"calibrated_by": "Alejandro Portocarrero Sepulveda",
+		"notes": "EIS-Y",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-6-mark-2--2959--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6 Mark 2",
+	"lens_model": "Canon 24-70mm Ultrasonix",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1263.718796492615,
+		"fy": 1264.0586802895302,
+		"cx": 974.4887228292102,
+		"cy": 551.3772962604002
+	},
+	"distortion_coeffs": [
+		0.17000413583966625,
+		0.26428344198661163,
+		-0.22728053408225887,
+		0.3458299097191577
+	],
+	"metadata": {
+		"calibrated_by": "Florian Link",
+		"notes": "29:59",
+		"source": "gyroflow",
+		"official": true
+	}
+}

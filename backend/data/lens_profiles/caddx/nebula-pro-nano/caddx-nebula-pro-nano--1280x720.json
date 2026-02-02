@@ -1,0 +1,28 @@
+{
+	"id": "caddx-nebula-pro-nano--1280x720",
+	"camera_brand": "Caddx",
+	"camera_model": "Nebula Pro Nano",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 631.6763845113578,
+		"fy": 633.0927093764259,
+		"cx": 622.5992505741576,
+		"cy": 409.81723197027134
+	},
+	"distortion_coeffs": [
+		0.022407681419746896,
+		-0.09747343794352369,
+		0.07519994220398032,
+		-0.023755781265838456
+	],
+	"metadata": {
+		"calibrated_by": "PC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

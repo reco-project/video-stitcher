@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-4000d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 4000D",
+	"lens_model": "Tamron",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1789.0941914307857,
+		"fy": 1789.9826935246726,
+		"cx": 951.2843931784632,
+		"cy": 546.4087477219654
+	},
+	"distortion_coeffs": [
+		0.1846270105185553,
+		-0.2234885914324635,
+		1.2405521258221754,
+		-1.241218404588862
+	],
+	"metadata": {
+		"calibrated_by": "Atlas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

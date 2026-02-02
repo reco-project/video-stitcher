@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt3--2048x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "xt3",
+	"lens_model": "16-55",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1356.7841674531005,
+		"fy": 1357.7477826555453,
+		"cx": 1044.9820964076073,
+		"cy": 556.8778902435369
+	},
+	"distortion_coeffs": [
+		0.3085553219422157,
+		0.205814946123304,
+		-0.9258778729054034,
+		1.9144209035638788
+	],
+	"metadata": {
+		"calibrated_by": "ljm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

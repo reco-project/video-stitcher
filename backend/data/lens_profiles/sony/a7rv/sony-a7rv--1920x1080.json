@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7rv--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7RV",
+	"lens_model": "SONY 50mm F1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3119.236362753932,
+		"fy": 3119.412786421247,
+		"cx": 954.2816638347616,
+		"cy": 542.876892109285
+	},
+	"distortion_coeffs": [
+		0.2877809870646197,
+		2.650075296004484,
+		-40.83725617193241,
+		194.68147771481063
+	],
+	"metadata": {
+		"calibrated_by": "Yuya",
+		"source": "gyroflow",
+		"official": true
+	}
+}

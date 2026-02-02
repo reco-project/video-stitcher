@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero12-black--no-eis--4000x3000",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO12 Black",
+	"lens_model": "MaxLensMOD2.0",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1392.1007733283798,
+		"fy": 1392.5575575962043,
+		"cx": 2011.6782974834032,
+		"cy": 1478.6681435914425
+	},
+	"distortion_coeffs": [
+		0.17485665285205865,
+		-0.1788102406740315,
+		0.13681770509437252,
+		-0.03845431535924741
+	],
+	"metadata": {
+		"calibrated_by": "JMTBike",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor--8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR",
+	"lens_model": "ZEISS CP3 35MM",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7086.785068761157,
+		"fy": 7092.576941866812,
+		"cx": 4110.3480619567645,
+		"cy": 2077.632886726491
+	},
+	"distortion_coeffs": [
+		0.2586045814645419,
+		0.023218623656280215,
+		0.5274126614866627,
+		-0.5233458403601545
+	],
+	"metadata": {
+		"calibrated_by": "teodor g\u00f6rtz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

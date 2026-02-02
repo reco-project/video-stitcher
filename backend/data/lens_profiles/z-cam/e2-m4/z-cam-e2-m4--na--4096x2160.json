@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--na--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Meike 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2594.710768780884,
+		"fy": 2599.031863932847,
+		"cx": 2018.9709411234196,
+		"cy": 1081.8414245102272
+	},
+	"distortion_coeffs": [
+		0.1486707235264619,
+		0.470505966674619,
+		-0.55833569518378,
+		0.4572476148724377
+	],
+	"metadata": {
+		"calibrated_by": "paul rascagneres",
+		"notes": "N/A",
+		"source": "gyroflow",
+		"official": true
+	}
+}

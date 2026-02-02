@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--desqueeze-15-crop-12--2048x858",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "Laowa Nanomorph 35mm",
+	"resolution": {
+		"width": 2048,
+		"height": 858
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2192.300646143513,
+		"fy": 2176.504342167538,
+		"cx": 1041.1958253651007,
+		"cy": 668.6767433655302
+	},
+	"distortion_coeffs": [
+		-0.06887890928858048,
+		7.911421752048685,
+		-53.768564357066666,
+		129.52375836074245
+	],
+	"metadata": {
+		"calibrated_by": "enzo pianetti ",
+		"notes": "desqueeze 1.5 / crop 1.2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

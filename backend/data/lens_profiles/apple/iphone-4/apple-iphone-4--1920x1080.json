@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-4--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 4",
+	"lens_model": "\u9ad8\u6e0560fps",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1694.6993999318645,
+		"fy": 1691.125640615155,
+		"cx": 950.2860122303896,
+		"cy": 534.9928763761324
+	},
+	"distortion_coeffs": [
+		0.5670538094095068,
+		-0.5272446229228109,
+		-3.103724811440233,
+		14.664205635598153
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

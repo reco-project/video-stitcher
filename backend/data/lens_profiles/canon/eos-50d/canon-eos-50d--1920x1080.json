@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-50d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 50D",
+	"lens_model": "Canon EF 50mm 1.8f",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5751.663945991126,
+		"fy": 5898.88092851614,
+		"cx": 1210.510281838051,
+		"cy": 376.28346526920615
+	},
+	"distortion_coeffs": [
+		0.5398413098470325,
+		-19.716569808097383,
+		570.0716932376837,
+		-5614.207362499981
+	],
+	"metadata": {
+		"calibrated_by": "LCF-FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

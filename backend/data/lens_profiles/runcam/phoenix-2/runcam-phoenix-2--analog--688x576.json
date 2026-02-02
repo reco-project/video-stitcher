@@ -1,0 +1,29 @@
+{
+	"id": "runcam-phoenix-2--analog--688x576",
+	"camera_brand": "RunCam",
+	"camera_model": "Phoenix 2",
+	"lens_model": "Analog",
+	"resolution": {
+		"width": 688,
+		"height": 576
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 395.81764046079473,
+		"fy": 421.13451964426434,
+		"cx": 363.36161718857784,
+		"cy": 312.3317085701004
+	},
+	"distortion_coeffs": [
+		-0.11783462099267708,
+		0.017960774658822523,
+		0.009359889535732423,
+		-0.011912357288163831
+	],
+	"metadata": {
+		"calibrated_by": "\u0414\u043c\u0438\u0442\u0440\u0438\u0439",
+		"notes": "Analog",
+		"source": "gyroflow",
+		"official": true
+	}
+}

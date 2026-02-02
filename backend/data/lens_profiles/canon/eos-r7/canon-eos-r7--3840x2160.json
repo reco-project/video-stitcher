@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r7--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R7",
+	"lens_model": "SIGMA 24-70 F/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4130.694699807332,
+		"fy": 4092.9585229014097,
+		"cx": 1907.81985323224,
+		"cy": 1105.829373619901
+	},
+	"distortion_coeffs": [
+		0.18671924530844317,
+		0.3961452083577132,
+		-1.9008109708935068,
+		4.641621339675566
+	],
+	"metadata": {
+		"calibrated_by": "ddd",
+		"source": "gyroflow",
+		"official": true
+	}
+}

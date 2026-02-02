@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero10-black--hs-boost--5312x2988",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO10 Black",
+	"lens_model": "Narrow",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3928.1061480315507,
+		"fy": 3932.899345322539,
+		"cx": 2664.197711101645,
+		"cy": 1495.2439182278338
+	},
+	"distortion_coeffs": [
+		0.33495171769079396,
+		0.030798637410062446,
+		0.5746896476767971,
+		-0.7297141905955394
+	],
+	"metadata": {
+		"calibrated_by": "Eddy",
+		"notes": "HS Boost",
+		"source": "gyroflow",
+		"official": true
+	}
+}

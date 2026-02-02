@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-13pro--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 13pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3109.89683249524,
+		"fy": 3111.9346582220023,
+		"cx": 1921.134244184621,
+		"cy": 1089.6440483238846
+	},
+	"distortion_coeffs": [
+		0.6335022213341471,
+		-1.5418666964156609,
+		3.80081945762148,
+		-2.2893438992835997
+	],
+	"metadata": {
+		"calibrated_by": "\u55e1\u55e1\u55e1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

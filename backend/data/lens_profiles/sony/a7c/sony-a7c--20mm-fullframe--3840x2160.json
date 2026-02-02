@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--20mm-fullframe--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sony SEL20F18G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2122.418920653234,
+		"fy": 2122.4217110038685,
+		"cx": 1913.8040494338031,
+		"cy": 1059.165443209515
+	},
+	"distortion_coeffs": [
+		0.3290596685728003,
+		0.15150002082458117,
+		0.021093474767549313,
+		0.07501076844359911
+	],
+	"metadata": {
+		"calibrated_by": "J\u00f6rg Niggli | niggli.com",
+		"notes": "20mm Fullframe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

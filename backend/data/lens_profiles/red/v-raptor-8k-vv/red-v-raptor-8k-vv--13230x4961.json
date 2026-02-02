@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor-8k-vv--13230x4961",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Laowa 45mm anamorphi",
+	"resolution": {
+		"width": 13230,
+		"height": 4961
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 33515.55864864262,
+		"fy": 34132.91231066882,
+		"cx": 6895.5791168106225,
+		"cy": 170.636182401486
+	},
+	"distortion_coeffs": [
+		-0.975318413801428,
+		50.953090474477285,
+		-292.45356159405316,
+		-224.51032350620017
+	],
+	"metadata": {
+		"calibrated_by": "teodor g\u00f6rtz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

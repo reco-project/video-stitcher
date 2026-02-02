@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-nano-3--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Split Nano 3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 777.7833617802083,
+		"fy": 778.0533091919176,
+		"cx": 940.903179501648,
+		"cy": 507.85956423354304
+	},
+	"distortion_coeffs": [
+		-0.023717846340369903,
+		0.05344600312791111,
+		-0.026986366825361974,
+		0.006069779836716752
+	],
+	"metadata": {
+		"calibrated_by": "Gunner",
+		"source": "gyroflow",
+		"official": true
+	}
+}

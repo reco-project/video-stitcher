@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "sigma 18mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1537.174656367882,
+		"fy": 1537.3421866769322,
+		"cx": 957.885190220594,
+		"cy": 546.5906640790868
+	},
+	"distortion_coeffs": [
+		0.2140104835707876,
+		0.41748989425956273,
+		-1.266233556589962,
+		2.3380484370561714
+	],
+	"metadata": {
+		"calibrated_by": "Aerial Division",
+		"source": "gyroflow",
+		"official": true
+	}
+}

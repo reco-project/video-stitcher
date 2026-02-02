@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--70mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Sigma 24-70mm (70mm) f/2.8 DG DN Art",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7782.420278417248,
+		"fy": 7776.277002271545,
+		"cx": 1935.808035267887,
+		"cy": 1077.1320647687287
+	},
+	"distortion_coeffs": [
+		0.4447316738523472,
+		-2.5607732389745066,
+		53.03503927604013,
+		-341.79557512116986
+	],
+	"metadata": {
+		"calibrated_by": "Joshua Hardee",
+		"notes": "@(70mm)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

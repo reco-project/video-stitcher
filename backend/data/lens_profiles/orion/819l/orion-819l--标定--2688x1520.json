@@ -1,0 +1,29 @@
+{
+	"id": "orion-819l--\u6807\u5b9a--2688x1520",
+	"camera_brand": "Orion",
+	"camera_model": "819L",
+	"lens_model": "sony",
+	"resolution": {
+		"width": 2688,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2604.0318424431966,
+		"fy": 2606.158311561803,
+		"cx": 1187.7544978879632,
+		"cy": 881.3967098770157
+	},
+	"distortion_coeffs": [
+		0.3695853209001296,
+		-2.2772687962956915,
+		14.702514777511462,
+		-33.35965798252214
+	],
+	"metadata": {
+		"calibrated_by": "tangxiaofang",
+		"notes": "\u6807\u5b9a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

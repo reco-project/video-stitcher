@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-yi-action-cam\u00e9ra--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi action cam\u00e9ra",
+	"lens_model": "Capteur Sony IMX317",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1950.2432440501132,
+		"fy": 1950.509696568595,
+		"cx": 1943.4436688641197,
+		"cy": 1112.3774941428835
+	},
+	"distortion_coeffs": [
+		0.3569962715237344,
+		0.13058128894506635,
+		-0.10734179312560568,
+		0.3637225708505202
+	],
+	"metadata": {
+		"calibrated_by": "Kilian Komites",
+		"source": "gyroflow",
+		"official": true
+	}
+}

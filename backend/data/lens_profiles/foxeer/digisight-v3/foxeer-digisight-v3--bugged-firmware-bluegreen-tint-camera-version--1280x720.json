@@ -1,0 +1,29 @@
+{
+	"id": "foxeer-digisight-v3--bugged-firmware-bluegreen-tint-camera-version--1280x720",
+	"camera_brand": "Foxeer",
+	"camera_model": "Digisight V3",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 586.5320206443644,
+		"fy": 572.6477343003103,
+		"cx": 646.2700394166411,
+		"cy": 380.20873130044254
+	},
+	"distortion_coeffs": [
+		-0.03200464801638114,
+		0.004297801458581037,
+		-0.016065543578926093,
+		0.007767929180826383
+	],
+	"metadata": {
+		"calibrated_by": "dudu du76",
+		"notes": "Bugged firmware (blue/green tint) camera version",
+		"source": "gyroflow",
+		"official": true
+	}
+}

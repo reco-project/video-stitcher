@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro--768x432",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Rokinon 8mm T/3.8 8mm",
+	"resolution": {
+		"width": 768,
+		"height": 432
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 282.1669481268692,
+		"fy": 282.4584050691026,
+		"cx": 397.14660701654736,
+		"cy": 215.51189375454135
+	},
+	"distortion_coeffs": [
+		0.04310825926370713,
+		-0.03125547039555002,
+		0.03349141663905844,
+		-0.008562816442126432
+	],
+	"metadata": {
+		"calibrated_by": "7eremiah",
+		"source": "gyroflow",
+		"official": true
+	}
+}

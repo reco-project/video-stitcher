@@ -1,0 +1,28 @@
+{
+	"id": "oppo-reno-10--1920x1080",
+	"camera_brand": "OPPO",
+	"camera_model": "reno 10",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1651.3803180744378,
+		"fy": 1649.0475893522623,
+		"cx": 961.6585832566084,
+		"cy": 549.1611666384802
+	},
+	"distortion_coeffs": [
+		0.5088858772411301,
+		-1.5237550503467836,
+		6.80189243677641,
+		-9.612993698133517
+	],
+	"metadata": {
+		"calibrated_by": "chen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

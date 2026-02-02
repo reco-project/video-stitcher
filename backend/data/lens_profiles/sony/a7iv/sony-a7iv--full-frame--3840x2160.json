@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--full-frame--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Laowa 35mm F0.95",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3911.26683127746,
+		"fy": 3909.51862133948,
+		"cx": 1881.6196464392615,
+		"cy": 1054.1761476940446
+	},
+	"distortion_coeffs": [
+		0.3233613764212939,
+		-0.2901019131902244,
+		3.958278407923313,
+		-8.273242322274
+	],
+	"metadata": {
+		"calibrated_by": "user",
+		"notes": "Full Frame",
+		"source": "gyroflow",
+		"official": true
+	}
+}

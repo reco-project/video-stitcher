@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bgh1--3328x2496",
+	"camera_brand": "Panasonic",
+	"camera_model": "BGH1",
+	"lens_model": "LAOWA 7.5 C-Dreamer",
+	"resolution": {
+		"width": 3328,
+		"height": 2496
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1510.4194388260255,
+		"fy": 1510.5471966790662,
+		"cx": 1652.383808081587,
+		"cy": 1219.4646209104408
+	},
+	"distortion_coeffs": [
+		0.328836285933623,
+		0.10603052623154484,
+		-0.05429273018814809,
+		0.10362637756423138
+	],
+	"metadata": {
+		"calibrated_by": "MENGA FPV Martin BOCHATAY",
+		"source": "gyroflow",
+		"official": true
+	}
+}

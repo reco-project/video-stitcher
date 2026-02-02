@@ -1,0 +1,28 @@
+{
+	"id": "oppo-findx6-\u4e3b\u6444--1280x720",
+	"camera_brand": "OPPO",
+	"camera_model": "findx6 \u4e3b\u6444",
+	"lens_model": "\u4e3b\u6444",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1073.7390328311967,
+		"fy": 1073.7484817033842,
+		"cx": 638.110866608915,
+		"cy": 363.04253514897414
+	},
+	"distortion_coeffs": [
+		0.4913419944465412,
+		-0.512230226652042,
+		-0.76233830666164,
+		6.570597580283394
+	],
+	"metadata": {
+		"calibrated_by": "\u94a2\u677f\u854a\u7a7f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

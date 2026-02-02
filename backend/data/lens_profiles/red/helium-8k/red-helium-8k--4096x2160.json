@@ -1,0 +1,28 @@
+{
+	"id": "red-helium-8k--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "Helium 8K",
+	"lens_model": "Speed Boosted Sigma Art 24mm EF",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2689.1893204916437,
+		"fy": 2619.672996569926,
+		"cx": 2050.6046913637665,
+		"cy": 1102.0883124311408
+	},
+	"distortion_coeffs": [
+		0.23676173729969885,
+		0.1488050381281835,
+		-0.025662626860639137,
+		0.13095112840745335
+	],
+	"metadata": {
+		"calibrated_by": "Hurcan Emre Yilm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

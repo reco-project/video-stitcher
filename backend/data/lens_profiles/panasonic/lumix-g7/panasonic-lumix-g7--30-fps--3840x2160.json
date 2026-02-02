@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-g7--30-fps--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix G7",
+	"lens_model": "Olympus 12MM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3090.172111364408,
+		"fy": 3014.927318312432,
+		"cx": 1927.8873613371868,
+		"cy": 1069.999667643268
+	},
+	"distortion_coeffs": [
+		0.2883097780631932,
+		0.2843171589626896,
+		-0.8790333653912552,
+		1.885983317518675
+	],
+	"metadata": {
+		"calibrated_by": "Georgi Tushev",
+		"notes": "30 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

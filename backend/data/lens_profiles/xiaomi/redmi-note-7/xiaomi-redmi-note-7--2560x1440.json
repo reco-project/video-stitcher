@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-7--2560x1440",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 7",
+	"lens_model": "Main",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3158.057864030051,
+		"fy": 3155.9281419237063,
+		"cx": 1292.618751526592,
+		"cy": 683.6598612404669
+	},
+	"distortion_coeffs": [
+		0.3418224984157463,
+		0.6171750717728557,
+		0.8685861622576573,
+		-10.203857663291048
+	],
+	"metadata": {
+		"calibrated_by": "Bogdan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

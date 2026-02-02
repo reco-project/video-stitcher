@@ -1,0 +1,29 @@
+{
+	"id": "red-dsmc2-gemini-5k-s35--100p--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "DSMC2 GEMINI 5K S35",
+	"lens_model": "efl16-35f4is @ 24.00mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3903.4585790356687,
+		"fy": 3904.783475650182,
+		"cx": 2070.678953463931,
+		"cy": 1089.2067948055208
+	},
+	"distortion_coeffs": [
+		0.3456789861793545,
+		0.19913808210496756,
+		-1.0782600236632158,
+		3.1170082247739663
+	],
+	"metadata": {
+		"calibrated_by": "STRIX17",
+		"notes": "100p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

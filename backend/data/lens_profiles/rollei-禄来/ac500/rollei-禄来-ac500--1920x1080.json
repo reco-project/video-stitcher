@@ -1,0 +1,28 @@
+{
+	"id": "rollei-\u7984\u6765-ac500--1920x1080",
+	"camera_brand": "Rollei (\u7984\u6765)",
+	"camera_model": "ac500",
+	"lens_model": "\u7984\u6765",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 915.5944118071932,
+		"fy": 914.9487704602112,
+		"cx": 962.4776872582668,
+		"cy": 534.4737705752776
+	},
+	"distortion_coeffs": [
+		0.08245321621726197,
+		-0.02722922181012983,
+		0.019883166579457257,
+		-0.011748790556217505
+	],
+	"metadata": {
+		"calibrated_by": "\u5f3a\u5f3a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

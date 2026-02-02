@@ -1,0 +1,28 @@
+{
+	"id": "motorola-g41--1920x1080",
+	"camera_brand": "Motorola",
+	"camera_model": "G41",
+	"lens_model": "G41",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1547.1167105251975,
+		"fy": 1547.8822982974114,
+		"cx": 995.5929989830154,
+		"cy": 453.5999574552424
+	},
+	"distortion_coeffs": [
+		0.3457146648545625,
+		0.8296738860954064,
+		-2.7671206578535417,
+		2.6758952254510784
+	],
+	"metadata": {
+		"calibrated_by": "PC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

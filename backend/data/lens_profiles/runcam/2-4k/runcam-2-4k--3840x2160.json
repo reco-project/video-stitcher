@@ -1,0 +1,28 @@
+{
+	"id": "runcam-2-4k--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "2 4k",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1679.7684306748604,
+		"fy": 1681.7991929609243,
+		"cx": 1920.0,
+		"cy": 1080.0
+	},
+	"distortion_coeffs": [
+		0.05031283571432788,
+		0.018868079912422876,
+		-0.02162185013008668,
+		0.011657837272827768
+	],
+	"metadata": {
+		"calibrated_by": "objptr",
+		"source": "gyroflow",
+		"official": true
+	}
+}

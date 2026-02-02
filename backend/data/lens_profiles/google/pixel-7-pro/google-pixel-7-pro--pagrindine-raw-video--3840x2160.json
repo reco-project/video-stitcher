@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-7-pro--pagrindine-raw-video--3840x2160",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7 pro",
+	"lens_model": "1/25mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2879.2214473103804,
+		"fy": 2872.9337309753596,
+		"cx": 1889.6732620207963,
+		"cy": 1097.9790801927463
+	},
+	"distortion_coeffs": [
+		0.5992083454952383,
+		-1.987461646737368,
+		8.77804978671442,
+		-12.218227932830937
+	],
+	"metadata": {
+		"calibrated_by": "Andrius",
+		"notes": "Pagrindine RAW video",
+		"source": "gyroflow",
+		"official": true
+	}
+}

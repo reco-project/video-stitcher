@@ -1,0 +1,29 @@
+{
+	"id": "gopro-max--hs-eis--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "Max",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 834.7142002058372,
+		"fy": 834.242691007013,
+		"cx": 961.0868688356376,
+		"cy": 537.8612238194443
+	},
+	"distortion_coeffs": [
+		0.0646075465207674,
+		0.039139647556618896,
+		-0.041373671856156674,
+		0.014898789517094136
+	],
+	"metadata": {
+		"calibrated_by": "Stefano",
+		"notes": "HS EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

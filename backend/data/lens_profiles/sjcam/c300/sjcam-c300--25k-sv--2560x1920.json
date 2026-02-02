@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-c300--25k-sv--2560x1920",
+	"camera_brand": "SJCAM",
+	"camera_model": "c300",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1533.8939827277404,
+		"fy": 1520.511868871405,
+		"cx": 1191.0595469924306,
+		"cy": 901.1568281677428
+	},
+	"distortion_coeffs": [
+		0.012137829843452365,
+		-0.040947657375236,
+		0.0229642511613246,
+		-0.008808548267804158
+	],
+	"metadata": {
+		"calibrated_by": "\u4f55\u8302",
+		"notes": "2.5k sv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

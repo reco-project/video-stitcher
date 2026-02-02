@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-6--other-but-i-think-not-better--1920x1080",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1287.8079602751757,
+		"fy": 1286.4360348067676,
+		"cx": 958.358667046679,
+		"cy": 521.0169691790358
+	},
+	"distortion_coeffs": [
+		0.5136954466068008,
+		-1.2969846580816105,
+		5.230209376510414,
+		-6.613115799394523
+	],
+	"metadata": {
+		"calibrated_by": "\u0418\u0432\u0430\u043d \u0413\u0440\u0435\u0431\u0435\u043d\u044e\u043a",
+		"notes": "other but i think not better",
+		"source": "gyroflow",
+		"official": true
+	}
+}

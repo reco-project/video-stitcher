@@ -1,0 +1,28 @@
+{
+	"id": "caddx-tarsier-v2--2704x1520",
+	"camera_brand": "Caddx",
+	"camera_model": "Tarsier v2",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1555.1970090660536,
+		"fy": 1171.6930860421164,
+		"cx": 1352.0,
+		"cy": 760.0
+	},
+	"distortion_coeffs": [
+		0.38149318794700166,
+		-0.2951482340509342,
+		1.130996651143816,
+		-0.8723588595291758
+	],
+	"metadata": {
+		"calibrated_by": "Andrea",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--50mm-s35-recorded-at-40fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 50mm f/1.4 Summilux-R II e60",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12006.538902976226,
+		"fy": 12002.41805904284,
+		"cx": 3089.2109990952245,
+		"cy": 1601.7557195443972
+	},
+	"distortion_coeffs": [
+		0.13718960776254435,
+		2.1047526722336833,
+		-41.22547651241239,
+		298.56535078801477
+	],
+	"metadata": {
+		"calibrated_by": "windcine",
+		"notes": "50mm, S35, recorded at 40fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-6s--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 6s",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3153.3406499995235,
+		"fy": 2207.013743267869,
+		"cx": 1904.049467065888,
+		"cy": 1088.4589342435677
+	},
+	"distortion_coeffs": [
+		0.41121295198306446,
+		0.5308949490486511,
+		-2.707538369234612,
+		4.526844020323244
+	],
+	"metadata": {
+		"calibrated_by": "mikko",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--50fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Tamron 28-75 f2.8 @ 28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3420.193123776181,
+		"fy": 3420.8329154779635,
+		"cx": 1924.8941067160345,
+		"cy": 1069.2277041585355
+	},
+	"distortion_coeffs": [
+		0.31950120043826336,
+		0.20940045313164288,
+		-0.42082508447710354,
+		1.2193673769848246
+	],
+	"metadata": {
+		"calibrated_by": "Nathan Jackson",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

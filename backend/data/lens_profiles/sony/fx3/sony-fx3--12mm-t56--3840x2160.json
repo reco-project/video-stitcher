@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--12mm-t56--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Laowa 12mm Zero-D T2.9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1447.152250812934,
+		"fy": 1445.0137677185703,
+		"cx": 1902.3626940054417,
+		"cy": 1088.817047007509
+	},
+	"distortion_coeffs": [
+		0.30913096607911733,
+		0.19866117507215056,
+		-0.005908124204841999,
+		0.02251893254666444
+	],
+	"metadata": {
+		"calibrated_by": "Luca Schroeder",
+		"notes": "12mm T5.6",
+		"source": "gyroflow",
+		"official": true
+	}
+}

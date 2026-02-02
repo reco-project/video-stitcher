@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-nano--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Nano",
+	"lens_model": "RunCam Phoenix 2 Nano",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 885.0314681150726,
+		"fy": 883.9846301612,
+		"cx": 977.3371644948446,
+		"cy": 541.9767878573313
+	},
+	"distortion_coeffs": [
+		-0.05393597765920538,
+		-0.03258921052205093,
+		0.03067306876501403,
+		-0.004181286558060743
+	],
+	"metadata": {
+		"calibrated_by": "Marcin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

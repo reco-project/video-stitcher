@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--28mm-f28--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Tamron 28-75mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3125.012233882043,
+		"fy": 3125.4302794710748,
+		"cx": 1859.784338264893,
+		"cy": 1045.2906964230126
+	},
+	"distortion_coeffs": [
+		0.3082943430829202,
+		0.2482197894727053,
+		-0.6433947437294726,
+		1.172041195068552
+	],
+	"metadata": {
+		"calibrated_by": "Tolga Sarikose",
+		"notes": "28mm F2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

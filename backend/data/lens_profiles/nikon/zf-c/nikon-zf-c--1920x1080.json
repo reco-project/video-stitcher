@@ -1,0 +1,28 @@
+{
+	"id": "nikon-zf-c--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "zf c",
+	"lens_model": "nikkor Z DX 16-50mm f/3.5-6.3 VR",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1281.823370261044,
+		"fy": 1281.5928013606508,
+		"cx": 953.1019390918552,
+		"cy": 525.0486728353293
+	},
+	"distortion_coeffs": [
+		0.34844621832672584,
+		-0.11198055483576068,
+		0.918606519098726,
+		-1.0179627425817672
+	],
+	"metadata": {
+		"calibrated_by": "LordCasser",
+		"source": "gyroflow",
+		"official": true
+	}
+}

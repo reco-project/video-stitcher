@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d7000--18mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D7000",
+	"lens_model": "AF-S NIKKOR 18-105mm1* 3.5-5.6G ED",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1499.1871595977248,
+		"fy": 1475.9406780127758,
+		"cx": 982.735271213144,
+		"cy": 553.2493637488078
+	},
+	"distortion_coeffs": [
+		0.17143579384940089,
+		0.06701986391421899,
+		0.07497352494607473,
+		0.4152004577771507
+	],
+	"metadata": {
+		"calibrated_by": "Max",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

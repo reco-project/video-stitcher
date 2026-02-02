@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-tx-s--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T/X-S",
+	"lens_model": "Carl Zeiss Jena 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8902.889452157182,
+		"fy": 8905.19274514963,
+		"cx": 1860.7957132991753,
+		"cy": 1019.3566458001404
+	},
+	"distortion_coeffs": [
+		0.29309338118364786,
+		5.4224231851359885,
+		-112.96870596907874,
+		2.6975913814642256
+	],
+	"metadata": {
+		"calibrated_by": "David Hoult",
+		"source": "gyroflow",
+		"official": true
+	}
+}

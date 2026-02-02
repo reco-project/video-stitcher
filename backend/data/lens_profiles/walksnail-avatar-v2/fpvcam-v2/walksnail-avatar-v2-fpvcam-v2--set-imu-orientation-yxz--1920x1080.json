@@ -1,0 +1,29 @@
+{
+	"id": "walksnail-avatar-v2-fpvcam-v2--set-imu-orientation-yxz--1920x1080",
+	"camera_brand": "Walksnail Avatar V2",
+	"camera_model": "FPVcam V2",
+	"lens_model": "Walksnail_Avatar_V2_Camera_1080p_16by9_60fps wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 877.8516930217543,
+		"fy": 878.7666310246337,
+		"cx": 1010.2570042365829,
+		"cy": 491.137748427784
+	},
+	"distortion_coeffs": [
+		0.03000333922729687,
+		-0.013151116554061218,
+		0.01689561836802893,
+		-0.007168408248820024
+	],
+	"metadata": {
+		"calibrated_by": "nicecrash_23",
+		"notes": "Set IMU orientation: YxZ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

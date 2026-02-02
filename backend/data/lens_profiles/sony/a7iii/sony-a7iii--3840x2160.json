@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7iii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "FE 50mm 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 41313.61185146567,
+		"fy": 76246.42143581173,
+		"cx": 1798.9898247688843,
+		"cy": 2165.6546041903366
+	},
+	"distortion_coeffs": [
+		2.747275756796242,
+		8946.795595437892,
+		-3018507.7959466134,
+		411060743.1835448
+	],
+	"metadata": {
+		"calibrated_by": "Aamir Khan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

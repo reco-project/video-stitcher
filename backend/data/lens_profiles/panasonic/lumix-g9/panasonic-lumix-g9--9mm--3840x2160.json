@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-g9--9mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "LUMIX G9",
+	"lens_model": "Olympus 9-18",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2081.023197891592,
+		"fy": 2076.9456098321516,
+		"cx": 1867.1531580888495,
+		"cy": 1066.558168499448
+	},
+	"distortion_coeffs": [
+		0.3240554639721843,
+		0.12939663160831555,
+		0.020301102411623972,
+		0.014941942382646395
+	],
+	"metadata": {
+		"calibrated_by": "Fulop Domotor",
+		"notes": "9mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

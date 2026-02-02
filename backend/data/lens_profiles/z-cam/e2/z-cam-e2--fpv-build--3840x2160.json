@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2--fpv-build--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Laowa 7.5mm T2 M43",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1669.4848347125944,
+		"fy": 1670.2681017756188,
+		"cx": 1895.3538841344716,
+		"cy": 1032.6983018214432
+	},
+	"distortion_coeffs": [
+		0.3095273076192068,
+		0.2728798474709769,
+		-0.5131829824282645,
+		0.585480537947911
+	],
+	"metadata": {
+		"calibrated_by": "Corey Robinson",
+		"notes": "FPV Build",
+		"source": "gyroflow",
+		"official": true
+	}
+}

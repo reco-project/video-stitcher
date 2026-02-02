@@ -1,0 +1,28 @@
+{
+	"id": "realme-6-pro--1952x1088",
+	"camera_brand": "Realme",
+	"camera_model": "6 Pro",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1952,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1812.5716442282544,
+		"fy": 1816.2799588870328,
+		"cx": 964.5775112064016,
+		"cy": 506.7614738290261
+	},
+	"distortion_coeffs": [
+		0.4174975314210989,
+		-1.1528434960886549,
+		10.367704373489095,
+		-26.2666032455303
+	],
+	"metadata": {
+		"calibrated_by": "David Bure\u0161",
+		"source": "gyroflow",
+		"official": true
+	}
+}

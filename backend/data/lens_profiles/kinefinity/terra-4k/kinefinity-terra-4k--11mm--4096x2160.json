@@ -1,0 +1,29 @@
+{
+	"id": "kinefinity-terra-4k--11mm--4096x2160",
+	"camera_brand": "Kinefinity",
+	"camera_model": "TERRA 4K",
+	"lens_model": "TOKINA 11-16mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1778.134735475906,
+		"fy": 1778.0382472058236,
+		"cx": 2101.177763807857,
+		"cy": 1124.5668202003956
+	},
+	"distortion_coeffs": [
+		0.33195274643234135,
+		0.07846071214076097,
+		0.04978755864619092,
+		-0.005561866160173234
+	],
+	"metadata": {
+		"calibrated_by": "Ben Coope",
+		"notes": "11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

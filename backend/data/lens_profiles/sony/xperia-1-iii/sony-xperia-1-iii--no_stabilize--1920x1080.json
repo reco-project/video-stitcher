@@ -1,0 +1,29 @@
+{
+	"id": "sony-xperia-1-iii--no_stabilize--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 1 III",
+	"lens_model": "24",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1496.6972916090492,
+		"fy": 1498.0287301498602,
+		"cx": 954.4213841764424,
+		"cy": 504.6789431083658
+	},
+	"distortion_coeffs": [
+		0.3940961337169636,
+		0.47618787497235887,
+		-1.274692471114902,
+		0.8492570127738277
+	],
+	"metadata": {
+		"calibrated_by": "jm weng",
+		"notes": "no_stabilize",
+		"source": "gyroflow",
+		"official": true
+	}
+}

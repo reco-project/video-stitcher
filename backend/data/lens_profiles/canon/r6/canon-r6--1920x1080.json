@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R6",
+	"lens_model": "50MM STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3072.3524281970576,
+		"fy": 3072.9470576004205,
+		"cx": 905.9972307178784,
+		"cy": 497.5912864891657
+	},
+	"distortion_coeffs": [
+		0.1774591067461005,
+		2.364773388500243,
+		-35.50703264839997,
+		154.61882723849826
+	],
+	"metadata": {
+		"calibrated_by": "Mu'izz Zahari",
+		"source": "gyroflow",
+		"official": true
+	}
+}

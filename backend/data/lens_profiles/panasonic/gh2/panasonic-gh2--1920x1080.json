@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh2--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH2",
+	"lens_model": "olympus 25 f1.7",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2778.120209301912,
+		"fy": 2786.8993854757027,
+		"cx": 1032.4674752428652,
+		"cy": 504.85452558367155
+	},
+	"distortion_coeffs": [
+		0.18751298012898376,
+		0.2136204290153528,
+		0.19192063312960023,
+		9.807408184603975
+	],
+	"metadata": {
+		"calibrated_by": "pipop prommj anya",
+		"source": "gyroflow",
+		"official": true
+	}
+}

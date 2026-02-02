@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-naked-ii--4000x3000",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly naked II",
+	"lens_model": null,
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1986.3961064509283,
+		"fy": 1989.336125232858,
+		"cx": 2014.41772892639,
+		"cy": 1394.8179575637148
+	},
+	"distortion_coeffs": [
+		-0.04339616572099558,
+		0.08475414509570971,
+		-0.18711824251044656,
+		0.11925271308036184
+	],
+	"metadata": {
+		"calibrated_by": "Mathis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

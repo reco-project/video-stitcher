@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-focal-reducer-071x--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Irix 30mm FF",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4915.078185271342,
+		"fy": 4913.093864988504,
+		"cx": 2064.961904728512,
+		"cy": 1072.8925139728472
+	},
+	"distortion_coeffs": [
+		0.23034103588417065,
+		0.818127141604796,
+		-5.939466470543563,
+		20.79571237895462
+	],
+	"metadata": {
+		"calibrated_by": "Shikijo",
+		"notes": "Canon Focal Reducer 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

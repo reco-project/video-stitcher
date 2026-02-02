@@ -1,0 +1,28 @@
+{
+	"id": "nikon-24-120--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "24-120",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1237.3422917152946,
+		"fy": 1236.6205068786337,
+		"cx": 956.2178613006452,
+		"cy": 539.2059320827328
+	},
+	"distortion_coeffs": [
+		0.31227362317220936,
+		0.1718360762635567,
+		0.06739810948560171,
+		-0.15865460368620707
+	],
+	"metadata": {
+		"calibrated_by": "\u690d\u6b63\u6db5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

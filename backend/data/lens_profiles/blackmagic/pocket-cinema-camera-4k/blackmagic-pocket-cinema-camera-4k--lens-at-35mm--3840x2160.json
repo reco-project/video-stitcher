@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--lens-at-35mm--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Lumix 12-35 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7380.267195328369,
+		"fy": 7378.362566769438,
+		"cx": 1956.165391064608,
+		"cy": 1069.3897528809553
+	},
+	"distortion_coeffs": [
+		0.6509712322129887,
+		-13.455524382796815,
+		432.72638610099966,
+		-4621.5014175404185
+	],
+	"metadata": {
+		"calibrated_by": "Darren Varney",
+		"notes": "Lens at 35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

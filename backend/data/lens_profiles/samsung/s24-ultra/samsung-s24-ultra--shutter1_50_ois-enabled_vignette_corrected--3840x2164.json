@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s24-ultra--shutter1_50_ois-enabled_vignette_corrected--3840x2164",
+	"camera_brand": "Samsung",
+	"camera_model": "S24 Ultra",
+	"lens_model": "23mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2164
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2695.7900222493568,
+		"fy": 2697.906330203206,
+		"cx": 1919.2396360515393,
+		"cy": 1082.3567351155452
+	},
+	"distortion_coeffs": [
+		0.6342096745454054,
+		-1.6929328800291452,
+		4.393108470239015,
+		1.749201675644245
+	],
+	"metadata": {
+		"calibrated_by": "Abdulsattar Mohammed",
+		"notes": "shutter1_50_ois enabled_vignette_corrected",
+		"source": "gyroflow",
+		"official": true
+	}
+}

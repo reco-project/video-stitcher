@@ -1,0 +1,28 @@
+{
+	"id": "apexcam-m80-air--3840x2160",
+	"camera_brand": "Apexcam",
+	"camera_model": "M80 Air",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2750.384932738341,
+		"fy": 2742.534658980817,
+		"cx": 1905.465584347488,
+		"cy": 989.1636746405288
+	},
+	"distortion_coeffs": [
+		-0.14075794853909057,
+		-0.020178186782009663,
+		0.11849011782065236,
+		-0.1082049220038672
+	],
+	"metadata": {
+		"calibrated_by": "nanopyjamas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

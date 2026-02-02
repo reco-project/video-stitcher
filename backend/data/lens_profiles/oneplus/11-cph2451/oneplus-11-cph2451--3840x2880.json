@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-11-cph2451--3840x2880",
+	"camera_brand": "OnePlus",
+	"camera_model": "11 CPH2451",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2878.9543569960324,
+		"fy": 2874.517080702265,
+		"cx": 1928.4237230286544,
+		"cy": 1427.0427115722025
+	},
+	"distortion_coeffs": [
+		0.5394850439261089,
+		-1.2776591613249726,
+		2.6874317328790847,
+		0.5348219762186988
+	],
+	"metadata": {
+		"calibrated_by": "P4tches",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r10--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R10",
+	"lens_model": "EFS 10mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 838.956845507562,
+		"fy": 840.6091751115033,
+		"cx": 978.7793378344328,
+		"cy": 524.1506412745565
+	},
+	"distortion_coeffs": [
+		0.32985024333601703,
+		0.12017870323595696,
+		-0.00941660584577848,
+		0.032130233351142526
+	],
+	"metadata": {
+		"calibrated_by": "jdalusong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-1--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 1",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2955.1446143043772,
+		"fy": 2951.982535422987,
+		"cx": 1958.4131897403136,
+		"cy": 1093.1355878298227
+	},
+	"distortion_coeffs": [
+		0.3793994084806627,
+		-0.04693702185574684,
+		0.04825084010383363,
+		0.8855755466106036
+	],
+	"metadata": {
+		"calibrated_by": "U0 A480",
+		"source": "gyroflow",
+		"official": true
+	}
+}

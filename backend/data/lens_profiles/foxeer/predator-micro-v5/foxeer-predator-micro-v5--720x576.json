@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-predator-micro-v5--720x576",
+	"camera_brand": "Foxeer",
+	"camera_model": "PREDATOR MICRO V5",
+	"lens_model": "1.7",
+	"resolution": {
+		"width": 720,
+		"height": 576
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 314.04796055842814,
+		"fy": 353.72294948829125,
+		"cx": 369.4949451295558,
+		"cy": 309.80658080614256
+	},
+	"distortion_coeffs": [
+		0.09620726716548926,
+		0.15411014441058818,
+		-0.4250660921909354,
+		0.3088790052217846
+	],
+	"metadata": {
+		"calibrated_by": "Fanch",
+		"source": "gyroflow",
+		"official": true
+	}
+}

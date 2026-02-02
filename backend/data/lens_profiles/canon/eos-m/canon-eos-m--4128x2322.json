@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--4128x2322",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Canon EFS 18-55mm",
+	"resolution": {
+		"width": 4128,
+		"height": 2322
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4394.235854087809,
+		"fy": 4397.804518424972,
+		"cx": 2145.3021229570827,
+		"cy": 1167.477185795564
+	},
+	"distortion_coeffs": [
+		0.1286068462767199,
+		0.9816257658685243,
+		-5.684333045301575,
+		13.612900114548918
+	],
+	"metadata": {
+		"calibrated_by": "Cody",
+		"source": "gyroflow",
+		"official": true
+	}
+}

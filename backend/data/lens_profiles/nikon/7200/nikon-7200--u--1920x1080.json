@@ -1,0 +1,29 @@
+{
+	"id": "nikon-7200--u--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "7200",
+	"lens_model": "140mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3257.4043791860886,
+		"fy": 3249.89928523677,
+		"cx": 941.7518194751387,
+		"cy": 499.8072179510347
+	},
+	"distortion_coeffs": [
+		0.27322631811841536,
+		5.482814433837946,
+		-79.83580790464184,
+		458.64629962822977
+	],
+	"metadata": {
+		"calibrated_by": "Yusuf",
+		"notes": "u",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "gopro-hero9-black--5312x2988",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO9 Black",
+	"lens_model": "Linear",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2532.6119178833487,
+		"fy": 2537.18863370454,
+		"cx": 2658.3123813506386,
+		"cy": 1501.139080101295
+	},
+	"distortion_coeffs": [
+		0.35029706500201957,
+		0.03071782327101835,
+		0.2982002626114863,
+		-0.1590018195047331
+	],
+	"metadata": {
+		"calibrated_by": "Eddy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

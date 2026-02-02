@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--iso400-wb3200-tint15--6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Canon 16-35mm 2.8 LUSM",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4268.795391792103,
+		"fy": 4273.760014341694,
+		"cx": 3048.3693480753295,
+		"cy": 1687.14993025257
+	},
+	"distortion_coeffs": [
+		0.2140763740458395,
+		0.187496221632907,
+		-0.24502382911435128,
+		0.4289742449696555
+	],
+	"metadata": {
+		"calibrated_by": "Nick Nicholson",
+		"notes": "ISO400 WB3200 Tint15",
+		"source": "gyroflow",
+		"official": true
+	}
+}

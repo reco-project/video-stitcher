@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--35mm-fullframe--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sony SEL35F18F",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3843.243029734285,
+		"fy": 3844.88841865364,
+		"cx": 1978.1291332011065,
+		"cy": 1062.0651425550757
+	},
+	"distortion_coeffs": [
+		0.3213888266921043,
+		0.3423052626809623,
+		-0.45921613083188934,
+		0.1772991939014029
+	],
+	"metadata": {
+		"calibrated_by": "J\u00f6rg Niggli | niggli.com",
+		"notes": "35mm Fullframe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

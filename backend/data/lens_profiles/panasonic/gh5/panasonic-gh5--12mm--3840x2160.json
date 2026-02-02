@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--12mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "LUMIX Leica DG Vario 12-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3482.90088408859,
+		"fy": 3503.040147992885,
+		"cx": 1983.3332785957728,
+		"cy": 923.8363961642492
+	},
+	"distortion_coeffs": [
+		0.4012531637890307,
+		0.2419891521310478,
+		3.481913838826192,
+		-7.846605023196728
+	],
+	"metadata": {
+		"calibrated_by": "Cato Svensen",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

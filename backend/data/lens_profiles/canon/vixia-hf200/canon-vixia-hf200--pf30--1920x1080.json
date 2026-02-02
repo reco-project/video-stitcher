@@ -1,0 +1,29 @@
+{
+	"id": "canon-vixia-hf200--pf30--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Vixia HF200",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 25103.363773245655,
+		"fy": 25086.629041957407,
+		"cx": 600.3018970252035,
+		"cy": 562.3091333248783
+	},
+	"distortion_coeffs": [
+		7.540137545411202,
+		-11621.483547930424,
+		6825243.196552445,
+		-1294126972.364962
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Park",
+		"notes": "PF30",
+		"source": "gyroflow",
+		"official": true
+	}
+}

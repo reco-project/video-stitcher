@@ -1,0 +1,28 @@
+{
+	"id": "motorola-moto-g5--1920x1080",
+	"camera_brand": "Motorola",
+	"camera_model": "Moto G5",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1486.5733030120834,
+		"fy": 1486.2775388102366,
+		"cx": 963.8367220804836,
+		"cy": 533.0167133746329
+	},
+	"distortion_coeffs": [
+		0.6748919750014102,
+		-0.3563903380325894,
+		-2.8599918665003914,
+		6.97870466117675
+	],
+	"metadata": {
+		"calibrated_by": "Jordan G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-f6--6065x2560",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "DZOFILM VESPID 35MM",
+	"resolution": {
+		"width": 6065,
+		"height": 2560
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5964.965633549946,
+		"fy": 5961.828021494984,
+		"cx": 3080.1414708254483,
+		"cy": 1293.7707947505585
+	},
+	"distortion_coeffs": [
+		0.18067649870185432,
+		0.15839275086787552,
+		0.21420345578096783,
+		1.522952906112116
+	],
+	"metadata": {
+		"calibrated_by": "wt04_reddragon",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--160--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sigma 20 F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2206.807773167774,
+		"fy": 2207.033455047543,
+		"cx": 1923.6530400908628,
+		"cy": 1072.0040680506834
+	},
+	"distortion_coeffs": [
+		0.309663021033163,
+		0.21312578584773337,
+		-0.00853032164003679,
+		5.860262263745708e-05
+	],
+	"metadata": {
+		"calibrated_by": "Theanea Theang",
+		"notes": "160",
+		"source": "gyroflow",
+		"official": true
+	}
+}

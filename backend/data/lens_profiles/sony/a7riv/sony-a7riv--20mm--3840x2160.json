@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7riv--20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIV",
+	"lens_model": "Sony 20-70 F4 G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3927.260586861252,
+		"fy": 3930.483856179337,
+		"cx": 1937.902020203045,
+		"cy": 1103.3906928703989
+	},
+	"distortion_coeffs": [
+		0.2634693089826869,
+		0.9374207618141904,
+		-4.5493579354438465,
+		8.485105012068365
+	],
+	"metadata": {
+		"calibrated_by": "csf",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

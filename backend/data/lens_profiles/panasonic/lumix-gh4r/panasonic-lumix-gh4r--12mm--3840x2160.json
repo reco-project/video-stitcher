@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh4r--12mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH4R",
+	"lens_model": "Lumix 12-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3394.156321469803,
+		"fy": 3391.492977176626,
+		"cx": 1906.4899137760583,
+		"cy": 1104.2530573567192
+	},
+	"distortion_coeffs": [
+		0.3012648574253991,
+		-0.03675179109436797,
+		0.8280981816145089,
+		-0.9906065771015176
+	],
+	"metadata": {
+		"calibrated_by": "Cajo",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

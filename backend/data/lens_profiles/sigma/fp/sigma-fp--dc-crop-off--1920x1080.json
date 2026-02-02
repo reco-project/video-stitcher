@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--dc-crop-off--1920x1080",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "SIGMA 90mm f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13559.671834720377,
+		"fy": 13476.521376025015,
+		"cx": 896.345065469251,
+		"cy": 588.5043786012967
+	},
+	"distortion_coeffs": [
+		2.5529316146076053,
+		-169.08839321222612,
+		108540.7905399975,
+		-10975671.92025282
+	],
+	"metadata": {
+		"calibrated_by": "Lloyd Kershaw",
+		"notes": "DC crop OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

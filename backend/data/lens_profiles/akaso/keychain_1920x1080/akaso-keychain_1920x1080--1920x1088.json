@@ -1,0 +1,28 @@
+{
+	"id": "akaso-keychain_1920x1080--1920x1088",
+	"camera_brand": "AKASO",
+	"camera_model": "KeyChain_1920x1080",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 589.6297264609977,
+		"fy": 572.9310887588705,
+		"cx": 978.734866957246,
+		"cy": 559.8339922399402
+	},
+	"distortion_coeffs": [
+		0.3156332387334125,
+		0.11621477803173444,
+		-0.005243605423364256,
+		0.13077555588881143
+	],
+	"metadata": {
+		"calibrated_by": "SN-Peter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

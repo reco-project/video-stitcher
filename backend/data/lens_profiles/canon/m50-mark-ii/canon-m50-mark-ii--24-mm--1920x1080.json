@@ -1,0 +1,29 @@
+{
+	"id": "canon-m50-mark-ii--24-mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "m50 mark II",
+	"lens_model": "Canon 24-70 mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1503.9218247128292,
+		"fy": 1506.7855786774662,
+		"cx": 957.5405135148992,
+		"cy": 551.421609457302
+	},
+	"distortion_coeffs": [
+		0.1610103982890518,
+		0.3654303983240046,
+		-0.8617836662463182,
+		1.4132774737726057
+	],
+	"metadata": {
+		"calibrated_by": "Jeisson Caro",
+		"notes": "24 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

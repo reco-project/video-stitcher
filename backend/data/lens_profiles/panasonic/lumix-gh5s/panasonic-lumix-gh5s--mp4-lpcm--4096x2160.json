@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh5s--mp4-lpcm--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "LUMIX GH5S",
+	"lens_model": "LUMIX G VARIO 12-35 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2591.8081869179705,
+		"fy": 2587.0444758515996,
+		"cx": 2047.961007716048,
+		"cy": 1060.7384088904664
+	},
+	"distortion_coeffs": [
+		0.29162491528574086,
+		0.0948444914438185,
+		0.1103947656242025,
+		-0.054121082447447205
+	],
+	"metadata": {
+		"calibrated_by": "ibonk.media",
+		"notes": "MP4 (LPCM)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

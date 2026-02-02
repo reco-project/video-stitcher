@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--ttartisan-35mm-f18--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3132.068743730383,
+		"fy": 3131.1991271163574,
+		"cx": 944.6703942075584,
+		"cy": 520.1319526349433
+	},
+	"distortion_coeffs": [
+		0.1786991830020258,
+		2.093114504023767,
+		-18.78949245136894,
+		45.57030493783545
+	],
+	"metadata": {
+		"calibrated_by": "oranpig",
+		"notes": "TTArtisan 35mm F1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

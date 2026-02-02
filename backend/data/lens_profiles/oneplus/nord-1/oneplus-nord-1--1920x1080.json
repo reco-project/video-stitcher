@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-nord-1--1920x1080",
+	"camera_brand": "OnePlus",
+	"camera_model": "Nord 1",
+	"lens_model": "Wide(x1)",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1657.6438745479306,
+		"fy": 1658.1691654901056,
+		"cx": 949.3485105177452,
+		"cy": 519.2554768250304
+	},
+	"distortion_coeffs": [
+		0.588916993977585,
+		-1.6698062053464795,
+		4.078905887668265,
+		-2.140551784519246
+	],
+	"metadata": {
+		"calibrated_by": "NoUntermensch",
+		"source": "gyroflow",
+		"official": true
+	}
+}

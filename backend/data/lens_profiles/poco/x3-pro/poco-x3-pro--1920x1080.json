@@ -1,0 +1,28 @@
+{
+	"id": "poco-x3-pro--1920x1080",
+	"camera_brand": "POCO",
+	"camera_model": "x3 Pro",
+	"lens_model": "IMX582",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1819.0628684466933,
+		"fy": 1820.174993374928,
+		"cx": 916.6627250671404,
+		"cy": 543.5036697244328
+	},
+	"distortion_coeffs": [
+		0.4839771012898977,
+		-2.455808221638274,
+		23.62535354811111,
+		-59.80980659022685
+	],
+	"metadata": {
+		"calibrated_by": "Sirjan Chhetri",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "apeman-a80--none--2880x2160",
+	"camera_brand": "Apeman",
+	"camera_model": "A80",
+	"lens_model": "None",
+	"resolution": {
+		"width": 2880,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1367.5719800071015,
+		"fy": 1820.512297083412,
+		"cx": 1362.368505754001,
+		"cy": 953.0289629752426
+	},
+	"distortion_coeffs": [
+		0.011429718012938527,
+		0.1802693640417868,
+		-0.30649762002336356,
+		0.18666804508754672
+	],
+	"metadata": {
+		"calibrated_by": "DFCloud",
+		"notes": "None",
+		"source": "gyroflow",
+		"official": true
+	}
+}

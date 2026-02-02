@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-mini--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar Mini",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 798.4105129117062,
+		"fy": 798.0527035271798,
+		"cx": 929.0590696805918,
+		"cy": 516.0730638558347
+	},
+	"distortion_coeffs": [
+		0.002623014729118269,
+		-0.05408200011637264,
+		0.03016954713961551,
+		-0.007596815555833075
+	],
+	"metadata": {
+		"calibrated_by": "Trevor Johnson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

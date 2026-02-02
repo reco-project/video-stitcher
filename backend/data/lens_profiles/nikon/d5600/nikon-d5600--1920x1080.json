@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d5600--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D5600",
+	"lens_model": "AF-S DX NIKKOR 18-140MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1513.7181179498348,
+		"fy": 1524.2615781112595,
+		"cx": 942.3539260358136,
+		"cy": 562.8628628592435
+	},
+	"distortion_coeffs": [
+		0.18375831993472816,
+		-0.09312973749772308,
+		1.1216657898374325,
+		-1.6073032226535815
+	],
+	"metadata": {
+		"calibrated_by": "Alex Vicente Lopez",
+		"source": "gyroflow",
+		"official": true
+	}
+}

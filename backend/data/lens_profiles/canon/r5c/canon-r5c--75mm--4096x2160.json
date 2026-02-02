@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--75mm--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "Laowa 7.5 F2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1446.5408887402418,
+		"fy": 1446.2538084489922,
+		"cx": 2076.937382028975,
+		"cy": 1066.8673436055903
+	},
+	"distortion_coeffs": [
+		0.3039815311113068,
+		0.23397831516082604,
+		-0.11212532394942944,
+		0.10518894919387724
+	],
+	"metadata": {
+		"calibrated_by": "Toanlu fpv",
+		"notes": "7.5mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

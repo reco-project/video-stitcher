@@ -1,0 +1,28 @@
+{
+	"id": "canon-m50-mark-2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "m50 mark 2",
+	"lens_model": "15-45mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1464.966422681481,
+		"fy": 1466.3903005437487,
+		"cx": 961.3530588916556,
+		"cy": 532.1668030819917
+	},
+	"distortion_coeffs": [
+		0.1958872330282033,
+		0.16060710745794146,
+		0.02020329206757109,
+		0.18203220856873237
+	],
+	"metadata": {
+		"calibrated_by": "nexus",
+		"source": "gyroflow",
+		"official": true
+	}
+}

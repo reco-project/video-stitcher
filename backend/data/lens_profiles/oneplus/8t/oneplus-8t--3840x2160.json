@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-8t--3840x2160",
+	"camera_brand": "OnePlus",
+	"camera_model": "8T",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3556.495778310132,
+		"fy": 3553.6146605158933,
+		"cx": 1925.2855498939205,
+		"cy": 1073.2213001327743
+	},
+	"distortion_coeffs": [
+		0.5659800525640888,
+		-1.0001734247410057,
+		-0.18200218218133848,
+		8.591024316705049
+	],
+	"metadata": {
+		"calibrated_by": "U0 A1041",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-f6--no-crop-60-degree-shutter-angle--6064x6060",
+	"camera_brand": "Z CAM",
+	"camera_model": "F6",
+	"lens_model": "Biotar 58mm + Aivascope 1.5x (Veritcal)",
+	"resolution": {
+		"width": 6064,
+		"height": 6060
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11803.500763027385,
+		"fy": 11095.68224946394,
+		"cx": 3179.5901739748183,
+		"cy": 926.849275128423
+	},
+	"distortion_coeffs": [
+		0.4532650233867443,
+		-1.4069917057007886,
+		6.684431778523366,
+		-16.201615095120747
+	],
+	"metadata": {
+		"calibrated_by": "Adam Agostino",
+		"notes": "No Crop, 60 degree shutter angle",
+		"source": "gyroflow",
+		"official": true
+	}
+}

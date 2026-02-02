@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s22--motion-cam-raw-4k-preset--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S22",
+	"lens_model": "14mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1681.0581440803417,
+		"fy": 1673.6110293567742,
+		"cx": 1912.6791747810255,
+		"cy": 1093.9280065160049
+	},
+	"distortion_coeffs": [
+		0.3661559831686877,
+		-0.0620848895186203,
+		0.5935822242064666,
+		-0.4150895010074714
+	],
+	"metadata": {
+		"calibrated_by": "Taylor",
+		"notes": "Motion Cam Raw 4k Preset",
+		"source": "gyroflow",
+		"official": true
+	}
+}

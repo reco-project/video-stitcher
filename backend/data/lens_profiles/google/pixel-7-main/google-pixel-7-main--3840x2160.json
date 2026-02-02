@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-7-main--3840x2160",
+	"camera_brand": "Google",
+	"camera_model": "pixel 7 main",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3359.0563535740016,
+		"fy": 3355.0652651270393,
+		"cx": 1912.0591133506723,
+		"cy": 1098.831397491599
+	},
+	"distortion_coeffs": [
+		0.5810022655663247,
+		-1.781479045944014,
+		7.473301259660296,
+		-10.135152978784456
+	],
+	"metadata": {
+		"calibrated_by": "U0 A297",
+		"source": "gyroflow",
+		"official": true
+	}
+}

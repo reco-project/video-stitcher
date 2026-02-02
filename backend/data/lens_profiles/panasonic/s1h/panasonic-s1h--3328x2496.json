@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s1h--3328x2496",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "dulens43 4.3",
+	"resolution": {
+		"width": 3328,
+		"height": 2496
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12963.63862814831,
+		"fy": 12893.055728981037,
+		"cx": 1822.2538522149432,
+		"cy": 2351.532866962615
+	},
+	"distortion_coeffs": [
+		0.15236075655416767,
+		13.321605419952142,
+		-353.7262928387074,
+		3281.379230556971
+	],
+	"metadata": {
+		"calibrated_by": "Qiangzi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

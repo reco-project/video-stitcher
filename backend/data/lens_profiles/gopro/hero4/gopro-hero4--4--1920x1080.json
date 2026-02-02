@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero4--4--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 850.5387586863494,
+		"fy": 849.4007692175468,
+		"cx": 959.0315678433136,
+		"cy": 533.9036804217802
+	},
+	"distortion_coeffs": [
+		0.12938247974119307,
+		-0.09576872590457328,
+		0.08180834234092126,
+		-0.03559140326325657
+	],
+	"metadata": {
+		"calibrated_by": "H",
+		"notes": "4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

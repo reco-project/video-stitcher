@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e1--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "sigma16-28 F2.8 22.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1218.383568206236,
+		"fy": 1218.637727621348,
+		"cx": 956.6969508760444,
+		"cy": 536.6748886008226
+	},
+	"distortion_coeffs": [
+		0.2996238538132745,
+		0.3419147202107703,
+		-0.5268146290140466,
+		0.6245432949402383
+	],
+	"metadata": {
+		"calibrated_by": "dkl",
+		"source": "gyroflow",
+		"official": true
+	}
+}

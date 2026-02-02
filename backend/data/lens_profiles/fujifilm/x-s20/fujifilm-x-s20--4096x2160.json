@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-s20--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S20",
+	"lens_model": "FUJINON XC15-45mmF3.5-5.6 OIS PZFUJINON XC15-45mmF3.5-5.6 OIS PZ",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3768.8766411364063,
+		"fy": 3722.419477301449,
+		"cx": 2078.5561576948617,
+		"cy": 1508.139302559036
+	},
+	"distortion_coeffs": [
+		0.3549846708060335,
+		-0.26808063431591794,
+		2.2932398522119675,
+		-3.6073608614445463
+	],
+	"metadata": {
+		"calibrated_by": "\u0412\u043b\u0430\u0434\u0438\u043c\u0438\u0440 \u041a\u0438\u043c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

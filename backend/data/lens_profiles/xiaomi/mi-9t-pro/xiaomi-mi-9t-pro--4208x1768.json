@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-9t-pro--4208x1768",
+	"camera_brand": "Xiaomi",
+	"camera_model": "MI 9T Pro",
+	"lens_model": "16mm",
+	"resolution": {
+		"width": 4208,
+		"height": 1768
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1860.416235091428,
+		"fy": 1857.1361881549503,
+		"cx": 2140.9809412173377,
+		"cy": 874.9646296010535
+	},
+	"distortion_coeffs": [
+		0.29828439034421755,
+		-0.08218590161011859,
+		0.8575208750883286,
+		-0.786336930124123
+	],
+	"metadata": {
+		"calibrated_by": "mine",
+		"source": "gyroflow",
+		"official": true
+	}
+}

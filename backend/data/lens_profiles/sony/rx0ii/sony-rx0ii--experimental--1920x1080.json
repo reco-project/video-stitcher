@@ -1,0 +1,29 @@
+{
+	"id": "sony-rx0ii--experimental--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "LH0811-12MP",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1535.8852316587615,
+		"fy": 1529.3747049063356,
+		"cx": 984.226403287278,
+		"cy": 538.3593868417576
+	},
+	"distortion_coeffs": [
+		0.1150814279261146,
+		1.5633511934624496,
+		-1.7828145944358011,
+		-0.9192729123321666
+	],
+	"metadata": {
+		"calibrated_by": "Nicecrash_22",
+		"notes": "EXPERIMENTAL",
+		"source": "gyroflow",
+		"official": true
+	}
+}

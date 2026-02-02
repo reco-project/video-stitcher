@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-8--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 8",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1418.1290459040206,
+		"fy": 1414.9551452674675,
+		"cx": 963.0532088576008,
+		"cy": 528.2566185473488
+	},
+	"distortion_coeffs": [
+		0.34110002595091027,
+		1.0053700200520248,
+		-4.167080864873963,
+		5.1439594000672555
+	],
+	"metadata": {
+		"calibrated_by": "Dino Rico Bendanillo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

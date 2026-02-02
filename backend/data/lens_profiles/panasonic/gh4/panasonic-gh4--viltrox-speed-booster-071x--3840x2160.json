@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--viltrox-speed-booster-071x--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Sigma 10-20mm 1:4-5.6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1985.137053316885,
+		"fy": 1983.838465273393,
+		"cx": 1855.1617209403912,
+		"cy": 1070.2252062159512
+	},
+	"distortion_coeffs": [
+		0.2605502409636095,
+		0.32336066996933105,
+		-0.15819512859293883,
+		0.047611187104045744
+	],
+	"metadata": {
+		"calibrated_by": "RadavFPV",
+		"notes": "Viltrox Speed Booster 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

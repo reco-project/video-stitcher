@@ -1,0 +1,28 @@
+{
+	"id": "red-epic--4096x1680",
+	"camera_brand": "RED",
+	"camera_model": "EPIC",
+	"lens_model": "ATLAS ORION 40MM",
+	"resolution": {
+		"width": 4096,
+		"height": 1680
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8825.586757433895,
+		"fy": 8886.808605964668,
+		"cx": 1014.3932407719092,
+		"cy": 490.2665047484986
+	},
+	"distortion_coeffs": [
+		0.8213181656887516,
+		-14.234321770026089,
+		153.09716668512473,
+		-575.9606737555915
+	],
+	"metadata": {
+		"calibrated_by": "David Pou",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-split-4k-mini--2704x1520",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Split 4k mini",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1306.8887654843584,
+		"fy": 1304.953551154112,
+		"cx": 1322.3920514294318,
+		"cy": 823.6873278474461
+	},
+	"distortion_coeffs": [
+		-0.040785318785509,
+		0.01948018287286759,
+		-0.02243672641293951,
+		0.007848023945861302
+	],
+	"metadata": {
+		"calibrated_by": "Kostya",
+		"source": "gyroflow",
+		"official": true
+	}
+}

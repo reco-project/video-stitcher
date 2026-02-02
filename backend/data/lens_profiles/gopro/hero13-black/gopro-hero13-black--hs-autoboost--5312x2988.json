@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero13-black--hs-autoboost--5312x2988",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO13 Black",
+	"lens_model": "Superview",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1931.7163441408684,
+		"fy": 1934.7179447000997,
+		"cx": 2662.380376929634,
+		"cy": 1483.39890627914
+	},
+	"distortion_coeffs": [
+		-0.006452622485742652,
+		0.22103445644825737,
+		-0.1373192620805086,
+		0.01521940418983752
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Weinstein",
+		"notes": "HS AutoBoost",
+		"source": "gyroflow",
+		"official": true
+	}
+}

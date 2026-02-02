@@ -2,7 +2,7 @@
 	"id": "dji-mavic-3-c2--3840x2160",
 	"camera_brand": "DJI",
 	"camera_model": "Mavic 3 C2",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		3.299211199474934
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Mavic 3 C2___4k_16by9_3840x2160-50.00fps",
 		"calibrated_by": "\u674e\u680b",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "50.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-m4--1920x1080",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Sony SEL35F18 35mm 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3892.1523060447535,
+		"fy": 3891.65169527577,
+		"cx": 958.8597696605352,
+		"cy": 515.5250804521055
+	},
+	"distortion_coeffs": [
+		0.6116796283714735,
+		-9.841008748698854,
+		249.44328480659507,
+		-2595.9812662826303
+	],
+	"metadata": {
+		"calibrated_by": "V V",
+		"source": "gyroflow",
+		"official": true
+	}
+}

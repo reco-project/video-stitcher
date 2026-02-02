@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-yi-4k--2720x2032",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi 4k+",
+	"lens_model": null,
+	"resolution": {
+		"width": 2720,
+		"height": 2032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1257.323557504574,
+		"fy": 1250.5324035289834,
+		"cx": 1346.061540317428,
+		"cy": 1035.421491842622
+	},
+	"distortion_coeffs": [
+		0.3456323649728774,
+		0.12220681312952328,
+		0.0643005837568314,
+		0.044350984868831295
+	],
+	"metadata": {
+		"calibrated_by": "Giovanni Riccio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

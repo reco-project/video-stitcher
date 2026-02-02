@@ -1,0 +1,29 @@
+{
+	"id": "redmi-note-10s--vignette-correction-off--3840x2160",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 10s",
+	"lens_model": "Wide @26mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2808.6849988189774,
+		"fy": 2810.5068551104446,
+		"cx": 1928.48411965996,
+		"cy": 1088.9948929120574
+	},
+	"distortion_coeffs": [
+		0.4808609346428343,
+		-1.135586040898097,
+		4.712556393553831,
+		-6.030718970266828
+	],
+	"metadata": {
+		"calibrated_by": "Sergey",
+		"notes": "vignette correction off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

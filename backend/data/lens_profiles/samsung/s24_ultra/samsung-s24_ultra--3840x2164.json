@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s24_ultra--3840x2164",
+	"camera_brand": "Samsung",
+	"camera_model": "S24_Ultra",
+	"lens_model": "Superview",
+	"resolution": {
+		"width": 3840,
+		"height": 2164
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2721.9765313147377,
+		"fy": 2721.104818304775,
+		"cx": 1926.3149850639757,
+		"cy": 1099.080913869578
+	},
+	"distortion_coeffs": [
+		0.6367897874718159,
+		-1.992384987877364,
+		8.455719613791855,
+		-12.355567432832393
+	],
+	"metadata": {
+		"calibrated_by": "Abdulsattar Mohammed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh5s--man-focus--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5S",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1789.6772277056723,
+		"fy": 1789.2796053797747,
+		"cx": 2029.2583953775704,
+		"cy": 1099.4954830318788
+	},
+	"distortion_coeffs": [
+		0.3360728448636929,
+		0.12895407646085869,
+		-0.16752452374177512,
+		0.30313732468315385
+	],
+	"metadata": {
+		"calibrated_by": "davide Morandi",
+		"notes": "man focus",
+		"source": "gyroflow",
+		"official": true
+	}
+}

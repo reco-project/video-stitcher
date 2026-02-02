@@ -1,0 +1,29 @@
+{
+	"id": "canon-90d--29fps--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "90D",
+	"lens_model": "18-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1552.0315508491165,
+		"fy": 1562.1588455077504,
+		"cx": 931.1886878156768,
+		"cy": 537.1944521107552
+	},
+	"distortion_coeffs": [
+		0.15862146997218782,
+		0.30831996523789074,
+		-0.7560646116494778,
+		1.4407518318700685
+	],
+	"metadata": {
+		"calibrated_by": "Jose Creativo",
+		"notes": "29fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

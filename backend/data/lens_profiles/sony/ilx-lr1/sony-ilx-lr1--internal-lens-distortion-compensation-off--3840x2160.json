@@ -1,0 +1,29 @@
+{
+	"id": "sony-ilx-lr1--internal-lens-distortion-compensation-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILX-LR1",
+	"lens_model": "Laowa 11mm F4.5 C-Dreamer",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1515.877011247603,
+		"fy": 1515.5067779949472,
+		"cx": 1918.0348640550403,
+		"cy": 1067.3730106781277
+	},
+	"distortion_coeffs": [
+		0.3229835069540877,
+		0.12383588604763876,
+		-0.043049509237838415,
+		0.09851328032223795
+	],
+	"metadata": {
+		"calibrated_by": "Joost Tromp",
+		"notes": "Internal lens distortion compensation OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

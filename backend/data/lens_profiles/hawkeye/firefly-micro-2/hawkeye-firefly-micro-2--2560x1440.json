@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-micro-2--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly Micro 2",
+	"lens_model": "Micro2",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1736.0701561890053,
+		"fy": 1733.3854145981998,
+		"cx": 1263.286313427972,
+		"cy": 688.1581529547757
+	},
+	"distortion_coeffs": [
+		-0.09865567748900284,
+		-0.022969299794558917,
+		0.024271451792714022,
+		-0.0161227773454394
+	],
+	"metadata": {
+		"calibrated_by": "MiyaTron",
+		"source": "gyroflow",
+		"official": true
+	}
+}

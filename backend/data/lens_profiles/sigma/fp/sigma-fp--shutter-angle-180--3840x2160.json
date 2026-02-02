@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--shutter-angle-180--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Tokina AT-X 270 AF PRO II @ 28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3039.976323380336,
+		"fy": 3041.795472067469,
+		"cx": 1994.241228729002,
+		"cy": 1060.2756698511494
+	},
+	"distortion_coeffs": [
+		0.2267423340783739,
+		0.01549944963616312,
+		0.3891887029774258,
+		-0.07517407281461286
+	],
+	"metadata": {
+		"calibrated_by": "Zsolt Gyapay",
+		"notes": "Shutter Angle: 180\u00b0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r6-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS r6 mark II",
+	"lens_model": "RF24-105mm F4-7.1 IS STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3359.8025785937652,
+		"fy": 3363.549389085188,
+		"cx": 947.8089801166866,
+		"cy": 573.8872072092105
+	},
+	"distortion_coeffs": [
+		0.32339079155962663,
+		-0.6348406330879097,
+		26.238397996436177,
+		-221.65315608762788
+	],
+	"metadata": {
+		"calibrated_by": "\u8d75\u826f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--t22-shutter-180\u00ba-3200-iso--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Meike 8mm T2.9",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1818.6048630039984,
+		"fy": 1818.7071900918768,
+		"cx": 2065.6374929994477,
+		"cy": 1079.9108976393286
+	},
+	"distortion_coeffs": [
+		0.25040564189013936,
+		0.15558596473236103,
+		0.035478509745601655,
+		0.0713999723863512
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Shahrestany",
+		"notes": "T22 Shutter 180\u00ba 3200 ISO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

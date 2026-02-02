@@ -1,0 +1,28 @@
+{
+	"id": "runcam-tramp-pro-4k--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "Tramp pro 4k",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2434.899792236637,
+		"fy": 2428.585984527397,
+		"cx": 1926.24053491012,
+		"cy": 1003.3140040105526
+	},
+	"distortion_coeffs": [
+		0.035289264223871054,
+		-0.15507423462766162,
+		0.07141404148467108,
+		0.03247478341826494
+	],
+	"metadata": {
+		"calibrated_by": "DIMAzerver",
+		"source": "gyroflow",
+		"official": true
+	}
+}

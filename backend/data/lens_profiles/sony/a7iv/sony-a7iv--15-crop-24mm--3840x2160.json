@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--15-crop-24mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sigma 16.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2626.5534840090017,
+		"fy": 2626.745253518445,
+		"cx": 1920.3121187507024,
+		"cy": 1074.9973504078798
+	},
+	"distortion_coeffs": [
+		0.2805541154480018,
+		0.5971447350895016,
+		-1.6037264429855032,
+		1.9871192964981348
+	],
+	"metadata": {
+		"calibrated_by": "The Kreator",
+		"notes": "1.5 crop 24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

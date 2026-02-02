@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s23--3840x2176",
+	"camera_brand": "Samsung",
+	"camera_model": "S23",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2719.7139407050577,
+		"fy": 2730.4965162122294,
+		"cx": 1905.9569108182068,
+		"cy": 1101.0427570414015
+	},
+	"distortion_coeffs": [
+		0.4347838089424328,
+		-0.12074976493715316,
+		1.7385876602401351,
+		-4.167304604864478
+	],
+	"metadata": {
+		"calibrated_by": "Bingo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

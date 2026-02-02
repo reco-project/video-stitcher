@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6000--iso-200--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6000",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1391.353212322642,
+		"fy": 1390.9761463309128,
+		"cx": 926.588646738995,
+		"cy": 496.8471976034795
+	},
+	"distortion_coeffs": [
+		0.3131662271779743,
+		0.06034069304060268,
+		0.8032479718613061,
+		-1.484468616893775
+	],
+	"metadata": {
+		"calibrated_by": "luca mosimann",
+		"notes": "iso 200",
+		"source": "gyroflow",
+		"official": true
+	}
+}

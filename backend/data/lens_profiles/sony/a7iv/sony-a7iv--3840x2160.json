@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7iv--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "SAMYANG 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4038.570084213148,
+		"fy": 4038.8049628309464,
+		"cx": 1921.2773302850492,
+		"cy": 1046.8783815881134
+	},
+	"distortion_coeffs": [
+		0.2024925605502247,
+		0.7625030289227752,
+		-4.479187676501257,
+		10.988399820573612
+	],
+	"metadata": {
+		"calibrated_by": "WINMEDIACENTER",
+		"source": "gyroflow",
+		"official": true
+	}
+}

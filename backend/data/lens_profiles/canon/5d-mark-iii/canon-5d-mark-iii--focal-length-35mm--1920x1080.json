@@ -1,0 +1,29 @@
+{
+	"id": "canon-5d-mark-iii--focal-length-35mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark III",
+	"lens_model": "Canon EF 24-70 f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2393.2668811985222,
+		"fy": 2381.5433028565512,
+		"cx": 902.0013258711374,
+		"cy": 563.8281857581524
+	},
+	"distortion_coeffs": [
+		0.3335685101723705,
+		-0.3783810214704047,
+		4.075656582921967,
+		-7.9213764948335
+	],
+	"metadata": {
+		"calibrated_by": "fahrison",
+		"notes": "focal length 35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

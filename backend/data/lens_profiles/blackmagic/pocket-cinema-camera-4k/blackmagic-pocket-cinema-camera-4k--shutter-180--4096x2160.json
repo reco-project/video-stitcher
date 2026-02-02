@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--shutter-180--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Lumix 12-35",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3000.413648226199,
+		"fy": 3001.519329557475,
+		"cx": 2031.015583955315,
+		"cy": 1058.0552612143215
+	},
+	"distortion_coeffs": [
+		0.06510098436475964,
+		0.06954397721748204,
+		0.41047501154937527,
+		-0.5016446664648404
+	],
+	"metadata": {
+		"calibrated_by": "Valentin Holz",
+		"notes": "Shutter 180\u00b0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

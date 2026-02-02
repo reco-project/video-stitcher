@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx3--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "TT Artisan 50mm 1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5704.616478292879,
+		"fy": 5706.305685045093,
+		"cx": 1995.3539106186452,
+		"cy": 997.5945173303008
+	},
+	"distortion_coeffs": [
+		0.09888720314194636,
+		0.7513430150853647,
+		-5.646480208897421,
+		19.987863296417817
+	],
+	"metadata": {
+		"calibrated_by": "Cosmo Free",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero11-black--hs-eis--2704x2028",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO11 Black",
+	"lens_model": "Max Wide",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1118.6048559793196,
+		"fy": 1123.5075864367352,
+		"cx": 1396.2224185218502,
+		"cy": 995.9527037034862
+	},
+	"distortion_coeffs": [
+		0.17269062338610364,
+		-0.23200039481422025,
+		0.22117682179201772,
+		-0.08466821915141147
+	],
+	"metadata": {
+		"calibrated_by": "Marek Horak",
+		"notes": "HS EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

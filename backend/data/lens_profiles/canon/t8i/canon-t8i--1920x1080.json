@@ -1,0 +1,28 @@
+{
+	"id": "canon-t8i--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "T8i",
+	"lens_model": "15mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1539.1501302772335,
+		"fy": 1539.461724371475,
+		"cx": 930.7547419395438,
+		"cy": 540.2928120595565
+	},
+	"distortion_coeffs": [
+		0.17796074067058332,
+		-0.2794858676558884,
+		2.087115596875513,
+		-3.0804150447935466
+	],
+	"metadata": {
+		"calibrated_by": "MOTION LAND",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xtu-x3--1920x1440",
+	"camera_brand": "XTU",
+	"camera_model": "X3",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 917.4743314291268,
+		"fy": 917.8051766659592,
+		"cx": 954.7461651001074,
+		"cy": 695.9455635519485
+	},
+	"distortion_coeffs": [
+		0.12209935420657617,
+		-0.1721939540311577,
+		0.13481486925658112,
+		-0.04589530283209455
+	],
+	"metadata": {
+		"calibrated_by": "XTU",
+		"source": "gyroflow",
+		"official": true
+	}
+}

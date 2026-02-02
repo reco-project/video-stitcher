@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--automatic-15x-crop--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "28mm with 1,5x Crop",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4694.418159239725,
+		"fy": 4591.596235069213,
+		"cx": 1927.886501993641,
+		"cy": 1047.162319253743
+	},
+	"distortion_coeffs": [
+		0.11535933753236952,
+		0.578882330870066,
+		-4.616850049916986,
+		18.563410214295978
+	],
+	"metadata": {
+		"calibrated_by": "Nils Schreiner",
+		"notes": "Automatic 1,5x Crop",
+		"source": "gyroflow",
+		"official": true
+	}
+}

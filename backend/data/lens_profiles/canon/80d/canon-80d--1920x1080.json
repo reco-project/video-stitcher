@@ -1,0 +1,28 @@
+{
+	"id": "canon-80d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "80D",
+	"lens_model": "Yongnuo EF YN 50mm F/1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4479.861823776945,
+		"fy": 4481.392097348886,
+		"cx": 910.2259443927908,
+		"cy": 473.14992867464014
+	},
+	"distortion_coeffs": [
+		0.21869327285667595,
+		7.371230779091874,
+		-290.1204525678691,
+		3324.9336943156477
+	],
+	"metadata": {
+		"calibrated_by": "Vivin Samuel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

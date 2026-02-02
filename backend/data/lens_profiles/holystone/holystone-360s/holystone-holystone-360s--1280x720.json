@@ -1,0 +1,28 @@
+{
+	"id": "holystone-holystone-360s--1280x720",
+	"camera_brand": "HolyStone",
+	"camera_model": "HolyStone 360s",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 952.6515919350402,
+		"fy": 947.9879561674318,
+		"cx": 652.0373886248937,
+		"cy": 338.9108092196093
+	},
+	"distortion_coeffs": [
+		-0.08320335613504858,
+		0.1874486149930104,
+		-0.8092802276798046,
+		1.0048500731036405
+	],
+	"metadata": {
+		"calibrated_by": "oocoder",
+		"source": "gyroflow",
+		"official": true
+	}
+}

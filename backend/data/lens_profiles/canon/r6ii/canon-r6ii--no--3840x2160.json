@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6ii--no--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6ii",
+	"lens_model": "24-105",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4159.88131580426,
+		"fy": 4161.102906864846,
+		"cx": 1968.5463371987837,
+		"cy": 1150.3548938047095
+	},
+	"distortion_coeffs": [
+		0.2191148402878167,
+		0.3538362299797523,
+		-3.61693386242233,
+		15.3507738810933
+	],
+	"metadata": {
+		"calibrated_by": "Nima Abolghasemi",
+		"notes": "no",
+		"source": "gyroflow",
+		"official": true
+	}
+}

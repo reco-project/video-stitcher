@@ -1,0 +1,28 @@
+{
+	"id": "asus-zenfone6-zs630kl--3840x2160",
+	"camera_brand": "ASUS",
+	"camera_model": "Zenfone6 ZS630KL",
+	"lens_model": "Main Cam",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3713.290247508078,
+		"fy": 3710.8695981463575,
+		"cx": 1914.755195209964,
+		"cy": 1064.072922926317
+	},
+	"distortion_coeffs": [
+		0.338659290009527,
+		0.11065844633717783,
+		2.8401187339844034,
+		-9.085094357766272
+	],
+	"metadata": {
+		"calibrated_by": "User987654321",
+		"source": "gyroflow",
+		"official": true
+	}
+}

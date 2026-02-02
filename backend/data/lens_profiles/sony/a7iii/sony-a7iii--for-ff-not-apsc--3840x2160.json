@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--for-ff-not-apsc--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "Pergear 10mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1427.8980411681118,
+		"fy": 1426.174165865182,
+		"cx": 1902.034263711169,
+		"cy": 1086.9626593211558
+	},
+	"distortion_coeffs": [
+		0.014889465431203286,
+		0.0182094701537947,
+		-0.04249863484676796,
+		0.01678771954395377
+	],
+	"metadata": {
+		"calibrated_by": "Taylor",
+		"notes": "For FF, not APSC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

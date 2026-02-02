@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-mix-1--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi MIX 1",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2959.6107760441705,
+		"fy": 2896.7797760713547,
+		"cx": 1903.08394235099,
+		"cy": 1049.4064211561065
+	},
+	"distortion_coeffs": [
+		0.3571433950079399,
+		1.297991100269512,
+		-5.841286220165946,
+		7.897027936977771
+	],
+	"metadata": {
+		"calibrated_by": "EE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

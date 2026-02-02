@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-7-pro--6324x2296",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7 Pro",
+	"lens_model": "Anamorphic 1.55x",
+	"resolution": {
+		"width": 6324,
+		"height": 2296
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5298.856758727636,
+		"fy": 5308.004517112596,
+		"cx": 3715.385193421997,
+		"cy": 870.8522462240128
+	},
+	"distortion_coeffs": [
+		0.21057183502836857,
+		0.11620079117687544,
+		-3.0056111399948344,
+		8.707102950836674
+	],
+	"metadata": {
+		"calibrated_by": "604037928",
+		"source": "gyroflow",
+		"official": true
+	}
+}

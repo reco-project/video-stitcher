@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-14-pro--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14 Pro",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1646.1334436541292,
+		"fy": 1646.949436870355,
+		"cx": 963.5664797126886,
+		"cy": 539.7195377097796
+	},
+	"distortion_coeffs": [
+		0.3823506923816591,
+		2.8348573688358893,
+		-21.77552940440593,
+		49.73931904143751
+	],
+	"metadata": {
+		"calibrated_by": "Davide C. Monticelli",
+		"source": "gyroflow",
+		"official": true
+	}
+}

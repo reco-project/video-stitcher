@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-s10--18mm-focal-lenght-f28--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S10",
+	"lens_model": "FUJINON 18-55 F/2.8-4 R LM OIS",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2955.7998568274365,
+		"fy": 2956.2926111341117,
+		"cx": 1947.2980808105851,
+		"cy": 1073.503741196898
+	},
+	"distortion_coeffs": [
+		0.18233644654197623,
+		1.3140606646522563,
+		-5.0423785396479195,
+		8.029614620299347
+	],
+	"metadata": {
+		"calibrated_by": "Andrea Villata",
+		"notes": "18mm focal lenght F/2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

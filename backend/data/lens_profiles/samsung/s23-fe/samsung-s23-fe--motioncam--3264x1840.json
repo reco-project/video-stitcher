@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23-fe--motioncam--3264x1840",
+	"camera_brand": "Samsung",
+	"camera_model": "S23 FE",
+	"lens_model": "73mm",
+	"resolution": {
+		"width": 3264,
+		"height": 1840
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7211.987573637399,
+		"fy": 7217.993182198606,
+		"cx": 1662.0781126109125,
+		"cy": 1004.289340761703
+	},
+	"distortion_coeffs": [
+		0.17636589374811257,
+		-9.430718913942265,
+		575.58395549322,
+		-6638.826892488343
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan",
+		"notes": "MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

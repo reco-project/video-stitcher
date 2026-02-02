@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--metabones-speedbooster--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Canon 50mm 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5439.126442921601,
+		"fy": 5434.39335487474,
+		"cx": 1922.799971545687,
+		"cy": 1153.819493932755
+	},
+	"distortion_coeffs": [
+		0.10208701120193196,
+		0.32693587636464216,
+		-3.5374468001275297,
+		37.32781905386598
+	],
+	"metadata": {
+		"calibrated_by": "Amarin Sp\u00f6rri",
+		"notes": "Metabones Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t4--35mm-f095--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T4",
+	"lens_model": "7artisans 35mm f0.95",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8064.006936080453,
+		"fy": 8068.557072920211,
+		"cx": 2091.1648949179544,
+		"cy": 1091.9595530810695
+	},
+	"distortion_coeffs": [
+		-0.022190618966893862,
+		6.8421295353025,
+		-147.57460001639046,
+		1281.9572677185158
+	],
+	"metadata": {
+		"calibrated_by": "klspn",
+		"notes": "35mm f0.95",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "rollei-530--3840x2160",
+	"camera_brand": "Rollei",
+	"camera_model": "530",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1903.81021956223,
+		"fy": 1899.314968700534,
+		"cx": 1958.506271208668,
+		"cy": 1168.3516451729697
+	},
+	"distortion_coeffs": [
+		-0.040251112554534486,
+		0.016383539983749813,
+		-0.030727859778109688,
+		0.015539032088321091
+	],
+	"metadata": {
+		"calibrated_by": "Tommy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

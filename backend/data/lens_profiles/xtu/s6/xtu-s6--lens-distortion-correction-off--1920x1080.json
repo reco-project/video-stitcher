@@ -1,0 +1,29 @@
+{
+	"id": "xtu-s6--lens-distortion-correction-off--1920x1080",
+	"camera_brand": "XTU",
+	"camera_model": "S6",
+	"lens_model": "XTU/XTU_MaxPro_NO-LDC_1080P60_1080p_16by9_1920x1080-59.94fps wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1027.8423777793714,
+		"fy": 1028.5948087280335,
+		"cx": 923.574769288478,
+		"cy": 515.9465355884618
+	},
+	"distortion_coeffs": [
+		0.005379497604082605,
+		-0.2387609240170068,
+		0.5084001201091364,
+		-0.3458229937811874
+	],
+	"metadata": {
+		"calibrated_by": "Xiaochen Wu",
+		"notes": "Lens Distortion Correction OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

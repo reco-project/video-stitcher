@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--stab-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Samyang Cine V-AF 24mm T1.9 FE Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2577.4015230163823,
+		"fy": 2578.866781591405,
+		"cx": 1916.0034781929544,
+		"cy": 1105.8455301146323
+	},
+	"distortion_coeffs": [
+		0.23675887030259957,
+		0.10635391934401968,
+		-0.007797899837872211,
+		0.3015004831067115
+	],
+	"metadata": {
+		"calibrated_by": "Victor Kim",
+		"notes": "STAB. OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

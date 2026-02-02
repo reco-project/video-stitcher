@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z30--16-mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z30",
+	"lens_model": "16-50mm @ 16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2688.4389775502564,
+		"fy": 2691.383639493247,
+		"cx": 1973.413432959479,
+		"cy": 1028.1861412337275
+	},
+	"distortion_coeffs": [
+		0.33287146305759263,
+		-0.0019525371828701228,
+		0.5087503628734104,
+		-0.38051845452499455
+	],
+	"metadata": {
+		"calibrated_by": "ranjeet singh",
+		"notes": "16 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

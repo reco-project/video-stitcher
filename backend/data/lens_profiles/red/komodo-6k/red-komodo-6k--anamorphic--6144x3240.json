@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--anamorphic--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sirui 35 mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6465.239271756225,
+		"fy": 8265.112707652162,
+		"cx": 3161.5355183062943,
+		"cy": 1684.3211230615725
+	},
+	"distortion_coeffs": [
+		0.04517893098936037,
+		1.3022223607566914,
+		-7.882252369428358,
+		15.505732957297685
+	],
+	"metadata": {
+		"calibrated_by": "Rikardo Iljaz",
+		"notes": "Anamorphic",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "zte-nubia-z60-ultra-35mm--4096x3072",
+	"camera_brand": "ZTE",
+	"camera_model": "nubia z60 Ultra 35mm",
+	"lens_model": "35mm",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4272.235313910388,
+		"fy": 4266.364084644997,
+		"cx": 2059.327155660282,
+		"cy": 1501.4640226261265
+	},
+	"distortion_coeffs": [
+		0.7136993808772059,
+		-1.9879429589957407,
+		-1.128145158247814,
+		15.895047543765756
+	],
+	"metadata": {
+		"calibrated_by": "Roman Lisin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

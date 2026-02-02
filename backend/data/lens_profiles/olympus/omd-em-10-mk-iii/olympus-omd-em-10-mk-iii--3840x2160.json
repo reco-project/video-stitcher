@@ -1,0 +1,28 @@
+{
+	"id": "olympus-omd-em-10-mk-iii--3840x2160",
+	"camera_brand": "Olympus",
+	"camera_model": "OMD EM-10 Mk. III",
+	"lens_model": "ZUIKO 45mm 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10809.194831143268,
+		"fy": 10780.98218450788,
+		"cx": 1944.5023051552157,
+		"cy": 1174.119118809353
+	},
+	"distortion_coeffs": [
+		-0.002980907718861082,
+		46.241831356257386,
+		-1832.4495562935035,
+		25123.230679465203
+	],
+	"metadata": {
+		"calibrated_by": "Karol Adamski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

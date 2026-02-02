@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--breating-comp--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3960.568878475424,
+		"fy": 3980.962432232427,
+		"cx": 1923.0305836435784,
+		"cy": 1100.9715937798892
+	},
+	"distortion_coeffs": [
+		0.3720243315323783,
+		-0.8849473385412496,
+		7.170230012960019,
+		-16.883068894266266
+	],
+	"metadata": {
+		"calibrated_by": "Ben Reiss",
+		"notes": "Breating Comp.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

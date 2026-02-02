@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-1-iii--2016x1344",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 1 iii",
+	"lens_model": "74mm",
+	"resolution": {
+		"width": 2016,
+		"height": 1344
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5896.513643647233,
+		"fy": 5905.310621223463,
+		"cx": 977.4052482367782,
+		"cy": 810.9862780550627
+	},
+	"distortion_coeffs": [
+		0.7643637772512858,
+		-4.258740225867223,
+		-23.52561143565163,
+		798.1698136777749
+	],
+	"metadata": {
+		"calibrated_by": "9OKER",
+		"source": "gyroflow",
+		"official": true
+	}
+}

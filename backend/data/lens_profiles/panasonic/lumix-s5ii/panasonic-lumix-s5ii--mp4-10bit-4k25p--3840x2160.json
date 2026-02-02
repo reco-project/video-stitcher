@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-s5ii--mp4-10bit-4k25p--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S5II",
+	"lens_model": "Sigma 28-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7398.369175964588,
+		"fy": 7419.946943058643,
+		"cx": 1849.0608705219736,
+		"cy": 1075.0176056789917
+	},
+	"distortion_coeffs": [
+		0.33014124272268663,
+		2.462578659889042,
+		-48.169603035549855,
+		389.42233754828015
+	],
+	"metadata": {
+		"calibrated_by": "THIBAULT R\u00e9my",
+		"notes": "MP4 10bit 4K25p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

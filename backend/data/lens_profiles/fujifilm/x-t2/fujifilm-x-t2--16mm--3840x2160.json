@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t2--16mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T2",
+	"lens_model": "Fuji XC 16-50mm OIS II",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3109.687643547993,
+		"fy": 3111.776024976388,
+		"cx": 1964.9073223248884,
+		"cy": 1058.509169374761
+	},
+	"distortion_coeffs": [
+		0.15084913202115657,
+		1.488035579902344,
+		-5.2226688597293265,
+		7.56747633670104
+	],
+	"metadata": {
+		"calibrated_by": "Sam K\u00e4nner",
+		"notes": "@16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

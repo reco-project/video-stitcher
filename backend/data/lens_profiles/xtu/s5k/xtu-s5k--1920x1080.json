@@ -1,0 +1,28 @@
+{
+	"id": "xtu-s5k--1920x1080",
+	"camera_brand": "XTU",
+	"camera_model": "S5K",
+	"lens_model": "GK811",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 913.1225044061008,
+		"fy": 912.893159187474,
+		"cx": 956.877451030012,
+		"cy": 550.604420750501
+	},
+	"distortion_coeffs": [
+		0.009500509434686211,
+		-0.018948800462280032,
+		0.01758530265997179,
+		-0.005893152571971083
+	],
+	"metadata": {
+		"calibrated_by": "XTU",
+		"source": "gyroflow",
+		"official": true
+	}
+}

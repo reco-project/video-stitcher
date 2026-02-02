@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--magic-lantern-firmware--2520x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS m",
+	"lens_model": "35mm f/1.8",
+	"resolution": {
+		"width": 2520,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17146.062406511493,
+		"fy": 17117.72565841226,
+		"cx": 910.0912124819816,
+		"cy": 862.7091235118552
+	},
+	"distortion_coeffs": [
+		0.7332731381052243,
+		147.6759801476388,
+		-17275.981985970404,
+		697183.9462603051
+	],
+	"metadata": {
+		"calibrated_by": "Michael Voit",
+		"notes": "Magic Lantern Firmware",
+		"source": "gyroflow",
+		"official": true
+	}
+}

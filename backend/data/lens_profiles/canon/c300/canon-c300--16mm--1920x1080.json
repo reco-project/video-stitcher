@@ -1,0 +1,29 @@
+{
+	"id": "canon-c300--16mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "C300",
+	"lens_model": "16-35 mm f2.8 L",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1167.0782164166446,
+		"fy": 1167.035997792151,
+		"cx": 956.0652533615952,
+		"cy": 543.4407176678242
+	},
+	"distortion_coeffs": [
+		0.2051661859705257,
+		0.1792824434273832,
+		-0.05681432397123824,
+		0.07296193444809305
+	],
+	"metadata": {
+		"calibrated_by": "Guillem Valle",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

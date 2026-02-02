@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-550d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 550D",
+	"lens_model": "Canon 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6358.4235753541,
+		"fy": 6345.472505957336,
+		"cx": 1268.106859770748,
+		"cy": 1033.040820343172
+	},
+	"distortion_coeffs": [
+		0.13408741191903162,
+		2.7259898283757957,
+		-14.437309020104305,
+		-158.36293622233774
+	],
+	"metadata": {
+		"calibrated_by": "Christian Joshua",
+		"source": "gyroflow",
+		"official": true
+	}
+}

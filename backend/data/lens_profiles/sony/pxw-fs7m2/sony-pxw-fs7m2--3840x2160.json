@@ -1,0 +1,28 @@
+{
+	"id": "sony-pxw-fs7m2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "PXW-FS7M2",
+	"lens_model": "Laowa Argus 33mm F0.95",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5538.751080762119,
+		"fy": 5548.111750598396,
+		"cx": 1913.9370864257733,
+		"cy": 964.5913034840328
+	},
+	"distortion_coeffs": [
+		0.220329454619661,
+		-1.5880850081646776,
+		23.467974002306025,
+		-82.17294680594811
+	],
+	"metadata": {
+		"calibrated_by": "Gianluca Orlando",
+		"source": "gyroflow",
+		"official": true
+	}
+}

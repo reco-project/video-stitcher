@@ -1,0 +1,28 @@
+{
+	"id": "wolfgang-ga420--3840x2160",
+	"camera_brand": "WOLFGANG",
+	"camera_model": "GA420",
+	"lens_model": "Ultra wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3076.9218646923605,
+		"fy": 3073.9188759844415,
+		"cx": 1924.2306320374848,
+		"cy": 1046.3799238481308
+	},
+	"distortion_coeffs": [
+		-0.00919151717761702,
+		-0.03832298985860931,
+		-0.4626477342091995,
+		1.057879576943079
+	],
+	"metadata": {
+		"calibrated_by": "JDMO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

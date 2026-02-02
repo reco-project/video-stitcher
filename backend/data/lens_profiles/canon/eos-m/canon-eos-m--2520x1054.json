@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--2520x1054",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "EF-M 15-45mm IS STM at 15mm",
+	"resolution": {
+		"width": 2520,
+		"height": 1054
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3549.8385954473565,
+		"fy": 3565.3759670090417,
+		"cx": 1268.3234487013187,
+		"cy": 419.136202352645
+	},
+	"distortion_coeffs": [
+		0.20309949187845236,
+		-0.7383549038410105,
+		15.090893711015644,
+		-75.93078342875604
+	],
+	"metadata": {
+		"calibrated_by": "Extreme Banding",
+		"source": "gyroflow",
+		"official": true
+	}
+}

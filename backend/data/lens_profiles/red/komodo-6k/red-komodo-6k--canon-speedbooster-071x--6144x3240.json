@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-speedbooster-071x--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "25MM VESPID PRIME",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4138.510503444733,
+		"fy": 4139.753634727998,
+		"cx": 3070.909213131981,
+		"cy": 1602.9081229327296
+	},
+	"distortion_coeffs": [
+		0.11848868154645474,
+		0.974373013956758,
+		-4.347483386633824,
+		8.281729926907326
+	],
+	"metadata": {
+		"calibrated_by": "Alan Grey",
+		"notes": "CANON SPEEDBOOSTER 0.71X",
+		"source": "gyroflow",
+		"official": true
+	}
+}

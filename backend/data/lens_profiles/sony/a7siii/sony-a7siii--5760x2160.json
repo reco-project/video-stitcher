@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7siii--5760x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7SIII",
+	"lens_model": "Nero1.5xKonica57f1.4",
+	"resolution": {
+		"width": 5760,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7359.624933571332,
+		"fy": 7401.299653114319,
+		"cx": 1090.050227273306,
+		"cy": 860.9783326723947
+	},
+	"distortion_coeffs": [
+		0.3888274697440425,
+		-2.148426124249212,
+		5.285374440438399,
+		-5.661019198505689
+	],
+	"metadata": {
+		"calibrated_by": "Zuofu Wang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

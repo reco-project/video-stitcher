@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--24p--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Olympus 12mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3283.106207820062,
+		"fy": 3295.868594770202,
+		"cx": 1897.9910147791595,
+		"cy": 1162.8594589981928
+	},
+	"distortion_coeffs": [
+		0.3669916497612354,
+		-0.24970582494120147,
+		1.1564054527557952,
+		-0.8694940542536024
+	],
+	"metadata": {
+		"calibrated_by": "Jeancarlo Ferrando",
+		"notes": "24p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

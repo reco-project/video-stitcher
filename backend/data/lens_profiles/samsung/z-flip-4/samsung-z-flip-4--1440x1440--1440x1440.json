@@ -1,0 +1,29 @@
+{
+	"id": "samsung-z-flip-4--1440x1440--1440x1440",
+	"camera_brand": "Samsung",
+	"camera_model": "Z Flip 4",
+	"lens_model": "1.76\u2033 sensor",
+	"resolution": {
+		"width": 1440,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1654.4723778440884,
+		"fy": 1656.5217996652036,
+		"cx": 731.3655719682978,
+		"cy": 716.3824652147624
+	},
+	"distortion_coeffs": [
+		0.3681499097275751,
+		-0.651853928183775,
+		4.820133478130737,
+		-8.473722002479558
+	],
+	"metadata": {
+		"calibrated_by": "nickos mavronas",
+		"notes": "1440x1440",
+		"source": "gyroflow",
+		"official": true
+	}
+}

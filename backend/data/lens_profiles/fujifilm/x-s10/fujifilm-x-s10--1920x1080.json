@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-s10--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "x-s10",
+	"lens_model": "18-55mm f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1509.2683668622603,
+		"fy": 1510.4600203634534,
+		"cx": 955.4284945861464,
+		"cy": 527.7089605469429
+	},
+	"distortion_coeffs": [
+		0.21921525270193812,
+		1.1329189523126324,
+		-4.4428579638677,
+		7.52924627334201
+	],
+	"metadata": {
+		"calibrated_by": "Peyman HB",
+		"source": "gyroflow",
+		"official": true
+	}
+}

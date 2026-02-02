@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6v--28mm--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "SELP28135G OSS",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4075.658129857448,
+		"fy": 4074.4250323161,
+		"cx": 2055.5884334444063,
+		"cy": 986.7077802341956
+	},
+	"distortion_coeffs": [
+		0.24107748535776924,
+		1.6723460619864237,
+		-14.79356261692388,
+		46.06099065604575
+	],
+	"metadata": {
+		"calibrated_by": "Paolo Panno",
+		"notes": "28mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

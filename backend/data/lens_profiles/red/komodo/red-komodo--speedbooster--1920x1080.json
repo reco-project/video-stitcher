@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--speedbooster--1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Olympus OM 50mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2904.1177251594445,
+		"fy": 2903.8574782014384,
+		"cx": 964.9143230868274,
+		"cy": 536.1112148476775
+	},
+	"distortion_coeffs": [
+		0.22192377331649055,
+		0.6596739853978271,
+		-6.870060860548777,
+		55.92631989917691
+	],
+	"metadata": {
+		"calibrated_by": "Andrzej Asijuk",
+		"notes": "Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

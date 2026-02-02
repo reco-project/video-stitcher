@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-h1--7680x4320",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H1",
+	"lens_model": "Zeiss Touit",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3931.642134215217,
+		"fy": 3940.1756237036975,
+		"cx": 3804.360610051664,
+		"cy": 2075.015803011443
+	},
+	"distortion_coeffs": [
+		0.3899008606015519,
+		-0.30683061532246786,
+		1.0831889374711383,
+		-0.7683459901682008
+	],
+	"metadata": {
+		"calibrated_by": "Alexey Vasyunin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

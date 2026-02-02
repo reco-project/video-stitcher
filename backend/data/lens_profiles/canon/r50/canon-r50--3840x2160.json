@@ -1,0 +1,28 @@
+{
+	"id": "canon-r50--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R50",
+	"lens_model": "18-55",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2935.580685845841,
+		"fy": 2938.663891002326,
+		"cx": 1878.6941332659908,
+		"cy": 1054.446745331508
+	},
+	"distortion_coeffs": [
+		0.3152398282943748,
+		0.7849396277706236,
+		-4.059130420083669,
+		8.86260450859529
+	],
+	"metadata": {
+		"calibrated_by": "jimmy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

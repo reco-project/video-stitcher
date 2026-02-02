@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-k70\u81f3\u5c0a--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "K70\u81f3\u5c0a",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1592.8734227394743,
+		"fy": 1594.5471628189343,
+		"cx": 944.2481261917582,
+		"cy": 528.689469055898
+	},
+	"distortion_coeffs": [
+		0.5457081959069661,
+		-2.097119279095922,
+		12.2011021470866,
+		-26.21936506949408
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

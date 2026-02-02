@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7siii--4264x2408",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Tamron 28-75 G2 RAW@35mm",
+	"resolution": {
+		"width": 4264,
+		"height": 2408
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4104.852994606256,
+		"fy": 4100.664338234964,
+		"cx": 2133.023953861473,
+		"cy": 1200.3404930692934
+	},
+	"distortion_coeffs": [
+		0.33590250882306977,
+		-0.14012740823567205,
+		1.3712606728812895,
+		0.27259160659670245
+	],
+	"metadata": {
+		"calibrated_by": "god",
+		"source": "gyroflow",
+		"official": true
+	}
+}

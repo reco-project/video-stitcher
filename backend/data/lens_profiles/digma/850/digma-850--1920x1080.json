@@ -1,0 +1,28 @@
+{
+	"id": "digma-850--1920x1080",
+	"camera_brand": "Digma",
+	"camera_model": "850",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1631.7561433873686,
+		"fy": 1636.4299837366957,
+		"cx": 1033.0928587393394,
+		"cy": 579.9916490651092
+	},
+	"distortion_coeffs": [
+		-0.04190401581324609,
+		0.004677089923937984,
+		0.35594366292822915,
+		-0.8514102278973931
+	],
+	"metadata": {
+		"calibrated_by": "\u0415\u0433\u043e\u0440 \u0421\u043e\u043b\u043e\u0432\u044c\u0435\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

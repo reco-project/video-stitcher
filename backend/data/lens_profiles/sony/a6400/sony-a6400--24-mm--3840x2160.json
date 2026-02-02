@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--24-mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4144.010543053746,
+		"fy": 4130.655520891116,
+		"cx": 1929.8870322147247,
+		"cy": 1102.5799794060536
+	},
+	"distortion_coeffs": [
+		0.30546652417590503,
+		1.1170236057986558,
+		-5.791546175314146,
+		2.7197245366860914
+	],
+	"metadata": {
+		"calibrated_by": "pigonthewind",
+		"notes": "24 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

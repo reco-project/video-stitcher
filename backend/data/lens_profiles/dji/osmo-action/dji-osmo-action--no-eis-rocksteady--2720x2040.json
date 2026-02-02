@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action--no-eis-rocksteady--2720x2040",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action",
+	"lens_model": "Original",
+	"resolution": {
+		"width": 2720,
+		"height": 2040
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1179.7735465980484,
+		"fy": 1152.513899114739,
+		"cx": 1349.7098143025437,
+		"cy": 993.0584642605216
+	},
+	"distortion_coeffs": [
+		0.1861697341075531,
+		0.0978771310262574,
+		-0.20523942901391995,
+		0.07691023487235536
+	],
+	"metadata": {
+		"calibrated_by": "Bosca90",
+		"notes": "NO EIS ( ROCKSTEADY)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

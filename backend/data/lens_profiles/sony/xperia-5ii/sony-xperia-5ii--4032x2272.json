@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-5ii--4032x2272",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 5II",
+	"lens_model": "26mm",
+	"resolution": {
+		"width": 4032,
+		"height": 2272
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4748.5178993574455,
+		"fy": 4589.819564869871,
+		"cx": 2089.125672825534,
+		"cy": 1248.2643946884707
+	},
+	"distortion_coeffs": [
+		0.31472511232102707,
+		2.197708237078251,
+		-11.411717051714191,
+		10.873373588655726
+	],
+	"metadata": {
+		"calibrated_by": "Eilie Hallak",
+		"source": "gyroflow",
+		"official": true
+	}
+}

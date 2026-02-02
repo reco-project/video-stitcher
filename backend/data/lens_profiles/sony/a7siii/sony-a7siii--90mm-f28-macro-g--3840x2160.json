@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--90mm-f28-macro-g--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "90.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10240.48274503953,
+		"fy": 10243.373249442757,
+		"cx": 1933.311305143283,
+		"cy": 1038.431865687192
+	},
+	"distortion_coeffs": [
+		0.15719576911793354,
+		1.5185306316150702,
+		-53.83090578021475,
+		635.3962436712874
+	],
+	"metadata": {
+		"calibrated_by": "Nella Shen",
+		"notes": "90mm F2.8 Macro G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

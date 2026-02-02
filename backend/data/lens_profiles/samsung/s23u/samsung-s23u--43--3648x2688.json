@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23u--43--3648x2688",
+	"camera_brand": "Samsung",
+	"camera_model": "S23U",
+	"lens_model": "70mm",
+	"resolution": {
+		"width": 3648,
+		"height": 2688
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6017.738411001622,
+		"fy": 6013.231499211899,
+		"cx": 1814.06937475014,
+		"cy": 1426.13229538185
+	},
+	"distortion_coeffs": [
+		-0.9188994157385418,
+		32.466280532151956,
+		-350.432337228484,
+		1340.6511755004385
+	],
+	"metadata": {
+		"calibrated_by": "U0 A549",
+		"notes": "4:3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

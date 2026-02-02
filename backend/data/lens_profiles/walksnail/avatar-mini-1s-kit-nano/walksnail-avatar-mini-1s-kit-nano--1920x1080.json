@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-mini-1s-kit-nano--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar mini 1s kit nano",
+	"lens_model": "2.1mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 802.745884259058,
+		"fy": 801.9781023007595,
+		"cx": 926.950913867928,
+		"cy": 524.0156657254498
+	},
+	"distortion_coeffs": [
+		0.014442608098868754,
+		-0.08402755216292797,
+		0.05275773130260017,
+		-0.013288668367024217
+	],
+	"metadata": {
+		"calibrated_by": "minisnail",
+		"source": "gyroflow",
+		"official": true
+	}
+}

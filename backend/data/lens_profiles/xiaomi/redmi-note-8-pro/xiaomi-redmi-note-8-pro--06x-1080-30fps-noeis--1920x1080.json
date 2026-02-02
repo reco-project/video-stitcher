@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-redmi-note-8-pro--06x-1080-30fps-noeis--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 8 PRO",
+	"lens_model": "Camara Trasera",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 877.4008765867768,
+		"fy": 877.3488640756823,
+		"cx": 967.6043728838024,
+		"cy": 557.2482752948252
+	},
+	"distortion_coeffs": [
+		0.2621219978138853,
+		-0.0022023081723079405,
+		0.5868914835639301,
+		-0.5027914335806937
+	],
+	"metadata": {
+		"calibrated_by": "Estanislao Garc\u00eda Rey",
+		"notes": "0.6x 1080 30FPS NoEIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "runcam-thumb2--3840x2160",
+	"camera_brand": "Runcam",
+	"camera_model": "Thumb2",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1818.4287331278285,
+		"fy": 1818.8000905104725,
+		"cx": 1919.3924292749462,
+		"cy": 1144.922449884292
+	},
+	"distortion_coeffs": [
+		0.13490794111662527,
+		-0.20081142763100182,
+		0.1734474039997024,
+		-0.06331740532773925
+	],
+	"metadata": {
+		"calibrated_by": "Eddy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2--3696x2772",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2",
+	"lens_model": "Olympus 12mm",
+	"resolution": {
+		"width": 3696,
+		"height": 2772
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2684.024240685482,
+		"fy": 2683.513561605173,
+		"cx": 1835.635876765307,
+		"cy": 1377.2599884722636
+	},
+	"distortion_coeffs": [
+		0.21388031581264275,
+		-0.035714371421426104,
+		0.17714095443441177,
+		-0.16927205222942734
+	],
+	"metadata": {
+		"calibrated_by": "Riccardo Domenichini",
+		"source": "gyroflow",
+		"official": true
+	}
+}

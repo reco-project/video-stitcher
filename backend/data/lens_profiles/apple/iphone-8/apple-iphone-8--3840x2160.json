@@ -1,0 +1,27 @@
+{
+	"id": "apple-iphone-8--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 8",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3221.0921504136436,
+		"fy": 3225.3533169163657,
+		"cx": 1939.3169453508085,
+		"cy": 987.367841134528
+	},
+	"distortion_coeffs": [
+		0.6587879045122186,
+		-2.4076504138488626,
+		8.033391654143717,
+		-8.303201640338296
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

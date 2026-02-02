@@ -1,0 +1,29 @@
+{
+	"id": "huawei-p20-pro--reprojection-error-061--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "P20 Pro",
+	"lens_model": "Leica",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3035.9667450004026,
+		"fy": 3034.2669022893724,
+		"cx": 1910.2147595940328,
+		"cy": 1082.2217644964046
+	},
+	"distortion_coeffs": [
+		0.36533004644875366,
+		0.4464170124249427,
+		-1.1220971756686435,
+		1.0061996358480638
+	],
+	"metadata": {
+		"calibrated_by": "Moletu KC",
+		"notes": "Reprojection error 0,61",
+		"source": "gyroflow",
+		"official": true
+	}
+}

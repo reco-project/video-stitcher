@@ -1,0 +1,28 @@
+{
+	"id": "honor-x7b-rear-main--1920x1080",
+	"camera_brand": "Honor",
+	"camera_model": "X7b Rear Main",
+	"lens_model": "24mm f/1.75 ASPH",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1325.9745502110418,
+		"fy": 1326.2371790357508,
+		"cx": 959.9218134093708,
+		"cy": 528.0901425748972
+	},
+	"distortion_coeffs": [
+		0.5970085933875716,
+		-1.3123939442751709,
+		3.7222997067864,
+		-3.5654144043430533
+	],
+	"metadata": {
+		"calibrated_by": "Ddddddd Rrrrr",
+		"source": "gyroflow",
+		"official": true
+	}
+}

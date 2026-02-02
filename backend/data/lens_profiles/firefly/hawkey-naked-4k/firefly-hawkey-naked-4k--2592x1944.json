@@ -1,0 +1,28 @@
+{
+	"id": "firefly-hawkey-naked-4k--2592x1944",
+	"camera_brand": "Firefly",
+	"camera_model": "Hawkey Naked 4k",
+	"lens_model": "170",
+	"resolution": {
+		"width": 2592,
+		"height": 1944
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1194.9965921395003,
+		"fy": 1181.7238006018972,
+		"cx": 1214.4583493361797,
+		"cy": 1006.0056569297492
+	},
+	"distortion_coeffs": [
+		0.13277235666804688,
+		0.06514972906701093,
+		-0.10586388084415724,
+		0.03957964331960888
+	],
+	"metadata": {
+		"calibrated_by": "Grau",
+		"source": "gyroflow",
+		"official": true
+	}
+}

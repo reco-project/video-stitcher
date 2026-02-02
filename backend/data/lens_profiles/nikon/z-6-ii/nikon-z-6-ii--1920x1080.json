@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z-6-ii--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z 6 II",
+	"lens_model": "28mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 656.2950436308229,
+		"fy": 664.9024714569181,
+		"cx": 991.652190228348,
+		"cy": 222.9605169665555
+	},
+	"distortion_coeffs": [
+		0.34006548936013853,
+		0.13914572124684174,
+		0.0049395851443197,
+		0.07689820381000008
+	],
+	"metadata": {
+		"calibrated_by": "mariusDobre",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z9--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z9",
+	"lens_model": "z24-120mm @ 24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1266.640318982786,
+		"fy": 1268.7512789061427,
+		"cx": 956.8065557417062,
+		"cy": 528.1218279595421
+	},
+	"distortion_coeffs": [
+		0.3086864117676272,
+		0.3759158710016095,
+		-1.2928453333404326,
+		2.537831801429321
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

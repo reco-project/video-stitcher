@@ -1,0 +1,28 @@
+{
+	"id": "canon-700d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "700D",
+	"lens_model": "17-50mm F2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1507.3846235700828,
+		"fy": 1507.2962129544158,
+		"cx": 985.1721877754806,
+		"cy": 587.3557344857751
+	},
+	"distortion_coeffs": [
+		0.19364843462802503,
+		0.0474842896633606,
+		0.28622037880234424,
+		0.09420699139506876
+	],
+	"metadata": {
+		"calibrated_by": "PGM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

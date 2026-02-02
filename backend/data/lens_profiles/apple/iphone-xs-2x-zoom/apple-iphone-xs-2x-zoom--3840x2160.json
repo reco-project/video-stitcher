@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-xs-2x-zoom--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone xs 2x zoom",
+	"lens_model": "2x zoom",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4476.457454461543,
+		"fy": 4530.48740540613,
+		"cx": 1928.3623485343912,
+		"cy": 564.6742921640725
+	},
+	"distortion_coeffs": [
+		0.5636736795597634,
+		-3.610895304584026,
+		37.30840128365397,
+		-109.08222570853736
+	],
+	"metadata": {
+		"calibrated_by": "Brian Rimer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

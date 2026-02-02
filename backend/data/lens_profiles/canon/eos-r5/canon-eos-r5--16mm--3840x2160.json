@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--16mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "16-35 2.8 L USM III",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1287.3378879552167,
+		"fy": 1287.2902874961903,
+		"cx": 1876.4347036763004,
+		"cy": 1105.5336433787877
+	},
+	"distortion_coeffs": [
+		0.301138199172237,
+		0.12701746985633608,
+		-0.01832321035668185,
+		0.08883158142698903
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Osmond",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

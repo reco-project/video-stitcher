@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-9--4000x3008",
+	"camera_brand": "OnePlus",
+	"camera_model": "9",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 4000,
+		"height": 3008
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2806.88860539989,
+		"fy": 2795.1497110414666,
+		"cx": 1988.204222303001,
+		"cy": 1513.190418523467
+	},
+	"distortion_coeffs": [
+		0.3166761869558704,
+		0.3227342717563007,
+		-0.09229629311536566,
+		-0.4445234027150433
+	],
+	"metadata": {
+		"calibrated_by": "U0 A281",
+		"source": "gyroflow",
+		"official": true
+	}
+}

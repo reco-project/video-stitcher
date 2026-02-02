@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-s6g--6143x3240",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2 S6G",
+	"lens_model": "Laowa 14mm",
+	"resolution": {
+		"width": 6143,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4025.6685884490585,
+		"fy": 4025.976367643135,
+		"cx": 3083.0912962091315,
+		"cy": 1601.102324388281
+	},
+	"distortion_coeffs": [
+		0.31925518851938756,
+		0.11506427875714412,
+		0.16272392358310653,
+		-0.12558541971212953
+	],
+	"metadata": {
+		"calibrated_by": "Andrew Orton",
+		"source": "gyroflow",
+		"official": true
+	}
+}

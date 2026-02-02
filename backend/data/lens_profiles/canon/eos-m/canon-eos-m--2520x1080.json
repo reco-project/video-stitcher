@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--2520x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "35mm f/1.8",
+	"resolution": {
+		"width": 2520,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 43730.75365761978,
+		"fy": 57488.1900821416,
+		"cx": 926.2126128909688,
+		"cy": 340.00245026743687
+	},
+	"distortion_coeffs": [
+		7.6077937454549645,
+		-3284.9226394806637,
+		1426204.3817013672,
+		-2044515230.0418563
+	],
+	"metadata": {
+		"calibrated_by": "Michael Voit",
+		"source": "gyroflow",
+		"official": true
+	}
+}

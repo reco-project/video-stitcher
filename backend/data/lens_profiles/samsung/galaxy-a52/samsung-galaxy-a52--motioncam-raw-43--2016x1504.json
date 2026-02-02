@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-a52--motioncam-raw-43--2016x1504",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A52",
+	"lens_model": "Ultrawide",
+	"resolution": {
+		"width": 2016,
+		"height": 1504
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 801.9288795207327,
+		"fy": 801.5062841448276,
+		"cx": 1001.1390832352783,
+		"cy": 748.3597241454672
+	},
+	"distortion_coeffs": [
+		0.33251657813788943,
+		0.11079713127259395,
+		0.12286051102015232,
+		-0.10845811048945649
+	],
+	"metadata": {
+		"calibrated_by": "Leo",
+		"notes": "MotionCam RAW 4:3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

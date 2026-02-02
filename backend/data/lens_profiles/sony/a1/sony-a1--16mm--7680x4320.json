@@ -1,0 +1,29 @@
+{
+	"id": "sony-a1--16mm--7680x4320",
+	"camera_brand": "Sony",
+	"camera_model": "a1",
+	"lens_model": "16-35 GM",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3591.1693193351,
+		"fy": 3591.683643449015,
+		"cx": 3834.5575137359856,
+		"cy": 2162.096565627959
+	},
+	"distortion_coeffs": [
+		0.23435580702547665,
+		0.141566141933251,
+		-0.02561219857200943,
+		0.13186719845742725
+	],
+	"metadata": {
+		"calibrated_by": "Matt Larson",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

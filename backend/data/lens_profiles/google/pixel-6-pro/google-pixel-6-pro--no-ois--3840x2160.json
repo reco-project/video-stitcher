@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-6-pro--no-ois--3840x2160",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2890.6735782701717,
+		"fy": 2892.8965933151753,
+		"cx": 1951.4233480957705,
+		"cy": 1018.0889939400274
+	},
+	"distortion_coeffs": [
+		0.6080905743666538,
+		-2.323522856761486,
+		10.620327665720616,
+		-15.577500063849088
+	],
+	"metadata": {
+		"calibrated_by": "Jayden",
+		"notes": "No OIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--t4--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Cooke Panchro 25mm",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1917.1638062163263,
+		"fy": 1917.4499205342413,
+		"cx": 1017.7213429125284,
+		"cy": 530.0921019762038
+	},
+	"distortion_coeffs": [
+		0.23155701006619064,
+		0.2856086127977485,
+		-1.0167106184284624,
+		1.6019516494695982
+	],
+	"metadata": {
+		"calibrated_by": "BHA RENDER MACHINE",
+		"notes": "T4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "x-try-xtc-263--3840x2160",
+	"camera_brand": "X-TRY",
+	"camera_model": "XTC 263",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2252.2046495449144,
+		"fy": 2234.5213726871934,
+		"cx": 1957.476493046766,
+		"cy": 1186.764416370669
+	},
+	"distortion_coeffs": [
+		0.023854836494490397,
+		-0.044167032098758705,
+		0.13555261351507272,
+		-0.11437705207983506
+	],
+	"metadata": {
+		"calibrated_by": "Dennis Trushechkin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

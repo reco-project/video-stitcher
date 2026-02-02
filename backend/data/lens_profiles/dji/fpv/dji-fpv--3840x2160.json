@@ -2,7 +2,7 @@
 	"id": "dji-fpv--3840x2160",
 	"camera_brand": "DJI",
 	"camera_model": "FPV",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		-0.09111534371253464
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_FPV___4k_16by9_3840x2160-0.00fps",
 		"calibrated_by": "Anonymous",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "unknown",
-		"official": true,
-		"notes": "Official Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

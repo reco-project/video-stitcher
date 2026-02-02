@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-s20--23986fps--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S20",
+	"lens_model": "Fujifilm XC 15-45mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2445.315566259201,
+		"fy": 2445.719716483592,
+		"cx": 1936.7373911385805,
+		"cy": 1097.2067680899827
+	},
+	"distortion_coeffs": [
+		0.35473860338662067,
+		-0.2304671631060997,
+		1.5730220981051917,
+		-1.984064424396795
+	],
+	"metadata": {
+		"calibrated_by": "Anirudh Venkatesan",
+		"notes": "23.986fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

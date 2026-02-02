@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x100v--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X100V",
+	"lens_model": "23",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1964.1418177797584,
+		"fy": 1964.7258455852989,
+		"cx": 952.269402437437,
+		"cy": 535.3802280048949
+	},
+	"distortion_coeffs": [
+		0.26723841763894135,
+		0.52250385830697,
+		-2.225596384084399,
+		6.843027144785001
+	],
+	"metadata": {
+		"calibrated_by": "Justice",
+		"source": "gyroflow",
+		"official": true
+	}
+}

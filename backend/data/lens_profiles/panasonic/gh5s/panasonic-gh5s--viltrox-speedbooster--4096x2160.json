@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5s--viltrox-speedbooster--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5S",
+	"lens_model": "Canon",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7957.877451831694,
+		"fy": 7959.686424509143,
+		"cx": 2049.2608058253095,
+		"cy": 1065.2992207594923
+	},
+	"distortion_coeffs": [
+		0.13566577924751977,
+		0.5118225918487241,
+		-18.916538282026604,
+		321.1491438214924
+	],
+	"metadata": {
+		"calibrated_by": "Tom van Wolde",
+		"notes": "Viltrox speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero9-black--no-eis--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO9 Black",
+	"lens_model": "UltraWide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2578.932559345211,
+		"fy": 2576.806586781152,
+		"cx": 1922.2746823211053,
+		"cy": 1089.2018293337082
+	},
+	"distortion_coeffs": [
+		0.3383506114153752,
+		0.30960667302455525,
+		-1.0181549632015112,
+		1.8745816182649415
+	],
+	"metadata": {
+		"calibrated_by": "Hugh Long",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

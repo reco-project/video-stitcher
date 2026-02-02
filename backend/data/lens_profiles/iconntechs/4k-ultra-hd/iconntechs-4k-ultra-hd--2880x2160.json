@@ -1,0 +1,28 @@
+{
+	"id": "iconntechs-4k-ultra-hd--2880x2160",
+	"camera_brand": "IconnTechs",
+	"camera_model": "4K Ultra HD",
+	"lens_model": null,
+	"resolution": {
+		"width": 2880,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1707.0568506341808,
+		"fy": 2291.138250117237,
+		"cx": 1474.7458163615595,
+		"cy": 982.113270084062
+	},
+	"distortion_coeffs": [
+		0.20072822956099864,
+		-0.24078479773770195,
+		0.35250164566018977,
+		-0.3842656268307623
+	],
+	"metadata": {
+		"calibrated_by": "Garrett",
+		"source": "gyroflow",
+		"official": true
+	}
+}

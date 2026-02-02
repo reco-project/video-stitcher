@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bgh1--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "BGH1",
+	"lens_model": "Laowa 7.5mm - F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1594.1283365684576,
+		"fy": 1591.7053079197556,
+		"cx": 1944.0785330362512,
+		"cy": 1061.392074898059
+	},
+	"distortion_coeffs": [
+		0.3367142634591905,
+		0.05988795672234344,
+		0.10312680395560583,
+		-0.03161730848505447
+	],
+	"metadata": {
+		"calibrated_by": "Benjamin Dour",
+		"source": "gyroflow",
+		"official": true
+	}
+}

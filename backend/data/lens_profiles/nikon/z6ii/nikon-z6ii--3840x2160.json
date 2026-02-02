@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z6ii--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6ii",
+	"lens_model": "14-30mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1528.5665240073172,
+		"fy": 1528.8969160314546,
+		"cx": 1928.7379456507467,
+		"cy": 1100.288023453818
+	},
+	"distortion_coeffs": [
+		0.3277936716799982,
+		0.13364925822588725,
+		0.16579641529718003,
+		-0.13601303714382684
+	],
+	"metadata": {
+		"calibrated_by": "A.lemay",
+		"source": "gyroflow",
+		"official": true
+	}
+}

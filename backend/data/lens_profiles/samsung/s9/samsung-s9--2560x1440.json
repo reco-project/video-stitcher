@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s9--2560x1440",
+	"camera_brand": "Samsung",
+	"camera_model": "S9+",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1900.3351957276773,
+		"fy": 1891.917527675226,
+		"cx": 1275.050136422533,
+		"cy": 704.7328738725807
+	},
+	"distortion_coeffs": [
+		0.739656331746793,
+		-2.627534736502129,
+		8.071470357138045,
+		-8.040062546317998
+	],
+	"metadata": {
+		"calibrated_by": "Usuario",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-700d-t5i-x7i--magic-lantern-crop-mood--4416x1878",
+	"camera_brand": "Canon",
+	"camera_model": "700D T5i X7i",
+	"lens_model": "85mm EF",
+	"resolution": {
+		"width": 4416,
+		"height": 1878
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 47283.86923186728,
+		"fy": 46353.46464152744,
+		"cx": 2014.1064596356464,
+		"cy": 2734.5877695052573
+	},
+	"distortion_coeffs": [
+		-0.6697868084714981,
+		872.1306709906015,
+		-198688.69956801817,
+		15912586.532496884
+	],
+	"metadata": {
+		"calibrated_by": "Salam",
+		"notes": "Magic Lantern Crop Mood",
+		"source": "gyroflow",
+		"official": true
+	}
+}

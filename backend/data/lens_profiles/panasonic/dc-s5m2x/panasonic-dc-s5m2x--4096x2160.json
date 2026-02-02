@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-dc-s5m2x--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "DC-S5M2X",
+	"lens_model": "Lumix S 50mm f/1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6035.099856237879,
+		"fy": 6104.41698103151,
+		"cx": 2064.2605554709135,
+		"cy": 172.13600567041468
+	},
+	"distortion_coeffs": [
+		0.291179222991075,
+		0.5278007252019711,
+		-2.593299204146153,
+		7.30834740514026
+	],
+	"metadata": {
+		"calibrated_by": "noj",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-77d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "77d",
+	"lens_model": "50mm 1.8f",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4808.919420070669,
+		"fy": 4801.4737626735605,
+		"cx": 978.4280704008178,
+		"cy": 606.4310507479197
+	},
+	"distortion_coeffs": [
+		0.14514641959152447,
+		1.459216528437837,
+		-54.43779793460525,
+		797.2362469165297
+	],
+	"metadata": {
+		"calibrated_by": "Liyan Mohamed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

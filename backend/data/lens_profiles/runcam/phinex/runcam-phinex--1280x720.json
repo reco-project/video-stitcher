@@ -1,0 +1,28 @@
+{
+	"id": "runcam-phinex--1280x720",
+	"camera_brand": "RunCam",
+	"camera_model": "Phinex",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 579.9874710674972,
+		"fy": 580.2139372896858,
+		"cx": 639.7156733197395,
+		"cy": 366.4416765848274
+	},
+	"distortion_coeffs": [
+		-0.029978883378127295,
+		-0.0023626524761271323,
+		-0.002368965205186989,
+		0.002162450152456845
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

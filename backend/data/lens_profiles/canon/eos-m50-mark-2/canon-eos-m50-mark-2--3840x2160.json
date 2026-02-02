@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m50-mark-2--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M50 Mark 2",
+	"lens_model": "SIGMA 16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4965.154336439631,
+		"fy": 4954.498976900788,
+		"cx": 1892.5725569785975,
+		"cy": 1111.613615746959
+	},
+	"distortion_coeffs": [
+		0.2370759108456648,
+		-0.7162351114256517,
+		13.775288984621788,
+		-56.099447243694264
+	],
+	"metadata": {
+		"calibrated_by": "Jaime Dias costa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

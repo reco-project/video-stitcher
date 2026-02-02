@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--90-degree-shutter-23976fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Carl Zeiss Jena Flektogon 20mm T2.8",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4890.662781358856,
+		"fy": 4893.27885953592,
+		"cx": 3094.265488043617,
+		"cy": 1684.6324585532109
+	},
+	"distortion_coeffs": [
+		0.223304208666234,
+		0.23629873860529335,
+		-0.21606991923105084,
+		0.4023358632283537
+	],
+	"metadata": {
+		"calibrated_by": "Joel Gagne",
+		"notes": "90 degree shutter, 23.976fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero7-white--eis-y--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO7 White",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 931.414684639516,
+		"fy": 941.901770534718,
+		"cx": 956.2015065583074,
+		"cy": 557.3605500598723
+	},
+	"distortion_coeffs": [
+		0.12200229938799036,
+		-0.029309269075802287,
+		-0.030192284569338725,
+		0.03511570609583219
+	],
+	"metadata": {
+		"calibrated_by": "Nils",
+		"notes": "EIS-Y",
+		"source": "gyroflow",
+		"official": true
+	}
+}

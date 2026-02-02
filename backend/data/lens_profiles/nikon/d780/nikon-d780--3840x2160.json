@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d780--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "D780",
+	"lens_model": "Tamron 35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4130.84592592913,
+		"fy": 4037.958740879319,
+		"cx": 1941.097395001952,
+		"cy": 1050.9447063785194
+	},
+	"distortion_coeffs": [
+		0.26504968007467655,
+		0.3280868854436978,
+		-2.138976151977115,
+		7.182928530933853
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

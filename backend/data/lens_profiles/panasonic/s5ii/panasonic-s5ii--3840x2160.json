@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5ii--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5II",
+	"lens_model": "Lumix 24-105 F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4419.611286845829,
+		"fy": 4427.872750747392,
+		"cx": 1901.2337225422505,
+		"cy": 1059.2689715392105
+	},
+	"distortion_coeffs": [
+		0.26359078683646087,
+		1.0634043574666354,
+		-7.151185492191571,
+		20.236647120182827
+	],
+	"metadata": {
+		"calibrated_by": "Karol Zagorski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

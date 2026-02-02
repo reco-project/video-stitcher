@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--my--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "gh5",
+	"lens_model": "olympus 12-40 pro 2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2962.562907113969,
+		"fy": 2961.714988133612,
+		"cx": 2040.222313937476,
+		"cy": 1076.4556727226652
+	},
+	"distortion_coeffs": [
+		0.314075366268463,
+		0.16516017094476884,
+		-0.15456419576867625,
+		0.13256604204900724
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"notes": "my",
+		"source": "gyroflow",
+		"official": true
+	}
+}

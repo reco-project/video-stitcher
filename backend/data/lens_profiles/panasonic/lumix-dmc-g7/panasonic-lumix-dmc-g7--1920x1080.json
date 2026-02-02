@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-dmc-g7--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix DMC-G7",
+	"lens_model": "Panasonic 14-42",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1621.931837421895,
+		"fy": 1619.4690063117505,
+		"cx": 958.6588189776954,
+		"cy": 539.3992854196531
+	},
+	"distortion_coeffs": [
+		0.33591575725656725,
+		-0.33205788416368487,
+		2.476579841375115,
+		-4.074076987027903
+	],
+	"metadata": {
+		"calibrated_by": "LeoBar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a1--70mm--7680x4320",
+	"camera_brand": "Sony",
+	"camera_model": "a1",
+	"lens_model": "Sigma 28-70 f2.8",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 67700.69996290644,
+		"fy": 74777.01115387221,
+		"cx": 3972.392429241509,
+		"cy": 2546.3600290584654
+	},
+	"distortion_coeffs": [
+		16.34376571348659,
+		-541.745108175222,
+		385779.1364903542,
+		-11922170.481538724
+	],
+	"metadata": {
+		"calibrated_by": "Martin Hirmer",
+		"notes": "@70mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

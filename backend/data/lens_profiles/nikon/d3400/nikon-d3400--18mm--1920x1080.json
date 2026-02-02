@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d3400--18mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D3400",
+	"lens_model": "AF-P NIKKOR 18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1519.9897634471893,
+		"fy": 1521.3691235400113,
+		"cx": 936.5919848809584,
+		"cy": 536.5137006694906
+	},
+	"distortion_coeffs": [
+		0.2313726686875845,
+		-0.01494578109148281,
+		0.3825883012164507,
+		-0.590500732733426
+	],
+	"metadata": {
+		"calibrated_by": "Alejandro Davila",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sigma-fp-l--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp L",
+	"lens_model": "sigma DGDN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3813.0955874728234,
+		"fy": 3816.096627284756,
+		"cx": 2027.1900418715743,
+		"cy": 1099.5930468720308
+	},
+	"distortion_coeffs": [
+		0.34445681318566485,
+		0.3632997376291803,
+		-2.700530515125317,
+		8.634958480142908
+	],
+	"metadata": {
+		"calibrated_by": "hsy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--f20--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Samyang FE 35MM 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3997.213807081483,
+		"fy": 3999.127996325566,
+		"cx": 1915.9743376851577,
+		"cy": 1052.8470230230855
+	},
+	"distortion_coeffs": [
+		0.40585909494823347,
+		0.30047648860955517,
+		-1.6560120932847182,
+		4.890382569287734
+	],
+	"metadata": {
+		"calibrated_by": "Rio A7C Yogyakarta",
+		"notes": "F2.0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

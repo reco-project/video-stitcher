@@ -1,0 +1,28 @@
+{
+	"id": "asus-rog-phone-7-ultimate--3840x2160",
+	"camera_brand": "ASUS",
+	"camera_model": "ROG Phone 7 Ultimate",
+	"lens_model": "Sony IMX766",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1982.6810728730804,
+		"fy": 1981.7955039660644,
+		"cx": 1936.56097411321,
+		"cy": 1047.1193497561194
+	},
+	"distortion_coeffs": [
+		0.2037421999369519,
+		0.205435734310184,
+		0.32462894345041177,
+		-0.42114359130551854
+	],
+	"metadata": {
+		"calibrated_by": "Tom M",
+		"source": "gyroflow",
+		"official": true
+	}
+}

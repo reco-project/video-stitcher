@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s21--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S21",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1538.5208811833268,
+		"fy": 1537.175597737061,
+		"cx": 969.4796244348632,
+		"cy": 544.1777526089703
+	},
+	"distortion_coeffs": [
+		0.4124572756535423,
+		0.05571071264116568,
+		-0.7018140564312094,
+		2.0928661808446947
+	],
+	"metadata": {
+		"calibrated_by": "Thiha Thway",
+		"source": "gyroflow",
+		"official": true
+	}
+}

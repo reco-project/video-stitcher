@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gf15--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GF15",
+	"lens_model": "H-PS14042",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1544.4918640658047,
+		"fy": 1548.348087848996,
+		"cx": 1004.8862866318118,
+		"cy": 469.62168398478906
+	},
+	"distortion_coeffs": [
+		0.30567188535064316,
+		-0.006109699066633919,
+		0.737364274060902,
+		-0.8607643061820228
+	],
+	"metadata": {
+		"calibrated_by": "Local",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--18mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Sony 18-105mm F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2866.738019505272,
+		"fy": 2886.9353234533523,
+		"cx": 1982.87324980828,
+		"cy": 1185.6937610747552
+	},
+	"distortion_coeffs": [
+		0.4677034341651886,
+		-0.9548184507278936,
+		3.9736383340272576,
+		-5.178245560904589
+	],
+	"metadata": {
+		"calibrated_by": "Anselme Jaosidy",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "drift-ghost-xl-pro--1920x1080",
+	"camera_brand": "Drift",
+	"camera_model": "Ghost XL Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1183.971092369528,
+		"fy": 1183.334613681715,
+		"cx": 956.6823693512916,
+		"cy": 570.1592122079568
+	},
+	"distortion_coeffs": [
+		-0.0573323179494968,
+		-0.028330819863611727,
+		0.04050192632824149,
+		-0.02812399884586793
+	],
+	"metadata": {
+		"calibrated_by": "Alan Lee",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--1080p-50ims--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "Voigtlander 42,5",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2053.5138525163766,
+		"fy": 2048.7776917443625,
+		"cx": 971.5960437127547,
+		"cy": 528.6073071790081
+	},
+	"distortion_coeffs": [
+		0.2449564297900919,
+		0.1973153176148492,
+		2.018331859990292,
+		-11.90706421044836
+	],
+	"metadata": {
+		"calibrated_by": "pyxeos",
+		"notes": "1080p 50ims",
+		"source": "gyroflow",
+		"official": true
+	}
+}

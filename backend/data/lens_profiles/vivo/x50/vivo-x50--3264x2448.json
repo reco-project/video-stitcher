@@ -1,0 +1,28 @@
+{
+	"id": "vivo-x50--3264x2448",
+	"camera_brand": "Vivo",
+	"camera_model": "X50",
+	"lens_model": "main_camera",
+	"resolution": {
+		"width": 3264,
+		"height": 2448
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2601.512275314487,
+		"fy": 2598.384507944477,
+		"cx": 1664.10527460426,
+		"cy": 1231.627855326191
+	},
+	"distortion_coeffs": [
+		0.41456309684643655,
+		-1.1144666670842578,
+		6.217595154084464,
+		-9.29228735092544
+	],
+	"metadata": {
+		"calibrated_by": "Endless Maker",
+		"source": "gyroflow",
+		"official": true
+	}
+}

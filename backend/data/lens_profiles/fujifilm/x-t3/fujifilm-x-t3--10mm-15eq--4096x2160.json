@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--10mm-15eq--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "10-24 f4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1766.9992692849323,
+		"fy": 1768.0533843744618,
+		"cx": 2050.265503366713,
+		"cy": 1056.8488073574426
+	},
+	"distortion_coeffs": [
+		0.3104409752803824,
+		0.24034002610548413,
+		-0.2340691005038278,
+		0.2572516138466862
+	],
+	"metadata": {
+		"calibrated_by": "Elis Taflaj",
+		"notes": "10mm 15eq",
+		"source": "gyroflow",
+		"official": true
+	}
+}

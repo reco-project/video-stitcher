@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2c--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2c",
+	"lens_model": "Laowa 7.5mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2218.9953795207066,
+		"fy": 2220.640255652524,
+		"cx": 2096.332003219601,
+		"cy": 1156.346464456666
+	},
+	"distortion_coeffs": [
+		0.3127199446128816,
+		0.10560110139879812,
+		-0.05877811406524327,
+		0.12385725128670416
+	],
+	"metadata": {
+		"calibrated_by": "Tr\u1ea7n T\u00e0i",
+		"source": "gyroflow",
+		"official": true
+	}
+}

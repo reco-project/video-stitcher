@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--50fps--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "kit 3.5-5.6 28-70 28mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1154.0663850471033,
+		"fy": 1161.4562446426555,
+		"cx": 938.8302367071584,
+		"cy": 384.1492706562786
+	},
+	"distortion_coeffs": [
+		0.4486081336665479,
+		-0.07791548449699053,
+		1.4125735720755312,
+		-1.9464425874092848
+	],
+	"metadata": {
+		"calibrated_by": "Panos Taxiarchis Magnisalis",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

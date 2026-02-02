@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh6--fhd_50p_420_10_l--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "HD12-35 @ 12mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1406.9586112815557,
+		"fy": 1406.9997557339627,
+		"cx": 970.1275151618388,
+		"cy": 535.3556344096613
+	},
+	"distortion_coeffs": [
+		0.25228343866836345,
+		0.5207066756713192,
+		-1.5435031756916722,
+		2.1674250755628917
+	],
+	"metadata": {
+		"calibrated_by": "Jhe",
+		"notes": "FHD_50P_420_10_L",
+		"source": "gyroflow",
+		"official": true
+	}
+}

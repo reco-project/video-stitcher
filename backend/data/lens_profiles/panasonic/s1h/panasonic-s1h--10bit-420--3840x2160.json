@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s1h--10bit-420--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "Canon EF 24-105mm f4L IS II @ 85mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 51547.90240171299,
+		"fy": 51480.37593670983,
+		"cx": 1822.223469153609,
+		"cy": 1292.4136447380438
+	},
+	"distortion_coeffs": [
+		5.144382626798371,
+		-2738.0272027551287,
+		17072823.787477836,
+		-12907602576.217232
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Jackson",
+		"notes": "10bit 4:2:0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

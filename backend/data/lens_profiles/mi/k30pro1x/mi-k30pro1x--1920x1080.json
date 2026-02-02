@@ -1,0 +1,28 @@
+{
+	"id": "mi-k30pro1x--1920x1080",
+	"camera_brand": "MI",
+	"camera_model": "K30PRO1X",
+	"lens_model": "1X",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1727.5689040809866,
+		"fy": 1728.4292828269834,
+		"cx": 967.9961451839384,
+		"cy": 533.1290342425094
+	},
+	"distortion_coeffs": [
+		0.3983431094704853,
+		-0.4077775372501149,
+		2.7484334568276707,
+		-4.395509813551413
+	],
+	"metadata": {
+		"calibrated_by": "\u8def\u897f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

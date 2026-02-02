@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7ii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7II",
+	"lens_model": "85mm F1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5052.26701608021,
+		"fy": 5611.726964744589,
+		"cx": 1027.0903831371902,
+		"cy": 515.0961033513379
+	},
+	"distortion_coeffs": [
+		0.9420415524903656,
+		-35.17746456492777,
+		1742.3719219432376,
+		-30542.498338743713
+	],
+	"metadata": {
+		"calibrated_by": "Masnip",
+		"source": "gyroflow",
+		"official": true
+	}
+}

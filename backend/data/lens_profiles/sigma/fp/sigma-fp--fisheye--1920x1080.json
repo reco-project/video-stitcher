@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--fisheye--1920x1080",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "7Artisans 10mm f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1186.5836759183228,
+		"fy": 1182.3697838145845,
+		"cx": 962.702688500092,
+		"cy": 559.0581174463815
+	},
+	"distortion_coeffs": [
+		0.24318362305872823,
+		0.017904229205212497,
+		0.7798032362151108,
+		-1.2738423363726503
+	],
+	"metadata": {
+		"calibrated_by": "NiceCrash_22",
+		"notes": "Fisheye",
+		"source": "gyroflow",
+		"official": true
+	}
+}

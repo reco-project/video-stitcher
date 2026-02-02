@@ -1,0 +1,28 @@
+{
+	"id": "ricoh-gr-ii--1280x720",
+	"camera_brand": "Ricoh",
+	"camera_model": "GR II",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 462.9093553173871,
+		"fy": 463.80179866946867,
+		"cx": 621.3326416029827,
+		"cy": 323.3704611247454
+	},
+	"distortion_coeffs": [
+		0.32997645057490077,
+		0.07016157614824432,
+		0.12966867268360582,
+		-0.01052557229658541
+	],
+	"metadata": {
+		"calibrated_by": "brom",
+		"source": "gyroflow",
+		"official": true
+	}
+}

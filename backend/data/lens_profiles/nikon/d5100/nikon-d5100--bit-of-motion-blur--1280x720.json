@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d5100--bit-of-motion-blur--1280x720",
+	"camera_brand": "Nikon",
+	"camera_model": "D5100",
+	"lens_model": "Nikkor 35mm F/1.8",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1981.4115861437697,
+		"fy": 1981.6627454392265,
+		"cx": 640.0,
+		"cy": 360.0
+	},
+	"distortion_coeffs": [
+		0.07058623089389615,
+		1.66922646990923,
+		-12.468220819690677,
+		24.81783300627311
+	],
+	"metadata": {
+		"calibrated_by": "Elvin",
+		"notes": "Bit of motion blur",
+		"source": "gyroflow",
+		"official": true
+	}
+}

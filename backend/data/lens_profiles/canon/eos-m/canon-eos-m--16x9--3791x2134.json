@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--16x9--3791x2134",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Meike 35mm F1.4",
+	"resolution": {
+		"width": 3791,
+		"height": 2134
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8201.745055061645,
+		"fy": 8250.736968759635,
+		"cx": 1849.9604529950311,
+		"cy": 899.7961083544097
+	},
+	"distortion_coeffs": [
+		0.04253761871607009,
+		14.190563017910703,
+		-382.11529191513847,
+		3366.84077209791
+	],
+	"metadata": {
+		"calibrated_by": "Eos M Cinema",
+		"notes": "16x9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-f6--prores422--5760x3240",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "Canon 50mm Prime",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9525.985460717353,
+		"fy": 9580.220863379183,
+		"cx": 3095.345581336968,
+		"cy": 1993.8408440891703
+	},
+	"distortion_coeffs": [
+		0.3758121615432282,
+		-3.1812672073219717,
+		37.93899319400036,
+		-138.8385303414315
+	],
+	"metadata": {
+		"calibrated_by": "SkyboundMBK",
+		"notes": "ProRes422",
+		"source": "gyroflow",
+		"official": true
+	}
+}

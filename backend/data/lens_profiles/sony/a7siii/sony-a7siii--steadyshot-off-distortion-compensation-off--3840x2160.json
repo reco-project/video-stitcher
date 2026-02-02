@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--steadyshot-off-distortion-compensation-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7SIII",
+	"lens_model": "Sonnar FE 35mm F2.8 ZA",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4164.107188863273,
+		"fy": 4163.360079352708,
+		"cx": 1915.6995002196632,
+		"cy": 1081.0422644417386
+	},
+	"distortion_coeffs": [
+		0.4474259935276649,
+		0.5587999962664929,
+		-4.257569042068455,
+		8.256964495818591
+	],
+	"metadata": {
+		"calibrated_by": "Vladimir Kostenko",
+		"notes": "SteadyShot Off Distortion Compensation Off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

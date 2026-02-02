@@ -1,0 +1,29 @@
+{
+	"id": "caddx-orca--sergey--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Orca",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1922.9440092064872,
+		"fy": 1918.1864231305651,
+		"cx": 1932.9859450949407,
+		"cy": 1042.1040165865516
+	},
+	"distortion_coeffs": [
+		-0.04478083576892559,
+		0.026535114349778136,
+		-0.05570268580883955,
+		0.029920330485648294
+	],
+	"metadata": {
+		"calibrated_by": "\u0421\u0435\u0440\u0433\u0435\u0439 \u0411\u044b\u043a\u043e\u0432",
+		"notes": "Sergey",
+		"source": "gyroflow",
+		"official": true
+	}
+}

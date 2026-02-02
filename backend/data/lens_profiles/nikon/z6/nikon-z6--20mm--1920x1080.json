@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--20mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "Nikkor S 20mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1066.6872377574402,
+		"fy": 1068.3302280636651,
+		"cx": 964.0593868725751,
+		"cy": 545.9523133274132
+	},
+	"distortion_coeffs": [
+		0.35200683628427315,
+		0.05757455967931644,
+		0.21713859958103088,
+		-0.08223491154473787
+	],
+	"metadata": {
+		"calibrated_by": "Aiden Touch",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

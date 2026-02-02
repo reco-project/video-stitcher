@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--50-fps-2000-iso1325-shutter--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "24.00-70mm sigma art",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1269.4539328793726,
+		"fy": 1269.84369656565,
+		"cx": 955.3226617103516,
+		"cy": 527.1098569721635
+	},
+	"distortion_coeffs": [
+		0.2604163196130265,
+		0.5275609926184927,
+		-0.9228491182297256,
+		0.8234653071974017
+	],
+	"metadata": {
+		"calibrated_by": "WAEL",
+		"notes": "50 fps / 2000 iso/1/325 shutter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

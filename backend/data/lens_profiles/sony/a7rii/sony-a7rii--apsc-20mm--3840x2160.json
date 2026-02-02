@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rii--apsc-20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rII",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3320.2664474644826,
+		"fy": 3291.320530836928,
+		"cx": 2011.6549875608357,
+		"cy": 1115.8833129481263
+	},
+	"distortion_coeffs": [
+		0.28856211449425506,
+		0.6080154042866498,
+		-2.3742029249144108,
+		3.7302994509604535
+	],
+	"metadata": {
+		"calibrated_by": "SUMGLE",
+		"notes": "APSC 20MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

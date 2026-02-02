@@ -1,0 +1,28 @@
+{
+	"id": "sony-a99-ii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "A99 II",
+	"lens_model": "vario-sonnar 2,8/24-70 ZA",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1337.818985140735,
+		"fy": 1337.7967013454647,
+		"cx": 945.9318336715648,
+		"cy": 541.9218999539117
+	},
+	"distortion_coeffs": [
+		0.2194503034131335,
+		0.213267973453656,
+		-0.24460165394202613,
+		0.646066953876539
+	],
+	"metadata": {
+		"calibrated_by": "ASUS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

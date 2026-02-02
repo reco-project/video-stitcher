@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x100v--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X100V",
+	"lens_model": "FUJINON 23MM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3986.7595596780993,
+		"fy": 3996.3829465572503,
+		"cx": 1913.6155388602904,
+		"cy": 958.6654615723384
+	},
+	"distortion_coeffs": [
+		0.27122792722167016,
+		0.8071471300771477,
+		-5.616253805093765,
+		18.025865934289104
+	],
+	"metadata": {
+		"calibrated_by": "Philipp Yalovega",
+		"source": "gyroflow",
+		"official": true
+	}
+}

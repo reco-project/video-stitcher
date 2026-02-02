@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-4k--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly 4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1437.8778573771478,
+		"fy": 1438.6732599991983,
+		"cx": 1389.9147854262496,
+		"cy": 727.4709008205931
+	},
+	"distortion_coeffs": [
+		0.2140902473239859,
+		-0.44916257226229606,
+		0.6755886614062304,
+		-0.367328099433368
+	],
+	"metadata": {
+		"calibrated_by": "I7-7700K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

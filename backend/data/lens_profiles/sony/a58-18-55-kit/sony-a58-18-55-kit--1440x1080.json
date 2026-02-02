@@ -1,0 +1,28 @@
+{
+	"id": "sony-a58-18-55-kit--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a58 18-55 kit",
+	"lens_model": null,
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1805.8684475364792,
+		"fy": 2423.739365998673,
+		"cx": 621.7308800618413,
+		"cy": 447.6143911654648
+	},
+	"distortion_coeffs": [
+		0.33800775241562026,
+		0.18041439964038977,
+		0.7400930544958257,
+		-2.3480766321656423
+	],
+	"metadata": {
+		"calibrated_by": "Dipak009",
+		"source": "gyroflow",
+		"official": true
+	}
+}

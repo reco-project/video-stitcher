@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-note-s20-ultra--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Note S20 Ultra",
+	"lens_model": "0.5 Ultrawide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1565.077734168926,
+		"fy": 1564.735442464326,
+		"cx": 1918.5128828426857,
+		"cy": 1093.0048491330017
+	},
+	"distortion_coeffs": [
+		0.35377375614285755,
+		0.04130182739040544,
+		0.2901256822395104,
+		-0.16624246854642552
+	],
+	"metadata": {
+		"calibrated_by": "KwadLife",
+		"source": "gyroflow",
+		"official": true
+	}
+}

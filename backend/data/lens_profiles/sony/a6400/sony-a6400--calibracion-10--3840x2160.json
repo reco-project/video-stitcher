@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--calibracion-10--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "16-50mmm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3335.335366250211,
+		"fy": 3325.229085001722,
+		"cx": 1966.615557984577,
+		"cy": 1056.2320727942702
+	},
+	"distortion_coeffs": [
+		0.337884417079257,
+		-0.3763597475767815,
+		2.207303439845977,
+		-2.958363770915106
+	],
+	"metadata": {
+		"calibrated_by": "Erik Quintero",
+		"notes": "calibracion 10",
+		"source": "gyroflow",
+		"official": true
+	}
+}

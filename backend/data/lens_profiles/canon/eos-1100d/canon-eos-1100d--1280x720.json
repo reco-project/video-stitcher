@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-1100d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 1100D",
+	"lens_model": "efs 18 a 55",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1085.8560596563857,
+		"fy": 1086.6081976678206,
+		"cx": 646.5816798663071,
+		"cy": 356.09180005544187
+	},
+	"distortion_coeffs": [
+		0.20057002746938973,
+		-0.46420809570580146,
+		4.309715315069418,
+		-8.7544444201392
+	],
+	"metadata": {
+		"calibrated_by": "Mary-chan .",
+		"source": "gyroflow",
+		"official": true
+	}
+}

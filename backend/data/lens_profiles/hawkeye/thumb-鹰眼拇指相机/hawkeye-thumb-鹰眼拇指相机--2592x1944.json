@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-thumb-\u9e70\u773c\u62c7\u6307\u76f8\u673a--2592x1944",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Thumb \u9e70\u773c\u62c7\u6307\u76f8\u673a",
+	"lens_model": "\u6807\u51c6\u955c\u5934",
+	"resolution": {
+		"width": 2592,
+		"height": 1944
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 620.9304930248647,
+		"fy": 622.0707527242811,
+		"cx": 1306.4756962462998,
+		"cy": 888.3747810588279
+	},
+	"distortion_coeffs": [
+		0.2518690535333303,
+		0.0858646312297935,
+		-0.0003724435025729272,
+		0.0035048489165852488
+	],
+	"metadata": {
+		"calibrated_by": "\u90ed\u5cf0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

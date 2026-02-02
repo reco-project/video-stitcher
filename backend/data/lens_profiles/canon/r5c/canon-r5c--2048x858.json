@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5c--2048x858",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "Laowa Nanomorph",
+	"resolution": {
+		"width": 2048,
+		"height": 858
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2318.949965034977,
+		"fy": 2306.930354283814,
+		"cx": 1024.9733341679491,
+		"cy": 656.4016831077325
+	},
+	"distortion_coeffs": [
+		-0.06993569525460322,
+		9.043472927835907,
+		-65.27176082476403,
+		177.66243954526198
+	],
+	"metadata": {
+		"calibrated_by": "enzo pianetti ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

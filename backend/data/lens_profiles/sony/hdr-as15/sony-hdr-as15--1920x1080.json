@@ -2,7 +2,7 @@
 	"id": "sony-hdr-as15--1920x1080",
 	"camera_brand": "Sony",
 	"camera_model": "HDR-AS15",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
@@ -21,13 +21,8 @@
 		0.06217939351978093
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_HDR-AS15__/_1080p_16by9_1920x1080-59.94fps",
 		"calibrated_by": "Henrik Persson",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "59.94006",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

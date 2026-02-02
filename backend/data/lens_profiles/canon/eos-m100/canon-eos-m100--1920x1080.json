@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m100--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M100",
+	"lens_model": "EF-M 15-45mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2583.954269347979,
+		"fy": 2578.819826472877,
+		"cx": 949.4157863727944,
+		"cy": 462.2800079120191
+	},
+	"distortion_coeffs": [
+		0.22509074257151784,
+		2.5168015748059065,
+		-24.21644746486706,
+		93.65523935224478
+	],
+	"metadata": {
+		"calibrated_by": "Richard",
+		"source": "gyroflow",
+		"official": true
+	}
+}

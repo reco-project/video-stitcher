@@ -1,0 +1,28 @@
+{
+	"id": "leica-sl2-s--6192x2176",
+	"camera_brand": "Leica",
+	"camera_model": "sl2-s",
+	"lens_model": "dulens58+1.5x",
+	"resolution": {
+		"width": 6192,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10257.27494172468,
+		"fy": 10300.510878202937,
+		"cx": 3222.4131143749305,
+		"cy": 1227.2064369492878
+	},
+	"distortion_coeffs": [
+		0.3480804650419953,
+		-14.28221557400994,
+		155.09559144100575,
+		-572.4129519010082
+	],
+	"metadata": {
+		"calibrated_by": "Beck Tang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

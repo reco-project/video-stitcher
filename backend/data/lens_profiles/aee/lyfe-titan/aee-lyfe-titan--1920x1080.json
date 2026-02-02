@@ -1,0 +1,28 @@
+{
+	"id": "aee-lyfe-titan--1920x1080",
+	"camera_brand": "AEE",
+	"camera_model": "Lyfe Titan",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1128.007690599069,
+		"fy": 1128.6629600909082,
+		"cx": 967.3746652529984,
+		"cy": 559.4248636418614
+	},
+	"distortion_coeffs": [
+		-0.06022910528483012,
+		-0.012972852393438304,
+		-0.06636562333407638,
+		0.09823786611521332
+	],
+	"metadata": {
+		"calibrated_by": "Alexandre Denesle",
+		"source": "gyroflow",
+		"official": true
+	}
+}

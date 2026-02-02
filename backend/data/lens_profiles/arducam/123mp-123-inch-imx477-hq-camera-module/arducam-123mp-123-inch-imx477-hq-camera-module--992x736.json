@@ -1,0 +1,28 @@
+{
+	"id": "arducam-123mp-123-inch-imx477-hq-camera-module--992x736",
+	"camera_brand": "Arducam",
+	"camera_model": "12.3MP 1/2.3 Inch IMX477 HQ Camera Module",
+	"lens_model": "6mm CS Lens",
+	"resolution": {
+		"width": 992,
+		"height": 736
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1006.5936026103196,
+		"fy": 1010.1040605609726,
+		"cx": 485.7886719441899,
+		"cy": 368.6834303855491
+	},
+	"distortion_coeffs": [
+		-0.1683269125039552,
+		-0.12370041304371047,
+		0.6442789118706433,
+		-0.938418068331789
+	],
+	"metadata": {
+		"calibrated_by": "Max Maton",
+		"source": "gyroflow",
+		"official": true
+	}
+}

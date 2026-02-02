@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--9mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "LAOWA",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1639.9100311973054,
+		"fy": 1640.17217555889,
+		"cx": 1955.5025371180984,
+		"cy": 1085.2451443102937
+	},
+	"distortion_coeffs": [
+		0.33795364032299857,
+		0.12985585348492765,
+		-0.04299978965508191,
+		0.12898111149251917
+	],
+	"metadata": {
+		"calibrated_by": "Antonello Curci",
+		"notes": "9mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

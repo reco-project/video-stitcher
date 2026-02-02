@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-8t--sans-stabilisation--1920x1080",
+	"camera_brand": "OnePlus",
+	"camera_model": "8T",
+	"lens_model": "grand angle",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 980.2738472686484,
+		"fy": 979.95816548061,
+		"cx": 965.58850341549,
+		"cy": 545.3308166708757
+	},
+	"distortion_coeffs": [
+		0.4185144298275582,
+		-0.3699512496219228,
+		1.0946690356383693,
+		-0.6922004536465775
+	],
+	"metadata": {
+		"calibrated_by": "lame2fer HB",
+		"notes": "sans stabilisation",
+		"source": "gyroflow",
+		"official": true
+	}
+}

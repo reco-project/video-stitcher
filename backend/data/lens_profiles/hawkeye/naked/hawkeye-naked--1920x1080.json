@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-naked--1920x1080",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Naked",
+	"lens_model": "Hawkeye/HawkeyeNaked1080P_16_9_50fps.json",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 795.0685844965935,
+		"fy": 795.4604705597982,
+		"cx": 936.9109925829327,
+		"cy": 554.7618088173468
+	},
+	"distortion_coeffs": [
+		0.13411436915590602,
+		0.04438671454695635,
+		-0.07823077408666193,
+		0.02677934536273484
+	],
+	"metadata": {
+		"calibrated_by": "\u8c2d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

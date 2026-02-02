@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-oneplus-5--3840x2160",
+	"camera_brand": "OnePlus",
+	"camera_model": "OnePlus 5",
+	"lens_model": "Main camera",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3318.022413304656,
+		"fy": 3309.324771620512,
+		"cx": 1931.259877335401,
+		"cy": 1082.081606595825
+	},
+	"distortion_coeffs": [
+		0.7114621821992125,
+		-1.607932237509225,
+		0.4124455114269102,
+		9.837670069389652
+	],
+	"metadata": {
+		"calibrated_by": "Micha",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-14ultra--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "14ultra",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3163.9597060221877,
+		"fy": 3161.6529326677387,
+		"cx": 1919.2348729874025,
+		"cy": 1079.0669121933963
+	},
+	"distortion_coeffs": [
+		0.37125505164578576,
+		-0.6204125857763801,
+		3.681514047445949,
+		-5.0307957511609045
+	],
+	"metadata": {
+		"calibrated_by": "maxyu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

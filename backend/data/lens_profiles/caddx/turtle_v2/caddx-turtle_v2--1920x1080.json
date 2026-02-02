@@ -1,0 +1,28 @@
+{
+	"id": "caddx-turtle_v2--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "turtle_v2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1003.5264899812628,
+		"fy": 1001.4275030111652,
+		"cx": 993.6063547991936,
+		"cy": 562.9827585775344
+	},
+	"distortion_coeffs": [
+		-0.07998756622731874,
+		0.15979534120329156,
+		-0.4239732257173752,
+		0.4072918997372786
+	],
+	"metadata": {
+		"calibrated_by": "yinghao zeng",
+		"source": "gyroflow",
+		"official": true
+	}
+}

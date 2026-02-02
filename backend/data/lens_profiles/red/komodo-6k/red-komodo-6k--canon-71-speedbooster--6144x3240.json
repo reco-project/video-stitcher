@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-71-speedbooster--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss Contax 50 1.4 T*",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8325.339966166415,
+		"fy": 8327.057833005447,
+		"cx": 3083.132276637371,
+		"cy": 1566.8473246509116
+	},
+	"distortion_coeffs": [
+		0.13805339611793846,
+		0.6270273307830942,
+		-1.9763547483267896,
+		17.218726280775723
+	],
+	"metadata": {
+		"calibrated_by": "cru",
+		"notes": "Canon .71 Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

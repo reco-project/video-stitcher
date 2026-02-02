@@ -1,0 +1,28 @@
+{
+	"id": "oppo-reno-4-pro--1920x1080",
+	"camera_brand": "Oppo",
+	"camera_model": "Reno 4 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1041.3738409471846,
+		"fy": 1045.1156478927408,
+		"cx": 964.2409636346924,
+		"cy": 538.6243621686921
+	},
+	"distortion_coeffs": [
+		0.34450442487388105,
+		0.7815130529334693,
+		-1.279081154068129,
+		1.1195626094961164
+	],
+	"metadata": {
+		"calibrated_by": "DRONIC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

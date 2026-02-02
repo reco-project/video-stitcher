@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--sony-ilce-6700-1800mm-3840x216023976--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "Sigma 18-35mm 1.8 ART",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3111.7588044519025,
+		"fy": 3113.938353535465,
+		"cx": 1901.0143296240929,
+		"cy": 1110.088990730692
+	},
+	"distortion_coeffs": [
+		0.2725892876548577,
+		0.7111230801486131,
+		-2.449504967221577,
+		3.876244438609684
+	],
+	"metadata": {
+		"calibrated_by": "Mehmet Kozal",
+		"notes": "sony-ilce-6700-18.00mm-3840x2160@23976",
+		"source": "gyroflow",
+		"official": true
+	}
+}

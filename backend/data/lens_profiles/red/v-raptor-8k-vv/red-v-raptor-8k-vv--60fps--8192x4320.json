@@ -1,0 +1,29 @@
+{
+	"id": "red-v-raptor-8k-vv--60fps--8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "dzofilm vespid 21mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4344.599741706063,
+		"fy": 4341.508297406259,
+		"cx": 4106.70350966877,
+		"cy": 2165.924826334957
+	},
+	"distortion_coeffs": [
+		0.22292757008220512,
+		0.18772658891598829,
+		-0.11818023819419488,
+		0.40744086620884423
+	],
+	"metadata": {
+		"calibrated_by": "Omar Alfadhil",
+		"notes": "60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

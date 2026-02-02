@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-11-pro--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 11 pro",
+	"lens_model": "med lensHD 1080",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1788.196655705776,
+		"fy": 1787.809538652686,
+		"cx": 964.8185928828364,
+		"cy": 528.7898272428155
+	},
+	"distortion_coeffs": [
+		0.5586464958409871,
+		0.13947250776287,
+		-11.078888727867184,
+		43.397904893340375
+	],
+	"metadata": {
+		"calibrated_by": "Eric Lor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

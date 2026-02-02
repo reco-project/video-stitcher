@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r6--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R6",
+	"lens_model": "Tokina 16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1823.1119480243976,
+		"fy": 1823.033902423505,
+		"cx": 1927.439460988716,
+		"cy": 1067.985297688086
+	},
+	"distortion_coeffs": [
+		0.32895485214711784,
+		0.10641813267071912,
+		-0.07273579778880168,
+		0.08753965361992658
+	],
+	"metadata": {
+		"calibrated_by": "Nathan Birrien",
+		"source": "gyroflow",
+		"official": true
+	}
+}

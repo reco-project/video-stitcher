@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh4--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH4",
+	"lens_model": "meike 3,5mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 425.5083661665194,
+		"fy": 421.0605107705739,
+		"cx": 967.848294497286,
+		"cy": 503.32893940019494
+	},
+	"distortion_coeffs": [
+		0.08629762528322621,
+		-0.00033161389786134335,
+		-0.019216018934454737,
+		0.0037300514080666745
+	],
+	"metadata": {
+		"calibrated_by": "Alberto Conrad",
+		"source": "gyroflow",
+		"official": true
+	}
+}

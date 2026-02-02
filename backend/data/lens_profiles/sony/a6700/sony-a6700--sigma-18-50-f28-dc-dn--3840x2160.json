@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--sigma-18-50-f28-dc-dn--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "18.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3202.4479915410275,
+		"fy": 3202.459270829576,
+		"cx": 1942.8235117005572,
+		"cy": 1080.509545929648
+	},
+	"distortion_coeffs": [
+		0.2821721240403849,
+		0.47402727592026456,
+		-0.6119849595707354,
+		0.5655130344446933
+	],
+	"metadata": {
+		"calibrated_by": "C F Lam",
+		"notes": "Sigma 18-50 f2.8 DC DN",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "racecam-r1-micro--160-fov--640x480",
+	"camera_brand": "RaceCam",
+	"camera_model": "R1 Micro",
+	"lens_model": null,
+	"resolution": {
+		"width": 640,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 231.5486608217338,
+		"fy": 219.91613986496975,
+		"cx": 320.6450331435514,
+		"cy": 243.83435280347223
+	},
+	"distortion_coeffs": [
+		0.48384965821897213,
+		0.4334129098474361,
+		-0.9309884272333652,
+		0.42786906231039934
+	],
+	"metadata": {
+		"calibrated_by": "Bryn",
+		"notes": "160 FOV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

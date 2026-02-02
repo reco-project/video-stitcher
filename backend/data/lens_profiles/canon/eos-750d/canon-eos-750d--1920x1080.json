@@ -1,0 +1,27 @@
+{
+	"id": "canon-eos-750d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 750D",
+	"lens_model": "EFS 24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2091.0040157290373,
+		"fy": 2090.862897600082,
+		"cx": 992.6112724439062,
+		"cy": 551.5607188813935
+	},
+	"distortion_coeffs": [
+		0.2478806408923567,
+		-0.527473849423082,
+		5.181377725572385,
+		-11.980557823332404
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

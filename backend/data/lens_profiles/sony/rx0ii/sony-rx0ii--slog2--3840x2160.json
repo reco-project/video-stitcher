@@ -1,0 +1,29 @@
+{
+	"id": "sony-rx0ii--slog2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "BEASTGRIP 0.6X",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1912.330588431311,
+		"fy": 1896.5602059070077,
+		"cx": 2008.5699830710544,
+		"cy": 1097.5876815214033
+	},
+	"distortion_coeffs": [
+		0.1359399501434886,
+		0.69250257174915,
+		-2.6578607258006497,
+		4.284263821268721
+	],
+	"metadata": {
+		"calibrated_by": "FLYBY",
+		"notes": "SLOG2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

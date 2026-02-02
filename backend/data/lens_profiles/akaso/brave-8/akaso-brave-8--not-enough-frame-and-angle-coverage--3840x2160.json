@@ -1,0 +1,29 @@
+{
+	"id": "akaso-brave-8--not-enough-frame-and-angle-coverage--3840x2160",
+	"camera_brand": "AKASO",
+	"camera_model": "Brave 8",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1849.9246328924116,
+		"fy": 1850.271342985536,
+		"cx": 1937.593733086011,
+		"cy": 1097.194930625076
+	},
+	"distortion_coeffs": [
+		-0.14454400423689562,
+		0.4356275992325033,
+		-0.41791810180376265,
+		0.15161740858827252
+	],
+	"metadata": {
+		"calibrated_by": "aaron connelly",
+		"notes": "Not enough frame and angle coverage",
+		"source": "gyroflow",
+		"official": true
+	}
+}

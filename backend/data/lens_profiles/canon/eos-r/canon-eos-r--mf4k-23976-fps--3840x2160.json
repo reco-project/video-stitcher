@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r--mf4k-23976-fps--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R",
+	"lens_model": "Canon EFS 10-18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1954.4686892856132,
+		"fy": 1955.682612012271,
+		"cx": 1907.4466274575004,
+		"cy": 1072.9720601649192
+	},
+	"distortion_coeffs": [
+		0.33280388380910475,
+		0.12931826755785905,
+		0.014380216101965708,
+		-0.006734026535053654
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "MF/4K 23.976 FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--nero15x--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Minolta 58F1.2withNero1.5x",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 10725.10482123206,
+		"fy": 15954.223500394542,
+		"cx": 4827.84100588463,
+		"cy": 1488.4594327318775
+	},
+	"distortion_coeffs": [
+		0.7486593240940265,
+		-6.380522674670521,
+		20.34930798052931,
+		-36.45675131405082
+	],
+	"metadata": {
+		"calibrated_by": "Hu Yande",
+		"notes": "Nero1.5x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

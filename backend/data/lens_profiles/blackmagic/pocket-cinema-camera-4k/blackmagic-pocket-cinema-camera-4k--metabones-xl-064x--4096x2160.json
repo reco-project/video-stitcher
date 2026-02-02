@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--metabones-xl-064x--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Helios 44-2 58mm,f2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9552.474538018414,
+		"fy": 9605.8361001076,
+		"cx": 2031.6791493565877,
+		"cy": 1173.8049211947384
+	},
+	"distortion_coeffs": [
+		0.08735472961992713,
+		5.555455621071784,
+		-136.4234533279539,
+		2470.3716778129874
+	],
+	"metadata": {
+		"calibrated_by": "Generals at work",
+		"notes": "Metabones XL 0.64x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

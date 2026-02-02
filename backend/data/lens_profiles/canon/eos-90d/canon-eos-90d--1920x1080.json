@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-90d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 90D",
+	"lens_model": "EF 17-40 4.0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1435.4067189780994,
+		"fy": 1439.5994176865534,
+		"cx": 958.4868110147792,
+		"cy": 532.6777338523018
+	},
+	"distortion_coeffs": [
+		0.24505807352420403,
+		0.15272789765274747,
+		0.34847198187530765,
+		-0.9172381848999916
+	],
+	"metadata": {
+		"calibrated_by": "Dima Apeks",
+		"source": "gyroflow",
+		"official": true
+	}
+}

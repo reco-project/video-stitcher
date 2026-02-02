@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--12bit--1920x1080",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Laowa 9mm F5.6 FF RL",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 512.7115870858955,
+		"fy": 510.8603918665101,
+		"cx": 969.7984567381789,
+		"cy": 547.5574720728446
+	},
+	"distortion_coeffs": [
+		0.24115882551186987,
+		0.3243135737420037,
+		-0.24790729197654512,
+		0.1720852927052378
+	],
+	"metadata": {
+		"calibrated_by": "dr000minFPV",
+		"notes": "12bit",
+		"source": "gyroflow",
+		"official": true
+	}
+}

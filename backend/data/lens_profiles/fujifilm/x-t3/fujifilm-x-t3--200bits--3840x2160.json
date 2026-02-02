@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--200bits--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "Fujinon XF 14mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2847.252356973238,
+		"fy": 2849.64777431344,
+		"cx": 1940.097152666596,
+		"cy": 1053.777000486377
+	},
+	"distortion_coeffs": [
+		0.3567943179735508,
+		-0.23584277303293735,
+		1.7156038663209765,
+		-2.7722169487099393
+	],
+	"metadata": {
+		"calibrated_by": "juanforerof",
+		"notes": "200Bits",
+		"source": "gyroflow",
+		"official": true
+	}
+}

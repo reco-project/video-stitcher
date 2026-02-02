@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7siii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "laowa12mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 656.6403540521304,
+		"fy": 657.8362263161462,
+		"cx": 964.395897635722,
+		"cy": 541.78221085667
+	},
+	"distortion_coeffs": [
+		0.313227401948916,
+		0.2055298461330028,
+		-0.07326108323697915,
+		0.08925984045535039
+	],
+	"metadata": {
+		"calibrated_by": "tar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

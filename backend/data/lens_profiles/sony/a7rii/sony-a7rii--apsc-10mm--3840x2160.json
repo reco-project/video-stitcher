@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rii--apsc-10mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rII",
+	"lens_model": "SONY 10-20 f4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1637.570891209143,
+		"fy": 1620.4455112775715,
+		"cx": 1929.0137291653475,
+		"cy": 1092.1358485325106
+	},
+	"distortion_coeffs": [
+		0.31500965724100216,
+		0.14055100992819314,
+		-0.021772512219069444,
+		0.1009935993179002
+	],
+	"metadata": {
+		"calibrated_by": "SUMGLE",
+		"notes": "APSC 10MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "insta360-x4--3840x2160",
+	"camera_brand": "Insta360",
+	"camera_model": "X4",
+	"lens_model": "X4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1223.3194070724403,
+		"fy": 1228.3031778668258,
+		"cx": 1912.0013965263029,
+		"cy": 1120.6129268216216
+	},
+	"distortion_coeffs": [
+		0.35094512496147195,
+		0.0966674926168817,
+		0.06560103203079148,
+		0.020494435691107572
+	],
+	"metadata": {
+		"calibrated_by": "DAC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

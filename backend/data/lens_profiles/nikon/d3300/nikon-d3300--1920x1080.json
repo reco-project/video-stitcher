@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d3300--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D3300",
+	"lens_model": "NIKKOR 50MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4424.563429977746,
+		"fy": 4452.468993926877,
+		"cx": 964.2560511735314,
+		"cy": 521.0797315214555
+	},
+	"distortion_coeffs": [
+		0.02186379062646164,
+		23.27635355482851,
+		-836.3328082756943,
+		9852.41899801284
+	],
+	"metadata": {
+		"calibrated_by": "Biel Alsina Illa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

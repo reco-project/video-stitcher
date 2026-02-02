@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7riiia--super35mm-mod-activaded--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIIIA",
+	"lens_model": "Sigma 16mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2712.8059556550447,
+		"fy": 2712.594321385953,
+		"cx": 1918.1592961138433,
+		"cy": 1056.327319807909
+	},
+	"distortion_coeffs": [
+		0.22780432657824357,
+		0.0782576959673918,
+		0.10559313057042297,
+		0.2217243576892515
+	],
+	"metadata": {
+		"calibrated_by": "Jules Joris",
+		"notes": "Super35MM mod Activaded",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "dji-mavic-air-2--enfoque4k-co--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "MAVIC AIR 2",
+	"lens_model": "AIR 2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2759.0852593310196,
+		"fy": 2758.041812130495,
+		"cx": 1909.5758470725705,
+		"cy": 1098.269587694578
+	},
+	"distortion_coeffs": [
+		0.288887365255039,
+		0.2342877040153562,
+		0.3826489794398101,
+		-0.7058122964485705
+	],
+	"metadata": {
+		"calibrated_by": "HARRISON GONZALEZ SANTA",
+		"notes": "ENFOQUE4K CO.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

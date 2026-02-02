@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--35mm-s35-24fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica R 35mm f/2 Summicron-R II",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8172.545930258625,
+		"fy": 8176.328653840249,
+		"cx": 3058.342197266915,
+		"cy": 1623.254515066008
+	},
+	"distortion_coeffs": [
+		0.18251801809895876,
+		1.1104769531998016,
+		-7.7605247807114655,
+		27.154695090366673
+	],
+	"metadata": {
+		"calibrated_by": "windcine",
+		"notes": "35mm, S35, 24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

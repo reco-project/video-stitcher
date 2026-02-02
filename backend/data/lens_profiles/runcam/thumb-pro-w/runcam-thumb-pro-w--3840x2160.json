@@ -1,0 +1,28 @@
+{
+	"id": "runcam-thumb-pro-w--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "Thumb pro W",
+	"lens_model": "IMX577(12MP)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1817.5775463900209,
+		"fy": 1820.3653193470864,
+		"cx": 1970.9895719807648,
+		"cy": 1095.9520509290574
+	},
+	"distortion_coeffs": [
+		-0.0062529394467646824,
+		-0.005501448027764204,
+		0.00011772240965678784,
+		0.002077839263059444
+	],
+	"metadata": {
+		"calibrated_by": "Andrew El-Hayek",
+		"source": "gyroflow",
+		"official": true
+	}
+}

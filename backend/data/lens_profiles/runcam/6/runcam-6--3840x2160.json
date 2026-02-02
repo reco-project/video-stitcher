@@ -1,0 +1,28 @@
+{
+	"id": "runcam-6--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "6",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2586.695633221029,
+		"fy": 2583.6787647942288,
+		"cx": 1927.8246454874056,
+		"cy": 1099.4115813936987
+	},
+	"distortion_coeffs": [
+		0.036351312674156006,
+		-0.23342517017506037,
+		0.4494427979960656,
+		-0.30083779736082616
+	],
+	"metadata": {
+		"calibrated_by": "Theo Buchholz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-3-lite--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Split 3 Lite",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 785.0184722894207,
+		"fy": 785.5529608133168,
+		"cx": 928.0705828857324,
+		"cy": 528.1889161143293
+	},
+	"distortion_coeffs": [
+		-0.012981909370115783,
+		0.009021933867960965,
+		0.02710532940132559,
+		-0.01898144205554543
+	],
+	"metadata": {
+		"calibrated_by": "Claudio Timotius",
+		"source": "gyroflow",
+		"official": true
+	}
+}

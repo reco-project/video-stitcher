@@ -1,0 +1,28 @@
+{
+	"id": "nikon-coolpix-b500--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Coolpix b500",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1601.7088426628272,
+		"fy": 1600.518947961517,
+		"cx": 1129.850705655146,
+		"cy": 536.2413708100362
+	},
+	"distortion_coeffs": [
+		0.2241463791324333,
+		0.7094011898440167,
+		-4.161767623545392,
+		8.717584670141768
+	],
+	"metadata": {
+		"calibrated_by": "U0 A60",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-77d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 77D",
+	"lens_model": "EFS-18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1733.8609948456033,
+		"fy": 1720.8099088640477,
+		"cx": 935.0827634260426,
+		"cy": 550.1671261784436
+	},
+	"distortion_coeffs": [
+		0.2112861828788736,
+		-0.368417599179844,
+		3.346726044325807,
+		-4.548556045327974
+	],
+	"metadata": {
+		"calibrated_by": "Aladdin.fpv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

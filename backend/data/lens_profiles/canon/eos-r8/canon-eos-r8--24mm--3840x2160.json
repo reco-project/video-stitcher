@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r8--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "RF 24-50 f4.5-6.3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2959.677338526341,
+		"fy": 2969.93654035743,
+		"cx": 1899.5134789106764,
+		"cy": 1045.0478709296306
+	},
+	"distortion_coeffs": [
+		0.360195171138409,
+		-0.3921717335873406,
+		2.397399957403005,
+		-3.2148857270807776
+	],
+	"metadata": {
+		"calibrated_by": "jiaming cao",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "forcite-mk1s--1920x1080",
+	"camera_brand": "Forcite",
+	"camera_model": "MK1S",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1303.858215635697,
+		"fy": 1287.3841386180072,
+		"cx": 887.4537559146897,
+		"cy": 733.0509282434683
+	},
+	"distortion_coeffs": [
+		0.22464479838253376,
+		-0.6214013574072593,
+		1.281782806370966,
+		-1.1500982518689429
+	],
+	"metadata": {
+		"calibrated_by": "AndrewG",
+		"source": "gyroflow",
+		"official": true
+	}
+}

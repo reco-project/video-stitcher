@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-3-xl--3840x2160",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 3 XL",
+	"lens_model": "Open Camera, no zoom, 4K",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3871.9483936571737,
+		"fy": 3871.636501974728,
+		"cx": 1968.3648446652105,
+		"cy": 1138.6359988459412
+	},
+	"distortion_coeffs": [
+		0.790280798687743,
+		-4.500291537280761,
+		20.757628567343374,
+		-35.25678376828794
+	],
+	"metadata": {
+		"calibrated_by": "_Vi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

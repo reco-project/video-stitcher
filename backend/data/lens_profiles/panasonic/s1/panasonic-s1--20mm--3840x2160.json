@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s1--20mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1",
+	"lens_model": "Lumix 20-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2440.730639802951,
+		"fy": 2448.62022823194,
+		"cx": 1960.0710151039193,
+		"cy": 1072.7633443237146
+	},
+	"distortion_coeffs": [
+		0.30172875418361206,
+		0.17971806467198656,
+		-0.28995505550742307,
+		0.6351201828901146
+	],
+	"metadata": {
+		"calibrated_by": "414pyh",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "huawei-meta40pro--10--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "meta40pro",
+	"lens_model": "Octa-PD",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2744.2086023677566,
+		"fy": 2744.778204513955,
+		"cx": 1927.832785254292,
+		"cy": 1079.3635562665854
+	},
+	"distortion_coeffs": [
+		0.17865505021629352,
+		2.256016476196879,
+		-7.672440045131828,
+		8.646292392020937
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u747e\u579a",
+		"notes": "10",
+		"source": "gyroflow",
+		"official": true
+	}
+}

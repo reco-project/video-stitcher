@@ -1,0 +1,28 @@
+{
+	"id": "sigma-fp--1936x1090",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "45-2.8-I",
+	"resolution": {
+		"width": 1936,
+		"height": 1090
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2365.1264994527214,
+		"fy": 2364.4630900260067,
+		"cx": 985.1121308174096,
+		"cy": 543.0161594404037
+	},
+	"distortion_coeffs": [
+		0.3545629798007576,
+		0.44678179413053287,
+		-0.09637110200349722,
+		5.793281422073827
+	],
+	"metadata": {
+		"calibrated_by": "MOH",
+		"source": "gyroflow",
+		"official": true
+	}
+}

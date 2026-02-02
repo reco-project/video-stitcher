@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx3--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "HELIOS 44-2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2470.81913410579,
+		"fy": 2481.6042489565107,
+		"cx": 965.065995378658,
+		"cy": 341.7479371922438
+	},
+	"distortion_coeffs": [
+		0.30064270131748166,
+		1.418814994803672,
+		-12.826712148090342,
+		43.51340260812011
+	],
+	"metadata": {
+		"calibrated_by": "yanshuo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--4k--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "24-105 f4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2876.060956544134,
+		"fy": 2879.0522455153828,
+		"cx": 1989.8595294320608,
+		"cy": 1093.3157890000427
+	},
+	"distortion_coeffs": [
+		0.2131955676310966,
+		0.12087068499401075,
+		0.0867345980163911,
+		0.04390827780070684
+	],
+	"metadata": {
+		"calibrated_by": "Shawn",
+		"notes": "4K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

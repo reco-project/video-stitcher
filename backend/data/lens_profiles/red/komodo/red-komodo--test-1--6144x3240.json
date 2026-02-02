@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--test-1--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa 15mm F2.1",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3568.9301193800957,
+		"fy": 3566.858386708015,
+		"cx": 3072.183470083839,
+		"cy": 1611.1215005155952
+	},
+	"distortion_coeffs": [
+		0.3190131372857324,
+		0.14202402253785604,
+		0.03141826517387563,
+		0.011776230353852704
+	],
+	"metadata": {
+		"calibrated_by": "Joey Killeen",
+		"notes": "TEST 1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

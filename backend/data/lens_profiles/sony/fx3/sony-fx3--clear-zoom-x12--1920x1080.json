@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--clear-zoom-x12--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "SIRUI 50mm MFT",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2688.922665465645,
+		"fy": 3471.947372867144,
+		"cx": 978.56732322844,
+		"cy": 529.840870956643
+	},
+	"distortion_coeffs": [
+		0.004982199500000684,
+		-1.992865464149268,
+		15.334434446989505,
+		-25.063332519073334
+	],
+	"metadata": {
+		"calibrated_by": "Sanei",
+		"notes": "Clear zoom x1.2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero12-black--hs-eis--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO12 Black",
+	"lens_model": "Max Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 855.6475654600966,
+		"fy": 836.6218967041233,
+		"cx": 987.146761698648,
+		"cy": 537.9544754752942
+	},
+	"distortion_coeffs": [
+		0.2177856996284422,
+		-0.2950686852436551,
+		0.3246491755506269,
+		-0.1257893067541018
+	],
+	"metadata": {
+		"calibrated_by": "Nick",
+		"notes": "HS EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

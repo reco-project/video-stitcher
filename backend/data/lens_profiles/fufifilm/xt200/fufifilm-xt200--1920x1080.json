@@ -1,0 +1,28 @@
+{
+	"id": "fufifilm-xt200--1920x1080",
+	"camera_brand": "Fufifilm",
+	"camera_model": "XT200",
+	"lens_model": "KIT 15-45",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1216.494770606044,
+		"fy": 1218.2794106317206,
+		"cx": 926.8132001417208,
+		"cy": 556.57006066601
+	},
+	"distortion_coeffs": [
+		0.20770287401765536,
+		0.9334239830976392,
+		-1.9024981946035189,
+		1.6173367572362225
+	],
+	"metadata": {
+		"calibrated_by": "Veleri",
+		"source": "gyroflow",
+		"official": true
+	}
+}

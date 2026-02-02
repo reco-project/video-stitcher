@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--75mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa Ranger - 28/75 - 75mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11837.488628442872,
+		"fy": 11838.606768977725,
+		"cx": 3100.5749565004653,
+		"cy": 1599.6740314442748
+	},
+	"distortion_coeffs": [
+		0.5237416293204004,
+		-1.0116277277119097,
+		70.37802951276008,
+		-243.337745994138
+	],
+	"metadata": {
+		"calibrated_by": "Shikijo",
+		"notes": "75mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

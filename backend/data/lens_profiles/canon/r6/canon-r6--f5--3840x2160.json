@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6--f5--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6",
+	"lens_model": "50 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 19511.20877546864,
+		"fy": 19385.476211839148,
+		"cx": 1860.2122075105367,
+		"cy": 550.4475324547521
+	},
+	"distortion_coeffs": [
+		2.11605737938551,
+		-318.0479182691183,
+		38252.06839928649,
+		-792950.9084450047
+	],
+	"metadata": {
+		"calibrated_by": "hadi hawili",
+		"notes": "f5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

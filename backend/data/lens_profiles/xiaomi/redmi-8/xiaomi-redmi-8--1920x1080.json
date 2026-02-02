@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-8--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi 8",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1490.9304080572203,
+		"fy": 1516.020196570374,
+		"cx": 939.571785638024,
+		"cy": 388.91381828826894
+	},
+	"distortion_coeffs": [
+		0.6094623434075132,
+		-0.6339920174236278,
+		5.286907450344497,
+		-7.357329795639605
+	],
+	"metadata": {
+		"calibrated_by": "Achil-Alex",
+		"source": "gyroflow",
+		"official": true
+	}
+}

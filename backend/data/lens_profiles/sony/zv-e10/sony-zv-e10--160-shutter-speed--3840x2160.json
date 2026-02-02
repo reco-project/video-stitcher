@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--160-shutter-speed--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Laowa 10mm f4 Cookie",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1717.7631967475083,
+		"fy": 1720.978270126922,
+		"cx": 1931.3702895289343,
+		"cy": 1055.3650568113007
+	},
+	"distortion_coeffs": [
+		0.31830660439233194,
+		0.08522474339215703,
+		0.056639676081872606,
+		0.08767449691873101
+	],
+	"metadata": {
+		"calibrated_by": "Max Peters",
+		"notes": "1/60 Shutter Speed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--70mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "Sony 70-350",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15829.285752145744,
+		"fy": 15815.747554421823,
+		"cx": 1773.671581066123,
+		"cy": 1736.3830392157745
+	},
+	"distortion_coeffs": [
+		-0.0110502702049491,
+		65.13897036491352,
+		-6355.243832441945,
+		182352.6230357631
+	],
+	"metadata": {
+		"calibrated_by": "Ralf Maier",
+		"notes": "70mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

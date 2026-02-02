@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh6--5760x4320",
+	"camera_brand": "Panasonic",
+	"camera_model": "LUMIX GH6",
+	"lens_model": "7Artisans 7.5mm",
+	"resolution": {
+		"width": 5760,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3043.2324906894023,
+		"fy": 3043.0732082589752,
+		"cx": 2925.8884289737775,
+		"cy": 2123.665527908678
+	},
+	"distortion_coeffs": [
+		0.04545370937023942,
+		-0.014709390530348415,
+		0.020759681901212954,
+		-0.006569648741913685
+	],
+	"metadata": {
+		"calibrated_by": "niks",
+		"source": "gyroflow",
+		"official": true
+	}
+}

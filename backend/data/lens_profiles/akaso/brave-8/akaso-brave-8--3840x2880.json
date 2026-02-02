@@ -1,0 +1,28 @@
+{
+	"id": "akaso-brave-8--3840x2880",
+	"camera_brand": "AKASO",
+	"camera_model": "Brave 8",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2880
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1859.890172490124,
+		"fy": 1861.1954619366547,
+		"cx": 1919.7880540341064,
+		"cy": 1434.5505980869673
+	},
+	"distortion_coeffs": [
+		-0.1349357251134309,
+		0.3734532449681108,
+		-0.278796279846599,
+		0.060198679415337866
+	],
+	"metadata": {
+		"calibrated_by": "Albert",
+		"source": "gyroflow",
+		"official": true
+	}
+}

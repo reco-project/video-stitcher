@@ -1,0 +1,28 @@
+{
+	"id": "canon-g9x-m2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "G9X M2",
+	"lens_model": "G9X M2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1684.980992104492,
+		"fy": 1689.087210171267,
+		"cx": 962.7908261866522,
+		"cy": 527.0148912822182
+	},
+	"distortion_coeffs": [
+		0.32657611855878693,
+		0.3123878061288412,
+		-1.1032857095968307,
+		2.492187251854112
+	],
+	"metadata": {
+		"calibrated_by": "Wlodek",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh3--30p--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH3",
+	"lens_model": "Olympus 12mm  84\u00ba",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1137.762807552593,
+		"fy": 1145.7107421986923,
+		"cx": 953.7871874644184,
+		"cy": 535.0256558530427
+	},
+	"distortion_coeffs": [
+		0.3153070337191868,
+		0.07938052491651056,
+		0.2867215601143074,
+		-0.32172349210974754
+	],
+	"metadata": {
+		"calibrated_by": "Jose Luis Ocejo",
+		"notes": "30p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

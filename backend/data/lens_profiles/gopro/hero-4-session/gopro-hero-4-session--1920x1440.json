@@ -2,7 +2,7 @@
 	"id": "gopro-hero-4-session--1920x1440",
 	"camera_brand": "GoPro",
 	"camera_model": "HERO 4 Session",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1440
@@ -21,13 +21,8 @@
 		0.06276697907805999
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "GoPro_HERO 4 Session__Auto_1440p_4by3_1920x1440-29.97fps",
 		"calibrated_by": "Crackhead",
-		"original_resolution": "1920x1440",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

@@ -1,0 +1,28 @@
+{
+	"id": "canon-c300-mk-1--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "C300 Mk 1",
+	"lens_model": "Canon 24-105 f4 @ 24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1891.1962951458197,
+		"fy": 1891.1222286426848,
+		"cx": 962.7143203088832,
+		"cy": 532.3621633146103
+	},
+	"distortion_coeffs": [
+		0.2164182861265773,
+		0.39095137932667745,
+		-1.813180260824873,
+		4.740012869803584
+	],
+	"metadata": {
+		"calibrated_by": "Guillem Valle",
+		"source": "gyroflow",
+		"official": true
+	}
+}

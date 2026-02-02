@@ -1,0 +1,28 @@
+{
+	"id": "simulus-gh-265--3840x2160",
+	"camera_brand": "Simulus",
+	"camera_model": "GH-265",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2357.0914993687393,
+		"fy": 2353.9443114794126,
+		"cx": 1988.1487490566583,
+		"cy": 1037.6022781613376
+	},
+	"distortion_coeffs": [
+		0.11242815336369497,
+		0.9525669357379573,
+		-7.7907435269312915,
+		24.51405901630971
+	],
+	"metadata": {
+		"calibrated_by": "M.Motzko",
+		"source": "gyroflow",
+		"official": true
+	}
+}

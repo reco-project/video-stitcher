@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-a72--horizontal--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A72",
+	"lens_model": "0.5 wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1534.9760410510223,
+		"fy": 1534.2664395489555,
+		"cx": 1910.193454507203,
+		"cy": 1081.6064457086509
+	},
+	"distortion_coeffs": [
+		0.28772155702443125,
+		0.2723930144499471,
+		-0.17343685117573512,
+		0.0937754397514001
+	],
+	"metadata": {
+		"calibrated_by": "IGCRD",
+		"notes": "Horizontal",
+		"source": "gyroflow",
+		"official": true
+	}
+}

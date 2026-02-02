@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s9--sin-estabilizador--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S9",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1533.1581369253609,
+		"fy": 1531.2762011898087,
+		"cx": 930.3034877576944,
+		"cy": 539.1865994140262
+	},
+	"distortion_coeffs": [
+		0.7635591669888205,
+		-3.085510503222636,
+		9.833680055702288,
+		-9.623974932711748
+	],
+	"metadata": {
+		"calibrated_by": "Osmel Ca\u00f1a",
+		"notes": "sin estabilizador",
+		"source": "gyroflow",
+		"official": true
+	}
+}

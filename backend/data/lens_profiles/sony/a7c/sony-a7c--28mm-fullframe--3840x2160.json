@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--28mm-fullframe--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sony SEL28F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2856.425387862823,
+		"fy": 2857.938682275691,
+		"cx": 1916.0714920946848,
+		"cy": 1089.0721822010155
+	},
+	"distortion_coeffs": [
+		0.33200523124452064,
+		0.11894074543473455,
+		0.04749966621187679,
+		0.2173666390449963
+	],
+	"metadata": {
+		"calibrated_by": "J\u00f6rg Niggli | niggli.com",
+		"notes": "28mm Fullframe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

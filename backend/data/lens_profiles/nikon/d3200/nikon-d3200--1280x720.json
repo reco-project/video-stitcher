@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d3200--1280x720",
+	"camera_brand": "Nikon",
+	"camera_model": "d3200",
+	"lens_model": "nikkor",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2064.892384397253,
+		"fy": 2068.8079470844173,
+		"cx": 620.1873026106897,
+		"cy": 353.12965963625254
+	},
+	"distortion_coeffs": [
+		0.12394449055180053,
+		-0.6617150585019552,
+		19.133845391737875,
+		-144.47511943420395
+	],
+	"metadata": {
+		"calibrated_by": "Otetz_drakonov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

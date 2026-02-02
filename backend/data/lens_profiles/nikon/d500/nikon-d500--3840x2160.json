@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d500--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "D500",
+	"lens_model": "Nikkor 35mm 1.8g DX",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8626.678946947524,
+		"fy": 8616.922473166534,
+		"cx": 1943.7256813614383,
+		"cy": 937.6752325698868
+	},
+	"distortion_coeffs": [
+		0.6949881892597674,
+		-43.33636398749978,
+		1186.379435172892,
+		-10695.140221732156
+	],
+	"metadata": {
+		"calibrated_by": "Tim M\u00fcller",
+		"source": "gyroflow",
+		"official": true
+	}
+}

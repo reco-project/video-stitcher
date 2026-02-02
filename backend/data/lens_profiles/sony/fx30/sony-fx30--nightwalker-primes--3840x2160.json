@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--nightwalker-primes--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sirui Night Walker T1.2 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5861.769469975241,
+		"fy": 5872.590660622864,
+		"cx": 1938.240977185945,
+		"cy": 1078.500615025992
+	},
+	"distortion_coeffs": [
+		0.2205711333455341,
+		1.372461022406525,
+		-8.120163579665276,
+		37.686880895751415
+	],
+	"metadata": {
+		"calibrated_by": "Sam Shapson",
+		"notes": "Nightwalker primes",
+		"source": "gyroflow",
+		"official": true
+	}
+}

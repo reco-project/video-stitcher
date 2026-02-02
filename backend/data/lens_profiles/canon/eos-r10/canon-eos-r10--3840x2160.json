@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r10--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R10",
+	"lens_model": "Canon RF-S18-150 IS STM KIT",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12723.985107504785,
+		"fy": 12680.457649504904,
+		"cx": 2178.3281918804305,
+		"cy": 1892.092887588041
+	},
+	"distortion_coeffs": [
+		0.09998062642217814,
+		16.136550202793416,
+		-475.2073420567004,
+		5314.758786861525
+	],
+	"metadata": {
+		"calibrated_by": "DELL",
+		"source": "gyroflow",
+		"official": true
+	}
+}

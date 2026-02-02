@@ -1,0 +1,28 @@
+{
+	"id": "poco-f1--3840x2160",
+	"camera_brand": "Poco",
+	"camera_model": "F1",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2705.4008834982856,
+		"fy": 2703.4315968449105,
+		"cx": 1915.861860207692,
+		"cy": 1091.6437753139846
+	},
+	"distortion_coeffs": [
+		0.5660438860776704,
+		-1.279384970992662,
+		3.216185608146641,
+		-2.5272167036994677
+	],
+	"metadata": {
+		"calibrated_by": "Sander",
+		"source": "gyroflow",
+		"official": true
+	}
+}

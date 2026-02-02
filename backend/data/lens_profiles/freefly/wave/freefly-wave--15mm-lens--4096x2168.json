@@ -1,0 +1,29 @@
+{
+	"id": "freefly-wave--15mm-lens--4096x2168",
+	"camera_brand": "Freefly",
+	"camera_model": "Wave",
+	"lens_model": "Laowa",
+	"resolution": {
+		"width": 4096,
+		"height": 2168
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2874.4006026863203,
+		"fy": 2861.3017187469086,
+		"cx": 2116.9262931451112,
+		"cy": 1048.580313171212
+	},
+	"distortion_coeffs": [
+		0.3102374174487439,
+		0.18137561974414337,
+		-0.10805584571913664,
+		0.12728020981903604
+	],
+	"metadata": {
+		"calibrated_by": "Andrew Orton",
+		"notes": "15mm lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

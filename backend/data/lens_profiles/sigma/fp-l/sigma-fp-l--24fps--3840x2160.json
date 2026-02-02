@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp-l--24fps--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp L",
+	"lens_model": "Sigma 24mm F2 DG DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6563.9772730845525,
+		"fy": 6584.50580092503,
+		"cx": 1951.59673476491,
+		"cy": 1044.797367516593
+	},
+	"distortion_coeffs": [
+		2.11380538303027,
+		-26.11795923404551,
+		710.1214437383957,
+		-5020.389006551413
+	],
+	"metadata": {
+		"calibrated_by": "Ramouuun",
+		"notes": "24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

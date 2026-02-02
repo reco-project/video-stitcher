@@ -2,7 +2,7 @@
 	"id": "xiaomi-yi-2k--1920x1080",
 	"camera_brand": "Xiaomi",
 	"camera_model": "Yi 2K",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
@@ -21,13 +21,8 @@
 		-0.014913612499743526
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Xiaomi_Yi 2K___1080p_16by9_1920x1080-59.94fps",
 		"calibrated_by": "JEAN FPV",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "59.94006",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

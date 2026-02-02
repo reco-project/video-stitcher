@@ -1,0 +1,29 @@
+{
+	"id": "red-v-raptor-8k-vv--28mm--8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "RF28-70mm F2 L USM 28.00mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5591.200341468209,
+		"fy": 5592.368187775735,
+		"cx": 4085.469913662327,
+		"cy": 2172.126469836805
+	},
+	"distortion_coeffs": [
+		0.18337268492551984,
+		0.33374863858956044,
+		-0.5215250163102932,
+		0.9697381142135856
+	],
+	"metadata": {
+		"calibrated_by": "Leo",
+		"notes": "28mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

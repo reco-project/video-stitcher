@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-f6--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "Canon 24-70mm L 2.8 @70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7764.063653732038,
+		"fy": 7791.589797944798,
+		"cx": 1985.864832101572,
+		"cy": 1113.331751370161
+	},
+	"distortion_coeffs": [
+		0.5024498337089076,
+		4.374985830222402,
+		-68.70924536968158,
+		532.1075135562048
+	],
+	"metadata": {
+		"calibrated_by": "Rasmus Bjerkan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

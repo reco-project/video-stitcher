@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a53-5g--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "a53 5g",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1301.2676591304785,
+		"fy": 1299.890509771942,
+		"cx": 976.18927358628,
+		"cy": 505.48255427814746
+	},
+	"distortion_coeffs": [
+		0.6158842661547808,
+		-1.72154928588504,
+		6.056198441214088,
+		-7.502329360108475
+	],
+	"metadata": {
+		"calibrated_by": "Jakob Freiberg",
+		"source": "gyroflow",
+		"official": true
+	}
+}

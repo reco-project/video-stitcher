@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-ef-adapter-vnd--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Vespid 21mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5010.8708413579,
+		"fy": 5012.204065125802,
+		"cx": 3078.29502694047,
+		"cy": 1615.6742031114793
+	},
+	"distortion_coeffs": [
+		0.2159450032703105,
+		0.1901228854016897,
+		-0.20689689485679924,
+		0.6677699089237429
+	],
+	"metadata": {
+		"calibrated_by": "Viniet Film",
+		"notes": "Canon EF Adapter + VND",
+		"source": "gyroflow",
+		"official": true
+	}
+}

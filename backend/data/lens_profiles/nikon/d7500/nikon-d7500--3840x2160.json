@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d7500--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "D7500",
+	"lens_model": "TAMARON 10 24",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2409.426425416269,
+		"fy": 2407.407129104972,
+		"cx": 1908.4721259771677,
+		"cy": 1132.600609724575
+	},
+	"distortion_coeffs": [
+		0.37768418311962576,
+		0.07238559473038432,
+		0.39642421017635937,
+		-1.2076776363581545
+	],
+	"metadata": {
+		"calibrated_by": "Jordi Segu\u00e9s Planes",
+		"source": "gyroflow",
+		"official": true
+	}
+}

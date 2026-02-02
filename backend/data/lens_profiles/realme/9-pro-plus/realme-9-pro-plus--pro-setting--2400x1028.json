@@ -1,0 +1,29 @@
+{
+	"id": "realme-9-pro-plus--pro-setting--2400x1028",
+	"camera_brand": "Realme",
+	"camera_model": "9 pro plus",
+	"lens_model": "main cam",
+	"resolution": {
+		"width": 2400,
+		"height": 1028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1757.2784425321724,
+		"fy": 1756.8834712127048,
+		"cx": 1198.5666820178749,
+		"cy": 508.1910118599395
+	},
+	"distortion_coeffs": [
+		0.5027391007119533,
+		-0.26237467561364103,
+		-5.321772408725237,
+		19.902419236826773
+	],
+	"metadata": {
+		"calibrated_by": "ASUS TUF FX504",
+		"notes": "pro setting",
+		"source": "gyroflow",
+		"official": true
+	}
+}

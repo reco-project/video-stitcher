@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-g70--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "G70",
+	"lens_model": "Standart Lens (includet)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2601.77368327009,
+		"fy": 2683.0020712707196,
+		"cx": 2020.5016484170728,
+		"cy": 1733.609336229954
+	},
+	"distortion_coeffs": [
+		0.3831709881612711,
+		-0.351977491954427,
+		1.4329168933920813,
+		-1.1960711897312375
+	],
+	"metadata": {
+		"calibrated_by": "Basil M\u00f6hring",
+		"source": "gyroflow",
+		"official": true
+	}
+}

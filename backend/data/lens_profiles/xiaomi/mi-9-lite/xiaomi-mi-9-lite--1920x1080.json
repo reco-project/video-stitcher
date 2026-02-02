@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-9-lite--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "MI 9 Lite",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1550.7436195869836,
+		"fy": 1541.6312926636826,
+		"cx": 955.2933209973316,
+		"cy": 571.340270620149
+	},
+	"distortion_coeffs": [
+		0.2595984204879505,
+		1.636868954072573,
+		-5.9237949832525265,
+		7.420039390066688
+	],
+	"metadata": {
+		"calibrated_by": "Jordan G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

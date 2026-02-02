@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t5--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T5",
+	"lens_model": "18-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1591.574497977284,
+		"fy": 1589.794733417706,
+		"cx": 969.9657698289628,
+		"cy": 541.1419529216754
+	},
+	"distortion_coeffs": [
+		0.1928648519408997,
+		1.356120743339026,
+		-6.165326331610678,
+		10.983718484322958
+	],
+	"metadata": {
+		"calibrated_by": "PC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

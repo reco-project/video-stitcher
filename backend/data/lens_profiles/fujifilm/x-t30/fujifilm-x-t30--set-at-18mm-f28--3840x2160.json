@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t30--set-at-18mm-f28--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T30",
+	"lens_model": "Fujinon 18-55",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2972.8548917020134,
+		"fy": 2977.848627023565,
+		"cx": 1894.2095532368244,
+		"cy": 1024.014285103034
+	},
+	"distortion_coeffs": [
+		0.234292167900518,
+		0.7747670923736583,
+		-2.21943737717916,
+		3.138860337906736
+	],
+	"metadata": {
+		"calibrated_by": "Aman Bolla",
+		"notes": "set at 18mm f2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

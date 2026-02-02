@@ -1,0 +1,29 @@
+{
+	"id": "goxtreme-enduro-black--60fps--1920x1080",
+	"camera_brand": "Goxtreme",
+	"camera_model": "enduro black",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1468.791432379735,
+		"fy": 1489.1667364843993,
+		"cx": 942.1813475027492,
+		"cy": 519.3080392040274
+	},
+	"distortion_coeffs": [
+		-0.18077410060513996,
+		-0.11702202430248096,
+		0.4559113149948069,
+		-0.4472344279697024
+	],
+	"metadata": {
+		"calibrated_by": "dani behr",
+		"notes": "60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

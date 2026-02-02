@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--noff--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5634.904028619655,
+		"fy": 5634.98449703661,
+		"cx": 2852.214661447411,
+		"cy": 1627.3477345235071
+	},
+	"distortion_coeffs": [
+		0.22754497932283463,
+		0.3156469596051957,
+		-0.4962652339661072,
+		0.96540893383034
+	],
+	"metadata": {
+		"calibrated_by": "Mark Helsel",
+		"notes": "NoFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

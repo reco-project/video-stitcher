@@ -1,0 +1,29 @@
+{
+	"id": "hawkeye-firefly-x-lite--nd8--1920x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "FireFly X Lite",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1050.218199676116,
+		"fy": 1051.3725353568748,
+		"cx": 944.8364055563596,
+		"cy": 739.1433201095492
+	},
+	"distortion_coeffs": [
+		-0.10560547541844952,
+		0.03850473334051005,
+		-0.03360495129844444,
+		0.016968281265482395
+	],
+	"metadata": {
+		"calibrated_by": "Pawel Turon",
+		"notes": "ND8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

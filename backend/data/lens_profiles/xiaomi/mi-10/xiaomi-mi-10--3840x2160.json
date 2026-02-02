@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-10--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 10",
+	"lens_model": "Wide lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1719.549046174909,
+		"fy": 1716.5741303443074,
+		"cx": 1922.0768357600984,
+		"cy": 1110.3015977025557
+	},
+	"distortion_coeffs": [
+		0.2580440034340884,
+		0.5490907947882359,
+		-0.5308970680030893,
+		0.04278124154105786
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan Ziebart",
+		"source": "gyroflow",
+		"official": true
+	}
+}

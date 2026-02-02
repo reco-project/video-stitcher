@@ -1,0 +1,28 @@
+{
+	"id": "canon-sx740hs--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "SX740hs",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5163.5482985249555,
+		"fy": 5146.36130516585,
+		"cx": 1888.3928017540088,
+		"cy": 1112.0311439547745
+	},
+	"distortion_coeffs": [
+		0.3423035552470372,
+		-0.6420077279948384,
+		8.998853292447247,
+		-32.2133067054424
+	],
+	"metadata": {
+		"calibrated_by": "\u563b\u563b",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--35-mm--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sigma 24-70 DG",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3627.54866495473,
+		"fy": 3625.274041701195,
+		"cx": 1917.3229480661023,
+		"cy": 1062.0898690743602
+	},
+	"distortion_coeffs": [
+		0.1941051681839844,
+		2.0847865298653425,
+		-18.18505475762006,
+		61.1301040223287
+	],
+	"metadata": {
+		"calibrated_by": "Nate Mirizio",
+		"notes": "35 MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

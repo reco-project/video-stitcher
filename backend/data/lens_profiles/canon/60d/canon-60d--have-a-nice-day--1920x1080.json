@@ -1,0 +1,29 @@
+{
+	"id": "canon-60d--have-a-nice-day--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "60D",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5207.895454753021,
+		"fy": 5210.888138444533,
+		"cx": 899.7675724958041,
+		"cy": 418.5989559322994
+	},
+	"distortion_coeffs": [
+		0.12267166346900212,
+		1.855797686053855,
+		124.28389444770936,
+		-3203.6730394182823
+	],
+	"metadata": {
+		"calibrated_by": "Tiago Baptistella",
+		"notes": "have a nice day",
+		"source": "gyroflow",
+		"official": true
+	}
+}

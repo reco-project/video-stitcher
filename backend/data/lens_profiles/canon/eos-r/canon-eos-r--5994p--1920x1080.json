@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r--5994p--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R",
+	"lens_model": "Sigma 35mm f1.8 Art",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1850.8771617441048,
+		"fy": 1848.8296299827227,
+		"cx": 960.0441782528588,
+		"cy": 536.9328727435576
+	},
+	"distortion_coeffs": [
+		0.2333459793059702,
+		0.3334659254896903,
+		0.027362963756430304,
+		-0.750427630121299
+	],
+	"metadata": {
+		"calibrated_by": "Edward",
+		"notes": "59.94p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

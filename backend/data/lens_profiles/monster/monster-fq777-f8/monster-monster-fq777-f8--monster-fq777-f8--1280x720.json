@@ -1,0 +1,29 @@
+{
+	"id": "monster-monster-fq777-f8--monster-fq777-f8--1280x720",
+	"camera_brand": "Monster",
+	"camera_model": "Monster FQ777 F8",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 650.5188482302677,
+		"fy": 651.173573370751,
+		"cx": 654.6759400637284,
+		"cy": 366.1305206659595
+	},
+	"distortion_coeffs": [
+		-0.055931005351577294,
+		-0.031106991867663417,
+		0.017235019715651074,
+		-0.006495030029003906
+	],
+	"metadata": {
+		"calibrated_by": "ACER",
+		"notes": "Monster FQ777 F8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

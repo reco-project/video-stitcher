@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-13t--modified-gcam-92-stabilization-enabled--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "13T",
+	"lens_model": "24MM Wide (Main Back) Camera",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3041.9106302151627,
+		"fy": 3040.938046903892,
+		"cx": 1926.3783767196644,
+		"cy": 1072.8548787227237
+	},
+	"distortion_coeffs": [
+		0.4766958741766143,
+		-1.2634262511255625,
+		8.352140650465037,
+		-17.06278282243876
+	],
+	"metadata": {
+		"calibrated_by": "Antony Antony",
+		"notes": "Modified GCAM 9.2 Stabilization enabled",
+		"source": "gyroflow",
+		"official": true
+	}
+}

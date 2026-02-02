@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--25fps-180-shutter--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss CP2 21mm 2.9",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4924.868484514889,
+		"fy": 4926.174847316872,
+		"cx": 3075.2341291048947,
+		"cy": 1658.976210580188
+	},
+	"distortion_coeffs": [
+		0.20301688113738764,
+		0.40998527264179224,
+		-0.8737851707855142,
+		1.409568595736363
+	],
+	"metadata": {
+		"calibrated_by": "David Schwan",
+		"notes": "25fps 180 Shutter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt4--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT4",
+	"lens_model": "Viltrox 13mm 1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2508.630835529503,
+		"fy": 2502.0868634569265,
+		"cx": 1912.6682117608889,
+		"cy": 1072.3509117077692
+	},
+	"distortion_coeffs": [
+		0.2899242360844632,
+		0.057551172448533305,
+		-0.020405998224572293,
+		0.6455409608769302
+	],
+	"metadata": {
+		"calibrated_by": "Koyak Kreatif",
+		"source": "gyroflow",
+		"official": true
+	}
+}

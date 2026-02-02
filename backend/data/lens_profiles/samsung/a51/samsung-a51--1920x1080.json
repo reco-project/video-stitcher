@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a51--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A51",
+	"lens_model": "Main Camera",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1389.8269318797968,
+		"fy": 1389.9991164822493,
+		"cx": 995.6234669761052,
+		"cy": 564.7463388858972
+	},
+	"distortion_coeffs": [
+		0.25829814491539377,
+		0.5184660704963288,
+		-0.8655645987246012,
+		0.7680755936692556
+	],
+	"metadata": {
+		"calibrated_by": "Hawthorn",
+		"source": "gyroflow",
+		"official": true
+	}
+}

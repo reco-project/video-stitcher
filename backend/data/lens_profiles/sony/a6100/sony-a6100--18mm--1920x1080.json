@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6100--18mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6100",
+	"lens_model": "18-105mm F4 G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1379.8791616293652,
+		"fy": 1379.9313760436055,
+		"cx": 961.0903126149548,
+		"cy": 527.9332271576038
+	},
+	"distortion_coeffs": [
+		0.35540779478491885,
+		-0.12631228723199042,
+		0.9882161216075545,
+		-1.440407612082698
+	],
+	"metadata": {
+		"calibrated_by": "Hilman Taqy M.",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx6v--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "Helios 44-2 58mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5870.5481127228695,
+		"fy": 5869.221584652226,
+		"cx": 2000.2177514917505,
+		"cy": 1060.507580495596
+	},
+	"distortion_coeffs": [
+		0.44662789582011736,
+		-0.9311792947408248,
+		7.1932301755886865,
+		-30.45103730815182
+	],
+	"metadata": {
+		"calibrated_by": "Antoine S. Legault",
+		"source": "gyroflow",
+		"official": true
+	}
+}

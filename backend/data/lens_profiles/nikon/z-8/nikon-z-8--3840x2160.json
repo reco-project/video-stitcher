@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z-8--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z 8",
+	"lens_model": "Nikon AF-S Nikkor 14-24mm f/2.8G ED 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2512.3050292702605,
+		"fy": 2509.6478476485445,
+		"cx": 1917.0034719932296,
+		"cy": 1044.9214255687086
+	},
+	"distortion_coeffs": [
+		0.31517434614743395,
+		0.3838210859336668,
+		-1.0154381228302651,
+		1.3477495448426122
+	],
+	"metadata": {
+		"calibrated_by": "2\u5154",
+		"source": "gyroflow",
+		"official": true
+	}
+}

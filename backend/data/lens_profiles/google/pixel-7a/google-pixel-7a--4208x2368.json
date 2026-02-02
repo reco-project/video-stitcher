@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-7a--4208x2368",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7A",
+	"lens_model": "14mm",
+	"resolution": {
+		"width": 4208,
+		"height": 2368
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1644.8180576194584,
+		"fy": 1644.5018518277143,
+		"cx": 2108.595929383985,
+		"cy": 1195.0406026477535
+	},
+	"distortion_coeffs": [
+		0.3546632559833201,
+		0.15039406592907198,
+		-0.09902230000310457,
+		0.1442547758438926
+	],
+	"metadata": {
+		"calibrated_by": "Taiyakeys",
+		"source": "gyroflow",
+		"official": true
+	}
+}

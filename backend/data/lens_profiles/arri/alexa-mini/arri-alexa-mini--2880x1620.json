@@ -1,0 +1,28 @@
+{
+	"id": "arri-alexa-mini--2880x1620",
+	"camera_brand": "Arri",
+	"camera_model": "Alexa mini",
+	"lens_model": "Laowa 12mm",
+	"resolution": {
+		"width": 2880,
+		"height": 1620
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1539.4748030168369,
+		"fy": 1542.5232971974026,
+		"cx": 1427.8018764422436,
+		"cy": 815.9314398272085
+	},
+	"distortion_coeffs": [
+		0.3062908691098064,
+		0.17506130983735005,
+		0.04028059660626182,
+		-0.017133772377854677
+	],
+	"metadata": {
+		"calibrated_by": "Vadim smarchenko",
+		"source": "gyroflow",
+		"official": true
+	}
+}

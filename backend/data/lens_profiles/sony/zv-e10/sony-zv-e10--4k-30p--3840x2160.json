@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--4k-30p--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 16mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3916.239224492739,
+		"fy": 3903.3612742522646,
+		"cx": 1971.4027743956556,
+		"cy": 1087.0488186156745
+	},
+	"distortion_coeffs": [
+		0.23186450431535444,
+		-0.12327780228082756,
+		2.0720676012158252,
+		-4.727480448991246
+	],
+	"metadata": {
+		"calibrated_by": "Jerzy Baran",
+		"notes": "4K 30p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r8--135mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "RF 100-400 F5.6-8 @ 135mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8020.9001814341345,
+		"fy": 8027.082466177829,
+		"cx": 866.1198003222514,
+		"cy": 361.2904174847312
+	},
+	"distortion_coeffs": [
+		0.10289572308369505,
+		6.865370498266684,
+		-225.0728334181533,
+		6782.392064416512
+	],
+	"metadata": {
+		"calibrated_by": "Hongye Deng",
+		"notes": "135mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

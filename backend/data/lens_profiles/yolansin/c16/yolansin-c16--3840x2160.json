@@ -1,0 +1,28 @@
+{
+	"id": "yolansin-c16--3840x2160",
+	"camera_brand": "Yolansin",
+	"camera_model": "C16",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2476.3518954835336,
+		"fy": 2471.0861692706394,
+		"cx": 1935.290023746788,
+		"cy": 1052.6725986125648
+	},
+	"distortion_coeffs": [
+		-0.05045526900416896,
+		-0.09515913679005931,
+		0.27457195940909157,
+		-0.22903095261743295
+	],
+	"metadata": {
+		"calibrated_by": "U0 A320",
+		"source": "gyroflow",
+		"official": true
+	}
+}

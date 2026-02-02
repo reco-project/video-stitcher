@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-nakedsplit--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Naked/Split",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1086.0783428677412,
+		"fy": 1084.5973654599634,
+		"cx": 1241.0307907059243,
+		"cy": 706.4988989846631
+	},
+	"distortion_coeffs": [
+		0.13383733212031196,
+		0.05581088801126357,
+		-0.10495778560687732,
+		0.040763518649361855
+	],
+	"metadata": {
+		"calibrated_by": "VICTOR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

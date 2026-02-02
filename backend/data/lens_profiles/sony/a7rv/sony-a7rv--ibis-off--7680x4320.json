@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rv--ibis-off--7680x4320",
+	"camera_brand": "Sony",
+	"camera_model": "a7rV",
+	"lens_model": "SIGMA 28-70mm F2.8 DG DN | Contemporary @28mm",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7352.876330590235,
+		"fy": 7377.728268864608,
+		"cx": 3948.3810957269143,
+		"cy": 1920.466966071465
+	},
+	"distortion_coeffs": [
+		0.11064242190610112,
+		0.7716128158891948,
+		-3.7556370137845647,
+		8.543925655808598
+	],
+	"metadata": {
+		"calibrated_by": "Son Gallery",
+		"notes": "IBIS OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

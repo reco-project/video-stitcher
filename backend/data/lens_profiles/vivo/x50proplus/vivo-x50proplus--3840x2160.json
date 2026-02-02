@@ -1,0 +1,28 @@
+{
+	"id": "vivo-x50proplus--3840x2160",
+	"camera_brand": "Vivo",
+	"camera_model": "X50ProPlus",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2823.096681667927,
+		"fy": 2821.7137126282564,
+		"cx": 1897.3118941858077,
+		"cy": 1057.522877182785
+	},
+	"distortion_coeffs": [
+		0.5213070835991535,
+		-1.5884574578364152,
+		6.908068783484288,
+		-9.358648890886132
+	],
+	"metadata": {
+		"calibrated_by": "xinwei zhao",
+		"source": "gyroflow",
+		"official": true
+	}
+}

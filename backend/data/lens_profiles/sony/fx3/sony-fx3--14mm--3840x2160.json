@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--14mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "7artisans",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1588.6401762434882,
+		"fy": 1588.1182383211126,
+		"cx": 1906.1322578385411,
+		"cy": 1087.1666144382386
+	},
+	"distortion_coeffs": [
+		0.3756955476978081,
+		0.13385219065178505,
+		-0.10164405958096072,
+		0.1500854352370466
+	],
+	"metadata": {
+		"calibrated_by": "Keisuke Samba",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

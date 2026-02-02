@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7riii--100\u5feb\u95e8--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIII",
+	"lens_model": "tamron 28-200 28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8528.507767755467,
+		"fy": 8157.474445562381,
+		"cx": 1754.7604245790162,
+		"cy": 5999.824459827922
+	},
+	"distortion_coeffs": [
+		-0.5353985818307861,
+		1.957092488914001,
+		-2.802032999245073,
+		1.6062056959407438
+	],
+	"metadata": {
+		"calibrated_by": "Demgel Horatio",
+		"notes": "100\u5feb\u95e8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

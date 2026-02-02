@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r6--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R6",
+	"lens_model": "24-70mm F 2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3999.669759965485,
+		"fy": 3992.7731568269833,
+		"cx": 964.4899798165538,
+		"cy": 538.6559120895973
+	},
+	"distortion_coeffs": [
+		0.5935519725073364,
+		1.2192183983757492,
+		-104.29493969272716,
+		1509.1227554236334
+	],
+	"metadata": {
+		"calibrated_by": "viviround",
+		"source": "gyroflow",
+		"official": true
+	}
+}

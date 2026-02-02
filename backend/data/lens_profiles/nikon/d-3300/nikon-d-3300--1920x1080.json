@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d-3300--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D 3300",
+	"lens_model": "DX 18-105 f3.5",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1480.749527929612,
+		"fy": 1491.1444279599416,
+		"cx": 961.8466588264324,
+		"cy": 538.4072542178835
+	},
+	"distortion_coeffs": [
+		0.1375500451000188,
+		0.2869981292952268,
+		-0.5248861568771114,
+		0.9809038089168312
+	],
+	"metadata": {
+		"calibrated_by": "gao\u5409\u5409",
+		"source": "gyroflow",
+		"official": true
+	}
+}

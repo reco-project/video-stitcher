@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mix3--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mix3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1803.970512188768,
+		"fy": 1807.6660483039984,
+		"cx": 958.71158026822,
+		"cy": 536.8158762851629
+	},
+	"distortion_coeffs": [
+		0.7533025338226157,
+		-1.999653110833028,
+		6.961407148352647,
+		-16.209305613878083
+	],
+	"metadata": {
+		"calibrated_by": "server",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--60-fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Laowa 9mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1600.8408149400923,
+		"fy": 1600.8862539403708,
+		"cx": 1925.489215923761,
+		"cy": 1079.351181296821
+	},
+	"distortion_coeffs": [
+		0.3377237545720553,
+		0.17038922868843448,
+		-0.13780866445454293,
+		0.1940789444725691
+	],
+	"metadata": {
+		"calibrated_by": "Grava",
+		"notes": "60 FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

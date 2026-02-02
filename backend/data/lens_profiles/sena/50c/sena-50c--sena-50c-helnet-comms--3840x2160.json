@@ -1,0 +1,29 @@
+{
+	"id": "sena-50c--sena-50c-helnet-comms--3840x2160",
+	"camera_brand": "Sena",
+	"camera_model": "50C",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1839.3804732318815,
+		"fy": 1839.7825229964624,
+		"cx": 1891.2790397623692,
+		"cy": 1070.5656586188693
+	},
+	"distortion_coeffs": [
+		0.25274691716892306,
+		0.1371994438672035,
+		0.34090824713753765,
+		-0.3400850041129314
+	],
+	"metadata": {
+		"calibrated_by": "James",
+		"notes": "Sena 50C Helnet Comms",
+		"source": "gyroflow",
+		"official": true
+	}
+}

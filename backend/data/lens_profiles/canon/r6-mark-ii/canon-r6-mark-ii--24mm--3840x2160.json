@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6-mark-ii--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6 Mark II",
+	"lens_model": "Rf24-105 F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2502.4876180339693,
+		"fy": 2508.9343092664167,
+		"cx": 1880.0520396987208,
+		"cy": 1071.2013905042488
+	},
+	"distortion_coeffs": [
+		0.3686858265629677,
+		-0.03731631495710056,
+		0.6122990067167848,
+		-0.6162822022695198
+	],
+	"metadata": {
+		"calibrated_by": "\uc8fc\uc740\uc131",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

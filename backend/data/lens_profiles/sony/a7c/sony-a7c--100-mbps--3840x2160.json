@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--100-mbps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "LAOWA 15mm F.4 MACRO",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1692.241952853971,
+		"fy": 1691.7220132489012,
+		"cx": 1907.8339273967515,
+		"cy": 1072.9479500446078
+	},
+	"distortion_coeffs": [
+		0.2054946619793839,
+		0.12711699419148112,
+		-0.03457986298626514,
+		0.15078731489704175
+	],
+	"metadata": {
+		"calibrated_by": "giuseppe mirigliano",
+		"notes": "100 Mbps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

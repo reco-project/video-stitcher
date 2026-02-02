@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero5-black--120fps--1280x960",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO5 Black",
+	"lens_model": "4:3",
+	"resolution": {
+		"width": 1280,
+		"height": 960
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 561.6155305855822,
+		"fy": 560.748480735972,
+		"cx": 642.098768727619,
+		"cy": 470.8031457927
+	},
+	"distortion_coeffs": [
+		0.04343271215377734,
+		0.06996308860778805,
+		-0.08712859032605055,
+		0.032053377616182405
+	],
+	"metadata": {
+		"calibrated_by": "Brendo Neves",
+		"notes": "120fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

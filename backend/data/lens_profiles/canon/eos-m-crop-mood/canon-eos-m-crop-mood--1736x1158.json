@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m-crop-mood--1736x1158",
+	"camera_brand": "Canon",
+	"camera_model": "EOS m crop mood",
+	"lens_model": "15 45 at 15mm",
+	"resolution": {
+		"width": 1736,
+		"height": 1158
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1268.0674328330444,
+		"fy": 1268.6861605328832,
+		"cx": 881.5581346033983,
+		"cy": 564.3588385270612
+	},
+	"distortion_coeffs": [
+		0.20449559666839112,
+		0.16187210267380434,
+		0.0649052521248449,
+		0.14806526361559658
+	],
+	"metadata": {
+		"calibrated_by": "Frederik Vermeulen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

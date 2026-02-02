@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--14mm--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Olympus 12-40 f2,8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2856.7410368860715,
+		"fy": 2859.994379028373,
+		"cx": 2002.0449568558336,
+		"cy": 1014.7821114584376
+	},
+	"distortion_coeffs": [
+		0.14846549585445049,
+		-0.02059959186153552,
+		0.3474643672968487,
+		-0.15363317988411798
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0430\u043d\u0434\u0440 \u0412\u043e\u0440\u043e\u043d\u043a\u043e\u0432",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

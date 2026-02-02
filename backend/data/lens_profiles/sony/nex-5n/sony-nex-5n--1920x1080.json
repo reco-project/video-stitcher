@@ -1,0 +1,28 @@
+{
+	"id": "sony-nex-5n--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "Nex 5N",
+	"lens_model": "7artisans 7.5mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 700.8527894726064,
+		"fy": 699.3418883380419,
+		"cx": 946.0062846023206,
+		"cy": 515.4969219331863
+	},
+	"distortion_coeffs": [
+		-0.0114480431933655,
+		0.03190538914312535,
+		-0.021782515279984815,
+		0.005375072705042407
+	],
+	"metadata": {
+		"calibrated_by": "K 78",
+		"source": "gyroflow",
+		"official": true
+	}
+}

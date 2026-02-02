@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-hd--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar HD",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 876.4741981252854,
+		"fy": 877.0894257156352,
+		"cx": 953.1780046328688,
+		"cy": 509.31257641469995
+	},
+	"distortion_coeffs": [
+		0.014811221303864103,
+		-0.0037783261645912463,
+		0.023290775453946224,
+		-0.01547808190627272
+	],
+	"metadata": {
+		"calibrated_by": "Barry Hammond",
+		"source": "gyroflow",
+		"official": true
+	}
+}

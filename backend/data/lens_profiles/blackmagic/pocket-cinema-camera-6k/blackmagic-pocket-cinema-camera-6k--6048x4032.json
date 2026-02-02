@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--6048x4032",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Dulens",
+	"resolution": {
+		"width": 6048,
+		"height": 4032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5357.529186526884,
+		"fy": 5345.695443904739,
+		"cx": 3064.1521664968723,
+		"cy": 2024.547265492853
+	},
+	"distortion_coeffs": [
+		0.32067123297337513,
+		-0.2581892995466509,
+		1.666224218235111,
+		-1.1079277772447709
+	],
+	"metadata": {
+		"calibrated_by": "Andr\u00e9 Miranda",
+		"source": "gyroflow",
+		"official": true
+	}
+}

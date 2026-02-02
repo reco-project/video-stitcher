@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-hc-v785--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "HC-V785",
+	"lens_model": "29.5mm wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1509.0870674050482,
+		"fy": 1510.9687881384918,
+		"cx": 967.356907940764,
+		"cy": 527.7767010827212
+	},
+	"distortion_coeffs": [
+		0.3504974759287231,
+		-0.0671666222343243,
+		0.882594393396383,
+		-1.2531878137756092
+	],
+	"metadata": {
+		"calibrated_by": "Martin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

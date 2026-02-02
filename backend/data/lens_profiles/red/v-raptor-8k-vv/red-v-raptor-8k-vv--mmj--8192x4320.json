@@ -1,0 +1,29 @@
+{
+	"id": "red-v-raptor-8k-vv--mmj--8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "Contax Zeiss 25mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5731.305112888457,
+		"fy": 5723.423132797773,
+		"cx": 4074.367022553482,
+		"cy": 2239.74119220389
+	},
+	"distortion_coeffs": [
+		0.3176831974475742,
+		-0.03482756678220899,
+		0.706180630151506,
+		-0.5869481348893779
+	],
+	"metadata": {
+		"calibrated_by": "Will",
+		"notes": "MMJ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

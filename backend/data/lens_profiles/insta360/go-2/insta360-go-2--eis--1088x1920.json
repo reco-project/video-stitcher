@@ -1,0 +1,29 @@
+{
+	"id": "insta360-go-2--eis--1088x1920",
+	"camera_brand": "Insta360",
+	"camera_model": "GO 2",
+	"lens_model": "Linear",
+	"resolution": {
+		"width": 1088,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 818.3437362796118,
+		"fy": 817.2613107580379,
+		"cx": 544.481181466928,
+		"cy": 961.1394512268512
+	},
+	"distortion_coeffs": [
+		0.38082994108885787,
+		0.019050658843840076,
+		0.16688448611778575,
+		0.027966648120669856
+	],
+	"metadata": {
+		"calibrated_by": "Eddy",
+		"notes": "EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

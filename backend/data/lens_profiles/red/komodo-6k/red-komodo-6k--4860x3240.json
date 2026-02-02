@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-6k--4860x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Sirui 50mm anamorphic",
+	"resolution": {
+		"width": 4860,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6862.0983571558145,
+		"fy": 10310.295196685069,
+		"cx": 2514.420599285662,
+		"cy": 1591.3752673326435
+	},
+	"distortion_coeffs": [
+		0.29259546065806785,
+		-2.933839056627914,
+		40.5935822650524,
+		-181.03903038220088
+	],
+	"metadata": {
+		"calibrated_by": "Max Hunt",
+		"source": "gyroflow",
+		"official": true
+	}
+}

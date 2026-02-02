@@ -1,0 +1,28 @@
+{
+	"id": "leica-q3--3840x2160",
+	"camera_brand": "Leica",
+	"camera_model": "Q3",
+	"lens_model": "28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3482.793588083295,
+		"fy": 3479.215009821953,
+		"cx": 1896.8095137404132,
+		"cy": 1083.4989280389434
+	},
+	"distortion_coeffs": [
+		0.3623338416373359,
+		0.2110556307621659,
+		-2.537702099946737,
+		6.709680520506965
+	],
+	"metadata": {
+		"calibrated_by": "Steve",
+		"source": "gyroflow",
+		"official": true
+	}
+}

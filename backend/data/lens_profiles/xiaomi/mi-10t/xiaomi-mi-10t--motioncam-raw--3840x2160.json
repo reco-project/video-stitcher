@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mi-10t--motioncam-raw--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "mi 10t",
+	"lens_model": "26mm wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3453.870402347889,
+		"fy": 3448.792468205745,
+		"cx": 1949.3926933022435,
+		"cy": 1112.4960086139754
+	},
+	"distortion_coeffs": [
+		0.5210692692737888,
+		-1.6893224602334371,
+		11.022535077956393,
+		-23.579676632900004
+	],
+	"metadata": {
+		"calibrated_by": "Yogansh Bhatt",
+		"notes": "motioncam raw",
+		"source": "gyroflow",
+		"official": true
+	}
+}

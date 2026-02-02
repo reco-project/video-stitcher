@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-4k--1920x1080",
+	"camera_brand": "Hawkeye",
+	"camera_model": "4K",
+	"lens_model": "WIDE",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 811.6030896704581,
+		"fy": 810.4377008413768,
+		"cx": 961.6894052255748,
+		"cy": 549.2121847518289
+	},
+	"distortion_coeffs": [
+		0.1257212456126117,
+		0.05810277973359785,
+		-0.09907245218993338,
+		0.0346024961961933
+	],
+	"metadata": {
+		"calibrated_by": "DEGRACE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

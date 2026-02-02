@@ -1,0 +1,28 @@
+{
+	"id": "realme-9-pro-plus--3840x2160",
+	"camera_brand": "Realme",
+	"camera_model": "9 pro plus",
+	"lens_model": "main",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2824.524398059123,
+		"fy": 2824.4906531944644,
+		"cx": 1947.9345518927037,
+		"cy": 1054.207352666173
+	},
+	"distortion_coeffs": [
+		0.5957271112562179,
+		-1.894122181654712,
+		6.589779768253033,
+		-7.186600551217597
+	],
+	"metadata": {
+		"calibrated_by": "om",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--5k-24fps--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "17-55 f.28",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7841.243269977498,
+		"fy": 7787.932945359794,
+		"cx": 2325.3138202747095,
+		"cy": 962.8830816567868
+	},
+	"distortion_coeffs": [
+		0.4618075631052403,
+		-0.4434190033864524,
+		-6.696572425329842,
+		115.114644733996
+	],
+	"metadata": {
+		"calibrated_by": "Nhut Nguyen",
+		"notes": "5k 24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

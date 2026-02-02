@@ -1,0 +1,28 @@
+{
+	"id": "fujitsu-f-52a--3840x2160",
+	"camera_brand": "fujitsu",
+	"camera_model": "F-52A",
+	"lens_model": "\u5e83\u89d2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2315.261977591811,
+		"fy": 2315.587589986462,
+		"cx": 1917.4830785403776,
+		"cy": 1096.68018518154
+	},
+	"distortion_coeffs": [
+		0.378992157630007,
+		0.4937441138472273,
+		-1.7847972572693092,
+		1.5413080505521564
+	],
+	"metadata": {
+		"calibrated_by": "koji nakano",
+		"source": "gyroflow",
+		"official": true
+	}
+}

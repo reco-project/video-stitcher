@@ -1,0 +1,29 @@
+{
+	"id": "poco-x6-5g--nothing-else--3840x2176",
+	"camera_brand": "POCO",
+	"camera_model": "X6 5G",
+	"lens_model": "idk",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3405.863505533516,
+		"fy": 3407.8743147861605,
+		"cx": 1906.5236803731832,
+		"cy": 1084.0509924375745
+	},
+	"distortion_coeffs": [
+		0.121349912283979,
+		4.788611160965171,
+		-26.484498863943205,
+		49.330518458632824
+	],
+	"metadata": {
+		"calibrated_by": "MSI",
+		"notes": "Nothing else",
+		"source": "gyroflow",
+		"official": true
+	}
+}

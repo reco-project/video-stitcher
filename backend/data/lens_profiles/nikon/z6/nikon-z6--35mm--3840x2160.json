@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z6--35mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "35mm/f1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3877.8566865795233,
+		"fy": 3875.373620977329,
+		"cx": 1918.9687002498945,
+		"cy": 1001.232799556606
+	},
+	"distortion_coeffs": [
+		0.33372483790687985,
+		0.206183169414066,
+		0.4504024710574154,
+		-1.487948973016216
+	],
+	"metadata": {
+		"calibrated_by": "bogdan",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

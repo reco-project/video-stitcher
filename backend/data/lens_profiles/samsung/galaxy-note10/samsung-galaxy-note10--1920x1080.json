@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-note10--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Note10",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1864.5575270049997,
+		"fy": 1865.7623904905463,
+		"cx": 917.85525269388,
+		"cy": 548.7239425663033
+	},
+	"distortion_coeffs": [
+		0.5809144179410506,
+		-1.952399316443197,
+		10.871370726313092,
+		-22.109736499207273
+	],
+	"metadata": {
+		"calibrated_by": "biroldesktoppc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

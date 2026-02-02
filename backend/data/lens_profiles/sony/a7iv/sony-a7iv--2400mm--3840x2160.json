@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--2400mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "24-70mm F2.8 DG DN | Art",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5741.263133692092,
+		"fy": 5811.273411760643,
+		"cx": 1457.0495554477268,
+		"cy": 1053.211331612175
+	},
+	"distortion_coeffs": [
+		0.4080916520066043,
+		-0.9963414812784178,
+		9.659525951259315,
+		-29.250669625019228
+	],
+	"metadata": {
+		"calibrated_by": "vojta filipi",
+		"notes": "24.00mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

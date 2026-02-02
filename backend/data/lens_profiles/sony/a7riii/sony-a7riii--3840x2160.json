@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7riii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7RIII",
+	"lens_model": "FE4\u300124-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4144.779821019346,
+		"fy": 4144.808422632477,
+		"cx": 1917.844187848164,
+		"cy": 1052.2999180666943
+	},
+	"distortion_coeffs": [
+		0.3468688157467427,
+		0.10275293249553868,
+		-0.0803318308674364,
+		-0.1293011734157081
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

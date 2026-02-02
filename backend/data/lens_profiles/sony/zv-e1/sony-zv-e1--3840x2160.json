@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e1--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "BRIGHTIN STAR 9mm F5.6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1071.6613746104629,
+		"fy": 1071.9802694203022,
+		"cx": 1918.284219646982,
+		"cy": 1066.8835649925702
+	},
+	"distortion_coeffs": [
+		0.37885102310105456,
+		0.17887194723871935,
+		-0.09111944806754152,
+		0.10166497458668332
+	],
+	"metadata": {
+		"calibrated_by": "\u90ed\u80b2\u79d1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

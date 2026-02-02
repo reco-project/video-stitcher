@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t20--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T20",
+	"lens_model": "MEIKE 35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3197.934491872955,
+		"fy": 3197.1574552954103,
+		"cx": 939.0167497341276,
+		"cy": 507.5162441533676
+	},
+	"distortion_coeffs": [
+		0.12083704891189988,
+		6.14778453805976,
+		-201.17642502660055,
+		2398.736460668262
+	],
+	"metadata": {
+		"calibrated_by": "Geraldi Matheus",
+		"source": "gyroflow",
+		"official": true
+	}
+}

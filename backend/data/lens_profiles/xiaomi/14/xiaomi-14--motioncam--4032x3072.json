@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-14--motioncam--4032x3072",
+	"camera_brand": "Xiaomi",
+	"camera_model": "14",
+	"lens_model": "Ultrawide 15mm",
+	"resolution": {
+		"width": 4032,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1687.7054767101397,
+		"fy": 1687.7876393914996,
+		"cx": 2016.0324443864224,
+		"cy": 1536.061286014181
+	},
+	"distortion_coeffs": [
+		0.2829655737070439,
+		0.24602285861728668,
+		-0.02138326924617079,
+		0.05025119664328394
+	],
+	"metadata": {
+		"calibrated_by": "1",
+		"notes": "Motioncam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

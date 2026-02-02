@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xs-10--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XS-10",
+	"lens_model": "XC15-45",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2593.2909762808167,
+		"fy": 2594.341058301301,
+		"cx": 2048.7716257381194,
+		"cy": 1068.1964511553244
+	},
+	"distortion_coeffs": [
+		0.3197235742466821,
+		0.18444871836270124,
+		0.03352160562882153,
+		0.014698716298079012
+	],
+	"metadata": {
+		"calibrated_by": "Linus",
+		"source": "gyroflow",
+		"official": true
+	}
+}

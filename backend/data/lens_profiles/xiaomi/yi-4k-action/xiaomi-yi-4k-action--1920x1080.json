@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-yi-4k-action--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi 4k action",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 815.973570548126,
+		"fy": 834.4538036670011,
+		"cx": 990.1789352471308,
+		"cy": 632.9953134623378
+	},
+	"distortion_coeffs": [
+		0.3894830342851961,
+		-0.0915026254446106,
+		0.6870000509553826,
+		-0.4396974434350143
+	],
+	"metadata": {
+		"calibrated_by": "\u8352\u91ce\u5929\u6210",
+		"source": "gyroflow",
+		"official": true
+	}
+}

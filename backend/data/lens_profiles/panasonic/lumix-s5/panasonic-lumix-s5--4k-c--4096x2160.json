@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-s5--4k-c--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S5",
+	"lens_model": "TTArtisan-11mm(Fisheye)",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2469.060046353118,
+		"fy": 2469.204610455587,
+		"cx": 2101.50647832191,
+		"cy": 1074.8067298767446
+	},
+	"distortion_coeffs": [
+		0.0020223307398810814,
+		-0.003479529727821327,
+		0.0008837644099213739,
+		0.0008232575791719866
+	],
+	"metadata": {
+		"calibrated_by": "Carl Mystery",
+		"notes": "4K-C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

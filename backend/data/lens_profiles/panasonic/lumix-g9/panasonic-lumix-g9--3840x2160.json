@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-g9--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix G9",
+	"lens_model": "Leica Vario 12-60 f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5878.0976453433595,
+		"fy": 5885.744372400224,
+		"cx": 1894.0401215610304,
+		"cy": 877.9524167759166
+	},
+	"distortion_coeffs": [
+		0.29119525872066404,
+		2.26255990970716,
+		-34.79118383217739,
+		178.7448757871352
+	],
+	"metadata": {
+		"calibrated_by": "Leandra Holder",
+		"source": "gyroflow",
+		"official": true
+	}
+}

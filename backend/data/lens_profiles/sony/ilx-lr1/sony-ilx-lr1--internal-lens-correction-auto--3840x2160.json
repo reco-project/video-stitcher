@@ -1,0 +1,29 @@
+{
+	"id": "sony-ilx-lr1--internal-lens-correction-auto--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILX-LR1",
+	"lens_model": "Sony FE 24mm F2.8 G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2628.756574384732,
+		"fy": 2630.822094705076,
+		"cx": 1915.60149827775,
+		"cy": 1071.8132313166127
+	},
+	"distortion_coeffs": [
+		0.32391481247248594,
+		0.16304857216137578,
+		-0.03594833854602231,
+		0.1197024777505198
+	],
+	"metadata": {
+		"calibrated_by": "Joost Tromp",
+		"notes": "Internal lens correction AUTO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

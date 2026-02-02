@@ -1,0 +1,28 @@
+{
+	"id": "aikucam-nano1--3840x2160",
+	"camera_brand": "AIKUCAM",
+	"camera_model": "NANO1",
+	"lens_model": "341A",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1960.8128008138344,
+		"fy": 1972.0146192263117,
+		"cx": 2129.206055765152,
+		"cy": 886.9489794070489
+	},
+	"distortion_coeffs": [
+		0.26423298474336726,
+		0.1740039488424014,
+		-0.1891798948865489,
+		0.14325285548147187
+	],
+	"metadata": {
+		"calibrated_by": "XIGUO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

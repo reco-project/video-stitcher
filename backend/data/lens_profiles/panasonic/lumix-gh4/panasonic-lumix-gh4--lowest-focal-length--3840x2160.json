@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh4--lowest-focal-length--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH4",
+	"lens_model": "Lumix 12-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3355.366607350812,
+		"fy": 3355.527915996668,
+		"cx": 1935.2118131918817,
+		"cy": 1057.1701692762392
+	},
+	"distortion_coeffs": [
+		0.31368046070301864,
+		0.2100480389240844,
+		-0.39897860009426334,
+		0.7170095976022812
+	],
+	"metadata": {
+		"calibrated_by": "tim hamlin",
+		"notes": "lowest focal length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

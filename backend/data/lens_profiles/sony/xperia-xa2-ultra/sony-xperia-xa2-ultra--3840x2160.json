@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-xa2-ultra--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia XA2 Ultra",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2368.471354489063,
+		"fy": 2367.3238314298465,
+		"cx": 1892.3097022641075,
+		"cy": 1066.3193659735284
+	},
+	"distortion_coeffs": [
+		0.5333716708821373,
+		1.23246682800871,
+		-10.920189221490208,
+		21.330721626736413
+	],
+	"metadata": {
+		"calibrated_by": "Akhmad Fadilah",
+		"source": "gyroflow",
+		"official": true
+	}
+}

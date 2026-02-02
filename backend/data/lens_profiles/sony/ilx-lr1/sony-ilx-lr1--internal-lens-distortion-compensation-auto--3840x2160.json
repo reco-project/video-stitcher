@@ -1,0 +1,29 @@
+{
+	"id": "sony-ilx-lr1--internal-lens-distortion-compensation-auto--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ILX-LR1",
+	"lens_model": "Sony FE 40mm F2.8 G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5504.252632591989,
+		"fy": 5514.650081551931,
+		"cx": 1918.3909245172208,
+		"cy": 1040.9270457870143
+	},
+	"distortion_coeffs": [
+		0.34336952193723325,
+		-0.3415532341706325,
+		8.273559905203403,
+		-35.3138443444921
+	],
+	"metadata": {
+		"calibrated_by": "Joost Tromp",
+		"notes": "Internal lens distortion compensation AUTO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar",
+	"lens_model": "Moonlight kit",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 872.2967993111895,
+		"fy": 874.2766584407431,
+		"cx": 959.8242507226264,
+		"cy": 523.4737303697759
+	},
+	"distortion_coeffs": [
+		-0.026340097207770967,
+		-0.01795161195441085,
+		0.01785567701711816,
+		-0.00737086196440748
+	],
+	"metadata": {
+		"calibrated_by": "Walksnail",
+		"source": "gyroflow",
+		"official": true
+	}
+}

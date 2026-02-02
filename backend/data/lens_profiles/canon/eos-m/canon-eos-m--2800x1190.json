@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--2800x1190",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Risespray 7.5mm",
+	"resolution": {
+		"width": 2800,
+		"height": 1190
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1813.3655436590352,
+		"fy": 1811.0429877900676,
+		"cx": 1170.9145848581911,
+		"cy": 648.6204488911594
+	},
+	"distortion_coeffs": [
+		0.15396162156908105,
+		-0.1420182848883041,
+		0.01353809121100816,
+		0.11554795451438409
+	],
+	"metadata": {
+		"calibrated_by": "Dronotron",
+		"source": "gyroflow",
+		"official": true
+	}
+}

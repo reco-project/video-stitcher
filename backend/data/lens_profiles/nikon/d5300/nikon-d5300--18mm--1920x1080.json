@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d5300--18mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D5300",
+	"lens_model": "AF-S DX NIKKOR 18-140mm VR",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1466.620402425733,
+		"fy": 1475.2098696024473,
+		"cx": 954.5769580021304,
+		"cy": 543.826261215129
+	},
+	"distortion_coeffs": [
+		0.1632250507042088,
+		0.004563465716382197,
+		0.33351173288691977,
+		-0.2052653327125359
+	],
+	"metadata": {
+		"calibrated_by": "Mateo",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

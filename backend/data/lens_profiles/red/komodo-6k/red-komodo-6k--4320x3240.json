@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-6k--4320x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "28mm vazen",
+	"resolution": {
+		"width": 4320,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3960.068055091224,
+		"fy": 7264.2092905872,
+		"cx": 1897.949676891638,
+		"cy": 1442.291401231554
+	},
+	"distortion_coeffs": [
+		0.028932768382123875,
+		-0.1082809141290366,
+		0.5708373924262609,
+		-1.246858405802289
+	],
+	"metadata": {
+		"calibrated_by": "Nathanael Matanick",
+		"source": "gyroflow",
+		"official": true
+	}
+}

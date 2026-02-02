@@ -1,0 +1,29 @@
+{
+	"id": "canon-80d--shot-at-29mm-aps-c-sensor-shot-at-60fps--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "80D",
+	"lens_model": "EFS 18-135 mm f/3.5-5.56 IS USM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2185.3841025544825,
+		"fy": 2182.8675009725825,
+		"cx": 907.1200911211504,
+		"cy": 560.1244830929833
+	},
+	"distortion_coeffs": [
+		0.3370837662072843,
+		-0.3715054690003884,
+		9.488767811370105,
+		-46.9065664211702
+	],
+	"metadata": {
+		"calibrated_by": "Vincent Gov",
+		"notes": "shot at 29mm aps-c sensor, shot at 60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

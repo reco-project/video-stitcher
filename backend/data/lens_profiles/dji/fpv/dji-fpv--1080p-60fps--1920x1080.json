@@ -1,0 +1,29 @@
+{
+	"id": "dji-fpv--1080p-60fps--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "FPV",
+	"lens_model": "CMOS de 1/2.3\"",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 971.5683184335924,
+		"fy": 971.1593178812394,
+		"cx": 957.9523817788836,
+		"cy": 530.537759214147
+	},
+	"distortion_coeffs": [
+		0.34337901644681906,
+		0.0881901851689406,
+		0.3564415485942048,
+		-0.4586097734758327
+	],
+	"metadata": {
+		"calibrated_by": "Luis Angel Santamarta",
+		"notes": "1080p 60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

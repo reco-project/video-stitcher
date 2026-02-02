@@ -1,0 +1,28 @@
+{
+	"id": "sony-xperia-1-v--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia 1 V",
+	"lens_model": "16mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1800.373112020949,
+		"fy": 1800.3346877644512,
+		"cx": 1921.3951084650043,
+		"cy": 1100.4944332449647
+	},
+	"distortion_coeffs": [
+		0.26960060233595173,
+		0.4485891556409143,
+		-0.6542079572252848,
+		0.5319613752567217
+	],
+	"metadata": {
+		"calibrated_by": "Rudi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

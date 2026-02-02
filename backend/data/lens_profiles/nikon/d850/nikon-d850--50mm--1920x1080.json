@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d850--50mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D850",
+	"lens_model": "24-70 2.8G ED",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2628.2716391301005,
+		"fy": 2632.0686740318115,
+		"cx": 968.9330962908916,
+		"cy": 540.0241457332974
+	},
+	"distortion_coeffs": [
+		0.3147256738794677,
+		3.2227688254723095,
+		-25.549250196529528,
+		80.09057840899449
+	],
+	"metadata": {
+		"calibrated_by": "Kartik Sharma",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

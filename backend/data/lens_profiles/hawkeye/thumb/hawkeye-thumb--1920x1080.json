@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-thumb--1920x1080",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Thumb",
+	"lens_model": "Hawkeye/Thumb1080P_16_9_50fps.json",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 695.4822031149355,
+		"fy": 694.8282343096147,
+		"cx": 967.5674612549624,
+		"cy": 549.9113427491135
+	},
+	"distortion_coeffs": [
+		0.1316420834360428,
+		0.03344611257305357,
+		-0.06415615887469368,
+		0.026690323337346025
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u6cfd\u5733",
+		"source": "gyroflow",
+		"official": true
+	}
+}

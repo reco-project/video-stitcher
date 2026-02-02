@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Split",
+	"lens_model": "RC25G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 848.161237137086,
+		"fy": 849.038559946186,
+		"cx": 917.6614091747152,
+		"cy": 529.0222468467452
+	},
+	"distortion_coeffs": [
+		-0.017161548582065853,
+		0.013398826011650038,
+		-0.020410985500841163,
+		0.0071475718167686225
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"source": "gyroflow",
+		"official": true
+	}
+}

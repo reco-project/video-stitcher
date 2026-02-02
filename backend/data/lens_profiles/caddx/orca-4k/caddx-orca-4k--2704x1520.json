@@ -1,0 +1,28 @@
+{
+	"id": "caddx-orca-4k--2704x1520",
+	"camera_brand": "Caddx",
+	"camera_model": "Orca 4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1491.9962244340263,
+		"fy": 1119.0065297171725,
+		"cx": 1352.0,
+		"cy": 760.0
+	},
+	"distortion_coeffs": [
+		-0.03497961130645103,
+		0.006993294174103943,
+		-0.017983616699791396,
+		0.0077829042576809246
+	],
+	"metadata": {
+		"calibrated_by": "WizzX",
+		"source": "gyroflow",
+		"official": true
+	}
+}

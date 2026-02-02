@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5c--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "RF 15-35 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1710.3972910418688,
+		"fy": 1711.4362514315603,
+		"cx": 1930.1205636381808,
+		"cy": 1060.2664829672492
+	},
+	"distortion_coeffs": [
+		0.27549089211848216,
+		0.07924515141262647,
+		0.12566233969289792,
+		-0.0009364288374526374
+	],
+	"metadata": {
+		"calibrated_by": "Patrick Fleming",
+		"source": "gyroflow",
+		"official": true
+	}
+}

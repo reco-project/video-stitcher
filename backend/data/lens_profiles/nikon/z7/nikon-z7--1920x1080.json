@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z7--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "z7",
+	"lens_model": "24-70",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1274.3376513513008,
+		"fy": 1272.733006673859,
+		"cx": 960.6840928002384,
+		"cy": 534.0656651815524
+	},
+	"distortion_coeffs": [
+		0.29540672454751904,
+		0.2994718491752808,
+		-0.30875999116207764,
+		0.2884391825641988
+	],
+	"metadata": {
+		"calibrated_by": "PRAJWAL",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-13--1280x720",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 13",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1106.8338941281663,
+		"fy": 1107.1144436746629,
+		"cx": 638.9867056518617,
+		"cy": 357.0469249153737
+	},
+	"distortion_coeffs": [
+		0.5930313732888848,
+		-1.4574082349356208,
+		2.864494462015517,
+		4.7463274665999915
+	],
+	"metadata": {
+		"calibrated_by": "Pengfei Chen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

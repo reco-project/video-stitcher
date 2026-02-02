@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--7mm--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "lumix7-14",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 776.3469565796378,
+		"fy": 776.0090019131815,
+		"cx": 957.9310100598898,
+		"cy": 543.2626231602933
+	},
+	"distortion_coeffs": [
+		0.2430407207345664,
+		0.1352669624668467,
+		-0.034378994961019774,
+		0.043183251271536584
+	],
+	"metadata": {
+		"calibrated_by": "\u5468\u4f73\u8363",
+		"notes": "7mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7",
+	"lens_model": "VILTROX AF 85MM F1.8 FE",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 31633.41406639321,
+		"fy": 31961.74079179597,
+		"cx": 938.1671385091578,
+		"cy": 540.3414554417906
+	},
+	"distortion_coeffs": [
+		28.582488351976995,
+		-23693.21893395461,
+		88427014.30942178,
+		-85136991618.37608
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u6df3\u9e6d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

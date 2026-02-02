@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-15-pro-max--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 15 pro max",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6111.702196080408,
+		"fy": 6109.88375564866,
+		"cx": 1880.782582347122,
+		"cy": 1067.5556656174024
+	},
+	"distortion_coeffs": [
+		1.640056721978607,
+		9.7820803288431,
+		-431.5603879044848,
+		3539.597793426102
+	],
+	"metadata": {
+		"calibrated_by": "Imperial Imaging",
+		"source": "gyroflow",
+		"official": true
+	}
+}

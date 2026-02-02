@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xs-20--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XS-20",
+	"lens_model": "Tamron 17-70mm f2,8 Di III-A VC RXD Fuji X",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3272.185243296968,
+		"fy": 3276.2565320696467,
+		"cx": 2014.6102012900917,
+		"cy": 1070.9536445826434
+	},
+	"distortion_coeffs": [
+		0.555738179684044,
+		-2.245736797936445,
+		17.00117598892721,
+		-34.64477970176286
+	],
+	"metadata": {
+		"calibrated_by": "Marco",
+		"source": "gyroflow",
+		"official": true
+	}
+}

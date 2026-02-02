@@ -1,0 +1,29 @@
+{
+	"id": "canon-m50--11mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "m50",
+	"lens_model": "EF-M 11-22mm f/4-5.6 IS STM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 993.1447055587508,
+		"fy": 994.2506225783244,
+		"cx": 965.200787551526,
+		"cy": 537.9521521484861
+	},
+	"distortion_coeffs": [
+		0.26004802442989333,
+		-0.028607472237249253,
+		0.5724074137878634,
+		-0.2363043132587705
+	],
+	"metadata": {
+		"calibrated_by": "\u0421\u0435\u0440\u0433\u0435\u0439 \u041c\u0430\u043b\u044c\u0433\u043e\u0442\u0430",
+		"notes": "11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

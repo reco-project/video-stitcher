@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split2--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "split2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 936.733731019506,
+		"fy": 934.1252012875186,
+		"cx": 944.3891447625,
+		"cy": 547.7841667367921
+	},
+	"distortion_coeffs": [
+		-0.08909940598342724,
+		0.0365183688931512,
+		-0.027577721765790823,
+		0.010830160511837356
+	],
+	"metadata": {
+		"calibrated_by": "Vitaliy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

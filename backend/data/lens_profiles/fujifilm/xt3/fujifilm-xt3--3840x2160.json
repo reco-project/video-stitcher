@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt3--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "xt3",
+	"lens_model": "xc35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6146.5130658121525,
+		"fy": 6183.72524896651,
+		"cx": 1923.9492227934643,
+		"cy": 967.4052870650776
+	},
+	"distortion_coeffs": [
+		0.31995324332216,
+		4.266723891875274,
+		-63.34934665374528,
+		383.82804071579073
+	],
+	"metadata": {
+		"calibrated_by": "\u502a\u5b9a\u6714",
+		"source": "gyroflow",
+		"official": true
+	}
+}

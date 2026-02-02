@@ -1,0 +1,28 @@
+{
+	"id": "canon-c70--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "C70",
+	"lens_model": "14mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1122.288845153984,
+		"fy": 1122.5093155744737,
+		"cx": 962.8465365361026,
+		"cy": 533.2569772046705
+	},
+	"distortion_coeffs": [
+		0.33165912938501657,
+		0.12777282265139042,
+		0.1748578780739971,
+		-0.19263796592641153
+	],
+	"metadata": {
+		"calibrated_by": "Adam levine",
+		"source": "gyroflow",
+		"official": true
+	}
+}

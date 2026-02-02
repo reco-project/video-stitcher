@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x-6k-s35--canon-071x-focal-reducer--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "DZO Vespid 25mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4163.419750260891,
+		"fy": 4163.678775029468,
+		"cx": 1949.6645093177435,
+		"cy": 1091.20767062785
+	},
+	"distortion_coeffs": [
+		0.16894519288932588,
+		-0.0811158735324617,
+		4.548617693912155,
+		-15.362664404594687
+	],
+	"metadata": {
+		"calibrated_by": "Aaron Hussein",
+		"notes": "Canon 0.71x focal reducer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

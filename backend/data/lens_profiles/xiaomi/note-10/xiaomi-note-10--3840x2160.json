@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-note-10--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Note 10",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3066.4017859125124,
+		"fy": 3067.1740010707445,
+		"cx": 1938.5094763100444,
+		"cy": 1053.354064379155
+	},
+	"distortion_coeffs": [
+		0.3009060306275472,
+		0.6882724665486952,
+		0.2835570201978342,
+		-4.866780244942467
+	],
+	"metadata": {
+		"calibrated_by": "Duda Maic\u00e1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

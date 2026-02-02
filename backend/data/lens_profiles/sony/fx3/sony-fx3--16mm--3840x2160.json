@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--16mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "16-35 GM2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1698.5565659173965,
+		"fy": 1701.4657014361144,
+		"cx": 1921.193897647261,
+		"cy": 1060.3013144356828
+	},
+	"distortion_coeffs": [
+		0.310224318913067,
+		0.15749891992486115,
+		0.010432335310809967,
+		0.06049159946251139
+	],
+	"metadata": {
+		"calibrated_by": "Norman Lee",
+		"notes": "16MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

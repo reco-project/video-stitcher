@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7riii--24mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIII",
+	"lens_model": "SEL2470GM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1328.8806097378026,
+		"fy": 1330.093090459412,
+		"cx": 961.7429183573472,
+		"cy": 542.0057141931812
+	},
+	"distortion_coeffs": [
+		0.17725436360805494,
+		0.18573543219155367,
+		-0.0035268199975975792,
+		0.21305448557726575
+	],
+	"metadata": {
+		"calibrated_by": "Hendrik",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

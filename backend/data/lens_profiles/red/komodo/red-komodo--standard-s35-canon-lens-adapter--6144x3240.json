@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--standard-s35-canon-lens-adapter--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "ZEISS OTUS 55mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11827.756591944488,
+		"fy": 11829.704371582033,
+		"cx": 3044.955107626827,
+		"cy": 1677.6885838490707
+	},
+	"distortion_coeffs": [
+		0.25020543639149134,
+		1.6225276378499942,
+		-39.60274060396897,
+		293.2586921061797
+	],
+	"metadata": {
+		"calibrated_by": "Stewart French",
+		"notes": "Standard S35 Canon lens adapter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

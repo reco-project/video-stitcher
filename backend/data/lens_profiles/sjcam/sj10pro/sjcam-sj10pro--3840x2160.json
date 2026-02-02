@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-sj10pro--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "sj10pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1799.3419052435588,
+		"fy": 1797.5174460347928,
+		"cx": 1958.562544760837,
+		"cy": 1151.8797247215705
+	},
+	"distortion_coeffs": [
+		0.4146801043958843,
+		-0.16635440572537358,
+		0.7394784671785315,
+		-0.48305229933051097
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

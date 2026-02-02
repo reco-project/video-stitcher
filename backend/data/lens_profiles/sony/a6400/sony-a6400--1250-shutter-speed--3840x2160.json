@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--1250-shutter-speed--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Laowa 9mm F2.8 Zero-D",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1518.8790563191192,
+		"fy": 1517.6324847497972,
+		"cx": 1901.8648600674424,
+		"cy": 1105.0926070245307
+	},
+	"distortion_coeffs": [
+		0.3441814648339432,
+		0.09830528027265092,
+		0.039349471742115505,
+		0.06241950779847001
+	],
+	"metadata": {
+		"calibrated_by": "pixxelpusher",
+		"notes": "1/250 Shutter Speed",
+		"source": "gyroflow",
+		"official": true
+	}
+}

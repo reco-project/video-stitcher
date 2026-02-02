@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-cinema-camera-6k--6048x2520",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "Sigma 28-45mm F1.8 DG DN | Art 024 28mm",
+	"resolution": {
+		"width": 6048,
+		"height": 2520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4835.41962590875,
+		"fy": 4833.979576750102,
+		"cx": 3012.581516253576,
+		"cy": 1258.250191907755
+	},
+	"distortion_coeffs": [
+		0.26494798662816127,
+		0.12519462173934567,
+		-0.18398358421755004,
+		0.5559695547046474
+	],
+	"metadata": {
+		"calibrated_by": "witkowski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

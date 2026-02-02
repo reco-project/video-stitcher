@@ -1,0 +1,28 @@
+{
+	"id": "apeman-a77--1920x1080",
+	"camera_brand": "apeman",
+	"camera_model": "A77",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1135.5029544625118,
+		"fy": 1134.4614249455458,
+		"cx": 958.4052606550058,
+		"cy": 565.6186655679929
+	},
+	"distortion_coeffs": [
+		0.006865949705118557,
+		0.06868346236980168,
+		-0.20179768060681905,
+		0.17677894875012157
+	],
+	"metadata": {
+		"calibrated_by": "Henrique Almeida",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh5--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "15mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1691.1879171673002,
+		"fy": 1688.124945286831,
+		"cx": 958.3411580374328,
+		"cy": 530.6308203593001
+	},
+	"distortion_coeffs": [
+		0.3119523738517534,
+		0.12424625381374536,
+		0.33773101084014695,
+		-1.2646419270226406
+	],
+	"metadata": {
+		"calibrated_by": "AdmZHANG",
+		"source": "gyroflow",
+		"official": true
+	}
+}

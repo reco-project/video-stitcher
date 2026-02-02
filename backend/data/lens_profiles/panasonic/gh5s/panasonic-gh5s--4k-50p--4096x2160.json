@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5s--4k-50p--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5s",
+	"lens_model": "Samyang 14mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2148.308539310772,
+		"fy": 2290.587295672429,
+		"cx": 2053.024838797414,
+		"cy": 1091.6627583136417
+	},
+	"distortion_coeffs": [
+		0.16892311738124163,
+		0.2296364741518675,
+		-0.2775646091678301,
+		0.21602407533829004
+	],
+	"metadata": {
+		"calibrated_by": "deus max",
+		"notes": "4K 50p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-c200--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS C200",
+	"lens_model": "Tokina 11-20mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1768.2549420114474,
+		"fy": 1769.4721368112866,
+		"cx": 1933.375259173705,
+		"cy": 1111.010305222035
+	},
+	"distortion_coeffs": [
+		0.3201445412287347,
+		0.07182158159789312,
+		0.020312694534283218,
+		-0.005938818618777989
+	],
+	"metadata": {
+		"calibrated_by": "Brett Kerr",
+		"source": "gyroflow",
+		"official": true
+	}
+}

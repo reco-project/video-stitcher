@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--18mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "18.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3017.106892106535,
+		"fy": 3030.634724898922,
+		"cx": 1975.0504803248264,
+		"cy": 936.8996577439476
+	},
+	"distortion_coeffs": [
+		0.3475402537775771,
+		-0.18096213955670185,
+		2.062880611772596,
+		-4.321632929431499
+	],
+	"metadata": {
+		"calibrated_by": "Shawn Adams",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

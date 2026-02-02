@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh2s--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XH2S",
+	"lens_model": "Samyang 12mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2618.605332556677,
+		"fy": 2617.230080393918,
+		"cx": 1929.0992206548424,
+		"cy": 1051.262753551072
+	},
+	"distortion_coeffs": [
+		0.298957174617684,
+		0.1205798542901277,
+		-0.01601231786634873,
+		0.0979023703721664
+	],
+	"metadata": {
+		"calibrated_by": "Andrew Orton",
+		"source": "gyroflow",
+		"official": true
+	}
+}

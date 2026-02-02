@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--35mm-anamorphic--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Sirui Saturn 35 mm T2.9",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4021.7567126395247,
+		"fy": 6315.656027549155,
+		"cx": 2191.28788883078,
+		"cy": 880.571132071394
+	},
+	"distortion_coeffs": [
+		0.2182468784007082,
+		1.0936483553563938,
+		-9.593271808346794,
+		24.603089837746857
+	],
+	"metadata": {
+		"calibrated_by": "Damian Abreu",
+		"notes": "35mm anamorphic",
+		"source": "gyroflow",
+		"official": true
+	}
+}

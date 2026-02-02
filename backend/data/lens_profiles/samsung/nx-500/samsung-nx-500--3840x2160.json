@@ -1,0 +1,28 @@
+{
+	"id": "samsung-nx-500--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "NX 500",
+	"lens_model": "16-50 OIS",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4691.386089607321,
+		"fy": 4688.375844067315,
+		"cx": 1992.872232507326,
+		"cy": 1130.4938563301866
+	},
+	"distortion_coeffs": [
+		0.12439804240935146,
+		0.20150267950125847,
+		1.6850356075267745,
+		-10.00875170300887
+	],
+	"metadata": {
+		"calibrated_by": "LegoRJ35",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "redmi-note-13-pro-5g--sensor-width-169--3280x1840",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 13 Pro 5g",
+	"lens_model": "UW 16mm",
+	"resolution": {
+		"width": 3280,
+		"height": 1840
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1485.5861867228307,
+		"fy": 1479.389211454646,
+		"cx": 1640.6259906682926,
+		"cy": 931.538966806319
+	},
+	"distortion_coeffs": [
+		0.22152354536965269,
+		-0.031918392094074974,
+		0.8318535591279433,
+		-0.7018041392831739
+	],
+	"metadata": {
+		"calibrated_by": "H\u00e9ctor Maturana",
+		"notes": "Sensor Width 16:9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

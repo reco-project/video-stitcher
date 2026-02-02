@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--100mbsec_without_rolling_shutter--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sigma 16 mm f/1.4 DC DN Sony E",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2684.4535773281395,
+		"fy": 2681.3687466045803,
+		"cx": 1894.451652417218,
+		"cy": 1065.7410819393642
+	},
+	"distortion_coeffs": [
+		0.33534395905387765,
+		-0.09744923077220775,
+		1.5947449077499003,
+		-3.495301267455185
+	],
+	"metadata": {
+		"calibrated_by": "udmurd",
+		"notes": "100mb/sec_without_rolling_shutter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

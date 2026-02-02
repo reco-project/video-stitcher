@@ -1,0 +1,28 @@
+{
+	"id": "samsung-gear-360-2017--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Gear 360 (2017)",
+	"lens_model": "180 Degree",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 634.8685836635146,
+		"fy": 634.4989934106466,
+		"cx": 954.4094936620172,
+		"cy": 542.5032389834163
+	},
+	"distortion_coeffs": [
+		0.09707879166243125,
+		0.02779696871373333,
+		-0.05212742293658996,
+		0.018787026177145345
+	],
+	"metadata": {
+		"calibrated_by": "Artrix",
+		"source": "gyroflow",
+		"official": true
+	}
+}

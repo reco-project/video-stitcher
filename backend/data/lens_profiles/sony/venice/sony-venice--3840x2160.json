@@ -1,0 +1,28 @@
+{
+	"id": "sony-venice--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "VENICE",
+	"lens_model": "SIGMA 18mm to 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4086.6220014411592,
+		"fy": 4087.316883357536,
+		"cx": 1911.022595747486,
+		"cy": 1053.2094623653838
+	},
+	"distortion_coeffs": [
+		0.31965791134399296,
+		0.13429823993661183,
+		0.81490866554695,
+		-0.9512461144194932
+	],
+	"metadata": {
+		"calibrated_by": "Pablo BARRERA",
+		"source": "gyroflow",
+		"official": true
+	}
+}

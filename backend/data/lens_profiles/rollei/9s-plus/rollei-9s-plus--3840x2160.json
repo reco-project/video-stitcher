@@ -1,0 +1,28 @@
+{
+	"id": "rollei-9s-plus--3840x2160",
+	"camera_brand": "Rollei",
+	"camera_model": "9s Plus",
+	"lens_model": "2.75 mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2113.879058262186,
+		"fy": 2113.971146213422,
+		"cx": 1973.09454076752,
+		"cy": 1031.822049828288
+	},
+	"distortion_coeffs": [
+		-0.051759092347737554,
+		0.07756745950865236,
+		-0.0835275017567706,
+		-0.03501389852823914
+	],
+	"metadata": {
+		"calibrated_by": "Francois POLLARD",
+		"source": "gyroflow",
+		"official": true
+	}
+}

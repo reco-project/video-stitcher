@@ -1,0 +1,28 @@
+{
+	"id": "runcam-thumbpro--3840x2160",
+	"camera_brand": "Runcam",
+	"camera_model": "ThumbPro",
+	"lens_model": "RC18G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1307.3948223729744,
+		"fy": 1304.1269820242137,
+		"cx": 1903.941006642268,
+		"cy": 1103.3256373795257
+	},
+	"distortion_coeffs": [
+		-0.00934666389388594,
+		0.00011060241721791727,
+		-0.008596229987728363,
+		0.006001936526500502
+	],
+	"metadata": {
+		"calibrated_by": "Erik Mackensen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

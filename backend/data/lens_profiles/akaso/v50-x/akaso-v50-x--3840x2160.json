@@ -1,0 +1,28 @@
+{
+	"id": "akaso-v50-x--3840x2160",
+	"camera_brand": "Akaso",
+	"camera_model": "V50 X",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2181.1420218248595,
+		"fy": 2175.5077899676216,
+		"cx": 1789.4267509573694,
+		"cy": 1105.2632386643843
+	},
+	"distortion_coeffs": [
+		0.009347385824755692,
+		-0.01831522335111196,
+		0.0033652712764765677,
+		-0.0014213778896853449
+	],
+	"metadata": {
+		"calibrated_by": "Alejandro Rauseo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

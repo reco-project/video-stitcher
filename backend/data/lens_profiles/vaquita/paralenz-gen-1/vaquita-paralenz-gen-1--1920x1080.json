@@ -1,0 +1,28 @@
+{
+	"id": "vaquita-paralenz-gen-1--1920x1080",
+	"camera_brand": "Vaquita",
+	"camera_model": "Paralenz Gen 1",
+	"lens_model": "FOV (1/1.8\") D135 / H110 / V57 lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1442.3788091072058,
+		"fy": 1442.2034201719648,
+		"cx": 969.8069119663126,
+		"cy": 513.7916437747031
+	},
+	"distortion_coeffs": [
+		-0.1251390421599645,
+		0.25663545585971,
+		-1.4788103601204905,
+		2.6746185201924177
+	],
+	"metadata": {
+		"calibrated_by": "z3w",
+		"source": "gyroflow",
+		"official": true
+	}
+}

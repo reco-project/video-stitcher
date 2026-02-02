@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s22-ultra--motioncam-pro--4000x3000",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S22 Ultra",
+	"lens_model": "0.7x",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1632.4119620874408,
+		"fy": 1632.6323263959214,
+		"cx": 2001.9585920820205,
+		"cy": 1510.997834570337
+	},
+	"distortion_coeffs": [
+		0.3440197937332646,
+		0.039267969472551546,
+		0.3627493574684028,
+		-0.24155016133206775
+	],
+	"metadata": {
+		"calibrated_by": "Roman Mihalik",
+		"notes": "Motioncam PRO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

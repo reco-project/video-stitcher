@@ -1,0 +1,28 @@
+{
+	"id": "somikon-action--3840x2160",
+	"camera_brand": "Somikon",
+	"camera_model": "action",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2495.8486013568845,
+		"fy": 2488.982362639273,
+		"cx": 1883.6387640967755,
+		"cy": 1128.566318764246
+	},
+	"distortion_coeffs": [
+		0.09498859626342486,
+		0.05325162958908732,
+		-0.15654475755682562,
+		-0.41170166588313134
+	],
+	"metadata": {
+		"calibrated_by": "Florian Horny",
+		"source": "gyroflow",
+		"official": true
+	}
+}

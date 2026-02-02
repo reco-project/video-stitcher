@@ -1,0 +1,28 @@
+{
+	"id": "sigma-fp--3856x2170",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "24-70 f2.8 dg dn art",
+	"resolution": {
+		"width": 3856,
+		"height": 2170
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2724.784640323367,
+		"fy": 2728.0291192756144,
+		"cx": 1943.502069962336,
+		"cy": 1068.9468312010545
+	},
+	"distortion_coeffs": [
+		0.13862317789573586,
+		0.20347582840656256,
+		-0.3099932796789167,
+		0.8679409579920978
+	],
+	"metadata": {
+		"calibrated_by": "koji nakano",
+		"source": "gyroflow",
+		"official": true
+	}
+}

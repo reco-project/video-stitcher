@@ -1,0 +1,28 @@
+{
+	"id": "samsung-wb2000--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "WB2000",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1450.1279824907228,
+		"fy": 1399.2370440071195,
+		"cx": 924.2038913891616,
+		"cy": 510.2593214148959
+	},
+	"distortion_coeffs": [
+		0.14056470463547824,
+		-0.2419223975938981,
+		0.9810792761533734,
+		-1.3665929079619743
+	],
+	"metadata": {
+		"calibrated_by": "bvogl",
+		"source": "gyroflow",
+		"official": true
+	}
+}

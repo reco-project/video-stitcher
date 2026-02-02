@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r5--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "16mm 2,8f",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1889.3802904825968,
+		"fy": 1889.9064972115195,
+		"cx": 1924.4745343290128,
+		"cy": 1073.4754819649672
+	},
+	"distortion_coeffs": [
+		0.3679339729919359,
+		-0.059160257679309616,
+		0.4774221908252233,
+		-0.26613122553518737
+	],
+	"metadata": {
+		"calibrated_by": "Bo Tornvig",
+		"source": "gyroflow",
+		"official": true
+	}
+}

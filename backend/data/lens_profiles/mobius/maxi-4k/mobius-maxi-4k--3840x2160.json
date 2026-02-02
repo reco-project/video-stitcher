@@ -1,0 +1,28 @@
+{
+	"id": "mobius-maxi-4k--3840x2160",
+	"camera_brand": "Mobius",
+	"camera_model": "Maxi 4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1694.401544971265,
+		"fy": 1693.596750347988,
+		"cx": 1858.7034676005944,
+		"cy": 1066.8496277988809
+	},
+	"distortion_coeffs": [
+		0.05591267329556283,
+		-0.005509906113601952,
+		0.02085228314969481,
+		-0.011887674781241949
+	],
+	"metadata": {
+		"calibrated_by": "Alexander",
+		"source": "gyroflow",
+		"official": true
+	}
+}

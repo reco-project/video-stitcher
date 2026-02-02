@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-yi--ultra_wide--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 841.1579327448472,
+		"fy": 846.5740559656322,
+		"cx": 967.1547251143552,
+		"cy": 530.0968848526782
+	},
+	"distortion_coeffs": [
+		0.05973698850358396,
+		-0.009112701759175666,
+		0.04255422488314828,
+		-0.04615974658211524
+	],
+	"metadata": {
+		"calibrated_by": "sshahriyari",
+		"notes": "ultra_wide",
+		"source": "gyroflow",
+		"official": true
+	}
+}

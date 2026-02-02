@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-m31--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "galaxy m31",
+	"lens_model": "64 mp main sensor",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1337.134676115097,
+		"fy": 1333.7367048990088,
+		"cx": 950.6589698914148,
+		"cy": 552.1502986244947
+	},
+	"distortion_coeffs": [
+		0.5182957821563968,
+		-0.4592935276418018,
+		0.6592404750191369,
+		0.32682046844106766
+	],
+	"metadata": {
+		"calibrated_by": "Ashiqur Rahman Abir",
+		"source": "gyroflow",
+		"official": true
+	}
+}

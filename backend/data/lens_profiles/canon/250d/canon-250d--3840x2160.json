@@ -1,0 +1,28 @@
+{
+	"id": "canon-250d--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "250D",
+	"lens_model": "Sigma 18- 35 1:1,8 DC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5548.837545773354,
+		"fy": 5530.712169995768,
+		"cx": 1885.7380489058085,
+		"cy": 1124.1900998886897
+	},
+	"distortion_coeffs": [
+		0.2478857183002159,
+		-1.589207399705044,
+		26.02093730225241,
+		-112.8518849680475
+	],
+	"metadata": {
+		"calibrated_by": "Stega",
+		"source": "gyroflow",
+		"official": true
+	}
+}

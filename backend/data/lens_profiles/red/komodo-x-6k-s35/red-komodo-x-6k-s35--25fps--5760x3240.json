@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x-6k-s35--25fps--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "XEEN 85mm T 1.5",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 20950.938645288887,
+		"fy": 20957.614002093367,
+		"cx": 2906.086033214946,
+		"cy": 1611.2690725061595
+	},
+	"distortion_coeffs": [
+		0.11420601941305368,
+		25.008526409220835,
+		-1539.179670083298,
+		32599.67322234439
+	],
+	"metadata": {
+		"calibrated_by": "Melanie Hollaus",
+		"notes": "25FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

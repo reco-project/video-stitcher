@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-xt-4--18mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT-4",
+	"lens_model": "18-55 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2946.867125013815,
+		"fy": 2942.8810385464385,
+		"cx": 1890.1859335139684,
+		"cy": 1052.662569072799
+	},
+	"distortion_coeffs": [
+		0.2420755989962569,
+		0.7495436211934609,
+		-2.352420391912953,
+		3.367905953228437
+	],
+	"metadata": {
+		"calibrated_by": "Levon Arshakyan",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

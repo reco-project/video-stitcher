@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-g7--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix G7",
+	"lens_model": "25mm f1.7",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6362.060212288018,
+		"fy": 6385.080858925122,
+		"cx": 1952.2821813108696,
+		"cy": 1031.6301576039966
+	},
+	"distortion_coeffs": [
+		0.3609441377254962,
+		-2.606395959033576,
+		50.54084769353684,
+		-292.7398389128575
+	],
+	"metadata": {
+		"calibrated_by": "JustTechGuyThings",
+		"source": "gyroflow",
+		"official": true
+	}
+}

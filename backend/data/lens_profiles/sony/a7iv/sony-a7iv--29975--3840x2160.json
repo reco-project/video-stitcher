@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--29975--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Zeiss 55.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7559.856594850171,
+		"fy": 7548.682008641808,
+		"cx": 1843.9571018588229,
+		"cy": 1208.4284531325814
+	},
+	"distortion_coeffs": [
+		0.44028547187090905,
+		-2.0959083845238458,
+		36.50805924432042,
+		-154.38640531308394
+	],
+	"metadata": {
+		"calibrated_by": "Thodoris Tsakalos",
+		"notes": "29.975",
+		"source": "gyroflow",
+		"official": true
+	}
+}

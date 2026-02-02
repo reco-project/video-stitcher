@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero8-black--hs-\u00e9lev\u00e9--2704x1520",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO8 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1344.686228302983,
+		"fy": 1366.0059499888778,
+		"cx": 1375.134781169928,
+		"cy": 762.1050521618462
+	},
+	"distortion_coeffs": [
+		0.026857911922711315,
+		0.10216801866276108,
+		-0.1249160591550644,
+		0.05847304080769511
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"notes": "HS \u00e9lev\u00e9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

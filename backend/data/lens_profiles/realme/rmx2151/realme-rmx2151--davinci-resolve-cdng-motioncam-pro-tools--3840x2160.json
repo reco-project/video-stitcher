@@ -1,0 +1,29 @@
+{
+	"id": "realme-rmx2151--davinci-resolve-cdng-motioncam-pro-tools--3840x2160",
+	"camera_brand": "Realme",
+	"camera_model": "RMX2151",
+	"lens_model": "Sony IMX682",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3566.3725587372646,
+		"fy": 3559.6855394760855,
+		"cx": 1930.63828624265,
+		"cy": 1069.612829415569
+	},
+	"distortion_coeffs": [
+		0.36910125405261224,
+		-0.16512131046287984,
+		2.4629476631831793,
+		-5.716191968006859
+	],
+	"metadata": {
+		"calibrated_by": "Akshay Nagar",
+		"notes": "Davinci Resolve + cDNG MotionCam Pro Tools",
+		"source": "gyroflow",
+		"official": true
+	}
+}

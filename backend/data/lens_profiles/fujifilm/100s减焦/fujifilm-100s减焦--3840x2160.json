@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-100s\u51cf\u7126--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "100S\u51cf\u7126",
+	"lens_model": "\u5bbe\u5f97645 75 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17306.086678512802,
+		"fy": 19564.799994206493,
+		"cx": 4239.630000747288,
+		"cy": 1085.027342111891
+	},
+	"distortion_coeffs": [
+		0.18350023118299497,
+		35.56041836187201,
+		-641.3236821687924,
+		3588.866499933654
+	],
+	"metadata": {
+		"calibrated_by": "\u5f20\u5a01",
+		"source": "gyroflow",
+		"official": true
+	}
+}

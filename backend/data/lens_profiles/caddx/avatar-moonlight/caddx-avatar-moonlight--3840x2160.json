@@ -1,0 +1,28 @@
+{
+	"id": "caddx-avatar-moonlight--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Avatar Moonlight",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1759.286224852307,
+		"fy": 1761.3945373266563,
+		"cx": 1872.5392808890704,
+		"cy": 1054.816909892286
+	},
+	"distortion_coeffs": [
+		-0.031055592100988377,
+		-0.007587926858081564,
+		0.004918083690809367,
+		-0.002544436731054472
+	],
+	"metadata": {
+		"calibrated_by": "Kevin Rasor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

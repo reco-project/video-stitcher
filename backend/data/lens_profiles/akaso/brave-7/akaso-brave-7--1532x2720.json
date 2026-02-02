@@ -1,0 +1,28 @@
+{
+	"id": "akaso-brave-7--1532x2720",
+	"camera_brand": "AKASO",
+	"camera_model": "Brave 7",
+	"lens_model": null,
+	"resolution": {
+		"width": 1532,
+		"height": 2720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1925.889704384033,
+		"fy": 1923.1514507013703,
+		"cx": 735.2144991892968,
+		"cy": 1295.007477426658
+	},
+	"distortion_coeffs": [
+		-0.05166294124847354,
+		0.04575538059694031,
+		-0.13352021243747011,
+		0.15903919302719952
+	],
+	"metadata": {
+		"calibrated_by": "Chromezero",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2m4--1920x1080",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2M4",
+	"lens_model": "\u601d\u951035mmT1.2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8107.272128380738,
+		"fy": 8076.589840579735,
+		"cx": 1015.186015974039,
+		"cy": 81.44021175428068
+	},
+	"distortion_coeffs": [
+		0.560027054012365,
+		-34.16442740143427,
+		3178.113718516531,
+		-76417.15172246804
+	],
+	"metadata": {
+		"calibrated_by": "YB",
+		"source": "gyroflow",
+		"official": true
+	}
+}

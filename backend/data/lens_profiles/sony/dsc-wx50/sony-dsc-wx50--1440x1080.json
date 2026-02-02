@@ -2,7 +2,7 @@
 	"id": "sony-dsc-wx50--1440x1080",
 	"camera_brand": "Sony",
 	"camera_model": "DSC WX50",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1440,
 		"height": 1080
@@ -21,13 +21,8 @@
 		0.7249607366237742
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_DSC WX50__MPG_720p_4by3_1440x1080-29.97fps",
 		"calibrated_by": "Steve",
-		"original_resolution": "1440x1080",
-		"calibrated_fps": "29.97003",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

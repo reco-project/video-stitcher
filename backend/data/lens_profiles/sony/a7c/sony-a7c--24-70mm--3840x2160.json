@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--24-70mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sigma 24-70mm f/2.8 DG DN Art",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1644.0596790444504,
+		"fy": 1638.1062348211442,
+		"cx": 1979.057660641856,
+		"cy": 943.4721563183566
+	},
+	"distortion_coeffs": [
+		0.3371972846917391,
+		0.12056293163333603,
+		0.011294556288106284,
+		0.09765505121158802
+	],
+	"metadata": {
+		"calibrated_by": "Lee Barone",
+		"notes": "24-70mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

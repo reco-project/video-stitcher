@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi10tpro--6016x4512",
+	"camera_brand": "Xiaomi",
+	"camera_model": "mi10tpro",
+	"lens_model": "main",
+	"resolution": {
+		"width": 6016,
+		"height": 4512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4032.8861275872496,
+		"fy": 4037.797663782484,
+		"cx": 2992.4308723334507,
+		"cy": 2225.503865033676
+	},
+	"distortion_coeffs": [
+		0.4706576206604513,
+		-0.4616402531776216,
+		1.626893870279447,
+		-1.6176424349563037
+	],
+	"metadata": {
+		"calibrated_by": "Paul Martin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

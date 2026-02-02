@@ -1,0 +1,29 @@
+{
+	"id": "sony-fdr-ax700--93--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FDR-AX700",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3251.4159060030092,
+		"fy": 3245.918354024738,
+		"cx": 1947.43132184797,
+		"cy": 1065.9044417010955
+	},
+	"distortion_coeffs": [
+		0.3429703592411724,
+		0.07020072631370522,
+		0.434362631597523,
+		-0.730632760968702
+	],
+	"metadata": {
+		"calibrated_by": "MY",
+		"notes": "9.3",
+		"source": "gyroflow",
+		"official": true
+	}
+}

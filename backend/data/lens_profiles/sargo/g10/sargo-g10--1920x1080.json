@@ -1,0 +1,28 @@
+{
+	"id": "sargo-g10--1920x1080",
+	"camera_brand": "SARGO",
+	"camera_model": "G10+",
+	"lens_model": "NO",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1669.3141862796276,
+		"fy": 1668.5728282507637,
+		"cx": 999.8201789135468,
+		"cy": 568.1495354632775
+	},
+	"distortion_coeffs": [
+		-0.11805703175443556,
+		0.3712382844530354,
+		-2.228308307634066,
+		3.830499072046746
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

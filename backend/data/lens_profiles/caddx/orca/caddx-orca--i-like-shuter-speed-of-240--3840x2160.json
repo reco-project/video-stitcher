@@ -1,0 +1,29 @@
+{
+	"id": "caddx-orca--i-like-shuter-speed-of-240--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Orca",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1917.7389867882648,
+		"fy": 1916.984551655737,
+		"cx": 1950.007138896682,
+		"cy": 1052.473782418707
+	},
+	"distortion_coeffs": [
+		-0.03772676866786927,
+		-0.004594329876447335,
+		-0.0007458823803473293,
+		0.0007557359741713226
+	],
+	"metadata": {
+		"calibrated_by": "grognatou bouffeur",
+		"notes": "i like shuter speed of 240",
+		"source": "gyroflow",
+		"official": true
+	}
+}

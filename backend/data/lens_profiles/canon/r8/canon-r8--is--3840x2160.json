@@ -1,0 +1,29 @@
+{
+	"id": "canon-r8--is--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "r8",
+	"lens_model": "ef24-70f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2872.6326455432604,
+		"fy": 2875.0647193392015,
+		"cx": 1937.1373802532496,
+		"cy": 1079.9954806146256
+	},
+	"distortion_coeffs": [
+		0.1888825517420924,
+		0.3476732388926983,
+		-0.6745912956569448,
+		1.0724210871130857
+	],
+	"metadata": {
+		"calibrated_by": "hong chen",
+		"notes": "is",
+		"source": "gyroflow",
+		"official": true
+	}
+}

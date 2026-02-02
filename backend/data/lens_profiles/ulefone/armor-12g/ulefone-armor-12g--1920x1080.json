@@ -1,0 +1,28 @@
+{
+	"id": "ulefone-armor-12g--1920x1080",
+	"camera_brand": "ulefone",
+	"camera_model": "Armor 12g",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1563.1804560900352,
+		"fy": 1563.4110397840434,
+		"cx": 973.467583456782,
+		"cy": 537.0164878846283
+	},
+	"distortion_coeffs": [
+		0.4343603082367878,
+		0.31804918461580534,
+		-0.4411622880299341,
+		-0.6707526714602461
+	],
+	"metadata": {
+		"calibrated_by": "Hiroyuki Sakurai",
+		"source": "gyroflow",
+		"official": true
+	}
+}

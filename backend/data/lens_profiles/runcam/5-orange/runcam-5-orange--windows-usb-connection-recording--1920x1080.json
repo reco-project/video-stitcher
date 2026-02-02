@@ -1,0 +1,29 @@
+{
+	"id": "runcam-5-orange--windows-usb-connection-recording--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "5 Orange",
+	"lens_model": "Original",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 956.1917556193893,
+		"fy": 956.5812284539004,
+		"cx": 959.5372077621416,
+		"cy": 527.8527981500503
+	},
+	"distortion_coeffs": [
+		0.2228705483329048,
+		0.2576350323915292,
+		-0.45934359658881274,
+		0.3643852634786577
+	],
+	"metadata": {
+		"calibrated_by": "Jirik",
+		"notes": "Windows USB connection recording",
+		"source": "gyroflow",
+		"official": true
+	}
+}

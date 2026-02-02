@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gx80--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GX80",
+	"lens_model": "Olympus 12-40",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3075.6127973976727,
+		"fy": 3004.5577035646934,
+		"cx": 1893.3178989405064,
+		"cy": 1045.051023826053
+	},
+	"distortion_coeffs": [
+		0.2908047053530047,
+		0.2596491298757185,
+		-0.655143550524744,
+		1.4445702737411703
+	],
+	"metadata": {
+		"calibrated_by": "filippo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

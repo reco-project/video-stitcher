@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s22--30fps--3648x2752",
+	"camera_brand": "Samsung",
+	"camera_model": "S22",
+	"lens_model": "3X",
+	"resolution": {
+		"width": 3648,
+		"height": 2752
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7050.39629695439,
+		"fy": 7068.407976667538,
+		"cx": 1853.1185857705252,
+		"cy": 1392.8185493320432
+	},
+	"distortion_coeffs": [
+		-1.4994572420232952,
+		70.0585393722114,
+		-1061.364895726827,
+		5556.227208590824
+	],
+	"metadata": {
+		"calibrated_by": "Vr. Aman Kumar",
+		"notes": "30FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

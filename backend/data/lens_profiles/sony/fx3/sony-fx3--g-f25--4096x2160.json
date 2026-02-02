@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--g-f25--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "50.00mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6414.465752848835,
+		"fy": 6346.8367701176585,
+		"cx": 2081.2447488529456,
+		"cy": 1093.597510181447
+	},
+	"distortion_coeffs": [
+		0.21358790667151853,
+		3.851834387898853,
+		-46.76794098535483,
+		210.25220846009583
+	],
+	"metadata": {
+		"calibrated_by": "Evan V",
+		"notes": "G f2.5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

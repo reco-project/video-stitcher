@@ -1,0 +1,28 @@
+{
+	"id": "niceboy-vega-x-play--1920x1080",
+	"camera_brand": "niceboy",
+	"camera_model": "vega x play",
+	"lens_model": "all-glass, 170\u00b0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1395.8060013563834,
+		"fy": 1414.5787055551614,
+		"cx": 967.4285956951786,
+		"cy": 580.8857505724262
+	},
+	"distortion_coeffs": [
+		-0.13509534355985436,
+		0.14331105254425353,
+		-0.48706256383366686,
+		0.5686712761417148
+	],
+	"metadata": {
+		"calibrated_by": "Atuk",
+		"source": "gyroflow",
+		"official": true
+	}
+}

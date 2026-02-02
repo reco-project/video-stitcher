@@ -1,0 +1,28 @@
+{
+	"id": "activeon-cx--1920x1080",
+	"camera_brand": "ACTIVEON",
+	"camera_model": "CX",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 947.4218131010228,
+		"fy": 946.7126379160946,
+		"cx": 920.3648284878687,
+		"cy": 532.1126704899498
+	},
+	"distortion_coeffs": [
+		-0.08196813498527901,
+		0.039904639654487664,
+		-0.05792573279112444,
+		0.02442778419321449
+	],
+	"metadata": {
+		"calibrated_by": "Rich",
+		"source": "gyroflow",
+		"official": true
+	}
+}

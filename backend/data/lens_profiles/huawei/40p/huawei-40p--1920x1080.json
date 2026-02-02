@@ -1,0 +1,28 @@
+{
+	"id": "huawei-40p--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "40p",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1248.5848069131991,
+		"fy": 1246.9363045797022,
+		"cx": 958.0123019727044,
+		"cy": 538.8671757080742
+	},
+	"distortion_coeffs": [
+		0.48966666410310783,
+		-0.3199581498344979,
+		-0.7730163891363535,
+		2.334565942746732
+	],
+	"metadata": {
+		"calibrated_by": "zjy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

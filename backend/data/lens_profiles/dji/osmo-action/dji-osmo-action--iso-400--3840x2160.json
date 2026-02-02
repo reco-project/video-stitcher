@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action--iso-400--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1749.3079145961922,
+		"fy": 1748.5406251057927,
+		"cx": 1957.4079524953736,
+		"cy": 1082.2446957155746
+	},
+	"distortion_coeffs": [
+		0.1981839858557135,
+		0.05592170820890518,
+		-0.14182528679021136,
+		0.03981199657558476
+	],
+	"metadata": {
+		"calibrated_by": "Silver",
+		"notes": "iso 400",
+		"source": "gyroflow",
+		"official": true
+	}
+}

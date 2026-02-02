@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh5--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "LUMIX G X VARIO 12-35mm / F2.8 II ASPH. / POWER O.I.S.",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2753.5491412171464,
+		"fy": 2747.084176120474,
+		"cx": 1903.5219491701175,
+		"cy": 1069.4014465900402
+	},
+	"distortion_coeffs": [
+		0.28165015729070836,
+		0.2734311858143537,
+		-0.4723515048170568,
+		0.6670991170894253
+	],
+	"metadata": {
+		"calibrated_by": "JT Low",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-12--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 12",
+	"lens_model": "0.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1703.334522724518,
+		"fy": 1702.3932074813126,
+		"cx": 1907.9813801434875,
+		"cy": 1079.5542606310291
+	},
+	"distortion_coeffs": [
+		0.4880877234430899,
+		-0.2911401364367505,
+		0.5572120994858649,
+		-0.23468470951625717
+	],
+	"metadata": {
+		"calibrated_by": "Sean Louie Letigio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

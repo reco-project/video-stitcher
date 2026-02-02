@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--30mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "SLR Magic Micro Prime",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4112.693588491034,
+		"fy": 4109.860005732016,
+		"cx": 1936.685888601034,
+		"cy": 1059.3964128081611
+	},
+	"distortion_coeffs": [
+		0.24331110665753464,
+		-0.2770071986154099,
+		8.159268365663506,
+		-35.70888448287803
+	],
+	"metadata": {
+		"calibrated_by": "andre betzien",
+		"notes": "30mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

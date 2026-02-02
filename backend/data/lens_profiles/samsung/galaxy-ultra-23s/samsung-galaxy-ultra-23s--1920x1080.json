@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-ultra-23s--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Ultra 23S",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1770.1557685033174,
+		"fy": 1770.350424750104,
+		"cx": 962.875499385529,
+		"cy": 537.7362213529361
+	},
+	"distortion_coeffs": [
+		0.4355289434408228,
+		0.22201714583492604,
+		-7.542618486971383,
+		31.833817689738897
+	],
+	"metadata": {
+		"calibrated_by": "Danny Tran",
+		"source": "gyroflow",
+		"official": true
+	}
+}

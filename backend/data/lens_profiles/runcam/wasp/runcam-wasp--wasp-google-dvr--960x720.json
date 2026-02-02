@@ -1,0 +1,29 @@
+{
+	"id": "runcam-wasp--wasp-google-dvr--960x720",
+	"camera_brand": "RunCam",
+	"camera_model": "Wasp",
+	"lens_model": "DJI V2 DVR",
+	"resolution": {
+		"width": 960,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 423.81039441181986,
+		"fy": 423.68076866595743,
+		"cx": 503.8784663870627,
+		"cy": 384.73313362526017
+	},
+	"distortion_coeffs": [
+		0.024154840957179145,
+		-0.006658030640342288,
+		0.011310056597032532,
+		-0.004201911009275523
+	],
+	"metadata": {
+		"calibrated_by": "Akos Pajdusak",
+		"notes": "WASP-Google dvr",
+		"source": "gyroflow",
+		"official": true
+	}
+}

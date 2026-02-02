@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6-m2--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6 m2",
+	"lens_model": "Ef 16-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1720.936013810347,
+		"fy": 1723.7244369980829,
+		"cx": 1928.76219420363,
+		"cy": 1087.6255414633458
+	},
+	"distortion_coeffs": [
+		0.2906937950252027,
+		0.14102054831078287,
+		-0.13483507255638175,
+		0.19762804487198984
+	],
+	"metadata": {
+		"calibrated_by": "\u5f90\u91d1\u680b",
+		"source": "gyroflow",
+		"official": true
+	}
+}

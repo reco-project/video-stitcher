@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x100v-4k-30p--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X100V 4K 30P",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4005.106852766513,
+		"fy": 4015.430119409369,
+		"cx": 1929.7984615346231,
+		"cy": 1086.493043253265
+	},
+	"distortion_coeffs": [
+		0.2769807162163232,
+		0.9019674451395164,
+		-5.088899314269613,
+		12.68062954112521
+	],
+	"metadata": {
+		"calibrated_by": "apple\u5bc6\u78011234",
+		"source": "gyroflow",
+		"official": true
+	}
+}

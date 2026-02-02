@@ -1,0 +1,29 @@
+{
+	"id": "caddx-peanut--export-from-insta360-studio--2560x1440",
+	"camera_brand": "Caddx",
+	"camera_model": "Peanut",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1328.1163189290182,
+		"fy": 1324.0101144362338,
+		"cx": 1303.7490147231088,
+		"cy": 720.3708055263983
+	},
+	"distortion_coeffs": [
+		0.0557839902328165,
+		0.24894907805279487,
+		-0.4628390031460974,
+		0.25916101036097505
+	],
+	"metadata": {
+		"calibrated_by": "Andreas Halemba",
+		"notes": "export from insta360 studio",
+		"source": "gyroflow",
+		"official": true
+	}
+}

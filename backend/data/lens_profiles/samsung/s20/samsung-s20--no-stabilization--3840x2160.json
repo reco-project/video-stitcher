@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s20--no-stabilization--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S20",
+	"lens_model": "26mm main (1x)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2908.3506766696178,
+		"fy": 2911.612744602285,
+		"cx": 1931.5810335943547,
+		"cy": 1066.2790437122462
+	},
+	"distortion_coeffs": [
+		0.39036301874589824,
+		0.01889752404429535,
+		0.9952708627338092,
+		-1.8369686511736216
+	],
+	"metadata": {
+		"calibrated_by": "Daniel F",
+		"notes": "no stabilization",
+		"source": "gyroflow",
+		"official": true
+	}
+}

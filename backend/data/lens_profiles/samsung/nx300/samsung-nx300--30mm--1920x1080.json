@@ -1,0 +1,29 @@
+{
+	"id": "samsung-nx300--30mm--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "nx300",
+	"lens_model": "30mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3375.041608522574,
+		"fy": 3395.597753628054,
+		"cx": 986.6534251050084,
+		"cy": 587.626895615529
+	},
+	"distortion_coeffs": [
+		0.4414304811319905,
+		-2.5616761624669486,
+		58.6650824380822,
+		-440.8238117197298
+	],
+	"metadata": {
+		"calibrated_by": "T",
+		"notes": "30mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-r5--8192x4320",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "Canon R5C",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3792.955811969142,
+		"fy": 3795.281254988099,
+		"cx": 4092.734437793374,
+		"cy": 2092.11378725197
+	},
+	"distortion_coeffs": [
+		0.16363631321316613,
+		0.0739037613970353,
+		-0.05242944168270599,
+		0.09669431072924332
+	],
+	"metadata": {
+		"calibrated_by": "Harry Staab",
+		"source": "gyroflow",
+		"official": true
+	}
+}

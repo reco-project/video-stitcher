@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-7-plus--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 7 Plus",
+	"lens_model": "28mm F/1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1858.065610952844,
+		"fy": 1857.6701435121852,
+		"cx": 951.4488647028512,
+		"cy": 528.2136345428269
+	},
+	"distortion_coeffs": [
+		0.659202172044246,
+		-2.3057295192948795,
+		9.063983943724104,
+		-15.14443631608273
+	],
+	"metadata": {
+		"calibrated_by": "pixxelpusher",
+		"source": "gyroflow",
+		"official": true
+	}
+}

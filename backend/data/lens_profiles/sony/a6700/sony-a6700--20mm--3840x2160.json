@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "SELP1020G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3394.4272937391956,
+		"fy": 3393.577829064723,
+		"cx": 1905.916894939802,
+		"cy": 1043.382647575956
+	},
+	"distortion_coeffs": [
+		0.29851213388017145,
+		0.6171202675733697,
+		-2.262651542450623,
+		3.6434555205046593
+	],
+	"metadata": {
+		"calibrated_by": "Shuchen",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

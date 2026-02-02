@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--a--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "ziess milvus 35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6103.565592501819,
+		"fy": 6095.216834750008,
+		"cx": 1875.4116882487108,
+		"cy": 1106.6654099843631
+	},
+	"distortion_coeffs": [
+		0.3229402598124098,
+		-3.414318055148674,
+		72.20795964867008,
+		-444.30645965833367
+	],
+	"metadata": {
+		"calibrated_by": "almog dahan",
+		"notes": "a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

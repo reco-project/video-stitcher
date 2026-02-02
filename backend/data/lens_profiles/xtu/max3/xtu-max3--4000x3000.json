@@ -1,0 +1,28 @@
+{
+	"id": "xtu-max3--4000x3000",
+	"camera_brand": "XTU",
+	"camera_model": "MAX3",
+	"lens_model": "XTU/XTU_MAX3_NO-LDC_4k30_12M_4k_4by3_4000x3000-29.97fps wide",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2121.567412350659,
+		"fy": 2122.0275293463937,
+		"cx": 2018.4474938305368,
+		"cy": 1477.595930960587
+	},
+	"distortion_coeffs": [
+		0.12568705888238577,
+		-0.18791897897620563,
+		0.15927868635183115,
+		-0.05706567076556713
+	],
+	"metadata": {
+		"calibrated_by": "Rayao",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s20-fe--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S20 fe",
+	"lens_model": "Main rear lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3015.244427133974,
+		"fy": 3011.800244745774,
+		"cx": 1975.873513084255,
+		"cy": 1235.1902245338258
+	},
+	"distortion_coeffs": [
+		0.36357832272963125,
+		0.1378820792512825,
+		0.05813355912512822,
+		-0.26428964650761294
+	],
+	"metadata": {
+		"calibrated_by": "john preston",
+		"source": "gyroflow",
+		"official": true
+	}
+}

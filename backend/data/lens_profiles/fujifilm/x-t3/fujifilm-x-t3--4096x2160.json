@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t3--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "Minolta Rokkor 58mm f/1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11026.1821626892,
+		"fy": 11012.605387571512,
+		"cx": 1994.4906386716011,
+		"cy": 978.854535610348
+	},
+	"distortion_coeffs": [
+		0.26866501863122966,
+		0.10557187847520316,
+		-324.36222590723895,
+		12975.799022787622
+	],
+	"metadata": {
+		"calibrated_by": "Isaac Arias",
+		"source": "gyroflow",
+		"official": true
+	}
+}

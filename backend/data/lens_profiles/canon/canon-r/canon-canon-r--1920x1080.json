@@ -1,0 +1,28 @@
+{
+	"id": "canon-canon-r--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Canon R",
+	"lens_model": "RF 50mm f.1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5171.328608384355,
+		"fy": 5209.702005781312,
+		"cx": 890.7139462376466,
+		"cy": 511.9449617321832
+	},
+	"distortion_coeffs": [
+		0.8435851890215524,
+		-30.807714669806643,
+		1089.8132465603935,
+		-14391.376870490669
+	],
+	"metadata": {
+		"calibrated_by": "SORIN",
+		"source": "gyroflow",
+		"official": true
+	}
+}

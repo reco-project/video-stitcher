@@ -1,0 +1,28 @@
+{
+	"id": "canon-m100--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "m100",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1075.951993039415,
+		"fy": 1074.5755130977673,
+		"cx": 635.4352310242823,
+		"cy": 359.61223814657535
+	},
+	"distortion_coeffs": [
+		0.08056300094207902,
+		3.662322908187999,
+		-16.899400333951903,
+		27.31559698166316
+	],
+	"metadata": {
+		"calibrated_by": "Felipe Romero Aguirre",
+		"source": "gyroflow",
+		"official": true
+	}
+}

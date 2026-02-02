@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--15mm--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "RF15-35",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1751.8084112120057,
+		"fy": 1751.0778425967142,
+		"cx": 2058.6006382436153,
+		"cy": 1079.3972888626208
+	},
+	"distortion_coeffs": [
+		0.3391024263427033,
+		0.09833023552312224,
+		0.16051267635946398,
+		-0.05771576672022661
+	],
+	"metadata": {
+		"calibrated_by": "Saleh Alomary",
+		"notes": "@15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

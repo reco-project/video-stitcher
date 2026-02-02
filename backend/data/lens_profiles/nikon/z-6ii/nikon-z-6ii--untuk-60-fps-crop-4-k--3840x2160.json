@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z-6ii--untuk-60-fps-crop-4-k--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "z 6II",
+	"lens_model": "Nikon 35 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5619.54843084588,
+		"fy": 5616.487112068315,
+		"cx": 1946.6917733128837,
+		"cy": 1065.1462380239334
+	},
+	"distortion_coeffs": [
+		0.2638740317644045,
+		0.22364172445732944,
+		-0.9979614171885556,
+		7.479992756539671
+	],
+	"metadata": {
+		"calibrated_by": "ROG",
+		"notes": "untuk 60 fps crop 4 k",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r--24mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R",
+	"lens_model": "Canon 24 - 105 F4.0L",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4817.372387385567,
+		"fy": 4818.574520979957,
+		"cx": 1919.794625993112,
+		"cy": 1014.5944916005188
+	},
+	"distortion_coeffs": [
+		0.17673785777329226,
+		1.0909733977619858,
+		-8.684257077597994,
+		27.446800376986747
+	],
+	"metadata": {
+		"calibrated_by": "Zac",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

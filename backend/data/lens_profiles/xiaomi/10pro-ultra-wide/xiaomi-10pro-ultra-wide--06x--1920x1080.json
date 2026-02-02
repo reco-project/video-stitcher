@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-10pro-ultra-wide--06x--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "10pro Ultra wide",
+	"lens_model": "2.35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1190.400173546776,
+		"fy": 1189.6749367106736,
+		"cx": 960.7605414619338,
+		"cy": 541.1875369440662
+	},
+	"distortion_coeffs": [
+		0.3887510960514778,
+		-0.3784499937512602,
+		1.5859798930614444,
+		-1.216676857810847
+	],
+	"metadata": {
+		"calibrated_by": "\u9648\u7f8e\u8a00",
+		"notes": "0.6x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

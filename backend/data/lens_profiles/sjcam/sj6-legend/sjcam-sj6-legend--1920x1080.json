@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-sj6-legend--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ6 legend",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1019.5402711230696,
+		"fy": 1026.9525730291832,
+		"cx": 955.915177757386,
+		"cy": 524.0077371471084
+	},
+	"distortion_coeffs": [
+		-0.05859762934719064,
+		0.0010284950013814097,
+		0.004290080781705575,
+		-0.003731807262767735
+	],
+	"metadata": {
+		"calibrated_by": "max",
+		"source": "gyroflow",
+		"official": true
+	}
+}

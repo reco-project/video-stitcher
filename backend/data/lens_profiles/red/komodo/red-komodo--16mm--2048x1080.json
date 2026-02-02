@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--16mm--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Tokina ATX-i 11-20 F/2.8",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1212.100572216008,
+		"fy": 1212.1359595701397,
+		"cx": 1030.09768604208,
+		"cy": 560.8204642507426
+	},
+	"distortion_coeffs": [
+		0.3601764609818534,
+		0.003694500109169924,
+		0.3726674023164252,
+		-0.41077886132773034
+	],
+	"metadata": {
+		"calibrated_by": "Mario AV",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

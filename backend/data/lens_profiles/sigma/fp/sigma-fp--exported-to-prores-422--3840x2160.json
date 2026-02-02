@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--exported-to-prores-422--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "7 Artisans 35mm T2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3632.6542779939737,
+		"fy": 3634.268907091546,
+		"cx": 1937.534641938421,
+		"cy": 995.2651108282864
+	},
+	"distortion_coeffs": [
+		0.3159719215508626,
+		0.23598802530393093,
+		-0.5466603968829867,
+		2.573692309203995
+	],
+	"metadata": {
+		"calibrated_by": "Bradford Strom",
+		"notes": "Exported to Prores 422",
+		"source": "gyroflow",
+		"official": true
+	}
+}

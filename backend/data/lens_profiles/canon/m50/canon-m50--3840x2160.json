@@ -1,0 +1,28 @@
+{
+	"id": "canon-m50--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "M50",
+	"lens_model": "7artisans 7.5mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2228.397792054682,
+		"fy": 2230.0416490279613,
+		"cx": 1944.8045682028137,
+		"cy": 1172.0523087659813
+	},
+	"distortion_coeffs": [
+		0.04877214128128439,
+		-0.02348434594727985,
+		0.04413588714220137,
+		-0.022096776986602836
+	],
+	"metadata": {
+		"calibrated_by": "Patrick White",
+		"source": "gyroflow",
+		"official": true
+	}
+}

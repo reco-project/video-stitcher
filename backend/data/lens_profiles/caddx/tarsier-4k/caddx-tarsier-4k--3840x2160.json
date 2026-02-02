@@ -1,0 +1,28 @@
+{
+	"id": "caddx-tarsier-4k--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "Tarsier 4K",
+	"lens_model": "F/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2208.777093258878,
+		"fy": 2207.843326349672,
+		"cx": 1920.0,
+		"cy": 1080.0
+	},
+	"distortion_coeffs": [
+		-0.046147102050354126,
+		-0.024398132736836605,
+		0.011790953334617634,
+		0.008717703391938827
+	],
+	"metadata": {
+		"calibrated_by": "feeksfpv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

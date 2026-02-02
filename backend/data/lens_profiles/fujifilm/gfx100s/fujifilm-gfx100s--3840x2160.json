@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-gfx100s--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "GFX100S",
+	"lens_model": "GF45mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3774.91539892746,
+		"fy": 3771.0961376833984,
+		"cx": 2036.626447414382,
+		"cy": 999.0454904194456
+	},
+	"distortion_coeffs": [
+		0.30824803571676274,
+		0.6896102723303063,
+		-3.570654331405851,
+		8.138637171424525
+	],
+	"metadata": {
+		"calibrated_by": "ACH Digital Photography",
+		"source": "gyroflow",
+		"official": true
+	}
+}

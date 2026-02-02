@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-sx-t--20mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S/X-T",
+	"lens_model": "Sigma 18-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3291.306494045584,
+		"fy": 3287.146727670803,
+		"cx": 1916.938160554874,
+		"cy": 1060.6749244040282
+	},
+	"distortion_coeffs": [
+		0.22181617497874187,
+		0.562262150605286,
+		-1.5754598830526174,
+		2.290364449761366
+	],
+	"metadata": {
+		"calibrated_by": "David Hoult",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

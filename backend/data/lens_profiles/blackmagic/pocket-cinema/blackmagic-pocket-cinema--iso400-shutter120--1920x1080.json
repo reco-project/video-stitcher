@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema--iso400-shutter120--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema",
+	"lens_model": "Laowa 9 mm, F2,8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1410.6002892102133,
+		"fy": 1412.6587037099791,
+		"cx": 990.5495957456884,
+		"cy": 556.6115410770885
+	},
+	"distortion_coeffs": [
+		0.35966688375279815,
+		-0.06019061416585669,
+		0.8633535644085811,
+		-1.4355918954907398
+	],
+	"metadata": {
+		"calibrated_by": "Stefan Bechtel",
+		"notes": "ISO400 Shutter120",
+		"source": "gyroflow",
+		"official": true
+	}
+}

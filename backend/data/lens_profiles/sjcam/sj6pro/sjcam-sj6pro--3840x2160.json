@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-sj6pro--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ6PRO",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3151.2813424185533,
+		"fy": 3149.15495471829,
+		"cx": 1723.5173267885327,
+		"cy": 1031.9901806284986
+	},
+	"distortion_coeffs": [
+		-0.03917276508249943,
+		-0.14192503804537335,
+		0.33338571895789104,
+		-0.25716291056768326
+	],
+	"metadata": {
+		"calibrated_by": "\u6f47\u6d12\u54e5\u54e5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

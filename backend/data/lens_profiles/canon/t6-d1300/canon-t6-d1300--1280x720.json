@@ -1,0 +1,28 @@
+{
+	"id": "canon-t6-d1300--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "t6 d1300",
+	"lens_model": "ef50mm f/1.8",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3337.8892687714797,
+		"fy": 3340.725129115094,
+		"cx": 596.6369859625106,
+		"cy": 356.15974411390795
+	},
+	"distortion_coeffs": [
+		0.1366768341345702,
+		0.054361954870010935,
+		4.319000300274172,
+		48.59679530983883
+	],
+	"metadata": {
+		"calibrated_by": "andres flores",
+		"source": "gyroflow",
+		"official": true
+	}
+}

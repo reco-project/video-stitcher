@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s22-wide--eprojection-error-071--3840x1920",
+	"camera_brand": "Samsung",
+	"camera_model": "S22 Wide",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2647.365162589976,
+		"fy": 2648.0644433308644,
+		"cx": 1912.1067546220845,
+		"cy": 998.3394742478756
+	},
+	"distortion_coeffs": [
+		0.4293213253407102,
+		-0.1588309206277459,
+		0.9232556899491684,
+		-1.1208713955961669
+	],
+	"metadata": {
+		"calibrated_by": "Vr. Aman Kumar",
+		"notes": "Eprojection error 0.71",
+		"source": "gyroflow",
+		"official": true
+	}
+}

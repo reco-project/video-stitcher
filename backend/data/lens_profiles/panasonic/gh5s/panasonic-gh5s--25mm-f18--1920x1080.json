@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5s--25mm-f18--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5S",
+	"lens_model": "Olympus M.Zuiko",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2489.5346973777387,
+		"fy": 2494.578080843616,
+		"cx": 964.716533646136,
+		"cy": 530.9784008666034
+	},
+	"distortion_coeffs": [
+		0.21096625403141644,
+		0.33880516830881835,
+		-0.9161214453602856,
+		3.1798927397630674
+	],
+	"metadata": {
+		"calibrated_by": "Mark Benitez",
+		"notes": "25mm F1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

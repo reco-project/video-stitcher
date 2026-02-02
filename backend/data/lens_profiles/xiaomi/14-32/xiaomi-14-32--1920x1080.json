@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-14-32--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "14 3.2",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5346.755541798667,
+		"fy": 5363.87546967753,
+		"cx": 1029.8048169588292,
+		"cy": 567.039640040133
+	},
+	"distortion_coeffs": [
+		0.2720496843634881,
+		-7.039501189111693,
+		467.3387844637621,
+		-6831.545097962888
+	],
+	"metadata": {
+		"calibrated_by": "Toyo Yu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "gopro-max--hs-hlevel--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "Max",
+	"lens_model": "Linear",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1021.0076502458392,
+		"fy": 1021.1769091440603,
+		"cx": 960.1898267263572,
+		"cy": 723.2083829720897
+	},
+	"distortion_coeffs": [
+		0.3520669420827859,
+		0.11685662849308784,
+		0.09243216777524446,
+		0.003911542354983063
+	],
+	"metadata": {
+		"calibrated_by": "Andrew",
+		"notes": "HS HLevel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

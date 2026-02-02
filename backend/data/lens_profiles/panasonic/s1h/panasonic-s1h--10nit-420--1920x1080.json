@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s1h--10nit-420--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "Canon EF 24-105mm f4L IS II @ 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2381.5015662388996,
+		"fy": 2385.2659204197143,
+		"cx": 994.4243329460296,
+		"cy": 493.7927340139065
+	},
+	"distortion_coeffs": [
+		0.3806691640567276,
+		1.440108720869421,
+		-11.41686637387522,
+		40.14906426988648
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Jackson",
+		"notes": "10nit 4:2:0",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "runcam-phoenix--link--1280x720",
+	"camera_brand": "RunCam",
+	"camera_model": "phoenix",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 579.2677626376528,
+		"fy": 579.5433439048592,
+		"cx": 642.8339732476634,
+		"cy": 367.27266093453767
+	},
+	"distortion_coeffs": [
+		-0.03803649094046696,
+		0.027860411578155397,
+		-0.039075743186858095,
+		0.0166262766846685
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "Link",
+		"source": "gyroflow",
+		"official": true
+	}
+}

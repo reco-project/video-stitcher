@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z8--35mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z8",
+	"lens_model": "Nikkor 24-120mm f4 S @ 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3767.097276069439,
+		"fy": 3770.980427618181,
+		"cx": 1911.948733432171,
+		"cy": 1057.2582592700692
+	},
+	"distortion_coeffs": [
+		0.34704393599202776,
+		0.09724189021954208,
+		0.7009433036902144,
+		-1.8298684480880691
+	],
+	"metadata": {
+		"calibrated_by": "hu hu",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

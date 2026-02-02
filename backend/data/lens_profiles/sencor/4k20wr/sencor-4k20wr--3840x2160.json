@@ -1,0 +1,28 @@
+{
+	"id": "sencor-4k20wr--3840x2160",
+	"camera_brand": "Sencor",
+	"camera_model": "4K20WR",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2321.3409857516745,
+		"fy": 2345.858253043471,
+		"cx": 1936.6104829207063,
+		"cy": 980.268307899522
+	},
+	"distortion_coeffs": [
+		0.02309881846405854,
+		-0.004192616272811998,
+		0.003907279969762327,
+		0.000677517550444416
+	],
+	"metadata": {
+		"calibrated_by": "KG",
+		"source": "gyroflow",
+		"official": true
+	}
+}

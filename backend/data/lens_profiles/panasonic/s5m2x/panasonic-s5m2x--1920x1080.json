@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5m2x--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5m2x",
+	"lens_model": "24-70 F2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2389.7055194895997,
+		"fy": 2401.367512952896,
+		"cx": 999.1638637861688,
+		"cy": 630.4654720779314
+	},
+	"distortion_coeffs": [
+		0.31516977959607695,
+		1.023719005484164,
+		-9.617169936324284,
+		31.121874757848097
+	],
+	"metadata": {
+		"calibrated_by": "\u7c73\u6d1b",
+		"source": "gyroflow",
+		"official": true
+	}
+}

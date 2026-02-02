@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23u--motioncam-pro--4032x3008",
+	"camera_brand": "Samsung",
+	"camera_model": "S23U",
+	"lens_model": "23mm",
+	"resolution": {
+		"width": 4032,
+		"height": 3008
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2660.041574694357,
+		"fy": 2655.2938602943254,
+		"cx": 1978.94259399176,
+		"cy": 1498.1909893403824
+	},
+	"distortion_coeffs": [
+		0.615829453995756,
+		-1.6576728521589352,
+		6.198183297583178,
+		-7.467823722910503
+	],
+	"metadata": {
+		"calibrated_by": "U0 A549",
+		"notes": "Motioncam Pro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

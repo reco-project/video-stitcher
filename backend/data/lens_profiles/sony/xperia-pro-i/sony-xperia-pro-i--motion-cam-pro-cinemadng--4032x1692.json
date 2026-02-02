@@ -1,0 +1,29 @@
+{
+	"id": "sony-xperia-pro-i--motion-cam-pro-cinemadng--4032x1692",
+	"camera_brand": "Sony",
+	"camera_model": "Xperia Pro-i",
+	"lens_model": "Main 25mm",
+	"resolution": {
+		"width": 4032,
+		"height": 1692
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2611.2792672395267,
+		"fy": 2613.002609503475,
+		"cx": 1994.4752874432056,
+		"cy": 844.2902052596856
+	},
+	"distortion_coeffs": [
+		0.6947901139767592,
+		0.30209086067552293,
+		-1.3574667352603795,
+		0.4044982352408418
+	],
+	"metadata": {
+		"calibrated_by": "Janne Linna",
+		"notes": "Motion Cam Pro CinemaDNG",
+		"source": "gyroflow",
+		"official": true
+	}
+}

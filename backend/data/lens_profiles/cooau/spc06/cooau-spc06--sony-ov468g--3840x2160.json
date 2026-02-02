@@ -1,0 +1,29 @@
+{
+	"id": "cooau-spc06--sony-ov468g--3840x2160",
+	"camera_brand": "COOAU",
+	"camera_model": "SPC06",
+	"lens_model": "Ojo de pez f/2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2705.120484586268,
+		"fy": 2703.854453092204,
+		"cx": 1915.963653628602,
+		"cy": 1094.9604934850129
+	},
+	"distortion_coeffs": [
+		-0.11874025153682126,
+		0.15616493559263672,
+		-0.445648603598451,
+		0.4230399099824635
+	],
+	"metadata": {
+		"calibrated_by": "Fernando",
+		"notes": "Sony oV468g",
+		"source": "gyroflow",
+		"official": true
+	}
+}

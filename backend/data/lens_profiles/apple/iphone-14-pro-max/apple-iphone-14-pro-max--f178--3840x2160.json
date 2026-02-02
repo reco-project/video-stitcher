@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-14-pro-max--f178--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14 pro max",
+	"lens_model": "24 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2969.9274301150845,
+		"fy": 2970.8540402294734,
+		"cx": 1921.392108808696,
+		"cy": 1091.7445572727038
+	},
+	"distortion_coeffs": [
+		0.4982878705763121,
+		0.18627776054034545,
+		-2.880417342450748,
+		5.50168981450815
+	],
+	"metadata": {
+		"calibrated_by": "Miguel Hernandez",
+		"notes": "f1.78",
+		"source": "gyroflow",
+		"official": true
+	}
+}

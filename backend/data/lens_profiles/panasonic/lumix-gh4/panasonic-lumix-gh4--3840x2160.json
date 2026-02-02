@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh4--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH4",
+	"lens_model": "Olympus 9-18mm @ 9mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2474.774864350565,
+		"fy": 2454.110600019079,
+		"cx": 1848.8147703325917,
+		"cy": 1040.0352819091086
+	},
+	"distortion_coeffs": [
+		0.34123981854850527,
+		0.06144852761259251,
+		0.2277038328199236,
+		-0.1921726837755827
+	],
+	"metadata": {
+		"calibrated_by": "CopterFilms AR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

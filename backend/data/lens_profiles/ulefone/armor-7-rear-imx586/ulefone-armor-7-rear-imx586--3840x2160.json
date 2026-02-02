@@ -1,0 +1,28 @@
+{
+	"id": "ulefone-armor-7-rear-imx586--3840x2160",
+	"camera_brand": "Ulefone",
+	"camera_model": "Armor 7 Rear IMX586",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3050.2827042000845,
+		"fy": 3050.506650013018,
+		"cx": 1953.6724512429057,
+		"cy": 1038.2138218261734
+	},
+	"distortion_coeffs": [
+		0.49089769473009415,
+		-0.546142132518564,
+		3.0123323702029974,
+		-5.583897422876632
+	],
+	"metadata": {
+		"calibrated_by": "nv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

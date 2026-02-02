@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--16mm--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Canon RF16mm F2.8 STM 16.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3795.1915958087816,
+		"fy": 3793.0484120849105,
+		"cx": 2892.0984900227572,
+		"cy": 1637.2823215677115
+	},
+	"distortion_coeffs": [
+		0.16195771293082595,
+		0.062348573502097014,
+		-0.12011417109383866,
+		0.2740613552678374
+	],
+	"metadata": {
+		"calibrated_by": "Dylan Clarke",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

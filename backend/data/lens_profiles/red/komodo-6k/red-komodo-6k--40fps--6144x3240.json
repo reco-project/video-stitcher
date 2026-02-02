@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--40fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Rokinon 35mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6026.038779501398,
+		"fy": 6028.176639221448,
+		"cx": 3130.16574692614,
+		"cy": 1632.7301074155607
+	},
+	"distortion_coeffs": [
+		0.10727012948690624,
+		0.9793108271207348,
+		-4.996066620081952,
+		10.879170584916707
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Brown",
+		"notes": "40fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

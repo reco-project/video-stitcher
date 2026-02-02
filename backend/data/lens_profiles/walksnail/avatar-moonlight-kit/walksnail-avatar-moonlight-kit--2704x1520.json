@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-moonlight-kit--2704x1520",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar moonlight kit",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1236.6270295201257,
+		"fy": 1236.3375958737793,
+		"cx": 1354.7067893250571,
+		"cy": 750.7024061887056
+	},
+	"distortion_coeffs": [
+		-0.034131316051457236,
+		0.002946661935011376,
+		-0.004596452712284762,
+		-0.0002729721953437816
+	],
+	"metadata": {
+		"calibrated_by": "Walksnail",
+		"source": "gyroflow",
+		"official": true
+	}
+}

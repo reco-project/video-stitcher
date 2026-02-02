@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero4-session--schlechtes-licht--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4 Session",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 825.0542507786654,
+		"fy": 824.9609160082778,
+		"cx": 960.0,
+		"cy": 720.0
+	},
+	"distortion_coeffs": [
+		0.13786742975264668,
+		-0.09192849226299545,
+		0.06348999695624412,
+		-0.021031118756775557
+	],
+	"metadata": {
+		"calibrated_by": "erster-test",
+		"notes": "schlechtes Licht",
+		"source": "gyroflow",
+		"official": true
+	}
+}

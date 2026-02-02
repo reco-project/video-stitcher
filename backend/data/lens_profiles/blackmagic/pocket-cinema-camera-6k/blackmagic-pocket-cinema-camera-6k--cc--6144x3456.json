@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--cc--6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Venus Laowa 100mm f/2.8 2X Ultra Macro APO 100mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 26746.686359691354,
+		"fy": 26778.2150953049,
+		"cx": 2947.656933260223,
+		"cy": 1511.776532467534
+	},
+	"distortion_coeffs": [
+		-0.2846840080256555,
+		158.56130966038,
+		-11127.590922560414,
+		316724.0209966565
+	],
+	"metadata": {
+		"calibrated_by": "Jack Lee",
+		"notes": "cc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

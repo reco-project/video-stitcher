@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--viltrox-16mm-f18--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7SIII",
+	"lens_model": "Viltrox 16.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1777.912246553093,
+		"fy": 1778.1674569051108,
+		"cx": 1930.5886819057416,
+		"cy": 1075.76926159324
+	},
+	"distortion_coeffs": [
+		0.3273922202885248,
+		0.1990883292218332,
+		-0.15921576244521676,
+		0.17414607330965665
+	],
+	"metadata": {
+		"calibrated_by": "Chico Jones",
+		"notes": "Viltrox 16mm / f1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

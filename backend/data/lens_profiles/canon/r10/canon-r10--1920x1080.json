@@ -1,0 +1,28 @@
+{
+	"id": "canon-r10--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R10",
+	"lens_model": "184185",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1562.2016404543294,
+		"fy": 1562.5480210189726,
+		"cx": 961.1090977409824,
+		"cy": 537.2148355396637
+	},
+	"distortion_coeffs": [
+		0.32630547433604146,
+		0.04355552364324817,
+		0.5342720915506393,
+		-0.782047026481348
+	],
+	"metadata": {
+		"calibrated_by": "annakin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

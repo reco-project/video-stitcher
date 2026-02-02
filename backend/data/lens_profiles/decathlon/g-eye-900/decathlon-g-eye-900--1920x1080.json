@@ -1,0 +1,28 @@
+{
+	"id": "decathlon-g-eye-900--1920x1080",
+	"camera_brand": "Decathlon",
+	"camera_model": "G-eye-900",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 964.7190158220088,
+		"fy": 963.7645714056116,
+		"cx": 964.978317808292,
+		"cy": 557.2252044724445
+	},
+	"distortion_coeffs": [
+		0.21262735018445103,
+		-0.03745451774217097,
+		0.12814574043674867,
+		-0.1292768660400331
+	],
+	"metadata": {
+		"calibrated_by": "leo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

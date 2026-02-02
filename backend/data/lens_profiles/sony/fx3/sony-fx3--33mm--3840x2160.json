@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--33mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Sirui 33mm sniper AF",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3962.00009400232,
+		"fy": 3963.874496705124,
+		"cx": 1976.7014934058989,
+		"cy": 1085.8191398121849
+	},
+	"distortion_coeffs": [
+		0.3275910585891186,
+		-1.0643996486574494,
+		19.048830024399052,
+		-51.0171614413738
+	],
+	"metadata": {
+		"calibrated_by": "DroneNav",
+		"notes": "33mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

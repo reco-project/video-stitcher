@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t4--4095x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T4",
+	"lens_model": "18-55 Kit lens",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4125.421804626382,
+		"fy": 4125.2123583812545,
+		"cx": 2032.3756489131804,
+		"cy": 1079.7645416347968
+	},
+	"distortion_coeffs": [
+		0.12151330793194376,
+		3.535413810587727,
+		-25.58536788696751,
+		69.60026703166204
+	],
+	"metadata": {
+		"calibrated_by": "Thore Hassel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

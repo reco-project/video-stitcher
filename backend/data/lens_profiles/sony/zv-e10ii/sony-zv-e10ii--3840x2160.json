@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e10ii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10II",
+	"lens_model": "SIRUI 35mm 1.8 anamorphic 1.33",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4098.385958445734,
+		"fy": 5302.05802375634,
+		"cx": 1939.985657349925,
+		"cy": 874.0327035623294
+	},
+	"distortion_coeffs": [
+		0.13373039027575637,
+		1.2012565623066371,
+		-6.818274129306208,
+		13.330536954210547
+	],
+	"metadata": {
+		"calibrated_by": "Yevgen Morozov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

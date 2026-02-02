@@ -1,0 +1,27 @@
+{
+	"id": "xiaomi-12-lite--4000x2248",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12 Lite",
+	"lens_model": null,
+	"resolution": {
+		"width": 4000,
+		"height": 2248
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2723.402468955981,
+		"fy": 2723.514445043203,
+		"cx": 1986.6122226377177,
+		"cy": 1122.3486628836515
+	},
+	"distortion_coeffs": [
+		0.592001667574167,
+		-1.8337873687259267,
+		5.286276904890238,
+		-2.985853313737219
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

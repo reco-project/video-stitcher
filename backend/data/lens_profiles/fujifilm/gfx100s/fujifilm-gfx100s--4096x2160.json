@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-gfx100s--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "GFX100S",
+	"lens_model": "SMC TAKUMAR 50MM F1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4828.252076530811,
+		"fy": 4833.558609708018,
+		"cx": 2065.7137756061256,
+		"cy": 1010.8758155389474
+	},
+	"distortion_coeffs": [
+		0.1043815292963488,
+		1.2762878201476315,
+		-6.639928141402429,
+		16.019769146423343
+	],
+	"metadata": {
+		"calibrated_by": "\u9a6c\u5929\u7ffc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

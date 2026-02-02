@@ -1,0 +1,29 @@
+{
+	"id": "fujitsu-f52a--24fps--3840x2160",
+	"camera_brand": "fujitsu",
+	"camera_model": "f52a",
+	"lens_model": "27mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2411.5589818312155,
+		"fy": 2422.6027520267726,
+		"cx": 1992.1730485192056,
+		"cy": 991.3027624888074
+	},
+	"distortion_coeffs": [
+		0.4179399704181123,
+		-0.20101135684070953,
+		1.505172282874735,
+		-2.176098907852147
+	],
+	"metadata": {
+		"calibrated_by": "koji nakano",
+		"notes": "24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--urth-cy-e-adapter--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Contax Planar 1,4/50",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5648.98439254638,
+		"fy": 5647.073086784142,
+		"cx": 1783.9214006649795,
+		"cy": 1073.1375878138338
+	},
+	"distortion_coeffs": [
+		0.15132854139363813,
+		0.32975581149672695,
+		-3.3152019710683094,
+		10.081512700504009
+	],
+	"metadata": {
+		"calibrated_by": "Dante Villa",
+		"notes": "Urth C/Y-E Adapter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

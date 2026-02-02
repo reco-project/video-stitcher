@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-rp--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS RP",
+	"lens_model": "50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2747.690042693139,
+		"fy": 2741.5890954080114,
+		"cx": 949.539457884786,
+		"cy": 548.2268702561299
+	},
+	"distortion_coeffs": [
+		0.4496613094557201,
+		-3.1385059910272934,
+		60.28215619662281,
+		-450.67431368421154
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u9633",
+		"source": "gyroflow",
+		"official": true
+	}
+}

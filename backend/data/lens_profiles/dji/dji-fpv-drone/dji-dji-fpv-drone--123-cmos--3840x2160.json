@@ -1,0 +1,29 @@
+{
+	"id": "dji-dji-fpv-drone--123-cmos--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "DJI FPV Drone",
+	"lens_model": "14.66 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1724.421504051729,
+		"fy": 1723.2049955879922,
+		"cx": 1925.852195338228,
+		"cy": 1069.2459379241136
+	},
+	"distortion_coeffs": [
+		0.049256660755879714,
+		0.25629569196178703,
+		-0.6375284475945864,
+		0.5337350923221869
+	],
+	"metadata": {
+		"calibrated_by": "FAHAD.FPV",
+		"notes": "1/2.3\" CMOS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

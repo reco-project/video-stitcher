@@ -1,0 +1,28 @@
+{
+	"id": "apple-ipad-pro-11-inch-2020--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPad Pro 11-inch (2020)",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1509.2056475119782,
+		"fy": 1508.9635824392165,
+		"cx": 952.104274642458,
+		"cy": 539.1043394476443
+	},
+	"distortion_coeffs": [
+		0.314276193835746,
+		2.2035192589772667,
+		-12.819098677780456,
+		22.469011431933144
+	],
+	"metadata": {
+		"calibrated_by": "D3Z",
+		"source": "gyroflow",
+		"official": true
+	}
+}

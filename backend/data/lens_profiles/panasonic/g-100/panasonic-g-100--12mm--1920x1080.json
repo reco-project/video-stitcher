@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-g-100--12mm--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "G 100",
+	"lens_model": "G 12-32 f3.5-5.6",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1436.3293230020424,
+		"fy": 1436.348667685926,
+		"cx": 970.2617060733924,
+		"cy": 531.6066621725365
+	},
+	"distortion_coeffs": [
+		0.21497557826179683,
+		0.3553585880106704,
+		-0.582067883586686,
+		0.6604433461968713
+	],
+	"metadata": {
+		"calibrated_by": "\u989c\u6849",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

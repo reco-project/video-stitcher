@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--selp1635g--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "FE PZ 16-35mm F4 G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1999.6247820922035,
+		"fy": 1999.4621358973095,
+		"cx": 1930.3633662010427,
+		"cy": 1093.2441879708192
+	},
+	"distortion_coeffs": [
+		0.28961255882675613,
+		0.34848637437341573,
+		-0.6427897048621227,
+		0.7966924895284088
+	],
+	"metadata": {
+		"calibrated_by": "CincyWorldTraveler",
+		"notes": "SELP1635G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

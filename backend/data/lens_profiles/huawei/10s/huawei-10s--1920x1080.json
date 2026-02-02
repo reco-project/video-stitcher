@@ -1,0 +1,28 @@
+{
+	"id": "huawei-10s--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "10s",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1883.7401092545213,
+		"fy": 1884.416033931638,
+		"cx": 969.3548039720748,
+		"cy": 541.055465250887
+	},
+	"distortion_coeffs": [
+		0.49438467570200545,
+		-1.7260968131343903,
+		9.42677251419643,
+		-16.536027006723437
+	],
+	"metadata": {
+		"calibrated_by": "Jose Faundez",
+		"source": "gyroflow",
+		"official": true
+	}
+}

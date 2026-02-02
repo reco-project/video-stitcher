@@ -1,0 +1,29 @@
+{
+	"id": "arri-35--recording-res-4096-x-2034--4096x2304",
+	"camera_brand": "Arri",
+	"camera_model": "35",
+	"lens_model": "Laowa 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2304
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1861.7778341171415,
+		"fy": 1862.8234026651708,
+		"cx": 2028.7572539279645,
+		"cy": 1171.429759395314
+	},
+	"distortion_coeffs": [
+		0.3116714408430576,
+		0.16843668422734992,
+		0.03991079296242208,
+		0.001553801753125965
+	],
+	"metadata": {
+		"calibrated_by": "Terrence Wilkins",
+		"notes": "recording res 4096 x 2034",
+		"source": "gyroflow",
+		"official": true
+	}
+}

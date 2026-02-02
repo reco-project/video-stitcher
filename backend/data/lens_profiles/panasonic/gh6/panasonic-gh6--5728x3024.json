@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh6--5728x3024",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "Leica 9mm",
+	"resolution": {
+		"width": 5728,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3084.0102448636408,
+		"fy": 3089.850894416568,
+		"cx": 2878.0997947258634,
+		"cy": 1469.3657108806872
+	},
+	"distortion_coeffs": [
+		0.3394580332187407,
+		0.005611631573580385,
+		0.28464266878410527,
+		-0.18063285243409655
+	],
+	"metadata": {
+		"calibrated_by": "Wiebrand",
+		"source": "gyroflow",
+		"official": true
+	}
+}

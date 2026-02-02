@@ -1,0 +1,28 @@
+{
+	"id": "dji-air-unit--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Air Unit",
+	"lens_model": "14.66",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 876.5812744394104,
+		"fy": 876.937041551656,
+		"cx": 960.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		0.0287264292408442,
+		-0.013659544498641716,
+		0.025975729213398073,
+		-0.011732720449738176
+	],
+	"metadata": {
+		"calibrated_by": "Fersy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "asus-zenphone-9--3840x2160",
+	"camera_brand": "Asus",
+	"camera_model": "Zenphone 9",
+	"lens_model": "1x",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2664.7624061232127,
+		"fy": 2661.235985272147,
+		"cx": 1938.7559196395785,
+		"cy": 1084.7647589564965
+	},
+	"distortion_coeffs": [
+		0.3152350892746416,
+		0.9759862465686518,
+		-3.5302137672763547,
+		4.503224297801646
+	],
+	"metadata": {
+		"calibrated_by": "Sandro Roth",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z7ii--24mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z7II",
+	"lens_model": "NIKKOR 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2817.856736969467,
+		"fy": 2803.5849432528307,
+		"cx": 1949.423630430331,
+		"cy": 1108.7094885336342
+	},
+	"distortion_coeffs": [
+		0.3048338828548888,
+		0.2957877057186581,
+		-0.525359920727352,
+		0.716068388830847
+	],
+	"metadata": {
+		"calibrated_by": "Dani",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

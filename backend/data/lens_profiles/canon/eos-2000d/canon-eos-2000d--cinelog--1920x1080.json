@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-2000d--cinelog--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 2000D",
+	"lens_model": "18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2662.0961459782943,
+		"fy": 2669.6030364488397,
+		"cx": 892.8400746361597,
+		"cy": 562.3490341806893
+	},
+	"distortion_coeffs": [
+		0.29051205607147856,
+		-2.6110858923023,
+		42.66913981083553,
+		-190.65903900870563
+	],
+	"metadata": {
+		"calibrated_by": "Hrvoje Kre\u0161o",
+		"notes": "Cinelog",
+		"source": "gyroflow",
+		"official": true
+	}
+}

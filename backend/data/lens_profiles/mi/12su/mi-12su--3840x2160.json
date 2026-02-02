@@ -1,0 +1,28 @@
+{
+	"id": "mi-12su--3840x2160",
+	"camera_brand": "Mi",
+	"camera_model": "12SU",
+	"lens_model": "4K",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3454.3460937598143,
+		"fy": 3449.139814253946,
+		"cx": 1925.4086003032792,
+		"cy": 1109.6169546154497
+	},
+	"distortion_coeffs": [
+		0.26522779476134156,
+		0.6805973610874556,
+		-5.411091535403465,
+		13.217763206116883
+	],
+	"metadata": {
+		"calibrated_by": "AgarthaSF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

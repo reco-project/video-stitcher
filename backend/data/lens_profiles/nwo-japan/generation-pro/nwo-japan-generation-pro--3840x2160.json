@@ -1,0 +1,28 @@
+{
+	"id": "nwo-japan-generation-pro--3840x2160",
+	"camera_brand": "NWO JAPAN",
+	"camera_model": "Generation Pro",
+	"lens_model": "IMX 368",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2283.098168743064,
+		"fy": 2266.5007864489753,
+		"cx": 1935.1908602451567,
+		"cy": 1170.7854408840494
+	},
+	"distortion_coeffs": [
+		0.3543783259958942,
+		0.2583183795864242,
+		-0.25495776021331096,
+		0.321232516129299
+	],
+	"metadata": {
+		"calibrated_by": "\u4f50\u85e4\u7ffc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

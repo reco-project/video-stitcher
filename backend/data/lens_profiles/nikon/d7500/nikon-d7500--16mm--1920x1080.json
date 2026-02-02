@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d7500--16mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D7500",
+	"lens_model": "nikon 16-80",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1270.7344380916802,
+		"fy": 1269.3409151400188,
+		"cx": 993.5377847452162,
+		"cy": 537.9505050526301
+	},
+	"distortion_coeffs": [
+		0.21084941307736688,
+		-0.08227112985224372,
+		0.6001794400386757,
+		-0.567276302720493
+	],
+	"metadata": {
+		"calibrated_by": "Jakub Dobr\u00fd",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

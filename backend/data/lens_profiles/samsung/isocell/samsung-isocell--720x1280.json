@@ -1,0 +1,28 @@
+{
+	"id": "samsung-isocell--720x1280",
+	"camera_brand": "Samsung",
+	"camera_model": "ISOCELL",
+	"lens_model": "(S5K)HM6",
+	"resolution": {
+		"width": 720,
+		"height": 1280
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 917.7603922788892,
+		"fy": 916.6292549204404,
+		"cx": 361.3545577335576,
+		"cy": 638.22154822592
+	},
+	"distortion_coeffs": [
+		0.5469755448575361,
+		-1.029174933338476,
+		-4.835451202862562,
+		31.895136823403675
+	],
+	"metadata": {
+		"calibrated_by": "LCX24",
+		"source": "gyroflow",
+		"official": true
+	}
+}

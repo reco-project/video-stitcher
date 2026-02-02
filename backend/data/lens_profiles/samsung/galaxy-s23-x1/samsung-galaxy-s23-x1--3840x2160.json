@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s23-x1--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S23 x1",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3101.937856736112,
+		"fy": 3101.6574617115944,
+		"cx": 1919.1696501622591,
+		"cy": 1076.0557679070068
+	},
+	"distortion_coeffs": [
+		0.3376831096113108,
+		-0.07671704440382437,
+		1.247421534047406,
+		-2.331554143759078
+	],
+	"metadata": {
+		"calibrated_by": "Glove",
+		"source": "gyroflow",
+		"official": true
+	}
+}

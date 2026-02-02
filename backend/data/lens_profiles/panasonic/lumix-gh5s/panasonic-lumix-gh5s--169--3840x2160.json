@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh5s--169--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5S",
+	"lens_model": "12-100",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2567.5739981980887,
+		"fy": 2570.3473833943713,
+		"cx": 1929.6177948720192,
+		"cy": 1062.245450962756
+	},
+	"distortion_coeffs": [
+		0.2737509330785503,
+		0.19477183474794144,
+		-0.2041188740545447,
+		0.12407189339065151
+	],
+	"metadata": {
+		"calibrated_by": "\u0421\u0435\u0440\u0433\u0435\u0439 \u0415\u043c\u0430\u0435\u0432",
+		"notes": "16:9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

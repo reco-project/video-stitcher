@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-h2--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2",
+	"lens_model": "FUJINON 18-120",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3762.77664322861,
+		"fy": 3759.652592214609,
+		"cx": 1935.1741777911864,
+		"cy": 1064.8287167580247
+	},
+	"distortion_coeffs": [
+		0.2694692996869697,
+		1.3741144335986195,
+		-7.624654523886091,
+		16.713605965275548
+	],
+	"metadata": {
+		"calibrated_by": "Ali Kaan KAYA",
+		"source": "gyroflow",
+		"official": true
+	}
+}

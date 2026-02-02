@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-15-pro-24mm--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 15 Pro 24mm",
+	"lens_model": "Freewell Sherpa Anamorphic 1.33x",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1139.9899144282242,
+		"fy": 1447.057736830115,
+		"cx": 1129.9774736322006,
+		"cy": 778.6263300373002
+	},
+	"distortion_coeffs": [
+		0.23762252434656328,
+		0.39589704218503,
+		-0.9947001643084364,
+		0.6758826364805779
+	],
+	"metadata": {
+		"calibrated_by": "port1327",
+		"source": "gyroflow",
+		"official": true
+	}
+}

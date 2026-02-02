@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh5--flat-color--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5",
+	"lens_model": "Lumix 15mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3210.8804504512213,
+		"fy": 3211.8609105085693,
+		"cx": 1934.414742017408,
+		"cy": 1041.2367873909243
+	},
+	"distortion_coeffs": [
+		0.26982747615995395,
+		0.5126167338015859,
+		-1.8296652772250968,
+		3.3931094905268235
+	],
+	"metadata": {
+		"calibrated_by": "Jonas Klein",
+		"notes": "Flat Color",
+		"source": "gyroflow",
+		"official": true
+	}
+}

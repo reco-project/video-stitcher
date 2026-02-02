@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-8-pro--4096x3072",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 8 Pro",
+	"lens_model": "Telephoto (5x)",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5958.223913556527,
+		"fy": 5960.769781863698,
+		"cx": 2020.5763904485843,
+		"cy": 1549.4649169060565
+	},
+	"distortion_coeffs": [
+		0.6405232887144305,
+		0.2678014935129188,
+		-47.72124586109286,
+		309.4620079084496
+	],
+	"metadata": {
+		"calibrated_by": "Tommy Pham",
+		"source": "gyroflow",
+		"official": true
+	}
+}

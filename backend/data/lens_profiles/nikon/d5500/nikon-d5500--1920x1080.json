@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d5500--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D5500",
+	"lens_model": "18-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2722.6702308028903,
+		"fy": 2741.6273283391633,
+		"cx": 955.895983888376,
+		"cy": 549.1135729193566
+	},
+	"distortion_coeffs": [
+		0.20918206067007655,
+		7.752822469976618,
+		-154.00749857293863,
+		1023.3453452498358
+	],
+	"metadata": {
+		"calibrated_by": "Jhony Wirawan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

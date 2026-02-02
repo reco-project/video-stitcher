@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7cii--no-eis--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7CII",
+	"lens_model": "Viltrox AF 20mm f/2.8 FE",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2264.995687460021,
+		"fy": 2266.397885259211,
+		"cx": 1903.221415126036,
+		"cy": 1109.265069096769
+	},
+	"distortion_coeffs": [
+		0.27096948103171214,
+		0.2104978319254915,
+		-0.3505755572035225,
+		0.6483939087100938
+	],
+	"metadata": {
+		"calibrated_by": "PBJUN",
+		"notes": "No EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

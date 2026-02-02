@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--162ms-4k-readout--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Laowa 7.5mm F2.0",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1729.2746342083938,
+		"fy": 1722.2546294438828,
+		"cx": 2013.760513060765,
+		"cy": 1125.7797474115262
+	},
+	"distortion_coeffs": [
+		0.31675453363584366,
+		0.10766585801273956,
+		0.017568967071528017,
+		0.046827607579340846
+	],
+	"metadata": {
+		"calibrated_by": "Jakob.FPV",
+		"notes": "16.2ms - 4K Readout",
+		"source": "gyroflow",
+		"official": true
+	}
+}

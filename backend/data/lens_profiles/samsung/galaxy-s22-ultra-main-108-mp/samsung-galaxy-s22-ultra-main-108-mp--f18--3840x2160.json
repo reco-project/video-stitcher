@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s22-ultra-main-108-mp--f18--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S22 Ultra - Main (108 MP)",
+	"lens_model": "1X",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3200.9009128756243,
+		"fy": 3227.698159631989,
+		"cx": 1914.318623246977,
+		"cy": 1115.5662265288215
+	},
+	"distortion_coeffs": [
+		0.3010286534435366,
+		0.8084794316472628,
+		-3.8232738519180742,
+		7.632680778468805
+	],
+	"metadata": {
+		"calibrated_by": "dhaneshje",
+		"notes": "F1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

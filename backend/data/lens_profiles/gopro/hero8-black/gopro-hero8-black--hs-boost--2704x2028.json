@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero8-black--hs-boost--2704x2028",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO8 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1636.6956449043907,
+		"fy": 1642.145390768126,
+		"cx": 1365.9504425747073,
+		"cy": 1001.2907053187243
+	},
+	"distortion_coeffs": [
+		0.01324313542737194,
+		0.1699991188761207,
+		-0.25673732960838097,
+		0.1423480266857696
+	],
+	"metadata": {
+		"calibrated_by": "Eddy",
+		"notes": "HS Boost",
+		"source": "gyroflow",
+		"official": true
+	}
+}

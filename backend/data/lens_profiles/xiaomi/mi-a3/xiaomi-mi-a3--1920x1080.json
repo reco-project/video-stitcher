@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-a3--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi A3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1319.219469064745,
+		"fy": 1326.0205210865154,
+		"cx": 932.2320008029612,
+		"cy": 512.9980194300374
+	},
+	"distortion_coeffs": [
+		0.4597253864762451,
+		-0.32785974106948085,
+		1.934144378161436,
+		-3.2873785230213617
+	],
+	"metadata": {
+		"calibrated_by": "user1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

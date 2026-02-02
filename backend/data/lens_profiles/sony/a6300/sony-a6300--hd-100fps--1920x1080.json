@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--hd-100fps--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "kit 16-50",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1438.025992043349,
+		"fy": 1440.236212888696,
+		"cx": 966.9814658206042,
+		"cy": 528.1345726850536
+	},
+	"distortion_coeffs": [
+		0.31273235666372684,
+		0.049061155696126915,
+		0.20036114019222592,
+		0.12124868794568608
+	],
+	"metadata": {
+		"calibrated_by": "niksun",
+		"notes": "HD 100fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

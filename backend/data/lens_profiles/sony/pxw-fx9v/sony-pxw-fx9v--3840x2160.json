@@ -1,0 +1,28 @@
+{
+	"id": "sony-pxw-fx9v--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "PXW-FX9V",
+	"lens_model": "sigma 28.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3517.7286049121253,
+		"fy": 3512.5771709184596,
+		"cx": 1987.5073392138956,
+		"cy": 1053.9389040967142
+	},
+	"distortion_coeffs": [
+		0.3022608331349631,
+		0.5248826948618002,
+		-2.3880429921974295,
+		5.991006569971137
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

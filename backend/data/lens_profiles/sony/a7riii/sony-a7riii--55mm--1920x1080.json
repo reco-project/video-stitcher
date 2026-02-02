@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7riii--55mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7RIII",
+	"lens_model": "55-300NIKON",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4651.523497579138,
+		"fy": 4649.564682769226,
+		"cx": 1090.0636523453118,
+		"cy": 486.1574448007027
+	},
+	"distortion_coeffs": [
+		0.3693052359260121,
+		-9.368345531892343,
+		148.78740749337717,
+		-827.4009100861073
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan Espindola",
+		"notes": "55mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

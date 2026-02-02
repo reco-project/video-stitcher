@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s21-ultra--30-fps--4000x3000",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy s21 Ultra",
+	"lens_model": "24 mm",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2655.70381209366,
+		"fy": 2595.1267556227,
+		"cx": 1972.8639560720517,
+		"cy": 1461.2890676254149
+	},
+	"distortion_coeffs": [
+		0.4216645302100684,
+		-0.16766085940784012,
+		0.8431912140987964,
+		-0.7965046735705278
+	],
+	"metadata": {
+		"calibrated_by": "toto moul's",
+		"notes": "30 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

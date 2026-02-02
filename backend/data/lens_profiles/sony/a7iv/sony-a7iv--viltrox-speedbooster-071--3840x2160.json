@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7iv--viltrox-speedbooster-071--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Samyang 14mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1646.3848971235068,
+		"fy": 1647.4945978982876,
+		"cx": 1906.5251374898223,
+		"cy": 1112.2465148422334
+	},
+	"distortion_coeffs": [
+		0.19131260460600813,
+		0.12794597302894142,
+		-0.11694677061012712,
+		0.19264713477672532
+	],
+	"metadata": {
+		"notes": "Viltrox Speedbooster 0.71",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--crop-11mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sony SEL11F18",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1852.094833221193,
+		"fy": 1851.2990587417137,
+		"cx": 1917.5018011739903,
+		"cy": 1072.7926069943396
+	},
+	"distortion_coeffs": [
+		0.32435799725429576,
+		0.10893954824233336,
+		0.11126071909913696,
+		0.03235009929805011
+	],
+	"metadata": {
+		"calibrated_by": "J\u00f6rg Niggli | niggli.com",
+		"notes": "Crop 11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

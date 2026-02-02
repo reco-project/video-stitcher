@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-6a--motioncam--4032x1696",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6a",
+	"lens_model": "Main 28mm",
+	"resolution": {
+		"width": 4032,
+		"height": 1696
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2975.0478846766814,
+		"fy": 2969.0540387246187,
+		"cx": 2007.6521890225315,
+		"cy": 825.7064255683352
+	},
+	"distortion_coeffs": [
+		0.5780327627088382,
+		-1.7656565526925936,
+		6.572841633968968,
+		-7.719094459883155
+	],
+	"metadata": {
+		"calibrated_by": "Hylierr",
+		"notes": "MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

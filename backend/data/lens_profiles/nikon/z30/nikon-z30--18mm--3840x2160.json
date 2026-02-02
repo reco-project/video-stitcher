@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z30--18mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z30",
+	"lens_model": "18-140mm @ 18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2964.447456094655,
+		"fy": 2975.851706680471,
+		"cx": 1917.2957150532384,
+		"cy": 1063.9639769793723
+	},
+	"distortion_coeffs": [
+		0.35882483391677444,
+		-0.19549282466827772,
+		2.5391970970744833,
+		-4.909128860458285
+	],
+	"metadata": {
+		"calibrated_by": "abc",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

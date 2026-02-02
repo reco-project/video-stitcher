@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero3-black--27041524--2704x1524",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO3+ Black",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1524
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1241.5002402764926,
+		"fy": 1252.6191686346217,
+		"cx": 1290.750514324106,
+		"cy": 719.1821247919042
+	},
+	"distortion_coeffs": [
+		0.04861194166197393,
+		0.03362767827797042,
+		-0.05347352860035645,
+		0.032557645053304836
+	],
+	"metadata": {
+		"calibrated_by": "Shen Dong Qing",
+		"notes": "2704\u00d71524",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-m6-mark-ii--is-off--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "M6 Mark II",
+	"lens_model": "Canon 50mm UltraSonic",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4610.725305061978,
+		"fy": 4627.705169195761,
+		"cx": 916.0587844847896,
+		"cy": 579.5751053071905
+	},
+	"distortion_coeffs": [
+		0.10285299141399327,
+		6.067656462238742,
+		-252.1011430014619,
+		2897.9790903449493
+	],
+	"metadata": {
+		"calibrated_by": "Mije",
+		"notes": "IS Off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

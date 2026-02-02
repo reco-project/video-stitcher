@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7cr--20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7Cr",
+	"lens_model": "Sony 20-70mm f4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2113.928674619263,
+		"fy": 2113.965560504466,
+		"cx": 1917.5575148310488,
+		"cy": 1078.4742629335033
+	},
+	"distortion_coeffs": [
+		0.313178154970206,
+		0.2114277856913407,
+		-0.15593770161356046,
+		0.19342115053795528
+	],
+	"metadata": {
+		"calibrated_by": "Yannick Wegner",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-open--24mm--4000x3000",
+	"camera_brand": "OnePlus",
+	"camera_model": "Open",
+	"lens_model": "Oneplus Open",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2711.6498374340968,
+		"fy": 2714.7858898774352,
+		"cx": 2030.8622540162248,
+		"cy": 1522.009320916128
+	},
+	"distortion_coeffs": [
+		0.3660435456014443,
+		-0.06626684413625565,
+		0.9438211605596398,
+		-1.2654250443390591
+	],
+	"metadata": {
+		"calibrated_by": "Andr\u00e9",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

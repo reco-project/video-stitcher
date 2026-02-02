@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-2304fpn6dg--4096x3072",
+	"camera_brand": "Xiaomi",
+	"camera_model": "2304FPN6DG",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2601.6373704600887,
+		"fy": 2598.829034227887,
+		"cx": 2030.717344812038,
+		"cy": 1510.793438754413
+	},
+	"distortion_coeffs": [
+		0.5230802461271894,
+		-0.788522575095707,
+		2.1432236758757024,
+		-1.758197882413655
+	],
+	"metadata": {
+		"calibrated_by": "SuperUser",
+		"source": "gyroflow",
+		"official": true
+	}
+}

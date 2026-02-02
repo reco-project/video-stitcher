@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7iv--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "TAMRON2875G2 @ 51.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2789.575299091941,
+		"fy": 2790.043022524306,
+		"cx": 952.4498025533492,
+		"cy": 513.4299352361205
+	},
+	"distortion_coeffs": [
+		0.5535681075881196,
+		1.0182542228630898,
+		-5.624705560131844,
+		42.25080247160307
+	],
+	"metadata": {
+		"calibrated_by": "\u5e73\u843d\u5496\u5561",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "honor-anp-an00--2520x1080",
+	"camera_brand": "honor",
+	"camera_model": "ANP-AN00",
+	"lens_model": "1",
+	"resolution": {
+		"width": 2520,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2341.8723946632936,
+		"fy": 2337.652446991617,
+		"cx": 1257.0546830170356,
+		"cy": 533.6700847755294
+	},
+	"distortion_coeffs": [
+		0.5681664247026924,
+		-3.0841122515013812,
+		17.430172013923865,
+		-32.05337178208082
+	],
+	"metadata": {
+		"calibrated_by": "c sam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

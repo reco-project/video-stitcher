@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar--2704x1520",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar",
+	"lens_model": "Moonlight",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1264.186138866172,
+		"fy": 1264.6994793481965,
+		"cx": 1353.8325761449132,
+		"cy": 749.1017324879044
+	},
+	"distortion_coeffs": [
+		-0.05067351668568038,
+		0.02047761916351003,
+		-0.01568184282757421,
+		0.0019990758556636887
+	],
+	"metadata": {
+		"calibrated_by": "Walksnail",
+		"source": "gyroflow",
+		"official": true
+	}
+}

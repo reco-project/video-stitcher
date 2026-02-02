@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--15mm--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "RF15-35mm F2.8 L IS USM 15.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3527.3263521565195,
+		"fy": 3526.2687970200764,
+		"cx": 1927.1126922838184,
+		"cy": 1079.5302805697208
+	},
+	"distortion_coeffs": [
+		0.2508960968072467,
+		0.38713517143879583,
+		-1.4707988601060038,
+		2.9615565049573793
+	],
+	"metadata": {
+		"calibrated_by": "Mitch Lane",
+		"notes": "15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

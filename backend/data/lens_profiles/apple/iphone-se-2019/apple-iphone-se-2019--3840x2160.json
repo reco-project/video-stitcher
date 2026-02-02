@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-se-2019--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone SE 2019",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3528.126110712082,
+		"fy": 3531.799444702922,
+		"cx": 1938.66342071396,
+		"cy": 1054.643749106454
+	},
+	"distortion_coeffs": [
+		0.29266396366211345,
+		2.16533724657913,
+		-10.51165676744168,
+		17.01602746195631
+	],
+	"metadata": {
+		"calibrated_by": "Dmitriy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

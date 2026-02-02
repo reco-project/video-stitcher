@@ -1,0 +1,28 @@
+{
+	"id": "runcam-nano2--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Nano2",
+	"lens_model": "2.1mm(M8) FOV 155\u00b0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1141.434919225008,
+		"fy": 1140.1453830680164,
+		"cx": 946.6939278341116,
+		"cy": 547.7695957154192
+	},
+	"distortion_coeffs": [
+		-0.08608771846883449,
+		-0.13463018907586682,
+		0.1174754234518578,
+		-0.0389654225445302
+	],
+	"metadata": {
+		"calibrated_by": "\u6ff1\u672c\u52f2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

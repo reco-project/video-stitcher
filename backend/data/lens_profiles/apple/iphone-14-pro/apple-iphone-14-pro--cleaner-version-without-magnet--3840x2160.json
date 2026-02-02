@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-14-pro--cleaner-version-without-magnet--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 14 Pro",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2544.800263547001,
+		"fy": 2547.6806409001974,
+		"cx": 1922.6927357306663,
+		"cy": 1090.9490727559253
+	},
+	"distortion_coeffs": [
+		0.5289034121992753,
+		-0.08012955513137794,
+		-2.1501453368084453,
+		4.742805881385251
+	],
+	"metadata": {
+		"calibrated_by": "Stefan Bechtel",
+		"notes": "cleaner version without magnet",
+		"source": "gyroflow",
+		"official": true
+	}
+}

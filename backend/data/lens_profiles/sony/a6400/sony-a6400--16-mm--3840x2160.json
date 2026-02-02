@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--16-mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "SEL1670z",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2746.5221837892655,
+		"fy": 2749.048016464475,
+		"cx": 1907.1141667215245,
+		"cy": 1110.072291705589
+	},
+	"distortion_coeffs": [
+		0.36719810401993414,
+		-0.349785375689955,
+		2.412029218466987,
+		-3.3874378449803997
+	],
+	"metadata": {
+		"calibrated_by": "pigonthewind",
+		"notes": "16 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

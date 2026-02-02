@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-note-20--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Note 20",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1436.0046435055312,
+		"fy": 1433.7083821371627,
+		"cx": 942.3656668010954,
+		"cy": 565.4551729992503
+	},
+	"distortion_coeffs": [
+		0.35855489722366324,
+		-0.09977505450907348,
+		1.8409766246138848,
+		-3.684100337069883
+	],
+	"metadata": {
+		"calibrated_by": "Zayed Munir",
+		"source": "gyroflow",
+		"official": true
+	}
+}

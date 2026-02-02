@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-11x-poco-f3--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "MI 11x / Poco F3",
+	"lens_model": "Sony IMX582",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2780.468072654862,
+		"fy": 2781.171968648835,
+		"cx": 1918.4093139218644,
+		"cy": 1068.4127782991654
+	},
+	"distortion_coeffs": [
+		0.5233901535607438,
+		-0.9682196125305664,
+		4.063190473355166,
+		-5.72964186755787
+	],
+	"metadata": {
+		"calibrated_by": "Farhad",
+		"source": "gyroflow",
+		"official": true
+	}
+}

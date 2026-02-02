@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-nv_gs280_mindv--640x480",
+	"camera_brand": "Panasonic",
+	"camera_model": "nv_gs280_mindv",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 640,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 664.6918493490573,
+		"fy": 661.5880814971554,
+		"cx": 329.5428775040507,
+		"cy": 258.4225360878171
+	},
+	"distortion_coeffs": [
+		0.1221383949823408,
+		0.12943156122788066,
+		-0.0345971502080324,
+		0.2722849057910923
+	],
+	"metadata": {
+		"calibrated_by": "Area 39",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--50fps--8192x4320",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "laowa 14mm f4",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3344.167221517482,
+		"fy": 3271.9849898303987,
+		"cx": 4117.21458682362,
+		"cy": 2193.0407642612863
+	},
+	"distortion_coeffs": [
+		0.32746474763188926,
+		0.18600921798310585,
+		-0.13155575383206447,
+		0.17831141664610223
+	],
+	"metadata": {
+		"calibrated_by": "cc+mark",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

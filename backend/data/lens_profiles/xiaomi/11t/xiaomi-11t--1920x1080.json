@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-11t--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "11T",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1704.4314118585262,
+		"fy": 1700.1413629679412,
+		"cx": 907.792054911169,
+		"cy": 532.220657039898
+	},
+	"distortion_coeffs": [
+		0.4045081136138431,
+		4.3788919481825195,
+		-98.83173309123504,
+		543.3729411303042
+	],
+	"metadata": {
+		"calibrated_by": "U0 A700",
+		"source": "gyroflow",
+		"official": true
+	}
+}

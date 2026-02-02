@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-xt4--c4k--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT4",
+	"lens_model": "XF 18-55",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3663.3705191489657,
+		"fy": 3664.120379650442,
+		"cx": 1937.1429298009928,
+		"cy": 1033.6339097736322
+	},
+	"distortion_coeffs": [
+		0.2394513430985884,
+		0.8231824886137081,
+		-2.9949057697340087,
+		5.439801485975972
+	],
+	"metadata": {
+		"calibrated_by": "Galeno Areliano",
+		"notes": "C4K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "overmax-x-bee-drone-95-fold--3840x2160",
+	"camera_brand": "Overmax",
+	"camera_model": "X-Bee drone 9.5 fold",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2792.793076096142,
+		"fy": 2790.848843450729,
+		"cx": 1976.7459539352224,
+		"cy": 1159.1400245356956
+	},
+	"distortion_coeffs": [
+		-0.074898779034713,
+		0.17810216455332892,
+		-1.2061301609860926,
+		2.2279245444183107
+	],
+	"metadata": {
+		"calibrated_by": "Massimo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t3--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "xc35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7147.530412695091,
+		"fy": 7141.463947675014,
+		"cx": 1896.2797847933125,
+		"cy": 973.5597934400794
+	},
+	"distortion_coeffs": [
+		0.09097378565658892,
+		22.27219329275228,
+		-495.2436689979112,
+		3858.97641681711
+	],
+	"metadata": {
+		"calibrated_by": "\u502a\u5b9a\u6714",
+		"source": "gyroflow",
+		"official": true
+	}
+}

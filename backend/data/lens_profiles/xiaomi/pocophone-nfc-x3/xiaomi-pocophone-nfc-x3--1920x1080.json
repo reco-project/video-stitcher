@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-pocophone-nfc-x3--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Pocophone NFC X3",
+	"lens_model": "1x",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1071.7556436851585,
+		"fy": 1071.5295233028498,
+		"cx": 940.3687644225008,
+		"cy": 547.9500547517043
+	},
+	"distortion_coeffs": [
+		0.3292873584688925,
+		0.0971317695172859,
+		-0.24417110865020167,
+		0.7264747323905614
+	],
+	"metadata": {
+		"calibrated_by": "kobot",
+		"source": "gyroflow",
+		"official": true
+	}
+}

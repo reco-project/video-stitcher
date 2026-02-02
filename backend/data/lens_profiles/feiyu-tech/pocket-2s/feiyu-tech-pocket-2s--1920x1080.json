@@ -1,0 +1,28 @@
+{
+	"id": "feiyu-tech-pocket-2s--1920x1080",
+	"camera_brand": "Feiyu Tech",
+	"camera_model": "Pocket 2s",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 885.1768145289511,
+		"fy": 886.7889077008467,
+		"cx": 967.9778310408708,
+		"cy": 528.9389504200243
+	},
+	"distortion_coeffs": [
+		0.3429152926941354,
+		0.15084343618708565,
+		0.03362567220501531,
+		0.06130082231044051
+	],
+	"metadata": {
+		"calibrated_by": "Ian Hoffman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-6-pro--2048x1152",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6 Pro",
+	"lens_model": "17mm",
+	"resolution": {
+		"width": 2048,
+		"height": 1152
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1906.377927133213,
+		"fy": 1847.4912488657287,
+		"cx": 997.8976473257984,
+		"cy": 189.36836672052485
+	},
+	"distortion_coeffs": [
+		0.7167844698683872,
+		-3.2867142713335284,
+		15.705627529349323,
+		-24.532837513821384
+	],
+	"metadata": {
+		"calibrated_by": "U0 A314",
+		"source": "gyroflow",
+		"official": true
+	}
+}

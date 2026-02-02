@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5-m-1--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5 M 1",
+	"lens_model": "Flektogon 35mm/f2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4415.608137377385,
+		"fy": 4408.442863686548,
+		"cx": 1986.6127562716208,
+		"cy": 1089.2434872664933
+	},
+	"distortion_coeffs": [
+		0.2759182311584268,
+		-0.5421534713996325,
+		9.069489184264995,
+		-38.20852721649431
+	],
+	"metadata": {
+		"calibrated_by": "Udvar Ferencz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

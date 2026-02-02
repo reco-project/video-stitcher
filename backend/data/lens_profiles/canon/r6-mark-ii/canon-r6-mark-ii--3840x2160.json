@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6-mark-ii--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6 Mark II",
+	"lens_model": "2470RF24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2273.6259923953717,
+		"fy": 2274.0559652150528,
+		"cx": 1956.031553517132,
+		"cy": 982.8819034705566
+	},
+	"distortion_coeffs": [
+		0.3709441580170343,
+		-0.16079208275829207,
+		1.0130285121878937,
+		-0.9999627240992826
+	],
+	"metadata": {
+		"calibrated_by": "ADMST",
+		"source": "gyroflow",
+		"official": true
+	}
+}

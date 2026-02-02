@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-9-pro-film-mode--3840x1644",
+	"camera_brand": "OnePlus",
+	"camera_model": "9 pro Film mode",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 1644
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3213.575619440799,
+		"fy": 3213.8903937755913,
+		"cx": 1926.3996773477736,
+		"cy": 852.9314248228129
+	},
+	"distortion_coeffs": [
+		0.4817959032783988,
+		-1.8220344547531584,
+		10.746548141741377,
+		-20.046655039562477
+	],
+	"metadata": {
+		"calibrated_by": "Mustafa Hasan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

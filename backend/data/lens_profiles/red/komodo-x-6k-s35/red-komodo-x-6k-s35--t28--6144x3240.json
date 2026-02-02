@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x-6k-s35--t28--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "Zeiss B-Speed 25mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5263.303080410367,
+		"fy": 5272.872311626765,
+		"cx": 3039.403341378662,
+		"cy": 1818.0823846212631
+	},
+	"distortion_coeffs": [
+		0.1411537413805843,
+		1.0224338173765637,
+		-8.101500612289117,
+		24.013647291114395
+	],
+	"metadata": {
+		"calibrated_by": "Patrick Tresch",
+		"notes": "T2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

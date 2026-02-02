@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--6143x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Leica 28mm F2.8",
+	"resolution": {
+		"width": 6143,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6717.583407053985,
+		"fy": 6719.081424161898,
+		"cx": 3061.7054528017466,
+		"cy": 1549.235348827456
+	},
+	"distortion_coeffs": [
+		0.22927940105103145,
+		0.050036434001054696,
+		0.7223608371266647,
+		-0.6116204022481869
+	],
+	"metadata": {
+		"calibrated_by": "Clayton Simoncic",
+		"source": "gyroflow",
+		"official": true
+	}
+}

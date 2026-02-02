@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-h2s--flog2--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "H2S",
+	"lens_model": "Laowa 10mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1706.3889038169173,
+		"fy": 1707.455831639246,
+		"cx": 1919.171723890351,
+		"cy": 1059.2279941543509
+	},
+	"distortion_coeffs": [
+		0.2881515311850471,
+		0.17672703232530446,
+		-0.08546909465923061,
+		0.14275976497583057
+	],
+	"metadata": {
+		"calibrated_by": "markyang",
+		"notes": "Flog2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

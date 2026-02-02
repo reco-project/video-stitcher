@@ -1,0 +1,28 @@
+{
+	"id": "omnivision-ov16a1q_i_aac--720x1280",
+	"camera_brand": "OmniVision",
+	"camera_model": "ov16a1q_i_aac",
+	"lens_model": "ov16a1q_i_aac",
+	"resolution": {
+		"width": 720,
+		"height": 1280
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 601.9302397984854,
+		"fy": 601.0142215521307,
+		"cx": 365.4952668668933,
+		"cy": 642.155853996457
+	},
+	"distortion_coeffs": [
+		0.2277873176876737,
+		0.4602384174228156,
+		-1.1630591450846612,
+		2.009236937112459
+	],
+	"metadata": {
+		"calibrated_by": "LCX24",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-mark2--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "Mark2",
+	"lens_model": "Sigma 17-50 F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4335.656338068253,
+		"fy": 4348.129149451271,
+		"cx": 1916.161317676995,
+		"cy": 1100.6737709440097
+	},
+	"distortion_coeffs": [
+		0.19402884376297508,
+		0.33445378850805196,
+		-0.9222360028932436,
+		1.629519118619553
+	],
+	"metadata": {
+		"calibrated_by": "Jos\u00e9 M1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

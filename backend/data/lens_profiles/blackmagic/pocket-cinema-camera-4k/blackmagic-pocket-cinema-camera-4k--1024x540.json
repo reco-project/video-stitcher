@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--1024x540",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Sigma DC 14-200mm f/3.5-6.3 Viltrox EF-M2 - 14mm",
+	"resolution": {
+		"width": 1024,
+		"height": 540
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 695.0269649268637,
+		"fy": 694.8769375091659,
+		"cx": 500.39806633332944,
+		"cy": 281.40259029466137
+	},
+	"distortion_coeffs": [
+		0.07692329561972731,
+		0.5586343383371705,
+		-1.126119901543324,
+		1.5384162135658253
+	],
+	"metadata": {
+		"calibrated_by": "James Stuart",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "huawei-mate--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "mate",
+	"lens_model": "x7",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3292.2373692406395,
+		"fy": 3288.6437158774725,
+		"cx": 1914.0743415202176,
+		"cy": 1130.82887031901
+	},
+	"distortion_coeffs": [
+		0.4608682266442544,
+		-0.26494970633159615,
+		-2.5300557164305486,
+		4.811321866221933
+	],
+	"metadata": {
+		"calibrated_by": "\u9ed1\u732b",
+		"source": "gyroflow",
+		"official": true
+	}
+}

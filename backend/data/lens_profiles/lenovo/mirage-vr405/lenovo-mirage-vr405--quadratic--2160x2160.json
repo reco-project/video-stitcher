@@ -1,0 +1,29 @@
+{
+	"id": "lenovo-mirage-vr405--quadratic--2160x2160",
+	"camera_brand": "Lenovo",
+	"camera_model": "Mirage VR405",
+	"lens_model": "fisheye",
+	"resolution": {
+		"width": 2160,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 649.0373084712415,
+		"fy": 649.4443326399008,
+		"cx": 1085.7902150453865,
+		"cy": 1087.0375259526872
+	},
+	"distortion_coeffs": [
+		0.0513715169925657,
+		0.13854193805610113,
+		-0.21522705062627528,
+		0.0945436176823302
+	],
+	"metadata": {
+		"calibrated_by": "Alexander Dr\u00e4benstedt",
+		"notes": "quadratic",
+		"source": "gyroflow",
+		"official": true
+	}
+}

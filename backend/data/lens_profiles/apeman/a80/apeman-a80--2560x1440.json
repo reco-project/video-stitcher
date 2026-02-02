@@ -1,0 +1,28 @@
+{
+	"id": "apeman-a80--2560x1440",
+	"camera_brand": "apeman",
+	"camera_model": "A80",
+	"lens_model": "Ultra Wide",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1281.9428239577956,
+		"fy": 1295.6694784956967,
+		"cx": 1265.6456995234014,
+		"cy": 731.626249612727
+	},
+	"distortion_coeffs": [
+		0.009838752439408231,
+		0.024634705123255104,
+		-0.06233348704602792,
+		0.06440978079791798
+	],
+	"metadata": {
+		"calibrated_by": "QUESUS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

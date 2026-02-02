@@ -1,0 +1,28 @@
+{
+	"id": "arri-alexa-mini--3840x2160",
+	"camera_brand": "Arri",
+	"camera_model": "Alexa Mini",
+	"lens_model": "40 mm Cooke S4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3930.3680037967265,
+		"fy": 3927.717809118694,
+		"cx": 1899.31015538435,
+		"cy": 1043.4185411217886
+	},
+	"distortion_coeffs": [
+		0.1684452460221836,
+		0.32341124262911036,
+		-1.5478396164366053,
+		4.720546513423334
+	],
+	"metadata": {
+		"calibrated_by": "Eric Lor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

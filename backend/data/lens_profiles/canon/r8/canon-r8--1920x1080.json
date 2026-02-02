@@ -1,0 +1,28 @@
+{
+	"id": "canon-r8--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R8",
+	"lens_model": "EF2470",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1433.22717778049,
+		"fy": 1434.9711225032192,
+		"cx": 966.228872278774,
+		"cy": 544.7436099752885
+	},
+	"distortion_coeffs": [
+		0.16808666027762909,
+		0.43970981478020504,
+		-0.8652530987928763,
+		1.1851235263753022
+	],
+	"metadata": {
+		"calibrated_by": "sun",
+		"source": "gyroflow",
+		"official": true
+	}
+}

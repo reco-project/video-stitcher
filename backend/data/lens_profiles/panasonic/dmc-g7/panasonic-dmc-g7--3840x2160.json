@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-dmc-g7--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "DMC-G7",
+	"lens_model": "Lumix G Vario 14-42/F3.5-5.6 II ASPH",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3817.3936908070255,
+		"fy": 3805.670474568182,
+		"cx": 1921.512550683417,
+		"cy": 1160.989322039672
+	},
+	"distortion_coeffs": [
+		0.32232833652004295,
+		-0.37435524772047274,
+		3.7834020843474327,
+		-8.515366165399335
+	],
+	"metadata": {
+		"calibrated_by": "Abdul",
+		"source": "gyroflow",
+		"official": true
+	}
+}

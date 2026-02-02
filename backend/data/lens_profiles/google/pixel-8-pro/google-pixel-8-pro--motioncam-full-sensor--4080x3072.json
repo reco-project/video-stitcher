@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-8-pro--motioncam-full-sensor--4080x3072",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 8 Pro",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 4080,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2827.323742037704,
+		"fy": 2827.2128592298636,
+		"cx": 2068.5238646604903,
+		"cy": 1502.4106035485838
+	},
+	"distortion_coeffs": [
+		0.6653029538794573,
+		-2.668089066194719,
+		10.113389342478524,
+		-12.731372449923006
+	],
+	"metadata": {
+		"calibrated_by": "Javier",
+		"notes": "MotionCam Full Sensor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

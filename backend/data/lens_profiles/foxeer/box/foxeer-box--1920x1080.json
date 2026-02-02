@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-box--1920x1080",
+	"camera_brand": "Foxeer",
+	"camera_model": "Box",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 838.5401791514695,
+		"fy": 628.8204306595545,
+		"cx": 966.4530445789218,
+		"cy": 529.9007890543886
+	},
+	"distortion_coeffs": [
+		0.0790829462924654,
+		-0.007517372634054001,
+		0.010343094845752698,
+		-0.003283525069673271
+	],
+	"metadata": {
+		"calibrated_by": "\u0415\u0432\u0433\u0435\u043d\u0438\u0439 \u0411\u0443\u0440\u043e\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

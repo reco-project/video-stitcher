@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-prov2--1280x720",
+	"camera_brand": "Walksnail",
+	"camera_model": "ProV2",
+	"lens_model": "2.2",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 611.560516316677,
+		"fy": 611.8998849538561,
+		"cx": 624.8150506687098,
+		"cy": 364.0386596634641
+	},
+	"distortion_coeffs": [
+		-0.011104773264142751,
+		-0.009221338515539194,
+		0.0009523548393135238,
+		-0.0007245968530819262
+	],
+	"metadata": {
+		"calibrated_by": "Mark",
+		"source": "gyroflow",
+		"official": true
+	}
+}

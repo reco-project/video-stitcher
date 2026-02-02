@@ -1,0 +1,28 @@
+{
+	"id": "lg-g8--3840x2160",
+	"camera_brand": "LG",
+	"camera_model": "G8",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2965.9788464381886,
+		"fy": 2957.7127270941814,
+		"cx": 1899.4430942077752,
+		"cy": 1047.415276456307
+	},
+	"distortion_coeffs": [
+		0.7056100644964752,
+		-2.2067268726353713,
+		1.9573544932320592,
+		9.696282709906422
+	],
+	"metadata": {
+		"calibrated_by": "U0 A331",
+		"source": "gyroflow",
+		"official": true
+	}
+}

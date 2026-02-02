@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh6--5727x3024",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH6",
+	"lens_model": "Panasonic Leica DG Summilux 9mm 1.7",
+	"resolution": {
+		"width": 5727,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3132.458700336821,
+		"fy": 3129.82006914045,
+		"cx": 2890.4260758093997,
+		"cy": 1486.7895626284103
+	},
+	"distortion_coeffs": [
+		0.31101444629907754,
+		0.2318952900966757,
+		-0.445737062285519,
+		0.7046814576161066
+	],
+	"metadata": {
+		"calibrated_by": "V V",
+		"source": "gyroflow",
+		"official": true
+	}
+}

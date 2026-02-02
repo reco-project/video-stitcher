@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--magic-lantern--4416x2208",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "EF 40MM 2.8MM",
+	"resolution": {
+		"width": 4416,
+		"height": 2208
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9831.870665996878,
+		"fy": 9606.995230161278,
+		"cx": 2074.0551758801266,
+		"cy": 1169.290796750452
+	},
+	"distortion_coeffs": [
+		0.18610187684526516,
+		18.849873925235777,
+		-928.022997975856,
+		13278.386879510446
+	],
+	"metadata": {
+		"calibrated_by": "Edgar Alvarado",
+		"notes": "Magic Lantern",
+		"source": "gyroflow",
+		"official": true
+	}
+}

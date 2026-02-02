@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5c--undistorted--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "RF16 2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2612.6343084117334,
+		"fy": 2610.672577826143,
+		"cx": 2046.0968080947189,
+		"cy": 1081.830526433076
+	},
+	"distortion_coeffs": [
+		0.40918639436895726,
+		-0.4522135757907833,
+		1.8008874711970506,
+		-1.7917636993752244
+	],
+	"metadata": {
+		"calibrated_by": "guns120",
+		"notes": "undistorted",
+		"source": "gyroflow",
+		"official": true
+	}
+}

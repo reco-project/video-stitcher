@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--steady-shot-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Tamron 17-70mm F/2.8 @17mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2824.927459654801,
+		"fy": 2822.7364601855325,
+		"cx": 1910.703353009492,
+		"cy": 1057.941118792797
+	},
+	"distortion_coeffs": [
+		0.19134750956676672,
+		-0.20700074115920447,
+		1.3806622928641914,
+		-1.4406999300805845
+	],
+	"metadata": {
+		"calibrated_by": "Willingsworth Pho",
+		"notes": "Steady Shot OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

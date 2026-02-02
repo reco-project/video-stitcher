@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-h2s--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2s",
+	"lens_model": "Fujifilm 16mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2728.0704011998214,
+		"fy": 2730.7829151934193,
+		"cx": 1889.716974845341,
+		"cy": 1068.576265617961
+	},
+	"distortion_coeffs": [
+		0.22708863850763747,
+		1.338377495841208,
+		-4.757298923684583,
+		6.937562236734315
+	],
+	"metadata": {
+		"calibrated_by": "ACH Digital Photography",
+		"source": "gyroflow",
+		"official": true
+	}
+}

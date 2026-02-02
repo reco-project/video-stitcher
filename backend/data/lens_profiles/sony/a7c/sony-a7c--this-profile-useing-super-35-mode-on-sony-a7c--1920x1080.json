@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--this-profile-useing-super-35-mode-on-sony-a7c--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "7 artisans 25mm f1.8 e mount (APSC)",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2543.5966341005033,
+		"fy": 2545.0735218400096,
+		"cx": 965.9875489011658,
+		"cy": 544.7716092092026
+	},
+	"distortion_coeffs": [
+		0.2028239900560808,
+		-0.7305487166290268,
+		11.350964040223904,
+		-45.21956475996271
+	],
+	"metadata": {
+		"calibrated_by": "Diptayana",
+		"notes": "this profile useing super 35 mode on sony a7c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

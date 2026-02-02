@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-70d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 70D",
+	"lens_model": "17 40",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1478.819767448643,
+		"fy": 1480.476757849961,
+		"cx": 982.426601958608,
+		"cy": 546.4327589368665
+	},
+	"distortion_coeffs": [
+		0.23392223513007113,
+		0.15298483433489807,
+		-0.10149780211432605,
+		0.21712081885395107
+	],
+	"metadata": {
+		"calibrated_by": "LEGION",
+		"source": "gyroflow",
+		"official": true
+	}
+}

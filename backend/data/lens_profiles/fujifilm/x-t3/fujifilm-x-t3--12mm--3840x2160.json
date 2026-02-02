@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--12mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "Rokinon 12mm F2.0 NCS CS Ultra Wide Angle",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2083.3618786256725,
+		"fy": 2083.6264273486972,
+		"cx": 1925.1208088216017,
+		"cy": 1076.6496917208408
+	},
+	"distortion_coeffs": [
+		0.32225317306201745,
+		0.00601972451140352,
+		0.22378578947322328,
+		-0.06247816306520735
+	],
+	"metadata": {
+		"calibrated_by": "Seiishu Z.",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

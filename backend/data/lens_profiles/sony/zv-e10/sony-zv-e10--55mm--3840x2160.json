@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--55mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "7Artisans 55m/1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9980.310895652196,
+		"fy": 10031.701193071178,
+		"cx": 1824.1833033133184,
+		"cy": 942.0673182604426
+	},
+	"distortion_coeffs": [
+		0.9069029138315832,
+		-21.58107373720923,
+		619.0934417516737,
+		-6668.959913884687
+	],
+	"metadata": {
+		"calibrated_by": "Oscar Astorga",
+		"notes": "55mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

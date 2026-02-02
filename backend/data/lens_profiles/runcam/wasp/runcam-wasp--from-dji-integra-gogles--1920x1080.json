@@ -1,0 +1,29 @@
+{
+	"id": "runcam-wasp--from-dji-integra-gogles--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Wasp",
+	"lens_model": "org",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 627.7529301599152,
+		"fy": 627.4467851838983,
+		"cx": 971.3749127607052,
+		"cy": 547.6449670524668
+	},
+	"distortion_coeffs": [
+		0.02217770943185471,
+		0.023786196319872468,
+		-0.020299040052744025,
+		0.005658637560688418
+	],
+	"metadata": {
+		"calibrated_by": "Piotr",
+		"notes": "from DJI Integra gogles",
+		"source": "gyroflow",
+		"official": true
+	}
+}

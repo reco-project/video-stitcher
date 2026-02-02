@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero_2024--no-eis--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO_2024",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1425.511024886351,
+		"fy": 1425.378943905229,
+		"cx": 1922.061635931093,
+		"cy": 1077.747322972246
+	},
+	"distortion_coeffs": [
+		0.09485013406690856,
+		-0.014081854876761809,
+		0.011894953114770703,
+		-0.006769618856220994
+	],
+	"metadata": {
+		"calibrated_by": "Mark Wingfield",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

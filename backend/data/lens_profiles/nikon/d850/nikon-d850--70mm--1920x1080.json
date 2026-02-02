@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d850--70mm--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D850",
+	"lens_model": "24-70 2.8G ED",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3801.627096334744,
+		"fy": 3808.0076230245736,
+		"cx": 980.663881109488,
+		"cy": 539.8742762112381
+	},
+	"distortion_coeffs": [
+		0.47602771570333025,
+		2.909162418191205,
+		-71.01352039292803,
+		510.36168639930406
+	],
+	"metadata": {
+		"calibrated_by": "Kartik Sharma",
+		"notes": "70mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

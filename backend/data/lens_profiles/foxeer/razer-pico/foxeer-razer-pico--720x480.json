@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-razer-pico--720x480",
+	"camera_brand": "Foxeer",
+	"camera_model": "Razer Pico",
+	"lens_model": null,
+	"resolution": {
+		"width": 720,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 277.3800070306575,
+		"fy": 245.5638293514094,
+		"cx": 350.72025108215644,
+		"cy": 239.73759958034393
+	},
+	"distortion_coeffs": [
+		0.23331965038451033,
+		-0.0036810875676125377,
+		-0.07344010768978468,
+		0.025989769313143528
+	],
+	"metadata": {
+		"calibrated_by": "Nick Gauthier",
+		"source": "gyroflow",
+		"official": true
+	}
+}

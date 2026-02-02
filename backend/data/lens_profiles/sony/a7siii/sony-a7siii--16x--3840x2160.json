@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--16x--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Sirui 35mm Anamorphic",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2063.4717869476935,
+		"fy": 3347.5160581346404,
+		"cx": 1864.7264003025523,
+		"cy": 625.3474411795563
+	},
+	"distortion_coeffs": [
+		0.2996958513109857,
+		-0.04382318367560036,
+		0.367410022616203,
+		-0.21510931868403696
+	],
+	"metadata": {
+		"calibrated_by": "Gabriel Pintilie",
+		"notes": "1.6x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

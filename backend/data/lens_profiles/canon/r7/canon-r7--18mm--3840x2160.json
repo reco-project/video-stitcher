@@ -1,0 +1,29 @@
+{
+	"id": "canon-r7--18mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R7",
+	"lens_model": "Canon 18-150",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3101.7495495020594,
+		"fy": 3110.444716740071,
+		"cx": 1890.0071893626143,
+		"cy": 1124.8165528481036
+	},
+	"distortion_coeffs": [
+		0.20156267660939217,
+		-0.09054628169423444,
+		0.732109038617282,
+		-0.5441165007974307
+	],
+	"metadata": {
+		"calibrated_by": "SimfoGames",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

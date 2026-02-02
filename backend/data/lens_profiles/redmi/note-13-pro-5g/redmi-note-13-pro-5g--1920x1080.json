@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-13-pro-5g--1920x1080",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 13 Pro 5G",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1654.4341662472573,
+		"fy": 1656.5241543824852,
+		"cx": 944.068079421908,
+		"cy": 530.5833146769563
+	},
+	"distortion_coeffs": [
+		0.6308894596462805,
+		-2.8200740307465644,
+		13.660121141791626,
+		-24.11298040796448
+	],
+	"metadata": {
+		"calibrated_by": "Gabor Csaba",
+		"source": "gyroflow",
+		"official": true
+	}
+}

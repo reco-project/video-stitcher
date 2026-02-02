@@ -1,0 +1,28 @@
+{
+	"id": "dogcam-bullet-r--1920x1080",
+	"camera_brand": "Dogcam",
+	"camera_model": "Bullet R+",
+	"lens_model": "135",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1578.0664325249677,
+		"fy": 1585.186027089706,
+		"cx": 954.452137644469,
+		"cy": 549.7781967040885
+	},
+	"distortion_coeffs": [
+		-0.08487658660249119,
+		-0.4974372356802859,
+		3.228790825339893,
+		-4.784323688509459
+	],
+	"metadata": {
+		"calibrated_by": "Jay Greeny",
+		"source": "gyroflow",
+		"official": true
+	}
+}

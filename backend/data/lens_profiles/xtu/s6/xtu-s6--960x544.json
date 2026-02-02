@@ -1,0 +1,28 @@
+{
+	"id": "xtu-s6--960x544",
+	"camera_brand": "XTU",
+	"camera_model": "S6",
+	"lens_model": null,
+	"resolution": {
+		"width": 960,
+		"height": 544
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 798.2653002546967,
+		"fy": 798.9147886820341,
+		"cx": 475.4074501615784,
+		"cy": 266.95182205844196
+	},
+	"distortion_coeffs": [
+		0.4817357194894537,
+		-1.7963350156110802,
+		10.180378391744522,
+		-18.400360537545225
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--14-mm--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "Canon 14-35 mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1731.2346812841265,
+		"fy": 1732.0581616031204,
+		"cx": 2052.3353327567047,
+		"cy": 1085.3366881399454
+	},
+	"distortion_coeffs": [
+		0.35497002639913144,
+		0.193824640372967,
+		-0.07267705116678377,
+		0.12358229632498516
+	],
+	"metadata": {
+		"calibrated_by": "Eduard Berdi\u00e9 Farr\u00e9s",
+		"notes": "14 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

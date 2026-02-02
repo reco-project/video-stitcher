@@ -1,0 +1,28 @@
+{
+	"id": "forever-sc-410--1920x1080",
+	"camera_brand": "Forever",
+	"camera_model": "SC-410",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 936.4381311917474,
+		"fy": 935.1160379810688,
+		"cx": 915.8129381288956,
+		"cy": 619.4031663704462
+	},
+	"distortion_coeffs": [
+		0.0048741424017482325,
+		-0.02601184420135414,
+		0.028702161305959595,
+		-0.011260724225529218
+	],
+	"metadata": {
+		"calibrated_by": "Atuk",
+		"source": "gyroflow",
+		"official": true
+	}
+}

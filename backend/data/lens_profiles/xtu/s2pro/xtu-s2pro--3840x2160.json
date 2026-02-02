@@ -1,0 +1,28 @@
+{
+	"id": "xtu-s2pro--3840x2160",
+	"camera_brand": "XTU",
+	"camera_model": "S2PRO",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2141.9780541234823,
+		"fy": 2108.3562756154365,
+		"cx": 2086.3371970489325,
+		"cy": 1144.3632522073149
+	},
+	"distortion_coeffs": [
+		-0.04703168627228426,
+		0.0011217876464920484,
+		-0.005195923044624849,
+		0.00444119747203467
+	],
+	"metadata": {
+		"calibrated_by": "\u3042\u3042\u3042\u3042",
+		"source": "gyroflow",
+		"official": true
+	}
+}

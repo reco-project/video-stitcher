@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r8--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "48",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5104.103960483061,
+		"fy": 5105.725971767283,
+		"cx": 1915.1406801433056,
+		"cy": 1115.7167381719826
+	},
+	"distortion_coeffs": [
+		0.33945308623863096,
+		0.7306302739844089,
+		-3.192997400577666,
+		12.486021584308656
+	],
+	"metadata": {
+		"calibrated_by": "10616",
+		"source": "gyroflow",
+		"official": true
+	}
+}

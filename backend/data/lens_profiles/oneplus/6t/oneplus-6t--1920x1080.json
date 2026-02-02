@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-6t--1920x1080",
+	"camera_brand": "OnePlus",
+	"camera_model": "6T",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1593.9586364628458,
+		"fy": 1595.0695975714668,
+		"cx": 920.8294381890676,
+		"cy": 543.2555819786529
+	},
+	"distortion_coeffs": [
+		0.5609795331501383,
+		-2.8067605005794256,
+		13.385413306696297,
+		-19.767000247084137
+	],
+	"metadata": {
+		"calibrated_by": "leo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

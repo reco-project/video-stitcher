@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--sony-fe-35mm-f18-lens--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "a3a23ffd",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3833.2862374491865,
+		"fy": 3831.889902424321,
+		"cx": 1942.0186036176983,
+		"cy": 1065.0129730089575
+	},
+	"distortion_coeffs": [
+		0.2728567465783326,
+		0.43047238820373784,
+		-0.9427258718269952,
+		3.3565292190322444
+	],
+	"metadata": {
+		"calibrated_by": "mdf",
+		"notes": "Sony FE 35mm F1.8 lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

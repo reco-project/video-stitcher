@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-1s-little--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "1s little",
+	"lens_model": "1s lite",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 790.5261100435016,
+		"fy": 792.2697049493523,
+		"cx": 959.4183649064004,
+		"cy": 529.5688925086383
+	},
+	"distortion_coeffs": [
+		0.033634252576306894,
+		-0.14110771536979022,
+		0.17416529515204618,
+		-0.0948312356233975
+	],
+	"metadata": {
+		"calibrated_by": "adrian",
+		"source": "gyroflow",
+		"official": true
+	}
+}

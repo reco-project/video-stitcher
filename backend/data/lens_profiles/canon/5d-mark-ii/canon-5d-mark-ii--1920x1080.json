@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark II",
+	"lens_model": "Takumar 55 f/1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3358.22718702037,
+		"fy": 3352.9691875258595,
+		"cx": 941.1746816405148,
+		"cy": 505.1668739335827
+	},
+	"distortion_coeffs": [
+		0.1853093909517631,
+		0.5036089712665438,
+		12.33146204329616,
+		-171.86117735731085
+	],
+	"metadata": {
+		"calibrated_by": "simion",
+		"source": "gyroflow",
+		"official": true
+	}
+}

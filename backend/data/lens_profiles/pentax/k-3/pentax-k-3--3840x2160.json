@@ -1,0 +1,28 @@
+{
+	"id": "pentax-k-3--3840x2160",
+	"camera_brand": "Pentax",
+	"camera_model": "K-3",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3471.8961026576576,
+		"fy": 3467.1762428611737,
+		"cx": 1950.7857550160156,
+		"cy": 1141.4704796863482
+	},
+	"distortion_coeffs": [
+		0.20299424555050477,
+		-0.05425826136481845,
+		0.9339678881344328,
+		-1.672838288143566
+	],
+	"metadata": {
+		"calibrated_by": "Cristian Neghina",
+		"source": "gyroflow",
+		"official": true
+	}
+}

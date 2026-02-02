@@ -1,0 +1,29 @@
+{
+	"id": "caddx-walnut--no-eis--4000x3000",
+	"camera_brand": "Caddx",
+	"camera_model": "Walnut",
+	"lens_model": "NO-LDC",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1786.507984760593,
+		"fy": 1785.627983900147,
+		"cx": 2016.0334065966667,
+		"cy": 1470.3918194343537
+	},
+	"distortion_coeffs": [
+		0.05276597898227826,
+		0.015274541023139836,
+		-0.0056670901865306334,
+		-0.0006992382312307671
+	],
+	"metadata": {
+		"calibrated_by": "Elvin",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

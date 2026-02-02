@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6000--50fps--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6000",
+	"lens_model": "Sony 18-105 f4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1535.752506239709,
+		"fy": 1534.1204783332057,
+		"cx": 959.6395957758348,
+		"cy": 547.4463468624366
+	},
+	"distortion_coeffs": [
+		0.3964451830658878,
+		-0.7240603147926908,
+		3.1494786030214197,
+		-3.6696529986940742
+	],
+	"metadata": {
+		"calibrated_by": "Massimo Bravetti",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

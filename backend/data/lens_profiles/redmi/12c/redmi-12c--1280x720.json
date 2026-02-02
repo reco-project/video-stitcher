@@ -1,0 +1,28 @@
+{
+	"id": "redmi-12c--1280x720",
+	"camera_brand": "Redmi",
+	"camera_model": "12c",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1083.8783585269164,
+		"fy": 1084.044363375938,
+		"cx": 641.5499865644002,
+		"cy": 346.63222772003445
+	},
+	"distortion_coeffs": [
+		0.523661080441787,
+		-1.8258015723967045,
+		10.408801238931632,
+		-18.443731797325377
+	],
+	"metadata": {
+		"calibrated_by": "abdelrahman saafan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

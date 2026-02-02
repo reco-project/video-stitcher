@@ -1,0 +1,28 @@
+{
+	"id": "ezviz-s2--1920x1080",
+	"camera_brand": "Ezviz",
+	"camera_model": "S2",
+	"lens_model": "155 deg",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1052.7615453169567,
+		"fy": 1052.7890912575683,
+		"cx": 941.9451207228116,
+		"cy": 518.0140986529373
+	},
+	"distortion_coeffs": [
+		-0.1100044588450927,
+		0.020557879891772896,
+		-0.02771752242069385,
+		0.012442300025633403
+	],
+	"metadata": {
+		"calibrated_by": "Jodi Sabar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

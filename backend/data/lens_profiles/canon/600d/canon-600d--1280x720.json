@@ -1,0 +1,28 @@
+{
+	"id": "canon-600d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "600D",
+	"lens_model": "canon lens ef 50mm 1:1.8",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3484.072859724798,
+		"fy": 3480.059192035517,
+		"cx": 588.3460925152232,
+		"cy": 364.7911647493811
+	},
+	"distortion_coeffs": [
+		0.1516352076027473,
+		0.7311947318737816,
+		41.60728455939223,
+		-984.138512186606
+	],
+	"metadata": {
+		"calibrated_by": "\u05de\u05d5\u05dc\u05d8\u05d9\u05de\u05d3\u05d9\u05d4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

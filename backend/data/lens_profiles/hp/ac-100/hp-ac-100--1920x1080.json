@@ -1,0 +1,28 @@
+{
+	"id": "hp-ac-100--1920x1080",
+	"camera_brand": "HP",
+	"camera_model": "AC 100",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 938.1868446985524,
+		"fy": 936.9257202298804,
+		"cx": 923.5467610706056,
+		"cy": 505.4820726381884
+	},
+	"distortion_coeffs": [
+		0.048357809692756555,
+		0.03152800489024699,
+		-0.06959272086268065,
+		0.0960094047917277
+	],
+	"metadata": {
+		"calibrated_by": "Cl\u00e9ment Magenties",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-fold-4--3840x2164",
+	"camera_brand": "Samsung",
+	"camera_model": "Fold 4",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2164
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2740.6506819608753,
+		"fy": 2738.6621203296204,
+		"cx": 1899.301457916664,
+		"cy": 1078.2257614006653
+	},
+	"distortion_coeffs": [
+		0.4417035429954969,
+		0.12024935474148812,
+		-0.4653763349148382,
+		0.7115625625535591
+	],
+	"metadata": {
+		"calibrated_by": "Kenneth C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

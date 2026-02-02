@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--aps-c--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sigma 16mm F1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2724.3737420171938,
+		"fy": 2723.486844837347,
+		"cx": 1906.237071066344,
+		"cy": 1099.4315557397836
+	},
+	"distortion_coeffs": [
+		0.18891140387444827,
+		0.30402968624874727,
+		-0.4051452655413249,
+		0.4522881780020924
+	],
+	"metadata": {
+		"calibrated_by": "Andris",
+		"notes": "APS-C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

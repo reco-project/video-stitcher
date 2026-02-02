@@ -1,0 +1,28 @@
+{
+	"id": "akaso-ek7000pro--3840x2160",
+	"camera_brand": "AKASO",
+	"camera_model": "EK7000pro",
+	"lens_model": "170\u00ba",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2154.5183220380272,
+		"fy": 2149.8206091050283,
+		"cx": 1920.9052495480964,
+		"cy": 1064.6098797441382
+	},
+	"distortion_coeffs": [
+		-0.03364446424232081,
+		0.008441268275236195,
+		-0.017521434164325698,
+		0.014270127148666968
+	],
+	"metadata": {
+		"calibrated_by": "manu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

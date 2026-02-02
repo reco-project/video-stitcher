@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mijia-4k--2560x1440",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mijia 4k",
+	"lens_model": "3.2mm f/2.8",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1329.7848117301187,
+		"fy": 1329.3537947267062,
+		"cx": 1293.651748056776,
+		"cy": 716.099228455793
+	},
+	"distortion_coeffs": [
+		0.3821609668982049,
+		-0.07956978357768775,
+		0.5488638286174005,
+		-0.3569326839569933
+	],
+	"metadata": {
+		"calibrated_by": "viktor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

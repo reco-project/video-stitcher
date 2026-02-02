@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-7a--60-fps--1920x1080",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7a",
+	"lens_model": "Main Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1786.6725763671848,
+		"fy": 1780.376967246742,
+		"cx": 947.4425699056592,
+		"cy": 584.1885074730814
+	},
+	"distortion_coeffs": [
+		0.4926559697827352,
+		-1.1038383867827457,
+		7.040992407030027,
+		-14.967902463336005
+	],
+	"metadata": {
+		"calibrated_by": "Malav Shah",
+		"notes": "60 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

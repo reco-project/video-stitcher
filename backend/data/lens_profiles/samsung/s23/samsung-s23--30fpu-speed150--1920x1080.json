@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23--30fpu-speed150--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S23+",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 777.5589539698651,
+		"fy": 776.9458506807962,
+		"cx": 954.3233447723428,
+		"cy": 541.1112297926655
+	},
+	"distortion_coeffs": [
+		0.33228607249204073,
+		0.1222023854199348,
+		0.12590605580366904,
+		-0.06557095179712422
+	],
+	"metadata": {
+		"calibrated_by": "Mann.S",
+		"notes": "30fpu / speed1/50",
+		"source": "gyroflow",
+		"official": true
+	}
+}

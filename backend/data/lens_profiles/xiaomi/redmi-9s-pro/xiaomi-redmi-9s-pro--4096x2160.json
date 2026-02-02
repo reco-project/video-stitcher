@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-9s-pro--4096x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi 9s pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3063.8506397695273,
+		"fy": 3069.6972591187323,
+		"cx": 2060.496967148573,
+		"cy": 1064.7998736257798
+	},
+	"distortion_coeffs": [
+		0.3618329951750971,
+		1.7195352220327291,
+		-28.763148895451813,
+		145.79760968508268
+	],
+	"metadata": {
+		"calibrated_by": "Dantistnfs",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "runcam-phoenix-jb--720x480",
+	"camera_brand": "RunCam",
+	"camera_model": "phoenix jb",
+	"lens_model": null,
+	"resolution": {
+		"width": 720,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 377.34870119033224,
+		"fy": 336.0860094277152,
+		"cx": 370.2703389076513,
+		"cy": 242.0107336132703
+	},
+	"distortion_coeffs": [
+		-0.07668995345387371,
+		0.010028351808494582,
+		-0.03924907829156591,
+		0.03850032183562006
+	],
+	"metadata": {
+		"calibrated_by": "Rory Mace",
+		"source": "gyroflow",
+		"official": true
+	}
+}

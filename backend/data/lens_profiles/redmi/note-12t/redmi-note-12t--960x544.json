@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-12t--960x544",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 12T",
+	"lens_model": null,
+	"resolution": {
+		"width": 960,
+		"height": 544
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 517.4475247412058,
+		"fy": 529.6379363430661,
+		"cx": 499.2587053252233,
+		"cy": 287.93900774322987
+	},
+	"distortion_coeffs": [
+		0.3355918097176716,
+		0.2493898871215866,
+		-0.6170201328802584,
+		0.8992028518725246
+	],
+	"metadata": {
+		"calibrated_by": "\u5c0f\u5e03\u4e01",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-4000-air--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "4000 AIR",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2467.6668746878227,
+		"fy": 2471.0734517146457,
+		"cx": 1948.7009130437596,
+		"cy": 1062.296909755
+	},
+	"distortion_coeffs": [
+		-0.12518021228950887,
+		-0.0044969080109743724,
+		0.0009530533714510418,
+		0.005287780020698687
+	],
+	"metadata": {
+		"calibrated_by": "OOg Images",
+		"source": "gyroflow",
+		"official": true
+	}
+}

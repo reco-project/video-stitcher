@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z6--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "28.mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1524.5779522567968,
+		"fy": 1524.4235520400478,
+		"cx": 972.9224055452833,
+		"cy": 537.0737606023199
+	},
+	"distortion_coeffs": [
+		0.3657434283661782,
+		-0.027611658576503845,
+		0.498482740752337,
+		-0.4001215778421954
+	],
+	"metadata": {
+		"calibrated_by": "Darryl Irving",
+		"source": "gyroflow",
+		"official": true
+	}
+}

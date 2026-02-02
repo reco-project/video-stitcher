@@ -1,0 +1,29 @@
+{
+	"id": "insta360-oner--low-eis--1920x1080",
+	"camera_brand": "Insta360",
+	"camera_model": "OneR",
+	"lens_model": "Ultrawide 110",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1065.9964075874518,
+		"fy": 1065.134492320296,
+		"cx": 960.8029921122568,
+		"cy": 532.8429556227644
+	},
+	"distortion_coeffs": [
+		0.10295980234755188,
+		-0.014535467513769832,
+		0.027235524329053143,
+		-0.018039859167633086
+	],
+	"metadata": {
+		"calibrated_by": "\u949f\u6587\u797a",
+		"notes": "LOW EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

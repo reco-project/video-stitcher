@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-11--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 11",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3172.263805189514,
+		"fy": 3175.0634901174076,
+		"cx": 1898.036183986514,
+		"cy": 1049.5422322754157
+	},
+	"distortion_coeffs": [
+		0.4271291240640504,
+		0.24633483585975993,
+		0.16315858227085822,
+		-2.248529309770132
+	],
+	"metadata": {
+		"calibrated_by": "hanyu ding",
+		"source": "gyroflow",
+		"official": true
+	}
+}

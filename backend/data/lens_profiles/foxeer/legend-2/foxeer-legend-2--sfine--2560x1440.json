@@ -1,0 +1,29 @@
+{
+	"id": "foxeer-legend-2--sfine--2560x1440",
+	"camera_brand": "Foxeer",
+	"camera_model": "Legend 2+",
+	"lens_model": "12MP",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1298.6089369775118,
+		"fy": 1296.9035941007676,
+		"cx": 1306.682733068569,
+		"cy": 711.8909754473414
+	},
+	"distortion_coeffs": [
+		-0.04777776893236351,
+		0.006919360661920983,
+		-0.00471194441140434,
+		0.0003918947198988018
+	],
+	"metadata": {
+		"calibrated_by": "Giuseppe",
+		"notes": "SFine",
+		"source": "gyroflow",
+		"official": true
+	}
+}

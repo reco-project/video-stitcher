@@ -1,0 +1,28 @@
+{
+	"id": "canon-800d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "800D",
+	"lens_model": "50/1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 21881.29134503575,
+		"fy": 20679.598917988456,
+		"cx": 1020.9996764516326,
+		"cy": 601.7249583297466
+	},
+	"distortion_coeffs": [
+		9.771089255060453,
+		-7844.672113972477,
+		4506761.644495501,
+		-892947859.9385141
+	],
+	"metadata": {
+		"calibrated_by": "\u848b\u653f\u6587",
+		"source": "gyroflow",
+		"official": true
+	}
+}

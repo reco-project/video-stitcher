@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d4--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D4",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1751.054269241644,
+		"fy": 1716.2010132544042,
+		"cx": 925.8786022560912,
+		"cy": 661.879343584075
+	},
+	"distortion_coeffs": [
+		0.39651150225186266,
+		-1.5200119266046734,
+		11.279364703945202,
+		-23.657070010768592
+	],
+	"metadata": {
+		"calibrated_by": "Zhang,Liang(GZ,RSD_ M)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

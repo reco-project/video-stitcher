@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-10t--3840x2176",
+	"camera_brand": "Xiaomi",
+	"camera_model": "M\u0130 10T",
+	"lens_model": "26MM",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3413.7323167882428,
+		"fy": 3406.322245674796,
+		"cx": 1929.3914993774044,
+		"cy": 1076.6554125689154
+	},
+	"distortion_coeffs": [
+		0.5300354641820795,
+		-1.6216522583297346,
+		9.433464735553432,
+		-17.476122663619442
+	],
+	"metadata": {
+		"calibrated_by": "mehmet ekici",
+		"source": "gyroflow",
+		"official": true
+	}
+}

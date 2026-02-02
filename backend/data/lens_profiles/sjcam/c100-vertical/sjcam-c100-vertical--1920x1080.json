@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-c100-vertical--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "c100+ Vertical",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1307.032163746777,
+		"fy": 1306.0111199992596,
+		"cx": 993.38956245436,
+		"cy": 550.9721417056982
+	},
+	"distortion_coeffs": [
+		-0.06965891807781596,
+		0.8307503797339081,
+		-9.221441553388368,
+		32.253913651961625
+	],
+	"metadata": {
+		"calibrated_by": "Panda DLor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

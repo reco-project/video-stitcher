@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rii--test-calibration-1--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rII",
+	"lens_model": "Laowa 9mm f4.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1512.42809671726,
+		"fy": 1511.0967194150016,
+		"cx": 1920.0,
+		"cy": 1080.0
+	},
+	"distortion_coeffs": [
+		0.2925032279743776,
+		0.12208083479511037,
+		0.11020599708293433,
+		-0.0449827421626115
+	],
+	"metadata": {
+		"calibrated_by": "WPF",
+		"notes": "Test Calibration-1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

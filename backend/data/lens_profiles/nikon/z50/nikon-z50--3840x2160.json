@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z50--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z50",
+	"lens_model": "Z DX 18-140",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4047.1248928743785,
+		"fy": 4050.837112135084,
+		"cx": 1911.280689877174,
+		"cy": 1061.6101519400966
+	},
+	"distortion_coeffs": [
+		0.3183751034360663,
+		0.1448040269049979,
+		2.8275312432635187,
+		-10.589013469311576
+	],
+	"metadata": {
+		"calibrated_by": "- GUASR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

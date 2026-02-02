@@ -1,0 +1,28 @@
+{
+	"id": "happymodel-mobula7-hd--1920x1080",
+	"camera_brand": "Happymodel",
+	"camera_model": "Mobula7 HD",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 785.2786173570094,
+		"fy": 785.0975095485563,
+		"cx": 945.3537489095291,
+		"cy": 515.426961468892
+	},
+	"distortion_coeffs": [
+		-0.0301052622372925,
+		0.0513021327331713,
+		-0.02315742010927999,
+		0.0014567001981514334
+	],
+	"metadata": {
+		"calibrated_by": "Meik Dangmann",
+		"source": "gyroflow",
+		"official": true
+	}
+}

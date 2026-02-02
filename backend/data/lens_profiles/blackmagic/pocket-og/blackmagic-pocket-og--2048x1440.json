@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-og--2048x1440",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket (OG)",
+	"lens_model": "Arriflex Zeiss S16 9.5",
+	"resolution": {
+		"width": 2048,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1645.4252116064729,
+		"fy": 1643.1409699746885,
+		"cx": 1028.9219931221016,
+		"cy": 701.5869702549171
+	},
+	"distortion_coeffs": [
+		0.14634087679505742,
+		0.2898256090849745,
+		0.020843760699587943,
+		0.30841536550046666
+	],
+	"metadata": {
+		"calibrated_by": "SALOME",
+		"source": "gyroflow",
+		"official": true
+	}
+}

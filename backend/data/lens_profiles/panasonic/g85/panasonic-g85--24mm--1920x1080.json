@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-g85--24mm--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "G85",
+	"lens_model": "12-60mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2645.7256446842116,
+		"fy": 2642.432266532522,
+		"cx": 985.7088532740178,
+		"cy": 546.7661124205565
+	},
+	"distortion_coeffs": [
+		0.34401382734257335,
+		-0.20616653842579008,
+		0.6030587666328664,
+		9.34662458182683
+	],
+	"metadata": {
+		"calibrated_by": "Ponchollman hollman",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

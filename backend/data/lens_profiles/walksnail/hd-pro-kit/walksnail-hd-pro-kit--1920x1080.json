@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-hd-pro-kit--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "HD Pro kit",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 935.3939323333592,
+		"fy": 934.2672087818634,
+		"cx": 955.5143236972532,
+		"cy": 513.9245517321203
+	},
+	"distortion_coeffs": [
+		-0.03817311058820049,
+		0.02516179054103001,
+		-0.036065386971740554,
+		0.014329048010418037
+	],
+	"metadata": {
+		"calibrated_by": "Hermes",
+		"source": "gyroflow",
+		"official": true
+	}
+}

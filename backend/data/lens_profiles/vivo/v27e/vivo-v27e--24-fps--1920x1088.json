@@ -1,0 +1,29 @@
+{
+	"id": "vivo-v27e--24-fps--1920x1088",
+	"camera_brand": "VIVO",
+	"camera_model": "v27e",
+	"lens_model": "Custom",
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1809.5499021127296,
+		"fy": 1804.3335056406163,
+		"cx": 964.8654479109828,
+		"cy": 538.0991279203629
+	},
+	"distortion_coeffs": [
+		0.4085128013231427,
+		1.3085413719389083,
+		-6.711313243229197,
+		4.534584694772307
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0435\u0439 \u041b\u043e\u0431\u0430\u043d\u043e\u0432",
+		"notes": "24 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

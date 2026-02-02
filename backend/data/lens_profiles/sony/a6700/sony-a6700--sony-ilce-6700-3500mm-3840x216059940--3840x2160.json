@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--sony-ilce-6700-3500mm-3840x216059940--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6013.781136534401,
+		"fy": 6009.314675356551,
+		"cx": 1898.038349518235,
+		"cy": 1040.3166262738005
+	},
+	"distortion_coeffs": [
+		0.34211361956307806,
+		0.04813929880057144,
+		10.453449786337496,
+		-100.4170189466156
+	],
+	"metadata": {
+		"calibrated_by": "Mehmet Kozal",
+		"notes": "sony-ilce-6700-35.00mm-3840x2160@59940",
+		"source": "gyroflow",
+		"official": true
+	}
+}

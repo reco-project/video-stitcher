@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-11--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "11",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2396.1057291403445,
+		"fy": 2411.7998392493437,
+		"cx": 1946.355385062027,
+		"cy": 1037.7609735352569
+	},
+	"distortion_coeffs": [
+		0.28395980086820083,
+		0.04135296845475706,
+		0.18825047849012305,
+		-0.031246437831706275
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r5--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "Tamron 24-70 f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1298.8739483748082,
+		"fy": 1298.724695810061,
+		"cx": 949.4136867924908,
+		"cy": 534.212089413012
+	},
+	"distortion_coeffs": [
+		0.21017325686674385,
+		-0.014124674181525796,
+		0.3864110056350968,
+		-0.10696103154826284
+	],
+	"metadata": {
+		"calibrated_by": "Frederik Vermeulen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

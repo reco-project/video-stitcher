@@ -1,0 +1,28 @@
+{
+	"id": "canon-rebel-t7--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "rebel t7",
+	"lens_model": "18-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1592.813308656196,
+		"fy": 1592.1686396948116,
+		"cx": 962.6003297989978,
+		"cy": 535.8455752368782
+	},
+	"distortion_coeffs": [
+		0.1570980449137288,
+		0.08645021829162791,
+		0.7024352437658863,
+		-1.1499166251596622
+	],
+	"metadata": {
+		"calibrated_by": "cody anderson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--50mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "EF 24-70mm 2.8L USM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5114.368126674823,
+		"fy": 5115.274697371153,
+		"cx": 1927.7291690802624,
+		"cy": 1069.1449745839166
+	},
+	"distortion_coeffs": [
+		0.23009550438290732,
+		5.064218919596737,
+		-81.75639472521831,
+		457.29963457803206
+	],
+	"metadata": {
+		"calibrated_by": "Ken Fu",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

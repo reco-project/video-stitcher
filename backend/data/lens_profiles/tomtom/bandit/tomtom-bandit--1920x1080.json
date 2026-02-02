@@ -1,0 +1,28 @@
+{
+	"id": "tomtom-bandit--1920x1080",
+	"camera_brand": "TomTom",
+	"camera_model": "Bandit",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 982.0137181531982,
+		"fy": 989.2887085281216,
+		"cx": 970.1613710883807,
+		"cy": 527.2173686226805
+	},
+	"distortion_coeffs": [
+		0.01099075475644998,
+		-0.10088272028258856,
+		0.19087710088640772,
+		-0.10243565869572616
+	],
+	"metadata": {
+		"calibrated_by": "Artem Sanarov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

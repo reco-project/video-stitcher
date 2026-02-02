@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--35mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Rokinon CAF35 T1.9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4604.693566925574,
+		"fy": 4605.921405751443,
+		"cx": 1963.1555375749967,
+		"cy": 1096.1848876766894
+	},
+	"distortion_coeffs": [
+		0.26182055187762987,
+		1.4043416020188844,
+		-9.33811239117632,
+		22.881911760847448
+	],
+	"metadata": {
+		"calibrated_by": "Kaos",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

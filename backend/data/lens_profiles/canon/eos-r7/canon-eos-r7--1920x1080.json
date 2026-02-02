@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r7--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R7",
+	"lens_model": "RF 24-105mm F4 L IS USM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2077.6413038200976,
+		"fy": 2083.9271764207833,
+		"cx": 891.3567750688592,
+		"cy": 544.0303104326915
+	},
+	"distortion_coeffs": [
+		0.20078302408241183,
+		0.7166499513395915,
+		-3.689260822497093,
+		8.466018676052233
+	],
+	"metadata": {
+		"calibrated_by": "Rosggy Albert Otero Valdiviezo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

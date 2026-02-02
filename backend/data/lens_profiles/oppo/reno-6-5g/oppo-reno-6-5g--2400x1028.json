@@ -1,0 +1,28 @@
+{
+	"id": "oppo-reno-6-5g--2400x1028",
+	"camera_brand": "Oppo",
+	"camera_model": "Reno 6 5G",
+	"lens_model": "Main lens",
+	"resolution": {
+		"width": 2400,
+		"height": 1028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1786.4005561699958,
+		"fy": 1785.422691318715,
+		"cx": 1223.8861835093355,
+		"cy": 507.1066008849379
+	},
+	"distortion_coeffs": [
+		0.28026990667018004,
+		0.9141741181326248,
+		-2.012170506913621,
+		1.037215700366842
+	],
+	"metadata": {
+		"calibrated_by": "Principale",
+		"source": "gyroflow",
+		"official": true
+	}
+}

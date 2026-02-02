@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero4-session--60fps--1920x1080",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4 Session",
+	"lens_model": "GRAN ANGULAR",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 839.191069426164,
+		"fy": 836.9049150958153,
+		"cx": 985.8554324283672,
+		"cy": 534.4165375619356
+	},
+	"distortion_coeffs": [
+		0.1223568343078489,
+		-0.09545406010105614,
+		0.05400952183887239,
+		0.053870424826883374
+	],
+	"metadata": {
+		"calibrated_by": "G.Molina2",
+		"notes": "60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

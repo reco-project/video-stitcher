@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-s6--6244x4168",
+	"camera_brand": "Z CAM",
+	"camera_model": "S6",
+	"lens_model": "Laowa 9mm",
+	"resolution": {
+		"width": 6244,
+		"height": 4168
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2459.2184701037913,
+		"fy": 2455.958678870341,
+		"cx": 3106.549468751847,
+		"cy": 2089.2083436460875
+	},
+	"distortion_coeffs": [
+		0.3386038116409315,
+		0.1367814961329076,
+		-0.02204391878764956,
+		0.08659093902280995
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

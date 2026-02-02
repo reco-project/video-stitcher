@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--tamron-35-150mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3803.323941799416,
+		"fy": 3804.1868788148777,
+		"cx": 1921.8641710278644,
+		"cy": 1021.9485297529308
+	},
+	"distortion_coeffs": [
+		0.32886927566121843,
+		-0.0024181833717700687,
+		1.8061024486620296,
+		-5.912986074433159
+	],
+	"metadata": {
+		"calibrated_by": "DALTON",
+		"notes": "Tamron 35-150mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

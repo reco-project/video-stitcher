@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--samyang-14mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF14mm f/2.8L II USM 14.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2310.2587398887827,
+		"fy": 2310.053766128562,
+		"cx": 3078.4125902795913,
+		"cy": 1638.4643099272794
+	},
+	"distortion_coeffs": [
+		0.25076483343617956,
+		0.2232030361921189,
+		-0.1832967219323013,
+		0.19317644356205793
+	],
+	"metadata": {
+		"calibrated_by": "Subae Haitham",
+		"notes": "Samyang 14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

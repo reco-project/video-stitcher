@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--25305060-fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Laowa 9mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1013.3991529064064,
+		"fy": 989.3349964495936,
+		"cx": 1914.5964063653976,
+		"cy": 1067.8094763150857
+	},
+	"distortion_coeffs": [
+		0.3330186075161041,
+		0.13260904026160605,
+		-0.03245978516523232,
+		0.10775259802768784
+	],
+	"metadata": {
+		"calibrated_by": "Leon Knarr",
+		"notes": "25/30/50/60 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

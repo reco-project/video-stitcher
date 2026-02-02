@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--1250--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sigma 56 1.4 art",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14506.94836874569,
+		"fy": 14677.768873235282,
+		"cx": 1915.1705922625504,
+		"cy": 1118.7510634858893
+	},
+	"distortion_coeffs": [
+		2.518110423894417,
+		88.10834322959155,
+		-8166.042755115163,
+		286277.85197172227
+	],
+	"metadata": {
+		"calibrated_by": "JY-Lee",
+		"notes": "1/250",
+		"source": "gyroflow",
+		"official": true
+	}
+}

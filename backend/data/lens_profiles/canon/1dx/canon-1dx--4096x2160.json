@@ -1,0 +1,28 @@
+{
+	"id": "canon-1dx--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "1DX",
+	"lens_model": "24-35",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2624.5890155748443,
+		"fy": 2621.8650026325854,
+		"cx": 1873.193432855244,
+		"cy": 1119.1855365335614
+	},
+	"distortion_coeffs": [
+		0.3055223502365962,
+		-0.015165826622228106,
+		0.3438592997993456,
+		-0.28605128174432565
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043d\u0434\u0440\u0435\u0439",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--50mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "tamron 2875g2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5880.986069237469,
+		"fy": 5881.218256304454,
+		"cx": 1855.8948627254904,
+		"cy": 1018.7273580149856
+	},
+	"distortion_coeffs": [
+		0.3984876411235907,
+		-0.5363501345473445,
+		-4.083916169450248,
+		47.12151570347324
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

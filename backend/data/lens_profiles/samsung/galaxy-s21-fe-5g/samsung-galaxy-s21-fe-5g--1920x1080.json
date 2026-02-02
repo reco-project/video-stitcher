@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s21-fe-5g--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S21 FE 5G",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1419.21791582927,
+		"fy": 1418.5482732795426,
+		"cx": 932.566955541302,
+		"cy": 519.094751841098
+	},
+	"distortion_coeffs": [
+		0.33642303352292535,
+		0.2210575942976548,
+		0.0014616638684808111,
+		-0.2817000799771412
+	],
+	"metadata": {
+		"calibrated_by": "Johann Friesen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

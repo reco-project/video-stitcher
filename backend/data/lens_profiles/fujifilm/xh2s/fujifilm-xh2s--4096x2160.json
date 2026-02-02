@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh2s--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XH2s",
+	"lens_model": "16-55 2.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6263.888996279489,
+		"fy": 6265.97468180446,
+		"cx": 2096.6528945816685,
+		"cy": 897.5176646275136
+	},
+	"distortion_coeffs": [
+		0.1717779963739429,
+		3.789037015646505,
+		-45.76256814654403,
+		215.6105636795288
+	],
+	"metadata": {
+		"calibrated_by": "Ravi Hosseini",
+		"source": "gyroflow",
+		"official": true
+	}
+}

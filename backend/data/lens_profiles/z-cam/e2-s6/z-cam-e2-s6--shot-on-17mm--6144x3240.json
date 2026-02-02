@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-s6--shot-on-17mm--6144x3240",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-S6",
+	"lens_model": "Canon L 17-40",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4572.193789071562,
+		"fy": 4582.339575533352,
+		"cx": 3053.949303527625,
+		"cy": 1633.0624095303197
+	},
+	"distortion_coeffs": [
+		0.22214739143729395,
+		0.17699165299834876,
+		-0.11086197707297776,
+		0.18409034465637128
+	],
+	"metadata": {
+		"calibrated_by": "Agus Lorenzo",
+		"notes": "Shot on 17mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

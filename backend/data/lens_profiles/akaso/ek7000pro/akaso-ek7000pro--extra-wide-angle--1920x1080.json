@@ -1,0 +1,29 @@
+{
+	"id": "akaso-ek7000pro--extra-wide-angle--1920x1080",
+	"camera_brand": "AKASO",
+	"camera_model": "EK7000Pro",
+	"lens_model": "Wide Angle",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1927.0211366404371,
+		"fy": 1931.9818308862289,
+		"cx": 956.0789706406716,
+		"cy": 539.2664672947466
+	},
+	"distortion_coeffs": [
+		-0.13617437407980187,
+		0.13261276731888236,
+		-1.948035005647765,
+		4.577319016054247
+	],
+	"metadata": {
+		"calibrated_by": "Gregor Deubel",
+		"notes": "Extra wide Angle",
+		"source": "gyroflow",
+		"official": true
+	}
+}

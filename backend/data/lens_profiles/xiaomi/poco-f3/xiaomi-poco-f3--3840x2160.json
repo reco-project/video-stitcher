@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-poco-f3--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Poco f3",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3592.0419188172627,
+		"fy": 3591.3912923352304,
+		"cx": 1939.1374121835345,
+		"cy": 1076.5616009279406
+	},
+	"distortion_coeffs": [
+		0.5841322645890296,
+		-2.3732209979486822,
+		14.775536412706373,
+		-29.67647206347014
+	],
+	"metadata": {
+		"calibrated_by": "U0 A238",
+		"source": "gyroflow",
+		"official": true
+	}
+}

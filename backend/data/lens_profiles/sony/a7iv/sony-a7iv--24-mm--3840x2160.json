@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--24-mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Samyang 24.-70 mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2706.862952876597,
+		"fy": 2705.121255422486,
+		"cx": 1912.419971966794,
+		"cy": 1092.6929719788025
+	},
+	"distortion_coeffs": [
+		0.1815272999596579,
+		0.14845255303972008,
+		0.02337944646255564,
+		0.17080717656997085
+	],
+	"metadata": {
+		"calibrated_by": "Abhinav Raina",
+		"notes": "24 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

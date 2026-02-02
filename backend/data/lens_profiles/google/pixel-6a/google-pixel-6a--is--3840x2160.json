@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-6a--is--3840x2160",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 6a",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3740.026419068472,
+		"fy": 3738.926368347219,
+		"cx": 1889.837442481079,
+		"cy": 957.0044273360144
+	},
+	"distortion_coeffs": [
+		0.46226189047054866,
+		-0.16796557721600064,
+		-2.694256020273446,
+		10.439664506110253
+	],
+	"metadata": {
+		"calibrated_by": "U0 A336",
+		"notes": "Is",
+		"source": "gyroflow",
+		"official": true
+	}
+}

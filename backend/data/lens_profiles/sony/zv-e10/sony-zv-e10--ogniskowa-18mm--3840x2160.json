@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--ogniskowa-18mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 18-50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3963.2900780420214,
+		"fy": 3955.3437356244167,
+		"cx": 1902.7853641486988,
+		"cy": 1114.7931983459882
+	},
+	"distortion_coeffs": [
+		0.21444492190911937,
+		-0.12564219633837173,
+		-1.3054112099375814,
+		7.243780452585816
+	],
+	"metadata": {
+		"calibrated_by": "Dawid Pietruszewski",
+		"notes": "ogniskowa 18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

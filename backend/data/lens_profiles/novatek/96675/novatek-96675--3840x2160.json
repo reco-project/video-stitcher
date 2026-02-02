@@ -1,0 +1,28 @@
+{
+	"id": "novatek-96675--3840x2160",
+	"camera_brand": "Novatek",
+	"camera_model": "96675",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3317.6566436305457,
+		"fy": 3315.011766700172,
+		"cx": 1914.5791812303896,
+		"cy": 1141.9006351128296
+	},
+	"distortion_coeffs": [
+		0.45572411294114223,
+		-0.33204625412659283,
+		-1.8700260325773632,
+		3.644309559458375
+	],
+	"metadata": {
+		"calibrated_by": "\u9ed1\u732b",
+		"source": "gyroflow",
+		"official": true
+	}
+}

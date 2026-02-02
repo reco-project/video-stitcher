@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-nord-n10--1920x1080",
+	"camera_brand": "OnePlus",
+	"camera_model": "Nord N10",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1782.631718560088,
+		"fy": 1782.7744254893942,
+		"cx": 941.0199858169163,
+		"cy": 541.0914874191418
+	},
+	"distortion_coeffs": [
+		0.368573803492445,
+		1.1653917731730197,
+		-8.923470719314462,
+		24.43683404729252
+	],
+	"metadata": {
+		"calibrated_by": "Minhaz M",
+		"source": "gyroflow",
+		"official": true
+	}
+}

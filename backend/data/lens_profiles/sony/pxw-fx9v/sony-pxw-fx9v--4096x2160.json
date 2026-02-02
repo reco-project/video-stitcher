@@ -2,7 +2,7 @@
 	"id": "sony-pxw-fx9v--4096x2160",
 	"camera_brand": "Sony",
 	"camera_model": "PXW-FX9V",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 4096,
 		"height": 2160
@@ -21,13 +21,8 @@
 		-2.003141695684496
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Sony_PXW-FX9V___C4k_1.90by1_4096x2160-25.00fps",
 		"calibrated_by": "Haichao Gu",
-		"original_resolution": "4096x2160",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

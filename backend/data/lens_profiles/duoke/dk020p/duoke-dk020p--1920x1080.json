@@ -1,0 +1,28 @@
+{
+	"id": "duoke-dk020p--1920x1080",
+	"camera_brand": "duoke",
+	"camera_model": "DK020p",
+	"lens_model": "xxx",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1450.3741269156342,
+		"fy": 1450.8301918182888,
+		"cx": 968.7585787375776,
+		"cy": 538.1781463654273
+	},
+	"distortion_coeffs": [
+		0.6666923205858198,
+		-2.2796979045225916,
+		8.152124470130893,
+		-10.352123302423632
+	],
+	"metadata": {
+		"calibrated_by": "\u5f20\u73ae",
+		"source": "gyroflow",
+		"official": true
+	}
+}

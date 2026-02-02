@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--50mm-w-speedbooster--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Sigma 50-100",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4625.27144694308,
+		"fy": 4638.306310802695,
+		"cx": 770.4320322999704,
+		"cy": 546.6690980396401
+	},
+	"distortion_coeffs": [
+		-0.10793233668635074,
+		10.81983452290886,
+		-228.07562636499185,
+		1792.1055398297844
+	],
+	"metadata": {
+		"calibrated_by": "Benjamin YUNG",
+		"notes": "50mm w Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

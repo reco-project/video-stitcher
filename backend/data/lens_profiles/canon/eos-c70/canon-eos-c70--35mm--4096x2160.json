@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-c70--35mm--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS C70",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5381.213987262096,
+		"fy": 5382.953600094022,
+		"cx": 2052.9495565393645,
+		"cy": 1020.7114722147692
+	},
+	"distortion_coeffs": [
+		0.264311998734798,
+		0.16954757407605217,
+		-0.8177549076507861,
+		6.7662584919746545
+	],
+	"metadata": {
+		"calibrated_by": "DIFP Tyler",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

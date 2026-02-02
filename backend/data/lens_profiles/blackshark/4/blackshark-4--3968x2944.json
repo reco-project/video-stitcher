@@ -1,0 +1,28 @@
+{
+	"id": "blackshark-4--3968x2944",
+	"camera_brand": "Blackshark",
+	"camera_model": "4",
+	"lens_model": "26mm main",
+	"resolution": {
+		"width": 3968,
+		"height": 2944
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2939.325952502111,
+		"fy": 2938.41439858002,
+		"cx": 1998.1485312646191,
+		"cy": 1474.469762505728
+	},
+	"distortion_coeffs": [
+		0.504572729352428,
+		-1.1326883422994585,
+		6.270492222275075,
+		-10.8585203223347
+	],
+	"metadata": {
+		"calibrated_by": "U0 A236",
+		"source": "gyroflow",
+		"official": true
+	}
+}

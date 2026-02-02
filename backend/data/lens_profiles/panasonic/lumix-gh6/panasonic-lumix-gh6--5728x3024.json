@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh6--5728x3024",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH6",
+	"lens_model": "10-25",
+	"resolution": {
+		"width": 5728,
+		"height": 3024
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3399.943039194234,
+		"fy": 3400.403705752195,
+		"cx": 2851.7672025043116,
+		"cy": 1514.8035092973407
+	},
+	"distortion_coeffs": [
+		0.30773558106526716,
+		0.08981807668242467,
+		0.08449666169589995,
+		-0.018512495247081383
+	],
+	"metadata": {
+		"calibrated_by": "Pierre Gu\u00e9guen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

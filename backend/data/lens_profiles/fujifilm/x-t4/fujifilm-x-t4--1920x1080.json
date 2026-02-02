@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t4--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T4",
+	"lens_model": "Viltrox 13mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1096.136988383373,
+		"fy": 1095.6649116938463,
+		"cx": 962.574983414435,
+		"cy": 539.3470132049127
+	},
+	"distortion_coeffs": [
+		0.26936221844092906,
+		0.2545838207230264,
+		-0.2363259384629208,
+		0.358765428517265
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0430\u043d\u0434\u0440 \u0421\u0435\u043d\u0430\u0442\u043e\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

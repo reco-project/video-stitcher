@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-200d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 200d",
+	"lens_model": "efs 18-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1375.7845020782668,
+		"fy": 1375.082734685962,
+		"cx": 960.9830230580152,
+		"cy": 530.4140295402674
+	},
+	"distortion_coeffs": [
+		0.19213678858606284,
+		0.26224684128074177,
+		-0.6758361639054974,
+		1.1779018189002983
+	],
+	"metadata": {
+		"calibrated_by": "\u8881\u6c38\u8fdc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

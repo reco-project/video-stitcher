@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-m4--3696x2772",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Olympus M.Zuiko 12mm f2.0 MFT",
+	"resolution": {
+		"width": 3696,
+		"height": 2772
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2656.804740505627,
+		"fy": 2656.045435506179,
+		"cx": 1886.9279511389384,
+		"cy": 1410.752573026634
+	},
+	"distortion_coeffs": [
+		0.22533430115349692,
+		-0.17695651304074686,
+		0.6404751742331841,
+		-0.6779530169359577
+	],
+	"metadata": {
+		"calibrated_by": "Riccardo Domenichini",
+		"source": "gyroflow",
+		"official": true
+	}
+}

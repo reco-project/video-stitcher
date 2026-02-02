@@ -1,0 +1,28 @@
+{
+	"id": "poco-f3-stab-off--1920x1080",
+	"camera_brand": "POCO",
+	"camera_model": "f3 stab off",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1458.0393220142414,
+		"fy": 1448.6611336668454,
+		"cx": 960.9575834832966,
+		"cy": 556.0209554716148
+	},
+	"distortion_coeffs": [
+		0.7732304539046339,
+		-6.57159718389981,
+		52.73494310760122,
+		-149.17805634154163
+	],
+	"metadata": {
+		"calibrated_by": "U0 A54",
+		"source": "gyroflow",
+		"official": true
+	}
+}

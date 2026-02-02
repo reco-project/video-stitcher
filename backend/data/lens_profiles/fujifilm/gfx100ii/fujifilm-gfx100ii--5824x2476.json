@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-gfx100ii--5824x2476",
+	"camera_brand": "Fujifilm",
+	"camera_model": "GFX100ii",
+	"lens_model": "45-100",
+	"resolution": {
+		"width": 5824,
+		"height": 2476
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9092.688197246393,
+		"fy": 9134.330198215814,
+		"cx": 2452.229050689583,
+		"cy": 933.0084212784508
+	},
+	"distortion_coeffs": [
+		0.32163799546242,
+		0.9884188951376264,
+		-20.420639700594272,
+		101.13812841374704
+	],
+	"metadata": {
+		"calibrated_by": "chada",
+		"source": "gyroflow",
+		"official": true
+	}
+}

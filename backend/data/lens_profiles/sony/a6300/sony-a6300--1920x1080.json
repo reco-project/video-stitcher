@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6300--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Sigma 30mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2605.173732663359,
+		"fy": 2600.787378283109,
+		"cx": 912.980518138482,
+		"cy": 532.0024516089821
+	},
+	"distortion_coeffs": [
+		0.3291708610259301,
+		-1.343223168800394,
+		14.196295635089063,
+		-59.631204480066366
+	],
+	"metadata": {
+		"calibrated_by": "Alfariz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

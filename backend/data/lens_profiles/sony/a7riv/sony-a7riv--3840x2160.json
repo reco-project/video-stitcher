@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7riv--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rIV",
+	"lens_model": "Sony 85F14GM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15171.812124295058,
+		"fy": 15294.064833847777,
+		"cx": 2993.1574757503013,
+		"cy": 486.2132606138153
+	},
+	"distortion_coeffs": [
+		0.20370786311390393,
+		16.9228157055477,
+		-842.5682888379981,
+		14307.761876086584
+	],
+	"metadata": {
+		"calibrated_by": "Jeffery Chuang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

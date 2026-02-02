@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-3-lite-caddx-turtle-2--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "split 3 lite caddx turtle 2",
+	"lens_model": "caddx",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 801.4919805656863,
+		"fy": 801.2036740802912,
+		"cx": 942.4289934718146,
+		"cy": 508.4029550327356
+	},
+	"distortion_coeffs": [
+		-0.03680663696919033,
+		0.05934085337876092,
+		-0.0363208578462666,
+		0.009459439902950869
+	],
+	"metadata": {
+		"calibrated_by": "JUSTZ_GARAGE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

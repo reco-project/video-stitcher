@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p30-pro--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "P30 PRO",
+	"lens_model": "Wide Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1064.2143898501567,
+		"fy": 1063.6505210896594,
+		"cx": 955.6359000402448,
+		"cy": 533.3568770588522
+	},
+	"distortion_coeffs": [
+		0.40292719085336787,
+		-0.5378604511755163,
+		2.163170421068569,
+		-1.8437718492899675
+	],
+	"metadata": {
+		"calibrated_by": "Vlad Rodrig",
+		"source": "gyroflow",
+		"official": true
+	}
+}

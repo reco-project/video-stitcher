@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2--3840x1920",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "Lumix 14mm f2.5",
+	"resolution": {
+		"width": 3840,
+		"height": 1920
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2863.512128058873,
+		"fy": 2864.2859993794623,
+		"cx": 1938.0287709267377,
+		"cy": 973.1616395600396
+	},
+	"distortion_coeffs": [
+		0.08294704579707335,
+		0.2552140329129164,
+		-0.7106162371610062,
+		0.8669682352021825
+	],
+	"metadata": {
+		"calibrated_by": "mike",
+		"source": "gyroflow",
+		"official": true
+	}
+}

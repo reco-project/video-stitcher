@@ -1,0 +1,29 @@
+{
+	"id": "insta360-oner--no-eis--4000x3000",
+	"camera_brand": "Insta360",
+	"camera_model": "OneR",
+	"lens_model": "4k",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1941.7390115207572,
+		"fy": 1899.5084328779335,
+		"cx": 1954.70380498073,
+		"cy": 1492.2073647580587
+	},
+	"distortion_coeffs": [
+		0.000714239894429176,
+		0.0037326711186858657,
+		-0.008924635770644682,
+		0.002997604420073629
+	],
+	"metadata": {
+		"calibrated_by": "Tim Arnold",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

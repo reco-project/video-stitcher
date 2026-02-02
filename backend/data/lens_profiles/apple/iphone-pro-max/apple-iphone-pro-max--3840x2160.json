@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-pro-max--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone Pro max",
+	"lens_model": "0.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1685.1210364317233,
+		"fy": 1684.2274367739049,
+		"cx": 1913.8509742357007,
+		"cy": 1075.5433748352136
+	},
+	"distortion_coeffs": [
+		0.3568531310235611,
+		0.01131235706975347,
+		0.27862671909884423,
+		-0.11913125400214108
+	],
+	"metadata": {
+		"calibrated_by": "\u5f20\u4fca\u6770",
+		"source": "gyroflow",
+		"official": true
+	}
+}

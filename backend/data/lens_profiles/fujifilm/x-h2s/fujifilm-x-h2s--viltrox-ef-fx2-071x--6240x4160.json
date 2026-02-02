@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-h2s--viltrox-ef-fx2-071x--6240x4160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2s",
+	"lens_model": "Canon EF 17-40mm f/4L USM",
+	"resolution": {
+		"width": 6240,
+		"height": 4160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3292.1087977111633,
+		"fy": 3292.0725388086876,
+		"cx": 3156.2387236557693,
+		"cy": 1957.0874018569468
+	},
+	"distortion_coeffs": [
+		0.19589083586622769,
+		0.20829770387225616,
+		-0.24278461239776655,
+		0.3481000309551085
+	],
+	"metadata": {
+		"calibrated_by": "jaime augusto",
+		"notes": "Viltrox EF-FX2 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

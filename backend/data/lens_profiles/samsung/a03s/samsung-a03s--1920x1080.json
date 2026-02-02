@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a03s--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A03s",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1524.8051113081135,
+		"fy": 1517.9963461387672,
+		"cx": 971.757225192384,
+		"cy": 563.2553392408602
+	},
+	"distortion_coeffs": [
+		0.5275236545614702,
+		-0.6240218199602422,
+		1.5600819796134673,
+		-1.3475587021523832
+	],
+	"metadata": {
+		"calibrated_by": "AMPA",
+		"source": "gyroflow",
+		"official": true
+	}
+}

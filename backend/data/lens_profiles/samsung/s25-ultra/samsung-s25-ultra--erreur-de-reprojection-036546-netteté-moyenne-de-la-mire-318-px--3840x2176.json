@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s25-ultra--erreur-de-reprojection-036546-nettet\u00e9-moyenne-de-la-mire-318-px--3840x2176",
+	"camera_brand": "Samsung",
+	"camera_model": "S25 Ultra",
+	"lens_model": "23mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2673.7565971668323,
+		"fy": 2675.6311307430137,
+		"cx": 1906.6368326432125,
+		"cy": 1102.185094479155
+	},
+	"distortion_coeffs": [
+		0.5780805129112,
+		-1.190587397275088,
+		3.867219655632807,
+		-4.052892675140983
+	],
+	"metadata": {
+		"calibrated_by": "Arnaud Fonteix",
+		"notes": "Erreur de reprojection: 0,36546 Nettet\u00e9 moyenne de la mire: 3,18 px",
+		"source": "gyroflow",
+		"official": true
+	}
+}

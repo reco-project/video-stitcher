@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt3--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT3",
+	"lens_model": "Canon FD 85mm 1.8 + Metabones Speedbooster",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15284.87106493976,
+		"fy": 15313.784081572234,
+		"cx": 2223.436486883384,
+		"cy": 905.4880245604508
+	},
+	"distortion_coeffs": [
+		-0.1906770730515078,
+		23.13429060622552,
+		-56.609829359911934,
+		-12643.499005165842
+	],
+	"metadata": {
+		"calibrated_by": "Vehera Danylo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rv--35mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rV",
+	"lens_model": "tamron 35-150mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4082.4220857378536,
+		"fy": 4082.52727159962,
+		"cx": 1989.0638262303155,
+		"cy": 994.7182946066484
+	},
+	"distortion_coeffs": [
+		0.2546872445175882,
+		0.2919291584126947,
+		-0.5878846747065788,
+		1.6482609434834226
+	],
+	"metadata": {
+		"calibrated_by": "calvin Ng",
+		"notes": "@35MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

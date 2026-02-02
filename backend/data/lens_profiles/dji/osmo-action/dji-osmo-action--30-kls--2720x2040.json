@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action--30-kls--2720x2040",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action",
+	"lens_model": null,
+	"resolution": {
+		"width": 2720,
+		"height": 2040
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1326.333766119532,
+		"fy": 1326.3689899747478,
+		"cx": 1352.4065988353034,
+		"cy": 1026.1836852880772
+	},
+	"distortion_coeffs": [
+		0.23414834239319532,
+		0.42809533370039016,
+		-0.32333940886921436,
+		0.31493628270273544
+	],
+	"metadata": {
+		"calibrated_by": "Pawe\u0142 Weinert",
+		"notes": "30 Kl/s",
+		"source": "gyroflow",
+		"official": true
+	}
+}

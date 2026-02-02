@@ -1,0 +1,28 @@
+{
+	"id": "h7s-v50-pro--3840x2160",
+	"camera_brand": "H7S",
+	"camera_model": "V50 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1988.1496489344183,
+		"fy": 1985.558340324591,
+		"cx": 1966.953267817874,
+		"cy": 1040.1871511921445
+	},
+	"distortion_coeffs": [
+		-0.04099263379325405,
+		0.04477449075439551,
+		-0.027912306142220924,
+		0.018958475243316876
+	],
+	"metadata": {
+		"calibrated_by": "Home",
+		"source": "gyroflow",
+		"official": true
+	}
+}

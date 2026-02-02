@@ -1,0 +1,28 @@
+{
+	"id": "nokia-1020--1920x1080",
+	"camera_brand": "Nokia",
+	"camera_model": "1020",
+	"lens_model": "PureView",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1402.513958730748,
+		"fy": 1402.5015967483776,
+		"cx": 905.5518798360376,
+		"cy": 464.2025333783336
+	},
+	"distortion_coeffs": [
+		0.3648305891880005,
+		0.052325170085116245,
+		1.3787023961045657,
+		-3.2125321402477938
+	],
+	"metadata": {
+		"calibrated_by": "SF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

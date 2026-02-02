@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-a71--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A71",
+	"lens_model": "Main Cam 26mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1398.3564294208677,
+		"fy": 1397.5028902315364,
+		"cx": 976.7524268738968,
+		"cy": 542.1226961291875
+	},
+	"distortion_coeffs": [
+		0.5599599087496736,
+		-0.7424977735640341,
+		1.634182354633254,
+		-0.8435558661452816
+	],
+	"metadata": {
+		"calibrated_by": "Kenneth Wong",
+		"source": "gyroflow",
+		"official": true
+	}
+}

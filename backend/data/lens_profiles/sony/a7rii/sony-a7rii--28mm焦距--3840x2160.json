@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rii--28mm\u7126\u8ddd--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7RII",
+	"lens_model": "Tamron 28-200 F/2.8-5.6 Di III RXD",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3039.492996192101,
+		"fy": 3038.9296089053923,
+		"cx": 1930.7734253738872,
+		"cy": 1065.3955380332338
+	},
+	"distortion_coeffs": [
+		0.24120552522958252,
+		0.34976147593000023,
+		-0.7019960401127738,
+		1.0112631768362117
+	],
+	"metadata": {
+		"calibrated_by": "moqianmei",
+		"notes": "28mm\u7126\u8ddd",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--24fps--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Canon 24-105mm f/4 Viltox Speed Booster 0.71x @ 24mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3547.109674761011,
+		"fy": 3548.592272668958,
+		"cx": 2048.404553614217,
+		"cy": 1080.1317274312892
+	},
+	"distortion_coeffs": [
+		0.16065163273060584,
+		0.5564233732297595,
+		-1.7223270235845836,
+		2.587879669930215
+	],
+	"metadata": {
+		"calibrated_by": "Newpz Creative",
+		"notes": "24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

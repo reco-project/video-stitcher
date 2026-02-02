@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2m4--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2M4",
+	"lens_model": "LAOWA 17MM F1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3736.290657050111,
+		"fy": 3738.739557756274,
+		"cx": 2005.4054282728375,
+		"cy": 1064.538909151696
+	},
+	"distortion_coeffs": [
+		0.19440940209049024,
+		0.28206974343762936,
+		-0.6105384348566739,
+		1.1518210286173791
+	],
+	"metadata": {
+		"calibrated_by": "sulingfeng",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-2013-first-model--12mm--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera (2013 first model)",
+	"lens_model": "Lumix 12-35mm f2.8 I (H-HS12035)",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1904.6348054079513,
+		"fy": 1905.2549643652576,
+		"cx": 971.7365380348448,
+		"cy": 541.9005191816482
+	},
+	"distortion_coeffs": [
+		0.1373380403011699,
+		-0.29673010374886566,
+		3.295267853146534,
+		-8.713835011322779
+	],
+	"metadata": {
+		"calibrated_by": "Tom.my",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

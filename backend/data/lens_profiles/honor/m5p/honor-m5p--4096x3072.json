@@ -1,0 +1,28 @@
+{
+	"id": "honor-m5p--4096x3072",
+	"camera_brand": "Honor",
+	"camera_model": "M5P",
+	"lens_model": "94mm",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11753.093688115488,
+		"fy": 11766.467657578469,
+		"cx": 2014.9705593199735,
+		"cy": 1616.7838769816494
+	},
+	"distortion_coeffs": [
+		0.48492257172129527,
+		25.88754618841306,
+		-909.0943150182987,
+		11868.624228054849
+	],
+	"metadata": {
+		"calibrated_by": "Raku",
+		"source": "gyroflow",
+		"official": true
+	}
+}

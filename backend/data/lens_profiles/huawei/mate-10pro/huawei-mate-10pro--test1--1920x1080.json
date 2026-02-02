@@ -1,0 +1,29 @@
+{
+	"id": "huawei-mate-10pro--test1--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "Mate 10Pro",
+	"lens_model": "Leica",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2028.5622051286643,
+		"fy": 2027.00396337121,
+		"cx": 954.0448494832186,
+		"cy": 538.7703168010045
+	},
+	"distortion_coeffs": [
+		0.6073512574790862,
+		-1.7093416024844958,
+		1.440914930014327,
+		13.848879410919409
+	],
+	"metadata": {
+		"calibrated_by": "FiredFPV",
+		"notes": "Test1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

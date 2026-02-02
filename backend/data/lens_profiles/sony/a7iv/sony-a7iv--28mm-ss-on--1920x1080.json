@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--28mm-ss-on--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Tamron 28-75mm f2.8 G2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1589.3396318422913,
+		"fy": 1587.5340493400035,
+		"cx": 954.7501840250168,
+		"cy": 547.0276141144627
+	},
+	"distortion_coeffs": [
+		0.3291667959792395,
+		-0.09210265686938506,
+		1.417024125806686,
+		-2.393462232908623
+	],
+	"metadata": {
+		"calibrated_by": "Ahmad Faiz",
+		"notes": "@(28mm) SS On",
+		"source": "gyroflow",
+		"official": true
+	}
+}

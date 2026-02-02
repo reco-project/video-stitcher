@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--tamron28-75--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "28.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3051.5855364640843,
+		"fy": 3051.900823664559,
+		"cx": 1939.4387343102967,
+		"cy": 1078.920849942775
+	},
+	"distortion_coeffs": [
+		0.24005126399988697,
+		-0.0807293570719436,
+		0.5812650290912793,
+		-0.16670597645317156
+	],
+	"metadata": {
+		"calibrated_by": "Elvis Brin",
+		"notes": "tamron28-75",
+		"source": "gyroflow",
+		"official": true
+	}
+}

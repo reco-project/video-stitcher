@@ -1,0 +1,28 @@
+{
+	"id": "morecam-m9--2688x1512",
+	"camera_brand": "Morecam",
+	"camera_model": "M9",
+	"lens_model": "JK05",
+	"resolution": {
+		"width": 2688,
+		"height": 1512
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1520.511871425488,
+		"fy": 1522.16330494124,
+		"cx": 1375.1024111604925,
+		"cy": 737.231405361095
+	},
+	"distortion_coeffs": [
+		-0.05143156674452726,
+		-0.006694607934517422,
+		0.01219174351485222,
+		-0.004314996488120166
+	],
+	"metadata": {
+		"calibrated_by": "MORECAM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

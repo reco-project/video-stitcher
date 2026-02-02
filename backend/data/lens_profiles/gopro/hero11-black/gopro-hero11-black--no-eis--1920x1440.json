@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero11-black--no-eis--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO11 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 850.9258300101518,
+		"fy": 851.2297124259651,
+		"cx": 955.4606669132976,
+		"cy": 703.684385237145
+	},
+	"distortion_coeffs": [
+		0.04811393335542556,
+		0.014462655278865172,
+		0.015455756126129904,
+		-0.016796419293154025
+	],
+	"metadata": {
+		"calibrated_by": "Eric John Gangob",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

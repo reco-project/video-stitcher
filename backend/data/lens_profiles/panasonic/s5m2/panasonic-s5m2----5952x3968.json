@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5m2----5952x3968",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5m2",
+	"lens_model": "20-60mm @ 20mm",
+	"resolution": {
+		"width": 5952,
+		"height": 3968
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3396.326786470909,
+		"fy": 3394.2134405410516,
+		"cx": 2972.877783166693,
+		"cy": 1987.5292386304693
+	},
+	"distortion_coeffs": [
+		0.30295989063721157,
+		0.07477199929105331,
+		0.292537596420289,
+		-0.256711370977952
+	],
+	"metadata": {
+		"calibrated_by": "No.19FALCON",
+		"notes": "-",
+		"source": "gyroflow",
+		"official": true
+	}
+}

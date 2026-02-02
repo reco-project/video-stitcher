@@ -1,0 +1,28 @@
+{
+	"id": "xtu-s6--3840x2160",
+	"camera_brand": "XTU",
+	"camera_model": "S6",
+	"lens_model": "XTU/XTU_MaxPro_NO-LDC_4k30full_4k_16by9_3840x2160-29.97fps wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3198.2957201171957,
+		"fy": 2360.1355919143357,
+		"cx": 1858.9734955028791,
+		"cy": 1017.5263566564936
+	},
+	"distortion_coeffs": [
+		-0.3908441285626917,
+		0.2866507330604662,
+		-0.1563194639586613,
+		0.009726082601339378
+	],
+	"metadata": {
+		"calibrated_by": "\u6768\u535a\u97ec",
+		"source": "gyroflow",
+		"official": true
+	}
+}

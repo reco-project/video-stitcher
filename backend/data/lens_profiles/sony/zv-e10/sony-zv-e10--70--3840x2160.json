@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--70--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "70-180",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 30302.89240539451,
+		"fy": 32845.34284070175,
+		"cx": 2137.0373924818427,
+		"cy": 490.80520731904915
+	},
+	"distortion_coeffs": [
+		0.2376453424369647,
+		-108.86196069714298,
+		73092.78395167498,
+		-7825535.097171457
+	],
+	"metadata": {
+		"calibrated_by": "\u9093\u5ddd",
+		"notes": "70",
+		"source": "gyroflow",
+		"official": true
+	}
+}

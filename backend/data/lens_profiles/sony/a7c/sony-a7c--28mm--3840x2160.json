@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--28mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sigma 28-70 f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3020.454576662029,
+		"fy": 3021.3513396687604,
+		"cx": 1914.651471277706,
+		"cy": 1052.533175586486
+	},
+	"distortion_coeffs": [
+		0.3184642904733569,
+		0.19632999066168472,
+		0.007616189891906331,
+		-0.33341783410963294
+	],
+	"metadata": {
+		"calibrated_by": "Oliver Diec",
+		"notes": "28mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

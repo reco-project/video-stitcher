@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-a30--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A30",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1394.7166172970758,
+		"fy": 1394.6636419400177,
+		"cx": 957.8549731776052,
+		"cy": 559.6409436804277
+	},
+	"distortion_coeffs": [
+		0.6253380953471587,
+		-1.5945101911249375,
+		5.160246409763523,
+		-5.957361155045867
+	],
+	"metadata": {
+		"calibrated_by": "C\u00e9sar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

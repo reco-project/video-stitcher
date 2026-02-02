@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-4k--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "Split 4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 775.0406028923405,
+		"fy": 706.0819981525193,
+		"cx": 1887.4202930809663,
+		"cy": 1021.9365312027604
+	},
+	"distortion_coeffs": [
+		0.2280648161492687,
+		0.2304701861962435,
+		-0.17151203645460175,
+		0.0946773729077219
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Zhou",
+		"source": "gyroflow",
+		"official": true
+	}
+}

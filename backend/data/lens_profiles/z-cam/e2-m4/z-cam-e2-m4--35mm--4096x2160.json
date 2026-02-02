@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--35mm--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "SIRUI Nightwalker 35mm T1.2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7128.086397629199,
+		"fy": 7141.657352411986,
+		"cx": 2033.48934571082,
+		"cy": 1056.6169049425598
+	},
+	"distortion_coeffs": [
+		0.10411286993978222,
+		8.687731180931083,
+		-159.4431942364846,
+		1024.9809087640708
+	],
+	"metadata": {
+		"calibrated_by": "Dylan",
+		"notes": "35MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

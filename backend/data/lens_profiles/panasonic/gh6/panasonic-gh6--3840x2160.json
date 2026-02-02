@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh6--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "12-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2819.444094567614,
+		"fy": 2756.0803258911874,
+		"cx": 1988.5287608675765,
+		"cy": 1053.104010623605
+	},
+	"distortion_coeffs": [
+		0.2855161113890564,
+		0.08508332715578601,
+		-0.06203489824741552,
+		0.36858446287052743
+	],
+	"metadata": {
+		"calibrated_by": "Max Kruse",
+		"source": "gyroflow",
+		"official": true
+	}
+}

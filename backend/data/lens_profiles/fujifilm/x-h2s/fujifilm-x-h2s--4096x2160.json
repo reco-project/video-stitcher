@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-h2s--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2S",
+	"lens_model": "DZ35mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4509.158738244962,
+		"fy": 4507.406300782741,
+		"cx": 2061.85571732445,
+		"cy": 1079.0810885728647
+	},
+	"distortion_coeffs": [
+		0.1268084329359315,
+		-0.2040015383186747,
+		2.968491192406147,
+		-2.938285512496472
+	],
+	"metadata": {
+		"calibrated_by": "apple",
+		"source": "gyroflow",
+		"official": true
+	}
+}

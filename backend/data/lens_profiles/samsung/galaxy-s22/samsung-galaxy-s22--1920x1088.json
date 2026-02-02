@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s22--1920x1088",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S22",
+	"lens_model": "24mm F1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1088
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1267.548929210249,
+		"fy": 1277.5164349633883,
+		"cx": 950.0818546428976,
+		"cy": 529.4106625601969
+	},
+	"distortion_coeffs": [
+		0.4370291744091485,
+		-0.18822413765368165,
+		0.8580108263827376,
+		-0.8240743534895542
+	],
+	"metadata": {
+		"calibrated_by": "Felipe Yamahata",
+		"source": "gyroflow",
+		"official": true
+	}
+}

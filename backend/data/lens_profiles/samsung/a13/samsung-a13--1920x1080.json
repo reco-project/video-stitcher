@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a13--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A13",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 799.5581755295348,
+		"fy": 799.5778187891902,
+		"cx": 982.823804896944,
+		"cy": 532.1515299469837
+	},
+	"distortion_coeffs": [
+		0.41410834189174894,
+		0.18151753724052505,
+		-0.4553056319122358,
+		0.5070227765401558
+	],
+	"metadata": {
+		"calibrated_by": "TrollFix666",
+		"source": "gyroflow",
+		"official": true
+	}
+}

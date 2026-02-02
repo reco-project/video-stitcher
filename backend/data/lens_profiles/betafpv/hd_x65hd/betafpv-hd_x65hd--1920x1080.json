@@ -1,0 +1,28 @@
+{
+	"id": "betafpv-hd_x65hd--1920x1080",
+	"camera_brand": "BETAFPV",
+	"camera_model": "HD_X65HD",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 834.7625889687638,
+		"fy": 835.5859318775372,
+		"cx": 955.6366491783822,
+		"cy": 534.9807104513727
+	},
+	"distortion_coeffs": [
+		0.00800279878362301,
+		-0.0865395149453271,
+		0.028958528614587316,
+		0.04192402737968397
+	],
+	"metadata": {
+		"calibrated_by": "Robert Wolfgang Lange",
+		"source": "gyroflow",
+		"official": true
+	}
+}

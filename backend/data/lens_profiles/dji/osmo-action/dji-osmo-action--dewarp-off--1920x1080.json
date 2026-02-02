@@ -1,0 +1,29 @@
+{
+	"id": "dji-osmo-action--dewarp-off--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action",
+	"lens_model": "F2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 865.0092802242557,
+		"fy": 864.605727702915,
+		"cx": 986.8176282464124,
+		"cy": 555.4807920358957
+	},
+	"distortion_coeffs": [
+		0.23087161165509584,
+		0.3777212682194538,
+		-0.2233483235844675,
+		0.198895223444572
+	],
+	"metadata": {
+		"calibrated_by": "Deepak M",
+		"notes": "Dewarp OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

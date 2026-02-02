@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-s52x--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "LUMIX S52x",
+	"lens_model": "Sigma f1.4 30mm DC DN",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2490.8654675699454,
+		"fy": 2434.7691566799476,
+		"cx": 973.9547062616346,
+		"cy": 524.2215677342633
+	},
+	"distortion_coeffs": [
+		0.2842848815132339,
+		1.3401402591584264,
+		-10.026678674508997,
+		35.56505007235156
+	],
+	"metadata": {
+		"calibrated_by": "darran thompson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

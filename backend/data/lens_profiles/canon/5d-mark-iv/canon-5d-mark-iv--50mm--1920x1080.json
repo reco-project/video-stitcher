@@ -1,0 +1,29 @@
+{
+	"id": "canon-5d-mark-iv--50mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark IV",
+	"lens_model": "Sigma 50-100mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3606.102364089072,
+		"fy": 3607.196344595384,
+		"cx": 955.0749119112296,
+		"cy": 496.42289403258445
+	},
+	"distortion_coeffs": [
+		0.210710128472818,
+		7.800701524186827,
+		-116.72008331161264,
+		980.2041006217204
+	],
+	"metadata": {
+		"calibrated_by": "Motion Unit ltd",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

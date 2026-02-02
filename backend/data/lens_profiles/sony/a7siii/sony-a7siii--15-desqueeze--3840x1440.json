@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--15-desqueeze--3840x1440",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Sirui anamorphic 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7062.372915224846,
+		"fy": 7322.241935405468,
+		"cx": 2069.7480533015455,
+		"cy": 842.4269252772556
+	},
+	"distortion_coeffs": [
+		-0.2101457538651533,
+		29.618371525706753,
+		-491.26385506152945,
+		2721.498612473518
+	],
+	"metadata": {
+		"calibrated_by": "Peter Moss",
+		"notes": "1.5 desqueeze",
+		"source": "gyroflow",
+		"official": true
+	}
+}

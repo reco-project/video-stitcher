@@ -1,0 +1,28 @@
+{
+	"id": "canon-rp--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "RP",
+	"lens_model": "tamron 70-300",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11075.398502384904,
+		"fy": 11066.573520836197,
+		"cx": 1009.3365419832342,
+		"cy": 861.6844451092815
+	},
+	"distortion_coeffs": [
+		0.3802017626268741,
+		-17.630698184987992,
+		9785.7290105905,
+		-280260.4958926877
+	],
+	"metadata": {
+		"calibrated_by": "platg",
+		"source": "gyroflow",
+		"official": true
+	}
+}

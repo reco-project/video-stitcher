@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-6k--12288x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Atlas Orion 100mm@T5.6",
+	"resolution": {
+		"width": 12288,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 21138.109077341353,
+		"fy": 21152.329430283662,
+		"cx": 7852.193728614907,
+		"cy": 1575.7524954572482
+	},
+	"distortion_coeffs": [
+		-0.15831519882090897,
+		2.8245769226472115,
+		-6.195420047602585,
+		-27.186759339158208
+	],
+	"metadata": {
+		"calibrated_by": "SCAN2FX",
+		"source": "gyroflow",
+		"official": true
+	}
+}

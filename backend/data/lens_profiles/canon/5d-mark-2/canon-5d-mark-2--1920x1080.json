@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d-mark-2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D mark 2",
+	"lens_model": "50-2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2972.6330276213343,
+		"fy": 2966.64446221005,
+		"cx": 1047.289619349827,
+		"cy": 549.6228317512656
+	},
+	"distortion_coeffs": [
+		0.05867675491506357,
+		3.684550545676311,
+		-26.067077954296035,
+		-24.546293319789484
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

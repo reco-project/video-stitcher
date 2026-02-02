@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-og--proreshq--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket OG",
+	"lens_model": "Laowa 7.5mm F2.0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1183.94334998543,
+		"fy": 1182.9800808218272,
+		"cx": 962.5280872782048,
+		"cy": 540.3965393498812
+	},
+	"distortion_coeffs": [
+		0.3316100962499869,
+		0.12317535845077324,
+		-0.0952371859400694,
+		0.17730592886019722
+	],
+	"metadata": {
+		"calibrated_by": "Axel Depinois",
+		"notes": "ProresHQ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

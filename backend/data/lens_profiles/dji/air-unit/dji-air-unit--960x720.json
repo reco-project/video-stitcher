@@ -1,33 +1,28 @@
 {
 	"id": "dji-air-unit--960x720",
-	"camera_brand": "Dji",
+	"camera_brand": "DJI",
 	"camera_model": "Air Unit",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 960,
 		"height": 720
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 446.9768712026954,
-		"fy": 446.4856172922742,
-		"cx": 467.06259939465855,
-		"cy": 354.55416951075955
+		"fx": 452.3592267821134,
+		"fy": 451.9342267682045,
+		"cx": 488.00184451072175,
+		"cy": 372.0195807192044
 	},
 	"distortion_coeffs": [
-		0.024453454119941626,
-		0.02442248358629997,
-		-0.027079980606308656,
-		0.011870782781579398
+		0.027821922055849657,
+		-0.007987831551397779,
+		0.02490745459372285,
+		-0.01470244450489216
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "Dji_Air Unit___480p_4by3_960x720-60.00fps",
-		"calibrated_by": "PraewVee",
-		"original_resolution": "960x720",
-		"calibrated_fps": "60.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"calibrated_by": "Leo Barua",
+		"source": "gyroflow",
+		"official": true
 	}
 }

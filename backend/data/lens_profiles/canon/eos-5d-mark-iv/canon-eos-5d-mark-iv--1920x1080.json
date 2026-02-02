@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-5d-mark-iv--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 5D Mark IV",
+	"lens_model": "Canon EF 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4954.370113897937,
+		"fy": 4957.395864866216,
+		"cx": 949.1049861422912,
+		"cy": 482.72839399413346
+	},
+	"distortion_coeffs": [
+		0.2090946536366211,
+		25.945112771885857,
+		-1008.9422235213964,
+		11727.920765442708
+	],
+	"metadata": {
+		"calibrated_by": "\u0420\u0435\u0434\u044c\u043a\u0438 \u041c\u043e\u043b\u0435\u043a\u0443\u043b\u0430",
+		"source": "gyroflow",
+		"official": true
+	}
+}

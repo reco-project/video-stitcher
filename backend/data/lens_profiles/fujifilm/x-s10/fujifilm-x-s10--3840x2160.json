@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-s10--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-S10",
+	"lens_model": "16 80",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2868.251162452843,
+		"fy": 2865.997949256422,
+		"cx": 1920.3903063118,
+		"cy": 1013.1731738403088
+	},
+	"distortion_coeffs": [
+		0.33206641100311934,
+		0.2609700441243376,
+		-0.5976670242400395,
+		1.275774572731187
+	],
+	"metadata": {
+		"calibrated_by": "LEOS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

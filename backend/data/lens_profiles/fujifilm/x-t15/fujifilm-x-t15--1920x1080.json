@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t15--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "x-T15",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1120.513473410272,
+		"fy": 1120.73232148008,
+		"cx": 889.0363179811451,
+		"cy": 428.5998835726199
+	},
+	"distortion_coeffs": [
+		-0.02407220746038841,
+		0.09178488590875256,
+		-0.2643058193153346,
+		0.2680796592802758
+	],
+	"metadata": {
+		"calibrated_by": "Andrey Olby",
+		"source": "gyroflow",
+		"official": true
+	}
+}

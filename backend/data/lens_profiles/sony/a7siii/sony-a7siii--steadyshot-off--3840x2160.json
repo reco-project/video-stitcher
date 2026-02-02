@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--steadyshot-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Carl Zeiss Jena Flektogon 25mm f4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2807.5331093299287,
+		"fy": 2809.1603154857166,
+		"cx": 1790.196440476807,
+		"cy": 1094.6229575376244
+	},
+	"distortion_coeffs": [
+		0.2558686767444424,
+		0.249549328140129,
+		-0.3618954144259172,
+		0.7763997095688644
+	],
+	"metadata": {
+		"calibrated_by": "Yoon Tae-Hun",
+		"notes": "Steadyshot OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

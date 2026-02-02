@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh6--calibrated-at-12mm--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH6",
+	"lens_model": "12-35mm f/2.8 II ASPH POWER OIS LUMIX G X VARIO",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1436.3034972985004,
+		"fy": 1438.3800485435738,
+		"cx": 942.2209980133832,
+		"cy": 530.8431242259733
+	},
+	"distortion_coeffs": [
+		0.27829882470810824,
+		0.2776982007223214,
+		-0.6755820964979838,
+		0.9753541299023232
+	],
+	"metadata": {
+		"calibrated_by": "Evanie Berio",
+		"notes": "Calibrated at 12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

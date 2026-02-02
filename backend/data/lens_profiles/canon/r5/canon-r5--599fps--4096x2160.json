@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--599fps--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "RF85mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9841.231961720348,
+		"fy": 9853.527076612096,
+		"cx": 2047.2522221958584,
+		"cy": 1044.734513910484
+	},
+	"distortion_coeffs": [
+		0.7143496284116941,
+		8.991876888768397,
+		-362.2841967977764,
+		3929.039317790797
+	],
+	"metadata": {
+		"calibrated_by": "Finley",
+		"notes": "59.9fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

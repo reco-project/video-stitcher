@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p30--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "P30",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1884.7356455959512,
+		"fy": 1882.2284174551544,
+		"cx": 969.2817204150042,
+		"cy": 542.4244357918454
+	},
+	"distortion_coeffs": [
+		0.5329554021367513,
+		-3.690083012745313,
+		32.87228330932323,
+		-91.483956030074
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

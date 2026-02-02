@@ -1,0 +1,28 @@
+{
+	"id": "red-v-raptor-8k-vv--8192x4320",
+	"camera_brand": "RED",
+	"camera_model": "V-RAPTOR 8K VV",
+	"lens_model": "RF35mm F1.8 MACRO IS STM 35.00mm",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7287.653494305085,
+		"fy": 7292.8495945946115,
+		"cx": 4072.125655945383,
+		"cy": 2175.2067435869817
+	},
+	"distortion_coeffs": [
+		0.26827195017536176,
+		0.1306959941887478,
+		-0.24173541785188676,
+		0.8942427493151546
+	],
+	"metadata": {
+		"calibrated_by": "Yeh chia chen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

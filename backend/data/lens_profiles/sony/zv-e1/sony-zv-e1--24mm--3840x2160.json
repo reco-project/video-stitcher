@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--24mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "EF 24-70/2.8L USM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2614.599206324982,
+		"fy": 2613.7957825512804,
+		"cx": 1910.941480564419,
+		"cy": 1082.441344723901
+	},
+	"distortion_coeffs": [
+		0.1714891556504403,
+		0.3402962513297527,
+		-0.9932677560110736,
+		1.8928819112509263
+	],
+	"metadata": {
+		"calibrated_by": "Ken Fu",
+		"notes": "@24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

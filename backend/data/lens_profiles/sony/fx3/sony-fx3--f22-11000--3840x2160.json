@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--f22-11000--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "35.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3928.7455909596406,
+		"fy": 3932.808614106536,
+		"cx": 1932.5231330292531,
+		"cy": 1029.1108890960704
+	},
+	"distortion_coeffs": [
+		0.2870803839949375,
+		1.0949929937520766,
+		-6.213348485167996,
+		14.406568134894735
+	],
+	"metadata": {
+		"calibrated_by": "Rayne",
+		"notes": "f2.2 1/1000",
+		"source": "gyroflow",
+		"official": true
+	}
+}

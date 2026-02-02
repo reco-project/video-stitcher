@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--28mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "28-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3094.068106088508,
+		"fy": 3091.2484021379664,
+		"cx": 1947.4088710859387,
+		"cy": 1065.7069668320337
+	},
+	"distortion_coeffs": [
+		0.3308712406201921,
+		-0.043343784996770184,
+		1.4468753532700165,
+		-2.706568472246144
+	],
+	"metadata": {
+		"calibrated_by": "123",
+		"notes": "28mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

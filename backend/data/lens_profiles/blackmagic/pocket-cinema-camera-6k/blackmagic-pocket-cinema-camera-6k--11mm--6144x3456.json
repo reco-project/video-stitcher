@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--11mm--6144x3456",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "Tokina 11-16 F2.8",
+	"resolution": {
+		"width": 6144,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2958.932469325381,
+		"fy": 2969.9869091821247,
+		"cx": 3065.6035154310803,
+		"cy": 1715.1277990330143
+	},
+	"distortion_coeffs": [
+		0.3320735567020103,
+		-0.025868466154758945,
+		0.31693394240872663,
+		-0.22368903069414897
+	],
+	"metadata": {
+		"calibrated_by": "Georgios Vamvounakis",
+		"notes": "11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--viltrox-speedbooster-071x--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Sigma Super Wide II 24mm f/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4202.083322987644,
+		"fy": 4203.241340412408,
+		"cx": 1922.2385581968151,
+		"cy": 949.7705478444282
+	},
+	"distortion_coeffs": [
+		0.12394000014064796,
+		0.6797119627453939,
+		-4.185364490013781,
+		11.382844395266051
+	],
+	"metadata": {
+		"calibrated_by": "Lilly Schwartz",
+		"notes": "Viltrox Speedbooster 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

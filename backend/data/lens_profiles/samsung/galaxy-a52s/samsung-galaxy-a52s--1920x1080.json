@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-a52s--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy A52s",
+	"lens_model": "Ultra Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 756.4836270811653,
+		"fy": 756.9559384353407,
+		"cx": 946.3562759556092,
+		"cy": 530.3735844589371
+	},
+	"distortion_coeffs": [
+		0.25532761970944434,
+		0.4935620794221301,
+		-0.6121932254336754,
+		0.37947103204443183
+	],
+	"metadata": {
+		"calibrated_by": "Nc Masters",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-thumb2--2592x1944",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Thumb2",
+	"lens_model": "Hawkeye/Thumb2K5_4_3_50fps.json",
+	"resolution": {
+		"width": 2592,
+		"height": 1944
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1431.827486837582,
+		"fy": 1433.5094151064925,
+		"cx": 1296.080827512837,
+		"cy": 968.7120115736228
+	},
+	"distortion_coeffs": [
+		-0.059697634044837446,
+		-0.02385918523729617,
+		0.019550988321051708,
+		-0.007151820219042154
+	],
+	"metadata": {
+		"calibrated_by": "\ucc9c\uc11c\uc9c4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

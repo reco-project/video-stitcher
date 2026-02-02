@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-hc-vx981k--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "HC-VX981K",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3096.6444448347656,
+		"fy": 3087.9991090479116,
+		"cx": 2044.2761094351272,
+		"cy": 1073.6589157188157
+	},
+	"distortion_coeffs": [
+		0.3615292036089253,
+		0.06506177873489218,
+		0.9282472163971958,
+		-3.318474643894599
+	],
+	"metadata": {
+		"calibrated_by": "Yoni",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "SAMYANG 14mm F2.8 fullsize",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2362.6347650431417,
+		"fy": 2362.288896410156,
+		"cx": 1954.47715249992,
+		"cy": 1055.4433754385238
+	},
+	"distortion_coeffs": [
+		0.1788688433977383,
+		0.21743179684417988,
+		-0.3767350865502785,
+		0.49313315353406434
+	],
+	"metadata": {
+		"calibrated_by": "Genki",
+		"source": "gyroflow",
+		"official": true
+	}
+}

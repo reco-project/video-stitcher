@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--same-as-rokinon-version-of-lens--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Samyang T3.1 14mm ED AS IF UMC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1544.5382196200294,
+		"fy": 1543.3914548399075,
+		"cx": 1986.7034929508577,
+		"cy": 1098.3074050348114
+	},
+	"distortion_coeffs": [
+		0.1835303105413157,
+		0.1669607763455682,
+		-0.13411227136400605,
+		0.20170132015495135
+	],
+	"metadata": {
+		"calibrated_by": "davideo",
+		"notes": "Same as Rokinon version of lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

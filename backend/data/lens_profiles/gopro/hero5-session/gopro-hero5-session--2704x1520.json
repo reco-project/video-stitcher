@@ -2,32 +2,27 @@
 	"id": "gopro-hero5-session--2704x1520",
 	"camera_brand": "GoPro",
 	"camera_model": "HERO5 Session",
-	"lens_model": "",
+	"lens_model": "Linear",
 	"resolution": {
 		"width": 2704,
 		"height": 1520
 	},
 	"distortion_model": "fisheye_kb4",
 	"camera_matrix": {
-		"fx": 1542.4617819804523,
-		"fy": 1542.7116262974646,
-		"cx": 1348.5555203333136,
-		"cy": 760.0977863592408
+		"fx": 1460.5983698837408,
+		"fy": 1455.5331934949995,
+		"cx": 1348.1544501868798,
+		"cy": 751.1810546345318
 	},
 	"distortion_coeffs": [
-		0.1183590001507092,
-		-0.05059584773113722,
-		0.017429467957900197,
-		-0.008290215517076994
+		0.13844064210279597,
+		1.1943702422599005,
+		-2.1438458146221184,
+		1.6884482180226952
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "GoPro_HERO5 Session__NO-EIS_2.7k_16by9_2704x1520-47.95fps",
-		"calibrated_by": "Steve",
-		"original_resolution": "2704x1520",
-		"calibrated_fps": "47.952049",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"calibrated_by": "Eddy",
+		"source": "gyroflow",
+		"official": true
 	}
 }

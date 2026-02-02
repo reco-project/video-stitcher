@@ -1,0 +1,29 @@
+{
+	"id": "evolio-ismart-4k--v160805--2704x1524",
+	"camera_brand": "Evolio",
+	"camera_model": "iSmart 4k",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1524
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1470.822608424785,
+		"fy": 1469.7963156850726,
+		"cx": 1307.9168129153702,
+		"cy": 915.83651461541
+	},
+	"distortion_coeffs": [
+		-0.010598759416786363,
+		-0.05018470086274672,
+		0.06091933915046176,
+		-0.03479281895871076
+	],
+	"metadata": {
+		"calibrated_by": "Daniel",
+		"notes": "v160805",
+		"source": "gyroflow",
+		"official": true
+	}
+}

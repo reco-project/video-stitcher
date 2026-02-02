@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--32mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Canon fd 28mm (32mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11534.916462084604,
+		"fy": 11559.449194285811,
+		"cx": 2747.7165520280314,
+		"cy": 1304.154830910308
+	},
+	"distortion_coeffs": [
+		0.3492359369350741,
+		-15.745199570745497,
+		525.190383227652,
+		-5429.431288748068
+	],
+	"metadata": {
+		"calibrated_by": "Matteo Molino",
+		"notes": "32mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

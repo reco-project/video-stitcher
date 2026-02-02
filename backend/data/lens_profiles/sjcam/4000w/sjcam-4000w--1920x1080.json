@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-4000w--1920x1080",
+	"camera_brand": "SJCam",
+	"camera_model": "4000W",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1300.112976949133,
+		"fy": 1322.7865970046132,
+		"cx": 964.5324636828284,
+		"cy": 652.0180923368207
+	},
+	"distortion_coeffs": [
+		0.01828762445447767,
+		-0.4083951529972253,
+		1.5654146563928943,
+		-1.7731903314259423
+	],
+	"metadata": {
+		"calibrated_by": "Weider",
+		"source": "gyroflow",
+		"official": true
+	}
+}

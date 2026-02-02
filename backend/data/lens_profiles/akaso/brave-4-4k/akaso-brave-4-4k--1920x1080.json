@@ -1,0 +1,28 @@
+{
+	"id": "akaso-brave-4-4k--1920x1080",
+	"camera_brand": "AKASO",
+	"camera_model": "Brave 4 4k",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 993.4754572576368,
+		"fy": 997.9258329302586,
+		"cx": 871.9352451825114,
+		"cy": 509.8156288829955
+	},
+	"distortion_coeffs": [
+		-0.02441835624260007,
+		0.09062832463605187,
+		0.03652549344745044,
+		-0.05343112241754899
+	],
+	"metadata": {
+		"calibrated_by": "Alex Laspro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

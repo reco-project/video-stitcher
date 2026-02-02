@@ -1,0 +1,29 @@
+{
+	"id": "realme-6--h264-50-mbit--1920x1080",
+	"camera_brand": "Realme",
+	"camera_model": "6",
+	"lens_model": "\u041e\u0441\u043d\u043e\u0432\u043d\u0430\u044f",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2060.9765698415326,
+		"fy": 2060.0001667463407,
+		"cx": 997.168477445234,
+		"cy": 616.2880035281858
+	},
+	"distortion_coeffs": [
+		0.36018622989330346,
+		1.2537511223426,
+		-8.533494738898048,
+		19.038804382796176
+	],
+	"metadata": {
+		"calibrated_by": "\u0421\u0435\u0440\u0433\u0435\u0439",
+		"notes": "H264 50 Mbit",
+		"source": "gyroflow",
+		"official": true
+	}
+}

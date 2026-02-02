@@ -1,0 +1,29 @@
+{
+	"id": "canon-5d-mark-iv--100mm-f18--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark IV",
+	"lens_model": "Sigma 50-100mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8980.59198215374,
+		"fy": 8965.84873528736,
+		"cx": 969.0911962853804,
+		"cy": 526.9397587169456
+	},
+	"distortion_coeffs": [
+		3.407963166416734,
+		20.358218533420004,
+		13986.337638066738,
+		-605428.4257252595
+	],
+	"metadata": {
+		"calibrated_by": "Motion Unit ltd",
+		"notes": "100mm f1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

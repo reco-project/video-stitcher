@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-bgh1--12mm--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "BGH1",
+	"lens_model": "Lumix 12-35",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2716.374998098346,
+		"fy": 2686.366026224363,
+		"cx": 2034.699335844699,
+		"cy": 1093.346353168602
+	},
+	"distortion_coeffs": [
+		0.31669170071648434,
+		0.14764527314436812,
+		-0.2015437943402527,
+		0.48142734555277583
+	],
+	"metadata": {
+		"calibrated_by": "Paul Nurkkala",
+		"notes": "12mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

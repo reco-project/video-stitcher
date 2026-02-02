@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m6ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M6II",
+	"lens_model": "18MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1772.2256916247316,
+		"fy": 1779.4286537292917,
+		"cx": 974.6591353725804,
+		"cy": 531.538102721485
+	},
+	"distortion_coeffs": [
+		0.18931642077528477,
+		-0.21903626116079303,
+		1.8497913677709097,
+		-3.2674229407912785
+	],
+	"metadata": {
+		"calibrated_by": "\u5510\u6d69\u948f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

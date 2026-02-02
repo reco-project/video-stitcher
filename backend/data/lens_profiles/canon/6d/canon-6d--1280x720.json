@@ -1,0 +1,28 @@
+{
+	"id": "canon-6d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "6D",
+	"lens_model": "canon 24-105",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1227.1965424895743,
+		"fy": 1226.2340334815715,
+		"cx": 617.6415555558619,
+		"cy": 361.2247290453716
+	},
+	"distortion_coeffs": [
+		0.41132548320504736,
+		-0.8056664268248833,
+		6.1196577634169325,
+		-12.285647641567142
+	],
+	"metadata": {
+		"calibrated_by": "vince wuoley",
+		"source": "gyroflow",
+		"official": true
+	}
+}

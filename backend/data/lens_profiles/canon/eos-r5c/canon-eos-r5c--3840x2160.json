@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r5c--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5c",
+	"lens_model": "Laowa 14mm F2,0 Zero-D",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1652.5797570557331,
+		"fy": 1653.1895294418748,
+		"cx": 1915.5427174417268,
+		"cy": 1072.1612858423568
+	},
+	"distortion_coeffs": [
+		0.334986059273084,
+		0.1053055724636376,
+		0.02583066578864205,
+		0.05722584929072865
+	],
+	"metadata": {
+		"calibrated_by": "YeomPD",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "runcam-if-gocam--1920x1440",
+	"camera_brand": "RunCam",
+	"camera_model": "IF Gocam",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 834.7499423296061,
+		"fy": 834.0008948835815,
+		"cx": 960.0,
+		"cy": 720.0
+	},
+	"distortion_coeffs": [
+		0.030155123955112925,
+		0.0827730306901797,
+		-0.08671263270160201,
+		0.035020071918984035
+	],
+	"metadata": {
+		"calibrated_by": "Elvin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

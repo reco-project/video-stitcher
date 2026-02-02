@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero11-black--hs-boost--5312x2988",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO11 Black",
+	"lens_model": "Narrow",
+	"resolution": {
+		"width": 5312,
+		"height": 2988
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4199.003792542436,
+		"fy": 4202.053060386534,
+		"cx": 2670.8819728828366,
+		"cy": 1515.5508142566412
+	},
+	"distortion_coeffs": [
+		0.3710195365814009,
+		0.23950452982383968,
+		-1.3372525074281392,
+		2.932727395526418
+	],
+	"metadata": {
+		"calibrated_by": "\u041f\u0430\u0432\u0435\u043b \u041f\u044f\u0442\u0438\u0433\u043e\u0440\u0441\u043a\u0438\u0439",
+		"notes": "HS Boost",
+		"source": "gyroflow",
+		"official": true
+	}
+}

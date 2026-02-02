@@ -1,0 +1,29 @@
+{
+	"id": "foxeer-box--25-fps--2704x2028",
+	"camera_brand": "Foxeer",
+	"camera_model": "box",
+	"lens_model": "v1",
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1188.3747957926105,
+		"fy": 1189.6796569702065,
+		"cx": 1321.0760184838518,
+		"cy": 975.7515826851886
+	},
+	"distortion_coeffs": [
+		0.06705036754444338,
+		-0.000574575517970206,
+		0.004599054792859402,
+		-0.0017684061330700796
+	],
+	"metadata": {
+		"calibrated_by": "Martin K",
+		"notes": "25 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

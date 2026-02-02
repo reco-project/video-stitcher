@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--rolling_shutter_36ms--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "Sigma_16_mm_f1,4_DC_DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2681.8865671740846,
+		"fy": 2685.0876127091715,
+		"cx": 1916.1137009943084,
+		"cy": 1032.68079537884
+	},
+	"distortion_coeffs": [
+		0.3311919999638063,
+		0.004908450779074618,
+		0.49385396213890936,
+		-0.47803751056140387
+	],
+	"metadata": {
+		"calibrated_by": "udmurd",
+		"notes": "rolling_shutter_36ms",
+		"source": "gyroflow",
+		"official": true
+	}
+}

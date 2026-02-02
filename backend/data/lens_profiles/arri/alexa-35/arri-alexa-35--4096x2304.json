@@ -1,0 +1,28 @@
+{
+	"id": "arri-alexa-35--4096x2304",
+	"camera_brand": "Arri",
+	"camera_model": "Alexa 35",
+	"lens_model": "Ultra Prime 24mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2304
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3898.384011769415,
+		"fy": 3897.856194607633,
+		"cx": 2060.6726644524756,
+		"cy": 1153.9022269055367
+	},
+	"distortion_coeffs": [
+		0.18638553065409355,
+		0.23435912043092252,
+		-0.011406749729043904,
+		0.5554573154291361
+	],
+	"metadata": {
+		"calibrated_by": "Bernhard Russow",
+		"source": "gyroflow",
+		"official": true
+	}
+}

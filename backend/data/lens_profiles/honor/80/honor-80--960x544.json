@@ -1,0 +1,28 @@
+{
+	"id": "honor-80--960x544",
+	"camera_brand": "Honor",
+	"camera_model": "80",
+	"lens_model": "27",
+	"resolution": {
+		"width": 960,
+		"height": 544
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 941.29232182332,
+		"fy": 941.2241268692882,
+		"cx": 480.62224034037433,
+		"cy": 272.9942751509919
+	},
+	"distortion_coeffs": [
+		0.6081386417975513,
+		-2.4446974927587246,
+		11.205969312255451,
+		-17.1633242637836
+	],
+	"metadata": {
+		"calibrated_by": "han",
+		"source": "gyroflow",
+		"official": true
+	}
+}

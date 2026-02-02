@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-12r--3264x2432",
+	"camera_brand": "OnePlus",
+	"camera_model": "12r",
+	"lens_model": "17mm",
+	"resolution": {
+		"width": 3264,
+		"height": 2432
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1456.7698774381015,
+		"fy": 1464.8036351973976,
+		"cx": 1650.141246972948,
+		"cy": 1172.815288158536
+	},
+	"distortion_coeffs": [
+		0.33574516243082403,
+		-0.037214798782450355,
+		0.5258392927405231,
+		-0.3112946112691988
+	],
+	"metadata": {
+		"calibrated_by": "U0 A501",
+		"source": "gyroflow",
+		"official": true
+	}
+}

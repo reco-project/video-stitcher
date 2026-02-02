@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6700--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "18-105mm F4 OSS",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3620.4983296239297,
+		"fy": 3620.117690856885,
+		"cx": 1912.941849956836,
+		"cy": 1050.5351525541605
+	},
+	"distortion_coeffs": [
+		0.34958076314498,
+		-0.2641057492232661,
+		3.3612458509942753,
+		-8.359429679039112
+	],
+	"metadata": {
+		"calibrated_by": "WJ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

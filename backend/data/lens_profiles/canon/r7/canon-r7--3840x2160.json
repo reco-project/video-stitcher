@@ -1,0 +1,28 @@
+{
+	"id": "canon-r7--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R7",
+	"lens_model": "sigma 10-20",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1769.4281055743857,
+		"fy": 1776.1293716562975,
+		"cx": 1932.987635644686,
+		"cy": 1110.4089185894252
+	},
+	"distortion_coeffs": [
+		0.3181600647821811,
+		0.04746172644142724,
+		0.46085567003801886,
+		-0.4157677154404214
+	],
+	"metadata": {
+		"calibrated_by": "WangYingJie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

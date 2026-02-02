@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--tamron-28-75mm-g2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "28.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3676.8238219167024,
+		"fy": 3762.301352306387,
+		"cx": 1866.7939599740648,
+		"cy": 1062.2163613438772
+	},
+	"distortion_coeffs": [
+		0.25738661633425863,
+		0.950543737225998,
+		-4.4930986096906835,
+		8.874209667180752
+	],
+	"metadata": {
+		"calibrated_by": "\u8a31\u54f2\u5f70",
+		"notes": "tamron 28-75mm g2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

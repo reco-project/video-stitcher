@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-v2--1440x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "V2",
+	"lens_model": "Walksnail_Avatar_V2_Camera_1080p_4by3_60fps wide",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 663.0712192048632,
+		"fy": 662.4041142675761,
+		"cx": 743.4157583799139,
+		"cy": 535.421550342122
+	},
+	"distortion_coeffs": [
+		0.012406849480600918,
+		0.023040589267819177,
+		-0.022695888467285784,
+		0.008402275558057335
+	],
+	"metadata": {
+		"calibrated_by": "FodosFPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

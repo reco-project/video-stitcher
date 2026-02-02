@@ -1,0 +1,29 @@
+{
+	"id": "eachine-tx06-700tvl--mini-camera-fpv--1440x1080",
+	"camera_brand": "Eachine",
+	"camera_model": "TX06 700tvl",
+	"lens_model": "130\u00b0",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 579.7396392530732,
+		"fy": 547.0326487975823,
+		"cx": 815.7618710874394,
+		"cy": 445.81894852386233
+	},
+	"distortion_coeffs": [
+		0.4655139181760356,
+		0.5835234504805263,
+		-1.2101710888956794,
+		0.5964711066322292
+	],
+	"metadata": {
+		"calibrated_by": "Matheus Milonas",
+		"notes": "mini camera FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

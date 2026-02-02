@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--35--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Tamron 35-150",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8983.687457190948,
+		"fy": 9043.251136246769,
+		"cx": 1686.2986909035906,
+		"cy": 603.4251635288921
+	},
+	"distortion_coeffs": [
+		0.4851696463828172,
+		4.8407003571176395,
+		-169.8048035029331,
+		1145.4224212458037
+	],
+	"metadata": {
+		"calibrated_by": "NDA",
+		"notes": "35",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-15-pro--gyrocam-ios--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 15 Pro",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 734.7479179391029,
+		"fy": 734.5000964826091,
+		"cx": 959.9299560230116,
+		"cy": 536.2922864965449
+	},
+	"distortion_coeffs": [
+		0.2754306676493093,
+		0.15443165888177704,
+		0.32550330103781094,
+		-0.2724526812733646
+	],
+	"metadata": {
+		"calibrated_by": "BM",
+		"notes": "GyroCam iOS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

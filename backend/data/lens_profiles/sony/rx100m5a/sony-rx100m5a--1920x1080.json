@@ -1,0 +1,28 @@
+{
+	"id": "sony-rx100m5a--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX100M5A",
+	"lens_model": "T* 24-70mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1421.573498177397,
+		"fy": 1385.175964552346,
+		"cx": 976.0748872617328,
+		"cy": 534.3470663095434
+	},
+	"distortion_coeffs": [
+		0.3110810496306911,
+		0.42188764469676465,
+		-1.141941659956601,
+		1.5932021201801758
+	],
+	"metadata": {
+		"calibrated_by": "supinquan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

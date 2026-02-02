@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gx85--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GX85",
+	"lens_model": "7artisans 35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15737.104041898732,
+		"fy": 15478.122137449804,
+		"cx": 1865.6106156871003,
+		"cy": 3275.123806689267
+	},
+	"distortion_coeffs": [
+		0.4935978966597811,
+		-7.345126494415257,
+		152.9519244140711,
+		-1114.1373713068235
+	],
+	"metadata": {
+		"calibrated_by": "JB",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t30--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T30",
+	"lens_model": "Viltrox 33mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5592.290276122749,
+		"fy": 5589.5014990082145,
+		"cx": 1910.9108532221455,
+		"cy": 1070.2321772575708
+	},
+	"distortion_coeffs": [
+		0.32744817591589603,
+		1.8661540500877971,
+		-14.978261339486089,
+		75.1747585747938
+	],
+	"metadata": {
+		"calibrated_by": "Andrew Parakhuda",
+		"source": "gyroflow",
+		"official": true
+	}
+}

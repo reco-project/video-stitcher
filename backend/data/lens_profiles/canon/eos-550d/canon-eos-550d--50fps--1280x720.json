@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-550d--50fps--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 550D",
+	"lens_model": "18-55",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1081.2527019565823,
+		"fy": 1083.974753528045,
+		"cx": 631.9179758650718,
+		"cy": 363.76831486483314
+	},
+	"distortion_coeffs": [
+		0.028066907021177055,
+		3.65786803646552,
+		-38.088310242971154,
+		137.2989532216004
+	],
+	"metadata": {
+		"calibrated_by": "EMSR",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

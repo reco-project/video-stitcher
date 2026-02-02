@@ -1,0 +1,28 @@
+{
+	"id": "samsung-note-10-lite--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 10 Lite",
+	"lens_model": "1x",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1512.69506168416,
+		"fy": 1513.702411636849,
+		"cx": 975.3816283368096,
+		"cy": 546.2186565382272
+	},
+	"distortion_coeffs": [
+		0.5122848358213056,
+		-0.2861838424945292,
+		-0.2639220171123243,
+		1.3828563506654197
+	],
+	"metadata": {
+		"calibrated_by": "Hija",
+		"source": "gyroflow",
+		"official": true
+	}
+}

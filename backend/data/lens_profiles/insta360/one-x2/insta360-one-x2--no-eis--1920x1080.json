@@ -1,0 +1,29 @@
+{
+	"id": "insta360-one-x2--no-eis--1920x1080",
+	"camera_brand": "Insta360",
+	"camera_model": "ONE X2",
+	"lens_model": "Ultrawide 137",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 716.4417550849471,
+		"fy": 715.8418854473312,
+		"cx": 947.2607514085825,
+		"cy": 539.8007902853636
+	},
+	"distortion_coeffs": [
+		0.04331679077518329,
+		-0.013165909060276265,
+		0.010618814066223782,
+		-0.005825144725912869
+	],
+	"metadata": {
+		"calibrated_by": "alex leipold",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

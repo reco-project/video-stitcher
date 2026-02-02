@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t3--18mm--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T3",
+	"lens_model": "XF 18-55mm @18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2987.331173622645,
+		"fy": 2985.9336189358637,
+		"cx": 1947.0477882901364,
+		"cy": 1128.0457918087895
+	},
+	"distortion_coeffs": [
+		0.19984894810518877,
+		1.038626920707271,
+		-3.4472371538854367,
+		5.128872644234662
+	],
+	"metadata": {
+		"calibrated_by": "Jonit",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

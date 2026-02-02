@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--1735x1158",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "RISESPRAY 7,5mm",
+	"resolution": {
+		"width": 1735,
+		"height": 1158
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 633.2476526274318,
+		"fy": 632.7529087518693,
+		"cx": 870.6112970162102,
+		"cy": 570.4482685251695
+	},
+	"distortion_coeffs": [
+		0.04235916727175774,
+		0.010458996883841068,
+		-0.016627659502484255,
+		0.0103767976550255
+	],
+	"metadata": {
+		"calibrated_by": "Dronotron",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-mount-adapter-ef-eos-r-071x--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "EF50mm f/1.8 STM 50.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8737.08156120351,
+		"fy": 8735.205274309388,
+		"cx": 3065.389861837933,
+		"cy": 1620.9662107104052
+	},
+	"distortion_coeffs": [
+		0.08297792941797007,
+		2.3119303964357867,
+		-19.021274862358975,
+		84.62088135822555
+	],
+	"metadata": {
+		"calibrated_by": "Visent Media",
+		"notes": "Canon Mount Adapter EF-EOS R 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

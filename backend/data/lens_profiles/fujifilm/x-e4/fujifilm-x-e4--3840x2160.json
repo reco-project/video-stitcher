@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-e4--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-E4",
+	"lens_model": "Fujinon 27mm 2,8 WR",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4457.319933522804,
+		"fy": 4460.267828168877,
+		"cx": 1927.241098929451,
+		"cy": 1150.056968623622
+	},
+	"distortion_coeffs": [
+		0.05478502409984912,
+		4.571665432144854,
+		-32.70170592966808,
+		81.79949562582007
+	],
+	"metadata": {
+		"calibrated_by": "Bastiaan Slabbers",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-redmi-note-9filmic-pro--23mm--2048x1152",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi note 9Filmic pro",
+	"lens_model": "ACC 23",
+	"resolution": {
+		"width": 2048,
+		"height": 1152
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1942.9285583655617,
+		"fy": 1899.8959319898156,
+		"cx": 1049.9711073571375,
+		"cy": 553.5900581336858
+	},
+	"distortion_coeffs": [
+		0.5875967533098695,
+		-2.628666244051136,
+		14.393806208576365,
+		-26.27320229286928
+	],
+	"metadata": {
+		"calibrated_by": "Prashant kharel",
+		"notes": "23mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

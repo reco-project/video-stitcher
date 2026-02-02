@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mi-11--25mm--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 11",
+	"lens_model": "Samsung ISOCELL Bright HMX",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2818.9690398173875,
+		"fy": 2817.963887469333,
+		"cx": 1891.7949597768657,
+		"cy": 1095.189644748369
+	},
+	"distortion_coeffs": [
+		0.4285032823618834,
+		-1.3993131580078466,
+		8.959714828204731,
+		-13.517071633551376
+	],
+	"metadata": {
+		"calibrated_by": "Marlo Liwanag",
+		"notes": "25mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

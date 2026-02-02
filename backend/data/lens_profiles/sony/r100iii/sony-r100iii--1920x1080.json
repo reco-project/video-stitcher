@@ -1,0 +1,28 @@
+{
+	"id": "sony-r100iii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "R100III",
+	"lens_model": "24-70",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1743.5279429730176,
+		"fy": 1737.7337880549385,
+		"cx": 962.498165692191,
+		"cy": 541.8930664872087
+	},
+	"distortion_coeffs": [
+		0.36099005026197867,
+		-0.17422432139116498,
+		1.150010329322735,
+		-0.7410556458453648
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

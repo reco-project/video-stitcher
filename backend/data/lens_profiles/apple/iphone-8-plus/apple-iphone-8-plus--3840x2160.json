@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-8-plus--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 8 Plus",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3306.1174496739222,
+		"fy": 3306.624426820551,
+		"cx": 1933.3843363002975,
+		"cy": 1071.9463424921817
+	},
+	"distortion_coeffs": [
+		0.7102862639188956,
+		-3.191552936387415,
+		11.98946910435931,
+		-15.226729060180547
+	],
+	"metadata": {
+		"calibrated_by": "Li Wang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p8-lite-2017--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "P8 Lite 2017",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1448.4276378838256,
+		"fy": 1447.7704679068554,
+		"cx": 956.6095192328398,
+		"cy": 519.177486834053
+	},
+	"distortion_coeffs": [
+		0.4827811212716293,
+		-0.6447881434401874,
+		1.9210763858361852,
+		-1.8847269648924296
+	],
+	"metadata": {
+		"calibrated_by": "Michele",
+		"source": "gyroflow",
+		"official": true
+	}
+}

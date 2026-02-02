@@ -1,0 +1,29 @@
+{
+	"id": "dji-fpv--150deg-fov--1920x1080",
+	"camera_brand": "DJI",
+	"camera_model": "FPV",
+	"lens_model": "1/2.3\u201d CMOS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 819.9272116080144,
+		"fy": 819.9776021196934,
+		"cx": 955.896494440484,
+		"cy": 544.1498010857608
+	},
+	"distortion_coeffs": [
+		0.09618410707767552,
+		-0.002832157854262582,
+		-0.01533548563842575,
+		0.005617140977754785
+	],
+	"metadata": {
+		"calibrated_by": "Mike Smith",
+		"notes": "150deg FOV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

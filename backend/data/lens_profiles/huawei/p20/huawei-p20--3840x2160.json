@@ -1,0 +1,28 @@
+{
+	"id": "huawei-p20--3840x2160",
+	"camera_brand": "Huawei",
+	"camera_model": "P20",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3163.988093154762,
+		"fy": 3159.810628722249,
+		"cx": 1907.7218191372983,
+		"cy": 1101.1158857831715
+	},
+	"distortion_coeffs": [
+		0.45959481678429775,
+		-0.5518689620752928,
+		4.31335054331082,
+		-9.770865398002352
+	],
+	"metadata": {
+		"calibrated_by": "boyer choupi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--5000mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "Sigma 18-50 F2.8 DC DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8285.909022242116,
+		"fy": 8196.277569127005,
+		"cx": 1938.5814001671004,
+		"cy": 1045.7932652391698
+	},
+	"distortion_coeffs": [
+		0.23643214560324335,
+		3.816616366364209,
+		-73.6642412384358,
+		629.9640304319272
+	],
+	"metadata": {
+		"calibrated_by": "Do\u011fukan Sunar",
+		"notes": "50.00mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

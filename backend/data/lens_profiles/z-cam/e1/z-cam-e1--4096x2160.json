@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e1--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E1",
+	"lens_model": "PANASONIC LUMIX 25MM F1.7",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 19422.99479213211,
+		"fy": 19466.934122883315,
+		"cx": 149.33305013134722,
+		"cy": 209.54224280925447
+	},
+	"distortion_coeffs": [
+		0.6493115582166613,
+		-18.20649159407721,
+		749.8204733186668,
+		-10159.491172126947
+	],
+	"metadata": {
+		"calibrated_by": "Jason Ho",
+		"source": "gyroflow",
+		"official": true
+	}
+}

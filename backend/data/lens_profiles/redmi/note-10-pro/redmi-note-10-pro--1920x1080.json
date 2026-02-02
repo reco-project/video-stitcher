@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-10-pro--1920x1080",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 10 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1746.1556522984813,
+		"fy": 1743.1859315518195,
+		"cx": 954.24756723218,
+		"cy": 535.5677419473242
+	},
+	"distortion_coeffs": [
+		0.617286213663791,
+		-2.682803452539019,
+		17.392359674773942,
+		-36.67943954716101
+	],
+	"metadata": {
+		"calibrated_by": "Goran Boskovic",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-dc-bgh1--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "DC-BGH1",
+	"lens_model": "Samyang/Rokinon - 12mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2616.252943463591,
+		"fy": 2620.729872875057,
+		"cx": 1942.6910289703033,
+		"cy": 1065.7664888693412
+	},
+	"distortion_coeffs": [
+		0.2923360456540345,
+		0.15258548618664353,
+		-0.06431619248716028,
+		0.08709688439981762
+	],
+	"metadata": {
+		"calibrated_by": "Stefano Zanandrea",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--apsc--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Tamron 28-75 @ 28.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4692.3747442999775,
+		"fy": 4692.144586046891,
+		"cx": 1919.9127228713764,
+		"cy": 1089.6691091430891
+	},
+	"distortion_coeffs": [
+		0.26816802710946586,
+		-1.676400859839593,
+		19.66680340504003,
+		-71.6757326775732
+	],
+	"metadata": {
+		"calibrated_by": "Golden",
+		"notes": "APSC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-splitcam4k--2704x1520",
+	"camera_brand": "Hawkeye",
+	"camera_model": "SplitCam4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1313.6080415037186,
+		"fy": 1312.8190242035057,
+		"cx": 1382.9410483304332,
+		"cy": 822.961777813184
+	},
+	"distortion_coeffs": [
+		-0.03650422552130053,
+		0.03721412372078818,
+		-0.05131580922356553,
+		0.022201787641222555
+	],
+	"metadata": {
+		"calibrated_by": "Rikka Takanashi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

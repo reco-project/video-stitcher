@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--18mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "18-35mm F1.8 DC HSM | Art 013 18.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4125.746864161917,
+		"fy": 4131.095876227388,
+		"cx": 3126.0641978422523,
+		"cy": 1568.641868658014
+	},
+	"distortion_coeffs": [
+		0.20036620478758405,
+		0.34634614242598644,
+		-0.6511082189241348,
+		0.83975390331558
+	],
+	"metadata": {
+		"calibrated_by": "Brandan FPV",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

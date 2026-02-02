@@ -1,0 +1,28 @@
+{
+	"id": "hasselblad-eqv--3840x2160",
+	"camera_brand": "Hasselblad",
+	"camera_model": "EQV",
+	"lens_model": "2.8 28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3202.782969708024,
+		"fy": 3205.7086124313637,
+		"cx": 1911.894412663596,
+		"cy": 1064.181666627599
+	},
+	"distortion_coeffs": [
+		0.1895599271478199,
+		0.07798984128003918,
+		-0.8347291363845022,
+		1.525364560499065
+	],
+	"metadata": {
+		"calibrated_by": "Joseph Peguero",
+		"source": "gyroflow",
+		"official": true
+	}
+}

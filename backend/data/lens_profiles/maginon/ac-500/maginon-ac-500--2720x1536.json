@@ -1,0 +1,28 @@
+{
+	"id": "maginon-ac-500--2720x1536",
+	"camera_brand": "Maginon",
+	"camera_model": "AC-500",
+	"lens_model": null,
+	"resolution": {
+		"width": 2720,
+		"height": 1536
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1331.6025332124325,
+		"fy": 1334.4565233093167,
+		"cx": 1401.2582853907786,
+		"cy": 775.420108407111
+	},
+	"distortion_coeffs": [
+		-0.030853557782989604,
+		-0.01906645291884457,
+		0.030888259481477876,
+		-0.01748304536159763
+	],
+	"metadata": {
+		"calibrated_by": "\u5218\u5955\u640f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

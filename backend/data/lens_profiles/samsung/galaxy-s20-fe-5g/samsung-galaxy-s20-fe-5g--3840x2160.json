@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s20-fe-5g--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "galaxy s20 fe 5g",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4705.1341202597705,
+		"fy": 4717.928115294909,
+		"cx": 2215.271091367948,
+		"cy": 1002.8768538292384
+	},
+	"distortion_coeffs": [
+		0.28338972004006585,
+		-0.0966684193045893,
+		6.935423223617272,
+		-26.794518113573783
+	],
+	"metadata": {
+		"calibrated_by": "gayat",
+		"source": "gyroflow",
+		"official": true
+	}
+}

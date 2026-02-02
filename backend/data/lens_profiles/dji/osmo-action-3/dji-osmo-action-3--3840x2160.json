@@ -1,0 +1,28 @@
+{
+	"id": "dji-osmo-action-3--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Osmo Action 3",
+	"lens_model": "FOV: 145\u00b0 f/2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1402.5124732211332,
+		"fy": 1402.7265599391417,
+		"cx": 1930.5060571876409,
+		"cy": 1082.7249767569722
+	},
+	"distortion_coeffs": [
+		0.2802531248697946,
+		-0.05568966014348414,
+		0.00436797163533084,
+		-0.009104331504250092
+	],
+	"metadata": {
+		"calibrated_by": "Alexandros  Oikonomidis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

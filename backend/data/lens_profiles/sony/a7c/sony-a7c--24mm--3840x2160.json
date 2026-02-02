@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--24mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sigma 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2770.639416237197,
+		"fy": 2767.393183574956,
+		"cx": 1895.271095626557,
+		"cy": 1079.2473880537464
+	},
+	"distortion_coeffs": [
+		0.13543211397335234,
+		0.10703993877186486,
+		0.035615064072352334,
+		0.45144852071546904
+	],
+	"metadata": {
+		"calibrated_by": "Joey Wong",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

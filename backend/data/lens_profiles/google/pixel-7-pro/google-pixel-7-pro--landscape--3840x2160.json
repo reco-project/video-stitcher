@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-7-pro--landscape--3840x2160",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3380.271059097076,
+		"fy": 3301.6220897310154,
+		"cx": 1901.0342194302164,
+		"cy": 1073.2411218875463
+	},
+	"distortion_coeffs": [
+		0.5536180983159845,
+		-1.5408368118570843,
+		6.8310064713997,
+		-9.644718885729333
+	],
+	"metadata": {
+		"calibrated_by": "b1nary b0y",
+		"notes": "Landscape",
+		"source": "gyroflow",
+		"official": true
+	}
+}

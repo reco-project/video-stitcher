@@ -1,0 +1,28 @@
+{
+	"id": "crosstour-4k-wifi--2704x1524",
+	"camera_brand": "Crosstour",
+	"camera_model": "4K wifi",
+	"lens_model": "2.3mm",
+	"resolution": {
+		"width": 2704,
+		"height": 1524
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1929.6801926015887,
+		"fy": 1926.5570972735013,
+		"cx": 1351.6292835243269,
+		"cy": 825.1424844413121
+	},
+	"distortion_coeffs": [
+		-0.13998534876263932,
+		0.05978828860670278,
+		-0.1706255856000399,
+		0.15796792931485923
+	],
+	"metadata": {
+		"calibrated_by": "Till Kramer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

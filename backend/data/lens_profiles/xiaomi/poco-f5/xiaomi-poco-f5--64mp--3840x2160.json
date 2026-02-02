@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-poco-f5--64mp--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "POCO F5",
+	"lens_model": "Main Camera",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3468.2379213164595,
+		"fy": 3475.4744911096946,
+		"cx": 1861.5600721461633,
+		"cy": 1128.1360971535214
+	},
+	"distortion_coeffs": [
+		0.5763736212706867,
+		-1.7687675839052548,
+		9.28475255180508,
+		-17.330756527416096
+	],
+	"metadata": {
+		"calibrated_by": "Evxnn",
+		"notes": "64MP",
+		"source": "gyroflow",
+		"official": true
+	}
+}

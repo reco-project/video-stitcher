@@ -1,0 +1,28 @@
+{
+	"id": "sony-hx200v--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HX200V",
+	"lens_model": "Carl Zeiss Vario-Tessar 2,8-5,64,8-144 T",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3737.858319662661,
+		"fy": 4958.753362677432,
+		"cx": 785.8116958616264,
+		"cy": 1656.1983006692778
+	},
+	"distortion_coeffs": [
+		0.5230922092807291,
+		-14.55055764435643,
+		177.58310040194723,
+		-708.3985147838185
+	],
+	"metadata": {
+		"calibrated_by": "Pranay Raorane",
+		"source": "gyroflow",
+		"official": true
+	}
+}

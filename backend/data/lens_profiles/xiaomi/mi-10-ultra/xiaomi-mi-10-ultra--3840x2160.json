@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-10-ultra--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 10 Ultra",
+	"lens_model": "Ultra Wide Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1476.0089632674851,
+		"fy": 1474.3450956251245,
+		"cx": 1907.8864397094867,
+		"cy": 1080.6815384594863
+	},
+	"distortion_coeffs": [
+		0.21942070823346035,
+		0.5944899469789261,
+		-0.6842917121056034,
+		0.23258899223932655
+	],
+	"metadata": {
+		"calibrated_by": "Mitchell Gates",
+		"source": "gyroflow",
+		"official": true
+	}
+}

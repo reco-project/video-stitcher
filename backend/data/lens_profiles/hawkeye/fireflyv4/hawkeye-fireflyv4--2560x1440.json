@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-fireflyv4--2560x1440",
+	"camera_brand": "Hawkeye",
+	"camera_model": "FireFlyV4",
+	"lens_model": "V50X",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1289.1572469174278,
+		"fy": 1283.3689984416962,
+		"cx": 1340.7836742296784,
+		"cy": 703.328967199971
+	},
+	"distortion_coeffs": [
+		-0.04824846781365647,
+		0.011742188472790764,
+		-0.028702210539884507,
+		0.017603683678354187
+	],
+	"metadata": {
+		"calibrated_by": "Aquira",
+		"source": "gyroflow",
+		"official": true
+	}
+}

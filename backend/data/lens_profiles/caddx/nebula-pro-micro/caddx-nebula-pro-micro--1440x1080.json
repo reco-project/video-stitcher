@@ -1,0 +1,28 @@
+{
+	"id": "caddx-nebula-pro-micro--1440x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "Nebula Pro Micro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 683.5074272370562,
+		"fy": 683.1159292478405,
+		"cx": 720.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		0.019441112845720487,
+		0.01823144914523856,
+		-0.0182919879250586,
+		0.007615755996471329
+	],
+	"metadata": {
+		"calibrated_by": "IevgenSukhiy",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -2,7 +2,7 @@
 	"id": "dji-osmopocket3--3840x2160",
 	"camera_brand": "DJI",
 	"camera_model": "OsmoPocket3",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 3840,
 		"height": 2160
@@ -21,13 +21,8 @@
 		3.99059289587927
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_OsmoPocket3___4k_16by9_3840x2160-59.94fps",
 		"calibrated_by": "Yue Li",
-		"original_resolution": "3840x2160",
-		"calibrated_fps": "59.94006",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

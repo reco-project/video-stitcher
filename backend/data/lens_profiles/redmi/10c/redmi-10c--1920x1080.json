@@ -1,0 +1,28 @@
+{
+	"id": "redmi-10c--1920x1080",
+	"camera_brand": "Redmi",
+	"camera_model": "10c",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1617.349639525737,
+		"fy": 1615.9724088666726,
+		"cx": 971.2709379800748,
+		"cy": 546.5123251125757
+	},
+	"distortion_coeffs": [
+		0.5727200472631766,
+		-2.1180462711857007,
+		12.173982280516894,
+		-22.47960329966344
+	],
+	"metadata": {
+		"calibrated_by": "Kosh",
+		"source": "gyroflow",
+		"official": true
+	}
+}

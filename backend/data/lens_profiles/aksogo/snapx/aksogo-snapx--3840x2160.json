@@ -1,0 +1,28 @@
+{
+	"id": "aksogo-snapx--3840x2160",
+	"camera_brand": "Aksogo",
+	"camera_model": "SnapX",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2107.8332713236523,
+		"fy": 2108.1988099057457,
+		"cx": 1879.3430252940148,
+		"cy": 1018.27236463844
+	},
+	"distortion_coeffs": [
+		0.02576986441688153,
+		-0.16776455261399567,
+		0.34539822579141444,
+		-0.23587336354243008
+	],
+	"metadata": {
+		"calibrated_by": "saina",
+		"source": "gyroflow",
+		"official": true
+	}
+}

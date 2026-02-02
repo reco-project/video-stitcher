@@ -1,0 +1,28 @@
+{
+	"id": "canon-200-d2--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "200 d2",
+	"lens_model": "EF-S 18-55mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1722.7561888969492,
+		"fy": 1723.9346288586764,
+		"cx": 971.0926650847914,
+		"cy": 533.2608889325431
+	},
+	"distortion_coeffs": [
+		0.13186743652116523,
+		0.5362209700403895,
+		-5.030495480088696,
+		17.128575537663522
+	],
+	"metadata": {
+		"calibrated_by": "\u62db\u529e\u5916\u4e8b\u5b66\u9662",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-yi-action--2560x1440",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Yi action",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4805.624648291616,
+		"fy": 4880.377031421926,
+		"cx": 2811.8449703276283,
+		"cy": 751.3919982370315
+	},
+	"distortion_coeffs": [
+		0.3206501975656043,
+		-2.7704042559168625,
+		15.801877002135528,
+		-28.349400899646422
+	],
+	"metadata": {
+		"calibrated_by": "Kilian Komites",
+		"source": "gyroflow",
+		"official": true
+	}
+}

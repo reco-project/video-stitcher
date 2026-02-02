@@ -1,0 +1,28 @@
+{
+	"id": "feiyu-tech-pocket3--3840x2160",
+	"camera_brand": "Feiyu-Tech",
+	"camera_model": "Pocket3",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 814.7939396803521,
+		"fy": 817.7676167873872,
+		"cx": 1843.5228449023648,
+		"cy": 1024.362823897306
+	},
+	"distortion_coeffs": [
+		0.32182864666599104,
+		0.12929079908476532,
+		0.016679398401950745,
+		0.033999511016057304
+	],
+	"metadata": {
+		"calibrated_by": "\u6f47\u6d12\u54e5\u54e5",
+		"source": "gyroflow",
+		"official": true
+	}
+}

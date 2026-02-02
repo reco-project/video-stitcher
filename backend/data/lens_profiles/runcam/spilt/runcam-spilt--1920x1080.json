@@ -1,0 +1,28 @@
+{
+	"id": "runcam-spilt--1920x1080",
+	"camera_brand": "RunCam",
+	"camera_model": "Spilt",
+	"lens_model": "mini2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1007.8044204312728,
+		"fy": 1006.2273336006996,
+		"cx": 958.6420004473424,
+		"cy": 563.7594507758874
+	},
+	"distortion_coeffs": [
+		-0.0947784861875491,
+		-0.0426664516445103,
+		0.05492669788591667,
+		-0.02255735610569879
+	],
+	"metadata": {
+		"calibrated_by": "zhao",
+		"source": "gyroflow",
+		"official": true
+	}
+}

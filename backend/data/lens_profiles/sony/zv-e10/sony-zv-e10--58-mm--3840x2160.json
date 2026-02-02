@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--58-mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Helios 44 M 58mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 16530.075558027056,
+		"fy": 17282.544739914396,
+		"cx": 2533.4569739462236,
+		"cy": 926.139316116592
+	},
+	"distortion_coeffs": [
+		0.9196203083784608,
+		1.7192917894524518,
+		1225.9439851877007,
+		-91140.64792945606
+	],
+	"metadata": {
+		"calibrated_by": "Felipe",
+		"notes": "58 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

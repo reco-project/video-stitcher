@@ -1,0 +1,28 @@
+{
+	"id": "zte-nubia-z50-ultra--4640x3488",
+	"camera_brand": "ZTE",
+	"camera_model": "nubia z50 ultra",
+	"lens_model": "35mm",
+	"resolution": {
+		"width": 4640,
+		"height": 3488
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4655.812551604584,
+		"fy": 4664.370874140112,
+		"cx": 2277.0369811695064,
+		"cy": 1717.2405221503188
+	},
+	"distortion_coeffs": [
+		0.7320328985251747,
+		-0.9093441531233524,
+		-8.842455037096537,
+		33.27421064005683
+	],
+	"metadata": {
+		"calibrated_by": "Roman Lisin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

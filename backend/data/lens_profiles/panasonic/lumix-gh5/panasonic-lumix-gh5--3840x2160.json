@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh5--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5",
+	"lens_model": "Laowa 7.5mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1982.5533122601685,
+		"fy": 1979.7912066974811,
+		"cx": 1895.230120973868,
+		"cy": 1049.348471345633
+	},
+	"distortion_coeffs": [
+		0.34206272245979474,
+		0.05247489802267937,
+		0.08914169284688812,
+		-0.0025637198508703307
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"source": "gyroflow",
+		"official": true
+	}
+}

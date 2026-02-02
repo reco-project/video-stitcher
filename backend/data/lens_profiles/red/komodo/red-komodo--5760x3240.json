@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "BLAZAR REMUS",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6256.450109551067,
+		"fy": 9281.005239623424,
+		"cx": 2968.434466360666,
+		"cy": 1052.525480712942
+	},
+	"distortion_coeffs": [
+		0.19658376845035103,
+		-1.5610075303181006,
+		1.6043145771658007,
+		3.8971865516895847
+	],
+	"metadata": {
+		"calibrated_by": "MGAPHOTO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

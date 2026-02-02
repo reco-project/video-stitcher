@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-80d--50mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 80D",
+	"lens_model": "EF-S 18-135mm f/3.5-5.6 IS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1531.3331090772183,
+		"fy": 1534.754215536579,
+		"cx": 959.9158445595112,
+		"cy": 545.576528873855
+	},
+	"distortion_coeffs": [
+		0.15327125510782452,
+		-0.09127074996554696,
+		1.5834004476073018,
+		-3.4987425769990845
+	],
+	"metadata": {
+		"calibrated_by": "asus",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

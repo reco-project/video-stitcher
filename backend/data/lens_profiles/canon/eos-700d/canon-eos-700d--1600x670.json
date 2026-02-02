@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-700d--1600x670",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 700D",
+	"lens_model": "Sigma 10-20mm f3.5",
+	"resolution": {
+		"width": 1600,
+		"height": 670
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 799.8768337818229,
+		"fy": 798.6699899081169,
+		"cx": 802.1405899477787,
+		"cy": 352.39017877365256
+	},
+	"distortion_coeffs": [
+		0.2553551511015411,
+		0.27143740143510736,
+		-0.24069531276103864,
+		0.16368374649380238
+	],
+	"metadata": {
+		"calibrated_by": "HarveyPC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

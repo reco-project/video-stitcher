@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e1--35mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Tamron 20-40",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3845.9825033794496,
+		"fy": 3848.995826456325,
+		"cx": 1904.8414173708472,
+		"cy": 1053.661150099823
+	},
+	"distortion_coeffs": [
+		0.31360452248466125,
+		0.4764762073668275,
+		-2.43210623204671,
+		6.0136538838237525
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

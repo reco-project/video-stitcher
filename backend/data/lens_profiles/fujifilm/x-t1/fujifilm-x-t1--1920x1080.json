@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t1--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T1",
+	"lens_model": "Sugma 8-16",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 913.2641403277526,
+		"fy": 913.0181133090224,
+		"cx": 974.2202917044478,
+		"cy": 543.3228296547348
+	},
+	"distortion_coeffs": [
+		0.35351838617363845,
+		0.28737368652583856,
+		-0.35209249251631974,
+		0.21796839768385368
+	],
+	"metadata": {
+		"calibrated_by": "Tankizt",
+		"source": "gyroflow",
+		"official": true
+	}
+}

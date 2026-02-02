@@ -1,0 +1,29 @@
+{
+	"id": "runcam-nano-3--moblite6--640x480",
+	"camera_brand": "RunCam",
+	"camera_model": "Nano 3",
+	"lens_model": null,
+	"resolution": {
+		"width": 640,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 359.39143264221286,
+		"fy": 340.79883700252367,
+		"cx": 318.1898619671505,
+		"cy": 282.52815489721644
+	},
+	"distortion_coeffs": [
+		0.06107326331968181,
+		-0.28031893756268084,
+		0.3372206717943761,
+		-0.13779325367541817
+	],
+	"metadata": {
+		"calibrated_by": "Boo_Boo",
+		"notes": "Moblite6",
+		"source": "gyroflow",
+		"official": true
+	}
+}

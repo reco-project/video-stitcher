@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh2s--6240x4160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "Xh2s",
+	"lens_model": "75mm Viltrox",
+	"resolution": {
+		"width": 6240,
+		"height": 4160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 23955.65996535108,
+		"fy": 23986.92219719219,
+		"cx": 2741.542830795949,
+		"cy": 1821.3419426635369
+	},
+	"distortion_coeffs": [
+		0.7088031086925426,
+		-36.27220087770389,
+		2730.578743235184,
+		-61871.85793708372
+	],
+	"metadata": {
+		"calibrated_by": "Clive Dickerson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

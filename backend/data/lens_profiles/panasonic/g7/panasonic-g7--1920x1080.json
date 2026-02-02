@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-g7--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "g7",
+	"lens_model": "\u5965\u6797\u5df4\u65af40-150",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4261.802172984842,
+		"fy": 4256.623965562984,
+		"cx": 985.4090629592524,
+		"cy": 561.3016889766149
+	},
+	"distortion_coeffs": [
+		0.16871314072976965,
+		-3.8314112516607377,
+		160.1106699907677,
+		-2185.534889275692
+	],
+	"metadata": {
+		"calibrated_by": "joshuji",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-600d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "600D",
+	"lens_model": "18mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1657.1758366208774,
+		"fy": 1651.522038794683,
+		"cx": 970.1069967845716,
+		"cy": 489.4992438305771
+	},
+	"distortion_coeffs": [
+		0.11330287407390802,
+		0.5436372114122048,
+		-2.432359818196776,
+		5.026446101868605
+	],
+	"metadata": {
+		"calibrated_by": "Joss Busa",
+		"source": "gyroflow",
+		"official": true
+	}
+}

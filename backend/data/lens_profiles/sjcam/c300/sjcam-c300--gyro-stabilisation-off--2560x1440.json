@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-c300--gyro-stabilisation-off--2560x1440",
+	"camera_brand": "SJCAM",
+	"camera_model": "C300",
+	"lens_model": null,
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1260.6925696738642,
+		"fy": 1258.2208044438055,
+		"cx": 1258.8614482561472,
+		"cy": 722.8257176734893
+	},
+	"distortion_coeffs": [
+		0.14979615022551435,
+		-0.018693634884439547,
+		-0.18723952188911389,
+		0.28812573510740697
+	],
+	"metadata": {
+		"calibrated_by": "RH Yap",
+		"notes": "Gyro stabilisation off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

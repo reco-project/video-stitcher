@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s10-5g--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S10 5g",
+	"lens_model": "Front facing",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1389.0807650527647,
+		"fy": 1394.6607632532423,
+		"cx": 926.7696957735624,
+		"cy": 532.6981824978147
+	},
+	"distortion_coeffs": [
+		0.6249402514856439,
+		-2.2357835282933816,
+		7.585066416296876,
+		-8.23719056623291
+	],
+	"metadata": {
+		"calibrated_by": "TBM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

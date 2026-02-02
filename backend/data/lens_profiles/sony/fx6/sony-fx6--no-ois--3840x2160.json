@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--no-ois--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Sony 24-105 G f4 at 50mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5620.719873599122,
+		"fy": 5620.221953090355,
+		"cx": 1930.7666402912744,
+		"cy": 1095.7404695313282
+	},
+	"distortion_coeffs": [
+		0.3573333941189872,
+		0.08213845384072702,
+		2.1925349921201307,
+		-13.616154762304513
+	],
+	"metadata": {
+		"calibrated_by": "Kyle M Fields",
+		"notes": "No OIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

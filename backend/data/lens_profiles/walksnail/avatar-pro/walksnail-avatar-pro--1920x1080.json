@@ -1,0 +1,28 @@
+{
+	"id": "walksnail-avatar-pro--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Avatar Pro",
+	"lens_model": "Walksnail_Avatar_Pro_Camera_1080p_16by9_60fps wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 920.4414963369248,
+		"fy": 919.5277257840436,
+		"cx": 937.4092073237924,
+		"cy": 553.5455128340774
+	},
+	"distortion_coeffs": [
+		-0.03945680666189596,
+		0.02985561822988309,
+		-0.029415025419577776,
+		0.008239831662959109
+	],
+	"metadata": {
+		"calibrated_by": "suntks",
+		"source": "gyroflow",
+		"official": true
+	}
+}

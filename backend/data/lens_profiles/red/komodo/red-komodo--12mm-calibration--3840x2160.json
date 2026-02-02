@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--12mm-calibration--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "DZO - Pictor 12-25mm Zoom",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2921.666769043242,
+		"fy": 2922.9343720291577,
+		"cx": 1922.7575435607553,
+		"cy": 1033.7650315999394
+	},
+	"distortion_coeffs": [
+		0.23523647137889375,
+		0.18615991978453747,
+		-0.15887332014733613,
+		0.18636186584585543
+	],
+	"metadata": {
+		"calibrated_by": "CLW",
+		"notes": "12mm Calibration",
+		"source": "gyroflow",
+		"official": true
+	}
+}

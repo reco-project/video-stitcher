@@ -1,0 +1,28 @@
+{
+	"id": "rollei-ac-625--1920x1080",
+	"camera_brand": "Rollei",
+	"camera_model": "AC 625",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1296.2526167095973,
+		"fy": 1290.3375948364207,
+		"cx": 926.62349731028,
+		"cy": 569.2814522838584
+	},
+	"distortion_coeffs": [
+		-0.07220584132312055,
+		-0.21710186708057216,
+		0.3902051008815027,
+		-0.2328732527356915
+	],
+	"metadata": {
+		"calibrated_by": "Erik",
+		"source": "gyroflow",
+		"official": true
+	}
+}

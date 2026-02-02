@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--120mm-speed-booster-viltrox-ef-m2-ii-071x--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Contax Vario-Sonnar 4/80-200",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 19314.427988780782,
+		"fy": 19371.636741650855,
+		"cx": 2196.3954831256137,
+		"cy": 1404.122932272223
+	},
+	"distortion_coeffs": [
+		-1.9310074966954407,
+		455.58241669455384,
+		-47982.776002848645,
+		1794307.3038107085
+	],
+	"metadata": {
+		"calibrated_by": "Dante Villa",
+		"notes": "120mm + Speed Booster Viltrox EF-M2 II 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

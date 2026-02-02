@@ -1,0 +1,28 @@
+{
+	"id": "samsung-note-8--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Note 8",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1801.0068028443895,
+		"fy": 1800.9832086483432,
+		"cx": 958.4419825845032,
+		"cy": 537.0975580354692
+	},
+	"distortion_coeffs": [
+		0.5330251556401968,
+		-0.4866612989316083,
+		-0.3727882758136585,
+		3.4381680448730645
+	],
+	"metadata": {
+		"calibrated_by": "levar",
+		"source": "gyroflow",
+		"official": true
+	}
+}

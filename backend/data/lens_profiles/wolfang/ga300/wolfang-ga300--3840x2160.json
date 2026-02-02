@@ -1,0 +1,28 @@
+{
+	"id": "wolfang-ga300--3840x2160",
+	"camera_brand": "Wolfang",
+	"camera_model": "GA300",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1934.912953827662,
+		"fy": 1932.1974436160335,
+		"cx": 1926.132107789235,
+		"cy": 1066.534457236908
+	},
+	"distortion_coeffs": [
+		0.29881390324379625,
+		0.10119202477773002,
+		0.0786171600882355,
+		-0.03154365601547154
+	],
+	"metadata": {
+		"calibrated_by": "Utilizador",
+		"source": "gyroflow",
+		"official": true
+	}
+}

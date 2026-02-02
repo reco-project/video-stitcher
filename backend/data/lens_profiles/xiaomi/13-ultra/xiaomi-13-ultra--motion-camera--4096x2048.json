@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-13-ultra--motion-camera--4096x2048",
+	"camera_brand": "Xiaomi",
+	"camera_model": "13 ultra",
+	"lens_model": "main",
+	"resolution": {
+		"width": 4096,
+		"height": 2048
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2750.864823052401,
+		"fy": 2752.8841997441737,
+		"cx": 2059.794890778804,
+		"cy": 1023.2412803222716
+	},
+	"distortion_coeffs": [
+		0.48931549820008513,
+		-0.798632940530796,
+		2.279176117793797,
+		-1.911423104000589
+	],
+	"metadata": {
+		"calibrated_by": "hans",
+		"notes": "motion camera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

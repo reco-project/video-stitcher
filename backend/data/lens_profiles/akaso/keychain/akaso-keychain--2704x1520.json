@@ -1,0 +1,28 @@
+{
+	"id": "akaso-keychain--2704x1520",
+	"camera_brand": "AKASO",
+	"camera_model": "Keychain",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1413.7494102614207,
+		"fy": 1411.5278632545014,
+		"cx": 1347.6714908830704,
+		"cy": 753.9514403471788
+	},
+	"distortion_coeffs": [
+		0.29571662940406845,
+		-0.35266856824283144,
+		2.1274909034469003,
+		-2.1329414407767753
+	],
+	"metadata": {
+		"calibrated_by": "cotegua",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--15mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5",
+	"lens_model": "irix 15mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1534.1202057031655,
+		"fy": 1538.280489609843,
+		"cx": 1927.7390542911785,
+		"cy": 1064.724294282229
+	},
+	"distortion_coeffs": [
+		0.30543220276616395,
+		0.1996728079797852,
+		-0.12101835153187453,
+		0.12527900060278382
+	],
+	"metadata": {
+		"calibrated_by": "Martyna Jarczewska",
+		"notes": "15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

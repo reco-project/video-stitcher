@@ -1,0 +1,28 @@
+{
+	"id": "red-gemini-5k--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "Gemini 5K",
+	"lens_model": "Zeiss Super Speed 25mm",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1743.0790933516914,
+		"fy": 1744.716573548611,
+		"cx": 1028.7149494711384,
+		"cy": 547.0849533346428
+	},
+	"distortion_coeffs": [
+		0.1849419062280546,
+		0.22529136659810237,
+		-0.4350095927814533,
+		1.5781139175434131
+	],
+	"metadata": {
+		"calibrated_by": "Josh Monie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

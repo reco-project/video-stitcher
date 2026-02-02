@@ -1,0 +1,28 @@
+{
+	"id": "sony-a1--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a1",
+	"lens_model": "24mm (Sigma DG DN 24-70 f2.8)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2636.538534872041,
+		"fy": 2636.111491603003,
+		"cx": 1930.236216362666,
+		"cy": 1068.5438163347812
+	},
+	"distortion_coeffs": [
+		0.12365178398395028,
+		0.386043290951096,
+		-0.8775328136820595,
+		1.4736534216674104
+	],
+	"metadata": {
+		"calibrated_by": "Mei Lewis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

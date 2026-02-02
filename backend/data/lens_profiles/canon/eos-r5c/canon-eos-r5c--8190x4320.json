@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r5c--8190x4320",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5C",
+	"lens_model": "7Artisans 10mm F2.8",
+	"resolution": {
+		"width": 8190,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2945.446199488322,
+		"fy": 2946.68775301169,
+		"cx": 4113.218614750688,
+		"cy": 2145.48858638119
+	},
+	"distortion_coeffs": [
+		0.056032947983435735,
+		0.004825602265391974,
+		0.0016659660968862198,
+		-0.0015563495673716246
+	],
+	"metadata": {
+		"calibrated_by": "Hao",
+		"source": "gyroflow",
+		"official": true
+	}
+}

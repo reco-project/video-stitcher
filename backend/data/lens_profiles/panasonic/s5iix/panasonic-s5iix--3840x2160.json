@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5iix--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "s5iix",
+	"lens_model": "sigma 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2960.020336386337,
+		"fy": 2965.6751536232705,
+		"cx": 1975.7989898468172,
+		"cy": 895.0704193473317
+	},
+	"distortion_coeffs": [
+		0.2646270988591889,
+		-0.1028546515456966,
+		3.085166423193076,
+		-7.162410101197952
+	],
+	"metadata": {
+		"calibrated_by": "DAVID AIKENS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

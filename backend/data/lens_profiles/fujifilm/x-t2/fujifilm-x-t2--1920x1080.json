@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t2--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "x-T2",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4490.926211396814,
+		"fy": 4488.27953454939,
+		"cx": 1026.7490422564208,
+		"cy": 475.0451635532544
+	},
+	"distortion_coeffs": [
+		0.9208494782536144,
+		-5.566594581548936,
+		-62.032731831978005,
+		2360.840282876962
+	],
+	"metadata": {
+		"calibrated_by": "kottayamli",
+		"source": "gyroflow",
+		"official": true
+	}
+}

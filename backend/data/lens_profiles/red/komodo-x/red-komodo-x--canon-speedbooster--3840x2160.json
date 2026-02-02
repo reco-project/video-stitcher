@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-x--canon-speedbooster--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO X",
+	"lens_model": "CNE Prime 50mm 1.3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5794.788818273491,
+		"fy": 5742.065950513763,
+		"cx": 1961.6352890838712,
+		"cy": 1045.6466940371838
+	},
+	"distortion_coeffs": [
+		0.061574255843178154,
+		1.8273926378145775,
+		-17.600868060979295,
+		91.92270673186503
+	],
+	"metadata": {
+		"calibrated_by": "PHC",
+		"notes": "Canon Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

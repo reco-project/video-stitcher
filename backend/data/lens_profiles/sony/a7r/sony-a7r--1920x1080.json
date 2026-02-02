@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7r--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "A7R",
+	"lens_model": "Sony FE 1.8/50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4838.334650351703,
+		"fy": 4847.733306335628,
+		"cx": 978.6321283116628,
+		"cy": 466.1009190317083
+	},
+	"distortion_coeffs": [
+		0.04610887222108605,
+		24.30369127474591,
+		-935.5993923919218,
+		12082.818695742284
+	],
+	"metadata": {
+		"calibrated_by": "Sch\u00f6ne Aussicht",
+		"source": "gyroflow",
+		"official": true
+	}
+}

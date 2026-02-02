@@ -1,0 +1,28 @@
+{
+	"id": "motorola-moto-g-power--3840x2160",
+	"camera_brand": "Motorola",
+	"camera_model": "Moto G Power",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3064.8786474436347,
+		"fy": 3061.3609103728472,
+		"cx": 1906.442266983206,
+		"cy": 1074.692501441216
+	},
+	"distortion_coeffs": [
+		0.6861327182227476,
+		-2.7200333380247343,
+		10.799743960030046,
+		-15.521556982740268
+	],
+	"metadata": {
+		"calibrated_by": "Galileo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

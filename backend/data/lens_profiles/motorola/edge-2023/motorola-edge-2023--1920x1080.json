@@ -1,0 +1,28 @@
+{
+	"id": "motorola-edge-2023--1920x1080",
+	"camera_brand": "Motorola",
+	"camera_model": "Edge 2023",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1411.1623200863005,
+		"fy": 1412.2173519189168,
+		"cx": 962.5452060424456,
+		"cy": 520.2219408975275
+	},
+	"distortion_coeffs": [
+		0.5726142642556811,
+		-1.221951583319064,
+		3.2730729885748575,
+		-3.0986412952101747
+	],
+	"metadata": {
+		"calibrated_by": "David Swan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

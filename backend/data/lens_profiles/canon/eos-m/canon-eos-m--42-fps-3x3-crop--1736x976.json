@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--42-fps-3x3-crop--1736x976",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "22MM",
+	"resolution": {
+		"width": 1736,
+		"height": 976
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1466.3442984022956,
+		"fy": 1471.2861573646348,
+		"cx": 871.7604636495142,
+		"cy": 438.6865526926836
+	},
+	"distortion_coeffs": [
+		0.3069506637514195,
+		0.27304471388814333,
+		-0.32790194057106065,
+		1.0629117038863305
+	],
+	"metadata": {
+		"calibrated_by": "user",
+		"notes": "42 FPS 3X3 CROP",
+		"source": "gyroflow",
+		"official": true
+	}
+}

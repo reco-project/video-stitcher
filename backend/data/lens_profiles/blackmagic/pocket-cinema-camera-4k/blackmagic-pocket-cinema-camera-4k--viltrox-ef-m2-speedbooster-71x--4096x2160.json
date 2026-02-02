@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--viltrox-ef-m2-speedbooster-71x--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "EF100-400mm f/4.5-5.6L IS II USM 70mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 18843.42685500514,
+		"fy": 19051.515731688185,
+		"cx": 2300.8399053548974,
+		"cy": 945.1926859965018
+	},
+	"distortion_coeffs": [
+		-1.1040478996335386,
+		87.84664273008343,
+		-5483.600883345883,
+		116525.61204127072
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Shahrestany",
+		"notes": "Viltrox EF-M2 Speedbooster .71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

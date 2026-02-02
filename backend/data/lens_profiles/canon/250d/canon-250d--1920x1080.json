@@ -1,0 +1,28 @@
+{
+	"id": "canon-250d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "250D",
+	"lens_model": "ef-s18-15 f/3.5-5.6 IS",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1609.74294784432,
+		"fy": 1610.8831621208233,
+		"cx": 937.2951592457372,
+		"cy": 546.7174539414084
+	},
+	"distortion_coeffs": [
+		0.15400301499888577,
+		0.10120592870114165,
+		0.5494689442693367,
+		-0.5429740422069874
+	],
+	"metadata": {
+		"calibrated_by": "mud",
+		"source": "gyroflow",
+		"official": true
+	}
+}

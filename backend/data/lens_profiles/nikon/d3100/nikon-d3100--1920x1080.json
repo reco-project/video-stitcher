@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d3100--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D3100",
+	"lens_model": "Nikkonor AF 85mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7028.276344516042,
+		"fy": 6960.725403435955,
+		"cx": 805.5518859585287,
+		"cy": 646.3006130515372
+	},
+	"distortion_coeffs": [
+		0.3773701796278252,
+		-15.679531627336516,
+		858.2095958401577,
+		-16749.392575829883
+	],
+	"metadata": {
+		"calibrated_by": "Eva Watis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

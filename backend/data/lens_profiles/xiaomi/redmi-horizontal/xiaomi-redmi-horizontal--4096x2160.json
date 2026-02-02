@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-horizontal--4096x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Horizontal",
+	"lens_model": null,
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3019.081329288307,
+		"fy": 3012.4394118089567,
+		"cx": 2042.7346799127797,
+		"cy": 1035.1875294252814
+	},
+	"distortion_coeffs": [
+		0.4051108521184619,
+		-0.3117540874256231,
+		1.3035436093148534,
+		-1.6884510190996949
+	],
+	"metadata": {
+		"calibrated_by": "Dantistnfs",
+		"source": "gyroflow",
+		"official": true
+	}
+}

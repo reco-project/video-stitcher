@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r5--35mm--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "Sigma 35mm f1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3730.857748062024,
+		"fy": 3731.2152088512607,
+		"cx": 1993.0094480036576,
+		"cy": 1070.3745689055131
+	},
+	"distortion_coeffs": [
+		0.23857615227956017,
+		0.27225792645177516,
+		0.005643330917517023,
+		0.22785581311560849
+	],
+	"metadata": {
+		"calibrated_by": "Matt Smith",
+		"notes": "35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

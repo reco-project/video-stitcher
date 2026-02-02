@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx6--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2675.629364251777,
+		"fy": 2710.3612921963218,
+		"cx": 981.4308446001884,
+		"cy": 568.2674992220792
+	},
+	"distortion_coeffs": [
+		0.29963304973316435,
+		2.5827634114808826,
+		-36.59554155562229,
+		162.5363578980909
+	],
+	"metadata": {
+		"calibrated_by": "Webb Zhou",
+		"source": "gyroflow",
+		"official": true
+	}
+}

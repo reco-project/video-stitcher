@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-s1--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S1",
+	"lens_model": "SIGMA DC 18-50 (28mm)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4607.918186174886,
+		"fy": 4608.900308802341,
+		"cx": 1918.0757288163636,
+		"cy": 1036.5884835591617
+	},
+	"distortion_coeffs": [
+		0.31389391145275447,
+		-0.4283715206398921,
+		13.028095147736249,
+		-63.39794023145212
+	],
+	"metadata": {
+		"calibrated_by": "JAFFER SADIQ",
+		"source": "gyroflow",
+		"official": true
+	}
+}

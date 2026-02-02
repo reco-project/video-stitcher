@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--ibis-on--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Zeiss Loxia 21mm f2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2303.94566354687,
+		"fy": 2307.092354095722,
+		"cx": 1930.7824216624808,
+		"cy": 1063.9880514469482
+	},
+	"distortion_coeffs": [
+		0.2580809220001235,
+		0.22393013106907023,
+		-0.2943195017077069,
+		0.5244311651293533
+	],
+	"metadata": {
+		"calibrated_by": "Jan Muller",
+		"notes": "IBIS on",
+		"source": "gyroflow",
+		"official": true
+	}
+}

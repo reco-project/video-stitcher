@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gx9--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix gx9",
+	"lens_model": "14-140 F3.5-5.6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4543.488400236446,
+		"fy": 4547.913506097911,
+		"cx": 1912.3171646145147,
+		"cy": 1096.0324160463283
+	},
+	"distortion_coeffs": [
+		0.22035196245328237,
+		1.2915059170246803,
+		-9.461685058576558,
+		26.243825925575116
+	],
+	"metadata": {
+		"calibrated_by": "\u5b59\u6d69\u6587",
+		"source": "gyroflow",
+		"official": true
+	}
+}

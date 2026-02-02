@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-micro-cinema--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Cinema",
+	"lens_model": "Rokinon 16mm w Metabones 0.58 Speedbooster",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1469.4321163425573,
+		"fy": 1470.6418940497813,
+		"cx": 956.0537549191704,
+		"cy": 564.5385411519723
+	},
+	"distortion_coeffs": [
+		0.2244872080317506,
+		0.06051510175898294,
+		0.249894181607054,
+		-0.060478226517505715
+	],
+	"metadata": {
+		"calibrated_by": "William Y.",
+		"source": "gyroflow",
+		"official": true
+	}
+}

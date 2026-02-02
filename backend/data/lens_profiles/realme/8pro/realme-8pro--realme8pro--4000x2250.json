@@ -1,0 +1,29 @@
+{
+	"id": "realme-8pro--realme8pro--4000x2250",
+	"camera_brand": "Realme",
+	"camera_model": "8pro",
+	"lens_model": "Realme8pro",
+	"resolution": {
+		"width": 4000,
+		"height": 2250
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2734.927270752084,
+		"fy": 2732.0855182000705,
+		"cx": 2010.9456379960136,
+		"cy": 1141.4433032132697
+	},
+	"distortion_coeffs": [
+		0.5680567835808465,
+		-1.586397378424752,
+		5.158344240391132,
+		-5.316392347959695
+	],
+	"metadata": {
+		"calibrated_by": "Dima",
+		"notes": "Realme8pro",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-sj4000--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "sj4000",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1044.3194645386377,
+		"fy": 1055.9243780348563,
+		"cx": 1003.034929588642,
+		"cy": 542.7671076608754
+	},
+	"distortion_coeffs": [
+		-0.016076757192169888,
+		0.0009818880618333462,
+		-0.0015860206542286928,
+		0.0033960956187843337
+	],
+	"metadata": {
+		"calibrated_by": "Yavor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

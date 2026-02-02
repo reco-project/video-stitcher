@@ -1,0 +1,29 @@
+{
+	"id": "canon-5r--\u955c\u5934\u9632\u629670mm--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "5R",
+	"lens_model": "24-70mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8204.166643170178,
+		"fy": 8203.363463560168,
+		"cx": 1971.6517620589505,
+		"cy": 1029.5514258343362
+	},
+	"distortion_coeffs": [
+		0.6160860422111561,
+		-0.109725560794061,
+		7.2287092861525295,
+		-33.76868965306391
+	],
+	"metadata": {
+		"calibrated_by": "Finley",
+		"notes": "\u955c\u5934\u9632\u629670mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

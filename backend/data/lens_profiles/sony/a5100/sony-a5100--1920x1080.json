@@ -1,0 +1,28 @@
+{
+	"id": "sony-a5100--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a5100",
+	"lens_model": "Sony E35 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3025.231563874741,
+		"fy": 3018.0346669894993,
+		"cx": 959.1443399111588,
+		"cy": 526.2274549594508
+	},
+	"distortion_coeffs": [
+		0.12433163441098076,
+		7.860266514377517,
+		-107.97877059895087,
+		542.3894666419592
+	],
+	"metadata": {
+		"calibrated_by": "TweeaakC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--shot-in-17mm-focal-length--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Tamron 17-70mm F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3074.7538604283,
+		"fy": 3088.340562155238,
+		"cx": 1857.6145832198783,
+		"cy": 1044.86049072038
+	},
+	"distortion_coeffs": [
+		0.3853313677474576,
+		-0.5487787774686904,
+		3.5316072871566986,
+		-5.71380626263985
+	],
+	"metadata": {
+		"calibrated_by": "KING",
+		"notes": "Shot in 17mm Focal Length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

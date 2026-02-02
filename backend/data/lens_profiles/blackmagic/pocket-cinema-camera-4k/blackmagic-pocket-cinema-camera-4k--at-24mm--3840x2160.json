@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--at-24mm--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Sigma 18-35mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4342.48096166219,
+		"fy": 4342.98888235695,
+		"cx": 1917.198182597149,
+		"cy": 1118.252974739033
+	},
+	"distortion_coeffs": [
+		0.30859880845109844,
+		0.20485294998858888,
+		0.8188559910617094,
+		-2.5866122529037336
+	],
+	"metadata": {
+		"calibrated_by": "Igor",
+		"notes": "at 24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

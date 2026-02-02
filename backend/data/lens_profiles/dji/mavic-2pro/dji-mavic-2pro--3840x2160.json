@@ -1,0 +1,28 @@
+{
+	"id": "dji-mavic-2pro--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "mavic 2pro",
+	"lens_model": "28mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4553.355459423608,
+		"fy": 4550.27034414149,
+		"cx": 1861.793450435371,
+		"cy": 1059.5709492524434
+	},
+	"distortion_coeffs": [
+		0.37116131286486176,
+		0.19523630462781455,
+		-3.1927259411710356,
+		15.20345872365585
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

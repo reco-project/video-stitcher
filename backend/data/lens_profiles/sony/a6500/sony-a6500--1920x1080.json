@@ -1,0 +1,28 @@
+{
+	"id": "sony-a6500--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a6500",
+	"lens_model": "Sony 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4156.829213297926,
+		"fy": 4150.227201109454,
+		"cx": 1000.814658695026,
+		"cy": 507.6388373384201
+	},
+	"distortion_coeffs": [
+		0.3580003310448723,
+		-2.0759208889271163,
+		40.715562616516785,
+		-313.5472100386851
+	],
+	"metadata": {
+		"calibrated_by": "Baris Keskin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

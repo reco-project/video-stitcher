@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-f6--6063x4040",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "NIKKOR 18mm f3.5 AiS",
+	"resolution": {
+		"width": 6063,
+		"height": 4040
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3202.6986589887033,
+		"fy": 3201.373346102857,
+		"cx": 3047.9828333491255,
+		"cy": 2003.472019306399
+	},
+	"distortion_coeffs": [
+		0.25004977341601586,
+		0.11837438704678198,
+		0.10605406654337966,
+		0.06351584031683455
+	],
+	"metadata": {
+		"calibrated_by": "Lucas Weakley",
+		"source": "gyroflow",
+		"official": true
+	}
+}

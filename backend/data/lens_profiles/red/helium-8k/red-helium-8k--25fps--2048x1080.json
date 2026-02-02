@@ -1,0 +1,29 @@
+{
+	"id": "red-helium-8k--25fps--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "Helium 8k",
+	"lens_model": "Sigma Art 24mm",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1727.498213202549,
+		"fy": 1685.272905742458,
+		"cx": 1024.0335966336588,
+		"cy": 558.569622604978
+	},
+	"distortion_coeffs": [
+		0.23795414439697504,
+		0.495766333756236,
+		-1.336591023973949,
+		2.1478616184089567
+	],
+	"metadata": {
+		"calibrated_by": "Hurcan Emre Yilm",
+		"notes": "25fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7siii--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7SIII",
+	"lens_model": "Leica Summicron-R 50mm f/2 v2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6239.211946488753,
+		"fy": 6237.494532442492,
+		"cx": 2068.3540612973216,
+		"cy": 1059.6780215257652
+	},
+	"distortion_coeffs": [
+		0.23549753837054857,
+		0.9003963522378826,
+		-10.31629963976747,
+		9.56404216470578
+	],
+	"metadata": {
+		"calibrated_by": "DucDigital & Through The Glass Paris",
+		"source": "gyroflow",
+		"official": true
+	}
+}

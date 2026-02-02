@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m50--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M50",
+	"lens_model": "Canon 50mm f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3263.8487459688936,
+		"fy": 3264.604581886628,
+		"cx": 967.1790797139008,
+		"cy": 529.3155715453937
+	},
+	"distortion_coeffs": [
+		0.19402621308668577,
+		-7.540449602132336,
+		132.72714121079392,
+		-709.064712905533
+	],
+	"metadata": {
+		"calibrated_by": "CurrySausage",
+		"source": "gyroflow",
+		"official": true
+	}
+}

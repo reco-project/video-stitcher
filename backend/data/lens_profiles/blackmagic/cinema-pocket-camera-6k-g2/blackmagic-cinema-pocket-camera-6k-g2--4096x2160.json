@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-cinema-pocket-camera-6k-g2--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Pocket Camera 6K G2",
+	"lens_model": "SIGMA 24mm F1.8 EX DG Macro",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6361.715430737974,
+		"fy": 6303.080145624983,
+		"cx": 2617.5218780622363,
+		"cy": 674.2490712277414
+	},
+	"distortion_coeffs": [
+		0.1955764777476155,
+		0.24522266019321776,
+		1.3745390808533609,
+		-9.597814172386371
+	],
+	"metadata": {
+		"calibrated_by": "Dario Nu\u00f1ez",
+		"source": "gyroflow",
+		"official": true
+	}
+}

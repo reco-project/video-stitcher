@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-250d--50--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 250D",
+	"lens_model": "EFS 18-135",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1769.5452538133738,
+		"fy": 1770.5185465871773,
+		"cx": 966.542053105774,
+		"cy": 575.4224070111762
+	},
+	"distortion_coeffs": [
+		0.11877229304367096,
+		0.4000730834722453,
+		-0.8410486479843178,
+		1.4007290305866504
+	],
+	"metadata": {
+		"calibrated_by": "natalia melnikov",
+		"notes": "50",
+		"source": "gyroflow",
+		"official": true
+	}
+}

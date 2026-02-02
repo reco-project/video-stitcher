@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh6--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH6",
+	"lens_model": "Laowa 7.5",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1879.4598237915436,
+		"fy": 1883.8425533619463,
+		"cx": 1900.7863770693812,
+		"cy": 1033.0292581915182
+	},
+	"distortion_coeffs": [
+		0.3300993024123151,
+		0.17075646304496647,
+		-0.3930630545975656,
+		0.6754313310511767
+	],
+	"metadata": {
+		"calibrated_by": "Elvis- Hj",
+		"source": "gyroflow",
+		"official": true
+	}
+}

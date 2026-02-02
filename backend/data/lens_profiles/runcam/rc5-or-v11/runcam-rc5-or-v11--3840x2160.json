@@ -1,0 +1,28 @@
+{
+	"id": "runcam-rc5-or-v11--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "RC5-OR (v1.1)",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2025.1360471422868,
+		"fy": 2018.093269792764,
+		"cx": 1903.9464532770976,
+		"cy": 1032.103876041927
+	},
+	"distortion_coeffs": [
+		0.2768879157108558,
+		0.04598988723448399,
+		-0.008471232934026095,
+		0.003255371295707167
+	],
+	"metadata": {
+		"calibrated_by": "12Q9C",
+		"source": "gyroflow",
+		"official": true
+	}
+}

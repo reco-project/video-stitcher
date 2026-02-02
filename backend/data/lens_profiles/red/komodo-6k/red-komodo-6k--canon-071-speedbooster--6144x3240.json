@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-071-speedbooster--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss 1.4 35.00mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5777.55162384382,
+		"fy": 5778.629721518647,
+		"cx": 3085.666652730747,
+		"cy": 1601.5562485285882
+	},
+	"distortion_coeffs": [
+		0.21014729844338856,
+		0.6716882138268492,
+		-3.4560200188610075,
+		10.451740944889584
+	],
+	"metadata": {
+		"calibrated_by": "Who",
+		"notes": "Canon 0.71 Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

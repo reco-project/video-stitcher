@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x100f--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X100F",
+	"lens_model": "Fujinon 23mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2416.1088873068165,
+		"fy": 2440.8035576702464,
+		"cx": 1044.9286856632373,
+		"cy": 731.4791606119588
+	},
+	"distortion_coeffs": [
+		0.2112182300169064,
+		1.0106377731110114,
+		-4.044523700435479,
+		9.561911339174824
+	],
+	"metadata": {
+		"calibrated_by": "Guillaume Oules",
+		"source": "gyroflow",
+		"official": true
+	}
+}

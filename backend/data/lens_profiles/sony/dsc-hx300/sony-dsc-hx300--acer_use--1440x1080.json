@@ -1,0 +1,29 @@
+{
+	"id": "sony-dsc-hx300--acer_use--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "DSC-HX300",
+	"lens_model": "24MM_F2.8",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1068.784527072111,
+		"fy": 1425.3061439025869,
+		"cx": 721.7985281930627,
+		"cy": 505.4492858609506
+	},
+	"distortion_coeffs": [
+		0.3835954601819824,
+		-0.2159171060449944,
+		1.3310057292723392,
+		-1.391299714517567
+	],
+	"metadata": {
+		"calibrated_by": "Acer",
+		"notes": "Acer_use",
+		"source": "gyroflow",
+		"official": true
+	}
+}

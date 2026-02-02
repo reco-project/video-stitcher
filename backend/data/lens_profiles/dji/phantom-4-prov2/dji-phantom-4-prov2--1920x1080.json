@@ -2,7 +2,7 @@
 	"id": "dji-phantom-4-prov2--1920x1080",
 	"camera_brand": "DJI",
 	"camera_model": "Phantom 4 prov2",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 1920,
 		"height": 1080
@@ -21,13 +21,8 @@
 		-0.87095340073053
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "DJI_Phantom 4 prov2___1080p_16by9_1920x1080-25.00fps",
 		"calibrated_by": "Timoth\u00e9 GIROT",
-		"original_resolution": "1920x1080",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

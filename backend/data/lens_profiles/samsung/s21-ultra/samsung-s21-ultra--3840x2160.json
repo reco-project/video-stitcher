@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s21-ultra--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S21 Ultra",
+	"lens_model": "Main Camera",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2404.40865130731,
+		"fy": 2444.083581882783,
+		"cx": 1891.5200989283192,
+		"cy": 864.9864417723135
+	},
+	"distortion_coeffs": [
+		0.4578031868293404,
+		0.37898760947749927,
+		-1.2963763724681585,
+		2.199358551827996
+	],
+	"metadata": {
+		"calibrated_by": "Gregor M\u00f6nks",
+		"source": "gyroflow",
+		"official": true
+	}
+}

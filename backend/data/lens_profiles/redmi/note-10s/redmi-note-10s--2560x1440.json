@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-10s--2560x1440",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 10s",
+	"lens_model": "UW@10mm",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1149.8899704665405,
+		"fy": 1150.3925515328654,
+		"cx": 1267.6598034078072,
+		"cy": 725.770571820463
+	},
+	"distortion_coeffs": [
+		0.3319862484016724,
+		-0.3065922790133042,
+		1.2230171900524431,
+		-0.878477316736509
+	],
+	"metadata": {
+		"calibrated_by": "Sergey",
+		"source": "gyroflow",
+		"official": true
+	}
+}

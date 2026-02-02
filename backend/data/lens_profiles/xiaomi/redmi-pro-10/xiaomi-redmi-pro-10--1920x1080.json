@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-pro-10--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Pro 10",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1683.1894886507432,
+		"fy": 1678.738849116807,
+		"cx": 957.7684715746952,
+		"cy": 563.6001439193163
+	},
+	"distortion_coeffs": [
+		0.6042384572928289,
+		-2.619454235423792,
+		13.66861619363929,
+		-27.231462934996618
+	],
+	"metadata": {
+		"calibrated_by": "yosward rios casanova",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-11-lite-5g--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 11 lite 5g",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2844.3879554286514,
+		"fy": 2846.6841077213594,
+		"cx": 1915.8493964439729,
+		"cy": 1071.0134546736474
+	},
+	"distortion_coeffs": [
+		0.5020075845042901,
+		-1.3327059810183433,
+		5.898840100470975,
+		-8.547415666187826
+	],
+	"metadata": {
+		"calibrated_by": "Amit1 K (\u963f\u7c73\u7279_Askey_TW)",
+		"source": "gyroflow",
+		"official": true
+	}
+}

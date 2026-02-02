@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero3black--w-lens-protector--1280x720",
+	"camera_brand": "GoPro",
+	"camera_model": "Hero3+Black",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 234.12475955388496,
+		"fy": 213.36495837312827,
+		"cx": 670.0729903639227,
+		"cy": 358.98836671832186
+	},
+	"distortion_coeffs": [
+		0.15414974870879158,
+		0.45210309672596233,
+		-0.32967098259178335,
+		0.1463019072182788
+	],
+	"metadata": {
+		"calibrated_by": "S.Gibson",
+		"notes": "w Lens Protector",
+		"source": "gyroflow",
+		"official": true
+	}
+}

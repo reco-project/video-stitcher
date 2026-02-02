@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-digisight-nano--1920x1080",
+	"camera_brand": "Foxeer",
+	"camera_model": "Digisight Nano",
+	"lens_model": "Foxeer CL1213 8MP 1.7mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 823.6322980201983,
+		"fy": 823.7529078944411,
+		"cx": 960.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		0.1438757138262232,
+		-0.05601189552349059,
+		-0.016350280941339383,
+		0.015451258467793933
+	],
+	"metadata": {
+		"calibrated_by": "TMac FPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

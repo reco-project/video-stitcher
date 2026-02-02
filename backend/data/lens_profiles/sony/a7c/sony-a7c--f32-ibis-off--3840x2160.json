@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--f32-ibis-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Samyang FE 18mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1969.479358644283,
+		"fy": 1969.5853586354615,
+		"cx": 1895.859610244121,
+		"cy": 1066.2492322626824
+	},
+	"distortion_coeffs": [
+		0.30285759202680523,
+		0.21608260437834076,
+		-0.11956661703175836,
+		0.13544101956898896
+	],
+	"metadata": {
+		"calibrated_by": "Rio A7C Yogyakarta",
+		"notes": "F3.2 IBIS OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

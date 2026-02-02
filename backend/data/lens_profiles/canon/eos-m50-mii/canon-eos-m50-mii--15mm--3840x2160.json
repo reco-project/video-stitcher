@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m50-mii--15mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "eos m50 mii",
+	"lens_model": "15-45 efm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4137.98869339857,
+		"fy": 4136.584071825243,
+		"cx": 1920.797456722265,
+		"cy": 1069.145729253864
+	},
+	"distortion_coeffs": [
+		0.1827712027186557,
+		0.4468036627505446,
+		-2.183417500127769,
+		5.42012063247971
+	],
+	"metadata": {
+		"calibrated_by": "Federico La Cava",
+		"notes": "15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

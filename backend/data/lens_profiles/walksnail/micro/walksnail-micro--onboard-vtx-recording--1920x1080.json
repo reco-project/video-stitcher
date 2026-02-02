@@ -1,0 +1,29 @@
+{
+	"id": "walksnail-micro--onboard-vtx-recording--1920x1080",
+	"camera_brand": "Walksnail",
+	"camera_model": "Micro",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 725.5272581225993,
+		"fy": 724.8159623912578,
+		"cx": 953.5216522249514,
+		"cy": 541.1126309853443
+	},
+	"distortion_coeffs": [
+		0.023440436908032138,
+		0.01196626742246009,
+		-0.0065087179787122595,
+		0.0007402571669719968
+	],
+	"metadata": {
+		"calibrated_by": "Jan Daliba",
+		"notes": "Onboard VTX recording",
+		"source": "gyroflow",
+		"official": true
+	}
+}

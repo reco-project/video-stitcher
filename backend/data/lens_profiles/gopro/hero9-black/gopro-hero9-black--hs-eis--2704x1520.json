@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero9-black--hs-eis--2704x1520",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO9 Black",
+	"lens_model": "Max lens Wide",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1343.9279079576022,
+		"fy": 1346.710401874392,
+		"cx": 1390.70230854868,
+		"cy": 726.4534542382846
+	},
+	"distortion_coeffs": [
+		0.009251387987899888,
+		0.2008966041867086,
+		-0.2846503801046326,
+		0.14246090258497454
+	],
+	"metadata": {
+		"calibrated_by": "Barts Biker",
+		"notes": "HS EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

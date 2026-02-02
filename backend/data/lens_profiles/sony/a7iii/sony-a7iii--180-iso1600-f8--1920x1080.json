@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--180-iso1600-f8--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "SIGMA 14MM PRIME",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 761.7188677653922,
+		"fy": 760.7041547703291,
+		"cx": 937.636124793034,
+		"cy": 538.3643197393859
+	},
+	"distortion_coeffs": [
+		0.19457933839618555,
+		0.13206168007040117,
+		-0.09739432963030992,
+		0.17592308377429464
+	],
+	"metadata": {
+		"calibrated_by": "Jake P",
+		"notes": "1/80, ISO1600, F8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

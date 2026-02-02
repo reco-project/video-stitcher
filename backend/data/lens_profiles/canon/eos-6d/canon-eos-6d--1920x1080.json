@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-6d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 6D",
+	"lens_model": "35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1861.1904479561608,
+		"fy": 1867.4436375100229,
+		"cx": 888.0744131690653,
+		"cy": 612.8570504661891
+	},
+	"distortion_coeffs": [
+		0.15547533636459843,
+		0.43189544924103057,
+		-0.039527536049933226,
+		-3.525252305198416
+	],
+	"metadata": {
+		"calibrated_by": "Jaasim Mulla",
+		"source": "gyroflow",
+		"official": true
+	}
+}

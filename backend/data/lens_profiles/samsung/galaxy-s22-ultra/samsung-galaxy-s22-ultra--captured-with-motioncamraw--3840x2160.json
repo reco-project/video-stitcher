@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s22-ultra--captured-with-motioncamraw--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S22 Ultra",
+	"lens_model": "14mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1669.3465067318543,
+		"fy": 1667.8102286463393,
+		"cx": 1925.673834448539,
+		"cy": 1086.9434818741772
+	},
+	"distortion_coeffs": [
+		0.32183186422728727,
+		0.2227499135502277,
+		-0.017684437042361518,
+		-0.052533060323911536
+	],
+	"metadata": {
+		"calibrated_by": "TaleSlinger@Yatopia.com",
+		"notes": "Captured with MotionCamRaw",
+		"source": "gyroflow",
+		"official": true
+	}
+}

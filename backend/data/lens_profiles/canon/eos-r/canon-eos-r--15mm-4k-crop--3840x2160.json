@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r--15mm-4k-crop--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R",
+	"lens_model": "RF15-35mm F2.8 L IS USM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2867.105160036902,
+		"fy": 2869.7555615649712,
+		"cx": 1892.6162553092668,
+		"cy": 1102.426258473034
+	},
+	"distortion_coeffs": [
+		0.2585546410023082,
+		0.20053064433909548,
+		-0.1547932115802251,
+		0.1795030573407844
+	],
+	"metadata": {
+		"calibrated_by": "MarinoC",
+		"notes": "15mm 4K Crop",
+		"source": "gyroflow",
+		"official": true
+	}
+}

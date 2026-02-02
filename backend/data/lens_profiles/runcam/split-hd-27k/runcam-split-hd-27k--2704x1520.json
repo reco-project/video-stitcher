@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-hd-27k--2704x1520",
+	"camera_brand": "RunCam",
+	"camera_model": "split hd 2.7k",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1152.6941050892387,
+		"fy": 1158.3420934938088,
+		"cx": 1380.501586020334,
+		"cy": 807.5588917923151
+	},
+	"distortion_coeffs": [
+		0.1334851991106088,
+		0.07012700397174366,
+		-0.10445653981305976,
+		0.03517357321169676
+	],
+	"metadata": {
+		"calibrated_by": "lenovo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--25fps--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "14.00mm f1.8 Sigma prime",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1516.0107379332412,
+		"fy": 1515.7672054052232,
+		"cx": 1931.9416810801151,
+		"cy": 1076.205572792059
+	},
+	"distortion_coeffs": [
+		0.3150826998337481,
+		0.17104358852653517,
+		0.06907231000843313,
+		-0.05743924982242717
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"notes": "25fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "runcam-split-hd-43--2704x2032",
+	"camera_brand": "RunCam",
+	"camera_model": "Split HD 43",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 2032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1131.47701395102,
+		"fy": 1137.1381341814931,
+		"cx": 1361.6589942922749,
+		"cy": 1082.5293361161605
+	},
+	"distortion_coeffs": [
+		0.14763979046004905,
+		0.08111489782771666,
+		-0.17341747231700733,
+		0.09195034618565016
+	],
+	"metadata": {
+		"calibrated_by": "lenovo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

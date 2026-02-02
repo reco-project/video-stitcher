@@ -1,0 +1,29 @@
+{
+	"id": "walksnail-micro--goggles-dvr--1280x720",
+	"camera_brand": "Walksnail",
+	"camera_model": "Micro",
+	"lens_model": "Standard",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 485.1284473477315,
+		"fy": 484.9619488892304,
+		"cx": 635.8674556241423,
+		"cy": 360.8926363247076
+	},
+	"distortion_coeffs": [
+		0.024518171621526624,
+		-0.00352362759962567,
+		0.022576369190993928,
+		-0.016084279785389274
+	],
+	"metadata": {
+		"calibrated_by": "Jan Daliba",
+		"notes": "Goggles DVR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

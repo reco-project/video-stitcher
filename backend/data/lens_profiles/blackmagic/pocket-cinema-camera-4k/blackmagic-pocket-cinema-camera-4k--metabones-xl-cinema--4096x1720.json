@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--metabones-xl-cinema--4096x1720",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Sigma 14mm f/1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 1720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2029.7366893948056,
+		"fy": 2028.5530533547744,
+		"cx": 2075.942517021967,
+		"cy": 872.6534695987039
+	},
+	"distortion_coeffs": [
+		0.3007839463905907,
+		0.17743502279975926,
+		0.07277628569693902,
+		-0.06696442114637387
+	],
+	"metadata": {
+		"calibrated_by": "Hancuff Cinematic",
+		"notes": "Metabones XL Cinema",
+		"source": "gyroflow",
+		"official": true
+	}
+}

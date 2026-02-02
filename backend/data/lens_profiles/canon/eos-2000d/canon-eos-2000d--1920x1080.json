@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-2000d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 2000D",
+	"lens_model": "Default",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1564.358640811054,
+		"fy": 1564.9723828492376,
+		"cx": 953.3083726008404,
+		"cy": 541.9841692559336
+	},
+	"distortion_coeffs": [
+		0.17574261775473468,
+		-0.286320826551512,
+		2.6506927486369576,
+		-4.906128662706446
+	],
+	"metadata": {
+		"calibrated_by": "BenoVidla",
+		"source": "gyroflow",
+		"official": true
+	}
+}

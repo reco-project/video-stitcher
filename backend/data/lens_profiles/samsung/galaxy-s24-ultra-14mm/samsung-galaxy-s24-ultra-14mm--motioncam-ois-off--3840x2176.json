@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s24-ultra-14mm--motioncam-ois-off--3840x2176",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S24 Ultra 14mm",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1593.0724386538943,
+		"fy": 1592.037042434501,
+		"cx": 1908.260022456681,
+		"cy": 1056.9155968082036
+	},
+	"distortion_coeffs": [
+		0.2778248724057642,
+		0.4473028834014682,
+		-0.5732391715789766,
+		0.4656201637356227
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"notes": "Motioncam OIS off",
+		"source": "gyroflow",
+		"official": true
+	}
+}

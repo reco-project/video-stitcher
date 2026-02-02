@@ -1,0 +1,29 @@
+{
+	"id": "\u7ebd\u66fc-lf0779-4663--4800\u4e07\u7269\u7406\u50cf\u7d20--3840x2160",
+	"camera_brand": "\u7ebd\u66fc",
+	"camera_model": "LF0779-4663",
+	"lens_model": "Unknown",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2190.8179751528464,
+		"fy": 2191.4714705014308,
+		"cx": 1914.8043413295268,
+		"cy": 1052.0489906524665
+	},
+	"distortion_coeffs": [
+		0.1736342126887934,
+		-0.23186859119084344,
+		0.052885509646733365,
+		0.016687866196729937
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u946b",
+		"notes": "4800\u4e07\u7269\u7406\u50cf\u7d20",
+		"source": "gyroflow",
+		"official": true
+	}
+}

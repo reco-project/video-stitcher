@@ -1,0 +1,28 @@
+{
+	"id": "pentax-k-5-iis--1920x1080",
+	"camera_brand": "Pentax",
+	"camera_model": "K-5 IIS",
+	"lens_model": "Tamron 18-250",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1440.0363075415978,
+		"fy": 1439.3969449592755,
+		"cx": 948.333397507944,
+		"cy": 588.6596633880789
+	},
+	"distortion_coeffs": [
+		0.1398129629073432,
+		0.18172810025518144,
+		-0.29402289930047787,
+		0.613664326967695
+	],
+	"metadata": {
+		"calibrated_by": "florian",
+		"source": "gyroflow",
+		"official": true
+	}
+}

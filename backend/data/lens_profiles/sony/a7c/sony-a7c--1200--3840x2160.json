@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--1200--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Sigma 65 F2 DG DN 20",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7794.322125295642,
+		"fy": 7784.494238141382,
+		"cx": 1967.4918945193667,
+		"cy": 1082.1080455182955
+	},
+	"distortion_coeffs": [
+		0.1563767981117185,
+		10.063043383739554,
+		-222.33425173797724,
+		1812.969470080146
+	],
+	"metadata": {
+		"calibrated_by": "Theanea Theang",
+		"notes": "1/200",
+		"source": "gyroflow",
+		"official": true
+	}
+}

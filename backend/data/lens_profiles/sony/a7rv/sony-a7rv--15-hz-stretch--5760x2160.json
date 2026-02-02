@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rv--15-hz-stretch--5760x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rV",
+	"lens_model": "Laowa 35mm Nanomorph",
+	"resolution": {
+		"width": 5760,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5942.662728041563,
+		"fy": 5966.576827087688,
+		"cx": 2828.17510513208,
+		"cy": 1153.0686024775048
+	},
+	"distortion_coeffs": [
+		0.3923462259026576,
+		0.22209520181172024,
+		-9.006300955758828,
+		44.19667887874336
+	],
+	"metadata": {
+		"calibrated_by": "Matt Likens",
+		"notes": "1.5 HZ Stretch",
+		"source": "gyroflow",
+		"official": true
+	}
+}

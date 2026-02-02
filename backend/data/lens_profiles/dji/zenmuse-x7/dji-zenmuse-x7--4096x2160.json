@@ -1,0 +1,28 @@
+{
+	"id": "dji-zenmuse-x7--4096x2160",
+	"camera_brand": "DJI",
+	"camera_model": "ZENMUSE X7",
+	"lens_model": "DL-S 16mm F2.8 ND ASPH",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2788.1287399751973,
+		"fy": 2760.451930201822,
+		"cx": 2034.835193777304,
+		"cy": 1075.2547141513728
+	},
+	"distortion_coeffs": [
+		0.3704894750511306,
+		-0.08893094838504216,
+		0.4724958114688005,
+		-0.19824266317000777
+	],
+	"metadata": {
+		"calibrated_by": "liuxinliang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mix-2s--gcam--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mix 2s",
+	"lens_model": "Wide/Main",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2931.650714393414,
+		"fy": 2931.651801155002,
+		"cx": 1948.4197870062133,
+		"cy": 1077.2645342209032
+	},
+	"distortion_coeffs": [
+		0.8024935465832305,
+		-2.611231098390738,
+		6.617484075852589,
+		-6.014729259742121
+	],
+	"metadata": {
+		"calibrated_by": "Fox",
+		"notes": "GCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

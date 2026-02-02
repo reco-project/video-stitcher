@@ -1,0 +1,28 @@
+{
+	"id": "cooau-cu-spc02--3840x2160",
+	"camera_brand": "Cooau",
+	"camera_model": "CU SPC02",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2314.676940356341,
+		"fy": 2312.772866046764,
+		"cx": 1960.4946518660283,
+		"cy": 1068.46716798967
+	},
+	"distortion_coeffs": [
+		-0.028753360067754745,
+		-0.06917431090856052,
+		0.1621701603223796,
+		-0.1484175528192453
+	],
+	"metadata": {
+		"calibrated_by": "Lorenzo Manera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

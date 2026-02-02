@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x-6k-s35--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "18-35mm F1.8 DC HSM | Art 013 18.00mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4059.071088270287,
+		"fy": 4062.763031069109,
+		"cx": 2860.152989973389,
+		"cy": 1568.660862682828
+	},
+	"distortion_coeffs": [
+		0.21321126407131452,
+		0.25227138969664586,
+		-0.23534060995222375,
+		0.41133681401009714
+	],
+	"metadata": {
+		"calibrated_by": "Chris Davis",
+		"source": "gyroflow",
+		"official": true
+	}
+}

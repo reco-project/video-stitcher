@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh4--not-c4k--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH4",
+	"lens_model": "Venus Optics Laowa 7.5mm F2.0",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2080.25076199111,
+		"fy": 2080.5846839697797,
+		"cx": 1929.6643906321951,
+		"cy": 1040.7315750070998
+	},
+	"distortion_coeffs": [
+		0.33333539614936064,
+		0.143234056705803,
+		-0.1339861109469571,
+		0.1805160080116136
+	],
+	"metadata": {
+		"calibrated_by": "Maurice Veldkamp",
+		"notes": "Not C4K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--58mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "44M-6",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7668.403409470122,
+		"fy": 7663.51768299716,
+		"cx": 1898.889084708221,
+		"cy": 1193.5158768373888
+	},
+	"distortion_coeffs": [
+		0.5799410308401166,
+		-4.60414350587231,
+		60.67050751809682,
+		-374.63581721946986
+	],
+	"metadata": {
+		"calibrated_by": "Kaos",
+		"notes": "58mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

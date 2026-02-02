@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r5--7680x4320",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "RF 24-105mmF4L IS USM",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9009.633091024576,
+		"fy": 8985.301223940878,
+		"cx": 3812.105480912939,
+		"cy": 2180.894596083362
+	},
+	"distortion_coeffs": [
+		0.2938400608629894,
+		0.9116164892825238,
+		-4.808504778832779,
+		12.313721058522736
+	],
+	"metadata": {
+		"calibrated_by": "WangZiCang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

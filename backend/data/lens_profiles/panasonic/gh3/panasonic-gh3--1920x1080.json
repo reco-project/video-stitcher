@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh3--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH3",
+	"lens_model": "14mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1629.41208879215,
+		"fy": 1656.019598920037,
+		"cx": 961.2726892942244,
+		"cy": 531.1312966524765
+	},
+	"distortion_coeffs": [
+		0.2934350903310108,
+		-0.14323569088672453,
+		1.4539830267207965,
+		-2.3601163144382378
+	],
+	"metadata": {
+		"calibrated_by": "Alan Perez",
+		"source": "gyroflow",
+		"official": true
+	}
+}

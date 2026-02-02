@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6v--zeiss_25mm_2--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "Zeiss Distagon 25.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2254.3924568698853,
+		"fy": 2250.396210037439,
+		"cx": 1875.5944231117735,
+		"cy": 1041.3851874423945
+	},
+	"distortion_coeffs": [
+		0.32961393516975585,
+		0.10610798939635548,
+		0.17389795730242014,
+		-0.10396013877512351
+	],
+	"metadata": {
+		"calibrated_by": "Ruppert, Peter",
+		"notes": "Zeiss_25mm_2",
+		"source": "gyroflow",
+		"official": true
+	}
+}

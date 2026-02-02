@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-7-pro--portrait--3840x2160",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3272.0678057815835,
+		"fy": 3360.549571041062,
+		"cx": 1882.499040796378,
+		"cy": 1073.6349525791327
+	},
+	"distortion_coeffs": [
+		0.6192332640307563,
+		-2.161656322450436,
+		9.343705995235249,
+		-13.338151600832653
+	],
+	"metadata": {
+		"calibrated_by": "b1nary b0y",
+		"notes": "Portrait",
+		"source": "gyroflow",
+		"official": true
+	}
+}

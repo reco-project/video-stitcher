@@ -1,0 +1,28 @@
+{
+	"id": "caddx-babyturtle--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "BabyTurtle",
+	"lens_model": "1.8mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 881.4725213373014,
+		"fy": 883.1190521501569,
+		"cx": 960.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		-0.06059333959781095,
+		0.0374946155353139,
+		-0.05983774981901804,
+		0.027217645267871012
+	],
+	"metadata": {
+		"calibrated_by": "kkbin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

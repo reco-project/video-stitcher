@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a70--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "a70",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1475.9958312125705,
+		"fy": 1474.454901128758,
+		"cx": 960.2069133965296,
+		"cy": 533.6837144097088
+	},
+	"distortion_coeffs": [
+		0.6239053565240403,
+		-1.777311638769318,
+		5.711446964456627,
+		-6.635807780159385
+	],
+	"metadata": {
+		"calibrated_by": "Anonymous",
+		"source": "gyroflow",
+		"official": true
+	}
+}

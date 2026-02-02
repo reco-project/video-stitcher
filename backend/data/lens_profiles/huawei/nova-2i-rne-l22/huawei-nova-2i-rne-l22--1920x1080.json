@@ -1,0 +1,28 @@
+{
+	"id": "huawei-nova-2i-rne-l22--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "Nova 2i RNE-L22",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1500.7286063452827,
+		"fy": 1463.328956398599,
+		"cx": 965.5414092044948,
+		"cy": 536.041994683389
+	},
+	"distortion_coeffs": [
+		0.560865689084756,
+		-1.1878225053847662,
+		3.951590981154757,
+		-4.396308748319249
+	],
+	"metadata": {
+		"calibrated_by": "SHS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

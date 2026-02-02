@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z6--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6",
+	"lens_model": "24-70 F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2578.3258270160336,
+		"fy": 2581.621406427383,
+		"cx": 1902.972028379736,
+		"cy": 1037.1668829616217
+	},
+	"distortion_coeffs": [
+		0.32858727528199827,
+		0.09404898608261726,
+		0.271441936927025,
+		-0.18947504891839523
+	],
+	"metadata": {
+		"calibrated_by": "ChiHo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

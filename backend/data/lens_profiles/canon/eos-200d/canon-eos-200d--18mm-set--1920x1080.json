@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-200d--18mm-set--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 200D",
+	"lens_model": "Tamron 18-200mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1563.3338963173042,
+		"fy": 1544.0061752204622,
+		"cx": 914.9238826866598,
+		"cy": 572.7746110482235
+	},
+	"distortion_coeffs": [
+		0.19255245452602435,
+		-0.20067962342676077,
+		1.1202144557727305,
+		-1.0567584970780377
+	],
+	"metadata": {
+		"calibrated_by": "Martin Gallistl",
+		"notes": "18mm set",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-13--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "13",
+	"lens_model": "24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1912.5334784685192,
+		"fy": 1913.0379412708712,
+		"cx": 1918.1131162003956,
+		"cy": 1055.702342775956
+	},
+	"distortion_coeffs": [
+		0.27524810658699045,
+		0.9248567369660272,
+		-2.3513490811931224,
+		2.2846093299469445
+	],
+	"metadata": {
+		"calibrated_by": "\u9ece\u5b50\u5065",
+		"source": "gyroflow",
+		"official": true
+	}
+}

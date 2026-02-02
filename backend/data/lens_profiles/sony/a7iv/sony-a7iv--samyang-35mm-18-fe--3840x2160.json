@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--samyang-35mm-18-fe--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Samyang 35mm 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4495.048466059221,
+		"fy": 4496.721032028553,
+		"cx": 1884.6790009022711,
+		"cy": 1130.1728859269217
+	},
+	"distortion_coeffs": [
+		0.3888286090214996,
+		-0.10226845299832107,
+		3.807845517470608,
+		-16.334069897666378
+	],
+	"metadata": {
+		"calibrated_by": "Wojciech P\u0142achetka",
+		"notes": "Samyang 35mm 1.8 FE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

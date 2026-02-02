@@ -1,0 +1,28 @@
+{
+	"id": "meizu-note9--4000x2250",
+	"camera_brand": "MEIZU",
+	"camera_model": "Note9",
+	"lens_model": null,
+	"resolution": {
+		"width": 4000,
+		"height": 2250
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3137.990000760219,
+		"fy": 3131.229511101926,
+		"cx": 1970.7052924001305,
+		"cy": 1138.0883643876614
+	},
+	"distortion_coeffs": [
+		0.6152502216019505,
+		-2.086387088267919,
+		11.0437752190778,
+		-19.90956920717142
+	],
+	"metadata": {
+		"calibrated_by": "marfix",
+		"source": "gyroflow",
+		"official": true
+	}
+}

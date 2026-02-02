@@ -1,0 +1,29 @@
+{
+	"id": "caddx-avatar-hd--walksnail-avatar-hd--1920x1080",
+	"camera_brand": "Caddx",
+	"camera_model": "Avatar HD",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 886.7440307346657,
+		"fy": 886.8152422512092,
+		"cx": 951.699652478198,
+		"cy": 498.1744601181426
+	},
+	"distortion_coeffs": [
+		0.004419552510957832,
+		0.026346871017395215,
+		-0.021060676513022337,
+		0.006263237046603965
+	],
+	"metadata": {
+		"calibrated_by": "James McDonald",
+		"notes": "WALKSNAIL AVATAR HD",
+		"source": "gyroflow",
+		"official": true
+	}
+}

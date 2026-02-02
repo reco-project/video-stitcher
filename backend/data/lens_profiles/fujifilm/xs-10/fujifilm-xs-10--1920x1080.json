@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xs-10--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XS-10",
+	"lens_model": "Viltrox 27 F1.2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2739.237596728108,
+		"fy": 2745.985177542664,
+		"cx": 997.0281059826856,
+		"cy": 434.341020895318
+	},
+	"distortion_coeffs": [
+		0.1356955619364709,
+		1.4717601426842426,
+		-4.275591566602521,
+		0.6363566337084336
+	],
+	"metadata": {
+		"calibrated_by": "\u6881\u658c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

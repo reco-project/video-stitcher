@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z5--no-gimbal--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z5",
+	"lens_model": "AF-S NIKKOR 35mm 1:1.8G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6494.684887397114,
+		"fy": 6506.944004614271,
+		"cx": 1773.950863032521,
+		"cy": 1064.6213641725092
+	},
+	"distortion_coeffs": [
+		0.14874795906956895,
+		-0.0909121439216498,
+		6.301469001852815,
+		-39.77661822463117
+	],
+	"metadata": {
+		"calibrated_by": "Charles Kelly iv",
+		"notes": "No Gimbal",
+		"source": "gyroflow",
+		"official": true
+	}
+}

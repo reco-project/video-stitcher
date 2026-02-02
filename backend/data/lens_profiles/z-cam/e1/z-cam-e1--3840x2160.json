@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e1--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E1",
+	"lens_model": "SLR MAGIC 8 MM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2619.145125231136,
+		"fy": 2607.250060934711,
+		"cx": 1908.642414237268,
+		"cy": 1098.0880250355133
+	},
+	"distortion_coeffs": [
+		0.2665778004759568,
+		0.25790785973321173,
+		-0.3632838298912577,
+		0.5366275036884817
+	],
+	"metadata": {
+		"calibrated_by": "roger nicolas",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6700--18mm-focal-length--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6700",
+	"lens_model": "18-35mm Sigma Art 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3089.4913971802916,
+		"fy": 3089.209512457266,
+		"cx": 1898.2309091568904,
+		"cy": 1065.1702994462034
+	},
+	"distortion_coeffs": [
+		0.3019993999585217,
+		0.27770414666529075,
+		-0.43805197848129135,
+		0.6165532994951944
+	],
+	"metadata": {
+		"calibrated_by": "Mehmet Kozal",
+		"notes": "18mm Focal Length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

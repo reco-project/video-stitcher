@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z-6--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z 6",
+	"lens_model": "Sigma 35mm F1.4 A",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3733.950258182692,
+		"fy": 3735.772372731514,
+		"cx": 1904.0736940247343,
+		"cy": 1086.2735190848186
+	},
+	"distortion_coeffs": [
+		0.26203956692725927,
+		-0.15908770604311231,
+		3.473689645485405,
+		-9.650004621017477
+	],
+	"metadata": {
+		"calibrated_by": "Patrik Arh",
+		"source": "gyroflow",
+		"official": true
+	}
+}

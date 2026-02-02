@@ -1,0 +1,28 @@
+{
+	"id": "lamax-x8-electra--1920x1080",
+	"camera_brand": "Lamax",
+	"camera_model": "X8 Electra",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1132.9860772328557,
+		"fy": 1133.0354529932677,
+		"cx": 943.4097919159116,
+		"cy": 517.8556118618184
+	},
+	"distortion_coeffs": [
+		-0.06261456648622794,
+		0.020354915163322024,
+		-0.04816247843587699,
+		0.028318006497299715
+	],
+	"metadata": {
+		"calibrated_by": "CreefyFPV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

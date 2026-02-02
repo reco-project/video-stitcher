@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a41--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A41",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1458.697173894809,
+		"fy": 1457.6214035649432,
+		"cx": 954.6650333122532,
+		"cy": 518.1817306422299
+	},
+	"distortion_coeffs": [
+		0.44720659466117785,
+		-0.4579312227444459,
+		2.067811147888255,
+		-2.589775046983477
+	],
+	"metadata": {
+		"calibrated_by": "DB",
+		"source": "gyroflow",
+		"official": true
+	}
+}

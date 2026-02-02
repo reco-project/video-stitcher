@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--canon-x071--1024x540",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Irix 11mm",
+	"resolution": {
+		"width": 1024,
+		"height": 540
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 483.10780434504136,
+		"fy": 482.9440807949167,
+		"cx": 515.5724262397416,
+		"cy": 254.2622035795866
+	},
+	"distortion_coeffs": [
+		0.3234257461938758,
+		0.17132598190935777,
+		-0.050904117823831106,
+		0.05336525424135165
+	],
+	"metadata": {
+		"calibrated_by": "Shikijo",
+		"notes": "Canon X0.71",
+		"source": "gyroflow",
+		"official": true
+	}
+}

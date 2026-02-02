@@ -1,0 +1,29 @@
+{
+	"id": "canon-r50--f18--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R50",
+	"lens_model": "Canon EF 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5048.333959471594,
+		"fy": 5065.527742133673,
+		"cx": 914.3152334408996,
+		"cy": 484.440660174017
+	},
+	"distortion_coeffs": [
+		-0.009608075603705413,
+		10.851496272637904,
+		-170.7795182045548,
+		468.46803916169006
+	],
+	"metadata": {
+		"calibrated_by": "Sauce",
+		"notes": "f/1.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

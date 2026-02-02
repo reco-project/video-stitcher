@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--20-mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Tamron 20-40",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2269.8528631293407,
+		"fy": 2275.199871701043,
+		"cx": 1916.457755797711,
+		"cy": 1044.4629782078305
+	},
+	"distortion_coeffs": [
+		0.2306521217729275,
+		0.07526616209624314,
+		0.21035725562723537,
+		0.011823924028562898
+	],
+	"metadata": {
+		"calibrated_by": "A",
+		"notes": "20 mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

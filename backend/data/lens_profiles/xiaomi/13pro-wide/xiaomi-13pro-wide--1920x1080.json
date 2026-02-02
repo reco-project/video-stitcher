@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-13pro-wide--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "13pro wide",
+	"lens_model": "14mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1060.559469961505,
+		"fy": 1059.8933141076425,
+		"cx": 953.5789276104462,
+		"cy": 536.1100760143473
+	},
+	"distortion_coeffs": [
+		0.34955858638618176,
+		-0.25003746647717,
+		1.4002320603831506,
+		-1.329811594166254
+	],
+	"metadata": {
+		"calibrated_by": "Lan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-hdr-mv1--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HDR-mv1",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 839.8039852625285,
+		"fy": 835.4391948397514,
+		"cx": 964.3825330088864,
+		"cy": 558.509555182764
+	},
+	"distortion_coeffs": [
+		0.29745818075396024,
+		0.12419478841007492,
+		-0.11378563451201604,
+		0.0601066078293707
+	],
+	"metadata": {
+		"calibrated_by": "Bartosz Ostrowski",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "mobius-actioncamera-v2--1920x1080",
+	"camera_brand": "Mobius",
+	"camera_model": "ActionCamera v2",
+	"lens_model": "A2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1353.9395637507862,
+		"fy": 1351.9200626985246,
+		"cx": 995.0934386730828,
+		"cy": 511.3267092322268
+	},
+	"distortion_coeffs": [
+		-0.05105518682528778,
+		-0.07120360605949899,
+		0.2390657242147913,
+		-0.2776400256286665
+	],
+	"metadata": {
+		"calibrated_by": "KM|fpv",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "zte-axon--fhd-30fps--1920x1080",
+	"camera_brand": "ZTE",
+	"camera_model": "Axon",
+	"lens_model": "60",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1460.381840186499,
+		"fy": 1460.3311276207485,
+		"cx": 956.3499218295982,
+		"cy": 522.3891815335376
+	},
+	"distortion_coeffs": [
+		0.4160120222608437,
+		0.15790381948085655,
+		-1.426563580266478,
+		2.266353997452338
+	],
+	"metadata": {
+		"calibrated_by": "devsaco",
+		"notes": "FHD 30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-c--2560x1440",
+	"camera_brand": "SJCAM",
+	"camera_model": "C",
+	"lens_model": "300P",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1751.367170797885,
+		"fy": 1752.6535752554173,
+		"cx": 1265.3883410072256,
+		"cy": 676.2797211984984
+	},
+	"distortion_coeffs": [
+		-0.0774635285244707,
+		0.006997004466593368,
+		-0.01840711332085176,
+		0.011999725632390192
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

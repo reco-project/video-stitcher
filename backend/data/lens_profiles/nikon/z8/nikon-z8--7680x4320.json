@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z8--7680x4320",
+	"camera_brand": "Nikon",
+	"camera_model": "z8",
+	"lens_model": "70-200",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15867.685173438054,
+		"fy": 15869.580221241253,
+		"cx": 3948.759111641744,
+		"cy": 2148.848635962574
+	},
+	"distortion_coeffs": [
+		0.34354359973627285,
+		-1.468852585219079,
+		53.22989811472025,
+		-496.3800498276124
+	],
+	"metadata": {
+		"calibrated_by": "Yau Leung Chiu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

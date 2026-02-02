@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-nord-2--mcpro24fps--3840x2160",
+	"camera_brand": "OnePlus",
+	"camera_model": "Nord 2",
+	"lens_model": "Main 23mm f/1.88",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2624.9718377298987,
+		"fy": 2621.7127022969166,
+		"cx": 1927.8494049710412,
+		"cy": 1071.2939810796445
+	},
+	"distortion_coeffs": [
+		0.5717585115788442,
+		-1.7600573611654289,
+		5.985983305542647,
+		-6.359748184248298
+	],
+	"metadata": {
+		"calibrated_by": "Egor Zhavoronkov",
+		"notes": "mcpro24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

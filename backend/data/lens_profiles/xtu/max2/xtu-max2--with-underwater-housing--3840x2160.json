@@ -1,0 +1,29 @@
+{
+	"id": "xtu-max2--with-underwater-housing--3840x2160",
+	"camera_brand": "XTU",
+	"camera_model": "MAX2",
+	"lens_model": "XTU/XTU_MAX2_LDC_4k25_4k_16by9_3840x2160-25fps wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1793.1160899604554,
+		"fy": 1786.9091450571116,
+		"cx": 1892.3180934050265,
+		"cy": 1082.7649066319825
+	},
+	"distortion_coeffs": [
+		0.3657656080497146,
+		0.050779700409978624,
+		0.18995075463606656,
+		0.0073438337977317
+	],
+	"metadata": {
+		"calibrated_by": "FRANCIS LITTLE",
+		"notes": "With Underwater Housing",
+		"source": "gyroflow",
+		"official": true
+	}
+}

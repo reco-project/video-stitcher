@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t2--160--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T2",
+	"lens_model": "18-55mm @18 mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1530.0943320122,
+		"fy": 1529.7003283949166,
+		"cx": 969.490363363622,
+		"cy": 561.974176291031
+	},
+	"distortion_coeffs": [
+		0.1414776775980624,
+		2.1285698186464193,
+		-10.908878956110296,
+		20.19606567514233
+	],
+	"metadata": {
+		"calibrated_by": "Patrik Pfeuti",
+		"notes": "1/60",
+		"source": "gyroflow",
+		"official": true
+	}
+}

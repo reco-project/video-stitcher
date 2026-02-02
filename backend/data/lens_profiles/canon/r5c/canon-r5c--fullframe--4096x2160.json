@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--fullframe--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "RF24105F4L@24mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2901.4181817226545,
+		"fy": 2907.5417361872073,
+		"cx": 2051.799688391009,
+		"cy": 1092.4697577687136
+	},
+	"distortion_coeffs": [
+		0.20405707170714757,
+		0.29036085772903175,
+		-0.5773381351534916,
+		1.3024425652331717
+	],
+	"metadata": {
+		"calibrated_by": "guns",
+		"notes": "Fullframe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

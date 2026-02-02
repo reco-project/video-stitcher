@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-dmc-gh4--14mm--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "DMC GH4",
+	"lens_model": "Lumix 14m",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4060.989986396648,
+		"fy": 4059.5847734972735,
+		"cx": 2022.7173272312473,
+		"cy": 1080.1380090255825
+	},
+	"distortion_coeffs": [
+		0.28604122484056177,
+		0.005967540881078529,
+		0.4478580590174041,
+		0.07619888538616194
+	],
+	"metadata": {
+		"calibrated_by": "Jabulani Munyama",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

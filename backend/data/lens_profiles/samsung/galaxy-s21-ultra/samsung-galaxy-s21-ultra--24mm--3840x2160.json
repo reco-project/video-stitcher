@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s21-ultra--24mm--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S21 ultra",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2509.996499240891,
+		"fy": 2506.8717834015233,
+		"cx": 1923.7317118601145,
+		"cy": 1072.3445198300733
+	},
+	"distortion_coeffs": [
+		0.40616505326824726,
+		-0.017817600124316522,
+		0.39186710224507504,
+		-0.37514486220887633
+	],
+	"metadata": {
+		"calibrated_by": "cheshire",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

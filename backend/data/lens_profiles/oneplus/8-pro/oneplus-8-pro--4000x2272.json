@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-8-pro--4000x2272",
+	"camera_brand": "OnePlus",
+	"camera_model": "8 Pro",
+	"lens_model": "Main",
+	"resolution": {
+		"width": 4000,
+		"height": 2272
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2931.552896665704,
+		"fy": 2934.6373025745793,
+		"cx": 1971.8792553082772,
+		"cy": 1130.7759257325386
+	},
+	"distortion_coeffs": [
+		0.4779042719553476,
+		-1.430619721369263,
+		6.895841752182544,
+		-9.285241858323191
+	],
+	"metadata": {
+		"calibrated_by": "Dali",
+		"source": "gyroflow",
+		"official": true
+	}
+}

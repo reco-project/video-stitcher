@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--lens-18mm-eis-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "Sigma 18-50 F2.8 DC DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2919.873104071822,
+		"fy": 2927.3521239246634,
+		"cx": 1913.934995487068,
+		"cy": 1098.201259227223
+	},
+	"distortion_coeffs": [
+		0.28262683013542156,
+		0.2207581489139457,
+		0.8822467825370495,
+		-2.1307770407171716
+	],
+	"metadata": {
+		"calibrated_by": "madebysln",
+		"notes": "Lens @ 18mm, EIS OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

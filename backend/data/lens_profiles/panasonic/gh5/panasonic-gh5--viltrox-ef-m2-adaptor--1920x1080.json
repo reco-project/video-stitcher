@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5--viltrox-ef-m2-adaptor--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5",
+	"lens_model": "Canon 24-105 F4 L",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1956.2557984919777,
+		"fy": 1955.2966457061495,
+		"cx": 959.8462781877918,
+		"cy": 545.3844088099427
+	},
+	"distortion_coeffs": [
+		0.139050168898361,
+		0.4828683140541411,
+		-1.750821322345867,
+		3.600155633402105
+	],
+	"metadata": {
+		"calibrated_by": "Graeme Stonebank",
+		"notes": "Viltrox EF-M2 adaptor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

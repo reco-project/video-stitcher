@@ -1,0 +1,28 @@
+{
+	"id": "olympus-m10-mark-iv--3840x2160",
+	"camera_brand": "Olympus",
+	"camera_model": "M10 Mark IV",
+	"lens_model": "Lumix Leica 9mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2109.943306867662,
+		"fy": 2111.0973625184265,
+		"cx": 1928.8574045558285,
+		"cy": 1106.8114120270973
+	},
+	"distortion_coeffs": [
+		0.33544704103591166,
+		0.007720741293451981,
+		0.3484376839372185,
+		-0.25813648651543136
+	],
+	"metadata": {
+		"calibrated_by": "Juli\u00e1n Monrabal",
+		"source": "gyroflow",
+		"official": true
+	}
+}

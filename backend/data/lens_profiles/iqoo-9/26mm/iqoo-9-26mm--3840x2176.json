@@ -1,0 +1,28 @@
+{
+	"id": "iqoo-9-26mm--3840x2176",
+	"camera_brand": "IQOO 9",
+	"camera_model": "26MM",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9391.20620636024,
+		"fy": 9380.978941857891,
+		"cx": 2119.1162143691563,
+		"cy": 604.836195932103
+	},
+	"distortion_coeffs": [
+		1.7591714191262495,
+		-69.18682971119279,
+		1785.3274213672803,
+		-21782.215037674898
+	],
+	"metadata": {
+		"calibrated_by": "Bikram Panda",
+		"source": "gyroflow",
+		"official": true
+	}
+}

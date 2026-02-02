@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-note10--30fps--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy Note10+",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1546.8453313159523,
+		"fy": 1547.3752213652758,
+		"cx": 961.6266279449718,
+		"cy": 516.4318908269017
+	},
+	"distortion_coeffs": [
+		0.8502357112384117,
+		-3.989331022932845,
+		13.300125196194235,
+		-14.35701163349315
+	],
+	"metadata": {
+		"calibrated_by": "FiredFPV",
+		"notes": "30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

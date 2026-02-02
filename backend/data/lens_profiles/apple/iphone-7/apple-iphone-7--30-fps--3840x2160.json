@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-7--30-fps--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 7",
+	"lens_model": "back",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3395.40974441661,
+		"fy": 3396.879429537952,
+		"cx": 1917.0599691705552,
+		"cy": 1069.254367366748
+	},
+	"distortion_coeffs": [
+		0.6288388398614297,
+		-1.6338878310094298,
+		0.5707904544129936,
+		12.579464167616417
+	],
+	"metadata": {
+		"calibrated_by": "GyroCam",
+		"notes": "30 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

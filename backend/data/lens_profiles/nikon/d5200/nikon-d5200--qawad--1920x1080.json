@@ -1,0 +1,29 @@
+{
+	"id": "nikon-d5200--qawad--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D5200",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1464.4614396423794,
+		"fy": 1465.3594554055576,
+		"cx": 968.9215239949314,
+		"cy": 554.1043269651522
+	},
+	"distortion_coeffs": [
+		0.2555382047613398,
+		-0.2730905236658428,
+		1.7853994432392468,
+		-2.8323232063045407
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"notes": "qawad",
+		"source": "gyroflow",
+		"official": true
+	}
+}

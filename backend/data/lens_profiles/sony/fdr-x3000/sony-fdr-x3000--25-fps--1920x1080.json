@@ -1,0 +1,29 @@
+{
+	"id": "sony-fdr-x3000--25-fps--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FDR-X3000",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 791.2413510606838,
+		"fy": 790.799633613544,
+		"cx": 955.0938326728074,
+		"cy": 547.409257676237
+	},
+	"distortion_coeffs": [
+		0.14451585984780263,
+		0.09528277465238648,
+		-0.05638245753302019,
+		0.05037902623491667
+	],
+	"metadata": {
+		"calibrated_by": "CY Chen",
+		"notes": "25 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--shot-24mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "sigma 24 - 70 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2647.6040177661644,
+		"fy": 2650.989436029477,
+		"cx": 1919.045457275118,
+		"cy": 1067.3013708432036
+	},
+	"distortion_coeffs": [
+		0.14825179165619395,
+		0.13151844213258448,
+		0.05575868076378731,
+		0.31072074748893547
+	],
+	"metadata": {
+		"calibrated_by": "Filmed By RawhSounds",
+		"notes": "shot 24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

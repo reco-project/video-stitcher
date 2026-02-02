@@ -1,0 +1,29 @@
+{
+	"id": "sony-hdr-as200v--123-inch-back-illuminated-exmor-r-cmos-sensor--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HDR-AS200V",
+	"lens_model": "ZEISS\u00ae Tessar\u00ae",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1154.6916536403653,
+		"fy": 1155.639803263522,
+		"cx": 981.765175218504,
+		"cy": 552.7147511509305
+	},
+	"distortion_coeffs": [
+		-0.05169466493496102,
+		-0.0041299441346352135,
+		0.028843931122704555,
+		-0.05200541409411795
+	],
+	"metadata": {
+		"calibrated_by": "Roman TR",
+		"notes": "1/2.3-inch back-illuminated Exmor R\u00ae CMOS sensor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-e4--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-E4",
+	"lens_model": "Rokinon 12mm f/2.0",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1057.831715243542,
+		"fy": 1057.9392980028,
+		"cx": 950.268350104567,
+		"cy": 546.9262754518659
+	},
+	"distortion_coeffs": [
+		0.3081270679945932,
+		0.10670443742693028,
+		-0.0046009351056637456,
+		0.10050525323476656
+	],
+	"metadata": {
+		"calibrated_by": "Skrat",
+		"source": "gyroflow",
+		"official": true
+	}
+}

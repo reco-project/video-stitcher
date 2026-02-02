@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r8--300mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R8",
+	"lens_model": "RF 100-400 F5.6-8 @ 300mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 21874.46715524531,
+		"fy": 22015.010037120217,
+		"cx": 848.2310849912021,
+		"cy": 129.6904067927442
+	},
+	"distortion_coeffs": [
+		-1.3027654691634771,
+		591.9130664203431,
+		-210012.17796092833,
+		28193785.808895975
+	],
+	"metadata": {
+		"calibrated_by": "Hongye Deng",
+		"notes": "300mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

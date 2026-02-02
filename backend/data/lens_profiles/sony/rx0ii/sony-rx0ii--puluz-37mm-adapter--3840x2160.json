@@ -1,0 +1,29 @@
+{
+	"id": "sony-rx0ii--puluz-37mm-adapter--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "BeastGrip 0.6X Wide Angle",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1584.250126267022,
+		"fy": 1579.3767277590157,
+		"cx": 1938.1379445102932,
+		"cy": 1042.9095679250663
+	},
+	"distortion_coeffs": [
+		0.2200566373922212,
+		0.19493987186851067,
+		-0.29855442135273164,
+		0.22147001530070795
+	],
+	"metadata": {
+		"calibrated_by": "Straw Hat Sam",
+		"notes": "Puluz 37mm Adapter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

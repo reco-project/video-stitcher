@@ -1,0 +1,28 @@
+{
+	"id": "runcam-thumbpw--1920x1080",
+	"camera_brand": "Runcam",
+	"camera_model": "ThumbPW",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 971.3627265472744,
+		"fy": 973.2418983752518,
+		"cx": 984.4173567503437,
+		"cy": 526.2052648451462
+	},
+	"distortion_coeffs": [
+		-0.00425092195107741,
+		-0.016407683183095323,
+		0.0057614291577619626,
+		0.007428541604616167
+	],
+	"metadata": {
+		"calibrated_by": "Elvin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

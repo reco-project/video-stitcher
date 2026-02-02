@@ -1,0 +1,28 @@
+{
+	"id": "nikon-170--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "170",
+	"lens_model": "800",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 795.8583771734421,
+		"fy": 795.192852792408,
+		"cx": 956.2790906923065,
+		"cy": 523.2635499245292
+	},
+	"distortion_coeffs": [
+		-0.0007732483347549326,
+		-0.01945574406798496,
+		0.02636956263092283,
+		-0.010545818284418768
+	],
+	"metadata": {
+		"calibrated_by": "1",
+		"source": "gyroflow",
+		"official": true
+	}
+}

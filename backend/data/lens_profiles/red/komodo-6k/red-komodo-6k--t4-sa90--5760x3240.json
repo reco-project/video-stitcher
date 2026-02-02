@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--t4-sa90--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Zeiss Spuperspeedmk1 35mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8300.414541118971,
+		"fy": 8297.075969910302,
+		"cx": 2869.0538943392335,
+		"cy": 1616.0203297897783
+	},
+	"distortion_coeffs": [
+		0.23362847563595737,
+		-0.5590475972267889,
+		7.238881130331935,
+		-30.60229725146888
+	],
+	"metadata": {
+		"calibrated_by": "Yosuke Suga",
+		"notes": "T4 SA90",
+		"source": "gyroflow",
+		"official": true
+	}
+}

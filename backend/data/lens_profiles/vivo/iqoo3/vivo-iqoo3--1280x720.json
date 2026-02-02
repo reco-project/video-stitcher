@@ -1,0 +1,28 @@
+{
+	"id": "vivo-iqoo3--1280x720",
+	"camera_brand": "Vivo",
+	"camera_model": "IQOO3",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 737.0575477923376,
+		"fy": 738.2802829463941,
+		"cx": 643.2214569668209,
+		"cy": 342.97885983183585
+	},
+	"distortion_coeffs": [
+		0.1802016269547033,
+		0.77442353924233,
+		-1.6984649185108036,
+		1.9070717453968469
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

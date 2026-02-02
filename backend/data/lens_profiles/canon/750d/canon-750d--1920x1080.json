@@ -1,0 +1,28 @@
+{
+	"id": "canon-750d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "750d",
+	"lens_model": "conon zoom 55-250",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5333.275844940402,
+		"fy": 5348.692102913003,
+		"cx": 951.6761732542576,
+		"cy": 379.8213414294025
+	},
+	"distortion_coeffs": [
+		0.1712102238070721,
+		-14.565042026024024,
+		635.3200127298261,
+		-9060.60093600693
+	],
+	"metadata": {
+		"calibrated_by": "Garcia Joel",
+		"source": "gyroflow",
+		"official": true
+	}
+}

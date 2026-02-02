@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z7--14mm--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z7",
+	"lens_model": "Nikon Z6 14-30mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1637.7425837041096,
+		"fy": 1650.5508189471866,
+		"cx": 1836.504893917005,
+		"cy": 1091.4771005254363
+	},
+	"distortion_coeffs": [
+		0.2782910587912473,
+		0.35939367390506644,
+		-0.31430012332059776,
+		0.2526860829173073
+	],
+	"metadata": {
+		"calibrated_by": "JohLO",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-mix--1920x1080",
+	"camera_brand": "Foxeer",
+	"camera_model": "mix",
+	"lens_model": "FHD",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1238.6573496983167,
+		"fy": 1237.4178829581992,
+		"cx": 944.966044452157,
+		"cy": 499.7909534018337
+	},
+	"distortion_coeffs": [
+		-0.0797795035771037,
+		0.04119567643926018,
+		-0.09929562944628607,
+		0.06656828687128803
+	],
+	"metadata": {
+		"calibrated_by": "Martin K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

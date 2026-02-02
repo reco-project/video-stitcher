@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx3--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "nisi 50mm T1.9",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3822.4710612293266,
+		"fy": 3819.748577848941,
+		"cx": 1902.7533075788656,
+		"cy": 1122.4843332371363
+	},
+	"distortion_coeffs": [
+		0.2831331439791113,
+		-0.12044538162385514,
+		0.9314344817583154,
+		-0.3763202196143832
+	],
+	"metadata": {
+		"calibrated_by": "\u96f7\u77f3Mac studio display",
+		"source": "gyroflow",
+		"official": true
+	}
+}

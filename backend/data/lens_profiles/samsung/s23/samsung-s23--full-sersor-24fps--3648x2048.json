@@ -1,0 +1,29 @@
+{
+	"id": "samsung-s23--full-sersor-24fps--3648x2048",
+	"camera_brand": "Samsung",
+	"camera_model": "S23",
+	"lens_model": "69mm",
+	"resolution": {
+		"width": 3648,
+		"height": 2048
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7154.267791443607,
+		"fy": 7155.364725218674,
+		"cx": 1984.7246704628533,
+		"cy": 949.594763734762
+	},
+	"distortion_coeffs": [
+		-1.037270639178617,
+		34.17391441855399,
+		-409.5636361942542,
+		1939.6096952895784
+	],
+	"metadata": {
+		"calibrated_by": "ijimhd",
+		"notes": "Full sersor 24fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

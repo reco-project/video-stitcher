@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero4-silver--48fps--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO4 Silver",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 844.1428258729915,
+		"fy": 844.17525112957,
+		"cx": 977.4828771665202,
+		"cy": 709.1559862571171
+	},
+	"distortion_coeffs": [
+		0.05111256546914846,
+		0.00828787956670785,
+		0.0024080353917428662,
+		-0.00294805061748454
+	],
+	"metadata": {
+		"calibrated_by": "Jens Krumrei",
+		"notes": "48fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

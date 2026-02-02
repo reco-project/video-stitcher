@@ -1,0 +1,28 @@
+{
+	"id": "runcam-runcam-4k-protek25-3840x2160-2997fps--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "RunCam 4K Protek25 3840x2160 29.97fps",
+	"lens_model": "RunCam 4K Protek25 Fixed Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1582.7812906899076,
+		"fy": 1582.4085769916974,
+		"cx": 1923.1571634393645,
+		"cy": 1097.188922928408
+	},
+	"distortion_coeffs": [
+		0.3410495612582829,
+		0.14582184823117597,
+		0.08102315169741693,
+		0.06454072290176903
+	],
+	"metadata": {
+		"calibrated_by": "Virgil Dizon",
+		"source": "gyroflow",
+		"official": true
+	}
+}

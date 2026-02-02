@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--1920x1080",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K",
+	"lens_model": "Laowa 14MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1384.6420546360164,
+		"fy": 1383.5736276420407,
+		"cx": 955.7687636650102,
+		"cy": 525.8584922507941
+	},
+	"distortion_coeffs": [
+		0.557487907949068,
+		-0.18462976647565177,
+		3.487731689220708,
+		-6.429570452316462
+	],
+	"metadata": {
+		"calibrated_by": "Saverio De palma",
+		"source": "gyroflow",
+		"official": true
+	}
+}

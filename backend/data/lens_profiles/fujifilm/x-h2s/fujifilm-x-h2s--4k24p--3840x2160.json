@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-h2s--4k24p--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-H2s",
+	"lens_model": "viltrox 23mm f1.4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4184.175265600269,
+		"fy": 4183.311767356322,
+		"cx": 1997.1337802430064,
+		"cy": 1067.9410817761775
+	},
+	"distortion_coeffs": [
+		0.12807671113644364,
+		3.0426690932093656,
+		-32.90615152909265,
+		135.45193177634349
+	],
+	"metadata": {
+		"calibrated_by": "Tommy",
+		"notes": "4k24P",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-7t--1944x2592",
+	"camera_brand": "OnePlus",
+	"camera_model": "7T",
+	"lens_model": "1x",
+	"resolution": {
+		"width": 1944,
+		"height": 2592
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2010.978429062483,
+		"fy": 2010.8335908533936,
+		"cx": 985.0946642163816,
+		"cy": 1281.8149268200675
+	},
+	"distortion_coeffs": [
+		0.3883297282120721,
+		-0.36793642023290624,
+		3.2092390871717176,
+		-5.607361504237807
+	],
+	"metadata": {
+		"calibrated_by": "Stefano Probst",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5--\u9632\u6296599fps--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5",
+	"lens_model": "24-70mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2769.7521147836364,
+		"fy": 2768.5078219880975,
+		"cx": 2022.191753656222,
+		"cy": 1081.3730606378538
+	},
+	"distortion_coeffs": [
+		0.20654550113803152,
+		0.10114656791183664,
+		0.21122182303144757,
+		0.003420107836856144
+	],
+	"metadata": {
+		"calibrated_by": "Finley",
+		"notes": "\u9632\u629659.9fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

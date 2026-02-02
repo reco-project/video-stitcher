@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s22-ultra--4000x3000",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S22 Ultra",
+	"lens_model": "1x",
+	"resolution": {
+		"width": 4000,
+		"height": 3000
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2600.263327552547,
+		"fy": 2602.055137569919,
+		"cx": 2079.642154167314,
+		"cy": 1524.9260582308116
+	},
+	"distortion_coeffs": [
+		0.6128382398192738,
+		-1.5194270312468858,
+		4.817549431187189,
+		-4.854846213999351
+	],
+	"metadata": {
+		"calibrated_by": "Roman Mihalik",
+		"source": "gyroflow",
+		"official": true
+	}
+}

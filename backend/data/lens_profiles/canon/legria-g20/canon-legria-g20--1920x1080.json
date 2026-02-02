@@ -1,0 +1,28 @@
+{
+	"id": "canon-legria-g20--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Legria G20",
+	"lens_model": "default",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1642.7746181242126,
+		"fy": 1642.224397324533,
+		"cx": 964.6581527687886,
+		"cy": 533.304619533893
+	},
+	"distortion_coeffs": [
+		0.12696086143619806,
+		0.11557559159885428,
+		0.4648489267358534,
+		-0.3754549080291356
+	],
+	"metadata": {
+		"calibrated_by": "jamie stone",
+		"source": "gyroflow",
+		"official": true
+	}
+}

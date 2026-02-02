@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--4k-2997-h264-8bit--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "16-50 Standard Kit",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3015.5328239661903,
+		"fy": 2997.603333337482,
+		"cx": 2015.340883191892,
+		"cy": 1046.9668480985952
+	},
+	"distortion_coeffs": [
+		0.3461829780132535,
+		-0.3099167597777566,
+		2.1174991194844472,
+		-2.9061526088489673
+	],
+	"metadata": {
+		"calibrated_by": "Rafael Stumpf",
+		"notes": "4K 29.97 H264 8bit",
+		"source": "gyroflow",
+		"official": true
+	}
+}

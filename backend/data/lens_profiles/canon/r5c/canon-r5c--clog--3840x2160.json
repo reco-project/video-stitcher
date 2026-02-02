@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--clog--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "rf24-70mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2818.7744294914746,
+		"fy": 2819.860808735448,
+		"cx": 1914.4356211630568,
+		"cy": 1071.6184266772511
+	},
+	"distortion_coeffs": [
+		0.33371897628632113,
+		0.057315843898131894,
+		0.4516063194045129,
+		-0.6034882288843645
+	],
+	"metadata": {
+		"calibrated_by": "Chue Tong Wong",
+		"notes": "clog",
+		"source": "gyroflow",
+		"official": true
+	}
+}

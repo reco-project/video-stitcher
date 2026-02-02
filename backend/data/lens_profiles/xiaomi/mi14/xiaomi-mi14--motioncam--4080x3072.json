@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-mi14--motioncam--4080x3072",
+	"camera_brand": "Xiaomi",
+	"camera_model": "mi14",
+	"lens_model": "Ultrawide",
+	"resolution": {
+		"width": 4080,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1958.7144939177767,
+		"fy": 1958.344498446898,
+		"cx": 2051.990638204089,
+		"cy": 1541.3979093750804
+	},
+	"distortion_coeffs": [
+		0.27307124581501335,
+		0.34438190651341655,
+		-0.15770331229208917,
+		0.1336557383180442
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0435\u0439 \u041f\u0440\u043e\u043d\u044f\u0435\u0432",
+		"notes": "Motioncam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

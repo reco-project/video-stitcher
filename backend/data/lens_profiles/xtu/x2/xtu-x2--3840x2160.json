@@ -1,0 +1,28 @@
+{
+	"id": "xtu-x2--3840x2160",
+	"camera_brand": "XTU",
+	"camera_model": "X2",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1899.5866123447763,
+		"fy": 1899.6497295488975,
+		"cx": 1932.961172105536,
+		"cy": 1037.982167812308
+	},
+	"distortion_coeffs": [
+		-0.028144812584450132,
+		-0.01058515183754186,
+		0.021191166229724792,
+		-0.012453455262716335
+	],
+	"metadata": {
+		"calibrated_by": "GTX10086",
+		"source": "gyroflow",
+		"official": true
+	}
+}

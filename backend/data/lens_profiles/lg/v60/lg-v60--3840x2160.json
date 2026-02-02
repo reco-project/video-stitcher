@@ -1,0 +1,28 @@
+{
+	"id": "lg-v60--3840x2160",
+	"camera_brand": "LG",
+	"camera_model": "V60",
+	"lens_model": "27mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3022.816663799671,
+		"fy": 3022.4737638533084,
+		"cx": 1937.270673755895,
+		"cy": 1099.0127090343296
+	},
+	"distortion_coeffs": [
+		0.3402313424083718,
+		0.3299953137877623,
+		0.32502669706586484,
+		-2.1475295806974946
+	],
+	"metadata": {
+		"calibrated_by": "Abdul Mateen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "canon-r5c--16mm-is-off--8192x4320",
+	"camera_brand": "Canon",
+	"camera_model": "R5C",
+	"lens_model": "Canon 16-35mm F4 IS",
+	"resolution": {
+		"width": 8192,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3780.530752719456,
+		"fy": 3780.0019128842014,
+		"cx": 4136.140174112767,
+		"cy": 2118.379365401396
+	},
+	"distortion_coeffs": [
+		0.18028175393696133,
+		0.5002780802934993,
+		-0.611502757037781,
+		0.4228549126319693
+	],
+	"metadata": {
+		"calibrated_by": "Ryan Jackson",
+		"notes": "@16mm, IS OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro--lens-on-35mm--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Canon EF 24-105mm f/4L IS II USM 35mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9537.359782380408,
+		"fy": 9533.8525300246,
+		"cx": 2115.1390584096207,
+		"cy": 1056.6003051107568
+	},
+	"distortion_coeffs": [
+		0.2946987109293163,
+		7.440819827673689,
+		-300.3445495264063,
+		4000.2298739553135
+	],
+	"metadata": {
+		"calibrated_by": "Nuno Meneses",
+		"notes": "lens on 35mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

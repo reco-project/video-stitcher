@@ -1,0 +1,28 @@
+{
+	"id": "runcam-5-black--2704x1520",
+	"camera_brand": "RunCam",
+	"camera_model": "5 black",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2417.2858628884755,
+		"fy": 2344.871698754391,
+		"cx": 1362.0075272958627,
+		"cy": 174.47082854652663
+	},
+	"distortion_coeffs": [
+		-0.05086237788342803,
+		2.5072803581630194,
+		-9.56990990475443,
+		13.951084054266667
+	],
+	"metadata": {
+		"calibrated_by": "Drone Leman",
+		"source": "gyroflow",
+		"official": true
+	}
+}

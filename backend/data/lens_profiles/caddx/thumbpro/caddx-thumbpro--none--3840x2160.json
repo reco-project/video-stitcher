@@ -1,0 +1,29 @@
+{
+	"id": "caddx-thumbpro--none--3840x2160",
+	"camera_brand": "Caddx",
+	"camera_model": "ThumbPro",
+	"lens_model": "4KSW",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1774.6596325565852,
+		"fy": 1331.5565491919729,
+		"cx": 1912.4509558984405,
+		"cy": 1015.1513433529284
+	},
+	"distortion_coeffs": [
+		0.004108756604176859,
+		-0.01977248187850818,
+		0.018973281751642018,
+		-0.006611439496401832
+	],
+	"metadata": {
+		"calibrated_by": "Sergio",
+		"notes": "none",
+		"source": "gyroflow",
+		"official": true
+	}
+}

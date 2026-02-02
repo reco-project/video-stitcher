@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k--50p--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6k",
+	"lens_model": "samyang 14mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2703.0111342503274,
+		"fy": 2681.684202588262,
+		"cx": 2128.1447378599905,
+		"cy": 1086.6750344402258
+	},
+	"distortion_coeffs": [
+		0.1956776964490594,
+		0.06969710157968544,
+		0.19022805780272545,
+		-0.1840311337123479
+	],
+	"metadata": {
+		"calibrated_by": "Camille Audibert",
+		"notes": "50p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

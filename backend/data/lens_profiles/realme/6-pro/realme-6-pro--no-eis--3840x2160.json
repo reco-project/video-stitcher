@@ -1,0 +1,29 @@
+{
+	"id": "realme-6-pro--no-eis--3840x2160",
+	"camera_brand": "Realme",
+	"camera_model": "6 Pro",
+	"lens_model": "64MP-Main",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3000.1783913483023,
+		"fy": 2994.582434324379,
+		"cx": 1921.009343200935,
+		"cy": 1082.5413275958674
+	},
+	"distortion_coeffs": [
+		0.3784292196157041,
+		-0.3250028621023454,
+		2.448164207058586,
+		-4.565914284552511
+	],
+	"metadata": {
+		"calibrated_by": "Syed Sadiqu Hussain",
+		"notes": "No-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

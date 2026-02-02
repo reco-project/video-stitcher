@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--24mm-ibis-off--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "FE 4/ 25-105 G OOS",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2876.000382875814,
+		"fy": 2877.1193770247664,
+		"cx": 1939.5380273778649,
+		"cy": 1028.4903905071196
+	},
+	"distortion_coeffs": [
+		0.2688668896848028,
+		0.3917920769894426,
+		-1.567976853707555,
+		3.361761239231358
+	],
+	"metadata": {
+		"calibrated_by": "RobR",
+		"notes": "24mm IBIS OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

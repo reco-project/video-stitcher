@@ -1,0 +1,28 @@
+{
+	"id": "china_actioncam-china_noname--1920x1080",
+	"camera_brand": "China_ActionCam",
+	"camera_model": "China_Noname",
+	"lens_model": "Sony",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1452.600011921956,
+		"fy": 1461.253219650769,
+		"cx": 944.238988068888,
+		"cy": 505.52724325098075
+	},
+	"distortion_coeffs": [
+		0.012320467004347867,
+		0.008532821326463423,
+		0.10596099579083808,
+		-0.250488889001405
+	],
+	"metadata": {
+		"calibrated_by": "Dmitrij Solovev",
+		"source": "gyroflow",
+		"official": true
+	}
+}

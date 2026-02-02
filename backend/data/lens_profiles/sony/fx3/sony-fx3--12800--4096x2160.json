@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--12800--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "Sirui 1.6X Anamorphic_50mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3299.3634102565197,
+		"fy": 5320.428480567154,
+		"cx": 2001.968612311424,
+		"cy": 1016.820996620186
+	},
+	"distortion_coeffs": [
+		0.32279309154350905,
+		-1.0127320719688209,
+		4.177591558159263,
+		-5.528032447384092
+	],
+	"metadata": {
+		"calibrated_by": "Roshan Growng",
+		"notes": "12800",
+		"source": "gyroflow",
+		"official": true
+	}
+}

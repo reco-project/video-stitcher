@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--51mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "28-75",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2969.2290518661207,
+		"fy": 2939.795352351264,
+		"cx": 969.3276546134754,
+		"cy": 534.4973090915273
+	},
+	"distortion_coeffs": [
+		0.49091231544415,
+		-0.4408372502423174,
+		18.11144611492766,
+		-94.85048073896638
+	],
+	"metadata": {
+		"calibrated_by": "Montaggio",
+		"notes": "51mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

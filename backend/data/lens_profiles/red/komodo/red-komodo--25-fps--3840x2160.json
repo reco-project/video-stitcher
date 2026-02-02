@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--25-fps--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa 9mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1420.2569590513217,
+		"fy": 1423.1892353621256,
+		"cx": 1922.2854142844503,
+		"cy": 1101.3881336905793
+	},
+	"distortion_coeffs": [
+		0.3633148643494224,
+		0.05160834127540892,
+		0.08877845260494954,
+		0.0638327750237226
+	],
+	"metadata": {
+		"calibrated_by": "ZZ",
+		"notes": "25 FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

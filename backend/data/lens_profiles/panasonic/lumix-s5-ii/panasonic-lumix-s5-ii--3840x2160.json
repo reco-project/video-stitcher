@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-s5-ii--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "LUMIX S5 II",
+	"lens_model": "20-60",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3697.604638042597,
+		"fy": 3703.889282851449,
+		"cx": 1918.253154519084,
+		"cy": 1074.6234629245894
+	},
+	"distortion_coeffs": [
+		0.287869250728055,
+		0.23440958986678664,
+		-0.4714392243859256,
+		0.8538616058399411
+	],
+	"metadata": {
+		"calibrated_by": "DANIELE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

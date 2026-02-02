@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t4--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "x-T4",
+	"lens_model": "laowa 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4370.436786918612,
+		"fy": 4374.574505138369,
+		"cx": 1993.145723721592,
+		"cy": 1279.915472327595
+	},
+	"distortion_coeffs": [
+		0.17239925723106148,
+		0.09753483589222346,
+		2.4679369024368114,
+		-11.499702453989256
+	],
+	"metadata": {
+		"calibrated_by": "\u90b1\u534e\u5e9a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

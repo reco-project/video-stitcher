@@ -1,0 +1,28 @@
+{
+	"id": "olympus-om-5--1920x1080",
+	"camera_brand": "Olympus",
+	"camera_model": "OM-5",
+	"lens_model": "12-40mm f2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1645.6252863283316,
+		"fy": 1645.374714014304,
+		"cx": 970.5203943468464,
+		"cy": 530.3248681327093
+	},
+	"distortion_coeffs": [
+		0.31020366019524875,
+		0.18957787498999887,
+		-0.25826092249866495,
+		0.7032350385571089
+	],
+	"metadata": {
+		"calibrated_by": "sunmingjie",
+		"source": "gyroflow",
+		"official": true
+	}
+}

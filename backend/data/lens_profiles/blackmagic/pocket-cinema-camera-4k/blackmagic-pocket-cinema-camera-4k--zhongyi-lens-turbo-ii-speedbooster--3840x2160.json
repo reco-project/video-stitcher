@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--zhongyi-lens-turbo-ii-speedbooster--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Canon FD 24mm f2.8 SSC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4384.036309694467,
+		"fy": 4380.620984000515,
+		"cx": 1872.7384008656811,
+		"cy": 1084.879537921948
+	},
+	"distortion_coeffs": [
+		0.2379017469511212,
+		-0.6773320700455686,
+		8.8925275017578,
+		-26.90087509216929
+	],
+	"metadata": {
+		"calibrated_by": "Justin Kramer",
+		"notes": "Zhongyi Lens Turbo II Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

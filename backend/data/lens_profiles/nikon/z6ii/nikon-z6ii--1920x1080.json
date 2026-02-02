@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z6ii--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z6ii",
+	"lens_model": "36mm Viltrox f1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2173.4607739852045,
+		"fy": 2124.9733105813416,
+		"cx": 949.785215424636,
+		"cy": 553.6428027971638
+	},
+	"distortion_coeffs": [
+		0.2660945992351491,
+		1.3551745374481985,
+		-0.36586226800571625,
+		-41.529277656517195
+	],
+	"metadata": {
+		"calibrated_by": "Alankar Kushwaha",
+		"source": "gyroflow",
+		"official": true
+	}
+}

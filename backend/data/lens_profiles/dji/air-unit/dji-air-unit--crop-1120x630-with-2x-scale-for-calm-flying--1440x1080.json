@@ -1,0 +1,29 @@
+{
+	"id": "dji-air-unit--crop-1120x630-with-2x-scale-for-calm-flying--1440x1080",
+	"camera_brand": "DJI",
+	"camera_model": "Air Unit",
+	"lens_model": null,
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 670.6219784099985,
+		"fy": 670.1428484171502,
+		"cx": 720.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		0.028482845243458576,
+		-0.0029467097274915657,
+		0.007385203427571552,
+		-0.004350734400395973
+	],
+	"metadata": {
+		"calibrated_by": "Amzd",
+		"notes": "Crop 1120x630 with 2x scale for calm flying",
+		"source": "gyroflow",
+		"official": true
+	}
+}

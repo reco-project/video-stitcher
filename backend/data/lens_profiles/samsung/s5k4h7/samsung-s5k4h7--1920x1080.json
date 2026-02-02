@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s5k4h7--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S5K4H7",
+	"lens_model": "S5K4H7",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 880.501625051359,
+		"fy": 880.3187984996399,
+		"cx": 961.2413643094064,
+		"cy": 530.4694786640484
+	},
+	"distortion_coeffs": [
+		0.2494453804139249,
+		0.2539405740765574,
+		-0.24793693495742747,
+		0.45726354162126653
+	],
+	"metadata": {
+		"calibrated_by": "LCX24",
+		"source": "gyroflow",
+		"official": true
+	}
+}

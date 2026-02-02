@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6v--16mm--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "Tokina SD11-16 2,8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1885.712895806088,
+		"fy": 1888.5981782076265,
+		"cx": 2021.7148810784763,
+		"cy": 1106.8466225254936
+	},
+	"distortion_coeffs": [
+		0.35410213540626273,
+		0.09615230915674976,
+		-0.08368699131154708,
+		0.15831177242866715
+	],
+	"metadata": {
+		"calibrated_by": "Paolo Panno",
+		"notes": "16mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

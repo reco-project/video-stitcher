@@ -1,0 +1,29 @@
+{
+	"id": "olympus-omd-10-mark-iii--14mm--3840x2160",
+	"camera_brand": "Olympus",
+	"camera_model": "OMD 10 mark III",
+	"lens_model": "M.ZUIKO 14-42 IIR",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3309.3601354864054,
+		"fy": 3308.8220655434807,
+		"cx": 1894.1257037316636,
+		"cy": 1042.6411663393997
+	},
+	"distortion_coeffs": [
+		0.2606107471649359,
+		0.1162348867873234,
+		0.6975633527289965,
+		-2.001861359460051
+	],
+	"metadata": {
+		"calibrated_by": "Micha\u0142 Kwapi\u0144ski",
+		"notes": "14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

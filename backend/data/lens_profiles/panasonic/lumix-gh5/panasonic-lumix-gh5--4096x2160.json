@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-gh5--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5",
+	"lens_model": "Leica 8-18",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2034.358076148054,
+		"fy": 2031.1592112087724,
+		"cx": 2032.5410695803243,
+		"cy": 1059.5437377439112
+	},
+	"distortion_coeffs": [
+		0.3332843388862205,
+		0.17693999954267414,
+		-0.19554751545673343,
+		0.2565235749466564
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Doren H",
+		"source": "gyroflow",
+		"official": true
+	}
+}

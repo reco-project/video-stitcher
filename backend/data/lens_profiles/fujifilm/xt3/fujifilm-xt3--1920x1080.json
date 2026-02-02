@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xt3--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XT3",
+	"lens_model": "7Artisans Vision CineLens 35mm T1.05",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3194.8539405864767,
+		"fy": 3191.9349273049884,
+		"cx": 1003.3481002218524,
+		"cy": 527.7907186402787
+	},
+	"distortion_coeffs": [
+		0.13324421531081643,
+		0.6912989647041545,
+		5.05044026620513,
+		-49.791604231908494
+	],
+	"metadata": {
+		"calibrated_by": "ciprian sase",
+		"source": "gyroflow",
+		"official": true
+	}
+}

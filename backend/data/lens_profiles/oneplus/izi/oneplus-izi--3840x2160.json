@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-izi--3840x2160",
+	"camera_brand": "ONEPLUS",
+	"camera_model": "IZI",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2966.400036377839,
+		"fy": 2990.319123201292,
+		"cx": 2013.5644060355876,
+		"cy": 1072.0566342128425
+	},
+	"distortion_coeffs": [
+		-0.008510678667441656,
+		-0.182747022152483,
+		0.3060001948443082,
+		-0.1039718481857317
+	],
+	"metadata": {
+		"calibrated_by": "Vishu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

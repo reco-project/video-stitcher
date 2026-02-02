@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-m31--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "galaxy m31",
+	"lens_model": "main sensor",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2749.177080352583,
+		"fy": 2747.9147197999982,
+		"cx": 1917.5766130463296,
+		"cy": 1104.796021389996
+	},
+	"distortion_coeffs": [
+		0.5755552426947468,
+		-1.0928050658909942,
+		3.460307771925144,
+		-3.647450300461264
+	],
+	"metadata": {
+		"calibrated_by": "Ashiqur Rahman Abir",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-m10--wdr--1920x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "M10+",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 951.3022158825456,
+		"fy": 961.6169629027546,
+		"cx": 999.4268574374915,
+		"cy": 587.9755152315855
+	},
+	"distortion_coeffs": [
+		-0.012485891569481407,
+		-0.04359828032009968,
+		0.06940649029974,
+		-0.035970857524867325
+	],
+	"metadata": {
+		"calibrated_by": "Fabian Louwers",
+		"notes": "WDR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

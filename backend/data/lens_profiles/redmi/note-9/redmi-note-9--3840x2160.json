@@ -1,0 +1,28 @@
+{
+	"id": "redmi-note-9--3840x2160",
+	"camera_brand": "Redmi",
+	"camera_model": "Note 9",
+	"lens_model": "f/1.89\nAF, lente 6P, FOV 79,8\u00b0.",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2797.616841739241,
+		"fy": 2794.789946074505,
+		"cx": 1921.0998291285937,
+		"cy": 1095.1940146227373
+	},
+	"distortion_coeffs": [
+		0.3730296670705622,
+		0.020667234890715848,
+		0.6518696430664777,
+		-1.0622304076441689
+	],
+	"metadata": {
+		"calibrated_by": "Macbook Air",
+		"source": "gyroflow",
+		"official": true
+	}
+}

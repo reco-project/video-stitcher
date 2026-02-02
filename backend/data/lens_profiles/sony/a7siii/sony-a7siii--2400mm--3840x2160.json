@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7siii--2400mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7sIII",
+	"lens_model": "Samyang v-af 24mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2695.89234379504,
+		"fy": 2695.1229880207143,
+		"cx": 1934.1085989479889,
+		"cy": 1084.485678513995
+	},
+	"distortion_coeffs": [
+		0.26716007243412043,
+		-0.16044410313161894,
+		1.1479278165272082,
+		-1.1058757224103102
+	],
+	"metadata": {
+		"calibrated_by": "jackoo",
+		"notes": "24.00mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

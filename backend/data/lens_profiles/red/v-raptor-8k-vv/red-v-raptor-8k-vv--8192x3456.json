@@ -2,7 +2,7 @@
 	"id": "red-v-raptor-8k-vv--8192x3456",
 	"camera_brand": "RED",
 	"camera_model": "V-RAPTOR 8K VV",
-	"lens_model": "",
+	"lens_model": null,
 	"resolution": {
 		"width": 8192,
 		"height": 3456
@@ -21,13 +21,8 @@
 		-18.568576610603465
 	],
 	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "RED_V-RAPTOR 8K VV__8K 2,4:1_8k_2.37by1_8192x3456-25.00fps",
 		"calibrated_by": "BABS STUDIO",
-		"original_resolution": "8192x3456",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
+		"source": "gyroflow",
+		"official": true
 	}
 }

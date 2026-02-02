@@ -1,0 +1,28 @@
+{
+	"id": "sony-a9iii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a9III",
+	"lens_model": "50.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5282.2864398697375,
+		"fy": 5281.210979583023,
+		"cx": 1910.7103981903963,
+		"cy": 1094.7274898115336
+	},
+	"distortion_coeffs": [
+		0.31610647234311606,
+		-0.8783893574705491,
+		20.210148444036932,
+		-72.79176902935252
+	],
+	"metadata": {
+		"calibrated_by": "Sailor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

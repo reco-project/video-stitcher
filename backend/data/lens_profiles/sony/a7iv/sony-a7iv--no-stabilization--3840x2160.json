@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--no-stabilization--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Sigma 14-24 @ 14",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1524.6697385856212,
+		"fy": 1527.1567182643043,
+		"cx": 1912.838853402724,
+		"cy": 1063.6170252482157
+	},
+	"distortion_coeffs": [
+		0.3177549335446234,
+		0.05962487741429758,
+		0.06073061178950137,
+		0.040798171854816205
+	],
+	"metadata": {
+		"calibrated_by": "TheBalzer",
+		"notes": "No Stabilization",
+		"source": "gyroflow",
+		"official": true
+	}
+}

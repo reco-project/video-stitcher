@@ -1,0 +1,28 @@
+{
+	"id": "z-cam-e2-s6--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-S6",
+	"lens_model": "Laowa 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3219.2545295109826,
+		"fy": 3217.6212186677258,
+		"cx": 2106.406752322928,
+		"cy": 1062.913446328741
+	},
+	"distortion_coeffs": [
+		0.3115076412909621,
+		0.16542277372574993,
+		0.12506336845689892,
+		-0.268784071272972
+	],
+	"metadata": {
+		"calibrated_by": "Marc Zacharoff",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-gh\u02c6--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH\u02c6",
+	"lens_model": "12-40",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6756.195057495282,
+		"fy": 6753.715228757913,
+		"cx": 2080.5224926418023,
+		"cy": 679.4633051042199
+	},
+	"distortion_coeffs": [
+		0.22937137789864653,
+		1.6851559590819578,
+		-26.23960748687624,
+		174.7199926549862
+	],
+	"metadata": {
+		"calibrated_by": "Serg",
+		"source": "gyroflow",
+		"official": true
+	}
+}

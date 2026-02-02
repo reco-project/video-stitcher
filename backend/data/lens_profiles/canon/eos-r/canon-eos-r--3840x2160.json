@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R",
+	"lens_model": "50mm 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9964.5547123471,
+		"fy": 10018.393546415477,
+		"cx": 1848.955558959272,
+		"cy": 504.95853228008207
+	},
+	"distortion_coeffs": [
+		0.2287303273992159,
+		3.0877840190510217,
+		20.397431438820583,
+		-1312.4338635275792
+	],
+	"metadata": {
+		"calibrated_by": "Chase Fraser",
+		"source": "gyroflow",
+		"official": true
+	}
+}

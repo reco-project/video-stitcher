@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--50fps--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "24-105mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1299.248608897428,
+		"fy": 1298.375081742426,
+		"cx": 970.5112165948632,
+		"cy": 538.8252775169753
+	},
+	"distortion_coeffs": [
+		0.30894051247361587,
+		0.009628943265126116,
+		0.5424130173835358,
+		-0.6741763402589032
+	],
+	"metadata": {
+		"calibrated_by": "DragonChen",
+		"notes": "50fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-6k-pro--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 6K Pro",
+	"lens_model": "Samyang 35mm f/1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7199.159433660332,
+		"fy": 7203.640706952932,
+		"cx": 2034.3198869665432,
+		"cy": 1039.3874604060195
+	},
+	"distortion_coeffs": [
+		0.1825256461161799,
+		1.0909559641924176,
+		2.601675059940939,
+		-179.04944515149464
+	],
+	"metadata": {
+		"calibrated_by": "Michel Klares",
+		"source": "gyroflow",
+		"official": true
+	}
+}

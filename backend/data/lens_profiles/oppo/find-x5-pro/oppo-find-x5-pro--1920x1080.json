@@ -1,0 +1,28 @@
+{
+	"id": "oppo-find-x5-pro--1920x1080",
+	"camera_brand": "Oppo",
+	"camera_model": "Find X5 pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1031.5295469039356,
+		"fy": 1030.5408030069725,
+		"cx": 954.8361256372154,
+		"cy": 548.2908036333723
+	},
+	"distortion_coeffs": [
+		0.40059636928591574,
+		0.052068117302565366,
+		0.040825860973843435,
+		0.0442681327786528
+	],
+	"metadata": {
+		"calibrated_by": "Bambang Raharjo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

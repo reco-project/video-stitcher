@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo-x-6k-s35--4800x2700",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO-X 6K S35",
+	"lens_model": "DZO GNOSIS 65MM",
+	"resolution": {
+		"width": 4800,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 15236.332866789297,
+		"fy": 15233.73059757765,
+		"cx": 2467.3892500431425,
+		"cy": 1385.5410580321627
+	},
+	"distortion_coeffs": [
+		0.11952230256524173,
+		13.728358259978217,
+		-848.3693808809765,
+		18056.88226332554
+	],
+	"metadata": {
+		"calibrated_by": "Alexandre GRIMA",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "tomate-mt-1081--1920x1080",
+	"camera_brand": "TOMATE",
+	"camera_model": "MT-1081",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1172.5001103982129,
+		"fy": 1187.6509417641942,
+		"cx": 948.8546668770836,
+		"cy": 503.8217605189285
+	},
+	"distortion_coeffs": [
+		0.012738460606142702,
+		0.13046317041083252,
+		-0.3719115175853008,
+		0.33562153053772437
+	],
+	"metadata": {
+		"calibrated_by": "Helon Silva",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "vivo-iqoo-9--3840x2176",
+	"camera_brand": "VIVO",
+	"camera_model": "IQOO 9",
+	"lens_model": "26MM",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9227.30118970659,
+		"fy": 9217.506067422612,
+		"cx": 2108.996260407777,
+		"cy": 608.5736206600017
+	},
+	"distortion_coeffs": [
+		1.7617113854980355,
+		-70.16582447135771,
+		1769.153813100697,
+		-20393.719949858787
+	],
+	"metadata": {
+		"calibrated_by": "Bikram Panda",
+		"source": "gyroflow",
+		"official": true
+	}
+}

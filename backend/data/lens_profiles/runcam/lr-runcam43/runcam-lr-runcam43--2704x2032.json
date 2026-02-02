@@ -1,0 +1,28 @@
+{
+	"id": "runcam-lr-runcam43--2704x2032",
+	"camera_brand": "RunCam",
+	"camera_model": "LR-RUNCAM43",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 2032
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1158.4368636911402,
+		"fy": 1161.108349649972,
+		"cx": 1349.4900125477725,
+		"cy": 994.4555872073852
+	},
+	"distortion_coeffs": [
+		0.13698937183252444,
+		0.13736950415089508,
+		-0.3353344001827949,
+		0.22873806906929825
+	],
+	"metadata": {
+		"calibrated_by": "LR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-s6--ef-mount-18mm--5760x3240",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-S6",
+	"lens_model": "18-35mm F1.8 DC HSM | Art 013 18mm",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4882.493387828114,
+		"fy": 4876.763266211599,
+		"cx": 2888.3085337290836,
+		"cy": 1583.9171027986818
+	},
+	"distortion_coeffs": [
+		0.20319153884468516,
+		0.4217140149208812,
+		-1.5210083153384104,
+		2.797140428078327
+	],
+	"metadata": {
+		"calibrated_by": "Zak",
+		"notes": "EF Mount 18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

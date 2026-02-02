@@ -1,0 +1,29 @@
+{
+	"id": "apeman-a80--h264-avc-mpeg-4-avc-scan-progressive--1920x1080",
+	"camera_brand": "apeman",
+	"camera_model": "A80",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1228.7758148649823,
+		"fy": 1238.2487901961747,
+		"cx": 888.094023422222,
+		"cy": 493.22414440650846
+	},
+	"distortion_coeffs": [
+		-0.01915609371104894,
+		-0.11108993647702328,
+		0.24155404459627475,
+		-0.18243730212983805
+	],
+	"metadata": {
+		"calibrated_by": "xyz",
+		"notes": "H.264 AVC MPEG-4 AVC, Scan: progressive",
+		"source": "gyroflow",
+		"official": true
+	}
+}

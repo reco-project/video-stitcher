@@ -1,0 +1,28 @@
+{
+	"id": "caddx-polar--1280x720",
+	"camera_brand": "Caddx",
+	"camera_model": "Polar",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 593.3100036372986,
+		"fy": 592.1517476936389,
+		"cx": 615.9182048471516,
+		"cy": 356.5826175491358
+	},
+	"distortion_coeffs": [
+		-0.038827543899287234,
+		-0.006627204511141185,
+		0.00981098091137102,
+		-0.0066432627177496215
+	],
+	"metadata": {
+		"calibrated_by": "jcdub",
+		"source": "gyroflow",
+		"official": true
+	}
+}

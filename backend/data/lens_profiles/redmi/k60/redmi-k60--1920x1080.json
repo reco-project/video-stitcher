@@ -1,0 +1,28 @@
+{
+	"id": "redmi-k60--1920x1080",
+	"camera_brand": "Redmi",
+	"camera_model": "K60",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1464.5968281478422,
+		"fy": 1464.327815425859,
+		"cx": 947.91235490517,
+		"cy": 525.8573260998106
+	},
+	"distortion_coeffs": [
+		0.27427487762118224,
+		0.8168179182555588,
+		-1.0807096365929685,
+		-0.07878738901849697
+	],
+	"metadata": {
+		"calibrated_by": "U0 A394",
+		"source": "gyroflow",
+		"official": true
+	}
+}

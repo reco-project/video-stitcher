@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx6v--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX6V",
+	"lens_model": "sigma 28.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1489.9480730482878,
+		"fy": 1505.2182950921062,
+		"cx": 971.0379829006148,
+		"cy": 558.1368540013777
+	},
+	"distortion_coeffs": [
+		0.28304212675263657,
+		0.3798746707531072,
+		-0.31834152352372463,
+		-0.6786521314757774
+	],
+	"metadata": {
+		"calibrated_by": "Webb Zhou",
+		"source": "gyroflow",
+		"official": true
+	}
+}

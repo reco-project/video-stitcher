@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--f16-man-focus--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "7ARTISANS 12 F2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2409.0889096372275,
+		"fy": 2409.0591810201686,
+		"cx": 1894.546162525796,
+		"cy": 1069.0594018509994
+	},
+	"distortion_coeffs": [
+		0.24930973760908387,
+		0.383163986635946,
+		-0.6497856815360827,
+		0.8041067842116008
+	],
+	"metadata": {
+		"calibrated_by": "MAB",
+		"notes": "F16 MAN FOCUS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

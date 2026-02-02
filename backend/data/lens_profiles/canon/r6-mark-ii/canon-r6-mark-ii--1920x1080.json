@@ -1,0 +1,28 @@
+{
+	"id": "canon-r6-mark-ii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "R6 MARK II",
+	"lens_model": "SIGMA 35MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2075.6748734853745,
+		"fy": 2074.864544073983,
+		"cx": 954.6351610628492,
+		"cy": 529.9593322302674
+	},
+	"distortion_coeffs": [
+		0.25393585174343974,
+		0.19549560554320056,
+		0.2023425767041062,
+		0.3678148555919982
+	],
+	"metadata": {
+		"calibrated_by": "AMAEL GICQUEL",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "caddx-ant--640x480",
+	"camera_brand": "Caddx",
+	"camera_model": "Ant",
+	"lens_model": null,
+	"resolution": {
+		"width": 640,
+		"height": 480
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 326.9721909300615,
+		"fy": 418.21957980882706,
+		"cx": 325.2330320261964,
+		"cy": 251.2598036903412
+	},
+	"distortion_coeffs": [
+		0.02445375785727127,
+		-0.14427491708253903,
+		0.18561487958835837,
+		-0.09612225144639971
+	],
+	"metadata": {
+		"calibrated_by": "DarkWing",
+		"source": "gyroflow",
+		"official": true
+	}
+}

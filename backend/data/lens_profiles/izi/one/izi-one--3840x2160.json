@@ -1,0 +1,28 @@
+{
+	"id": "izi-one--3840x2160",
+	"camera_brand": "IZI",
+	"camera_model": "ONE",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2330.447093889857,
+		"fy": 2324.6026568072352,
+		"cx": 1995.024524207412,
+		"cy": 1106.8971980403326
+	},
+	"distortion_coeffs": [
+		-0.0327987975492354,
+		-0.052171727748493026,
+		0.098506716213443,
+		-0.06215952691321732
+	],
+	"metadata": {
+		"calibrated_by": "Jyent Singla",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sjcam-sj7--4k-30-fps--3840x2160",
+	"camera_brand": "SJCAM",
+	"camera_model": "SJ7",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2006.866171397714,
+		"fy": 2012.9232344569975,
+		"cx": 1910.9652816834816,
+		"cy": 1012.9239348121164
+	},
+	"distortion_coeffs": [
+		-0.015335222208374404,
+		-0.030404296736826996,
+		0.03348732359137136,
+		-0.017401659444683443
+	],
+	"metadata": {
+		"calibrated_by": "Fabian Louwers",
+		"notes": "4K 30 FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

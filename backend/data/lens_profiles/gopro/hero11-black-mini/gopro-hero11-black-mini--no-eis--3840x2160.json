@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero11-black-mini--no-eis--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO11 Black Mini",
+	"lens_model": "Linear",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1825.7379723009064,
+		"fy": 1827.6133921366816,
+		"cx": 1920.6966946098437,
+		"cy": 1077.657887945627
+	},
+	"distortion_coeffs": [
+		0.42062118616941135,
+		-0.34212092991589615,
+		1.0802578236566007,
+		-0.6945669652061468
+	],
+	"metadata": {
+		"calibrated_by": "ho leo",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

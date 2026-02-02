@@ -1,0 +1,28 @@
+{
+	"id": "canon-c100-mkii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "C100 MKII",
+	"lens_model": "Canon 24-70mm f/2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1866.926539807754,
+		"fy": 1868.7238813267395,
+		"cx": 963.063063912002,
+		"cy": 558.2971276529215
+	},
+	"distortion_coeffs": [
+		0.19086669434469364,
+		0.4588247528706968,
+		-1.9876619214359736,
+		4.818949676663717
+	],
+	"metadata": {
+		"calibrated_by": "Jeremy Carroll",
+		"source": "gyroflow",
+		"official": true
+	}
+}

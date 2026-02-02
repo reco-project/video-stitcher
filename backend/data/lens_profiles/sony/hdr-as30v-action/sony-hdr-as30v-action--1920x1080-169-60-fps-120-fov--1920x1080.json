@@ -1,0 +1,29 @@
+{
+	"id": "sony-hdr-as30v-action--1920x1080-169-60-fps-120-fov--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "HDR-AS30V Action",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1091.568273418866,
+		"fy": 1090.887590445928,
+		"cx": 960.0,
+		"cy": 540.0
+	},
+	"distortion_coeffs": [
+		0.001337188117229898,
+		0.017362411065214196,
+		-0.1859627482958708,
+		0.3319347841757849
+	],
+	"metadata": {
+		"calibrated_by": "kafie1980",
+		"notes": "1920x1080 (16:9), 60 fps, 120 fov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

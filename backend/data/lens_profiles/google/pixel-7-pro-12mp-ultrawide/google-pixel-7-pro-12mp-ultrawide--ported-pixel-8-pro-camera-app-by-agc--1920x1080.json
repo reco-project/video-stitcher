@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-7-pro-12mp-ultrawide--ported-pixel-8-pro-camera-app-by-agc--1920x1080",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7 Pro 12MP Ultrawide",
+	"lens_model": "13.4mm f/2.2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 955.1807310679054,
+		"fy": 957.439350814798,
+		"cx": 925.7453586589064,
+		"cy": 554.5765824524677
+	},
+	"distortion_coeffs": [
+		0.3230183933397726,
+		0.21792312005076472,
+		-0.18261476273292584,
+		0.24873225490860237
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"notes": "ported Pixel 8 Pro Camera App by AGC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

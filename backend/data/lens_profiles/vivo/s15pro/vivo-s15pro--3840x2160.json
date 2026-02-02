@@ -1,0 +1,28 @@
+{
+	"id": "vivo-s15pro--3840x2160",
+	"camera_brand": "Vivo",
+	"camera_model": "S15pro",
+	"lens_model": "IMX766",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2875.7567256602,
+		"fy": 2844.878806261852,
+		"cx": 1920.718048796467,
+		"cy": 1086.883592429586
+	},
+	"distortion_coeffs": [
+		0.4028504987284785,
+		-0.7032326387542004,
+		5.757856325624696,
+		-11.616498984018016
+	],
+	"metadata": {
+		"calibrated_by": "KS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

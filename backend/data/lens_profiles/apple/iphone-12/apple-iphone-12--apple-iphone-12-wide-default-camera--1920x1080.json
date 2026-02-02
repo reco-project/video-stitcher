@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-12--apple-iphone-12-wide-default-camera--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 12",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1655.023234725246,
+		"fy": 1653.4292379507106,
+		"cx": 962.590810939376,
+		"cy": 536.8463696822449
+	},
+	"distortion_coeffs": [
+		0.5405788518506685,
+		-0.8417842484140102,
+		2.1383233454442467,
+		-0.8505776993542371
+	],
+	"metadata": {
+		"calibrated_by": "Hugo Lonski",
+		"notes": "Apple iPhone 12 wide (default) camera",
+		"source": "gyroflow",
+		"official": true
+	}
+}

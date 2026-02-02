@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero12-black--no-eis--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO12 Black",
+	"lens_model": "Hyperview",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 919.2773262490596,
+		"fy": 905.1095408829468,
+		"cx": 1931.135794431359,
+		"cy": 1097.6175731464068
+	},
+	"distortion_coeffs": [
+		0.023363686016605517,
+		0.23306462665986777,
+		-0.20903196464627916,
+		0.06627474861384938
+	],
+	"metadata": {
+		"calibrated_by": "Syahmi Samri",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

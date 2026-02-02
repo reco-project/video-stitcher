@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-micro-studio-camera-4k-g2--f8--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Micro Studio Camera 4K G2",
+	"lens_model": "TTArtisan 10mm f/2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2310.9532334522255,
+		"fy": 2316.515092834039,
+		"cx": 1901.8283708166737,
+		"cy": 1038.462452131279
+	},
+	"distortion_coeffs": [
+		0.32103699463347407,
+		0.2807387328350642,
+		-0.4718141824925109,
+		0.5398180836922728
+	],
+	"metadata": {
+		"calibrated_by": "Bence P\u00f3czak",
+		"notes": "f/8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

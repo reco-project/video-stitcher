@@ -1,0 +1,29 @@
+{
+	"id": "apple-iphone-11-pro-max--iphone11pm-linping--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 11 Pro Max",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3166.623085512185,
+		"fy": 3166.7327265232534,
+		"cx": 1929.4164300170855,
+		"cy": 1100.5688874521447
+	},
+	"distortion_coeffs": [
+		0.6272370253511982,
+		-1.851216742985513,
+		4.789149825801295,
+		-2.928704490517346
+	],
+	"metadata": {
+		"calibrated_by": "LinPing",
+		"notes": "iphone11pm-linping",
+		"source": "gyroflow",
+		"official": true
+	}
+}

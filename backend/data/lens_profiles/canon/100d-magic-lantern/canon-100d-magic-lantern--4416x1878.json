@@ -1,0 +1,28 @@
+{
+	"id": "canon-100d-magic-lantern--4416x1878",
+	"camera_brand": "Canon",
+	"camera_model": "100D Magic Lantern",
+	"lens_model": "Samyang 24mm F1.4 ED AS IF UMC",
+	"resolution": {
+		"width": 4416,
+		"height": 1878
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5817.709249905703,
+		"fy": 5827.358717592397,
+		"cx": 2240.930457768038,
+		"cy": 899.7786872509107
+	},
+	"distortion_coeffs": [
+		0.26239551215579404,
+		-0.3793706616133258,
+		0.06116379946882616,
+		17.174632005018424
+	],
+	"metadata": {
+		"calibrated_by": "Andrew Ke",
+		"source": "gyroflow",
+		"official": true
+	}
+}

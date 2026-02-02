@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--50mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Tamron 50-400mm f4.5-6.3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8310.436164373585,
+		"fy": 8318.96580271266,
+		"cx": 1947.6102486248872,
+		"cy": 1063.685435308249
+	},
+	"distortion_coeffs": [
+		0.4410104401478765,
+		4.613293051284286,
+		-85.32173366501958,
+		590.2706165315553
+	],
+	"metadata": {
+		"calibrated_by": "jarek m",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

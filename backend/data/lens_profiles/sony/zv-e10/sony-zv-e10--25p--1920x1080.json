@@ -1,0 +1,29 @@
+{
+	"id": "sony-zv-e10--25p--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E10",
+	"lens_model": "TTartisan 50mm f1.2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4256.583964089769,
+		"fy": 4258.174450459142,
+		"cx": 903.3083959971556,
+		"cy": 588.6946638276213
+	},
+	"distortion_coeffs": [
+		0.19387884643250108,
+		-6.247210883231194,
+		159.2659707919888,
+		-1401.2298749705494
+	],
+	"metadata": {
+		"calibrated_by": "Charlie Richardson-Smith",
+		"notes": "25p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

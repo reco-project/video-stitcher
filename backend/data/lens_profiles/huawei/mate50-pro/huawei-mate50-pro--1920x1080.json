@@ -1,0 +1,28 @@
+{
+	"id": "huawei-mate50-pro--1920x1080",
+	"camera_brand": "Huawei",
+	"camera_model": "mate50 pro",
+	"lens_model": "1.0X",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1681.413143647319,
+		"fy": 1681.0503280100577,
+		"cx": 960.5234974053402,
+		"cy": 531.8454641673229
+	},
+	"distortion_coeffs": [
+		0.6933963346965253,
+		-3.865188034135425,
+		18.901123417367312,
+		-30.738357741104934
+	],
+	"metadata": {
+		"calibrated_by": "lei luo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

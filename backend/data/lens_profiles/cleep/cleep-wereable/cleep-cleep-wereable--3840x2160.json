@@ -1,0 +1,28 @@
+{
+	"id": "cleep-cleep-wereable--3840x2160",
+	"camera_brand": "cleep",
+	"camera_model": "cleep wereable",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2118.036700844353,
+		"fy": 2116.062187424413,
+		"cx": 1907.9539021824844,
+		"cy": 1043.8510168028038
+	},
+	"distortion_coeffs": [
+		-0.05139748892855748,
+		0.02821195549446204,
+		-0.030280630524057595,
+		0.013031140768920596
+	],
+	"metadata": {
+		"calibrated_by": "Nils Astrologo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

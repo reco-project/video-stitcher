@@ -1,0 +1,29 @@
+{
+	"id": "insta360-go--no-eis--2720x2720",
+	"camera_brand": "Insta360",
+	"camera_model": "Go",
+	"lens_model": "fisheye",
+	"resolution": {
+		"width": 2720,
+		"height": 2720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 913.358841558472,
+		"fy": 913.7194825766626,
+		"cx": 1373.8968530903817,
+		"cy": 1374.575601551039
+	},
+	"distortion_coeffs": [
+		0.1042927853882998,
+		-0.015868939992893998,
+		-0.02112269656644433,
+		0.012858013536752705
+	],
+	"metadata": {
+		"calibrated_by": "KM|fpv",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

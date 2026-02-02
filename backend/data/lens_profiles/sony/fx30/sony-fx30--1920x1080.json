@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx30--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "SIRUI35MM",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2871.5502875303077,
+		"fy": 3674.3888456650575,
+		"cx": 1056.8275038351137,
+		"cy": 518.8929147593195
+	},
+	"distortion_coeffs": [
+		0.08800388434304336,
+		-0.6590143870198669,
+		17.638298088851922,
+		-106.07583970921662
+	],
+	"metadata": {
+		"calibrated_by": "Lucho Melara",
+		"source": "gyroflow",
+		"official": true
+	}
+}

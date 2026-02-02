@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--f28--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Rokinon 8mm Fisheye",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1707.6699348528691,
+		"fy": 1702.750786000814,
+		"cx": 1884.8318799066687,
+		"cy": 1084.816188554954
+	},
+	"distortion_coeffs": [
+		0.031056918407469207,
+		-0.01592492006337767,
+		0.03498897232569706,
+		-0.016058338650751687
+	],
+	"metadata": {
+		"calibrated_by": "Jonathan Teo",
+		"notes": "F2.8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

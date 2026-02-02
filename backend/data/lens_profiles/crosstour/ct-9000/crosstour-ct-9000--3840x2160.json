@@ -1,0 +1,28 @@
+{
+	"id": "crosstour-ct-9000--3840x2160",
+	"camera_brand": "Crosstour",
+	"camera_model": "CT 9000",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2291.3198558299314,
+		"fy": 2290.6304560264825,
+		"cx": 1852.7627514640244,
+		"cy": 993.4911681231708
+	},
+	"distortion_coeffs": [
+		-0.007430155169477738,
+		0.11207580206614136,
+		-0.25951454049880496,
+		0.2156359272363868
+	],
+	"metadata": {
+		"calibrated_by": "Arthur Hussey",
+		"source": "gyroflow",
+		"official": true
+	}
+}

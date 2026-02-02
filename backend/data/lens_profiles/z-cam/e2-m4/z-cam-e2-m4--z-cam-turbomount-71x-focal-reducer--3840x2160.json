@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--z-cam-turbomount-71x-focal-reducer--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "IRIX 45MMT1.5 CINEMA CANON-EF",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 19167.406044641702,
+		"fy": 19160.352678312614,
+		"cx": 2439.289451460381,
+		"cy": 1169.745415608587
+	},
+	"distortion_coeffs": [
+		0.9385775722860292,
+		12.122122379107806,
+		-6271.131215467587,
+		286303.8627255503
+	],
+	"metadata": {
+		"calibrated_by": "Grant Schwingle",
+		"notes": "Z Cam TurboMount .71x Focal Reducer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

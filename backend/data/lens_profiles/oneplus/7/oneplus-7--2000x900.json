@@ -1,0 +1,28 @@
+{
+	"id": "oneplus-7--2000x900",
+	"camera_brand": "OnePlus",
+	"camera_model": "7",
+	"lens_model": "main",
+	"resolution": {
+		"width": 2000,
+		"height": 900
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2260.439421268821,
+		"fy": 2264.6339138855587,
+		"cx": 959.1825995575764,
+		"cy": 541.5929727602711
+	},
+	"distortion_coeffs": [
+		0.6998677170539271,
+		0.20718151611701904,
+		-60.43061203419294,
+		395.7119379540616
+	],
+	"metadata": {
+		"calibrated_by": "\u0412\u0430\u0441\u0438\u043b\u0438\u0439",
+		"source": "gyroflow",
+		"official": true
+	}
+}

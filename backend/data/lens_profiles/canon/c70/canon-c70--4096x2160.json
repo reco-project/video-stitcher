@@ -1,0 +1,28 @@
+{
+	"id": "canon-c70--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "C70",
+	"lens_model": "canon 35mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5668.000653217514,
+		"fy": 5671.815194491881,
+		"cx": 2057.209167995783,
+		"cy": 1067.065924408735
+	},
+	"distortion_coeffs": [
+		0.228113575201321,
+		1.4236463090722202,
+		-27.79019439715578,
+		198.02591227256684
+	],
+	"metadata": {
+		"calibrated_by": "DIFP Tyler",
+		"source": "gyroflow",
+		"official": true
+	}
+}

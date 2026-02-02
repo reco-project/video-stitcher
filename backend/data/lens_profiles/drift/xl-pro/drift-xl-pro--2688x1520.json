@@ -1,0 +1,28 @@
+{
+	"id": "drift-xl-pro--2688x1520",
+	"camera_brand": "Drift",
+	"camera_model": "xl pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 2688,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1574.4193964123865,
+		"fy": 1583.2182270772655,
+		"cx": 1363.1154222457924,
+		"cy": 744.0692706710252
+	},
+	"distortion_coeffs": [
+		-0.017902042264713702,
+		-0.04050353249185097,
+		0.09274956762125076,
+		-0.10180813391515474
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

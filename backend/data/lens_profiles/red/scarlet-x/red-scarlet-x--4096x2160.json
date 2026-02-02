@@ -1,0 +1,28 @@
+{
+	"id": "red-scarlet-x--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "SCARLET-X",
+	"lens_model": "Sigma Art  18.00mm 18 - 35",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3455.4006203766307,
+		"fy": 3446.6442372291704,
+		"cx": 2048.6732956084415,
+		"cy": 1075.5255445320604
+	},
+	"distortion_coeffs": [
+		0.20574474937164783,
+		0.27083956005551446,
+		-0.5035931055247027,
+		1.089315852141688
+	],
+	"metadata": {
+		"calibrated_by": "Benjamin DUPLAIX",
+		"source": "gyroflow",
+		"official": true
+	}
+}

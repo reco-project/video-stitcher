@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-r6--150-f8--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R6",
+	"lens_model": "Canon EF 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5858.269004768489,
+		"fy": 5828.533863500381,
+		"cx": 2123.2862033375354,
+		"cy": 1065.9557386156491
+	},
+	"distortion_coeffs": [
+		0.26145928790007206,
+		-0.19794675522900473,
+		0.28147393978354224,
+		8.423299390816451
+	],
+	"metadata": {
+		"calibrated_by": "Anna i Miguel",
+		"notes": "1/50 F8",
+		"source": "gyroflow",
+		"official": true
+	}
+}

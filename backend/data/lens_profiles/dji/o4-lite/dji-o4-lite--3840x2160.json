@@ -1,0 +1,28 @@
+{
+	"id": "dji-o4-lite--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "O4 Lite",
+	"lens_model": "Flywoo O4 Wide lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1771.1126053254688,
+		"fy": 1760.183431457412,
+		"cx": 1925.2058522690354,
+		"cy": 1086.6482109784663
+	},
+	"distortion_coeffs": [
+		0.1294039549589297,
+		-0.01575912906324756,
+		-0.16879729557851111,
+		0.10280684809086688
+	],
+	"metadata": {
+		"calibrated_by": "FLYWOO",
+		"source": "gyroflow",
+		"official": true
+	}
+}

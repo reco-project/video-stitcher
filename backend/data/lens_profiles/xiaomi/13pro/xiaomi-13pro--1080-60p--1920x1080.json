@@ -1,0 +1,29 @@
+{
+	"id": "xiaomi-13pro--1080-60p--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "13pro",
+	"lens_model": "23mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1704.6460146546626,
+		"fy": 1700.1614840979362,
+		"cx": 963.576226240159,
+		"cy": 527.5819743320401
+	},
+	"distortion_coeffs": [
+		0.33896174744176605,
+		-0.4065381875853537,
+		4.08261953448875,
+		-9.39851481911692
+	],
+	"metadata": {
+		"calibrated_by": "Lan",
+		"notes": "1080 60p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

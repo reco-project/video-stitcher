@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d3500--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D3500",
+	"lens_model": "Sigma 50mm F1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3998.806219348442,
+		"fy": 4037.589055398564,
+		"cx": 979.7554550910572,
+		"cy": 394.5616854403743
+	},
+	"distortion_coeffs": [
+		0.18400020300996828,
+		0.41834911089278487,
+		-11.644264313681065,
+		104.7560324459746
+	],
+	"metadata": {
+		"calibrated_by": "nicholas dafter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

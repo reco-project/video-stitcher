@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note12tubro--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note12Tubro",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1090.5052497086635,
+		"fy": 1115.06472016705,
+		"cx": 933.2743146763128,
+		"cy": 540.4338997370917
+	},
+	"distortion_coeffs": [
+		0.34044625935420125,
+		0.27504578159435783,
+		-0.8432655090915223,
+		1.3800662471158718
+	],
+	"metadata": {
+		"calibrated_by": "Septunbium",
+		"source": "gyroflow",
+		"official": true
+	}
+}

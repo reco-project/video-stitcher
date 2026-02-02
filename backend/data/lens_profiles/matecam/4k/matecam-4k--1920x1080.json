@@ -1,0 +1,28 @@
+{
+	"id": "matecam-4k--1920x1080",
+	"camera_brand": "Matecam",
+	"camera_model": "4K",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1288.4060032427444,
+		"fy": 1293.0809118304237,
+		"cx": 968.3548036099148,
+		"cy": 626.7012244859435
+	},
+	"distortion_coeffs": [
+		0.22374789268440387,
+		-0.3653070184885065,
+		-0.2264840118534234,
+		1.6688173932979045
+	],
+	"metadata": {
+		"calibrated_by": "Ezio Costantino",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-1f--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-1F",
+	"lens_model": "20mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2052.3010546771848,
+		"fy": 2054.5075712960725,
+		"cx": 1959.8083116904656,
+		"cy": 994.1413850740825
+	},
+	"distortion_coeffs": [
+		0.3170321038430379,
+		0.04796059982976435,
+		0.4304053916636542,
+		-0.35781984252665305
+	],
+	"metadata": {
+		"calibrated_by": "\u6d66\u5cf6\u963f\u6d3d",
+		"source": "gyroflow",
+		"official": true
+	}
+}

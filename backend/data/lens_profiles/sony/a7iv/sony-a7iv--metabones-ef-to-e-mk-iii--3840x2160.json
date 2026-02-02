@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--metabones-ef-to-e-mk-iii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Canon EF 24 1.4 L II",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2469.420160186659,
+		"fy": 2472.2946265859796,
+		"cx": 1976.8131824711224,
+		"cy": 1026.4594420834092
+	},
+	"distortion_coeffs": [
+		0.2579116886260805,
+		0.3370204348820365,
+		-0.8120010415974652,
+		1.240001206297955
+	],
+	"metadata": {
+		"calibrated_by": "Kaos",
+		"notes": "Metabones EF to E Mk III",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-c70--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "C70",
+	"lens_model": "RF24 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3896.976436474185,
+		"fy": 3897.84974698131,
+		"cx": 1936.5966275851172,
+		"cy": 1046.0108198087548
+	},
+	"distortion_coeffs": [
+		0.4551393340780745,
+		-2.715967037985685,
+		24.666696131417556,
+		-70.58014995380282
+	],
+	"metadata": {
+		"calibrated_by": "\u6c88\u7fd4",
+		"source": "gyroflow",
+		"official": true
+	}
+}

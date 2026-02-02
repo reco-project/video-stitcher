@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-11--full-sensor--4096x3072",
+	"camera_brand": "OnePlus",
+	"camera_model": "11",
+	"lens_model": "25mm",
+	"resolution": {
+		"width": 4096,
+		"height": 3072
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2857.1426586871994,
+		"fy": 2852.7275133635458,
+		"cx": 2056.7914532631517,
+		"cy": 1531.7358276476723
+	},
+	"distortion_coeffs": [
+		0.49771224371529543,
+		-0.7389540224558856,
+		0.16486482877724817,
+		3.84548948880808
+	],
+	"metadata": {
+		"calibrated_by": "P4tches",
+		"notes": "full sensor",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--24mm-fe28-g--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "48e423ad",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3235.0504924697207,
+		"fy": 3229.043096848562,
+		"cx": 1933.5199614383964,
+		"cy": 1199.2456706869195
+	},
+	"distortion_coeffs": [
+		0.28871102052757425,
+		0.5278494644015298,
+		-1.724155104621162,
+		3.4843970029111153
+	],
+	"metadata": {
+		"calibrated_by": "JoeShu",
+		"notes": "24mm FE2.8 G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

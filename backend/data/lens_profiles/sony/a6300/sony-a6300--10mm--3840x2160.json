@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6300--10mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6300",
+	"lens_model": "Sony 10-18mm f4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1687.889867303506,
+		"fy": 1688.5340425483496,
+		"cx": 1901.9757625797265,
+		"cy": 1048.183705696469
+	},
+	"distortion_coeffs": [
+		0.2586292077682255,
+		0.12043134894937645,
+		-0.022746642877932863,
+		0.13872847077506137
+	],
+	"metadata": {
+		"calibrated_by": "Leo Matis",
+		"notes": "10mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "dji-zemmuse-x7--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "ZEMMUSE X7",
+	"lens_model": "DL-S 16mm F2.8 ND ASPH",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2444.165478629379,
+		"fy": 2473.589098839029,
+		"cx": 1940.0102646432576,
+		"cy": 1292.9350230639432
+	},
+	"distortion_coeffs": [
+		0.3383973866836546,
+		0.03418381905667051,
+		0.3842571721598697,
+		-0.427080899924603
+	],
+	"metadata": {
+		"calibrated_by": "liuxinliang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

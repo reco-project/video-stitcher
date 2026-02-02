@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--rolling-shutter-correction-included--3840x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "Venus Optics Laowa 7.5mm f/2 MFT",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1640.710761654229,
+		"fy": 1641.339303860516,
+		"cx": 1895.843167719995,
+		"cy": 1124.3381544861809
+	},
+	"distortion_coeffs": [
+		0.33947741908090767,
+		0.041949905543298346,
+		0.11573453352723267,
+		-0.012724176873189242
+	],
+	"metadata": {
+		"calibrated_by": "Oleg Stelmakh",
+		"notes": "Rolling shutter correction included",
+		"source": "gyroflow",
+		"official": true
+	}
+}

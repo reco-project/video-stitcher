@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-5diii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 5DIII",
+	"lens_model": "24-105",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1484.5647402095549,
+		"fy": 1477.637926549647,
+		"cx": 970.267631748098,
+		"cy": 557.7666831130567
+	},
+	"distortion_coeffs": [
+		0.17152779334876406,
+		0.6248857821763565,
+		-1.9060926868928891,
+		3.071977962647687
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"source": "gyroflow",
+		"official": true
+	}
+}

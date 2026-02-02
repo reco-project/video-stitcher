@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--flat-14mm--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "LUMIX G 14-42",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3247.7701961632492,
+		"fy": 3244.8380061846137,
+		"cx": 1873.9097075669504,
+		"cy": 1044.1326655135492
+	},
+	"distortion_coeffs": [
+		-0.038325322674767466,
+		1.0416976017909685,
+		-3.5123249674827934,
+		4.932754814170733
+	],
+	"metadata": {
+		"calibrated_by": "Dario Della Mora",
+		"notes": "FLAT 14mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

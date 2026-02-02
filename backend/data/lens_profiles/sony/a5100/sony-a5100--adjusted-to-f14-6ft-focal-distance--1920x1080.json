@@ -1,0 +1,29 @@
+{
+	"id": "sony-a5100--adjusted-to-f14-6ft-focal-distance--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a5100",
+	"lens_model": "7artisans 35mm f1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3068.2973677722343,
+		"fy": 3065.5115570349685,
+		"cx": 934.0719969738292,
+		"cy": 545.7293762978717
+	},
+	"distortion_coeffs": [
+		0.2907333330069527,
+		-5.476366745991149,
+		114.1491936040189,
+		-835.1670350408172
+	],
+	"metadata": {
+		"calibrated_by": "Matthew Scholefield",
+		"notes": "Adjusted to f1.4, ~6ft focal distance",
+		"source": "gyroflow",
+		"official": true
+	}
+}

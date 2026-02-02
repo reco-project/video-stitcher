@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--29mm-25fps--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "DZO 20-55",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4957.127741265145,
+		"fy": 4948.637953626984,
+		"cx": 2915.891176356625,
+		"cy": 1539.8262525032226
+	},
+	"distortion_coeffs": [
+		0.13189958209777064,
+		0.5902452433695301,
+		-2.266508644403734,
+		4.2417855031555405
+	],
+	"metadata": {
+		"calibrated_by": "Blake",
+		"notes": "29mm 25fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

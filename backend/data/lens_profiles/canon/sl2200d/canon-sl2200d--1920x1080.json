@@ -1,0 +1,28 @@
+{
+	"id": "canon-sl2200d--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "Sl2/200D",
+	"lens_model": "Sigma 18-35mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3338.1590812542577,
+		"fy": 3348.720151032262,
+		"cx": 982.4682125802052,
+		"cy": 599.5232543014922
+	},
+	"distortion_coeffs": [
+		0.4131717202485769,
+		1.7646504128941085,
+		-14.74140211654085,
+		98.57713389550187
+	],
+	"metadata": {
+		"calibrated_by": "Fernando",
+		"source": "gyroflow",
+		"official": true
+	}
+}

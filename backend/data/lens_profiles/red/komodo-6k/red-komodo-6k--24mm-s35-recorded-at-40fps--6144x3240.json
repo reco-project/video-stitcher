@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--24mm-s35-recorded-at-40fps--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Leica M 24mm f/1.4 ASPH Summilux-M",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5699.125922521988,
+		"fy": 5697.838856882845,
+		"cx": 3067.010418837095,
+		"cy": 1552.783273424182
+	},
+	"distortion_coeffs": [
+		0.305892580777693,
+		-0.324923266562708,
+		1.897290778797699,
+		-1.916850037930987
+	],
+	"metadata": {
+		"calibrated_by": "windcine",
+		"notes": "24mm, S35, recorded at 40fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

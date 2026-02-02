@@ -1,0 +1,29 @@
+{
+	"id": "samsung-galaxy-s20-fe-4g--motioncam-raw-4k-binned--2016x1504",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy S20 FE 4G",
+	"lens_model": "27mm Main",
+	"resolution": {
+		"width": 2016,
+		"height": 1504
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1400.779320830162,
+		"fy": 1402.2764635875733,
+		"cx": 1014.0855663534926,
+		"cy": 736.8535753786275
+	},
+	"distortion_coeffs": [
+		0.3734550858736734,
+		-0.01203406007153734,
+		0.933249807546424,
+		-1.4694552413193231
+	],
+	"metadata": {
+		"calibrated_by": "MotionCam Pro User",
+		"notes": "Motioncam RAW 4K binned",
+		"source": "gyroflow",
+		"official": true
+	}
+}

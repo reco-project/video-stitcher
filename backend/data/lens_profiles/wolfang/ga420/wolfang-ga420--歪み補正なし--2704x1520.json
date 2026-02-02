@@ -1,0 +1,29 @@
+{
+	"id": "wolfang-ga420--\u6b6a\u307f\u88dc\u6b63\u306a\u3057--2704x1520",
+	"camera_brand": "WOLFANG",
+	"camera_model": "GA420",
+	"lens_model": "wide",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1726.0965468595184,
+		"fy": 1737.311073989976,
+		"cx": 1331.2600817885316,
+		"cy": 784.9127183056825
+	},
+	"distortion_coeffs": [
+		-0.04788324746745437,
+		-0.049054428954280554,
+		0.10371791792776217,
+		-0.07202611968363037
+	],
+	"metadata": {
+		"calibrated_by": "masahiro",
+		"notes": "\u6b6a\u307f\u88dc\u6b63\u306a\u3057",
+		"source": "gyroflow",
+		"official": true
+	}
+}

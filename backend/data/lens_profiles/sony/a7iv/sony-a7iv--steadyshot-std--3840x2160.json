@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--steadyshot-std--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "SELP1635G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2647.2049577129446,
+		"fy": 2647.17860935418,
+		"cx": 1911.940262893915,
+		"cy": 1068.7057649631324
+	},
+	"distortion_coeffs": [
+		0.3195082356285065,
+		0.19960453822477792,
+		-0.09927605549277556,
+		0.15207284916164973
+	],
+	"metadata": {
+		"calibrated_by": "PXT-12",
+		"notes": "SteadyShot Std",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-x-t4--16-mm--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T4",
+	"lens_model": "FUJIFILM XF 16-55mm f/2.8 R LM WR",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1304.653499926107,
+		"fy": 1306.3158598601865,
+		"cx": 965.1732653021947,
+		"cy": 538.071880553678
+	},
+	"distortion_coeffs": [
+		0.3257944717111666,
+		0.0018913604654473043,
+		0.3834994440415832,
+		-0.28854408163202994
+	],
+	"metadata": {
+		"calibrated_by": "bewar",
+		"notes": "16 MM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

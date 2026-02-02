@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--20mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "Tamron 20mm 2.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3264.4222010750755,
+		"fy": 3291.610553735585,
+		"cx": 1884.133628890911,
+		"cy": 1019.202812640704
+	},
+	"distortion_coeffs": [
+		0.1484264147963188,
+		0.20616200508307497,
+		-0.6774942028714708,
+		0.962008689157353
+	],
+	"metadata": {
+		"calibrated_by": "Martin Ammon",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

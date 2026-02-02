@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-m20--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "galaxy M20",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1529.3089507383409,
+		"fy": 1529.5195509008215,
+		"cx": 997.1289059979224,
+		"cy": 526.0763066638783
+	},
+	"distortion_coeffs": [
+		0.7235967449409737,
+		-2.049775576950333,
+		5.0126457374198,
+		-3.219023666688544
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

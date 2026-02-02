@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t5--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T5",
+	"lens_model": "VILTROX 27mm F1.2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5148.958723851686,
+		"fy": 5160.472561821337,
+		"cx": 1923.067977627406,
+		"cy": 1199.5322287114673
+	},
+	"distortion_coeffs": [
+		0.2477923890041464,
+		0.3652994158584572,
+		-3.968048189935315,
+		25.25173158585532
+	],
+	"metadata": {
+		"calibrated_by": "JERRY",
+		"source": "gyroflow",
+		"official": true
+	}
+}

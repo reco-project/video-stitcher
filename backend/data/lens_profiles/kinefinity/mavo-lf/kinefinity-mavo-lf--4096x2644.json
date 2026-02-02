@@ -1,0 +1,28 @@
+{
+	"id": "kinefinity-mavo-lf--4096x2644",
+	"camera_brand": "Kinefinity",
+	"camera_model": "MAVO LF",
+	"lens_model": "35MM + OPTEX 0.5",
+	"resolution": {
+		"width": 4096,
+		"height": 2644
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3071.0958924089646,
+		"fy": 3068.475541672912,
+		"cx": 2061.2234524858054,
+		"cy": 1307.3152323062309
+	},
+	"distortion_coeffs": [
+		0.19596501902001623,
+		0.09665391717596872,
+		0.10947559669773414,
+		0.10223215848294336
+	],
+	"metadata": {
+		"calibrated_by": "Samuel Esselinckx",
+		"source": "gyroflow",
+		"official": true
+	}
+}

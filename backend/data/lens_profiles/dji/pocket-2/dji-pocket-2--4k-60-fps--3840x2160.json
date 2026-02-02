@@ -1,0 +1,29 @@
+{
+	"id": "dji-pocket-2--4k-60-fps--3840x2160",
+	"camera_brand": "DJI",
+	"camera_model": "Pocket 2",
+	"lens_model": "Wide Angle Lens",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2093.675626985191,
+		"fy": 2094.316032332915,
+		"cx": 1921.467467257688,
+		"cy": 1057.4520474753774
+	},
+	"distortion_coeffs": [
+		0.47155353564791747,
+		-0.9113038522394038,
+		1.164928927867509,
+		-0.3939699549442202
+	],
+	"metadata": {
+		"calibrated_by": "Jake",
+		"notes": "4k 60 fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

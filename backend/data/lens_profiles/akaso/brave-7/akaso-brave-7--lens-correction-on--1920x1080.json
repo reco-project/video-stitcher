@@ -1,0 +1,29 @@
+{
+	"id": "akaso-brave-7--lens-correction-on--1920x1080",
+	"camera_brand": "Akaso",
+	"camera_model": "Brave 7",
+	"lens_model": "Stock Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 669.7422010309735,
+		"fy": 653.686076107425,
+		"cx": 905.6243918537358,
+		"cy": 380.9765467023857
+	},
+	"distortion_coeffs": [
+		0.30384502138324265,
+		0.023810088731402022,
+		0.11695880716096552,
+		-0.038233455453593926
+	],
+	"metadata": {
+		"calibrated_by": "RA121514",
+		"notes": "Lens Correction On",
+		"source": "gyroflow",
+		"official": true
+	}
+}

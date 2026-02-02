@@ -1,0 +1,29 @@
+{
+	"id": "sony-potensic-atom-se--4k--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "Potensic Atom SE",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2530.9287927663663,
+		"fy": 2526.3052459818136,
+		"cx": 1952.6181042718647,
+		"cy": 1050.4056659473465
+	},
+	"distortion_coeffs": [
+		0.4263379140523285,
+		0.3528091666506762,
+		-3.598052677346198,
+		6.74414705837608
+	],
+	"metadata": {
+		"calibrated_by": "Daniel Gutierrez",
+		"notes": "4K",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--tamrom2-2835-150--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "50.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5910.976542944207,
+		"fy": 5905.534879740061,
+		"cx": 1915.9484886558384,
+		"cy": 1036.4068394165008
+	},
+	"distortion_coeffs": [
+		0.5327312488805762,
+		0.008935571241081486,
+		19.79752603419455,
+		-106.79355200344182
+	],
+	"metadata": {
+		"calibrated_by": "\u674e\u58a8",
+		"notes": "TAMROM2-2.8/35-150",
+		"source": "gyroflow",
+		"official": true
+	}
+}

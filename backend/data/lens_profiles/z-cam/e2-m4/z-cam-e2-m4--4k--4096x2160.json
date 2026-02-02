@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--4k--4096x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "18-35 1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3945.8576430326625,
+		"fy": 3946.4345528384206,
+		"cx": 2110.7526576474925,
+		"cy": 1072.6682685264636
+	},
+	"distortion_coeffs": [
+		0.22051597476367432,
+		0.136735702314253,
+		0.31346620741134357,
+		-0.6090598163621018
+	],
+	"metadata": {
+		"calibrated_by": "Sandro A. Mrowinski",
+		"notes": "4k",
+		"source": "gyroflow",
+		"official": true
+	}
+}

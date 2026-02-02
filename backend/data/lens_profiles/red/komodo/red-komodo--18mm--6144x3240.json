@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--18mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Sigma 18-35mm F1.8",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4168.376339376996,
+		"fy": 4167.025269427435,
+		"cx": 3104.13537829353,
+		"cy": 1603.4919219404574
+	},
+	"distortion_coeffs": [
+		0.23515517268350752,
+		0.13085895194344527,
+		0.05566156809908187,
+		0.2199625680899956
+	],
+	"metadata": {
+		"calibrated_by": "Timothy",
+		"notes": "18mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

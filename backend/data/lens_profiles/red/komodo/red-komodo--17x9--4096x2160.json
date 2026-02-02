@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--17x9--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "LAOWA 11mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1728.8094370722013,
+		"fy": 1728.267836098517,
+		"cx": 2043.4887153475488,
+		"cy": 1083.2310283758572
+	},
+	"distortion_coeffs": [
+		0.3317863511706184,
+		0.11898889554063909,
+		-0.00996927245200621,
+		0.07502310627142839
+	],
+	"metadata": {
+		"calibrated_by": "Cai Mckeever-Willis",
+		"notes": "17x9",
+		"source": "gyroflow",
+		"official": true
+	}
+}

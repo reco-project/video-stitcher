@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s20--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "S20+",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1410.3291992096654,
+		"fy": 1410.369429962998,
+		"cx": 952.7905462628984,
+		"cy": 532.3343452567144
+	},
+	"distortion_coeffs": [
+		0.3618504871484759,
+		0.32801043910771394,
+		-0.5279955404054356,
+		0.3462730594352785
+	],
+	"metadata": {
+		"calibrated_by": "Egor Zorin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

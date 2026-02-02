@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gh5s--16mm-f7--4095x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "GH5S",
+	"lens_model": "Olympus 12-40mm f2.8",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3357.8180676772367,
+		"fy": 3362.75816166673,
+		"cx": 2087.914493681751,
+		"cy": 1030.1996008127546
+	},
+	"distortion_coeffs": [
+		0.31966064067783767,
+		0.36139942024648575,
+		-1.533055007084654,
+		3.3067219647652735
+	],
+	"metadata": {
+		"calibrated_by": "Yoeri Bulk",
+		"notes": "16mm f7",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-lumix-s5ii--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix S5II",
+	"lens_model": "Sigma10-18(10)",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1708.2217552209772,
+		"fy": 1711.5436104531568,
+		"cx": 2042.6631580748103,
+		"cy": 1073.743773211565
+	},
+	"distortion_coeffs": [
+		0.31330439913666813,
+		0.23269582746748252,
+		-0.112074336367259,
+		0.15813171416417027
+	],
+	"metadata": {
+		"calibrated_by": "\u5c39\u5b50\u8c6a",
+		"source": "gyroflow",
+		"official": true
+	}
+}

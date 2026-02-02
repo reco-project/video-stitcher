@@ -1,0 +1,28 @@
+{
+	"id": "gopro-hero7--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO7",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 838.6031567873961,
+		"fy": 838.9231797214112,
+		"cx": 960.0,
+		"cy": 720.0
+	},
+	"distortion_coeffs": [
+		0.038729595215028285,
+		0.06626952642868542,
+		-0.06770727050096671,
+		0.026330680123089974
+	],
+	"metadata": {
+		"calibrated_by": "utharemo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

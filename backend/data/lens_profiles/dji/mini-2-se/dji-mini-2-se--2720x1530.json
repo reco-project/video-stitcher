@@ -1,0 +1,28 @@
+{
+	"id": "dji-mini-2-se--2720x1530",
+	"camera_brand": "DJI",
+	"camera_model": "mini 2 se",
+	"lens_model": "Mini2",
+	"resolution": {
+		"width": 2720,
+		"height": 1530
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2069.5810920636013,
+		"fy": 2067.166155101381,
+		"cx": 1353.0592653627289,
+		"cy": 760.7687200282418
+	},
+	"distortion_coeffs": [
+		0.2436042840265744,
+		0.9580583793583104,
+		-3.924486085667593,
+		5.661230773326228
+	],
+	"metadata": {
+		"calibrated_by": "IvAn",
+		"source": "gyroflow",
+		"official": true
+	}
+}

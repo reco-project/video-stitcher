@@ -1,0 +1,28 @@
+{
+	"id": "mobula-7hd-1s--1920x1080",
+	"camera_brand": "Mobula",
+	"camera_model": "7HD 1S",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 760.0103890160051,
+		"fy": 760.188377250124,
+		"cx": 932.000958316578,
+		"cy": 520.9504961885733
+	},
+	"distortion_coeffs": [
+		-0.020946586139742325,
+		0.08067968939948411,
+		-0.09733122266065236,
+		0.05093683226180522
+	],
+	"metadata": {
+		"calibrated_by": "Ender",
+		"source": "gyroflow",
+		"official": true
+	}
+}

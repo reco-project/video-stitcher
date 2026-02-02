@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-11-lite-5g-ne--720x1278",
+	"camera_brand": "Xiaomi",
+	"camera_model": "11 Lite 5G NE",
+	"lens_model": "Back 1.0 focal",
+	"resolution": {
+		"width": 720,
+		"height": 1278
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 954.20806656305,
+		"fy": 953.5391501395852,
+		"cx": 359.56537350123705,
+		"cy": 634.779089571508
+	},
+	"distortion_coeffs": [
+		0.4454215715115375,
+		-1.0971086478362546,
+		4.366561933515922,
+		-5.113102120294349
+	],
+	"metadata": {
+		"calibrated_by": "User",
+		"source": "gyroflow",
+		"official": true
+	}
+}

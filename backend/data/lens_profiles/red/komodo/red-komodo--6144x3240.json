@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Rokinon 50mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 12342.336051870809,
+		"fy": 12340.415395275477,
+		"cx": 3062.2411138638186,
+		"cy": 1657.4991712170397
+	},
+	"distortion_coeffs": [
+		0.06775731455099607,
+		0.4477749773844195,
+		22.53395018231663,
+		-307.9039004836784
+	],
+	"metadata": {
+		"calibrated_by": "First Class Drones",
+		"source": "gyroflow",
+		"official": true
+	}
+}

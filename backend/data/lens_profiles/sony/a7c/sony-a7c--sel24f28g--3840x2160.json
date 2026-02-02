@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--sel24f28g--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "e7403f4a",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2907.2933429793547,
+		"fy": 2906.1442231683086,
+		"cx": 1943.7983692446412,
+		"cy": 1060.779712527332
+	},
+	"distortion_coeffs": [
+		0.3263788800195581,
+		0.15630469243754314,
+		-0.2124227757198139,
+		1.0287394343579748
+	],
+	"metadata": {
+		"calibrated_by": "Neil Chen",
+		"notes": "SEL24F28G",
+		"source": "gyroflow",
+		"official": true
+	}
+}

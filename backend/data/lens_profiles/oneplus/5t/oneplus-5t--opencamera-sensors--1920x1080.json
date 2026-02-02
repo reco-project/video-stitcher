@@ -1,0 +1,29 @@
+{
+	"id": "oneplus-5t--opencamera-sensors--1920x1080",
+	"camera_brand": "OnePlus",
+	"camera_model": "5T",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1545.116247335416,
+		"fy": 1550.0233316887825,
+		"cx": 958.4823006459372,
+		"cy": 549.7779597838592
+	},
+	"distortion_coeffs": [
+		0.7902789753678373,
+		-2.3730833013527812,
+		4.764191795216103,
+		1.0512101573647552
+	],
+	"metadata": {
+		"calibrated_by": "Julian Cox",
+		"notes": "OpenCamera Sensors",
+		"source": "gyroflow",
+		"official": true
+	}
+}

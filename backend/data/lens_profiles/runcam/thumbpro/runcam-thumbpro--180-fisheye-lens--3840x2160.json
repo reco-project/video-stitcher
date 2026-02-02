@@ -1,0 +1,29 @@
+{
+	"id": "runcam-thumbpro--180-fisheye-lens--3840x2160",
+	"camera_brand": "RunCam",
+	"camera_model": "ThumbPro",
+	"lens_model": "Foxeer 1.8",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1318.3457637179208,
+		"fy": 988.1632529327884,
+		"cx": 1865.700674493508,
+		"cy": 1050.1115578446013
+	},
+	"distortion_coeffs": [
+		-0.03269163216970103,
+		0.02300097459450747,
+		-0.020052401788786835,
+		0.005183794997056715
+	],
+	"metadata": {
+		"calibrated_by": "Pavel Rybakov",
+		"notes": "180 fisheye lens",
+		"source": "gyroflow",
+		"official": true
+	}
+}

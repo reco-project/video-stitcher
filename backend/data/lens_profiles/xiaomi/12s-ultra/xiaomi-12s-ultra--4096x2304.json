@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-12s-ultra--4096x2304",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12s ultra",
+	"lens_model": "main 23mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2304
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2712.0324253247027,
+		"fy": 2711.7541435854127,
+		"cx": 2037.7194336574923,
+		"cy": 1176.025125380605
+	},
+	"distortion_coeffs": [
+		0.5056849571029793,
+		-1.0939269767185242,
+		3.2228536594427393,
+		-3.007882776514483
+	],
+	"metadata": {
+		"calibrated_by": "woo guns",
+		"source": "gyroflow",
+		"official": true
+	}
+}

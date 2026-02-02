@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iii--17mm--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7III",
+	"lens_model": "tamron 17-28",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 943.1913938078249,
+		"fy": 943.432381219022,
+		"cx": 959.362354632482,
+		"cy": 546.9702034999475
+	},
+	"distortion_coeffs": [
+		0.32982122641409567,
+		0.0649357271229273,
+		0.21604455278757825,
+		-0.06822099332095256
+	],
+	"metadata": {
+		"calibrated_by": "lee eunsang",
+		"notes": "17mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

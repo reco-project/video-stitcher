@@ -1,0 +1,29 @@
+{
+	"id": "lg-v35--q-070--4656x3492",
+	"camera_brand": "LG",
+	"camera_model": "v35",
+	"lens_model": "Wide 18mm f1.9",
+	"resolution": {
+		"width": 4656,
+		"height": 3492
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2361.806251702932,
+		"fy": 2357.712164798071,
+		"cx": 2338.9379917231836,
+		"cy": 1723.1979271157488
+	},
+	"distortion_coeffs": [
+		0.3092339850787168,
+		0.007287623283709715,
+		0.588146887245112,
+		-0.5897241291663037
+	],
+	"metadata": {
+		"calibrated_by": "David Barlow",
+		"notes": "Q 0.70",
+		"source": "gyroflow",
+		"official": true
+	}
+}

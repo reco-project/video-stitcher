@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--10mm--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "SEL1018",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1296.071458393229,
+		"fy": 1294.524221786387,
+		"cx": 1908.066050606137,
+		"cy": 1059.1345364559295
+	},
+	"distortion_coeffs": [
+		0.30762602442099785,
+		0.15205716857151513,
+		-0.026135532918602065,
+		0.11066595558862012
+	],
+	"metadata": {
+		"calibrated_by": "Yan Wang",
+		"notes": "10mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

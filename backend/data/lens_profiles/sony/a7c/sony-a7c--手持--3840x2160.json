@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--\u624b\u6301--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "betis18mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1990.0980658362555,
+		"fy": 1990.684676771135,
+		"cx": 1950.9706906364104,
+		"cy": 1087.3748152632484
+	},
+	"distortion_coeffs": [
+		0.21923437620391503,
+		0.19844697578792247,
+		-0.03440758347857826,
+		0.07937733514441668
+	],
+	"metadata": {
+		"calibrated_by": "\u963f\u731b",
+		"notes": "\u624b\u6301",
+		"source": "gyroflow",
+		"official": true
+	}
+}

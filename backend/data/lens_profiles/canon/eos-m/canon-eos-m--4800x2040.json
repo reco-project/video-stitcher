@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--4800x2040",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "ZUIKO 28mm f3.5",
+	"resolution": {
+		"width": 4800,
+		"height": 2040
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7692.165019095142,
+		"fy": 7709.29177449684,
+		"cx": 2523.4136638884947,
+		"cy": 1114.3997590375325
+	},
+	"distortion_coeffs": [
+		0.4569451604384257,
+		-3.4140323864243176,
+		35.582974478029335,
+		-145.23499641860562
+	],
+	"metadata": {
+		"calibrated_by": "kazu",
+		"source": "gyroflow",
+		"official": true
+	}
+}

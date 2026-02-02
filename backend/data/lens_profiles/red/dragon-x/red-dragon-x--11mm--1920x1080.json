@@ -1,0 +1,29 @@
+{
+	"id": "red-dragon-x--11mm--1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "DRAGON X",
+	"lens_model": "TOKINA 11-20 ATX",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1129.9144065422868,
+		"fy": 1129.7198427725227,
+		"cx": 951.5733797702848,
+		"cy": 545.6902623202859
+	},
+	"distortion_coeffs": [
+		0.3200128451669307,
+		0.1044556102466168,
+		-0.0021242330600697683,
+		-0.05671747163085402
+	],
+	"metadata": {
+		"calibrated_by": "vincent reynaud",
+		"notes": "11mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

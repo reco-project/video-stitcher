@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--sensor-cropped--4096x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa 14mm RL Zero-D",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3294.4549483746173,
+		"fy": 3290.0638845238373,
+		"cx": 2062.010979013767,
+		"cy": 1114.58039710946
+	},
+	"distortion_coeffs": [
+		0.30341334153310934,
+		0.5080671058318166,
+		-2.010345671040399,
+		3.5579404897276636
+	],
+	"metadata": {
+		"calibrated_by": "Malin",
+		"notes": "Sensor Cropped",
+		"source": "gyroflow",
+		"official": true
+	}
+}

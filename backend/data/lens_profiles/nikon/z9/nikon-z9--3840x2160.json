@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z9--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z9",
+	"lens_model": "105f2.8G",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 13437.036734019895,
+		"fy": 13355.09691945607,
+		"cx": 1989.9846199310116,
+		"cy": 1177.683876386202
+	},
+	"distortion_coeffs": [
+		0.15022362384719026,
+		-20.647368709807377,
+		1396.9958345259197,
+		-20341.065190184603
+	],
+	"metadata": {
+		"calibrated_by": "acer",
+		"source": "gyroflow",
+		"official": true
+	}
+}

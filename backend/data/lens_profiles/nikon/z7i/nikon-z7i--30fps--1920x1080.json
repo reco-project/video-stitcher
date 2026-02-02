@@ -1,0 +1,29 @@
+{
+	"id": "nikon-z7i--30fps--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Z7i",
+	"lens_model": "Sigma",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1764.3106969892358,
+		"fy": 1764.9152499204752,
+		"cx": 975.9789210799398,
+		"cy": 530.5785171782456
+	},
+	"distortion_coeffs": [
+		0.25267961251554266,
+		0.2658926894835838,
+		-0.20966389808522423,
+		0.6765807066513558
+	],
+	"metadata": {
+		"calibrated_by": "DIMITRIS",
+		"notes": "30FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

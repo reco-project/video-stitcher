@@ -1,0 +1,29 @@
+{
+	"id": "nikon-coolpix-p950--60fps--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "Coolpix P950",
+	"lens_model": "1000mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 156215.5590037153,
+		"fy": 161273.45564485234,
+		"cx": 145.4299828582567,
+		"cy": 507.24376219429087
+	},
+	"distortion_coeffs": [
+		-45.24399012156829,
+		104621.73097232182,
+		-335125404.4717485,
+		273048765216.14813
+	],
+	"metadata": {
+		"calibrated_by": "Guru Prasad",
+		"notes": "60fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

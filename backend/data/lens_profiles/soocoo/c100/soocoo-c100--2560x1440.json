@@ -1,0 +1,28 @@
+{
+	"id": "soocoo-c100--2560x1440",
+	"camera_brand": "soocoo",
+	"camera_model": "c100",
+	"lens_model": "soocoo 70",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2861.4926046011856,
+		"fy": 2844.310129459319,
+		"cx": 1377.172426969187,
+		"cy": 786.4016905616432
+	},
+	"distortion_coeffs": [
+		-0.2655194489225195,
+		3.1824334236449436,
+		-31.250794776971837,
+		112.40533839612256
+	],
+	"metadata": {
+		"calibrated_by": "sooco 70",
+		"source": "gyroflow",
+		"official": true
+	}
+}

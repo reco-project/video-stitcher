@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z-8--4096x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "Z 8",
+	"lens_model": "NIKKOR Z24-70 F2.8 S",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2794.5907278350887,
+		"fy": 2796.0302409193205,
+		"cx": 2038.718293703464,
+		"cy": 1088.6484416999504
+	},
+	"distortion_coeffs": [
+		0.17443253322004532,
+		0.18334034488465975,
+		-0.1622954639036913,
+		0.49304088251734635
+	],
+	"metadata": {
+		"calibrated_by": "YEHAOZE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

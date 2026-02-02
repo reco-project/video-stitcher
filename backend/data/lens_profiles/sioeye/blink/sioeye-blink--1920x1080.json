@@ -1,0 +1,28 @@
+{
+	"id": "sioeye-blink--1920x1080",
+	"camera_brand": "Sioeye",
+	"camera_model": "Blink",
+	"lens_model": "\u5bbd",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1053.962700034673,
+		"fy": 1056.6548423523907,
+		"cx": 970.3611606791276,
+		"cy": 543.5011184110207
+	},
+	"distortion_coeffs": [
+		-0.11000363612193811,
+		0.034464096531957256,
+		-0.04180596210714379,
+		0.016261666512112
+	],
+	"metadata": {
+		"calibrated_by": "\u5c0f\u4e5d\u5c3e",
+		"source": "gyroflow",
+		"official": true
+	}
+}

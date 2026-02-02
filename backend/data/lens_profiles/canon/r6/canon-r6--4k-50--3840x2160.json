@@ -1,0 +1,29 @@
+{
+	"id": "canon-r6--4k-50--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "R6",
+	"lens_model": "RF 24-105mm F4",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2848.6369713342483,
+		"fy": 2854.5176073506395,
+		"cx": 1956.3077493741855,
+		"cy": 1067.785321596083
+	},
+	"distortion_coeffs": [
+		0.3554392346216089,
+		-0.09457056587021352,
+		0.7712639830233878,
+		-0.7127819979804233
+	],
+	"metadata": {
+		"calibrated_by": "\u9ec4\u4f1f\u6770",
+		"notes": "4k 50",
+		"source": "gyroflow",
+		"official": true
+	}
+}

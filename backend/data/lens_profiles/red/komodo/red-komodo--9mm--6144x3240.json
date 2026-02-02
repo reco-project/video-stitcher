@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--9mm--6144x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Laowa 9mm",
+	"resolution": {
+		"width": 6144,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2103.5124733529333,
+		"fy": 2104.2263407315113,
+		"cx": 3097.384857938895,
+		"cy": 1617.7980688377295
+	},
+	"distortion_coeffs": [
+		0.3409642151890979,
+		0.13554211673287306,
+		-0.04383734814365183,
+		0.11906230722581916
+	],
+	"metadata": {
+		"calibrated_by": "SELARL Landreat",
+		"notes": "9mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

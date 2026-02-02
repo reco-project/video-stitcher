@@ -1,0 +1,28 @@
+{
+	"id": "sony-mini-dv--720x576",
+	"camera_brand": "Sony",
+	"camera_model": "mini dv",
+	"lens_model": null,
+	"resolution": {
+		"width": 720,
+		"height": 576
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 880.8751595567564,
+		"fy": 863.2362259005655,
+		"cx": 349.4884289087944,
+		"cy": 283.11049056777154
+	},
+	"distortion_coeffs": [
+		0.14210599397221796,
+		-0.6682072074779601,
+		6.488941489954359,
+		-11.92463434475715
+	],
+	"metadata": {
+		"calibrated_by": "Area 39",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r5--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R5",
+	"lens_model": "Sigma135",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 59618.05068305167,
+		"fy": 59585.09538070367,
+		"cx": 3185.480983977175,
+		"cy": 1793.1715119091098
+	},
+	"distortion_coeffs": [
+		2.673810265914397,
+		-770.1638428680698,
+		497235.5529420565,
+		-86642458.21690927
+	],
+	"metadata": {
+		"calibrated_by": "natsuki",
+		"source": "gyroflow",
+		"official": true
+	}
+}

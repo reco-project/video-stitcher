@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t20--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T20",
+	"lens_model": "XF 23mm F2",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5556.168193724663,
+		"fy": 5323.701967564636,
+		"cx": 1645.734880543282,
+		"cy": 3761.982411733123
+	},
+	"distortion_coeffs": [
+		-0.1580630265170074,
+		0.9668528212059112,
+		-1.605144577862932,
+		1.1734061645566314
+	],
+	"metadata": {
+		"calibrated_by": "MrGlass",
+		"source": "gyroflow",
+		"official": true
+	}
+}

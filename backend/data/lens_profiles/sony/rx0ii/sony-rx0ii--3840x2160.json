@@ -1,0 +1,28 @@
+{
+	"id": "sony-rx0ii--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "24mm with 0.6x ZOMEI",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1846.4643857072351,
+		"fy": 1847.163569293553,
+		"cx": 1926.9695541948297,
+		"cy": 1082.9421036856636
+	},
+	"distortion_coeffs": [
+		0.15616047407855885,
+		0.4832891439033604,
+		-0.9322546143834892,
+		0.7764061817465157
+	],
+	"metadata": {
+		"calibrated_by": "Dronotron",
+		"source": "gyroflow",
+		"official": true
+	}
+}

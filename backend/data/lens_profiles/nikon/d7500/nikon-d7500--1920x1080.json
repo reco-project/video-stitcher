@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d7500--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D7500",
+	"lens_model": "50MM 1.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4919.838184530246,
+		"fy": 4925.8497236057965,
+		"cx": 952.7362642949258,
+		"cy": 550.8454597689895
+	},
+	"distortion_coeffs": [
+		0.11662091309658355,
+		5.805609102108511,
+		-207.30258212445253,
+		2473.822671493276
+	],
+	"metadata": {
+		"calibrated_by": "Emmanuel Denora",
+		"source": "gyroflow",
+		"official": true
+	}
+}

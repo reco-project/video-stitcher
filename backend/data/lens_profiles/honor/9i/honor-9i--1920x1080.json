@@ -1,0 +1,28 @@
+{
+	"id": "honor-9i--1920x1080",
+	"camera_brand": "honor",
+	"camera_model": "9i",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1113.9118614917966,
+		"fy": 1116.8516471103703,
+		"cx": 929.1106460934944,
+		"cy": 525.4603654127485
+	},
+	"distortion_coeffs": [
+		0.3994937167494783,
+		-0.14860783320217844,
+		0.5803367544139564,
+		-0.39677545296353656
+	],
+	"metadata": {
+		"calibrated_by": "U0 A326",
+		"source": "gyroflow",
+		"official": true
+	}
+}

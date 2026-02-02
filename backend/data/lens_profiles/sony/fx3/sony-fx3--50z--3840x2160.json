@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx3--50z--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX3",
+	"lens_model": "LAOWA10.00mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1122.629584511325,
+		"fy": 1122.9596136375033,
+		"cx": 1912.750566300088,
+		"cy": 1053.2973324003742
+	},
+	"distortion_coeffs": [
+		0.31219407897274676,
+		0.2914542447620568,
+		-0.22098030268228616,
+		0.15959347241806904
+	],
+	"metadata": {
+		"calibrated_by": "Administrator",
+		"notes": "50z",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "nikon-z-50--3840x2160",
+	"camera_brand": "Nikon",
+	"camera_model": "z 50",
+	"lens_model": "z 16-50",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2429.4859729464733,
+		"fy": 2465.428160414217,
+		"cx": 1878.5639924203049,
+		"cy": 758.3889626758736
+	},
+	"distortion_coeffs": [
+		0.36364149998473183,
+		-0.04114168397248548,
+		0.49153408638329465,
+		-0.325587720156269
+	],
+	"metadata": {
+		"calibrated_by": "Not PC",
+		"source": "gyroflow",
+		"official": true
+	}
+}

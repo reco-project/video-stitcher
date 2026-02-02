@@ -1,0 +1,28 @@
+{
+	"id": "sjcam-legend-6--1440x1080",
+	"camera_brand": "SJCAM",
+	"camera_model": "Legend 6",
+	"lens_model": null,
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1387.700742435169,
+		"fy": 1400.4688729547172,
+		"cx": 729.8524105266526,
+		"cy": 514.2554341263199
+	},
+	"distortion_coeffs": [
+		-0.3596245314222423,
+		-0.22794461371146224,
+		2.1811443288956376,
+		-3.359328302145524
+	],
+	"metadata": {
+		"calibrated_by": "Moshe Nahari",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "volla-vollaphone-x--1920x1080",
+	"camera_brand": "Volla",
+	"camera_model": "Vollaphone X",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1437.2792236034304,
+		"fy": 1433.8316156615315,
+		"cx": 975.399256405382,
+		"cy": 532.6070597530025
+	},
+	"distortion_coeffs": [
+		0.6152036763680224,
+		-1.5846386204944576,
+		4.72624650695087,
+		-4.989672662442608
+	],
+	"metadata": {
+		"calibrated_by": "Michele",
+		"source": "gyroflow",
+		"official": true
+	}
+}

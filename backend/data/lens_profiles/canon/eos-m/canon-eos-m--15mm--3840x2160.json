@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--15mm--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "15-45 mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 6867.499465339376,
+		"fy": 6928.346714342144,
+		"cx": 2237.99242034007,
+		"cy": 1779.3106254462302
+	},
+	"distortion_coeffs": [
+		-0.2831792082150012,
+		14.00736867645777,
+		-190.915386536972,
+		848.5073902142719
+	],
+	"metadata": {
+		"calibrated_by": "Jameel Mohamed",
+		"notes": "15mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

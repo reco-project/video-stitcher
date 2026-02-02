@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--viltrox-071-speedbooster--2048x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Rokinon 85mm T1.5",
+	"resolution": {
+		"width": 2048,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4702.474580163837,
+		"fy": 4717.699075933177,
+		"cx": 1022.1277975080988,
+		"cy": 530.6323148849837
+	},
+	"distortion_coeffs": [
+		-0.2649218926681523,
+		3.9380753066999015,
+		-26.13897585288194,
+		1144.8067993807742
+	],
+	"metadata": {
+		"calibrated_by": "Linas Lang",
+		"notes": "Viltrox 0,71 Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-g85--4k-30p--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix G85",
+	"lens_model": "DJI 15mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3634.3084150282266,
+		"fy": 3632.5091476701296,
+		"cx": 1918.725757584781,
+		"cy": 1050.299820119025
+	},
+	"distortion_coeffs": [
+		0.3381266578551342,
+		-0.28608077215193384,
+		1.8023815901972569,
+		-2.2692033418005613
+	],
+	"metadata": {
+		"calibrated_by": "One20 Studio",
+		"notes": "4K 30P",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-rx0ii--clear-image-zoom--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "RX0II",
+	"lens_model": "Zeiss Tesar T* 7,9mm F4 (24mm FF)",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4820.969153332262,
+		"fy": 4815.683589532526,
+		"cx": 1877.6708940808464,
+		"cy": 1120.8314111973543
+	},
+	"distortion_coeffs": [
+		0.2777262733190647,
+		1.632085653172444,
+		-10.275071043292488,
+		26.409200408426276
+	],
+	"metadata": {
+		"calibrated_by": "MM",
+		"notes": "Clear image zoom",
+		"source": "gyroflow",
+		"official": true
+	}
+}

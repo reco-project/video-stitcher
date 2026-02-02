@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-12-pro--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 12 Pro",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3318.474162789664,
+		"fy": 3329.821792832398,
+		"cx": 1893.7689366062937,
+		"cy": 1068.2528415979311
+	},
+	"distortion_coeffs": [
+		0.5068012805415728,
+		-1.4162539435237755,
+		9.308562761721788,
+		-20.06777273982936
+	],
+	"metadata": {
+		"calibrated_by": "Sascha Lucke",
+		"source": "gyroflow",
+		"official": true
+	}
+}

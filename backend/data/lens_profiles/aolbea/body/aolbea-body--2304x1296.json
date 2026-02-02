@@ -1,0 +1,28 @@
+{
+	"id": "aolbea-body--2304x1296",
+	"camera_brand": "Aolbea",
+	"camera_model": "Body",
+	"lens_model": null,
+	"resolution": {
+		"width": 2304,
+		"height": 1296
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1386.2377120083245,
+		"fy": 1384.563934070591,
+		"cx": 1185.7058892071557,
+		"cy": 618.2988923041889
+	},
+	"distortion_coeffs": [
+		-0.06664112789491389,
+		-0.03645748306887335,
+		0.032847880761253424,
+		-0.014547148736051669
+	],
+	"metadata": {
+		"calibrated_by": "Sammie Vanderstappen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7rv--a7rv--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7rV",
+	"lens_model": "FE 24-70mm f2.8 GM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8244.002847429223,
+		"fy": 8240.343310243048,
+		"cx": 1910.5039678907035,
+		"cy": 1068.8699983665672
+	},
+	"distortion_coeffs": [
+		0.5354172329973923,
+		-6.117376066458237,
+		133.98951328742544,
+		-646.4556984280774
+	],
+	"metadata": {
+		"calibrated_by": "Paul Chelmis",
+		"notes": "a7rV",
+		"source": "gyroflow",
+		"official": true
+	}
+}

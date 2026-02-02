@@ -1,0 +1,29 @@
+{
+	"id": "canon-1300d--50mm--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "1300D",
+	"lens_model": "EF 50mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 19558.31145604779,
+		"fy": 19801.563502610064,
+		"cx": 314.6597058923211,
+		"cy": 559.9135664906864
+	},
+	"distortion_coeffs": [
+		6.209406748460853,
+		-4293.7294942872295,
+		1298374.4409141,
+		-135736333.9032838
+	],
+	"metadata": {
+		"calibrated_by": "Zoe Real",
+		"notes": "50mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

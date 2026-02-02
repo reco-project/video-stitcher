@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-10s--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi 10s",
+	"lens_model": "redmi 10 s",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2806.4337601585794,
+		"fy": 2812.3493743328295,
+		"cx": 1917.6472390695592,
+		"cy": 1054.8950611243724
+	},
+	"distortion_coeffs": [
+		0.43387595039067905,
+		-0.7181882834172897,
+		3.057835449700124,
+		-3.5993387783474
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-4xl--filmic-pro-4k--4031x2268",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 4XL",
+	"lens_model": "4k+",
+	"resolution": {
+		"width": 4031,
+		"height": 2268
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3933.4550118551424,
+		"fy": 3938.203624476272,
+		"cx": 2016.02802003458,
+		"cy": 1079.7350172935594
+	},
+	"distortion_coeffs": [
+		0.4014011169572429,
+		0.7977858799978901,
+		-7.169654462034401,
+		16.862445060990265
+	],
+	"metadata": {
+		"calibrated_by": "\u042e\u0440\u0438\u0439 \u041f\u0435\u0440\u0446\u044e\u0445",
+		"notes": "Filmic Pro 4k+",
+		"source": "gyroflow",
+		"official": true
+	}
+}

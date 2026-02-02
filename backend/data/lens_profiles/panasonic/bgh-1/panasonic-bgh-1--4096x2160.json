@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-bgh-1--4096x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "BGH-1",
+	"lens_model": "Laowa MFT 7.5mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1827.2915551327071,
+		"fy": 1825.5303147863133,
+		"cx": 2060.78368752385,
+		"cy": 1041.188374194281
+	},
+	"distortion_coeffs": [
+		0.5555020264655642,
+		-0.5734450048573358,
+		1.1291086424406818,
+		-0.47510843026952143
+	],
+	"metadata": {
+		"calibrated_by": "Logan Copenhaver",
+		"source": "gyroflow",
+		"official": true
+	}
+}

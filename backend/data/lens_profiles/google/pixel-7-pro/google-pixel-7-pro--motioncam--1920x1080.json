@@ -1,0 +1,29 @@
+{
+	"id": "google-pixel-7-pro--motioncam--1920x1080",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 7 Pro",
+	"lens_model": "Main Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1520.6727102993816,
+		"fy": 1519.3559359334718,
+		"cx": 969.9740424342996,
+		"cy": 540.6987966338953
+	},
+	"distortion_coeffs": [
+		0.691624851615922,
+		-3.697878771105058,
+		17.34211508222638,
+		-27.423266244305992
+	],
+	"metadata": {
+		"calibrated_by": "Atharva Rathore",
+		"notes": "MotionCam",
+		"source": "gyroflow",
+		"official": true
+	}
+}

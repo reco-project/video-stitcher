@@ -1,0 +1,28 @@
+{
+	"id": "foxeer-mix-v2--1920x1080",
+	"camera_brand": "Foxeer",
+	"camera_model": "Mix V2",
+	"lens_model": "Runcam RC25G",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 857.8042582605229,
+		"fy": 858.3382177629403,
+		"cx": 921.6918376438612,
+		"cy": 499.2259334442731
+	},
+	"distortion_coeffs": [
+		-0.02282443185742312,
+		0.010587672089729834,
+		-0.019937181603685745,
+		0.009787018370887333
+	],
+	"metadata": {
+		"calibrated_by": "shellixyz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

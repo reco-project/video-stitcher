@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-f6--25p--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-F6",
+	"lens_model": "Irix 15mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1754.5736252321483,
+		"fy": 1752.9828792218618,
+		"cx": 1909.36700660651,
+		"cy": 1064.1764799055156
+	},
+	"distortion_coeffs": [
+		0.2778640952093474,
+		0.27973583160182985,
+		-0.2487960135647477,
+		0.1846275250414369
+	],
+	"metadata": {
+		"calibrated_by": "Alastair Olby",
+		"notes": "25p",
+		"source": "gyroflow",
+		"official": true
+	}
+}

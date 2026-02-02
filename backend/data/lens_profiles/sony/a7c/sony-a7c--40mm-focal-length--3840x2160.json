@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7c--40mm-focal-length--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a7C",
+	"lens_model": "Tamron FE 28-200 @40mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4571.062508264234,
+		"fy": 4585.708812206122,
+		"cx": 1887.0652486885233,
+		"cy": 953.9767267017418
+	},
+	"distortion_coeffs": [
+		0.3125922927759043,
+		0.26411124326100865,
+		1.0080018869400975,
+		-5.690784231044786
+	],
+	"metadata": {
+		"calibrated_by": "Rio A7C Yogyakarta",
+		"notes": "40mm Focal Length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

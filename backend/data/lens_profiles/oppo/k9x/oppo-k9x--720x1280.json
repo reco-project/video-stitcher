@@ -1,0 +1,28 @@
+{
+	"id": "oppo-k9x--720x1280",
+	"camera_brand": "Oppo",
+	"camera_model": "K9X",
+	"lens_model": null,
+	"resolution": {
+		"width": 720,
+		"height": 1280
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1077.6907149972574,
+		"fy": 1076.7935892073706,
+		"cx": 365.39035094984257,
+		"cy": 645.267342995576
+	},
+	"distortion_coeffs": [
+		0.3549033524351242,
+		-0.3301807928900015,
+		5.7413994140972235,
+		-13.165957990017755
+	],
+	"metadata": {
+		"calibrated_by": "U0 A59",
+		"source": "gyroflow",
+		"official": true
+	}
+}

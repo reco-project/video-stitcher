@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-4a-5g--1920x1080",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 4a 5g",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1137.1924143910962,
+		"fy": 1129.149672794361,
+		"cx": 955.7075363629868,
+		"cy": 567.4776171216579
+	},
+	"distortion_coeffs": [
+		0.34830614442459734,
+		-0.2517765639879579,
+		1.0621705180566443,
+		-0.5920115467015888
+	],
+	"metadata": {
+		"calibrated_by": "Christopher Durant",
+		"source": "gyroflow",
+		"official": true
+	}
+}

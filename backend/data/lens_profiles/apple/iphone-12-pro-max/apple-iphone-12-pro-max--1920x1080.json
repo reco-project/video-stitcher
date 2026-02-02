@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-12-pro-max--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 12 Pro Max",
+	"lens_model": "0.5x",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 891.5520749105713,
+		"fy": 889.7944298084768,
+		"cx": 952.0419393716514,
+		"cy": 524.7412129389637
+	},
+	"distortion_coeffs": [
+		0.43179038408322234,
+		-0.33312018399062276,
+		0.8675064057043061,
+		-0.4344070325338683
+	],
+	"metadata": {
+		"calibrated_by": "Raphael",
+		"source": "gyroflow",
+		"official": true
+	}
+}

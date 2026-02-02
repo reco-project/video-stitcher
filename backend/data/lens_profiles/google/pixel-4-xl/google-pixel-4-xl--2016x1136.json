@@ -1,0 +1,28 @@
+{
+	"id": "google-pixel-4-xl--2016x1136",
+	"camera_brand": "Google",
+	"camera_model": "Pixel 4 XL",
+	"lens_model": "MotionCam",
+	"resolution": {
+		"width": 2016,
+		"height": 1136
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1449.80400793151,
+		"fy": 1448.9645207036965,
+		"cx": 978.6979357218844,
+		"cy": 560.0488326080601
+	},
+	"distortion_coeffs": [
+		0.5343669673944405,
+		-1.0653146459482477,
+		3.3371115283430206,
+		-3.374838393691019
+	],
+	"metadata": {
+		"calibrated_by": "\u042e\u0440\u0438\u0439 \u041f\u0435\u0440\u0446\u044e\u0445",
+		"source": "gyroflow",
+		"official": true
+	}
+}

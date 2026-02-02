@@ -1,0 +1,29 @@
+{
+	"id": "runcam-runcam-2--narrow--1920x1440",
+	"camera_brand": "RunCam",
+	"camera_model": "RunCam 2",
+	"lens_model": "2.3",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2005.5449952974443,
+		"fy": 2001.8702446653724,
+		"cx": 975.0335700948935,
+		"cy": 796.4051022818089
+	},
+	"distortion_coeffs": [
+		0.03411248555483805,
+		-0.24523013626299128,
+		1.5337346074498504,
+		-3.0047683383443564
+	],
+	"metadata": {
+		"calibrated_by": "Riz Hassan",
+		"notes": "Narrow",
+		"source": "gyroflow",
+		"official": true
+	}
+}

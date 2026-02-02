@@ -1,0 +1,28 @@
+{
+	"id": "nikon-d3400--1920x1080",
+	"camera_brand": "Nikon",
+	"camera_model": "D3400",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1888.7126058996864,
+		"fy": 1886.9625531372455,
+		"cx": 963.990277823035,
+		"cy": 529.310638849648
+	},
+	"distortion_coeffs": [
+		0.228452709044746,
+		0.5250146136102575,
+		-3.496090021477088,
+		7.683680161992036
+	],
+	"metadata": {
+		"calibrated_by": "Bradley D'Cruze",
+		"source": "gyroflow",
+		"official": true
+	}
+}

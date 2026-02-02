@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero5-black--no-eis--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO5 Black",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1761.5074524554384,
+		"fy": 1765.0351087513825,
+		"cx": 1935.1152177279616,
+		"cy": 1062.7160459491138
+	},
+	"distortion_coeffs": [
+		0.04554961198567138,
+		0.03372985986705208,
+		-0.03062326033139028,
+		0.01435864332541218
+	],
+	"metadata": {
+		"calibrated_by": "dy",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

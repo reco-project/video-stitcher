@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-5d-mark-iv--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 5D Mark IV",
+	"lens_model": "EF 24-105 IS USM",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5024.690874692974,
+		"fy": 4957.985371135949,
+		"cx": 2204.3072141881566,
+		"cy": 1385.650334849945
+	},
+	"distortion_coeffs": [
+		0.08882636697992921,
+		1.741710702367076,
+		-13.340271475834207,
+		39.28306389349806
+	],
+	"metadata": {
+		"calibrated_by": "Fz",
+		"source": "gyroflow",
+		"official": true
+	}
+}

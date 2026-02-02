@@ -1,0 +1,28 @@
+{
+	"id": "blackmagic-cinema-camera-6k--4032x6048",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Cinema Camera 6K",
+	"lens_model": "Sigma 28-70mm F2.8 DG DN | Contemporary 021 50mm",
+	"resolution": {
+		"width": 4032,
+		"height": 6048
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9569.824601967146,
+		"fy": 9610.924589283472,
+		"cx": 1950.1929112815403,
+		"cy": 3054.546549997922
+	},
+	"distortion_coeffs": [
+		0.3800249204267853,
+		3.16635394959364,
+		-13.892124294254367,
+		51.36029940239605
+	],
+	"metadata": {
+		"calibrated_by": "Lukas Lempke",
+		"source": "gyroflow",
+		"official": true
+	}
+}

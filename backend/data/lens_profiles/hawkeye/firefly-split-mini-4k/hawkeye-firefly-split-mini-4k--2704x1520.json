@@ -1,0 +1,28 @@
+{
+	"id": "hawkeye-firefly-split-mini-4k--2704x1520",
+	"camera_brand": "Hawkeye",
+	"camera_model": "Firefly Split Mini 4K",
+	"lens_model": "Foxeer M12 1.7mm",
+	"resolution": {
+		"width": 2704,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1270.4508189410826,
+		"fy": 1277.4461576143574,
+		"cx": 1291.7117301188232,
+		"cy": 731.4664710223541
+	},
+	"distortion_coeffs": [
+		-0.045772217182806274,
+		0.06332349680788532,
+		-0.06879028211297333,
+		0.026461859628977596
+	],
+	"metadata": {
+		"calibrated_by": "Leon",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xs10--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "XS10",
+	"lens_model": "XF16-55",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1481.099001576636,
+		"fy": 1476.0122986392507,
+		"cx": 918.2122891981344,
+		"cy": 541.9781275460745
+	},
+	"distortion_coeffs": [
+		0.28039003226798603,
+		0.9589290158127348,
+		-5.822769467717811,
+		11.266097556447026
+	],
+	"metadata": {
+		"calibrated_by": "skshdjjd",
+		"source": "gyroflow",
+		"official": true
+	}
+}

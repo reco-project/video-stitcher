@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-12-5g--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "12 5G",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1407.6150621749389,
+		"fy": 1408.7122106885124,
+		"cx": 984.926287977382,
+		"cy": 500.62280362015593
+	},
+	"distortion_coeffs": [
+		0.5380970713840911,
+		-0.6298405587546791,
+		-6.307724808242344,
+		31.181979914071263
+	],
+	"metadata": {
+		"calibrated_by": "U0 A307",
+		"source": "gyroflow",
+		"official": true
+	}
+}

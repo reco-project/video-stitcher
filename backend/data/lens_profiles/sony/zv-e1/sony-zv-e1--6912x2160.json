@@ -1,0 +1,28 @@
+{
+	"id": "sony-zv-e1--6912x2160",
+	"camera_brand": "Sony",
+	"camera_model": "ZV-E1",
+	"lens_model": "Vazen85 2.8",
+	"resolution": {
+		"width": 6912,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 17354.374819482302,
+		"fy": 17246.469876592262,
+		"cx": 3446.825763322307,
+		"cy": 1275.8978252369045
+	},
+	"distortion_coeffs": [
+		-0.5424091775106298,
+		43.29690127871359,
+		-3011.857510940265,
+		47123.98439328062
+	],
+	"metadata": {
+		"calibrated_by": "\u601d\u4fca",
+		"source": "gyroflow",
+		"official": true
+	}
+}

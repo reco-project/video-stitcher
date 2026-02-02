@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--23976--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "LAOWA 10 MM COOKIE DC",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1750.629806133372,
+		"fy": 1748.937716396718,
+		"cx": 1951.311885588807,
+		"cy": 1066.6446259042552
+	},
+	"distortion_coeffs": [
+		0.2709596423729556,
+		0.2698586256614204,
+		-0.30099863282497885,
+		0.3027693288292768
+	],
+	"metadata": {
+		"calibrated_by": "John Roque",
+		"notes": "23.976",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "samsung-galaxy-s20u--3840x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "Galaxy s20u",
+	"lens_model": "5x",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 14610.787741155478,
+		"fy": 14581.99331299065,
+		"cx": 1706.9556004329554,
+		"cy": 901.457617153288
+	},
+	"distortion_coeffs": [
+		-0.20516821189625808,
+		134.09624996644587,
+		-8821.637445250159,
+		202751.6432960229
+	],
+	"metadata": {
+		"calibrated_by": "U0 A334",
+		"source": "gyroflow",
+		"official": true
+	}
+}

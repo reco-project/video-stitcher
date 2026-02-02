@@ -1,0 +1,29 @@
+{
+	"id": "sony-a7iv--super-35--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7IV",
+	"lens_model": "16.00mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1349.208234586138,
+		"fy": 1346.7260106554063,
+		"cx": 962.1285700458956,
+		"cy": 537.6624995356264
+	},
+	"distortion_coeffs": [
+		0.3071205418968242,
+		0.06084169899871807,
+		0.4837999124476647,
+		-0.6803963400173835
+	],
+	"metadata": {
+		"calibrated_by": "Javier Pandales",
+		"notes": "Super 35",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-gx85--\u5173\u9632\u6296--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "GX85",
+	"lens_model": "12-60",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1468.0234804757838,
+		"fy": 1466.701308211021,
+		"cx": 967.7358026586516,
+		"cy": 551.6500030186835
+	},
+	"distortion_coeffs": [
+		0.2647188707745006,
+		0.19629505706756836,
+		-0.31778360044792325,
+		0.5957820852383153
+	],
+	"metadata": {
+		"calibrated_by": "Hui Zhao",
+		"notes": "\u5173\u9632\u6296",
+		"source": "gyroflow",
+		"official": true
+	}
+}

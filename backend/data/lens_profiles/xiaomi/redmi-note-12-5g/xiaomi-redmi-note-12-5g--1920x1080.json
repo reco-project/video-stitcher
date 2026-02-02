@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-note-12-5g--1920x1080",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi Note 12 + 5G",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1353.9574112117166,
+		"fy": 1355.0202230376112,
+		"cx": 1004.1106041970512,
+		"cy": 505.31645830185494
+	},
+	"distortion_coeffs": [
+		0.4863118739398501,
+		-0.9046975231452764,
+		2.711455587575961,
+		-2.493233392526113
+	],
+	"metadata": {
+		"calibrated_by": "Vasily Tretyakov",
+		"source": "gyroflow",
+		"official": true
+	}
+}

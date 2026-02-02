@@ -1,0 +1,27 @@
+{
+	"id": "andoer-an7000--3840x2160",
+	"camera_brand": "Andoer",
+	"camera_model": "AN7000",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1996.306940936804,
+		"fy": 1996.2996938989245,
+		"cx": 1910.6327442065024,
+		"cy": 1057.9533679444671
+	},
+	"distortion_coeffs": [
+		-0.04605037317813432,
+		0.004648520954417514,
+		0.003720520650961743,
+		-0.004780106634453298
+	],
+	"metadata": {
+		"source": "gyroflow",
+		"official": true
+	}
+}

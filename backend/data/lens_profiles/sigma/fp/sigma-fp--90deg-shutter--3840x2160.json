@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--90deg-shutter--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Laowa 9mm FF RL",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1009.7567208735206,
+		"fy": 1009.777236121306,
+		"cx": 1935.578964028964,
+		"cy": 1068.930263768906
+	},
+	"distortion_coeffs": [
+		0.2644812542554077,
+		0.27660085928516903,
+		-0.20488144778024012,
+		0.16332057335831712
+	],
+	"metadata": {
+		"calibrated_by": "dr000minFPV",
+		"notes": "90deg shutter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

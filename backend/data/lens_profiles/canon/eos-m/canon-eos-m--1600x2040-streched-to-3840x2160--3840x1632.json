@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--1600x2040-streched-to-3840x2160--3840x1632",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "Rokinon 14mm T3.1 + Viltrox 0.71x Speedbooster",
+	"resolution": {
+		"width": 3840,
+		"height": 1632
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1867.406324270229,
+		"fy": 1870.4294555852616,
+		"cx": 1938.2842776809573,
+		"cy": 780.9737753219324
+	},
+	"distortion_coeffs": [
+		0.17281783428958597,
+		0.1594716598545415,
+		-0.1398883074100286,
+		0.1973431670671537
+	],
+	"metadata": {
+		"calibrated_by": "EA.FPV",
+		"notes": "1600x2040 streched to 3840x2160",
+		"source": "gyroflow",
+		"official": true
+	}
+}

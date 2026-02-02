@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-c70--4096x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS C70",
+	"lens_model": "Sigma 18-35mm f1.8",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3203.475388468063,
+		"fy": 3202.9997379322012,
+		"cx": 2035.0675595547257,
+		"cy": 1106.9796353755637
+	},
+	"distortion_coeffs": [
+		0.20451546232619244,
+		0.34396982202788867,
+		-0.6841248961282744,
+		1.1919943460444766
+	],
+	"metadata": {
+		"calibrated_by": "Atle Dahl",
+		"source": "gyroflow",
+		"official": true
+	}
+}

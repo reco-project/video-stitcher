@@ -1,0 +1,28 @@
+{
+	"id": "canon-5d-mark-iii--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "5D Mark III",
+	"lens_model": "EF24-70 2.8",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1276.5246873105802,
+		"fy": 1271.7189817896988,
+		"cx": 961.2349263178816,
+		"cy": 540.24160669903
+	},
+	"distortion_coeffs": [
+		0.18356615229847645,
+		0.26495026824778534,
+		-0.2900912067003106,
+		0.42784014456517694
+	],
+	"metadata": {
+		"calibrated_by": "YIM",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--20mm--3856x2170",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "ef 20-35mm",
+	"resolution": {
+		"width": 3856,
+		"height": 2170
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2089.1116870066744,
+		"fy": 2092.7198844578465,
+		"cx": 1934.327400322936,
+		"cy": 1052.218571589511
+	},
+	"distortion_coeffs": [
+		0.20097601260426,
+		0.14724146343520242,
+		-0.06488128566903732,
+		0.20595499901707748
+	],
+	"metadata": {
+		"calibrated_by": "koji nakano",
+		"notes": "20mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

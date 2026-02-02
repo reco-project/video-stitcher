@@ -1,0 +1,28 @@
+{
+	"id": "red-scarlet-w-5k--4800x2700",
+	"camera_brand": "RED",
+	"camera_model": "SCARLET-W 5K",
+	"lens_model": "20",
+	"resolution": {
+		"width": 4800,
+		"height": 2700
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4175.523499890764,
+		"fy": 4177.756801099319,
+		"cx": 2411.193084104988,
+		"cy": 1364.4199835808454
+	},
+	"distortion_coeffs": [
+		0.19869395051018257,
+		0.3147078939689208,
+		-0.7575810791513637,
+		1.148731757915344
+	],
+	"metadata": {
+		"calibrated_by": "Cody Anderson",
+		"source": "gyroflow",
+		"official": true
+	}
+}

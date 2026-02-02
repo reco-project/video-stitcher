@@ -1,0 +1,28 @@
+{
+	"id": "akaso-v50--3840x2160",
+	"camera_brand": "AKASO",
+	"camera_model": "V50",
+	"lens_model": "omnivision",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4168.99225952818,
+		"fy": 4160.555196127343,
+		"cx": 1856.6504858135715,
+		"cy": 1439.8739908602663
+	},
+	"distortion_coeffs": [
+		0.08461483128171399,
+		-0.5460192286997974,
+		1.2422841242890033,
+		-1.8106108892410149
+	],
+	"metadata": {
+		"calibrated_by": "Christophe",
+		"source": "gyroflow",
+		"official": true
+	}
+}

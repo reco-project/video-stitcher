@@ -1,0 +1,28 @@
+{
+	"id": "samsung-a9pro-2016--1920x1080",
+	"camera_brand": "Samsung",
+	"camera_model": "A9Pro (2016)",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1577.2275489097208,
+		"fy": 1576.555682392064,
+		"cx": 937.0266498732848,
+		"cy": 579.7132351888112
+	},
+	"distortion_coeffs": [
+		0.6684200801734547,
+		-1.1400857432629254,
+		-0.04451504989189666,
+		5.167412617543838
+	],
+	"metadata": {
+		"calibrated_by": "U0 A489",
+		"source": "gyroflow",
+		"official": true
+	}
+}

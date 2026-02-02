@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-g85--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "G85",
+	"lens_model": "12mm f/3.5",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1366.414958265955,
+		"fy": 1363.5301796850977,
+		"cx": 967.1675435683431,
+		"cy": 556.9167541334343
+	},
+	"distortion_coeffs": [
+		0.2688778426286489,
+		0.3353316406936168,
+		-0.7906973719281959,
+		1.068999685052266
+	],
+	"metadata": {
+		"calibrated_by": "Josh",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "realme-rmx2151--motioncam-pro-prores--3840x2160",
+	"camera_brand": "Realme",
+	"camera_model": "RMX2151",
+	"lens_model": "Sony IMX682",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3537.1966467580855,
+		"fy": 3531.289666786192,
+		"cx": 1942.2222442583377,
+		"cy": 1057.1949708155971
+	},
+	"distortion_coeffs": [
+		0.3641819885121899,
+		-0.12278772202930924,
+		3.0375431679197114,
+		-7.353948024181521
+	],
+	"metadata": {
+		"calibrated_by": "Akshay Nagar",
+		"notes": "MotionCam Pro ProRes",
+		"source": "gyroflow",
+		"official": true
+	}
+}

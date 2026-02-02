@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--28mm--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Sigma 28 -70mm 2.8 DG DN",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3031.4222601346,
+		"fy": 3032.210299175797,
+		"cx": 1934.2236977533669,
+		"cy": 1055.283007198577
+	},
+	"distortion_coeffs": [
+		0.0945616041671843,
+		0.5060615649901126,
+		-1.3872952798249674,
+		2.561921004890116
+	],
+	"metadata": {
+		"calibrated_by": "Enzo California DP",
+		"notes": "28mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--fahad--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "8mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1618.8424494171295,
+		"fy": 1617.1075162859593,
+		"cx": 2079.23668287248,
+		"cy": 1105.2928613945546
+	},
+	"distortion_coeffs": [
+		-0.0003005149231005293,
+		-0.03761411116230925,
+		0.029101055604752655,
+		-0.008092175422825988
+	],
+	"metadata": {
+		"calibrated_by": "FAHAD FPV",
+		"notes": "FAHAD",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "visi-orion_819l--30fps--2688x1520",
+	"camera_brand": "visi",
+	"camera_model": "orion_819L",
+	"lens_model": "sony",
+	"resolution": {
+		"width": 2688,
+		"height": 1520
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3025.8077442893905,
+		"fy": 3077.6797293039895,
+		"cx": 1433.7779146512926,
+		"cy": 1214.69451192796
+	},
+	"distortion_coeffs": [
+		0.2115695227067508,
+		0.23163178385008648,
+		4.747078926270278,
+		-23.88672362798134
+	],
+	"metadata": {
+		"calibrated_by": "tangxiaofang",
+		"notes": "30fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

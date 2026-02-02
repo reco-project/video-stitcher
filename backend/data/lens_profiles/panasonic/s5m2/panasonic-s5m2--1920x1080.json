@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s5m2--1920x1080",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5M2",
+	"lens_model": "SR70300",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4018.380860325886,
+		"fy": 4020.589314837047,
+		"cx": 931.6761558264697,
+		"cy": 521.7742557884716
+	},
+	"distortion_coeffs": [
+		0.40086693723925354,
+		-3.506856531710864,
+		94.15667337561432,
+		-885.855224191887
+	],
+	"metadata": {
+		"calibrated_by": "\u738b\u8fdc\u626c",
+		"source": "gyroflow",
+		"official": true
+	}
+}

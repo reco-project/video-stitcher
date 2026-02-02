@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--180shout--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4K",
+	"lens_model": "LUMIX G VARIO 14-140/F3.5-5.6 ",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3124.150264480407,
+		"fy": 3124.4687163280637,
+		"cx": 2045.10734289686,
+		"cy": 1049.5378639518326
+	},
+	"distortion_coeffs": [
+		0.0871191818379219,
+		-0.04641936950462134,
+		0.4839677997533702,
+		-0.4342316834983375
+	],
+	"metadata": {
+		"calibrated_by": "cslyfpv",
+		"notes": "180shout",
+		"source": "gyroflow",
+		"official": true
+	}
+}

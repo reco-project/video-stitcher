@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo-6k--30fps--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO 6K",
+	"lens_model": "Laowa Nanomorph 27mm T2.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4295.53501868814,
+		"fy": 6412.277794649143,
+		"cx": 2801.5942034719565,
+		"cy": 1426.8860703339317
+	},
+	"distortion_coeffs": [
+		0.3124581984935188,
+		-0.5197589714006763,
+		1.5172141398746877,
+		-0.5802568421270052
+	],
+	"metadata": {
+		"calibrated_by": "Kiwi Tom",
+		"notes": "30FPS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

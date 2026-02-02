@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-xh2--3840x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "xh2",
+	"lens_model": "18-35",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3001.323279633811,
+		"fy": 3001.0936341548177,
+		"cx": 1954.315315619673,
+		"cy": 1088.1820824534238
+	},
+	"distortion_coeffs": [
+		0.2098745040651012,
+		0.35966869910867094,
+		-0.7468831775244978,
+		1.2018840871957777
+	],
+	"metadata": {
+		"calibrated_by": "yun yun",
+		"source": "gyroflow",
+		"official": true
+	}
+}

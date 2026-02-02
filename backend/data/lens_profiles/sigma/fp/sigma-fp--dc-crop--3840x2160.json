@@ -1,0 +1,29 @@
+{
+	"id": "sigma-fp--dc-crop--3840x2160",
+	"camera_brand": "Sigma",
+	"camera_model": "fp",
+	"lens_model": "Laowa 10mm f/4 Cookie",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1745.3882154177984,
+		"fy": 1744.738510301435,
+		"cx": 1945.5015916128852,
+		"cy": 1069.339754553528
+	},
+	"distortion_coeffs": [
+		0.32399760544910833,
+		0.049108490937483894,
+		0.1756583865845842,
+		-0.05759936304024267
+	],
+	"metadata": {
+		"calibrated_by": "Edward Robison",
+		"notes": "DC Crop",
+		"source": "gyroflow",
+		"official": true
+	}
+}

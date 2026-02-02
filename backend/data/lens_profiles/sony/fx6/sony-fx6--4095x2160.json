@@ -1,0 +1,28 @@
+{
+	"id": "sony-fx6--4095x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Rokinon 24.00mm",
+	"resolution": {
+		"width": 4095,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2636.181927440271,
+		"fy": 2632.425603104802,
+		"cx": 1970.5390276370208,
+		"cy": 1029.6653157095825
+	},
+	"distortion_coeffs": [
+		0.34626650769925826,
+		0.023588216016052887,
+		0.6437017046210423,
+		-0.8697395394665569
+	],
+	"metadata": {
+		"calibrated_by": "BHA RENDER MACHINE",
+		"source": "gyroflow",
+		"official": true
+	}
+}

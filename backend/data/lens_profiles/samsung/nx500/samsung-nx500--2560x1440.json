@@ -1,0 +1,28 @@
+{
+	"id": "samsung-nx500--2560x1440",
+	"camera_brand": "Samsung",
+	"camera_model": "NX500",
+	"lens_model": "16mm",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1874.0840923132544,
+		"fy": 1875.2277883792096,
+		"cx": 1288.497928078294,
+		"cy": 710.8085647000405
+	},
+	"distortion_coeffs": [
+		0.32806228464167986,
+		0.12316464197118228,
+		0.3948123660599307,
+		-0.5359146932783383
+	],
+	"metadata": {
+		"calibrated_by": "Addison",
+		"source": "gyroflow",
+		"official": true
+	}
+}

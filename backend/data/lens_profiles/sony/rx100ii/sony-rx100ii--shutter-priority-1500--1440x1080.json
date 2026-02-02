@@ -1,0 +1,29 @@
+{
+	"id": "sony-rx100ii--shutter-priority-1500--1440x1080",
+	"camera_brand": "Sony",
+	"camera_model": "RX100II",
+	"lens_model": "carl zeiss",
+	"resolution": {
+		"width": 1440,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1386.498222531895,
+		"fy": 1844.120064276624,
+		"cx": 722.2925870087129,
+		"cy": 542.0585692998665
+	},
+	"distortion_coeffs": [
+		0.36439201254691006,
+		0.2173867378298976,
+		-1.272542803517571,
+		4.203499343666791
+	],
+	"metadata": {
+		"calibrated_by": "AKASH",
+		"notes": "shutter priority 1/500",
+		"source": "gyroflow",
+		"official": true
+	}
+}

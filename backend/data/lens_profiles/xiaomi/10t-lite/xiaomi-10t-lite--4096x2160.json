@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-10t-lite--4096x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "10T Lite",
+	"lens_model": "26mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3141.4965835968765,
+		"fy": 3143.1578377214514,
+		"cx": 2052.8631627178925,
+		"cy": 1053.5309350788032
+	},
+	"distortion_coeffs": [
+		0.3351332122355645,
+		0.690695963250115,
+		-2.3603013240276254,
+		2.962430485696049
+	],
+	"metadata": {
+		"calibrated_by": "Ville Varonen",
+		"source": "gyroflow",
+		"official": true
+	}
+}

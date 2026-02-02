@@ -1,0 +1,28 @@
+{
+	"id": "mobius-1s--2560x1440",
+	"camera_brand": "Mobius",
+	"camera_model": "1S",
+	"lens_model": "4.35mm",
+	"resolution": {
+		"width": 2560,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2905.1898304490655,
+		"fy": 2904.6382658276384,
+		"cx": 1386.4711283240674,
+		"cy": 701.0262627470096
+	},
+	"distortion_coeffs": [
+		0.5373052014824858,
+		-2.2996516687464092,
+		38.573796619455585,
+		-208.18115455084776
+	],
+	"metadata": {
+		"calibrated_by": "Roger Harris",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "arri-alexa-lf--3840x2160",
+	"camera_brand": "Arri",
+	"camera_model": "Alexa LF",
+	"lens_model": "Xeen 85mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 11897.56741733009,
+		"fy": 11874.74505096784,
+		"cx": 2005.2067245725,
+		"cy": 739.8256151107599
+	},
+	"distortion_coeffs": [
+		0.26282229630182863,
+		0.5354099773283806,
+		-6.017515963713709,
+		-560.0874034864762
+	],
+	"metadata": {
+		"calibrated_by": "Robert Grundnig",
+		"source": "gyroflow",
+		"official": true
+	}
+}

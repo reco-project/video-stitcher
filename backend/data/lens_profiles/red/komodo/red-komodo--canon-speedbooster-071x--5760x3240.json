@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--canon-speedbooster-071x--5760x3240",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Olympus OM 50mm f1.8",
+	"resolution": {
+		"width": 5760,
+		"height": 3240
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8626.5362103625,
+		"fy": 8627.012328079383,
+		"cx": 2905.023127953601,
+		"cy": 1610.7013350797424
+	},
+	"distortion_coeffs": [
+		0.22437560794243097,
+		-0.06912043519492667,
+		4.7067618178040025,
+		-1.2012227341212545
+	],
+	"metadata": {
+		"calibrated_by": "Andrzej Asijuk",
+		"notes": "Canon Speedbooster 0.71x",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "dji-mini-4-pro--1280x720",
+	"camera_brand": "DJI",
+	"camera_model": "mini 4 pro",
+	"lens_model": "1/1.3 inch",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 804.8061524680706,
+		"fy": 797.7311241621622,
+		"cx": 641.7877213567839,
+		"cy": 364.5268219537611
+	},
+	"distortion_coeffs": [
+		0.5557949086012082,
+		-1.021038331472107,
+		3.059194272758,
+		-2.7677047275640048
+	],
+	"metadata": {
+		"calibrated_by": "\u6234\u4f1f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5ii--24mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5II",
+	"lens_model": "SIGMA 24-70",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2646.633385638379,
+		"fy": 2655.506295143711,
+		"cx": 1927.1142761963151,
+		"cy": 1073.5156562667848
+	},
+	"distortion_coeffs": [
+		0.33891823930218073,
+		0.16940037534781294,
+		0.13406406915346547,
+		-0.39973577218164175
+	],
+	"metadata": {
+		"calibrated_by": "Jules Testou",
+		"notes": "24mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

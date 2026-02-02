@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--bilals-crop-mood--1736x868",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "SMC Pentax 50mm F1.4",
+	"resolution": {
+		"width": 1736,
+		"height": 868
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 4230.5242858605325,
+		"fy": 4145.641652359709,
+		"cx": 873.4111466572042,
+		"cy": 481.0107941808231
+	},
+	"distortion_coeffs": [
+		0.073238525364413,
+		11.730317550528891,
+		-388.4390961783405,
+		3746.5607367413386
+	],
+	"metadata": {
+		"calibrated_by": "Ahmed Ma",
+		"notes": "Bilal's Crop Mood",
+		"source": "gyroflow",
+		"official": true
+	}
+}

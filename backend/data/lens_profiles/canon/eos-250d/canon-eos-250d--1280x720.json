@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-250d--1280x720",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 250D",
+	"lens_model": "la mini",
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1121.2826181049795,
+		"fy": 1121.5062512087852,
+		"cx": 637.0390735069246,
+		"cy": 365.5095835342621
+	},
+	"distortion_coeffs": [
+		0.1317141222818069,
+		0.4052436677628844,
+		-0.9448755819575976,
+		1.8983156553278664
+	],
+	"metadata": {
+		"calibrated_by": "Carlos Delgado",
+		"source": "gyroflow",
+		"official": true
+	}
+}

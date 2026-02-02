@@ -1,0 +1,28 @@
+{
+	"id": "red-komodo--3840x2160",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "Red Pro Prime",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3466.4161859882856,
+		"fy": 3465.9658039540654,
+		"cx": 1914.4015713526665,
+		"cy": 1089.1740669484802
+	},
+	"distortion_coeffs": [
+		0.18056460647216804,
+		0.07555698321778405,
+		0.3044847009655392,
+		-0.09778722145043577
+	],
+	"metadata": {
+		"calibrated_by": "admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

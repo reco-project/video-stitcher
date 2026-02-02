@@ -1,0 +1,28 @@
+{
+	"id": "samsung-s8--2880x2160",
+	"camera_brand": "Samsung",
+	"camera_model": "S8+",
+	"lens_model": null,
+	"resolution": {
+		"width": 2880,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2332.6845168848195,
+		"fy": 2326.9720673587035,
+		"cx": 1440.3600027585142,
+		"cy": 1066.0916054843735
+	},
+	"distortion_coeffs": [
+		0.5529064265931847,
+		-0.7861219928784204,
+		1.5317401344933348,
+		-0.4204386390433078
+	],
+	"metadata": {
+		"calibrated_by": "Admin",
+		"source": "gyroflow",
+		"official": true
+	}
+}

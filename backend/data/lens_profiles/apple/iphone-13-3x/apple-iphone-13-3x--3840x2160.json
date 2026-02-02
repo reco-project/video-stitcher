@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-13-3x--3840x2160",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 13 3x",
+	"lens_model": "GyroCam",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 8271.337490929334,
+		"fy": 8266.07549510075,
+		"cx": 1921.3357957317653,
+		"cy": 997.3337126803236
+	},
+	"distortion_coeffs": [
+		-0.6838020810803032,
+		47.851405889633725,
+		-874.68396072108,
+		7474.75557170071
+	],
+	"metadata": {
+		"calibrated_by": "Alex",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "motorola-moto-g72--1920x1080",
+	"camera_brand": "Motorola",
+	"camera_model": "Moto G72",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1474.4836800611265,
+		"fy": 1476.6646996208513,
+		"cx": 946.2177304436392,
+		"cy": 525.8129299480375
+	},
+	"distortion_coeffs": [
+		0.5927975485801401,
+		-1.894262665430868,
+		6.750776664203493,
+		-8.768439965940402
+	],
+	"metadata": {
+		"calibrated_by": "Arturo",
+		"source": "gyroflow",
+		"official": true
+	}
+}

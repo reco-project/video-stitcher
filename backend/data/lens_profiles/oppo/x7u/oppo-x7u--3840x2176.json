@@ -1,0 +1,28 @@
+{
+	"id": "oppo-x7u--3840x2176",
+	"camera_brand": "OPPO",
+	"camera_model": "X7U",
+	"lens_model": "23mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2595.7020553957664,
+		"fy": 2595.430913243127,
+		"cx": 1921.1700230702793,
+		"cy": 1062.5607744105948
+	},
+	"distortion_coeffs": [
+		0.6718900378880888,
+		-2.460390725305354,
+		7.829267913832876,
+		-8.107229990687477
+	],
+	"metadata": {
+		"calibrated_by": "\u9648\u594e\u826f",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-m--3791x2134",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "7Artisans 12mm",
+	"resolution": {
+		"width": 3791,
+		"height": 2134
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3175.3847313998017,
+		"fy": 3177.180142837751,
+		"cx": 1875.113719526331,
+		"cy": 884.1956973819118
+	},
+	"distortion_coeffs": [
+		0.2206334900118666,
+		0.6328272616849684,
+		-1.867000251581595,
+		2.932733943874207
+	],
+	"metadata": {
+		"calibrated_by": "Chuck",
+		"source": "gyroflow",
+		"official": true
+	}
+}

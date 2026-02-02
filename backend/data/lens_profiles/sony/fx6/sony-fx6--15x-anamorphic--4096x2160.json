@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx6--15x-anamorphic--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX6",
+	"lens_model": "Blazar Remus 65mm - V1",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5468.744753061074,
+		"fy": 8220.512077314557,
+		"cx": 2209.8478583574447,
+		"cy": 968.513815980182
+	},
+	"distortion_coeffs": [
+		-0.17224254312573584,
+		-4.700272628692857,
+		28.670194942490905,
+		-61.68809226276468
+	],
+	"metadata": {
+		"calibrated_by": "FilmBarrie",
+		"notes": "1.5x Anamorphic",
+		"source": "gyroflow",
+		"official": true
+	}
+}

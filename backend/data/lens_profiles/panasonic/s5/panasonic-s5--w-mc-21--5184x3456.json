@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-s5--w-mc-21--5184x3456",
+	"camera_brand": "Panasonic",
+	"camera_model": "S5",
+	"lens_model": "EF 16 35 f4L @ 16mm",
+	"resolution": {
+		"width": 5184,
+		"height": 3456
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2757.5768696979335,
+		"fy": 2761.0019232213413,
+		"cx": 2631.74805478447,
+		"cy": 1726.1600314751458
+	},
+	"distortion_coeffs": [
+		0.29693477773906873,
+		0.1423844327333213,
+		-0.17782284014231545,
+		0.2598176421032984
+	],
+	"metadata": {
+		"calibrated_by": "Jeff K",
+		"notes": "w/ mc-21",
+		"source": "gyroflow",
+		"official": true
+	}
+}

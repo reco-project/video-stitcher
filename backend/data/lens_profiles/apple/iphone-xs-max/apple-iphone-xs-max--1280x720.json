@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-xs-max--1280x720",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone xs max",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1004.637125739534,
+		"fy": 1005.102429634066,
+		"cx": 621.0915613075952,
+		"cy": 346.0803407751174
+	},
+	"distortion_coeffs": [
+		0.6513094879631662,
+		-1.8838301794732368,
+		5.53632760357752,
+		-4.925148338769098
+	],
+	"metadata": {
+		"calibrated_by": "wangyi",
+		"source": "gyroflow",
+		"official": true
+	}
+}

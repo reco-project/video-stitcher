@@ -1,0 +1,28 @@
+{
+	"id": "fujifilm-x-t5--4096x2160",
+	"camera_brand": "Fujifilm",
+	"camera_model": "X-T5",
+	"lens_model": "XF 27mm F1.2",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 5578.847826003991,
+		"fy": 5604.612759360592,
+		"cx": 2032.0212776111036,
+		"cy": 966.7058096506148
+	},
+	"distortion_coeffs": [
+		0.203724603566818,
+		0.9679508922731084,
+		-7.548483484196194,
+		34.80354334884612
+	],
+	"metadata": {
+		"calibrated_by": "jushun di",
+		"source": "gyroflow",
+		"official": true
+	}
+}

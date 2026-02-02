@@ -1,0 +1,29 @@
+{
+	"id": "blackmagic-pocket-cinema-camera-4k--zhongyi-lens-turbo-ii-speedbooster--4096x2160",
+	"camera_brand": "Blackmagic",
+	"camera_model": "Pocket Cinema Camera 4k",
+	"lens_model": "Canon FD 50mm f1.4",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9161.200847569007,
+		"fy": 9157.44548802102,
+		"cx": 2048.7007857683416,
+		"cy": 923.9565355080108
+	},
+	"distortion_coeffs": [
+		0.1450025878421052,
+		-1.493088760206549,
+		35.56728755086383,
+		-20.019614819387535
+	],
+	"metadata": {
+		"calibrated_by": "Justin Kramer",
+		"notes": "Zhongyi Lens Turbo II Speedbooster",
+		"source": "gyroflow",
+		"official": true
+	}
+}

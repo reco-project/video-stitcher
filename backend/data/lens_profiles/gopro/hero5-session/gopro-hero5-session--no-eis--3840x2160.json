@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero5-session--no-eis--3840x2160",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO5 Session",
+	"lens_model": null,
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2899.8249319783013,
+		"fy": 2894.7055407214866,
+		"cx": 1819.6032813136087,
+		"cy": 432.05141799334086
+	},
+	"distortion_coeffs": [
+		0.14520236117673424,
+		-0.07764655156317159,
+		-0.2234983486176428,
+		0.31038816820403725
+	],
+	"metadata": {
+		"calibrated_by": "benjamin MPOWER",
+		"notes": "NO-EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

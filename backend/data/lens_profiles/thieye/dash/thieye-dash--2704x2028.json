@@ -1,0 +1,28 @@
+{
+	"id": "thieye-dash--2704x2028",
+	"camera_brand": "Thieye",
+	"camera_model": "dash",
+	"lens_model": null,
+	"resolution": {
+		"width": 2704,
+		"height": 2028
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2361.334235440685,
+		"fy": 2360.5993110056997,
+		"cx": 1422.6516133913765,
+		"cy": 1057.9360294678077
+	},
+	"distortion_coeffs": [
+		0.0020990696945647606,
+		-0.025810436379299695,
+		0.3862674676493989,
+		-0.884530347687182
+	],
+	"metadata": {
+		"calibrated_by": "antonphpc",
+		"source": "gyroflow",
+		"official": true
+	}
+}

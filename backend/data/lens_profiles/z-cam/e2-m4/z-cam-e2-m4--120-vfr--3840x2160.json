@@ -1,0 +1,29 @@
+{
+	"id": "z-cam-e2-m4--120-vfr--3840x2160",
+	"camera_brand": "Z CAM",
+	"camera_model": "E2-M4",
+	"lens_model": "Laowa 10MM COOKIE",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2257.1828700247447,
+		"fy": 2251.909058853192,
+		"cx": 1957.1918780699043,
+		"cy": 1065.9636086498872
+	},
+	"distortion_coeffs": [
+		0.3238686103215236,
+		0.0945423180613782,
+		0.06849920058532073,
+		0.06048939920078075
+	],
+	"metadata": {
+		"calibrated_by": "Sam Cook",
+		"notes": "120 VFR",
+		"source": "gyroflow",
+		"official": true
+	}
+}

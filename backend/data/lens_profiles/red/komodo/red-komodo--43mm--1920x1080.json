@@ -1,0 +1,29 @@
+{
+	"id": "red-komodo--43mm--1920x1080",
+	"camera_brand": "RED",
+	"camera_model": "KOMODO",
+	"lens_model": "DULENS 43mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2307.159435707572,
+		"fy": 2306.7325309102653,
+		"cx": 958.3228321273648,
+		"cy": 535.2042513311793
+	},
+	"distortion_coeffs": [
+		0.18262892738785888,
+		1.0305640937664875,
+		-3.863475668451759,
+		23.044188141459458
+	],
+	"metadata": {
+		"calibrated_by": "LIAN",
+		"notes": "43mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

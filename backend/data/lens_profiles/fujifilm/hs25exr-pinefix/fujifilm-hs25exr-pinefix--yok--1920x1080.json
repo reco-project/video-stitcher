@@ -1,0 +1,29 @@
+{
+	"id": "fujifilm-hs25exr-pinefix--yok--1920x1080",
+	"camera_brand": "Fujifilm",
+	"camera_model": "HS25EXR Pinefix",
+	"lens_model": "24-720 mm",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1260.2383438790675,
+		"fy": 1281.250729899279,
+		"cx": 955.987956534207,
+		"cy": 549.7636869245611
+	},
+	"distortion_coeffs": [
+		0.29420455261135203,
+		-0.19047277721514416,
+		0.46177656424723573,
+		-0.1306115483015598
+	],
+	"metadata": {
+		"calibrated_by": "Ey\u00fcp \u00c7\u0131nar Kurt",
+		"notes": "yok",
+		"source": "gyroflow",
+		"official": true
+	}
+}

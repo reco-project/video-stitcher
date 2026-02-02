@@ -1,0 +1,28 @@
+{
+	"id": "sony-potensic--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "potensic",
+	"lens_model": "1/3",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3629.920133008603,
+		"fy": 3626.785059995695,
+		"cx": 1910.532990140268,
+		"cy": 981.1988962552064
+	},
+	"distortion_coeffs": [
+		0.4124093290800804,
+		1.211080081764743,
+		-7.460881050494942,
+		12.729049977679743
+	],
+	"metadata": {
+		"calibrated_by": "thibaud valiente",
+		"source": "gyroflow",
+		"official": true
+	}
+}

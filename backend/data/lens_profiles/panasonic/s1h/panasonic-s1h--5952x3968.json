@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-s1h--5952x3968",
+	"camera_brand": "Panasonic",
+	"camera_model": "S1H",
+	"lens_model": "14-24 sigma",
+	"resolution": {
+		"width": 5952,
+		"height": 3968
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2913.3926730532808,
+		"fy": 2910.025448621455,
+		"cx": 2915.041349808338,
+		"cy": 1974.7199639213663
+	},
+	"distortion_coeffs": [
+		0.586788855350432,
+		-0.41338202370178256,
+		1.4891858114175085,
+		-0.8427858154355182
+	],
+	"metadata": {
+		"calibrated_by": "Jake Quilter",
+		"source": "gyroflow",
+		"official": true
+	}
+}

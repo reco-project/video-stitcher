@@ -1,0 +1,29 @@
+{
+	"id": "gopro-hero7-black--std-eis--1920x1440",
+	"camera_brand": "GoPro",
+	"camera_model": "HERO7 Black",
+	"lens_model": "Wide",
+	"resolution": {
+		"width": 1920,
+		"height": 1440
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 949.6292319761468,
+		"fy": 963.3547977499176,
+		"cx": 955.8772953389782,
+		"cy": 722.1687078719802
+	},
+	"distortion_coeffs": [
+		0.04032205344017769,
+		0.01281210439785464,
+		0.02047794331797615,
+		-0.0216641665943104
+	],
+	"metadata": {
+		"calibrated_by": "Walt Trowbridge",
+		"notes": "STD EIS",
+		"source": "gyroflow",
+		"official": true
+	}
+}

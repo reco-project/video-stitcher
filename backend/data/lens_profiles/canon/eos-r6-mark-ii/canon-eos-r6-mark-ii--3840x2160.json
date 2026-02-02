@@ -1,0 +1,28 @@
+{
+	"id": "canon-eos-r6-mark-ii--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS R6 Mark II",
+	"lens_model": "RF70-200mm F4 L IS USM",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7360.036932588097,
+		"fy": 7363.783643055862,
+		"cx": 1872.8136438546255,
+		"cy": 1077.1012810596542
+	},
+	"distortion_coeffs": [
+		0.18142440677884047,
+		-3.0819164480097765,
+		61.337833034496576,
+		-526.861222925276
+	],
+	"metadata": {
+		"calibrated_by": "lh",
+		"source": "gyroflow",
+		"official": true
+	}
+}

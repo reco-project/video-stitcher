@@ -1,0 +1,28 @@
+{
+	"id": "olympus-omd-mark-ii--1920x1080",
+	"camera_brand": "Olympus",
+	"camera_model": "OMD mark II",
+	"lens_model": "SIGMA 16mm F1.4",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2004.4594723601513,
+		"fy": 1999.4409590100515,
+		"cx": 979.0262911875772,
+		"cy": 527.8090852408081
+	},
+	"distortion_coeffs": [
+		0.3437384624987346,
+		0.37677842567811287,
+		-1.606243233811767,
+		4.770172198929652
+	],
+	"metadata": {
+		"calibrated_by": "Krystian",
+		"source": "gyroflow",
+		"official": true
+	}
+}

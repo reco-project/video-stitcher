@@ -1,0 +1,28 @@
+{
+	"id": "apple-iphone-11-pro-max--1920x1080",
+	"camera_brand": "Apple",
+	"camera_model": "iPhone 11 Pro Max",
+	"lens_model": null,
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1647.6933221613892,
+		"fy": 1648.2780016457532,
+		"cx": 954.1330322787188,
+		"cy": 535.170891994939
+	},
+	"distortion_coeffs": [
+		0.5704694880990361,
+		-0.6811871887668548,
+		-3.11764903045247,
+		15.751068701840875
+	],
+	"metadata": {
+		"calibrated_by": "Jian Wang",
+		"source": "gyroflow",
+		"official": true
+	}
+}

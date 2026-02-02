@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-mi-9--3840x2160",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Mi 9",
+	"lens_model": "Filmic pro Main",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3168.389848539203,
+		"fy": 3162.3026234834056,
+		"cx": 1911.7172160936811,
+		"cy": 1103.352359069345
+	},
+	"distortion_coeffs": [
+		0.6973640103534618,
+		-2.9701350497804717,
+		11.573389984591364,
+		-16.525052581065047
+	],
+	"metadata": {
+		"calibrated_by": "\u0410\u043b\u0435\u043a\u0441\u0435\u0439 \u041f\u0440\u043e\u043d\u044f\u0435\u0432",
+		"source": "gyroflow",
+		"official": true
+	}
+}

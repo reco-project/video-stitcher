@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-m--rolling-shutter-applied--3840x2160",
+	"camera_brand": "Canon",
+	"camera_model": "EOS M",
+	"lens_model": "EF-M 15-45mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3628.918331066915,
+		"fy": 3629.9723787421954,
+		"cx": 1894.1485100670736,
+		"cy": 913.6580663071428
+	},
+	"distortion_coeffs": [
+		0.2188099628532254,
+		-0.279971161143254,
+		3.94650793541105,
+		-11.27693440375026
+	],
+	"metadata": {
+		"calibrated_by": "amit kattal",
+		"notes": "Rolling shutter applied",
+		"source": "gyroflow",
+		"official": true
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "panasonic-fz82--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "fz82",
+	"lens_model": "lumix dc vario",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2950.6129640249123,
+		"fy": 2950.0141659476676,
+		"cx": 1928.453853039388,
+		"cy": 1079.5598771099171
+	},
+	"distortion_coeffs": [
+		0.31508721296214054,
+		0.25912581318309225,
+		0.3741186919660313,
+		-1.8017430228681413
+	],
+	"metadata": {
+		"calibrated_by": "Juan Francisco Rodriguez Galan",
+		"source": "gyroflow",
+		"official": true
+	}
+}

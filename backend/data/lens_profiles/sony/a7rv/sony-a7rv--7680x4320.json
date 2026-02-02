@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7rv--7680x4320",
+	"camera_brand": "Sony",
+	"camera_model": "a7rV",
+	"lens_model": "sigma 1424",
+	"resolution": {
+		"width": 7680,
+		"height": 4320
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 3863.473820446709,
+		"fy": 3855.669062822856,
+		"cx": 3858.751483352102,
+		"cy": 2120.7804656043563
+	},
+	"distortion_coeffs": [
+		0.32717812050927136,
+		-0.058351870635001184,
+		0.4123553723261223,
+		-0.28193213541862655
+	],
+	"metadata": {
+		"calibrated_by": "user",
+		"source": "gyroflow",
+		"official": true
+	}
+}

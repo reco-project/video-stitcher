@@ -1,0 +1,29 @@
+{
+	"id": "canon-eos-700d--18mm-ois-off--1920x1080",
+	"camera_brand": "Canon",
+	"camera_model": "EOS 700D",
+	"lens_model": "EF-S 18-55 Kit Lens",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1537.8733248300755,
+		"fy": 1533.518788955238,
+		"cx": 921.158207600514,
+		"cy": 527.1723428179401
+	},
+	"distortion_coeffs": [
+		0.1581572295310153,
+		0.2250934480456016,
+		-0.18131228260242188,
+		0.40834310018245623
+	],
+	"metadata": {
+		"calibrated_by": "madebysln",
+		"notes": "@ 18mm, OIS OFF",
+		"source": "gyroflow",
+		"official": true
+	}
+}

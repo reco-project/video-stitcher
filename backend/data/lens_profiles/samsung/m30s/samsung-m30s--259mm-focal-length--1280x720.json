@@ -1,0 +1,29 @@
+{
+	"id": "samsung-m30s--259mm-focal-length--1280x720",
+	"camera_brand": "Samsung",
+	"camera_model": "M30s",
+	"lens_model": null,
+	"resolution": {
+		"width": 1280,
+		"height": 720
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 1035.4760366040673,
+		"fy": 1036.3690068083113,
+		"cx": 656.9822885838929,
+		"cy": 359.084476940685
+	},
+	"distortion_coeffs": [
+		0.4910656791477989,
+		-1.2816586465907882,
+		7.486173487458425,
+		-8.34111420115979
+	],
+	"metadata": {
+		"calibrated_by": "SAI",
+		"notes": "25.9mm focal length",
+		"source": "gyroflow",
+		"official": true
+	}
+}

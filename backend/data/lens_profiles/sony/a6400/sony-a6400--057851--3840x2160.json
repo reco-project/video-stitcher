@@ -1,0 +1,29 @@
+{
+	"id": "sony-a6400--057851--3840x2160",
+	"camera_brand": "Sony",
+	"camera_model": "a6400",
+	"lens_model": "VTX56mm",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 9101.502890336946,
+		"fy": 9101.924139125884,
+		"cx": 1821.317751348081,
+		"cy": 1260.372759629092
+	},
+	"distortion_coeffs": [
+		0.08675969908391984,
+		12.447662695920236,
+		-326.16667027707155,
+		3073.7220531795247
+	],
+	"metadata": {
+		"calibrated_by": "NINGMEI",
+		"notes": "0.57851",
+		"source": "gyroflow",
+		"official": true
+	}
+}

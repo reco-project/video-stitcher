@@ -1,0 +1,29 @@
+{
+	"id": "panasonic-lumix-gh5s--10mm--3840x2160",
+	"camera_brand": "Panasonic",
+	"camera_model": "Lumix GH5s",
+	"lens_model": "Leica DG 10-25f1.7",
+	"resolution": {
+		"width": 3840,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2134.734318632744,
+		"fy": 2138.638196617939,
+		"cx": 1911.1054885452056,
+		"cy": 1075.982573169674
+	},
+	"distortion_coeffs": [
+		0.30985023779814197,
+		0.12169104374401624,
+		-0.0326588305878773,
+		0.13460995566328923
+	],
+	"metadata": {
+		"calibrated_by": "Rongthep22",
+		"notes": "10mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

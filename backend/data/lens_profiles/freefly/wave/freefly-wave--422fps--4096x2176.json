@@ -1,0 +1,29 @@
+{
+	"id": "freefly-wave--422fps--4096x2176",
+	"camera_brand": "Freefly",
+	"camera_model": "Wave",
+	"lens_model": "Laowa 12mm",
+	"resolution": {
+		"width": 4096,
+		"height": 2176
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2325.1426245932676,
+		"fy": 2298.858699849165,
+		"cx": 2046.7878427134349,
+		"cy": 1059.2333180760993
+	},
+	"distortion_coeffs": [
+		0.3049484279191571,
+		0.20035454225653565,
+		-0.009679063332163515,
+		0.126582033370312
+	],
+	"metadata": {
+		"calibrated_by": "Eddy",
+		"notes": "422fps",
+		"source": "gyroflow",
+		"official": true
+	}
+}

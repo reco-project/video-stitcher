@@ -1,0 +1,28 @@
+{
+	"id": "sony-a7cii--1920x1080",
+	"camera_brand": "Sony",
+	"camera_model": "a7CII",
+	"lens_model": "YnLens-35mm-F2",
+	"resolution": {
+		"width": 1920,
+		"height": 1080
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 2998.041336730024,
+		"fy": 3116.213332323643,
+		"cx": 942.613984331285,
+		"cy": 333.76362854059647
+	},
+	"distortion_coeffs": [
+		0.9984656774956112,
+		-2.2329837954542797,
+		66.69510101947944,
+		-289.8710868603093
+	],
+	"metadata": {
+		"calibrated_by": "YuJia",
+		"source": "gyroflow",
+		"official": true
+	}
+}

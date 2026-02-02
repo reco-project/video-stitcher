@@ -1,0 +1,29 @@
+{
+	"id": "sony-fx30--40mm--4096x2160",
+	"camera_brand": "Sony",
+	"camera_model": "FX30",
+	"lens_model": "Fujinon MK 18-55 T2.9",
+	"resolution": {
+		"width": 4096,
+		"height": 2160
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 7386.844286937807,
+		"fy": 7387.127029682992,
+		"cx": 2046.3601387273452,
+		"cy": 1074.0114281604515
+	},
+	"distortion_coeffs": [
+		0.6552843586138042,
+		-1.656926392809811,
+		42.11615372352791,
+		-166.04717441429585
+	],
+	"metadata": {
+		"calibrated_by": "justJanne",
+		"notes": "40mm",
+		"source": "gyroflow",
+		"official": true
+	}
+}

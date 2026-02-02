@@ -1,0 +1,28 @@
+{
+	"id": "xiaomi-redmi-\u7ea2\u7c73k30pro--960x544",
+	"camera_brand": "Xiaomi",
+	"camera_model": "Redmi \u7ea2\u7c73K30pro",
+	"lens_model": "\u7ea2\u7c73K30pro\u4e3b\u6444\u6a2a\u5c4f",
+	"resolution": {
+		"width": 960,
+		"height": 544
+	},
+	"distortion_model": "fisheye_kb4",
+	"camera_matrix": {
+		"fx": 723.8298793774474,
+		"fy": 730.515331640264,
+		"cx": 476.49454430496314,
+		"cy": 269.4701537959159
+	},
+	"distortion_coeffs": [
+		0.4130665426994178,
+		-0.023566199378865123,
+		0.29509948332215497,
+		-0.1852368492136296
+	],
+	"metadata": {
+		"calibrated_by": "Ming",
+		"source": "gyroflow",
+		"official": true
+	}
+}
