@@ -166,9 +166,6 @@ export default function ProfileForm({ profile, onSubmit, onCancel }) {
 								<option key={brand} value={brand} />
 							))}
 						</datalist>
-						{brands.length > 0 && (
-							<p className="text-xs text-muted-foreground mt-1">Existing brands: {brands.join(', ')}</p>
-						)}
 					</div>
 
 					<div>
@@ -189,22 +186,17 @@ export default function ProfileForm({ profile, onSubmit, onCancel }) {
 								<option key={model} value={model} />
 							))}
 						</datalist>
-						{models.length > 0 && (
-							<p className="text-xs text-muted-foreground mt-1">
-								Existing models for {formData.camera_brand}: {models.join(', ')}
-							</p>
-						)}
 					</div>
 				</div>
 
 				<div>
-					<Label htmlFor="lens-model">Lens Model</Label>
+					<Label htmlFor="lens-model">Lens Mode (FOV)</Label>
 					<Input
 						id="lens-model"
 						type="text"
 						value={formData.lens_model}
 						onChange={(e) => handleChange('lens_model', e.target.value)}
-						placeholder="e.g., Linear, Wide, Ultrawide"
+						placeholder="e.g., Wide, Linear, SuperView"
 					/>
 				</div>
 

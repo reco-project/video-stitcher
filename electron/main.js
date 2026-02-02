@@ -109,7 +109,8 @@ function startBackend() {
 
 	if (isDev) {
 		// Development: use Python venv directly
-		const workspaceRoot = join(__dirname, '..');
+		// __dirname points to .vite/build after Vite compilation, so go up 2 levels
+		const workspaceRoot = join(__dirname, '..', '..');
 		backendDir = join(workspaceRoot, 'backend');
 		backendExe = isWin
 			? join(backendDir, 'venv', 'Scripts', 'python.exe')

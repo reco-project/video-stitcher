@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { normalizeProfile } from '@/lib/normalize';
+import { Star, Pencil, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/cn';
 
 export default function ProfileDetail({ profileId, onEdit, onDelete, onFavoriteToggle }) {
 	const { profile, loading, error, refetch } = useProfile(profileId);
@@ -31,40 +33,72 @@ export default function ProfileDetail({ profileId, onEdit, onDelete, onFavoriteT
 	if (!profile) return null;
 
 	const normalized = normalizeProfile(profile);
+	const isOfficial = profile.metadata?.source === 'official';
+	const isUser = profile.metadata?.source === 'user';
+	const duplicatedFrom = profile.metadata?.duplicated_from;
 
 	return (
 		<Card className="w-full">
-			<CardHeader>
-				<div className="flex items-center justify-between">
-					<div className="space-y-1">
-						<CardTitle>Profile Details</CardTitle>
-						<div className="flex gap-2">
-							{profile.is_favorite && (
-								<Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">
-									⭐ Favorite
+			<CardHeader className="pb-3">
+				<div className="flex items-start justify-between gap-2">
+					<div className="space-y-1.5 min-w-0 flex-1">
+						<CardTitle className="text-base">Profile Details</CardTitle>
+						<div className="flex gap-1.5 flex-wrap">
+							{isOfficial && (
+								<Badge variant="secondary" className="text-xs">
+									📦 Official
 								</Badge>
 							)}
-							{profile.metadata?.is_custom && <Badge variant="default">Custom Profile</Badge>}
-							{profile.metadata?.source === 'Gyroflow lens_profiles' && (
-								<Badge variant="secondary">Gyroflow Official</Badge>
+							{isUser && (
+								<Badge variant="default" className="text-xs">
+									👤 User
+								</Badge>
+							)}
+							{duplicatedFrom && (
+								<Badge variant="outline" className="text-xs" title={`Based on: ${duplicatedFrom}`}>
+									📋 Copy
+								</Badge>
 							)}
 						</div>
 					</div>
-					<div className="flex gap-2">
+					<div className="flex items-center gap-1 shrink-0 relative z-10">
 						<Button
-							size="sm"
-							variant={profile.is_favorite ? 'outline' : 'default'}
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8"
 							onClick={handleToggleFavorite}
 							disabled={favoriteLoading}
+							title={profile.is_favorite ? 'Remove from favorites' : 'Add to favorites'}
 						>
-							{favoriteLoading ? '...' : profile.is_favorite ? '★ Unfavorite' : '☆ Favorite'}
+							<Star
+								className={cn(
+									'h-4 w-4',
+									profile.is_favorite
+										? 'fill-yellow-400 text-yellow-400'
+										: 'text-muted-foreground'
+								)}
+							/>
 						</Button>
-						<Button size="sm" onClick={() => onEdit && onEdit(profile)}>
-							Edit
+						<Button 
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8"
+							onClick={() => onEdit && onEdit(profile)}
+							title={isOfficial ? "Edit will create a user copy" : "Edit profile"}
+						>
+							<Pencil className="h-4 w-4" />
 						</Button>
-						<Button size="sm" variant="destructive" onClick={() => onDelete && onDelete(profile.id)}>
-							Delete
-						</Button>
+						{!isOfficial && (
+							<Button 
+								size="icon"
+								variant="ghost"
+								className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+								onClick={() => onDelete && onDelete(profile.id, `${normalized.camera_brand} ${normalized.camera_model}`)}
+								title="Delete profile"
+							>
+								<Trash2 className="h-4 w-4" />
+							</Button>
+						)}
 					</div>
 				</div>
 			</CardHeader>

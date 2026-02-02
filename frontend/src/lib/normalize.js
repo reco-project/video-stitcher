@@ -129,9 +129,16 @@ export function sortModels(models) {
 export function normalizeProfile(profile) {
 	if (!profile) return profile;
 
+	// Handle metadata format (w/h) vs full profile format (resolution.width/height)
+	let resolution = profile.resolution;
+	if (!resolution && (profile.w || profile.h)) {
+		resolution = { width: profile.w, height: profile.h };
+	}
+
 	return {
 		...profile,
 		camera_brand: normalizeBrand(profile.camera_brand),
 		camera_model: normalizeModel(profile.camera_model),
+		resolution,
 	};
 }

@@ -1,33 +1,34 @@
 {
-	"id": "red-dsmc2-gemini-5k-s35-ef-l-16-35-f4is-1600mm-5120x2700",
-	"camera_brand": "RED",
-	"camera_model": "DSMC2 GEMINI 5K S35",
-	"lens_model": "ef l 16-35 f4is @ 16.00mm",
-	"resolution": {
-		"width": 5120,
-		"height": 2700
-	},
-	"distortion_model": "fisheye_kb4",
-	"camera_matrix": {
-		"fx": 2676.97533260972,
-		"fy": 2678.9038771852024,
-		"cx": 2563.955179625004,
-		"cy": 1343.3681924407613
-	},
-	"distortion_coeffs": [
-		0.29449937986800095,
-		0.1408365256976769,
-		-0.1802789271147697,
-		0.24602496170856444
-	],
-	"metadata": {
-		"source": "Gyroflow lens_profiles",
-		"source_file": "RED_DSMC2 GEMINI 5K S35_ef l 16-35 f4is @ 16.00mm_FF_5k_1.90by1_5120x2700-25.00fps",
-		"calibrated_by": "STRIX17",
-		"original_resolution": "5120x2700",
-		"calibrated_fps": "25.0",
-		"official": false,
-		"notes": "Gyroflow calibration. Fisheye distortion model.",
-		"license": "CC0 1.0 Universal"
-	}
+  "id": "red-dsmc2-gemini-5k-s35-ef-l-16-35-f4is-1600mm-5120x2700",
+  "camera_brand": "RED",
+  "camera_model": "DSMC2 GEMINI 5K S35",
+  "resolution": {
+    "width": 5120,
+    "height": 2700
+  },
+  "distortion_model": "fisheye_kb4",
+  "camera_matrix": {
+    "fx": 2676.97533260972,
+    "fy": 2678.9038771852024,
+    "cx": 2563.955179625004,
+    "cy": 1343.3681924407613
+  },
+  "distortion_coeffs": [
+    0.29449937986800095,
+    0.1408365256976769,
+    -0.1802789271147697,
+    0.24602496170856444
+  ],
+  "lens_model": "ef l 16-35 f4is @ 16.00mm",
+  "is_favorite": false,
+  "metadata": {
+    "source": "Gyroflow lens_profiles",
+    "source_file": "RED_DSMC2 GEMINI 5K S35_ef l 16-35 f4is @ 16.00mm_FF_5k_1.90by1_5120x2700-25.00fps",
+    "calibrated_by": "STRIX17",
+    "original_resolution": "5120x2700",
+    "calibrated_fps": "25.0",
+    "official": false,
+    "notes": "Gyroflow calibration. Fisheye distortion model.",
+    "license": "CC0 1.0 Universal"
+  }
 }

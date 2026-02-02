@@ -1,1 +1,2 @@
-settings.json
+# User data is now in devData/ at project root
+# This folder only contains static app resources (lens_profiles/)

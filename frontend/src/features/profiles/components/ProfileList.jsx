@@ -18,6 +18,7 @@ export default function ProfileList({ onSelect }) {
 				<div className="grid gap-1">
 					{profiles.map((profile) => {
 						const normalized = normalizeProfile(profile);
+						const isUser = profile.metadata?.source === 'user';
 						return (
 							<Card
 								key={profile.id}
@@ -28,6 +29,7 @@ export default function ProfileList({ onSelect }) {
 									<div className="flex items-center justify-between gap-2">
 										<div className="text-sm font-semibold flex items-center gap-1.5">
 											{profile.is_favorite && <span className="text-yellow-500 text-xs">⭐</span>}
+											{isUser && <span className="text-blue-500 text-xs" title="User profile">👤</span>}
 											{normalized.camera_brand} {normalized.camera_model}
 										</div>
 										<div className="text-xs text-muted-foreground">

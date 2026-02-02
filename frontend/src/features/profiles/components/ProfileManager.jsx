@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import ProfileDetail from './ProfileDetail';
 import ProfileBrowser from './ProfileBrowser';
 import ProfileForm from './ProfileForm';
@@ -13,7 +13,7 @@ import {
 	DialogFooter,
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Info } from 'lucide-react';
 
 export default function ProfileManager() {
 	const [selectedProfileId, setSelectedProfileId] = useState(null);
@@ -21,6 +21,10 @@ export default function ProfileManager() {
 	const [editingProfile, setEditingProfile] = useState(null);
 	const [deleteDialog, setDeleteDialog] = useState({ open: false, profileId: null, profileName: '' });
 	const [errorDialog, setErrorDialog] = useState({ open: false, message: '' });
+	const [infoDialog, setInfoDialog] = useState({ open: false, title: '', message: '' });
+	
+	// Ref for ProfileBrowser to call its methods
+	const browserRef = useRef(null);
 
 	const { create, update, delete: deleteProfile } = useProfileMutations();
 
@@ -48,20 +52,44 @@ export default function ProfileManager() {
 		const { profileId } = deleteDialog;
 		setDeleteDialog({ open: false, profileId: null, profileName: '' });
 
+		// Optimistically remove from browser and clear selection
+		if (browserRef.current?.removeProfile) {
+			browserRef.current.removeProfile(profileId);
+		}
+		setSelectedProfileId(null);
+
 		try {
 			await deleteProfile(profileId);
-			setSelectedProfileId(null);
+			// Refetch to sync with server (handles empty brand/model case)
+			if (browserRef.current?.refetch) {
+				browserRef.current.refetch();
+			}
 		} catch (err) {
+			// Revert on error - refetch to restore
+			if (browserRef.current?.refetch) {
+				browserRef.current.refetch();
+			}
 			setErrorDialog({ open: true, message: `Failed to delete profile: ${err.message}` });
 		}
 	};
 
 	const handleFormSubmit = async (profileData) => {
 		try {
+			let result;
 			if (editingProfile) {
-				await update(editingProfile.id, profileData);
+				result = await update(editingProfile.id, profileData);
+				// Check if auto-duplication occurred (editing official profile created a copy)
+				if (result && result.metadata?.duplicated_from) {
+					setInfoDialog({
+						open: true,
+						title: 'User Copy Created',
+						message: `Official profiles cannot be modified directly. A user copy "${result.id}" has been created with your changes.`,
+					});
+					// Select the new copy
+					setSelectedProfileId(result.id);
+				}
 			} else {
-				await create(profileData);
+				result = await create(profileData);
 			}
 			setShowForm(false);
 			setEditingProfile(null);
@@ -87,7 +115,7 @@ export default function ProfileManager() {
 			) : (
 				<div className="grid md:grid-cols-2 gap-4">
 					<div>
-						<ProfileBrowser onSelect={handleSelectProfile} selectedProfileId={selectedProfileId} />
+						<ProfileBrowser ref={browserRef} onSelect={handleSelectProfile} selectedProfileId={selectedProfileId} />
 					</div>
 					<div>
 						<ProfileDetail profileId={selectedProfileId} onEdit={handleEdit} onDelete={handleDelete} />
@@ -140,6 +168,27 @@ export default function ProfileManager() {
 					</Alert>
 					<DialogFooter>
 						<Button onClick={() => setErrorDialog({ open: false, message: '' })}>Close</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Info Dialog */}
+			<Dialog
+				open={infoDialog.open}
+				onOpenChange={(open) => !open && setInfoDialog({ open: false, title: '', message: '' })}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2 text-blue-600">
+							<Info className="h-5 w-5" />
+							{infoDialog.title}
+						</DialogTitle>
+					</DialogHeader>
+					<Alert>
+						<AlertDescription>{infoDialog.message}</AlertDescription>
+					</Alert>
+					<DialogFooter>
+						<Button onClick={() => setInfoDialog({ open: false, title: '', message: '' })}>OK</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

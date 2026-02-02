@@ -84,6 +84,21 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install SQLite CLI
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y sqlite3
+          elif [[ "${{ matrix.platform }}" == "darwin" ]]; then
+            # SQLite is pre-installed on macOS
+            which sqlite3 || brew install sqlite3
+          elif [[ "${{ matrix.platform }}" == "win32" ]]; then
+            # Use choco on Windows
+            choco install sqlite -y
+          fi
+          sqlite3 --version
+
       - name: Install Linux dependencies for electron-builder
         if: matrix.platform == 'linux'
         run: |
@@ -102,6 +117,14 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Build lens profiles SQLite database
+        shell: bash
+        run: |
+          echo "Building lens profiles SQLite database..."
+          node scripts/build-lens-profiles-sqlite.cjs --output backend/data/lens_profiles.sqlite
+          echo "SQLite database built successfully"
+          ls -la backend/data/lens_profiles.sqlite
+
       - name: Build Python backend executable
         shell: bash
         run: |
@@ -113,6 +136,11 @@ jobs:
           else
             SEP=":"
           fi
+          
+          # Remove lens_profiles JSON folder before packaging (we use SQLite now)
+          # Keep the directory structure but only include SQLite database
+          rm -rf data/lens_profiles
+          mkdir -p data/lens_profiles
           
           pyinstaller --onedir --name backend_server \
             --paths=. \
@@ -132,6 +160,10 @@ jobs:
             --hidden-import uvicorn.protocols.websockets.wsproto_impl \
             app/main.py
           ls -la dist/
+          
+          # Verify SQLite database is in the bundle
+          echo "Checking for lens_profiles.sqlite in bundle..."
+          ls -la dist/backend_server/data/ || true
 
       - name: Download FFmpeg
         run: npm run download-ffmpeg
@@ -212,6 +244,10 @@ jobs:
           fi
           
           ls -la "$RESOURCES_PATH/dist_bundle/"
+          
+          # Verify SQLite database in final bundle
+          echo "Verifying lens_profiles.sqlite in final bundle..."
+          ls -la "$RESOURCES_PATH/dist_bundle/data/" || true
 
       - name: Clean up packaged app (remove source folders)
         shell: bash
@@ -344,4 +380,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

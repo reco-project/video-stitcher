@@ -15,11 +15,14 @@ sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure'
 sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
 
 from app.utils.logger import get_logger, configure_uvicorn_logging, info
-from app.repositories.file_lens_profile_store import FileLensProfileStore
-from app.repositories.lens_profile_store import LensProfileStore
+from app.repositories.hybrid_lens_profile_store import HybridLensProfileStore
 from app.repositories.file_match_store import FileMatchStore
 from app.repositories.match_store import MatchStore
-from app.data_paths import PROFILES_DIR, MATCHES_DIR, VIDEOS_DIR
+from app.data_paths import (
+    PROFILES_DIR, PROFILES_DB_PATH, USE_SQLITE_PROFILES, 
+    USER_PROFILES_DIR, FAVORITES_FILE,
+    MATCHES_DIR, VIDEOS_DIR
+)
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
@@ -40,8 +43,25 @@ info("=" * 60)
 info("VIDEO STITCHER BACKEND STARTING")
 info("=" * 60)
 
-# Initialize lens profile store
-profile_store = FileLensProfileStore(str(PROFILES_DIR))
+# Initialize lens profile store using hybrid architecture:
+# - SQLite database for bundled official profiles (read-only)
+# - User JSON files for user-created profiles (read-write)
+# - Separate favorites file for managing favorites across both sources
+sqlite_path = str(PROFILES_DB_PATH) if USE_SQLITE_PROFILES else None
+if sqlite_path:
+    info(f"Official profiles: SQLite database at {PROFILES_DB_PATH}")
+else:
+    info(f"Official profiles: JSON files at {PROFILES_DIR}")
+
+info(f"User profiles: {USER_PROFILES_DIR}")
+info(f"Favorites file: {FAVORITES_FILE}")
+
+profile_store = HybridLensProfileStore(
+    sqlite_db_path=sqlite_path,
+    user_profiles_dir=str(USER_PROFILES_DIR),
+    favorites_file=str(FAVORITES_FILE),
+    official_profiles_dir=str(PROFILES_DIR) if not sqlite_path else None,
+)
 
 # Initialize match store (file-based, persistent)
 match_store = FileMatchStore(str(MATCHES_DIR))
@@ -50,7 +70,7 @@ match_store = FileMatchStore(str(MATCHES_DIR))
 # (Already created by data_paths module)
 
 
-def get_profile_store() -> LensProfileStore:
+def get_profile_store() -> HybridLensProfileStore:
     """Dependency injection for profile store."""
     return profile_store
 

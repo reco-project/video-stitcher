@@ -1,5 +1,8 @@
 node_modules/
 
+# Development user data (not packaged)
+devData/
+
 # Build outputs
 out/
 frontend/dist/
@@ -12,8 +15,6 @@ __pycache__/
 backend/venv/
 backend/temp/
 backend/logs/
-backend/data/videos/
-backend/data/matches/
 backend/bin/
 
 # IDE
@@ -26,3 +27,5 @@ Thumbs.db
 
 # Misc
 *.log
+# Build artifacts
+electron/resources/lens_profiles.sqlite

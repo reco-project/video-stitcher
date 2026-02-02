@@ -1,12 +1,17 @@
 /**
  * Settings management (file-based)
  *
- * Stores app settings in userData/settings.json
+ * Stores app settings in:
+ * - Production: userData/settings.json
+ * - Development: devData/settings.json (at project root)
  */
 
-import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { dialog } from 'electron';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const defaultSettings = {
     debugMode: true,
@@ -21,6 +26,12 @@ const defaultSettings = {
 };
 
 function getSettingsPath(app) {
+    // In development, use devData/ at project root to avoid mixing with production data
+    const isDev = !app.isPackaged;
+    if (isDev) {
+        // electron/ is one level below project root
+        return join(__dirname, '..', 'devData', 'settings.json');
+    }
     return join(app.getPath('userData'), 'settings.json');
 }
 
@@ -39,6 +50,11 @@ export function readSettings(app) {
 export function writeSettings(app, settings) {
     const path = getSettingsPath(app);
     try {
+        // Ensure directory exists
+        const dir = dirname(path);
+        if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+        }
         const merged = { ...defaultSettings, ...settings };
         writeFileSync(path, JSON.stringify(merged, null, 2), 'utf8');
         return { ok: true };
