@@ -84,17 +84,17 @@ for directory in [MATCHES_DIR, VIDEOS_DIR, TEMP_DIR, LOGS_DIR, USER_PROFILES_DIR
 
 def get_ffmpeg_path() -> str:
     """Get the path to the FFmpeg binary.
-    
+
     Always uses the bundled FFmpeg (which includes GPU encoder support).
     Falls back to system PATH only if bundled binary is not found.
-    
+
     Returns:
         Path to ffmpeg executable (or just 'ffmpeg' for system PATH)
     """
     import shutil
-    
+
     ffmpeg_name = 'ffmpeg.exe' if sys.platform == 'win32' else 'ffmpeg'
-    
+
     # In production (PyInstaller bundle)
     if IS_PRODUCTION:
         if hasattr(sys, '_MEIPASS'):
@@ -108,25 +108,25 @@ def get_ffmpeg_path() -> str:
         bundled = Path(__file__).parent.parent / 'bin' / ffmpeg_name
         if bundled.exists():
             return str(bundled)
-    
+
     # Fallback to system PATH
     system_ffmpeg = shutil.which('ffmpeg')
     if system_ffmpeg:
         return system_ffmpeg
-    
+
     return 'ffmpeg'  # Final fallback
 
 
 def get_ffprobe_path() -> str:
     """Get the path to the FFprobe binary.
-    
+
     Returns:
         Path to ffprobe executable (or just 'ffprobe' for system PATH)
     """
     import shutil
-    
+
     ffmpeg_path = get_ffmpeg_path()
-    
+
     # If using a specific FFmpeg path, use the corresponding ffprobe
     if ffmpeg_path != 'ffmpeg':
         ffmpeg_dir = Path(ffmpeg_path).parent
@@ -134,6 +134,6 @@ def get_ffprobe_path() -> str:
         ffprobe_path = ffmpeg_dir / ffprobe_name
         if ffprobe_path.exists():
             return str(ffprobe_path)
-    
+
     # Fallback to system PATH
     return shutil.which('ffprobe') or 'ffprobe'

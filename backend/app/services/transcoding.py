@@ -791,7 +791,7 @@ def _stack_videos(
                 "-map",
                 "[vout]",
                 "-map",
-                "0:a?",  # Map audio from first input if available
+                "0:a:0?",  # Map only the first audio stream from first input if available
                 "-c:v",
                 enc,
                 "-preset",
