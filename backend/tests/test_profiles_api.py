@@ -124,7 +124,7 @@ def test_get_profile_by_id():
         "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     client.post("/api/profiles", json=test_profile)
-    
+
     # Now test get by id
     response = client.get("/api/profiles/test-get-by-id-profile")
     assert response.status_code == 200
@@ -132,7 +132,7 @@ def test_get_profile_by_id():
     assert profile['id'] == 'test-get-by-id-profile'
     assert profile['camera_brand'] == 'TestBrand'
     assert profile['camera_model'] == 'TestModel'
-    
+
     # Cleanup
     client.delete("/api/profiles/test-get-by-id-profile")
 
@@ -306,13 +306,13 @@ def test_toggle_favorite_add():
         "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     client.post("/api/profiles", json=test_profile)
-    
+
     response = client.patch("/api/profiles/test-favorite-add-profile/favorite", json={"is_favorite": True})
     assert response.status_code == 200
     profile = response.json()
     assert profile["is_favorite"] is True
     print("Added profile to favorites")
-    
+
     # Cleanup
     client.patch("/api/profiles/test-favorite-add-profile/favorite", json={"is_favorite": False})
     client.delete("/api/profiles/test-favorite-add-profile")
@@ -331,7 +331,7 @@ def test_toggle_favorite_remove():
         "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     client.post("/api/profiles", json=test_profile)
-    
+
     # First add to favorites
     client.patch("/api/profiles/test-favorite-remove-profile/favorite", json={"is_favorite": True})
 
@@ -341,7 +341,7 @@ def test_toggle_favorite_remove():
     profile = response.json()
     assert profile["is_favorite"] is False
     print("Removed profile from favorites")
-    
+
     # Cleanup
     client.delete("/api/profiles/test-favorite-remove-profile")
 
@@ -359,7 +359,7 @@ def test_list_favorite_ids():
         "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     client.post("/api/profiles", json=test_profile)
-    
+
     # Add to favorites
     client.patch("/api/profiles/test-list-favorite-ids-profile/favorite", json={"is_favorite": True})
 
@@ -369,7 +369,7 @@ def test_list_favorite_ids():
     assert isinstance(favorite_ids, list)
     assert "test-list-favorite-ids-profile" in favorite_ids
     print(f"Favorite IDs: {favorite_ids}")
-    
+
     # Cleanup
     client.patch("/api/profiles/test-list-favorite-ids-profile/favorite", json={"is_favorite": False})
     client.delete("/api/profiles/test-list-favorite-ids-profile")
@@ -388,7 +388,7 @@ def test_list_favorite_profiles():
         "distortion_coeffs": [0.1, 0.01, -0.05, 0.02],
     }
     client.post("/api/profiles", json=test_profile)
-    
+
     # Add to favorites
     client.patch("/api/profiles/test-list-favorite-profiles-profile/favorite", json={"is_favorite": True})
 
@@ -402,7 +402,7 @@ def test_list_favorite_profiles():
     for profile in favorites:
         assert profile.get("is_favorite") is True
     print(f"Found {len(favorites)} favorite profile(s)")
-    
+
     # Cleanup
     client.patch("/api/profiles/test-list-favorite-profiles-profile/favorite", json={"is_favorite": False})
     client.delete("/api/profiles/test-list-favorite-profiles-profile")
