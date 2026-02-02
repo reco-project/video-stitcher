@@ -16,8 +16,16 @@ import soundfile as sf
 from scipy.signal import correlate
 from app.utils.logger import get_logger
 from app.config import get_settings
+from app.data_paths import get_ffmpeg_path, get_ffprobe_path
 
 logger = get_logger(__name__)
+
+# Get FFmpeg paths (uses system FFmpeg with GPU support in dev, bundled in prod)
+FFMPEG = get_ffmpeg_path()
+FFPROBE = get_ffprobe_path()
+
+logger.info(f"Using FFmpeg: {FFMPEG}")
+logger.info(f"Using FFprobe: {FFPROBE}")
 
 # Error messages
 ERROR_MESSAGES = {
@@ -59,7 +67,7 @@ def check_ffmpeg() -> None:
         RuntimeError: If FFmpeg is not found
     """
     try:
-        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True, timeout=5)
+        subprocess.run([FFMPEG, "-version"], capture_output=True, check=True, timeout=5)
     except (FileNotFoundError, subprocess.SubprocessError):
         raise RuntimeError(ERROR_MESSAGES["FFMPEG_NOT_FOUND"])
 
@@ -110,7 +118,7 @@ def concat_videos(video_list: List[str], output_path: str, progress_callback=Non
             progress_callback({'stage': 'concatenation', 'message': f'Concatenating {len(video_list)} video files...'})
 
         cmd = [
-            "ffmpeg",
+            FFMPEG,
             "-y",
             "-hide_banner",
             "-loglevel",
@@ -368,7 +376,7 @@ def transcode_and_stack(
 def _extract_audio(video_path: str, output_path: str) -> None:
     """Extract audio from video as mono 16kHz WAV."""
     cmd = [
-        "ffmpeg",
+        FFMPEG,
         "-y",
         "-loglevel",
         "error",
@@ -426,7 +434,7 @@ def _get_video_duration(video_path: str) -> float:
     """Get video duration in seconds using ffprobe."""
     try:
         cmd = [
-            "ffprobe",
+            FFPROBE,
             "-v",
             "error",
             "-show_entries",
@@ -447,7 +455,7 @@ def _get_video_fps(video_path: str) -> float:
     """Get video frame rate using ffprobe."""
     try:
         cmd = [
-            "ffprobe",
+            FFPROBE,
             "-v",
             "error",
             "-select_streams",
@@ -475,7 +483,7 @@ def _get_video_resolution(video_path: str) -> tuple[int, int]:
     """Get video resolution (width, height) using ffprobe."""
     try:
         cmd = [
-            "ffprobe",
+            FFPROBE,
             "-v",
             "error",
             "-select_streams",
@@ -513,7 +521,7 @@ def _get_available_encoders() -> List[str]:
         # Generate a tiny 1-frame test video (256x256 minimum for hardware encoders)
         try:
             result = subprocess.run(
-                ["ffmpeg", "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1", "-c:v", enc, "-f", "null", "-"],
+                [FFMPEG, "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1", "-c:v", enc, "-f", "null", "-"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -766,7 +774,7 @@ def _stack_videos(
 
         cmd = (
             [
-                "ffmpeg",
+                FFMPEG,
                 "-y",
             ]
             + hwaccel_args
@@ -1041,7 +1049,7 @@ def extract_preview_frame(video_path: str, output_path: str, timestamp: float = 
         # -q:v 2: quality (1-31, lower is better)
         # crop filter: crop to top half (left camera from stacked video)
         cmd = [
-            "ffmpeg",
+            FFMPEG,
             "-ss",
             str(timestamp),
             "-i",
