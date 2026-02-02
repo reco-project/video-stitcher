@@ -22,7 +22,7 @@ export default function ProfileManager() {
 	const [deleteDialog, setDeleteDialog] = useState({ open: false, profileId: null, profileName: '' });
 	const [errorDialog, setErrorDialog] = useState({ open: false, message: '' });
 	const [infoDialog, setInfoDialog] = useState({ open: false, title: '', message: '' });
-	
+
 	// Ref for ProfileBrowser to call its methods
 	const browserRef = useRef(null);
 
@@ -115,7 +115,11 @@ export default function ProfileManager() {
 			) : (
 				<div className="grid md:grid-cols-2 gap-4">
 					<div>
-						<ProfileBrowser ref={browserRef} onSelect={handleSelectProfile} selectedProfileId={selectedProfileId} />
+						<ProfileBrowser
+							ref={browserRef}
+							onSelect={handleSelectProfile}
+							selectedProfileId={selectedProfileId}
+						/>
 					</div>
 					<div>
 						<ProfileDetail profileId={selectedProfileId} onEdit={handleEdit} onDelete={handleDelete} />

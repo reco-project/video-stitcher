@@ -26,7 +26,11 @@ const ProfileBrowser = forwardRef(function ProfileBrowser({ onSelect, selectedPr
 
 	const { brands: rawBrands, loading: brandsLoading, refetch: refetchBrands } = useBrands();
 	const { models: rawModels, loading: modelsLoading, refetch: refetchModels } = useModels(selectedBrand);
-	const { profiles: rawProfiles, loading: profilesLoading, refetch: refetchProfiles } = useProfilesByBrandModel(selectedBrand, selectedModel);
+	const {
+		profiles: rawProfiles,
+		loading: profilesLoading,
+		refetch: refetchProfiles,
+	} = useProfilesByBrandModel(selectedBrand, selectedModel);
 
 	// Refetch all data
 	const refetch = useCallback(() => {
@@ -47,10 +51,14 @@ const ProfileBrowser = forwardRef(function ProfileBrowser({ onSelect, selectedPr
 	}, []);
 
 	// Expose methods to parent via ref
-	useImperativeHandle(ref, () => ({
-		refetch,
-		removeProfile,
-	}), [refetch, removeProfile]);
+	useImperativeHandle(
+		ref,
+		() => ({
+			refetch,
+			removeProfile,
+		}),
+		[refetch, removeProfile]
+	);
 
 	// Load favorites when favorites mode is enabled
 	useEffect(() => {
@@ -91,7 +99,10 @@ const ProfileBrowser = forwardRef(function ProfileBrowser({ onSelect, selectedPr
 						profile.lens_model,
 						profile.id,
 						profile.w && profile.h ? `${profile.w}x${profile.h}` : '',
-					].filter(Boolean).join(' ').toLowerCase();
+					]
+						.filter(Boolean)
+						.join(' ')
+						.toLowerCase();
 					return words.every((word) => searchable.includes(word));
 				});
 				setGlobalSearchResults(filtered.map(normalizeProfile));
@@ -151,7 +162,10 @@ const ProfileBrowser = forwardRef(function ProfileBrowser({ onSelect, selectedPr
 				profile.lens_model,
 				profile.id,
 				`${profile.resolution.width}x${profile.resolution.height}`,
-			].filter(Boolean).join(' ').toLowerCase();
+			]
+				.filter(Boolean)
+				.join(' ')
+				.toLowerCase();
 			// Each word in the query must appear somewhere
 			const words = searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
 			return words.every((word) => searchable.includes(word));
@@ -245,7 +259,9 @@ const ProfileBrowser = forwardRef(function ProfileBrowser({ onSelect, selectedPr
 										<CardContent className="px-2.5 py-1">
 											<div className="flex items-center justify-between gap-2">
 												<div className="text-sm font-semibold flex items-center gap-1.5">
-													{profile.is_favorite && <span className="text-yellow-500 text-xs">⭐</span>}
+													{profile.is_favorite && (
+														<span className="text-yellow-500 text-xs">⭐</span>
+													)}
 													{profile.camera_brand} {profile.camera_model}
 												</div>
 												<div className="text-xs text-muted-foreground">
@@ -253,7 +269,9 @@ const ProfileBrowser = forwardRef(function ProfileBrowser({ onSelect, selectedPr
 												</div>
 											</div>
 											{profile.lens_model && (
-												<div className="text-xs text-muted-foreground mt-0.5">{profile.lens_model}</div>
+												<div className="text-xs text-muted-foreground mt-0.5">
+													{profile.lens_model}
+												</div>
 											)}
 										</CardContent>
 									</Card>

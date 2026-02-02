@@ -33,7 +33,7 @@ EncoderType = Literal["auto", "h264_nvenc", "h264_qsv", "h264_amf", "libx264"]
 class Settings:
     """
     Settings manager that shares the settings.json with Electron.
-    
+
     Electron uses 'encoderPreference' field, we read/write that same field.
     """
 

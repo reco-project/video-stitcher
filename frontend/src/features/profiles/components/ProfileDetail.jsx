@@ -73,27 +73,28 @@ export default function ProfileDetail({ profileId, onEdit, onDelete, onFavoriteT
 							<Star
 								className={cn(
 									'h-4 w-4',
-									profile.is_favorite
-										? 'fill-yellow-400 text-yellow-400'
-										: 'text-muted-foreground'
+									profile.is_favorite ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
 								)}
 							/>
 						</Button>
-						<Button 
+						<Button
 							size="icon"
 							variant="ghost"
 							className="h-8 w-8"
 							onClick={() => onEdit && onEdit(profile)}
-							title={isOfficial ? "Edit will create a user copy" : "Edit profile"}
+							title={isOfficial ? 'Edit will create a user copy' : 'Edit profile'}
 						>
 							<Pencil className="h-4 w-4" />
 						</Button>
 						{!isOfficial && (
-							<Button 
+							<Button
 								size="icon"
 								variant="ghost"
 								className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-								onClick={() => onDelete && onDelete(profile.id, `${normalized.camera_brand} ${normalized.camera_model}`)}
+								onClick={() =>
+									onDelete &&
+									onDelete(profile.id, `${normalized.camera_brand} ${normalized.camera_model}`)
+								}
 								title="Delete profile"
 							>
 								<Trash2 className="h-4 w-4" />

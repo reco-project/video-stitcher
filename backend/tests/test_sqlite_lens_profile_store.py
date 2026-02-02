@@ -153,9 +153,7 @@ class TestBuildScript:
     def test_build_creates_indexes(self, temp_sqlite_db):
         """Test that the database has the expected indexes."""
         conn = sqlite3.connect(str(temp_sqlite_db))
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'")
         indexes = [row[0] for row in cursor.fetchall()]
         conn.close()
 
@@ -166,9 +164,7 @@ class TestBuildScript:
     def test_build_creates_fts_table(self, temp_sqlite_db):
         """Test that the FTS5 virtual table is created."""
         conn = sqlite3.connect(str(temp_sqlite_db))
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='profiles_fts'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='profiles_fts'")
         tables = [row[0] for row in cursor.fetchall()]
         conn.close()
 

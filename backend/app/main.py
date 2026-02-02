@@ -19,9 +19,13 @@ from app.repositories.hybrid_lens_profile_store import HybridLensProfileStore
 from app.repositories.file_match_store import FileMatchStore
 from app.repositories.match_store import MatchStore
 from app.data_paths import (
-    PROFILES_DIR, PROFILES_DB_PATH, USE_SQLITE_PROFILES, 
-    USER_PROFILES_DIR, FAVORITES_FILE,
-    MATCHES_DIR, VIDEOS_DIR
+    PROFILES_DIR,
+    PROFILES_DB_PATH,
+    USE_SQLITE_PROFILES,
+    USER_PROFILES_DIR,
+    FAVORITES_FILE,
+    MATCHES_DIR,
+    VIDEOS_DIR,
 )
 import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router

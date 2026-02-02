@@ -38,7 +38,7 @@ def test_list_profiles_metadata():
     assert response.status_code == 200
     profiles = response.json()
     assert len(profiles) <= 10, "Should respect limit"
-    
+
     # Check that metadata format is correct
     if profiles:
         p = profiles[0]
@@ -68,10 +68,10 @@ def test_search_profiles_fuzzy():
     response = client.get("/api/profiles/list?search=gopro%20hero10")
     assert response.status_code == 200
     profiles = response.json()
-    
+
     # Should have at least one result
     assert len(profiles) > 0
-    
+
     # All results should have both "gopro" and "hero10" somewhere
     for p in profiles:
         searchable = f"{p['camera_brand']} {p['camera_model']} {p.get('lens_model', '')}".lower()
@@ -93,11 +93,11 @@ def test_search_profiles_case_insensitive():
     response1 = client.get("/api/profiles/list?search=GOPRO")
     response2 = client.get("/api/profiles/list?search=gopro")
     response3 = client.get("/api/profiles/list?search=GoPro")
-    
+
     assert response1.status_code == 200
     assert response2.status_code == 200
     assert response3.status_code == 200
-    
+
     # All should return same number of results
     assert len(response1.json()) == len(response2.json()) == len(response3.json())
 
@@ -158,7 +158,6 @@ def test_list_profiles_by_brand_model():
 import pytest
 
 
-
 def test_create_profile():
     """Test POST /api/profiles - Create new profile"""
     new_profile = {
@@ -179,7 +178,6 @@ def test_create_profile():
     print(f"Created profile: {created['id']}")
 
 
-
 def test_create_duplicate_profile():
     """Test POST /api/profiles - Reject duplicate (409)"""
     duplicate_profile = {
@@ -193,7 +191,6 @@ def test_create_duplicate_profile():
     }
     response = client.post("/api/profiles", json=duplicate_profile)
     assert response.status_code == 409
-
 
 
 def test_update_profile():
@@ -216,7 +213,6 @@ def test_update_profile():
     print("Profile updated successfully")
 
 
-
 def test_update_nonexistent_profile():
     """Test PUT /api/profiles/{id} - Fail on non-existent (400/404)"""
     profile = {
@@ -232,7 +228,6 @@ def test_update_nonexistent_profile():
     assert response.status_code in [400, 404]
 
 
-
 def test_delete_profile():
     """Test DELETE /api/profiles/{id} - Delete profile"""
     response = client.delete("/api/profiles/test-brand-model-1920x1080")
@@ -244,7 +239,6 @@ def test_verify_deletion():
     """Test GET /api/profiles/{id} - Verify profile no longer exists"""
     response = client.get("/api/profiles/test-brand-model-1920x1080")
     assert response.status_code == 404
-
 
 
 def test_delete_nonexistent_profile():
@@ -285,10 +279,7 @@ def test_validation_wrong_coefficient_count():
 
 def test_toggle_favorite_add():
     """Test PATCH /api/profiles/{id}/favorite - Add to favorites"""
-    response = client.patch(
-        "/api/profiles/gopro-hero10-black-linear-3840x2160/favorite",
-        json={"is_favorite": True}
-    )
+    response = client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
     assert response.status_code == 200
     profile = response.json()
     assert profile["is_favorite"] is True
@@ -298,16 +289,10 @@ def test_toggle_favorite_add():
 def test_toggle_favorite_remove():
     """Test PATCH /api/profiles/{id}/favorite - Remove from favorites"""
     # First add
-    client.patch(
-        "/api/profiles/gopro-hero10-black-linear-3840x2160/favorite",
-        json={"is_favorite": True}
-    )
-    
+    client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
+
     # Then remove
-    response = client.patch(
-        "/api/profiles/gopro-hero10-black-linear-3840x2160/favorite",
-        json={"is_favorite": False}
-    )
+    response = client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": False})
     assert response.status_code == 200
     profile = response.json()
     assert profile["is_favorite"] is False
@@ -317,11 +302,8 @@ def test_toggle_favorite_remove():
 def test_list_favorite_ids():
     """Test GET /api/profiles/favorites/ids - List favorite IDs"""
     # Add some favorites first
-    client.patch(
-        "/api/profiles/gopro-hero10-black-linear-3840x2160/favorite",
-        json={"is_favorite": True}
-    )
-    
+    client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
+
     response = client.get("/api/profiles/favorites/ids")
     assert response.status_code == 200
     favorite_ids = response.json()
@@ -333,17 +315,14 @@ def test_list_favorite_ids():
 def test_list_favorite_profiles():
     """Test GET /api/profiles/favorites/list - List favorite profiles"""
     # Add a favorite
-    client.patch(
-        "/api/profiles/gopro-hero10-black-linear-3840x2160/favorite",
-        json={"is_favorite": True}
-    )
-    
+    client.patch("/api/profiles/gopro-hero10-black-linear-3840x2160/favorite", json={"is_favorite": True})
+
     response = client.get("/api/profiles/favorites/list")
     assert response.status_code == 200
     favorites = response.json()
     assert isinstance(favorites, list)
     assert len(favorites) > 0
-    
+
     # Check that all returned profiles are favorites
     for profile in favorites:
         assert profile.get("is_favorite") is True
@@ -364,12 +343,12 @@ def test_pagination_with_offset():
     response1 = client.get("/api/profiles/list?limit=5&offset=0")
     assert response1.status_code == 200
     page1 = response1.json()
-    
+
     # Get second page
     response2 = client.get("/api/profiles/list?limit=5&offset=5")
     assert response2.status_code == 200
     page2 = response2.json()
-    
+
     # Pages should be different (if we have more than 5 profiles)
     if len(page1) == 5 and len(page2) > 0:
         page1_ids = [p["id"] for p in page1]

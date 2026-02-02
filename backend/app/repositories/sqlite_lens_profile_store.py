@@ -44,7 +44,8 @@ class SqliteLensProfileStore(LensProfileStore):
         """Create database schema for tests."""
         conn = sqlite3.connect(str(self.db_path))
         try:
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS profiles (
                     id TEXT PRIMARY KEY,
                     camera_brand TEXT NOT NULL,
@@ -57,14 +58,17 @@ class SqliteLensProfileStore(LensProfileStore):
                     source TEXT DEFAULT 'official',
                     json TEXT NOT NULL
                 )
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 CREATE VIRTUAL TABLE IF NOT EXISTS profiles_fts USING fts5(
                     id, camera_brand, camera_model, lens_model,
                     content=profiles,
                     content_rowid=rowid
                 )
-            """)
+            """
+            )
             conn.commit()
         finally:
             conn.close()
@@ -202,9 +206,7 @@ class SqliteLensProfileStore(LensProfileStore):
     def get_by_id(self, profile_id: str) -> Optional[Dict]:
         """Return single profile by ID (full JSON parsed), or None if not found."""
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT json FROM profiles WHERE id = ?", (profile_id,)
-            )
+            cursor = conn.execute("SELECT json FROM profiles WHERE id = ?", (profile_id,))
             row = cursor.fetchone()
             if row:
                 return json.loads(row["json"])
@@ -214,8 +216,7 @@ class SqliteLensProfileStore(LensProfileStore):
         """Create new profile (not supported in read-only mode)."""
         if self.read_only:
             raise RuntimeError(
-                "Cannot create profiles in read-only SQLite store. "
-                "Use JSON source files and rebuild the database."
+                "Cannot create profiles in read-only SQLite store. " "Use JSON source files and rebuild the database."
             )
 
         # Validate using Pydantic model
@@ -261,8 +262,7 @@ class SqliteLensProfileStore(LensProfileStore):
         """Update existing profile (not supported in read-only mode)."""
         if self.read_only:
             raise RuntimeError(
-                "Cannot update profiles in read-only SQLite store. "
-                "Use JSON source files and rebuild the database."
+                "Cannot update profiles in read-only SQLite store. " "Use JSON source files and rebuild the database."
             )
 
         # Validate using Pydantic model
@@ -270,9 +270,7 @@ class SqliteLensProfileStore(LensProfileStore):
         validated = model.model_dump()
 
         if validated["id"] != profile_id:
-            raise ValueError(
-                f"Profile ID mismatch: URL has '{profile_id}', body has '{validated['id']}'"
-            )
+            raise ValueError(f"Profile ID mismatch: URL has '{profile_id}', body has '{validated['id']}'")
 
         # Extract metadata fields
         metadata = validated.get("metadata", {}) or {}
@@ -322,8 +320,7 @@ class SqliteLensProfileStore(LensProfileStore):
         """Delete profile by ID (not supported in read-only mode)."""
         if self.read_only:
             raise RuntimeError(
-                "Cannot delete profiles in read-only SQLite store. "
-                "Use JSON source files and rebuild the database."
+                "Cannot delete profiles in read-only SQLite store. " "Use JSON source files and rebuild the database."
             )
 
         with self._get_connection() as conn:
@@ -334,9 +331,7 @@ class SqliteLensProfileStore(LensProfileStore):
     def list_brands(self) -> List[str]:
         """Return list of unique camera brands (sorted)."""
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT DISTINCT camera_brand FROM profiles ORDER BY camera_brand"
-            )
+            cursor = conn.execute("SELECT DISTINCT camera_brand FROM profiles ORDER BY camera_brand")
             return [row["camera_brand"] for row in cursor.fetchall()]
 
     def list_models(self, brand: str) -> List[str]:
@@ -406,9 +401,7 @@ class SqliteLensProfileStore(LensProfileStore):
         if "search" in filters and filters["search"]:
             search_term = filters["search"].strip()
             if search_term:
-                conditions.append(
-                    "id IN (SELECT id FROM profiles_fts WHERE profiles_fts MATCH ?)"
-                )
+                conditions.append("id IN (SELECT id FROM profiles_fts WHERE profiles_fts MATCH ?)")
                 escaped = search_term.replace('"', '""')
                 params.append(f'"{escaped}"*')
 

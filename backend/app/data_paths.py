@@ -35,6 +35,7 @@ LOGS_DIR = BASE_DATA_DIR / 'logs'
 # In production (PyInstaller), lens_profiles.sqlite is in the dist_bundle/data directory
 # In development, use JSON files from backend/data/lens_profiles
 
+
 def _get_profiles_db_path() -> Path:
     """Get the path to lens_profiles.sqlite database."""
     # Check if running from PyInstaller bundle
@@ -48,12 +49,12 @@ def _get_profiles_db_path() -> Path:
         alt_path = Path(sys.executable).parent / 'data' / 'lens_profiles.sqlite'
         if alt_path.exists():
             return alt_path
-    
+
     # Development: Look for SQLite in electron/resources (if built)
     dev_db_path = Path(__file__).parent.parent.parent / 'electron' / 'resources' / 'lens_profiles.sqlite'
     if dev_db_path.exists():
         return dev_db_path
-    
+
     # No SQLite database found - will need to fall back to JSON files
     return None
 
