@@ -172,8 +172,37 @@ jobs:
         run: npm run frontend-build
 
       # First package the app, then inject backend, then make installers
+      - name: Import macOS signing certificate
+        if: matrix.platform == 'darwin' && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create a temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          
+          # Import certificate
+          echo "$APPLE_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          
+          # Allow codesign to access the keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
       - name: Package Electron app
         run: npx electron-forge package --arch=${{ matrix.arch }} --platform=${{ matrix.platform }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
       - name: Copy backend bundle to packaged app
         shell: bash
@@ -201,6 +230,17 @@ jobs:
           # Copy FFmpeg binaries if they exist
           if [ -d "backend/bin" ]; then
             cp -r backend/bin "$RESOURCES_PATH/dist_bundle/"
+          fi
+          
+          # Ensure all binaries are executable (critical for macOS zip extraction)
+          if [ "${{ matrix.platform }}" == "darwin" ] || [ "${{ matrix.platform }}" == "linux" ]; then
+            echo "Setting executable permissions on binaries..."
+            chmod +x "$RESOURCES_PATH/dist_bundle/backend_server" || true
+            chmod +x "$RESOURCES_PATH/dist_bundle/bin/ffmpeg" || true
+            chmod +x "$RESOURCES_PATH/dist_bundle/bin/ffprobe" || true
+            # Also make all .so and .dylib files executable
+            find "$RESOURCES_PATH/dist_bundle" -name "*.dylib" -exec chmod +x {} \; || true
+            find "$RESOURCES_PATH/dist_bundle" -name "*.so" -exec chmod +x {} \; || true
           fi
           
           # Copy runtime node_modules dependencies (electron-updater, electron-squirrel-startup)
@@ -305,6 +345,11 @@ jobs:
           # For Windows code signing (optional, set in repo secrets)
           WINDOWS_CERTIFICATE_FILE: ${{ secrets.WINDOWS_CERTIFICATE_FILE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # For macOS code signing and notarization (optional, set in repo secrets)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
       - name: List make output
         shell: bash

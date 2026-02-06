@@ -11,6 +11,22 @@ module.exports = {
     icon: path.join(__dirname, 'resources', 'icon'),
     appBundleId: 'com.reco.video-stitcher',
     appCopyright: 'Copyright © 2026 Mohamed Taha GUELZIM',
+    // macOS code signing (requires Apple Developer certificate)
+    osxSign: {
+      identity: process.env.APPLE_SIGNING_IDENTITY || null,
+      'hardened-runtime': true,
+      entitlements: path.join(__dirname, 'entitlements.mac.plist'),
+      'entitlements-inherit': path.join(__dirname, 'entitlements.mac.plist'),
+      'signature-flags': 'library',
+    },
+    // macOS notarization (requires Apple Developer account secrets)
+    ...(process.env.APPLE_ID && process.env.APPLE_ID_PASSWORD && process.env.APPLE_TEAM_ID ? {
+      osxNotarize: {
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_ID_PASSWORD,
+        teamId: process.env.APPLE_TEAM_ID,
+      },
+    } : {}),
     ignore: (filePath) => {
       // Always include root
       if (!filePath) return false;

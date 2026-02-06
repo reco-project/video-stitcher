@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, chmodSync } from 'node:fs';
 import { fileURLToPath } from 'url';
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { platform } from 'node:os';
 
 // CRITICAL: Handle Squirrel events FIRST on Windows before any other code
@@ -99,6 +99,7 @@ function startBackend() {
 	}
 
 	const isWin = platform() === 'win32';
+	const isMac = platform() === 'darwin';
 	const userDataPath = app.getPath('userData');
 	const pathSeparator = isWin ? ';' : ':';
 
@@ -125,6 +126,40 @@ function startBackend() {
 			? join(backendDir, 'backend_server.exe')
 			: join(backendDir, 'backend_server');
 		ffmpegBinDir = join(backendDir, 'bin');
+	}
+
+	// On macOS/Linux, ensure backend and ffmpeg binaries are executable
+	// (zip extraction on macOS can strip execute permissions)
+	if (!isWin && !isDev) {
+		const binaries = [
+			backendExe,
+			join(ffmpegBinDir, 'ffmpeg'),
+			join(ffmpegBinDir, 'ffprobe'),
+		];
+		for (const bin of binaries) {
+			try {
+				if (existsSync(bin)) {
+					chmodSync(bin, 0o755);
+					console.log(`[Backend] Set executable permission on: ${bin}`);
+				}
+			} catch (err) {
+				console.warn(`[Backend] Failed to chmod ${bin}:`, err.message);
+			}
+		}
+	}
+
+	// On macOS, clear quarantine attributes from the backend bundle
+	// This is needed because macOS may quarantine files inside the app even after
+	// the user allows the app itself to run
+	if (isMac && !isDev) {
+		try {
+			console.log('[Backend] Clearing macOS quarantine attributes from dist_bundle...');
+			execSync(`xattr -r -d com.apple.quarantine "${backendDir}"`, { stdio: 'ignore' });
+			console.log('[Backend] Quarantine attributes cleared');
+		} catch (err) {
+			// xattr may fail if there are no quarantine attributes, that's fine
+			console.log('[Backend] xattr cleanup (non-critical):', err.message);
+		}
 	}
 
 	// Set up FFmpeg path
