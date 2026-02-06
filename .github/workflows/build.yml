@@ -134,6 +134,12 @@ jobs:
         run: |
           cd backend
           
+          # Set minimum macOS version for compatibility with older systems
+          if [[ "${{ matrix.platform }}" == "darwin" ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=12.0
+            echo "Set MACOSX_DEPLOYMENT_TARGET=12.0 for macOS compatibility"
+          fi
+          
           # Determine path separator for --add-data (Windows uses ; Linux/Mac use :)
           if [[ "${{ matrix.platform }}" == "win32" ]]; then
             SEP=";"
