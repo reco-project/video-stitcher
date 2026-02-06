@@ -92,8 +92,11 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y sqlite3
           elif [[ "${{ matrix.platform }}" == "darwin" ]]; then
-            # SQLite is pre-installed on macOS
-            which sqlite3 || brew install sqlite3
+            # macOS comes with old SQLite without FTS5 support
+            # Install modern SQLite from Homebrew
+            brew install sqlite3
+            # Add Homebrew sqlite3 to PATH (it's keg-only by default)
+            echo "$(brew --prefix)/opt/sqlite/bin" >> $GITHUB_PATH
           elif [[ "${{ matrix.platform }}" == "win32" ]]; then
             # Use choco on Windows
             choco install sqlite -y
