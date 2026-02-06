@@ -44,7 +44,8 @@ jobs:
             echo "Using workflow_dispatch version: $VERSION"
           elif [ "${{ github.ref_type }}" == "tag" ]; then
             # Extract version from tag (strip 'v' prefix)
-            VERSION="${GITHUB_REF_NAME#v}"
+            TAG_NAME="${{ github.ref_name }}"
+            VERSION="${TAG_NAME#v}"
             echo "Extracted version from tag: $VERSION"
           else
             # No version available (shouldn't happen, but fallback)
