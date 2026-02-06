@@ -257,6 +257,7 @@ jobs:
             DEPS=(
               electron-updater
               electron-squirrel-startup
+              electron-log
               builder-util-runtime
               debug
               ms
