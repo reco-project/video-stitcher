@@ -25,6 +25,9 @@ jobs:
           - os: macos-latest
             platform: darwin
             arch: arm64
+          - os: macos-latest
+            platform: darwin
+            arch: x64
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -44,7 +47,8 @@ jobs:
             echo "Using workflow_dispatch version: $VERSION"
           elif [ "${{ github.ref_type }}" == "tag" ]; then
             # Extract version from tag (strip 'v' prefix)
-            VERSION="${GITHUB_REF_NAME#v}"
+            TAG_NAME="${{ github.ref_name }}"
+            VERSION="${TAG_NAME#v}"
             echo "Extracted version from tag: $VERSION"
           else
             # No version available (shouldn't happen, but fallback)
@@ -91,8 +95,11 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y sqlite3
           elif [[ "${{ matrix.platform }}" == "darwin" ]]; then
-            # SQLite is pre-installed on macOS
-            which sqlite3 || brew install sqlite3
+            # macOS comes with old SQLite without FTS5 support
+            # Install modern SQLite from Homebrew
+            brew install sqlite3
+            # Add Homebrew sqlite3 to PATH (it's keg-only by default)
+            echo "$(brew --prefix)/opt/sqlite/bin" >> $GITHUB_PATH
           elif [[ "${{ matrix.platform }}" == "win32" ]]; then
             # Use choco on Windows
             choco install sqlite -y
@@ -129,6 +136,12 @@ jobs:
         shell: bash
         run: |
           cd backend
+          
+          # Set minimum macOS version for compatibility with older systems
+          if [[ "${{ matrix.platform }}" == "darwin" ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=12.0
+            echo "Set MACOSX_DEPLOYMENT_TARGET=12.0 for macOS compatibility"
+          fi
           
           # Determine path separator for --add-data (Windows uses ; Linux/Mac use :)
           if [[ "${{ matrix.platform }}" == "win32" ]]; then
@@ -172,8 +185,37 @@ jobs:
         run: npm run frontend-build
 
       # First package the app, then inject backend, then make installers
+      - name: Import macOS signing certificate
+        if: matrix.platform == 'darwin' && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create a temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          
+          # Import certificate
+          echo "$APPLE_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          
+          # Allow codesign to access the keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
       - name: Package Electron app
         run: npx electron-forge package --arch=${{ matrix.arch }} --platform=${{ matrix.platform }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
       - name: Copy backend bundle to packaged app
         shell: bash
@@ -203,6 +245,17 @@ jobs:
             cp -r backend/bin "$RESOURCES_PATH/dist_bundle/"
           fi
           
+          # Ensure all binaries are executable (critical for macOS zip extraction)
+          if [ "${{ matrix.platform }}" == "darwin" ] || [ "${{ matrix.platform }}" == "linux" ]; then
+            echo "Setting executable permissions on binaries..."
+            chmod +x "$RESOURCES_PATH/dist_bundle/backend_server" || true
+            chmod +x "$RESOURCES_PATH/dist_bundle/bin/ffmpeg" || true
+            chmod +x "$RESOURCES_PATH/dist_bundle/bin/ffprobe" || true
+            # Also make all .so and .dylib files executable
+            find "$RESOURCES_PATH/dist_bundle" -name "*.dylib" -exec chmod +x {} \; || true
+            find "$RESOURCES_PATH/dist_bundle" -name "*.so" -exec chmod +x {} \; || true
+          fi
+          
           # Copy runtime node_modules dependencies (electron-updater, electron-squirrel-startup)
           # These are externalized by Vite and need to be available at runtime
           APP_PATH="$RESOURCES_PATH/app"
@@ -213,6 +266,7 @@ jobs:
             DEPS=(
               electron-updater
               electron-squirrel-startup
+              electron-log
               builder-util-runtime
               debug
               ms
@@ -305,6 +359,11 @@ jobs:
           # For Windows code signing (optional, set in repo secrets)
           WINDOWS_CERTIFICATE_FILE: ${{ secrets.WINDOWS_CERTIFICATE_FILE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # For macOS code signing and notarization (optional, set in repo secrets)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
       - name: List make output
         shell: bash
