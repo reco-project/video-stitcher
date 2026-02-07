@@ -16,13 +16,15 @@ const http = require('http');
 
 const FFMPEG_SOURCES = {
   'linux-x64': {
-    url: 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',
+    // BtbN builds include GPU encoder support (nvenc, vaapi, qsv)
+    url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz',
     extract: 'tar',
     binaries: ['ffmpeg', 'ffprobe'],
   },
   'win32-x64': {
-    url: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
-    extract: 'zip',
+    // Use "full" build which includes GPU encoders (nvenc, qsv, amf)
+    url: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z',
+    extract: '7z',
     binaries: ['ffmpeg.exe', 'ffprobe.exe'],
   },
   'darwin-x64': {
@@ -144,6 +146,25 @@ async function extractAndMove(archivePath, binDir, source) {
       execSync(`powershell -command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tempDir}'"`, { stdio: 'inherit' });
     } else {
       execSync(`unzip -q "${archivePath}" -d "${tempDir}"`, { stdio: 'inherit' });
+    }
+  } else if (source.extract === '7z') {
+    // 7z extraction - use 7z on Windows (usually available), or p7zip on Linux/Mac
+    if (isWindows) {
+      // Try 7z.exe first (from 7-Zip installation), fallback to PowerShell with 7z module
+      try {
+        execSync(`7z x "${archivePath}" -o"${tempDir}" -y`, { stdio: 'inherit' });
+      } catch {
+        // Fallback: try using tar (Windows 10+ has bsdtar which supports some formats)
+        console.log('7z not found, trying alternative extraction...');
+        execSync(`powershell -command "& { $7zPath = (Get-Command 7z -ErrorAction SilentlyContinue).Source; if ($7zPath) { & $7zPath x '${archivePath}' -o'${tempDir}' -y } else { throw '7-Zip not found. Please install 7-Zip from https://7-zip.org' } }"`, { stdio: 'inherit' });
+      }
+    } else {
+      // On Linux/Mac, use p7zip (7z or 7za command)
+      try {
+        execSync(`7z x "${archivePath}" -o"${tempDir}" -y`, { stdio: 'inherit' });
+      } catch {
+        execSync(`7za x "${archivePath}" -o"${tempDir}" -y`, { stdio: 'inherit' });
+      }
     }
   }
 
