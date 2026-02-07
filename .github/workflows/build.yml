@@ -25,6 +25,9 @@ jobs:
           - os: macos-latest
             platform: darwin
             arch: arm64
+          - os: macos-latest
+            platform: darwin
+            arch: x64
 
     runs-on: ${{ matrix.os }}
     permissions:
