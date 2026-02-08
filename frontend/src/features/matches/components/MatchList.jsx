@@ -13,7 +13,7 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 	const [deletingId, setDeletingId] = React.useState(null);
 	const [optimisticDeletes, setOptimisticDeletes] = React.useState(new Set());
 	const [liveEnsured, setLiveEnsured] = React.useState(false);
-	const liveSrc = 'live/playlist.m3u8';
+	const liveSrc = 'videos/live/index.m3u8';
 
 	// Filter out optimistically deleted matches and sort by most recent (ID descending)
 	const visibleMatches = matches.filter((m) => !optimisticDeletes.has(m.id));
@@ -27,7 +27,7 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 		const hasLive = matches.some((m) => m.id === 'live');
 		if (hasLive) {
 			const existingLive = matches.find((m) => m.id === 'live');
-			if (existingLive && existingLive.src !== liveSrc) {
+			if (existingLive && !existingLive.src) {
 				updateMatch('live', { id: 'live', src: liveSrc })
 					.then(() => refetch())
 					.catch(() => {})

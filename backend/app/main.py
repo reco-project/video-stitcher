@@ -2,9 +2,10 @@
 
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 import sys
 import os
@@ -123,6 +124,22 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Video Stitcher Backend", lifespan=lifespan)
+
+
+class LiveNoCacheMiddleware(BaseHTTPMiddleware):
+    """Disable caching for live HLS content to prevent 304 responses."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Disable caching for live HLS content
+        if request.url.path.startswith("/videos/live/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
+# Add live no-cache middleware (must be before CORS)
+app.add_middleware(LiveNoCacheMiddleware)
 
 # Allow requests from Electron frontend
 app.add_middleware(
