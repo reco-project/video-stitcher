@@ -106,6 +106,7 @@ export const useCustomVideoTexture = (src, options = {}) => {
 		video.crossOrigin = 'anonymous';
 		video.preload = 'auto';
 		video.playsInline = true;
+		video.muted = true;
 
 		const videoTexture = new THREE.VideoTexture(video);
 		videoTexture.minFilter = THREE.LinearFilter;
@@ -124,6 +125,12 @@ export const useCustomVideoTexture = (src, options = {}) => {
 			}
 		};
 
+		const handleVideoError = (event) => {
+			console.warn('[Video] element error', event);
+		};
+
+		video.addEventListener('error', handleVideoError);
+
 		if (isHls) {
 			if (isSupported()) {
 				hls = new Hls({
@@ -136,6 +143,18 @@ export const useCustomVideoTexture = (src, options = {}) => {
 					hls.loadSource(videoUrl);
 				});
 				hls.on(Hls.Events.MANIFEST_PARSED, tryPlay);
+				hls.on(Hls.Events.ERROR, (_event, data) => {
+					console.warn('[HLS] error', data);
+					if (data?.fatal) {
+						if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+							hls.startLoad();
+						} else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+							hls.recoverMediaError();
+						} else {
+							hls.destroy();
+						}
+					}
+				});
 			} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
 				// TODO: check if this code is valid/reachable
 				video.src = videoUrl; // Safari
@@ -171,6 +190,7 @@ export const useCustomVideoTexture = (src, options = {}) => {
 					console.warn('Error unmounting video:', error);
 				}
 			}
+			video.removeEventListener('error', handleVideoError);
 			clearVideoRef();
 			videoTexture.dispose();
 		};

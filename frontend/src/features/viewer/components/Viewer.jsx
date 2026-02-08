@@ -10,7 +10,11 @@ import VideoPlayerContainer from './VideoPlayer.jsx';
 import { useCustomVideoTexture } from '../hooks/useCustomVideoTexture.js';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/toast';
 import { updateMatch } from '@/features/matches/api/matches.js';
+import { getProfile } from '@/features/profiles/api/profiles.js';
+import ProfileCombobox from '@/features/matches/components/ProfileCombobox.jsx';
 import { CameraProvider, useCameraControls } from '../stores/cameraContext';
 import RecalibratePanel from './RecalibratePanel';
 import { DualColorCorrectionPanel } from './ColorCorrectionPanel.jsx';
@@ -119,12 +123,75 @@ const Viewer = ({ selectedMatch }) => {
 	const setRightColorCorrection = useViewerStore((s) => s.setRightColorCorrection);
 	const resetColorCorrection = useViewerStore((s) => s.resetColorCorrection);
 	const loadColorCorrectionFromMatch = useViewerStore((s) => s.loadColorCorrectionFromMatch);
+	const { showToast } = useToast();
+
+	const [activeMatch, setActiveMatch] = useState(selectedMatch);
 
 	const [yawRange, setYawRange] = useState(140);
 	const [pitchRange, setPitchRange] = useState(20);
 	const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
 	const saveTimeoutRef = React.useRef(null);
 	const colorSaveTimeoutRef = React.useRef(null);
+	const [liveLeftProfileId, setLiveLeftProfileId] = useState('');
+	const [liveRightProfileId, setLiveRightProfileId] = useState('');
+	const [liveUpdatingSide, setLiveUpdatingSide] = useState(null);
+	const isLiveMatch = activeMatch?.id === 'live';
+	const defaultLiveParams = {
+		cameraAxisOffset: 0.7,
+		intersect: 0.5,
+		xTy: 0.0,
+		xRz: 0.0,
+		zRx: 0.0,
+	};
+	const defaultLiveUniforms = {
+		width: 1920,
+		height: 1080,
+		fx: 1000,
+		fy: 1000,
+		cx: 960,
+		cy: 540,
+		d: [0, 0, 0, 0],
+	};
+	const liveDefaultsAppliedRef = useRef(false);
+
+	const buildUniforms = (profile) => {
+		if (
+			!profile?.resolution ||
+			typeof profile.resolution.width !== 'number' ||
+			typeof profile.resolution.height !== 'number'
+		) {
+			throw new Error(`Profile ${profile?.id || 'unknown'} has invalid resolution`);
+		}
+
+		if (
+			!profile.camera_matrix ||
+			typeof profile.camera_matrix.fx !== 'number' ||
+			typeof profile.camera_matrix.fy !== 'number' ||
+			typeof profile.camera_matrix.cx !== 'number' ||
+			typeof profile.camera_matrix.cy !== 'number'
+		) {
+			throw new Error(`Profile ${profile?.id || 'unknown'} has invalid camera matrix`);
+		}
+
+		if (
+			!profile.distortion_coeffs ||
+			!Array.isArray(profile.distortion_coeffs) ||
+			profile.distortion_coeffs.length !== 4 ||
+			!profile.distortion_coeffs.every((c) => typeof c === 'number')
+		) {
+			throw new Error(`Profile ${profile?.id || 'unknown'} has invalid distortion coefficients`);
+		}
+
+		return {
+			width: profile.resolution.width,
+			height: profile.resolution.height,
+			fx: profile.camera_matrix.fx,
+			fy: profile.camera_matrix.fy,
+			cx: profile.camera_matrix.cx,
+			cy: profile.camera_matrix.cy,
+			d: profile.distortion_coeffs,
+		};
+	};
 
 	// Handler for when recalibration completes
 	const handleRecalibrated = useCallback(
@@ -132,34 +199,42 @@ const Viewer = ({ selectedMatch }) => {
 			// Only update match data if calibration succeeded
 			// If calibration failed, keep existing params
 			if (result && result.params && !result.calibration_failed) {
-				setSelectedMatch({
-					...selectedMatch,
+				const updated = {
+					...activeMatch,
 					params: result.params,
 					num_matches: result.num_matches,
 					confidence: result.confidence,
 					status: 'ready',
-				});
+				};
+				setActiveMatch(updated);
+				setSelectedMatch(updated);
 			}
 			// If calibration failed, RecalibratePanel will show the warning
 		},
-		[selectedMatch, setSelectedMatch]
+		[activeMatch, setSelectedMatch]
 	);
 
 	useEffect(() => {
-		setSelectedMatch(selectedMatch);
-	}, [selectedMatch, setSelectedMatch]);
+		setActiveMatch(selectedMatch);
+	}, [selectedMatch]);
+
+	useEffect(() => {
+		if (activeMatch) {
+			setSelectedMatch(activeMatch);
+		}
+	}, [activeMatch, setSelectedMatch]);
 
 	// Load color correction from match when it changes
 	useEffect(() => {
 		loadColorCorrectionFromMatch();
-	}, [selectedMatch?.id, loadColorCorrectionFromMatch]);
+	}, [activeMatch?.id, loadColorCorrectionFromMatch]);
 
 	// Mark match as viewed when component mounts
 	useEffect(() => {
-		if (selectedMatch && selectedMatch.id && !selectedMatch.viewed) {
+		if (activeMatch && activeMatch.id && !activeMatch.viewed) {
 			try {
 				// Update backend - only send the viewed field
-				updateMatch(selectedMatch.id, { id: selectedMatch.id, viewed: true });
+				updateMatch(activeMatch.id, { id: activeMatch.id, viewed: true });
 
 				// Update localStorage for MatchCard badge
 				const viewedMatches = JSON.parse(localStorage.getItem('viewedMatches') || '[]');
@@ -171,7 +246,87 @@ const Viewer = ({ selectedMatch }) => {
 				console.warn('Failed to mark match as viewed:', err);
 			}
 		}
-	}, [selectedMatch?.id]);
+	}, [activeMatch?.id]);
+
+	useEffect(() => {
+		if (!isLiveMatch) return;
+		setLiveLeftProfileId(activeMatch?.metadata?.left_profile_id || activeMatch?.left_videos?.[0]?.profile_id || '');
+		setLiveRightProfileId(
+			activeMatch?.metadata?.right_profile_id || activeMatch?.right_videos?.[0]?.profile_id || ''
+		);
+	}, [
+		isLiveMatch,
+		activeMatch?.metadata?.left_profile_id,
+		activeMatch?.metadata?.right_profile_id,
+		activeMatch?.left_videos,
+		activeMatch?.right_videos,
+	]);
+
+	useEffect(() => {
+		if (!isLiveMatch || !activeMatch?.id || liveDefaultsAppliedRef.current) return;
+
+		const needsParams = !activeMatch?.params;
+		const needsLeft = !activeMatch?.left_uniforms;
+		const needsRight = !activeMatch?.right_uniforms;
+		if (!needsParams && !needsLeft && !needsRight) return;
+
+		const updatedMatch = {
+			...activeMatch,
+			params: activeMatch.params || defaultLiveParams,
+			left_uniforms: activeMatch.left_uniforms || defaultLiveUniforms,
+			right_uniforms: activeMatch.right_uniforms || defaultLiveUniforms,
+		};
+
+		liveDefaultsAppliedRef.current = true;
+		setActiveMatch(updatedMatch);
+		setSelectedMatch(updatedMatch);
+		updateMatch(activeMatch.id, {
+			id: activeMatch.id,
+			params: updatedMatch.params,
+			left_uniforms: updatedMatch.left_uniforms,
+			right_uniforms: updatedMatch.right_uniforms,
+		}).catch(() => {});
+	}, [
+		isLiveMatch,
+		activeMatch?.id,
+		activeMatch?.params,
+		activeMatch?.left_uniforms,
+		activeMatch?.right_uniforms,
+		setSelectedMatch,
+	]);
+
+	const updateLiveProfile = useCallback(
+		async (side, profileId) => {
+			if (!activeMatch || !profileId) return;
+			setLiveUpdatingSide(side);
+			try {
+				const profile = await getProfile(profileId);
+				const uniforms = buildUniforms(profile);
+				const updatedMetadata = {
+					...activeMatch.metadata,
+					...(side === 'left' ? { left_profile_id: profile.id } : { right_profile_id: profile.id }),
+				};
+				const updatedMatch = {
+					...activeMatch,
+					...(side === 'left' ? { left_uniforms: uniforms } : { right_uniforms: uniforms }),
+					metadata: updatedMetadata,
+				};
+				setActiveMatch(updatedMatch);
+				setSelectedMatch(updatedMatch);
+				await updateMatch(activeMatch.id, {
+					id: activeMatch.id,
+					...(side === 'left' ? { left_uniforms: uniforms } : { right_uniforms: uniforms }),
+					metadata: updatedMetadata,
+				});
+				showToast({ message: `Live ${side} profile updated`, type: 'success' });
+			} catch (err) {
+				showToast({ message: err.message || 'Failed to update live profile', type: 'error' });
+			} finally {
+				setLiveUpdatingSide(null);
+			}
+		},
+		[activeMatch, buildUniforms, setSelectedMatch, showToast]
+	);
 
 	// Load panning ranges from match metadata if available
 	// Track initial load to prevent reset after save
@@ -204,17 +359,17 @@ const Viewer = ({ selectedMatch }) => {
 			lastLoadedMatchIdRef.current = null;
 			initialLoadRef.current = true;
 		};
-	}, [selectedMatch?.id, selectedMatch?.metadata?.panningRanges]);
+	}, [activeMatch?.id, activeMatch?.metadata?.panningRanges]);
 
 	// Auto-save panning ranges with debouncing
 	useEffect(() => {
 		// Don't save on initial load, if no match selected, or if match doesn't exist on backend yet
-		if (!selectedMatch?.id || initialLoadRef.current || !selectedMatch?.params) return;
+		if (!activeMatch?.id || initialLoadRef.current || !activeMatch?.params) return;
 
 		// Skip save if values are the same as stored (prevents save on load)
 		if (
-			selectedMatch.metadata?.panningRanges?.yaw === yawRange &&
-			selectedMatch.metadata?.panningRanges?.pitch === pitchRange
+			activeMatch.metadata?.panningRanges?.yaw === yawRange &&
+			activeMatch.metadata?.panningRanges?.pitch === pitchRange
 		) {
 			return;
 		}
@@ -230,16 +385,16 @@ const Viewer = ({ selectedMatch }) => {
 				setSaveStatus('saving');
 				// Only send the metadata field being updated
 				const updatedMatch = {
-					id: selectedMatch.id,
+					id: activeMatch.id,
 					metadata: {
-						...selectedMatch.metadata,
+						...activeMatch.metadata,
 						panningRanges: {
 							yaw: yawRange,
 							pitch: pitchRange,
 						},
 					},
 				};
-				await updateMatch(selectedMatch.id, updatedMatch);
+				await updateMatch(activeMatch.id, updatedMatch);
 				setSaveStatus('success');
 				// Clear success message after 2 seconds
 				setTimeout(() => setSaveStatus(null), 2000);
@@ -255,12 +410,12 @@ const Viewer = ({ selectedMatch }) => {
 				clearTimeout(saveTimeoutRef.current);
 			}
 		};
-	}, [yawRange, pitchRange, selectedMatch]);
+	}, [yawRange, pitchRange, activeMatch]);
 
 	// Auto-save color correction with debouncing
 	useEffect(() => {
 		// Don't save on initial load, if no match selected, or if match doesn't exist on backend yet
-		if (!selectedMatch?.id || initialLoadRef.current || !selectedMatch?.params) return;
+		if (!activeMatch?.id || initialLoadRef.current || !activeMatch?.params) return;
 
 		// Clear existing timeout
 		if (colorSaveTimeoutRef.current) {
@@ -272,16 +427,16 @@ const Viewer = ({ selectedMatch }) => {
 			try {
 				setSaveStatus('saving');
 				const updatedMatch = {
-					id: selectedMatch.id,
+					id: activeMatch.id,
 					metadata: {
-						...selectedMatch.metadata,
+						...activeMatch.metadata,
 						colorCorrection: {
 							left: leftColorCorrection,
 							right: rightColorCorrection,
 						},
 					},
 				};
-				await updateMatch(selectedMatch.id, updatedMatch);
+				await updateMatch(activeMatch.id, updatedMatch);
 				setSaveStatus('success');
 				setTimeout(() => setSaveStatus(null), 2000);
 			} catch (err) {
@@ -296,14 +451,16 @@ const Viewer = ({ selectedMatch }) => {
 				clearTimeout(colorSaveTimeoutRef.current);
 			}
 		};
-	}, [leftColorCorrection, rightColorCorrection, selectedMatch]);
+	}, [leftColorCorrection, rightColorCorrection, activeMatch]);
 
 	// Show friendly message for unprocessed matches
-	if (!selectedMatch?.params || !selectedMatch?.left_uniforms || !selectedMatch?.right_uniforms) {
+	const isMissingData = !activeMatch?.params || !activeMatch?.left_uniforms || !activeMatch?.right_uniforms;
+
+	if (isMissingData && !isLiveMatch) {
 		const missingItems = [];
-		if (!selectedMatch?.params) missingItems.push('calibration parameters');
-		if (!selectedMatch?.left_uniforms) missingItems.push('left camera uniforms');
-		if (!selectedMatch?.right_uniforms) missingItems.push('right camera uniforms');
+		if (!activeMatch?.params) missingItems.push('calibration parameters');
+		if (!activeMatch?.left_uniforms) missingItems.push('left camera uniforms');
+		if (!activeMatch?.right_uniforms) missingItems.push('right camera uniforms');
 
 		return (
 			<div className="flex items-center justify-center p-8">
@@ -317,8 +474,8 @@ const Viewer = ({ selectedMatch }) => {
 						</p>
 						<p className="text-sm text-muted-foreground">
 							Go back to the match list and click &quot;
-							{selectedMatch?.status === 'ready' ? 'Retry' : 'Process Now'}&quot; to{' '}
-							{selectedMatch?.status === 'ready' ? 're-' : ''}process this match.
+							{activeMatch?.status === 'ready' ? 'Retry' : 'Process Now'}&quot; to{' '}
+							{activeMatch?.status === 'ready' ? 're-' : ''}process this match.
 						</p>
 					</AlertDescription>
 				</Alert>
@@ -327,17 +484,17 @@ const Viewer = ({ selectedMatch }) => {
 	}
 
 	const defaultFOV = 75;
-	const cameraAxisOffset = selectedMatch.params.cameraAxisOffset;
+	const cameraAxisOffset = activeMatch?.params?.cameraAxisOffset ?? 0.7;
 
 	return (
 		<div className="w-full flex flex-col items-center gap-3 px-4 py-4">
 			{/* Warning Banner for failed calibration */}
-			{selectedMatch.status === 'warning' && (
+			{activeMatch.status === 'warning' && (
 				<div className="w-full max-w-6xl">
 					<Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
 						<AlertTitle className="text-yellow-700 dark:text-yellow-400">⚠️ Calibration Failed</AlertTitle>
 						<AlertDescription className="text-yellow-600 dark:text-yellow-300">
-							{selectedMatch.processing?.message ||
+							{activeMatch.processing?.message ||
 								'Could not find enough features to calibrate cameras. Using default alignment.'}{' '}
 							Use the Recalibrate panel below to try again with a different frame (look for frames with
 							visible grass, textures, or distinct features).
@@ -347,7 +504,49 @@ const Viewer = ({ selectedMatch }) => {
 			)}
 
 			{/* Video Title */}
-			<VideoTitle match={selectedMatch} />
+			<VideoTitle match={activeMatch} />
+
+			{isLiveMatch && (
+				<div className="w-full max-w-6xl">
+					<div className="bg-card border rounded-lg shadow-sm p-4">
+						<div className="flex flex-wrap items-center justify-between gap-3">
+							<div>
+								<h4 className="font-semibold">Live Profiles</h4>
+								<p className="text-xs text-muted-foreground">
+									Select lens profiles for the live stream. Recalibrate anytime after changes.
+								</p>
+							</div>
+							{isMissingData && (
+								<span className="text-xs text-amber-600">Select profiles to start rendering.</span>
+							)}
+						</div>
+						<div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div className="space-y-1">
+								<Label className="text-xs">Left Profile</Label>
+								<ProfileCombobox
+									value={liveLeftProfileId}
+									onChange={(profileId) => {
+										setLiveLeftProfileId(profileId);
+										updateLiveProfile('left', profileId);
+									}}
+									disabled={liveUpdatingSide === 'left'}
+								/>
+							</div>
+							<div className="space-y-1">
+								<Label className="text-xs">Right Profile</Label>
+								<ProfileCombobox
+									value={liveRightProfileId}
+									onChange={(profileId) => {
+										setLiveRightProfileId(profileId);
+										updateLiveProfile('right', profileId);
+									}}
+									disabled={liveUpdatingSide === 'right'}
+								/>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* 3D Viewer - Takes full width of parent */}
 			<ErrorBoundary FallbackComponent={ViewerErrorFallback}>
@@ -374,7 +573,7 @@ const Viewer = ({ selectedMatch }) => {
 			{/* Description Panel - Collapsible */}
 			<div className="w-full max-w-6xl">
 				<DescriptionPanel
-					match={selectedMatch}
+					match={activeMatch}
 					yawRange={yawRange}
 					pitchRange={pitchRange}
 					onYawChange={setYawRange}
@@ -391,14 +590,14 @@ const Viewer = ({ selectedMatch }) => {
 					onLeftChange={setLeftColorCorrection}
 					onRightChange={setRightColorCorrection}
 					onResetAll={resetColorCorrection}
-					matchId={selectedMatch?.id}
+					matchId={activeMatch?.id}
 					videoRef={videoRef}
 				/>
 			</div>
 
 			{/* Recalibrate - Collapsible */}
 			<div className="w-full max-w-6xl">
-				<RecalibratePanel match={selectedMatch} videoRef={videoRef} onRecalibrated={handleRecalibrated} />
+				<RecalibratePanel match={activeMatch} videoRef={videoRef} onRecalibrated={handleRecalibrated} />
 			</div>
 		</div>
 	);

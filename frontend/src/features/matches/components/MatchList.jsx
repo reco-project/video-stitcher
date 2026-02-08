@@ -8,13 +8,81 @@ import MatchCard from './MatchCard';
 
 export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessing, onEditMatch }) {
 	const { matches, loading, error, refetch } = useMatches();
-	const { delete: deleteMatch } = useMatchMutations();
+	const { delete: deleteMatch, create: createMatch, update: updateMatch } = useMatchMutations();
 	const [deleteError, setDeleteError] = React.useState(null);
 	const [deletingId, setDeletingId] = React.useState(null);
 	const [optimisticDeletes, setOptimisticDeletes] = React.useState(new Set());
+	const [liveEnsured, setLiveEnsured] = React.useState(false);
+	const liveSrc = 'live/playlist.m3u8';
 
 	// Filter out optimistically deleted matches and sort by most recent (ID descending)
-	const displayMatches = matches.filter((m) => !optimisticDeletes.has(m.id)).sort((a, b) => b.id.localeCompare(a.id));
+	const visibleMatches = matches.filter((m) => !optimisticDeletes.has(m.id));
+	const liveMatch = visibleMatches.find((m) => m.id === 'live');
+	const sortedMatches = visibleMatches.filter((m) => m.id !== 'live').sort((a, b) => b.id.localeCompare(a.id));
+	const displayMatches = liveMatch ? [liveMatch, ...sortedMatches] : sortedMatches;
+
+	React.useEffect(() => {
+		if (loading || liveEnsured) return;
+
+		const hasLive = matches.some((m) => m.id === 'live');
+		if (hasLive) {
+			const existingLive = matches.find((m) => m.id === 'live');
+			if (existingLive && existingLive.src !== liveSrc) {
+				updateMatch('live', { id: 'live', src: liveSrc })
+					.then(() => refetch())
+					.catch(() => {})
+					.finally(() => setLiveEnsured(true));
+				return;
+			}
+			setLiveEnsured(true);
+			return;
+		}
+
+		const baseMatch = [...matches]
+			.filter((m) => m.status === 'ready' || m.status === 'warning')
+			.sort((a, b) => b.id.localeCompare(a.id))[0];
+
+		const defaultParams = baseMatch?.params || {
+			cameraAxisOffset: 0.7,
+			intersect: 0.5,
+			xTy: 0.0,
+			xRz: 0.0,
+			zRx: 0.0,
+		};
+
+		const leftProfileId = baseMatch?.left_videos?.[0]?.profile_id || baseMatch?.metadata?.left_profile_id || null;
+		const rightProfileId =
+			baseMatch?.right_videos?.[0]?.profile_id || baseMatch?.metadata?.right_profile_id || null;
+
+		const livePayload = {
+			id: 'live',
+			name: 'Live',
+			src: liveSrc,
+			left_videos: [],
+			right_videos: [],
+			left_uniforms: baseMatch?.left_uniforms || null,
+			right_uniforms: baseMatch?.right_uniforms || null,
+			params: defaultParams,
+			metadata: {
+				...(baseMatch?.metadata || {}),
+				is_live: true,
+				left_profile_id: leftProfileId,
+				right_profile_id: rightProfileId,
+			},
+			processing: {
+				status: 'ready',
+				step: 'complete',
+				message: 'Live stream match',
+				error_message: null,
+				error_code: null,
+			},
+		};
+
+		createMatch(livePayload)
+			.then(() => refetch())
+			.catch(() => {})
+			.finally(() => setLiveEnsured(true));
+	}, [loading, liveEnsured, matches, createMatch, refetch]);
 
 	// Clear optimistic deletes when matches update (after refetch)
 	React.useEffect(() => {
@@ -204,9 +272,10 @@ export default function MatchList({ onSelectMatch, onCreateNew, onResumeProcessi
 											<Button
 												onClick={(e) => {
 													e.stopPropagation();
+													if (match.id === 'live') return;
 													handleDelete(match.id, match.name || 'Untitled');
 												}}
-												disabled={isDeleting}
+												disabled={isDeleting || match.id === 'live'}
 												variant="ghost"
 												size="sm"
 												className="text-red-600 hover:text-red-700 hover:bg-red-50"

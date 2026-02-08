@@ -31,6 +31,7 @@ import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
 import app.routers.settings as settings_router
+import app.routers.live as live_router
 
 # Fix for Windows: Use SelectorEventLoop instead of ProactorEventLoop
 # This prevents timeout issues when running uvicorn on Windows
@@ -143,6 +144,8 @@ app.dependency_overrides[matches_router.get_store] = get_match_store
 app.include_router(processing_router.router, prefix="/api", tags=["processing"])
 
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+
+app.include_router(live_router.router, tags=["live"])
 
 # Mount static files for video serving
 # Ensure the videos directory exists

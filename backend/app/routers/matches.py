@@ -109,7 +109,9 @@ def update_match(match_id: str, match: Dict, store: MatchStore = Depends(get_sto
         existing_dict = existing_match.model_dump(exclude_none=False)
 
         # Protected backend-managed fields that frontend should never overwrite
-        protected_fields = {'processing', 'src', 'params', 'transcode'}
+        protected_fields = {'processing', 'params', 'transcode'}
+        if match_id != 'live':
+            protected_fields.add('src')
 
         # Merge incoming updates, skipping protected fields
         for key, value in match.items():
