@@ -405,9 +405,9 @@ jobs:
         if: matrix.platform == 'darwin'
         uses: actions/upload-artifact@v4
         with:
-          name: macos-installer
+          name: macos-installer-${{ matrix.arch }}
           path: |
-            out/make/zip/darwin/arm64/*.zip
+            out/make/zip/darwin/${{ matrix.arch }}/*.zip
             out/make/latest-mac.yml
           retention-days: 7
 
@@ -433,7 +433,8 @@ jobs:
           files: |
             artifacts/linux-installers/**/*
             artifacts/windows-installer/**/*
-            artifacts/macos-installer/**/*
+            artifacts/macos-installer-arm64/**/*
+            artifacts/macos-installer-x64/**/*
           draft: ${{ github.event_name == 'workflow_dispatch' }}
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
