@@ -5,20 +5,16 @@ import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'node:child_process';
 import { platform } from 'node:os';
 
-// CRITICAL: Handle Squirrel events FIRST on Windows before any other code
-// This must happen synchronously at startup to prevent double-launching
+// Handle Squirrel events on Windows
 if (platform() === 'win32') {
 	try {
-		// Use dynamic import but handle synchronously for Squirrel
 		const squirrelStartup = await import('electron-squirrel-startup');
 		if (squirrelStartup.default) {
 			app.quit();
-			// Force immediate exit to prevent any further execution
 			process.exit(0);
 		}
 	} catch (e) {
-		// Package not available in dev mode, ignore
-		console.log('[Squirrel] electron-squirrel-startup not available:', e.message);
+		// Package not available in dev mode
 	}
 }
 
@@ -119,9 +115,14 @@ function startBackend() {
 		spawnArgs = ['-m', 'app.main'];
 		ffmpegBinDir = join(backendDir, 'bin');
 	} else {
-		// Production: PyInstaller executable is in resources/dist_bundle
+		// Production: PyInstaller executable is in dist_bundle
+		// With asar enabled (unpack pattern for dist_bundle), check app.asar.unpacked first
 		const resourcesPath = process.resourcesPath; // Points to app/resources
-		backendDir = join(resourcesPath, 'dist_bundle');
+		const asarUnpackedPath = join(resourcesPath, 'app.asar.unpacked', 'dist_bundle');
+		const legacyPath = join(resourcesPath, 'dist_bundle');
+		
+		// Check asar unpacked location first, then fall back to legacy location
+		backendDir = existsSync(asarUnpackedPath) ? asarUnpackedPath : legacyPath;
 		backendExe = isWin
 			? join(backendDir, 'backend_server.exe')
 			: join(backendDir, 'backend_server');

@@ -48,20 +48,20 @@ function getFileSize(filePath) {
  */
 function generateLatestYml(outputPath, files, releaseDate = new Date().toISOString()) {
     const mainFile = files[0]; // First file is the main installer
-    
+
     let content = `version: ${version}\n`;
     content += `files:\n`;
-    
+
     files.forEach(file => {
         content += `  - url: ${file.name}\n`;
         content += `    sha512: ${file.sha512}\n`;
         content += `    size: ${file.size}\n`;
     });
-    
+
     content += `path: ${mainFile.name}\n`;
     content += `sha512: ${mainFile.sha512}\n`;
     content += `releaseDate: '${releaseDate}'\n`;
-    
+
     fs.writeFileSync(outputPath, content, 'utf8');
     console.log(`Generated: ${outputPath}`);
 }
@@ -74,32 +74,32 @@ function processArtifacts(makeDir, outputYmlPath, filePatterns) {
         console.warn(`Warning: ${makeDir} does not exist, skipping`);
         return false;
     }
-    
+
     const files = [];
-    
+
     for (const pattern of filePatterns) {
         const matches = findFiles(makeDir, pattern);
         for (const match of matches) {
             const relativeName = path.basename(match);
             const sha512 = calculateSha512(match);
             const size = getFileSize(match);
-            
+
             files.push({
                 name: relativeName,
                 sha512: sha512,
                 size: size,
                 path: match
             });
-            
+
             console.log(`  Found: ${relativeName} (${size} bytes)`);
         }
     }
-    
+
     if (files.length === 0) {
         console.warn(`Warning: No files found matching patterns in ${makeDir}`);
         return false;
     }
-    
+
     generateLatestYml(outputYmlPath, files);
     return true;
 }
@@ -109,15 +109,15 @@ function processArtifacts(makeDir, outputYmlPath, filePatterns) {
  */
 function findFiles(dir, pattern) {
     const results = [];
-    
+
     function search(currentDir) {
         if (!fs.existsSync(currentDir)) return;
-        
+
         const entries = fs.readdirSync(currentDir, { withFileTypes: true });
-        
+
         for (const entry of entries) {
             const fullPath = path.join(currentDir, entry.name);
-            
+
             if (entry.isDirectory()) {
                 search(fullPath);
             } else if (entry.isFile()) {
@@ -127,7 +127,7 @@ function findFiles(dir, pattern) {
             }
         }
     }
-    
+
     search(dir);
     return results;
 }

@@ -5,7 +5,9 @@ const { VitePlugin } = require('@electron-forge/plugin-vite');
 
 module.exports = {
   packagerConfig: {
-    asar: false, // Disable asar - PyInstaller bundle needs direct filesystem access
+    asar: {
+      unpack: '**/dist_bundle/**/*', // Unpack PyInstaller backend - needs direct filesystem access
+    },
     name: 'Video Stitcher',
     executableName: 'video-stitcher',
     icon: path.join(__dirname, 'resources', 'icon'),
@@ -43,6 +45,7 @@ module.exports = {
         /^\/frontend/,       // Frontend source (Vite builds to .vite)
         /^\/scripts/,
         /^\/docs/,
+        /^\/devData/,        // Development data (large videos/test files)
         /^\/\.git/,
         /^\/\.github/,
         /^\/node_modules/,
@@ -97,7 +100,6 @@ exec "$DIR/video-stitcher.bin" "$@"
       config: {
         name: 'VideoStitcher',
         setupIcon: path.join(__dirname, 'resources', 'icon.ico'),
-        // Creates Setup.exe installer
         authors: 'Mohamed Taha GUELZIM',
         description: 'Professional video stitching application',
       },
