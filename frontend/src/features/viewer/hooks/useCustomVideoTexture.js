@@ -11,8 +11,8 @@ import { env } from '@/config/env';
  */
 const resolveVideoUrl = (src) => {
 	if (!src) return src;
-	// If already an absolute URL, return as-is
-	if (src.startsWith('http://') || src.startsWith('https://')) {
+	// If already an absolute URL or blob URL, return as-is
+	if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('blob:') || src.startsWith('/')) {
 		return src;
 	}
 	// Convert relative path to backend URL
