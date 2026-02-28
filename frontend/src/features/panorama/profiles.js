@@ -65,25 +65,26 @@ const profiles = {
 	},
 	reolink_duo3: {
 		label: 'Reolink Duo 3 PoE',
-		width: 4608,
-		height: 1728,
+		width: 1280,
+		height: 360,
 		splitHalf: false,
 		splitPoint: 0.5,
 		blendWidth: 0,
-		// Placeholder -- needs real calibration
+		// Cylindrical correction handled by half-cylinder geometry.
+		// d=[0,0,0,0] = no residual barrel correction.
 		left: {
-			fx: 4608,
-			fy: 1728,
-			cx: 2304,
-			cy: 864,
-			d: [0.3, -0.05, 0, 0],
+			fx: 1280,
+			fy: 360,
+			cx: 640,
+			cy: 180,
+			d: [0, 0, 0, 0],
 		},
 		right: {
-			fx: 4608,
-			fy: 1728,
-			cx: 2304,
-			cy: 864,
-			d: [0.3, -0.05, 0, 0],
+			fx: 1280,
+			fy: 360,
+			cx: 640,
+			cy: 180,
+			d: [0, 0, 0, 0],
 		},
 	},
 };
