@@ -10,6 +10,7 @@ import ProcessingMatch from './routes/ProcessingMatch';
 import MatchViewer from './routes/MatchViewer';
 import Profiles from './routes/Profiles';
 import NotFound from './routes/NotFound';
+import PanoramaViewer from '@/features/panorama/PanoramaViewer';
 
 // Use HashRouter for Electron (file:// protocol) and BrowserRouter for dev server
 const isElectron = window.location.protocol === 'file:';
@@ -49,6 +50,11 @@ const paths = {
 		build: () => '/profiles',
 		title: 'Settings',
 	},
+	panorama: {
+		pattern: '/panorama',
+		build: () => '/panorama',
+		title: 'Panorama',
+	},
 };
 
 /**
@@ -68,6 +74,7 @@ export const useNavigateTo = () => {
 		toProcessing: (id) => navigate(paths.processing.build(id)),
 		toViewer: (id) => navigate(paths.viewer.build(id)),
 		toProfiles: () => navigate(paths.profiles.build()),
+		toPanorama: () => navigate(paths.panorama.build()),
 	};
 };
 
@@ -117,6 +124,14 @@ const routes = [
 		element: (
 			<AppLayout>
 				<Profiles />
+			</AppLayout>
+		),
+	},
+	{
+		path: paths.panorama.pattern,
+		element: (
+			<AppLayout>
+				<PanoramaViewer />
 			</AppLayout>
 		),
 	},
