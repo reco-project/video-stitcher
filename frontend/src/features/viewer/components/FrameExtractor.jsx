@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { Hls, isSupported } from 'hls.js';
 import fisheyeShader from '../shaders/fisheye.js';
 import { formatUniforms } from '../utils/utils.js';
 
@@ -118,6 +119,9 @@ const FrameExtractor = ({
 		const video = videoRef.current;
 		if (!video) return;
 
+		const isHls = typeof videoSrc === 'string' && /\.m3u8($|\?)/i.test(videoSrc);
+		let hls;
+
 		let videoTexture = null;
 
 		const createTexture = () => {
@@ -144,7 +148,13 @@ const FrameExtractor = ({
 		const handleLoadedMetadata = () => {
 			video.pause();
 			// Use explicit frameTime if provided, otherwise calculate from percentage
-			const targetTime = frameTime != null ? frameTime : Math.floor(video.duration * frameTimePercent);
+			let targetTime = frameTime != null ? frameTime : Math.floor(video.duration * frameTimePercent);
+			if (video.seekable && video.seekable.length > 0) {
+				const start = video.seekable.start(0);
+				const end = video.seekable.end(0);
+				const clamped = Math.min(Math.max(targetTime, start), Math.max(start, end - 0.1));
+				targetTime = Number.isFinite(clamped) ? clamped : targetTime;
+			}
 			setComputedFrameTime(targetTime);
 			video.currentTime = targetTime;
 		};
@@ -159,10 +169,36 @@ const FrameExtractor = ({
 		video.addEventListener('seeked', handleSeeked);
 		video.addEventListener('error', handleError);
 
+		if (isHls) {
+			if (isSupported()) {
+				hls = new Hls({
+					enableWorker: true,
+					lowLatencyMode: true,
+					backBufferLength: 90,
+				});
+				hls.attachMedia(video);
+				hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+					hls.loadSource(videoSrc);
+				});
+			} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+				video.src = videoSrc;
+			} else {
+				handleError(new Error('HLS not supported'));
+			}
+		} else {
+			video.src = videoSrc;
+		}
+
 		// If already loaded, seek
 		if (video.readyState >= 1) {
 			video.pause();
-			const targetTime = frameTime != null ? frameTime : Math.floor(video.duration * frameTimePercent);
+			let targetTime = frameTime != null ? frameTime : Math.floor(video.duration * frameTimePercent);
+			if (video.seekable && video.seekable.length > 0) {
+				const start = video.seekable.start(0);
+				const end = video.seekable.end(0);
+				const clamped = Math.min(Math.max(targetTime, start), Math.max(start, end - 0.1));
+				targetTime = Number.isFinite(clamped) ? clamped : targetTime;
+			}
 			setComputedFrameTime(targetTime);
 			video.currentTime = targetTime;
 		}
@@ -172,11 +208,14 @@ const FrameExtractor = ({
 			video.removeEventListener('canplay', handleCanplay);
 			video.removeEventListener('seeked', handleSeeked);
 			video.removeEventListener('error', handleError);
+			if (hls) {
+				hls.destroy();
+			}
 			if (videoTexture) {
 				videoTexture.dispose();
 			}
 		};
-	}, [frameTime, frameTimePercent, onError]);
+	}, [frameTime, frameTimePercent, videoSrc, onError]);
 
 	// Handle frame capture
 	const handleCapture = useCallback(

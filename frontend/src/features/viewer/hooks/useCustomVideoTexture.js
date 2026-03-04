@@ -106,6 +106,7 @@ export const useCustomVideoTexture = (src, options = {}) => {
 		video.crossOrigin = 'anonymous';
 		video.preload = 'auto';
 		video.playsInline = true;
+		video.muted = true;
 
 		const videoTexture = new THREE.VideoTexture(video);
 		videoTexture.minFilter = THREE.LinearFilter;
@@ -120,22 +121,75 @@ export const useCustomVideoTexture = (src, options = {}) => {
 		const tryPlay = () => {
 			if (autoPlay) {
 				const p = video.play();
-				if (p && typeof p.then === 'function') p.catch(() => {});
+				if (p && typeof p.then === 'function') p.catch(() => { });
 			}
 		};
+
+		const handleVideoError = (event) => {
+			console.warn('[Video] element error', event);
+		};
+
+		video.addEventListener('error', handleVideoError);
 
 		if (isHls) {
 			if (isSupported()) {
 				hls = new Hls({
 					enableWorker: true,
-					lowLatencyMode: true,
-					backBufferLength: 90,
+					lowLatencyMode: false,
+					startPosition: -1,
+					backBufferLength: 10,
+					maxBufferLength: 15,
+					maxMaxBufferLength: 30,
+					maxBufferSize: 30 * 1000 * 1000,
+					maxBufferHole: 0.5,
+					liveSyncDurationCount: 3,
+					liveMaxLatencyDurationCount: 6,
+					maxLiveSyncPlaybackRate: 1.0,
+					fragLoadingTimeOut: 20000,
+					fragLoadingMaxRetry: 6,
+					fragLoadingRetryDelay: 1000,
+					fragLoadingMaxRetryTimeout: 30000,
+					// Disable stall detection to prevent aggressive recovery loops
+					highBufferWatchdogPeriod: 0,
 				});
 				hls.attachMedia(video);
 				hls.on(Hls.Events.MEDIA_ATTACHED, () => {
 					hls.loadSource(videoUrl);
 				});
 				hls.on(Hls.Events.MANIFEST_PARSED, tryPlay);
+				let mediaErrorRecoveryAttempts = 0;
+				hls.on(Hls.Events.ERROR, (_event, data) => {
+					// Only log fatal errors to reduce spam
+					if (data?.fatal) {
+						console.warn('[HLS] fatal error', data);
+					}
+					// Handle bufferAppendError specifically - it's common with live streams
+					if (data?.details === 'bufferAppendError') {
+						if (mediaErrorRecoveryAttempts < 3) {
+							mediaErrorRecoveryAttempts++;
+							console.log(`[HLS] bufferAppendError, attempting recovery ${mediaErrorRecoveryAttempts}/3`);
+							hls.recoverMediaError();
+						} else {
+							// Reset and try fresh load
+							console.log('[HLS] bufferAppendError persists, restarting stream');
+							mediaErrorRecoveryAttempts = 0;
+							hls.stopLoad();
+							setTimeout(() => {
+								hls.startLoad(-1);
+							}, 1000);
+						}
+						return;
+					}
+					if (data?.fatal) {
+						if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+							hls.startLoad();
+						} else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+							hls.recoverMediaError();
+						} else {
+							hls.destroy();
+						}
+					}
+				});
 			} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
 				// TODO: check if this code is valid/reachable
 				video.src = videoUrl; // Safari
@@ -171,6 +225,7 @@ export const useCustomVideoTexture = (src, options = {}) => {
 					console.warn('Error unmounting video:', error);
 				}
 			}
+			video.removeEventListener('error', handleVideoError);
 			clearVideoRef();
 			videoTexture.dispose();
 		};

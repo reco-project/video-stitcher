@@ -2,9 +2,10 @@
 
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 import sys
 import os
@@ -31,6 +32,7 @@ import app.routers.profiles as profiles_router
 import app.routers.matches as matches_router
 import app.routers.processing as processing_router
 import app.routers.settings as settings_router
+import app.routers.live as live_router
 
 # Fix for Windows: Use SelectorEventLoop instead of ProactorEventLoop
 # This prevents timeout issues when running uvicorn on Windows
@@ -123,6 +125,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Video Stitcher Backend", lifespan=lifespan)
 
+
+class LiveNoCacheMiddleware(BaseHTTPMiddleware):
+    """Disable caching for live HLS content to prevent 304 responses."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Disable caching for live HLS content
+        if request.url.path.startswith("/videos/live/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
+# Add live no-cache middleware (must be before CORS)
+app.add_middleware(LiveNoCacheMiddleware)
+
 # Allow requests from Electron frontend
 app.add_middleware(
     CORSMiddleware,
@@ -143,6 +161,8 @@ app.dependency_overrides[matches_router.get_store] = get_match_store
 app.include_router(processing_router.router, prefix="/api", tags=["processing"])
 
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+
+app.include_router(live_router.router, tags=["live"])
 
 # Mount static files for video serving
 # Ensure the videos directory exists
