@@ -121,7 +121,7 @@ export const useCustomVideoTexture = (src, options = {}) => {
 		const tryPlay = () => {
 			if (autoPlay) {
 				const p = video.play();
-				if (p && typeof p.then === 'function') p.catch(() => { });
+				if (p && typeof p.then === 'function') p.catch(() => {});
 			}
 		};
 

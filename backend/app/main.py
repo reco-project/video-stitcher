@@ -128,6 +128,7 @@ app = FastAPI(title="Video Stitcher Backend", lifespan=lifespan)
 
 class LiveNoCacheMiddleware(BaseHTTPMiddleware):
     """Disable caching for live HLS content to prevent 304 responses."""
+
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         # Disable caching for live HLS content

@@ -23,6 +23,7 @@
 </p>
 
 ---
+
 ## Why Reco Exists
 
 Modern sports camera systems like Veo and Pixellot provide powerful automated filming, but they are often expensive and tied to proprietary hardware and subscriptions.
@@ -91,12 +92,12 @@ The next generation of Reco Video Stitcher is being built around a **Rust-based 
 
 Core technologies:
 
-| Layer | Technology |
-|------|-------------|
-| Core engine | Rust |
-| GPU rendering | wgpu |
-| Desktop application | Tauri |
-| CLI tool | `reco` |
+| Layer               | Technology |
+| ------------------- | ---------- |
+| Core engine         | Rust       |
+| GPU rendering       | wgpu       |
+| Desktop application | Tauri      |
+| CLI tool            | `reco`     |
 
 The new architecture will look like:
 
@@ -104,7 +105,7 @@ The new architecture will look like:
 
 decode → synchronize → stitch → render → encode
 
-````
+```
 
 This design enables:
 
@@ -151,7 +152,7 @@ cd video-stitcher
 
 npm run setup
 npm run dev
-````
+```
 
 The app will launch with the Electron desktop interface, React frontend, and FastAPI backend running together.
 
@@ -178,9 +179,9 @@ video-stitcher/
 
 ## Documentation
 
-* [Backend API](backend/README.md) — API endpoints and development guide
-* [Telemetry](docs/TELEMETRY.md) — Privacy-focused, opt-in analytics
-* [Releases & Auto-Updates](docs/RELEASES.md) — Release workflow and updates
+- [Backend API](backend/README.md) — API endpoints and development guide
+- [Telemetry](docs/TELEMETRY.md) — Privacy-focused, opt-in analytics
+- [Releases & Auto-Updates](docs/RELEASES.md) — Release workflow and updates
 
 ---
 
@@ -188,10 +189,10 @@ video-stitcher/
 
 This app can include **optional, opt-in telemetry** to help improve the software:
 
-* Disabled by default
-* No personal data, filenames, or video content collected
-* All data stored locally first
-* Can be enabled or disabled anytime in Settings
+- Disabled by default
+- No personal data, filenames, or video content collected
+- All data stored locally first
+- Can be enabled or disabled anytime in Settings
 
 See [TELEMETRY.md](docs/TELEMETRY.md) for full details.
 
@@ -211,18 +212,18 @@ Contributions are welcome!
 
 Whether you're a developer, designer, coach, or camera enthusiast:
 
-* 🐛 Report bugs or request features via [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
-* 💬 Join discussions on the [Reco Project Forum](https://forum.reco-project.org)
-* 🔧 Submit pull requests
+- 🐛 Report bugs or request features via [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
+- 💬 Join discussions on the [Reco Project Forum](https://forum.reco-project.org)
+- 🔧 Submit pull requests
 
 ---
 
 ## Contact
 
-* **Website:** [https://reco-project.org](https://reco-project.org)
-* **Forum:** [https://forum.reco-project.org](https://forum.reco-project.org)
-* **Email:** [mohamedtahaguelzim@gmail.com](mailto:mohamedtahaguelzim@gmail.com)
-* **GitHub:** [https://github.com/reco-project/video-stitcher](https://github.com/reco-project/video-stitcher)
+- **Website:** [https://reco-project.org](https://reco-project.org)
+- **Forum:** [https://forum.reco-project.org](https://forum.reco-project.org)
+- **Email:** [mohamedtahaguelzim@gmail.com](mailto:mohamedtahaguelzim@gmail.com)
+- **GitHub:** [https://github.com/reco-project/video-stitcher](https://github.com/reco-project/video-stitcher)
 
 ---
 
