@@ -511,7 +511,13 @@ def _get_available_encoders() -> List[str]:
     Returns:
         List of available encoder names
     """
-    encoders = ["h264_nvenc", "h264_qsv", "h264_amf"]
+    encoders = [
+        "h264_nvenc",        # NVIDIA NVENC (Linux/Windows)
+        "h264_qsv",          # Intel Quick Sync
+        "h264_amf",          # AMD AMF (Windows primarily)
+        "h264_vaapi",        # Linux VAAPI (Intel/AMD)
+        "h264_videotoolbox", # macOS hardware encoder
+    ]
     available = []
 
     logger.info("Testing GPU encoders availability...")
