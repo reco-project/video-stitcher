@@ -23,6 +23,20 @@
 </p>
 
 ---
+## Why Reco Exists
+
+Modern sports camera systems like Veo and Pixellot provide powerful automated filming, but they are often expensive and tied to proprietary hardware and subscriptions.
+
+Reco aims to explore a different approach:
+
+- open-source software
+- hardware flexibility
+- local processing
+- community-driven innovation
+
+The long-term goal is to build an **open platform for sports video capture and analysis**.
+
+---
 
 ## Project Status
 
