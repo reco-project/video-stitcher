@@ -5,7 +5,7 @@
 <h1 align="center">Reco Video Stitcher</h1>
 
 <p align="center">
-  <strong>Open-source, GPU-accelerated video stitching for sports filming</strong>
+  <strong>Open-source panoramic sports camera software</strong>
 </p>
 
 <p align="center">
@@ -19,22 +19,48 @@
 </p>
 
 <p align="center">
-  An open-source alternative to <a href="https://www.veo.co/">Veo</a> — stitch two camera feeds into a seamless panoramic view without subscriptions.
+  A GPU-first open-source solution for sports filming</a>. Stitch two camera feeds into a seamless panoramic sports view without subscriptions.
 </p>
 
 ---
 
-## ✨ Features
+## Project Status
+
+Reco Video Stitcher is currently undergoing a [**major rewrite**](https://forum.reco-project.org/t/v2-rebuilding-for-something-better/10)
+
+The current version (Electron + React + Python) was built as an **early prototype** to validate the concept of an open-source sports camera system.
+
+While the prototype works, the architecture makes it difficult to extend and maintain.
+
+Because of this, development is shifting toward **Video Stitcher v2**, a new architecture built in **Rust with a GPU-first pipeline**. This transition had been planned from the beginning, even before the v1 prototype.
+
+The goal of v2 is to provide:
+
+- significantly faster processing
+- a cleaner media pipeline
+- real-time stitching capabilities
+- a better foundation for future features like tracking and live streaming
+
+The existing Python/Electron version should be considered **experimental and unstable**.
+
+Future development will focus on the new Rust-based engine.
+
+Follow development progress and discussions on the [forum](https://forum.reco-project.org).
+
+---
+
+## Features (Prototype v1)
 
 - **GPU-Accelerated Stitching** — Real-time panoramic rendering using WebGL and Three.js shaders
 - **Automatic Calibration** — Feature matching and position optimization for seamless blending
 - **Lens Profile Support** — Pre-built profiles for GoPro, DJI, Insta360, Sony, and more
 - **Works with Any Camera** — Use action cameras, DSLRs, or even mobile devices
-- **Cross-Platform** — Native desktop app for Windows, macOS, and Linux
-- **Auto-Updates** — Automatic update checks keep your app current with the latest features and fixes
-- **No Subscriptions** — One-time setup, no recurring fees, your data stays local
+- **Cross-Platform Desktop App** — Windows, macOS, and Linux
+- **No Subscriptions** — One-time setup, your data stays local
 
-## 🎬 How It Works
+---
+
+## How It Works
 
 1. **Import Videos** — Select your left and right camera recordings
 2. **Assign Lens Profiles** — Choose calibration profiles for each camera
@@ -43,38 +69,81 @@
 
 The processing pipeline combines backend video processing (FFmpeg + OpenCV) with frontend GPU rendering (Three.js) for optimal performance.
 
-## 🚀 Getting Started
+---
+
+## Video Stitcher v2 (In Development)
+
+The next generation of Reco Video Stitcher is being built around a **Rust-based GPU pipeline**.
+
+Core technologies:
+
+| Layer | Technology |
+|------|-------------|
+| Core engine | Rust |
+| GPU rendering | wgpu |
+| Desktop application | Tauri |
+| CLI tool | `reco` |
+
+The new architecture will look like:
+
+```
+
+decode → synchronize → stitch → render → encode
+
+````
+
+This design enables:
+
+- faster exports
+- real-time stitching
+- improved stability
+- easier future extensions
+- better cross-platform support
+
+Development is currently in the early stages.
+
+---
+
+## Roadmap
+
+**v1 (prototype)**  
+Electron + React + Python implementation used to validate the concept.
+
+**v2 (in development)**  
+Rust-based stitching engine using wgpu and a Tauri desktop application.
+
+**Future directions**
+
+- automatic ball tracking
+- live streaming
+- mobile companion app
+- plugin ecosystem
+
+---
+
+## Getting Started (Prototype v1)
 
 ### Prerequisites
 
 - **Node.js** 20+ and npm
 - **Python** 3.10+ (3.11+ recommended)
-- **FFmpeg** (automatically downloaded during setup)
+- **FFmpeg** (should be accessible through PATH)
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/reco-project/video-stitcher.git
 cd video-stitcher
 
-# Install all dependencies (frontend, backend, electron)
 npm run setup
-
-# Start the development environment
 npm run dev
-```
+````
 
 The app will launch with the Electron desktop interface, React frontend, and FastAPI backend running together.
 
-### Building for Production
+---
 
-```bash
-# Package the app for your platform
-npm run electron-make
-```
-
-## 🏗️ Architecture
+## Architecture (Prototype v1)
 
 ```
 video-stitcher/
@@ -85,49 +154,67 @@ video-stitcher/
 └── scripts/           # Build and development utilities
 ```
 
-| Component    | Technology               | Purpose                               |
-| ------------ | ------------------------ | ------------------------------------- |
-| **Frontend** | React, Three.js, Vite    | UI, WebGL stitching, frame extraction |
-| **Backend**  | FastAPI, OpenCV, FFmpeg  | Video transcoding, feature matching   |
-| **Desktop**  | Electron, Electron Forge | Cross-platform native app             |
+| Component | Technology              | Purpose                           |
+| --------- | ----------------------- | --------------------------------- |
+| Frontend  | React, Three.js, Vite   | UI, WebGL stitching               |
+| Backend   | FastAPI, OpenCV, FFmpeg | Video transcoding and calibration |
+| Desktop   | Electron                | Cross-platform application        |
 
-## 📖 Documentation
+---
 
-- [Backend API](backend/README.md) — API endpoints and development guide
-- [Telemetry](docs/TELEMETRY.md) — Privacy-focused, opt-in analytics
-- [Releases & Auto-Updates](docs/RELEASES.md) — How releases work and auto-update system
+## Documentation
 
-## 🔒 Privacy & Telemetry
+* [Backend API](backend/README.md) — API endpoints and development guide
+* [Telemetry](docs/TELEMETRY.md) — Privacy-focused, opt-in analytics
+* [Releases & Auto-Updates](docs/RELEASES.md) — Release workflow and updates
 
-This app includes **optional, opt-in telemetry** to help improve the software:
+---
 
-- Disabled by default
-- No personal data, filenames, or video content collected
-- All data stored locally first
-- Can be enabled/disabled anytime in Settings
+## Privacy & Telemetry
+
+This app can include **optional, opt-in telemetry** to help improve the software:
+
+* Disabled by default
+* No personal data, filenames, or video content collected
+* All data stored locally first
+* Can be enabled or disabled anytime in Settings
 
 See [TELEMETRY.md](docs/TELEMETRY.md) for full details.
 
-## 📄 License
+---
 
-Licensed under **[AGPL-3.0](LICENSE)** — all derived versions must remain open-source.
+## License
 
-## 🤝 Contributing
+Licensed under **AGPL-3.0** — all derived versions must remain open-source.
 
-Contributions are welcome! Whether you're a developer, designer, coach, or camera enthusiast:
-
-- 🐛 Report bugs and request features via [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
-- 💬 Join the discussion on the [Reco Project Forum](https://forum.reco-project.org)
-- 🔧 Submit pull requests for improvements
-
-## 📬 Contact
-
-- **Website:** [reco-project.org](https://reco-project.org)
-- **Forum:** [forum.reco-project.org](https://forum.reco-project.org)
-- **Email:** mohamedtahaguelzim@gmail.com
-- **GitHub:** [reco-project/video-stitcher](https://github.com/reco-project/video-stitcher)
+See [LICENSE](LICENSE) for details.
 
 ---
+
+## Contributing
+
+Contributions are welcome!
+
+Whether you're a developer, designer, coach, or camera enthusiast:
+
+* 🐛 Report bugs or request features via [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
+* 💬 Join discussions on the [Reco Project Forum](https://forum.reco-project.org)
+* 🔧 Submit pull requests
+
+---
+
+## Contact
+
+* **Website:** [https://reco-project.org](https://reco-project.org)
+* **Forum:** [https://forum.reco-project.org](https://forum.reco-project.org)
+* **Email:** [mohamedtahaguelzim@gmail.com](mailto:mohamedtahaguelzim@gmail.com)
+* **GitHub:** [https://github.com/reco-project/video-stitcher](https://github.com/reco-project/video-stitcher)
+
+---
+
+<p align="center">
+  ⭐ Star the project to follow the development of the Rust rewrite
+</p>
 
 <p align="center">
   Made with ❤️ for the sports filming community
