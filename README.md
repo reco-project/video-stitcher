@@ -96,7 +96,7 @@ Core technologies:
 | ------------------- | ---------- |
 | Core engine         | Rust       |
 | GPU rendering       | wgpu       |
-| Desktop application | Tauri      |
+| Desktop application | Not sure   |
 | CLI tool            | `reco`     |
 
 The new architecture will look like:
