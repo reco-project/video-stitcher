@@ -331,16 +331,27 @@ def transcode_and_stack(
 
         if progress_callback:
             progress_callback({'stage': 'audio_extraction', 'message': 'Extracting audio from left video...'})
-        _extract_audio(video1_path, audio1_path)
+        try:
+            _extract_audio(video1_path, audio1_path)
+        except RuntimeError:
+            audio1_path = None
 
         if progress_callback:
             progress_callback({'stage': 'audio_extraction', 'message': 'Extracting audio from right video...'})
-        _extract_audio(video2_path, audio2_path)
+        try:
+            _extract_audio(video2_path, audio2_path)
+        except RuntimeError:
+            audio2_path = None
 
         # Compute synchronization offset
-        if progress_callback:
-            progress_callback({'stage': 'audio_sync', 'message': 'Computing audio synchronization...'})
-        offset = _compute_offset(audio1_path, audio2_path)
+        if audio1_path and audio2_path:
+            if progress_callback:
+                progress_callback({'stage': 'audio_sync', 'message': 'Computing audio synchronization...'})
+            offset = _compute_offset(audio1_path, audio2_path)
+        else:
+            if progress_callback:
+                progress_callback({'stage': 'audio_sync', 'message': 'No audio stream found, using offset 0...'})
+            offset = 0.0
 
         if progress_callback:
             progress_callback(
