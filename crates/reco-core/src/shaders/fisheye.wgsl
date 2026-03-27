@@ -13,7 +13,9 @@ struct Uniforms {
     lab_scale: vec4<f32>,
     // Reinhard LAB color transfer: offset.xyz, blend_width
     lab_offset_blend: vec4<f32>,
-    // flags.x: is_right (0 or 1), flags.yzw: reserved
+    // flags.x: is_right (0 or 1)
+    // flags.y: use_nv12 (0 = YUV420P: separate U,V textures; 1 = NV12: interleaved UV in t_u)
+    // flags.zw: reserved
     flags: vec4<u32>,
 };
 
@@ -130,17 +132,32 @@ fn apply_reinhard_lab(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> ve
 
 // ---- YUV → RGB conversion ----
 
-/// Sample YUV420P textures and convert to linear RGB via BT.709.
+/// Sample YUV textures and convert to linear RGB via BT.709.
 ///
-/// The Y/U/V planes are stored as R8Unorm textures (byte → [0,1]).
+/// Supports two input layouts (selected by `u.flags.y`):
+///   0 = YUV420P: separate R8 textures for Y, U, V (software decode)
+///   1 = NV12: R8 Y texture + Rg8 UV texture with interleaved U,V (NVDEC)
+///
 /// H.264 uses limited range (Y: 16–235, Cb/Cr: 16–240).
 /// After the BT.709 matrix, we get sRGB-like gamma values, which
 /// we linearize with srgb_to_linear to match the Rgba8UnormSrgb
 /// auto-decode path (identical visual output to the old RGBA upload).
 fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
     let y_raw = textureSample(t_y, s_video, uv).r;
-    let u_raw = textureSample(t_u, s_video, uv).r;
-    let v_raw = textureSample(t_v, s_video, uv).r;
+
+    var u_raw: f32;
+    var v_raw: f32;
+
+    if u.flags.y == 1u {
+        // NV12: t_u is Rg8Unorm with interleaved (U, V)
+        let uv_sample = textureSample(t_u, s_video, uv);
+        u_raw = uv_sample.r;
+        v_raw = uv_sample.g;
+    } else {
+        // YUV420P: separate R8 textures
+        u_raw = textureSample(t_u, s_video, uv).r;
+        v_raw = textureSample(t_v, s_video, uv).r;
+    }
 
     // BT.709 limited-range YCbCr → full-range R'G'B'
     let y = (y_raw - 16.0 / 255.0) * (255.0 / 219.0);

@@ -49,6 +49,28 @@ pub enum DecodeError {
     NoVideoStream,
 }
 
+/// A decoded NV12 frame still on the GPU (CUDA device memory).
+///
+/// Contains CUDA device pointers and strides for the Y and UV planes.
+/// These pointers are only valid until the next decode call — the caller
+/// must copy the data (via `cuMemcpy2D`) before calling `next_frame_gpu()` again.
+pub struct GpuFrame {
+    /// CUDA device pointer to the Y (luma) plane.
+    pub y_ptr: u64,
+    /// CUDA device pointer to the UV (chroma) plane (NV12 interleaved).
+    pub uv_ptr: u64,
+    /// Row stride (pitch) of the Y plane in bytes.
+    pub y_pitch: usize,
+    /// Row stride (pitch) of the UV plane in bytes.
+    pub uv_pitch: usize,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+    /// Presentation timestamp in microseconds.
+    pub timestamp_us: i64,
+}
+
 /// A decoded YUV420P frame with timestamp.
 ///
 /// Contains tightly-packed plane data (no stride padding):
@@ -282,6 +304,90 @@ impl VideoDecoder {
                 }
                 return Ok(None);
             }
+        }
+    }
+
+    /// Decode the next frame and return raw GPU (CUDA) pointers.
+    ///
+    /// Only valid when the backend is [`DecodeBackend::Cuda`]. Returns the
+    /// NV12 frame's CUDA device pointers (Y + interleaved UV) and their
+    /// pitches. The caller must copy via `cuMemcpy2D` before calling this
+    /// method again, as the pointers are reused by the decoder.
+    ///
+    /// Falls back to [`Self::next_frame`] for non-CUDA backends.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "decode_frame_gpu")
+    )]
+    pub fn next_frame_gpu(&mut self) -> Result<Option<GpuFrame>, DecodeError> {
+        if self.backend != DecodeBackend::Cuda {
+            // Fallback: decode to CPU and return None to signal "no GPU frame"
+            return Ok(None);
+        }
+
+        if self.eof_sent {
+            return Ok(None);
+        }
+
+        loop {
+            {
+                profile_scope!("h264_decode");
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                    if is_hw_frame(&self.decoded_frame) {
+                        return Ok(Some(self.extract_gpu_frame()));
+                    }
+                    // Frame came back as CPU (unusual) — fallback
+                    return Ok(None);
+                }
+            }
+
+            let mut found_packet = false;
+            for (stream, packet) in self.input.packets() {
+                if stream.index() == self.video_stream_index {
+                    profile_scope!("send_packet");
+                    self.decoder.send_packet(&packet)?;
+                    found_packet = true;
+                    break;
+                }
+            }
+
+            if !found_packet {
+                self.eof_sent = true;
+                self.decoder.send_eof()?;
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok()
+                    && is_hw_frame(&self.decoded_frame)
+                {
+                    return Ok(Some(self.extract_gpu_frame()));
+                }
+                return Ok(None);
+            }
+        }
+    }
+
+    /// Extract CUDA device pointers from an NVDEC-decoded NV12 frame.
+    ///
+    /// The frame's `data[0]` is the Y plane device pointer, `data[1]` is
+    /// the UV plane device pointer. `linesize[0]` and `linesize[1]` are
+    /// the respective pitches.
+    fn extract_gpu_frame(&self) -> GpuFrame {
+        let raw = unsafe { &*self.decoded_frame.as_ptr() };
+
+        let pts = raw.pts;
+        let pts = if pts == ffi::AV_NOPTS_VALUE { 0 } else { pts };
+        let timestamp_us = if self.time_base_den != 0 {
+            pts * self.time_base_num * 1_000_000 / self.time_base_den
+        } else {
+            0
+        };
+
+        GpuFrame {
+            y_ptr: raw.data[0] as u64,
+            uv_ptr: raw.data[1] as u64,
+            y_pitch: raw.linesize[0] as usize,
+            uv_pitch: raw.linesize[1] as usize,
+            width: self.width,
+            height: self.height,
+            timestamp_us,
         }
     }
 
