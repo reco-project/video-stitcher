@@ -5,7 +5,7 @@
 <h1 align="center">Reco Video Stitcher</h1>
 
 <p align="center">
-  <strong>Open-source panoramic sports camera software</strong>
+  <strong>Open-source GPU-accelerated panoramic sports camera software</strong>
 </p>
 
 <p align="center">
@@ -19,182 +19,181 @@
 </p>
 
 <p align="center">
-  A GPU-first open-source solution for sports filming</a>. Stitch two camera feeds into a seamless panoramic sports view without subscriptions.
+  Stitch two camera feeds into a seamless panoramic sports view — no subscriptions, no vendor lock-in.
 </p>
 
 ---
 
 ## Why Reco Exists
 
-Modern sports camera systems like Veo and Pixellot provide powerful automated filming, but they are often expensive and tied to proprietary hardware and subscriptions.
+Sports camera systems like Veo and Pixellot provide powerful automated filming, but they come with expensive hardware, recurring subscriptions, and proprietary lock-in.
 
-Reco aims to explore a different approach:
+Reco takes a different approach:
 
-- open-source software
-- hardware flexibility
-- local processing
-- community-driven innovation
+- **Open source** — the code is yours, forever
+- **Hardware flexible** — use GoPros, action cameras, DSLRs, or any pair of cameras
+- **Local processing** — your footage stays on your machine
+- **Community driven** — built by and for the sports filming community
 
-The long-term goal is to build an **open platform for sports video capture and analysis**.
-
----
-
-## Project Status
-
-Reco Video Stitcher is currently undergoing a [**major rewrite**](https://forum.reco-project.org/t/v2-rebuilding-for-something-better/10)
-
-The current version (Electron + React + Python) was built as an **early prototype** to validate the concept of an open-source sports camera system.
-
-While the prototype works, the architecture makes it difficult to extend and maintain.
-
-Because of this, development is shifting toward **Video Stitcher v2**, a new architecture built in **Rust with a GPU-first pipeline**. This transition had been planned from the beginning, even before the v1 prototype.
-
-The goal of v2 is to provide:
-
-- significantly faster processing
-- a cleaner media pipeline
-- real-time stitching capabilities
-- a better foundation for future features like tracking and live streaming
-
-The existing Python/Electron version should be considered **experimental and unstable**.
-
-Future development will focus on the new Rust-based engine.
-
-Follow development progress and discussions on the [forum](https://forum.reco-project.org).
+The long-term goal is an **open platform for sports video capture and analysis**.
 
 ---
 
-## Features (Prototype v1)
+## v2 — The Rust Engine
 
-- **GPU-Accelerated Stitching** — Real-time panoramic rendering using WebGL and Three.js shaders
-- **Automatic Calibration** — Feature matching and position optimization for seamless blending
-- **Lens Profile Support** — Pre-built profiles for GoPro, DJI, Insta360, Sony, and more
-- **Works with Any Camera** — Use action cameras, DSLRs, or even mobile devices
-- **Cross-Platform Desktop App** — Windows, macOS, and Linux
-- **No Subscriptions** — One-time setup, your data stays local
+Reco v2 is a ground-up rewrite in **Rust** with a **GPU-first pipeline** using [wgpu](https://wgpu.rs). It replaces the original Electron/Python prototype with a fast, portable, and maintainable architecture.
 
----
+### What it does today
 
-## How It Works
+- **GPU-accelerated stitching** — fisheye undistortion, depth-tested compositing, and viewport rendering on the GPU
+- **Hardware video encoding** — auto-detects NVENC, QSV, VideoToolbox, VAAPI; falls back to libx264
+- **Multithreaded decode** — parallel left/right video decoding with frame synchronization
+- **Interactive preview** — real-time preview window with mouse drag-to-pan, scroll-to-zoom, and smooth camera animation
+- **CLI-first** — scriptable `reco stitch` and `reco preview` commands
+- **Profiling built in** — opt-in `tracing-chrome` instrumentation for performance analysis with [Perfetto](https://ui.perfetto.dev)
 
-1. **Import Videos** — Select your left and right camera recordings
-2. **Assign Lens Profiles** — Choose calibration profiles for each camera
-3. **Process** — The app transcodes, extracts frames, and calibrates alignment
-4. **View & Export** — Watch the stitched panorama in the built-in viewer
-
-The processing pipeline combines backend video processing (FFmpeg + OpenCV) with frontend GPU rendering (Three.js) for optimal performance.
-
----
-
-## Video Stitcher v2 (In Development)
-
-The next generation of Reco Video Stitcher is being built around a **Rust-based GPU pipeline**.
-
-Core technologies:
-
-| Layer               | Technology |
-| ------------------- | ---------- |
-| Core engine         | Rust       |
-| GPU rendering       | wgpu       |
-| Desktop application | Not sure   |
-| CLI tool            | `reco`     |
-
-The new architecture will look like:
+### Architecture
 
 ```
-
-decode → synchronize → stitch → render → encode
-
+left.mp4  ──► decode (thread) ──┐
+                                ├──► pair ──► GPU stitch ──► encode ──► output.mp4
+right.mp4 ──► decode (thread) ──┘
 ```
 
-This design enables:
+| Crate | Purpose |
+|---|---|
+| `reco-core` | GPU stitching engine (wgpu) — usable as a standalone library |
+| `reco-ffmpeg` | FFmpeg decode/encode with hardware acceleration |
+| `reco-cli` | CLI binary: `reco stitch`, `reco preview`, `reco info` |
 
-- faster exports
-- real-time stitching
-- improved stability
-- easier future extensions
-- better cross-platform support
+### Quick start (v2)
 
-Development is currently in the early stages.
+**Prerequisites:** Rust toolchain, FFmpeg development libraries
+
+```bash
+# Ubuntu/Debian
+sudo apt install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+  libavdevice-dev libavfilter-dev libswresample-dev pkg-config clang
+
+# macOS
+brew install ffmpeg pkg-config
+
+# Build
+git clone https://github.com/reco-project/video-stitcher.git
+cd video-stitcher
+git checkout v2
+cargo build --release
+```
+
+### Usage
+
+```bash
+# Stitch two videos into a panorama
+cargo run --release -p reco-cli -- stitch left.mp4 right.mp4 \
+  --calibration match.json -o output.mp4
+
+# Interactive preview with pan/zoom
+cargo run --release -p reco-cli -- preview left.mp4 right.mp4 \
+  --calibration match.json
+
+# Show GPU and encoder info
+cargo run --release -p reco-cli -- info
+```
+
+**Preview controls:**
+
+| Input | Action |
+|---|---|
+| Mouse drag | Pan (yaw/pitch) |
+| Scroll wheel | Zoom (FOV) |
+| Arrow keys | Pan (keyboard) |
+| `+` / `-` | Zoom (keyboard) |
+| Space | Play / pause |
+| N | Step one frame |
+| P | Skip 30 frames |
+| Q / Escape | Quit |
+
+### Development
+
+```bash
+cargo build                   # Build all crates
+cargo test --all              # Run tests
+cargo clippy --all-targets -- -D warnings   # Lint (zero warnings policy)
+cargo fmt --all -- --check    # Format check
+cargo doc --no-deps --open    # Browse API documentation
+
+# Profile a stitch run (outputs reco-trace.json, open in ui.perfetto.dev)
+cargo run --release -p reco-cli --features profiling -- stitch \
+  left.mp4 right.mp4 -c match.json -o out.mp4 --max-frames 300
+```
+
+---
+
+## v1 — The Prototype (Legacy)
+
+The original version (Electron + React + Python) validated the concept of an open-source sports camera system. It works, but the architecture made it difficult to extend and optimize.
+
+v1 is on the `main` branch and should be considered **experimental**. Future development focuses entirely on the Rust-based v2 engine.
+
+<details>
+<summary>v1 details</summary>
+
+### Features
+
+- GPU stitching via WebGL and Three.js shaders
+- Automatic calibration with feature matching
+- Lens profiles for GoPro, DJI, Insta360, Sony, and more
+- Cross-platform desktop app (Windows, macOS, Linux)
+
+### Getting started
+
+```bash
+# Prerequisites: Node.js 20+, Python 3.10+, FFmpeg in PATH
+git clone https://github.com/reco-project/video-stitcher.git
+cd video-stitcher
+npm run setup
+npm run dev
+```
+
+### Architecture
+
+| Component | Stack | Purpose |
+|---|---|---|
+| Frontend | React, Three.js, Vite | UI and WebGL stitching |
+| Backend | FastAPI, OpenCV, FFmpeg | Video processing and calibration |
+| Desktop | Electron | Cross-platform shell |
+
+</details>
 
 ---
 
 ## Roadmap
 
-**v1 (prototype)**  
-Electron + React + Python implementation used to validate the concept.
+**v2 engine** (current)
+- [x] GPU stitching pipeline (wgpu)
+- [x] Hardware-accelerated encode/decode
+- [x] Interactive preview window
+- [x] Profiling infrastructure
+- [ ] Ctrl-C resilience and crash-safe output
+- [ ] Desktop GUI (Tauri)
+- [ ] AI-powered auto-tracking director
 
-**v2 (in development)**  
-Rust-based stitching engine using wgpu and a Tauri desktop application.
-
-**Future directions**
-
-- automatic ball tracking
-- live streaming
-- mobile companion app
-- plugin ecosystem
-
----
-
-## Getting Started (Prototype v1)
-
-### Prerequisites
-
-- **Node.js** 20+ and npm
-- **Python** 3.10+ (3.11+ recommended)
-- **FFmpeg** (should be accessible through PATH)
-
-### Installation
-
-```bash
-git clone https://github.com/reco-project/video-stitcher.git
-cd video-stitcher
-
-npm run setup
-npm run dev
-```
-
-The app will launch with the Electron desktop interface, React frontend, and FastAPI backend running together.
+**Future**
+- Automatic ball/player tracking
+- Live streaming
+- Mobile companion app
+- Cloud processing
+- Plugin ecosystem
 
 ---
 
-## Architecture (Prototype v1)
+## Community
 
-```
-video-stitcher/
-├── frontend/          # React + Three.js UI and GPU rendering
-├── backend/           # FastAPI server for video processing
-├── electron/          # Desktop app shell and system integration
-├── docs/              # Documentation
-└── scripts/           # Build and development utilities
-```
+- **Forum:** [forum.reco-project.org](https://forum.reco-project.org) — discussions, feature requests, showcase
+- **Website:** [reco-project.org](https://reco-project.org)
+- **Issues:** [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
 
-| Component | Technology              | Purpose                           |
-| --------- | ----------------------- | --------------------------------- |
-| Frontend  | React, Three.js, Vite   | UI, WebGL stitching               |
-| Backend   | FastAPI, OpenCV, FFmpeg | Video transcoding and calibration |
-| Desktop   | Electron                | Cross-platform application        |
-
----
-
-## Documentation
-
-- [Backend API](backend/README.md) — API endpoints and development guide
-- [Telemetry](docs/TELEMETRY.md) — Privacy-focused, opt-in analytics
-- [Releases & Auto-Updates](docs/RELEASES.md) — Release workflow and updates
-
----
-
-## Privacy & Telemetry
-
-This app can include **optional, opt-in telemetry** to help improve the software:
-
-- Disabled by default
-- No personal data, filenames, or video content collected
-- All data stored locally first
-- Can be enabled or disabled anytime in Settings
-
-See [TELEMETRY.md](docs/TELEMETRY.md) for full details.
+Contributions welcome — whether you're a developer, coach, or camera enthusiast.
 
 ---
 
@@ -206,31 +205,10 @@ See [LICENSE](LICENSE) for details.
 
 ---
 
-## Contributing
-
-Contributions are welcome!
-
-Whether you're a developer, designer, coach, or camera enthusiast:
-
-- 🐛 Report bugs or request features via [GitHub Issues](https://github.com/reco-project/video-stitcher/issues)
-- 💬 Join discussions on the [Reco Project Forum](https://forum.reco-project.org)
-- 🔧 Submit pull requests
-
----
-
-## Contact
-
-- **Website:** [https://reco-project.org](https://reco-project.org)
-- **Forum:** [https://forum.reco-project.org](https://forum.reco-project.org)
-- **Email:** [mohamedtahaguelzim@gmail.com](mailto:mohamedtahaguelzim@gmail.com)
-- **GitHub:** [https://github.com/reco-project/video-stitcher](https://github.com/reco-project/video-stitcher)
-
----
-
 <p align="center">
-  ⭐ Star the project to follow the development of the Rust rewrite
+  <a href="https://github.com/reco-project/video-stitcher">Star the repo</a> to follow the development of v2
 </p>
 
 <p align="center">
-  Made with ❤️ for the sports filming community
+  Made for the sports filming community
 </p>
