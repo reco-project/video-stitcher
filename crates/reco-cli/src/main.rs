@@ -359,7 +359,15 @@ fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::R
         .name(format!("decode_{label}"))
         .spawn(move || {
             let mut dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
-                Ok(d) => d,
+                Ok(d) => {
+                    log::info!(
+                        "{label} decoder: {} ({}x{})",
+                        d.backend(),
+                        d.width(),
+                        d.height()
+                    );
+                    d
+                }
                 Err(e) => {
                     log::error!("Failed to open {label} video: {e}");
                     return;

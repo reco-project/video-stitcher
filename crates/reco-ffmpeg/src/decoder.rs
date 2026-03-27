@@ -3,6 +3,13 @@
 //! Wraps FFmpeg's demuxer and decoder to produce YUV420P plane data
 //! frame-by-frame from any video file FFmpeg can read. YUV planes are
 //! uploaded directly to the GPU, eliminating CPU-side color conversion.
+//!
+//! ## Hardware Acceleration
+//!
+//! When available, the decoder uses hardware acceleration (NVDEC via CUDA,
+//! or VAAPI) to offload H.264 decoding to the dedicated ASIC. Decoded
+//! frames are transferred back to CPU and converted to YUV420P. Falls
+//! back to software decoding transparently.
 
 extern crate ffmpeg_next as ffmpeg;
 
@@ -10,6 +17,9 @@ use ffmpeg::format::{Pixel, input};
 use ffmpeg::media::Type;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
 use ffmpeg::util::frame::video::Video as VideoFrame;
+
+// Raw FFI for hardware acceleration (not exposed by ffmpeg-next's safe API).
+use ffmpeg::ffi;
 
 /// Create a tracing span guard (no-op when `profiling` feature is disabled).
 #[cfg(feature = "profiling")]
@@ -24,6 +34,7 @@ macro_rules! profile_scope {
     ($name:expr) => {};
 }
 use std::path::Path;
+use std::ptr;
 use thiserror::Error;
 
 /// Errors from the video decoder.
@@ -59,12 +70,32 @@ pub struct YuvFrame {
     pub timestamp_us: i64,
 }
 
+/// Which decode backend is active.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecodeBackend {
+    /// Software decode (libavcodec).
+    Software,
+    /// NVIDIA NVDEC via CUDA.
+    Cuda,
+    /// VA-API (Intel/AMD on Linux).
+    Vaapi,
+}
+
+impl std::fmt::Display for DecodeBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Software => write!(f, "software"),
+            Self::Cuda => write!(f, "NVDEC (CUDA)"),
+            Self::Vaapi => write!(f, "VA-API"),
+        }
+    }
+}
+
 /// Video decoder that produces YUV420P frames from a video file.
 ///
-/// Uses FFmpeg's software decoder. If the input pixel format is already
-/// YUV420P (the common case for H.264), planes are extracted directly
-/// without any color conversion. For other formats, swscale converts
-/// to YUV420P first.
+/// Automatically attempts hardware-accelerated decoding (NVDEC, VA-API)
+/// and falls back to software decode. In all cases, output is YUV420P
+/// plane data ready for GPU upload.
 ///
 /// # Example
 ///
@@ -73,6 +104,7 @@ pub struct YuvFrame {
 /// use std::path::Path;
 ///
 /// let mut decoder = VideoDecoder::open(Path::new("video.mp4")).unwrap();
+/// println!("Using: {}", decoder.backend());
 /// while let Some(frame) = decoder.next_frame().unwrap() {
 ///     println!("Frame: {}x{} @ {}us", frame.width, frame.height, frame.timestamp_us);
 /// }
@@ -80,7 +112,7 @@ pub struct YuvFrame {
 pub struct VideoDecoder {
     input: ffmpeg::format::context::Input,
     decoder: ffmpeg::decoder::Video,
-    /// Only created when input format is not YUV420P.
+    /// Converts non-YUV420P frames (e.g. NV12 from hwaccel) to YUV420P.
     scaler: Option<ScalingContext>,
     video_stream_index: usize,
     time_base_num: i64,
@@ -88,14 +120,38 @@ pub struct VideoDecoder {
     width: u32,
     height: u32,
     eof_sent: bool,
+    backend: DecodeBackend,
     /// Reusable decode buffer.
     decoded_frame: VideoFrame,
+    /// CPU-side frame for hardware decode transfer.
+    sw_frame: VideoFrame,
     /// Reusable conversion buffer (only used when scaler is active).
     converted_frame: VideoFrame,
+    /// Hardware device context reference (must be kept alive).
+    /// Stored as raw pointer; freed via av_buffer_unref on drop.
+    _hw_device_ref: *mut ffi::AVBufferRef,
+}
+
+// SAFETY: The FFmpeg contexts are only accessed from a single thread
+// (the decode thread). The raw pointers are owned exclusively.
+unsafe impl Send for VideoDecoder {}
+
+impl Drop for VideoDecoder {
+    fn drop(&mut self) {
+        if !self._hw_device_ref.is_null() {
+            unsafe {
+                ffi::av_buffer_unref(&mut self._hw_device_ref);
+            }
+        }
+    }
 }
 
 impl VideoDecoder {
     /// Open a video file for decoding.
+    ///
+    /// Tries hardware acceleration in order: CUDA (NVDEC), VAAPI, then
+    /// falls back to software decode. Hardware acceleration is transparent —
+    /// the output is always YUV420P regardless of backend.
     pub fn open(path: &Path) -> Result<Self, DecodeError> {
         crate::init();
 
@@ -112,55 +168,46 @@ impl VideoDecoder {
         // Enable multithreaded decode (frame-level threading).
         // count(0) = auto-detect optimal thread count.
         context.set_threading(ffmpeg::threading::Config::count(0));
+
+        // Try hardware acceleration
+        let (backend, hw_device_ref) = try_hwaccel(&mut context);
+
         let decoder = context.decoder().video()?;
 
         let width = decoder.width();
         let height = decoder.height();
-        let format = decoder.format();
 
         log::info!(
-            "Decoder: {}x{} {:?}, time_base={}/{}",
+            "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
             width,
             height,
-            format,
+            decoder.format(),
             time_base.0,
-            time_base.1
+            time_base.1,
+            backend,
         );
-
-        // Only create a scaler if the input isn't already YUV420P.
-        // For YUV420P (the common H.264 case), we extract planes directly.
-        let scaler = if format != Pixel::YUV420P {
-            log::info!(
-                "Input format {:?} is not YUV420P — swscale will convert",
-                format
-            );
-            Some(ScalingContext::get(
-                format,
-                width,
-                height,
-                Pixel::YUV420P,
-                width,
-                height,
-                ScalingFlags::POINT,
-            )?)
-        } else {
-            log::info!("Input is YUV420P — direct plane extraction (no swscale)");
-            None
-        };
 
         Ok(Self {
             input: ictx,
             decoder,
-            scaler,
+            scaler: None, // Created lazily on first frame (format may change with hwaccel)
             video_stream_index,
             time_base_num: time_base.0 as i64,
             time_base_den: time_base.1 as i64,
             width,
             height,
             eof_sent: false,
+            backend,
             decoded_frame: VideoFrame::empty(),
+            sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
+            _hw_device_ref: hw_device_ref,
         })
+    }
+
+    /// Which decode backend is active.
+    pub fn backend(&self) -> DecodeBackend {
+        self.backend
     }
 
     /// Frame width in pixels.
@@ -233,20 +280,79 @@ impl VideoDecoder {
 
     /// Extract YUV420P planes from the current decoded frame.
     ///
-    /// If input is YUV420P, reads planes directly (zero conversion).
-    /// Otherwise, uses swscale to convert to YUV420P first.
+    /// For hardware-decoded frames, transfers from GPU to CPU first.
+    /// If the frame format isn't YUV420P (e.g. NV12 from NVDEC),
+    /// swscale converts it (very cheap for NV12→YUV420P: just deinterleave UV).
     fn extract_yuv(&mut self) -> YuvFrame {
-        let source = if let Some(scaler) = &mut self.scaler {
-            profile_scope!("swscale");
-            scaler
-                .run(&self.decoded_frame, &mut self.converted_frame)
-                .expect("swscale conversion failed");
-            &self.converted_frame
+        // If hardware-decoded, transfer GPU frame to CPU
+        let cpu_frame = if is_hw_frame(&self.decoded_frame) {
+            profile_scope!("hw_transfer");
+            unsafe {
+                let ret = ffi::av_hwframe_transfer_data(
+                    self.sw_frame.as_mut_ptr(),
+                    self.decoded_frame.as_ptr(),
+                    0,
+                );
+                if ret < 0 {
+                    log::error!("av_hwframe_transfer_data failed: {ret}");
+                    // Fall through to use decoded_frame directly (will likely fail)
+                    &self.decoded_frame
+                } else {
+                    // Copy PTS from the original frame
+                    (*self.sw_frame.as_mut_ptr()).pts = (*self.decoded_frame.as_ptr()).pts;
+                    &self.sw_frame
+                }
+            }
         } else {
             &self.decoded_frame
         };
 
-        let pts = self.decoded_frame.pts().unwrap_or(0);
+        let frame_format = cpu_frame.format();
+
+        // Get or create scaler if needed
+        let source = if frame_format != Pixel::YUV420P {
+            let needs_new_scaler = self.scaler.is_none()
+                || self
+                    .scaler
+                    .as_ref()
+                    .is_some_and(|_| self.converted_frame.format() != Pixel::YUV420P);
+
+            if needs_new_scaler {
+                log::info!(
+                    "Creating scaler: {:?} → YUV420P ({}x{})",
+                    frame_format,
+                    self.width,
+                    self.height
+                );
+                self.scaler = Some(
+                    ScalingContext::get(
+                        frame_format,
+                        self.width,
+                        self.height,
+                        Pixel::YUV420P,
+                        self.width,
+                        self.height,
+                        ScalingFlags::POINT,
+                    )
+                    .expect("create scaler for hwaccel format"),
+                );
+            }
+
+            if let Some(scaler) = &mut self.scaler {
+                profile_scope!("swscale");
+                scaler
+                    .run(cpu_frame, &mut self.converted_frame)
+                    .expect("swscale conversion failed");
+                &self.converted_frame
+            } else {
+                cpu_frame
+            }
+        } else {
+            cpu_frame
+        };
+
+        let pts = unsafe { (*self.decoded_frame.as_ptr()).pts };
+        let pts = if pts == ffi::AV_NOPTS_VALUE { 0 } else { pts };
         let timestamp_us = if self.time_base_den != 0 {
             pts * self.time_base_num * 1_000_000 / self.time_base_den
         } else {
@@ -271,6 +377,71 @@ impl VideoDecoder {
             timestamp_us,
         }
     }
+}
+
+/// Check if a frame is hardware-decoded (lives on GPU memory).
+fn is_hw_frame(frame: &VideoFrame) -> bool {
+    unsafe { !(*frame.as_ptr()).hw_frames_ctx.is_null() }
+}
+
+/// Try to enable hardware-accelerated decoding on the codec context.
+///
+/// Attempts CUDA (NVDEC) first, then VAAPI. Returns the active backend
+/// and the hw device reference (must be kept alive and freed on drop).
+fn try_hwaccel(
+    context: &mut ffmpeg::codec::context::Context,
+) -> (DecodeBackend, *mut ffi::AVBufferRef) {
+    // Hardware device types to try, in priority order
+    let candidates = [
+        (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
+            DecodeBackend::Cuda,
+        ),
+        (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
+            DecodeBackend::Vaapi,
+        ),
+    ];
+
+    for (hw_type, backend) in candidates {
+        let hw_type_name = unsafe {
+            let name = ffi::av_hwdevice_get_type_name(hw_type);
+            if name.is_null() {
+                "unknown"
+            } else {
+                std::ffi::CStr::from_ptr(name).to_str().unwrap_or("unknown")
+            }
+        };
+
+        // Try to create a hardware device context
+        let mut device_ref: *mut ffi::AVBufferRef = ptr::null_mut();
+        let ret = unsafe {
+            ffi::av_hwdevice_ctx_create(
+                &mut device_ref,
+                hw_type,
+                ptr::null(),     // default device
+                ptr::null_mut(), // no options
+                0,               // no flags
+            )
+        };
+
+        if ret < 0 {
+            log::debug!("Hardware decode {hw_type_name}: not available (error {ret})");
+            continue;
+        }
+
+        // Assign the hardware device context to the codec context.
+        // The codec context takes a reference (av_buffer_ref), so we keep our own.
+        unsafe {
+            (*context.as_mut_ptr()).hw_device_ctx = ffi::av_buffer_ref(device_ref);
+        }
+
+        log::info!("Hardware decode enabled: {backend} ({hw_type_name})");
+        return (backend, device_ref);
+    }
+
+    log::info!("No hardware decoder available — using software decode");
+    (DecodeBackend::Software, ptr::null_mut())
 }
 
 /// Copy one plane from an FFmpeg frame, removing stride padding.
