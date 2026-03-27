@@ -101,14 +101,15 @@ mod tests {
 
     #[test]
     fn gpu_context_initializes() {
-        // This test requires a GPU. In CI, it may be skipped if no adapter is found.
+        // This test requires a GPU. In CI (headless), it is expected to fail
+        // with NoAdapter or AdapterRequest — skip gracefully.
         let result = pollster::block_on(GpuContext::new());
         match result {
             Ok(ctx) => {
                 assert!(!ctx.adapter_info.name.is_empty());
                 log::info!("GPU test passed: {}", ctx.adapter_info.name);
             }
-            Err(GpuError::NoAdapter) => {
+            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
                 eprintln!("Skipping GPU test: no adapter available");
             }
             Err(e) => panic!("Unexpected GPU error: {e}"),

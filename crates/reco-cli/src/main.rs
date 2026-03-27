@@ -7,6 +7,8 @@
 use clap::{Parser, Subcommand};
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// Create a tracing span guard (no-op when `profiling` feature is disabled).
@@ -124,6 +126,21 @@ fn main() -> anyhow::Result<()> {
     let _profiling_guard = init_profiling();
     #[cfg(not(feature = "profiling"))]
     env_logger::init();
+
+    // Set up Ctrl-C handler so stitch can finalize the output file
+    let interrupted = Arc::new(AtomicBool::new(false));
+    {
+        let interrupted = interrupted.clone();
+        ctrlc::set_handler(move || {
+            if interrupted.load(Ordering::Relaxed) {
+                // Second Ctrl-C — force exit
+                std::process::exit(1);
+            }
+            interrupted.store(true, Ordering::Relaxed);
+            eprintln!("\nInterrupted — finishing output file...");
+        })
+        .expect("set Ctrl-C handler");
+    }
 
     let cli = Cli::parse();
 
@@ -245,7 +262,7 @@ fn main() -> anyhow::Result<()> {
             let pitch = 0.0_f32;
 
             loop {
-                if frame_count >= frame_limit {
+                if frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
                     break;
                 }
 

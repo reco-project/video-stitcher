@@ -141,6 +141,9 @@ pub struct VideoEncoder {
     height: u32,
     finished: bool,
     encoder_name: String,
+    /// Reusable frame buffers to avoid per-frame allocation.
+    rgba_frame: VideoFrame,
+    yuv_frame: VideoFrame,
 }
 
 impl Drop for VideoEncoder {
@@ -227,6 +230,8 @@ impl VideoEncoder {
                         height,
                         finished: false,
                         encoder_name: name.to_string(),
+                        rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
+                        yuv_frame: VideoFrame::empty(),
                     });
                 }
                 Err(e) => {
@@ -333,26 +338,24 @@ impl VideoEncoder {
                 actual: rgba_data.len(),
             });
         }
-        let mut rgba_frame = VideoFrame::new(Pixel::RGBA, self.width, self.height);
 
-        let stride = rgba_frame.stride(0);
+        let stride = self.rgba_frame.stride(0);
         let row_bytes = self.width as usize * 4;
         if stride == row_bytes {
-            rgba_frame.data_mut(0)[..rgba_data.len()].copy_from_slice(rgba_data);
+            self.rgba_frame.data_mut(0)[..rgba_data.len()].copy_from_slice(rgba_data);
         } else {
             for y in 0..self.height as usize {
                 let src_start = y * row_bytes;
                 let dst_start = y * stride;
-                rgba_frame.data_mut(0)[dst_start..dst_start + row_bytes]
+                self.rgba_frame.data_mut(0)[dst_start..dst_start + row_bytes]
                     .copy_from_slice(&rgba_data[src_start..src_start + row_bytes]);
             }
         }
 
-        let mut yuv_frame = VideoFrame::empty();
-        self.scaler.run(&rgba_frame, &mut yuv_frame)?;
-        yuv_frame.set_pts(Some(self.frame_count));
+        self.scaler.run(&self.rgba_frame, &mut self.yuv_frame)?;
+        self.yuv_frame.set_pts(Some(self.frame_count));
 
-        self.encoder.send_frame(&yuv_frame)?;
+        self.encoder.send_frame(&self.yuv_frame)?;
         self.receive_and_write_packets()?;
 
         self.frame_count += 1;

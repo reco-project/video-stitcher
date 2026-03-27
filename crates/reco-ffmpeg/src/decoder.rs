@@ -61,8 +61,12 @@ pub struct VideoDecoder {
     time_base_den: i64,
     width: u32,
     height: u32,
-    pending_frames: Vec<RgbaFrame>,
     eof_sent: bool,
+    /// Reusable frame buffers to avoid per-frame allocation.
+    decoded_frame: VideoFrame,
+    rgba_frame: VideoFrame,
+    /// Pre-allocated output buffer, reused across frames.
+    output_buf: Vec<u8>,
 }
 
 impl VideoDecoder {
@@ -107,6 +111,8 @@ impl VideoDecoder {
             ScalingFlags::BILINEAR,
         )?;
 
+        let frame_bytes = width as usize * height as usize * 4;
+
         Ok(Self {
             input: ictx,
             decoder,
@@ -116,8 +122,10 @@ impl VideoDecoder {
             time_base_den: time_base.1 as i64,
             width,
             height,
-            pending_frames: Vec::new(),
             eof_sent: false,
+            decoded_frame: VideoFrame::empty(),
+            rgba_frame: VideoFrame::empty(),
+            output_buf: vec![0u8; frame_bytes],
         })
     }
 
@@ -153,94 +161,78 @@ impl VideoDecoder {
         tracing::instrument(skip_all, name = "decode_frame")
     )]
     pub fn next_frame(&mut self) -> Result<Option<RgbaFrame>, DecodeError> {
-        // Return buffered frames first
-        if let Some(frame) = self.pending_frames.pop() {
-            return Ok(Some(frame));
-        }
-
         if self.eof_sent {
             return Ok(None);
         }
 
-        // Read packets until we get decoded frames or hit EOF.
-        // Using disjoint field borrows: self.input is borrowed by packets(),
-        // while self.decoder/scaler/pending_frames are accessed separately.
-        for (stream, packet) in self.input.packets() {
-            if stream.index() == self.video_stream_index {
-                self.decoder.send_packet(&packet)?;
-                drain_decoder(
-                    &mut self.decoder,
-                    &mut self.scaler,
-                    &mut self.pending_frames,
-                    self.time_base_num,
-                    self.time_base_den,
-                    self.width,
-                    self.height,
-                )?;
-                if !self.pending_frames.is_empty() {
-                    return Ok(self.pending_frames.pop());
+        // Try to receive a frame from packets already sent to the decoder,
+        // or read new packets until we get one.
+        loop {
+            if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                return Ok(Some(self.convert_frame()));
+            }
+
+            // Need more data — read next video packet
+            let mut found_packet = false;
+            // We need to use packets() iterator but break after processing one video packet
+            for (stream, packet) in self.input.packets() {
+                if stream.index() == self.video_stream_index {
+                    self.decoder.send_packet(&packet)?;
+                    found_packet = true;
+                    break;
                 }
             }
+
+            if !found_packet {
+                // EOF — flush the decoder
+                self.eof_sent = true;
+                self.decoder.send_eof()?;
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                    return Ok(Some(self.convert_frame()));
+                }
+                return Ok(None);
+            }
         }
-
-        // EOF reached — flush remaining frames from the decoder
-        self.eof_sent = true;
-        self.decoder.send_eof()?;
-        drain_decoder(
-            &mut self.decoder,
-            &mut self.scaler,
-            &mut self.pending_frames,
-            self.time_base_num,
-            self.time_base_den,
-            self.width,
-            self.height,
-        )?;
-        Ok(self.pending_frames.pop())
     }
-}
 
-/// Drain all available decoded frames from the decoder, convert to RGBA.
-fn drain_decoder(
-    decoder: &mut ffmpeg::decoder::Video,
-    scaler: &mut ScalingContext,
-    pending: &mut Vec<RgbaFrame>,
-    tb_num: i64,
-    tb_den: i64,
-    width: u32,
-    height: u32,
-) -> Result<(), DecodeError> {
-    let mut decoded = VideoFrame::empty();
-    while decoder.receive_frame(&mut decoded).is_ok() {
-        let mut rgba = VideoFrame::empty();
-        scaler.run(&decoded, &mut rgba)?;
+    /// Convert the current decoded frame to RGBA and return it.
+    /// Reuses internal buffers to avoid allocation.
+    fn convert_frame(&mut self) -> RgbaFrame {
+        self.scaler
+            .run(&self.decoded_frame, &mut self.rgba_frame)
+            .expect("swscale conversion failed");
 
-        let pts = decoded.pts().unwrap_or(0);
-        let timestamp_us = if tb_den != 0 {
-            pts * tb_num * 1_000_000 / tb_den
+        let pts = self.decoded_frame.pts().unwrap_or(0);
+        let timestamp_us = if self.time_base_den != 0 {
+            pts * self.time_base_num * 1_000_000 / self.time_base_den
         } else {
             0
         };
 
-        // Copy RGBA data, handling potential stride padding
-        let stride = rgba.stride(0);
-        let row_bytes = width as usize * 4;
-        let data = if stride == row_bytes {
-            rgba.data(0)[..row_bytes * height as usize].to_vec()
-        } else {
-            let mut buf = Vec::with_capacity(row_bytes * height as usize);
-            for y in 0..height as usize {
-                let start = y * stride;
-                buf.extend_from_slice(&rgba.data(0)[start..start + row_bytes]);
-            }
-            buf
-        };
+        // Copy RGBA data into reusable buffer, handling potential stride padding
+        let stride = self.rgba_frame.stride(0);
+        let row_bytes = self.width as usize * 4;
+        let src = self.rgba_frame.data(0);
 
-        pending.push(RgbaFrame {
-            data,
-            width,
-            height,
+        if stride == row_bytes {
+            self.output_buf[..row_bytes * self.height as usize]
+                .copy_from_slice(&src[..row_bytes * self.height as usize]);
+        } else {
+            for y in 0..self.height as usize {
+                let src_start = y * stride;
+                let dst_start = y * row_bytes;
+                self.output_buf[dst_start..dst_start + row_bytes]
+                    .copy_from_slice(&src[src_start..src_start + row_bytes]);
+            }
+        }
+
+        // We still need to clone here because the caller owns the Vec.
+        // But output_buf stays allocated for next frame.
+        RgbaFrame {
+            data: self.output_buf.clone(),
+            width: self.width,
+            height: self.height,
             timestamp_us,
-        });
+        }
     }
-    Ok(())
 }
