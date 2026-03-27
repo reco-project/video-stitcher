@@ -50,5 +50,6 @@ pub mod director;
 pub mod encoder;
 pub mod gpu;
 pub mod pipeline;
+pub mod renderer;
 pub mod scene;
 pub mod viewport;

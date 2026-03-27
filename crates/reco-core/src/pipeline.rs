@@ -21,9 +21,11 @@
 //! ```
 
 use crate::calibration::MatchCalibration;
+use crate::director::ViewportPosition;
 use crate::gpu::{GpuContext, GpuError};
+use crate::renderer::{RenderError, Renderer};
 use crate::scene::SceneGeometry;
-use crate::viewport::ViewportConfig;
+use crate::viewport::{ResolvedViewport, ViewportConfig};
 
 use thiserror::Error;
 
@@ -33,12 +35,16 @@ pub enum PipelineError {
     /// GPU initialization failed.
     #[error("GPU error: {0}")]
     Gpu(#[from] GpuError),
+
+    /// Render error.
+    #[error("render error: {0}")]
+    Render(#[from] RenderError),
 }
 
 /// The main stitching pipeline.
 ///
-/// Owns the GPU context and scene geometry. Consumers provide frames
-/// via the encoder trait and receive output frames for encoding.
+/// Owns the GPU context, scene geometry, and renderer. Consumers provide
+/// RGBA frames and receive stitched output via [`Self::process_frame`].
 pub struct StitchPipeline {
     /// GPU device and queue.
     pub gpu: GpuContext,
@@ -48,13 +54,15 @@ pub struct StitchPipeline {
     pub calibration: MatchCalibration,
     /// Output viewport configuration.
     pub viewport: ViewportConfig,
+    /// GPU renderer (textures, pipelines, bind groups).
+    renderer: Renderer,
 }
 
 impl StitchPipeline {
     /// Create a new stitch pipeline.
     ///
     /// Initializes the GPU, computes the scene geometry from the
-    /// calibration data, and prepares the rendering pipeline.
+    /// calibration data, and creates the render pipeline.
     ///
     /// # Errors
     ///
@@ -65,6 +73,7 @@ impl StitchPipeline {
     ) -> Result<Self, PipelineError> {
         let gpu = GpuContext::new().await?;
         let scene = SceneGeometry::from_layout(&calibration.layout);
+        let renderer = Renderer::new(&gpu, &calibration, viewport.width, viewport.height);
 
         log::info!(
             "Pipeline initialized: {}x{} output, GPU: {}",
@@ -78,6 +87,43 @@ impl StitchPipeline {
             scene,
             calibration,
             viewport,
+            renderer,
         })
+    }
+
+    /// Process a single frame through the GPU pipeline.
+    ///
+    /// Uploads left and right RGBA frames to the GPU, renders the stitched
+    /// panorama at the given viewport position, and reads back the result.
+    ///
+    /// # Arguments
+    ///
+    /// - `left_rgba`: Raw RGBA pixel data for the left camera frame
+    /// - `right_rgba`: Raw RGBA pixel data for the right camera frame
+    /// - `yaw`: Horizontal pan angle in radians (0 = center/seam)
+    /// - `pitch`: Vertical tilt angle in radians (0 = level)
+    ///
+    /// # Returns
+    ///
+    /// RGBA pixel data for the stitched output frame
+    /// (`viewport.width * viewport.height * 4` bytes).
+    pub fn process_frame(
+        &self,
+        left_rgba: &[u8],
+        right_rgba: &[u8],
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Vec<u8>, PipelineError> {
+        self.renderer.upload_left_frame(&self.gpu, left_rgba);
+        self.renderer.upload_right_frame(&self.gpu, right_rgba);
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition { yaw, pitch },
+        };
+
+        Ok(self
+            .renderer
+            .render_frame(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)?)
     }
 }

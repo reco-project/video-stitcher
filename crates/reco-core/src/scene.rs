@@ -21,6 +21,7 @@
 //! ```
 
 use crate::calibration::PlaneLayout;
+use nalgebra::{Matrix4, Translation3, UnitQuaternion};
 
 /// Computed 3D positions and rotations for the two camera planes.
 ///
@@ -70,6 +71,40 @@ impl SceneGeometry {
             plane_width,
             plane_aspect: aspect,
         }
+    }
+
+    /// Model matrix for the left camera plane.
+    ///
+    /// Combines translation and rotation matching the v1 Three.js setup.
+    /// Three.js uses XYZ Euler order, which maps to nalgebra's
+    /// `from_euler_angles(roll_x, pitch_y, yaw_z)`.
+    pub fn model_matrix_left(&self) -> Matrix4<f32> {
+        let t = Translation3::new(
+            self.left_position[0],
+            self.left_position[1],
+            self.left_position[2],
+        );
+        let r = UnitQuaternion::from_euler_angles(
+            self.left_rotation[0],
+            self.left_rotation[1],
+            self.left_rotation[2],
+        );
+        t.to_homogeneous() * r.to_homogeneous()
+    }
+
+    /// Model matrix for the right camera plane.
+    pub fn model_matrix_right(&self) -> Matrix4<f32> {
+        let t = Translation3::new(
+            self.right_position[0],
+            self.right_position[1],
+            self.right_position[2],
+        );
+        let r = UnitQuaternion::from_euler_angles(
+            self.right_rotation[0],
+            self.right_rotation[1],
+            self.right_rotation[2],
+        );
+        t.to_homogeneous() * r.to_homogeneous()
     }
 }
 
