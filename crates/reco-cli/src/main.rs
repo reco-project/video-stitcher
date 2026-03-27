@@ -444,6 +444,13 @@ fn run_preview(
         needs_redraw: bool,
         frame_duration: std::time::Duration,
         last_frame_time: Instant,
+        // Mouse drag state
+        mouse_dragging: bool,
+        last_mouse_pos: Option<(f64, f64)>,
+        // Smoothed camera: target values that yaw/pitch/fov lerp toward
+        target_yaw: f32,
+        target_pitch: f32,
+        target_fov: f32,
     }
 
     impl App {
@@ -479,6 +486,44 @@ fn run_preview(
                     println!("End of video");
                 }
             }
+        }
+
+        /// Interpolate yaw/pitch/fov toward their targets for smooth camera.
+        /// Returns `true` if any values changed (needs redraw).
+        fn smooth_camera(&mut self) -> bool {
+            const SMOOTHING: f32 = 0.3;
+            const EPSILON: f32 = 0.0001;
+            const FOV_EPSILON: f32 = 0.01;
+
+            let dy = self.target_yaw - self.yaw;
+            let dp = self.target_pitch - self.pitch;
+            let current_fov = self
+                .pipeline
+                .as_ref()
+                .map_or(90.0, |p| p.viewport.fov_degrees);
+            let df = self.target_fov - current_fov;
+
+            if dy.abs() < EPSILON && dp.abs() < EPSILON && df.abs() < FOV_EPSILON {
+                return false;
+            }
+
+            self.yaw += dy * SMOOTHING;
+            self.pitch += dp * SMOOTHING;
+
+            if let Some(p) = &mut self.pipeline {
+                p.viewport.fov_degrees += df * SMOOTHING;
+                if (self.target_fov - p.viewport.fov_degrees).abs() < FOV_EPSILON {
+                    p.viewport.fov_degrees = self.target_fov;
+                }
+            }
+
+            if (self.target_yaw - self.yaw).abs() < EPSILON {
+                self.yaw = self.target_yaw;
+            }
+            if (self.target_pitch - self.pitch).abs() < EPSILON {
+                self.pitch = self.target_pitch;
+            }
+            true
         }
     }
 
@@ -567,7 +612,7 @@ fn run_preview(
                 pipeline.gpu.adapter_info.name, surface_format
             );
             println!("Controls: Space = play/pause, N = next frame, P = skip 30 frames");
-            println!("          Arrows = pan, +/- = zoom, Q/Escape = quit");
+            println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
 
             // SAFETY: surface lifetime is tied to window which we keep alive
             self.surface = Some(unsafe {
@@ -620,19 +665,19 @@ fn run_preview(
                                 event_loop.exit();
                             }
                             PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                                self.yaw += 0.05;
+                                self.target_yaw += 0.05;
                                 self.needs_redraw = true;
                             }
                             PhysicalKey::Code(KeyCode::ArrowRight) => {
-                                self.yaw -= 0.05;
+                                self.target_yaw -= 0.05;
                                 self.needs_redraw = true;
                             }
                             PhysicalKey::Code(KeyCode::ArrowUp) => {
-                                self.pitch += 0.05;
+                                self.target_pitch += 0.05;
                                 self.needs_redraw = true;
                             }
                             PhysicalKey::Code(KeyCode::ArrowDown) => {
-                                self.pitch -= 0.05;
+                                self.target_pitch -= 0.05;
                                 self.needs_redraw = true;
                             }
                             PhysicalKey::Code(KeyCode::Space) => {
@@ -657,28 +702,62 @@ fn run_preview(
                                 }
                             }
                             PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                                // Zoom in (decrease FOV)
-                                if let Some(p) = &mut self.pipeline {
-                                    p.viewport.fov_degrees =
-                                        (p.viewport.fov_degrees - 5.0).max(20.0);
-                                    println!("FOV: {:.0}°", p.viewport.fov_degrees);
-                                    self.needs_redraw = true;
-                                }
+                                self.target_fov = (self.target_fov - 5.0).max(20.0);
+                                self.needs_redraw = true;
                             }
                             PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                                // Zoom out (increase FOV)
-                                if let Some(p) = &mut self.pipeline {
-                                    p.viewport.fov_degrees =
-                                        (p.viewport.fov_degrees + 5.0).min(150.0);
-                                    println!("FOV: {:.0}°", p.viewport.fov_degrees);
-                                    self.needs_redraw = true;
-                                }
+                                self.target_fov = (self.target_fov + 5.0).min(150.0);
+                                self.needs_redraw = true;
                             }
                             _ => {}
                         }
                     }
                 }
+                WindowEvent::MouseInput { state, button, .. } => {
+                    use winit::event::ElementState;
+                    use winit::event::MouseButton;
+                    if button == MouseButton::Left {
+                        let pressed = state == ElementState::Pressed;
+                        self.mouse_dragging = pressed;
+                        if pressed {
+                            // Capture start position — first CursorMoved will anchor here
+                            self.last_mouse_pos = None;
+                        } else {
+                            self.last_mouse_pos = None;
+                            if !self.playing {
+                                event_loop.set_control_flow(ControlFlow::Wait);
+                            }
+                        }
+                    }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    if self.mouse_dragging {
+                        if let Some((prev_x, prev_y)) = self.last_mouse_pos {
+                            let dx = position.x - prev_x;
+                            let dy = position.y - prev_y;
+                            // Accumulate into smoothing targets (raw deltas)
+                            self.target_yaw += dx as f32 * 0.005;
+                            self.target_pitch += dy as f32 * 0.005;
+                        } else {
+                            // First move after click — switch to Poll for smooth updates
+                            event_loop.set_control_flow(ControlFlow::Poll);
+                        }
+                        self.last_mouse_pos = Some((position.x, position.y));
+                    }
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    let scroll = match delta {
+                        winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64,
+                        winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
+                    };
+                    self.target_fov = (self.target_fov - scroll as f32 * 3.0).clamp(20.0, 150.0);
+                    self.needs_redraw = true;
+                }
                 WindowEvent::RedrawRequested => {
+                    // Apply camera smoothing before rendering
+                    if self.smooth_camera() {
+                        self.needs_redraw = true;
+                    }
                     if !self.needs_redraw && !self.playing {
                         return;
                     }
@@ -719,22 +798,33 @@ fn run_preview(
         }
 
         fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-            if !self.playing {
+            // Keep animating while smoothing hasn't converged
+            let current_fov = self
+                .pipeline
+                .as_ref()
+                .map_or(self.target_fov, |p| p.viewport.fov_degrees);
+            let smoothing_active = (self.target_yaw - self.yaw).abs() > 0.0001
+                || (self.target_pitch - self.pitch).abs() > 0.0001
+                || (self.target_fov - current_fov).abs() > 0.01;
+
+            if !self.playing && !smoothing_active {
                 return;
             }
 
-            let elapsed = self.last_frame_time.elapsed();
-            if elapsed < self.frame_duration {
-                // Yield CPU until next frame is due instead of busy-spinning
-                std::thread::sleep(self.frame_duration - elapsed);
+            if self.playing {
+                let elapsed = self.last_frame_time.elapsed();
+                if elapsed < self.frame_duration {
+                    std::thread::sleep(self.frame_duration - elapsed);
+                }
+
+                self.advance_frame();
+                self.last_frame_time = Instant::now();
+
+                if !self.playing {
+                    event_loop.set_control_flow(ControlFlow::Wait);
+                }
             }
 
-            self.advance_frame();
-            self.last_frame_time = Instant::now();
-
-            if !self.playing {
-                event_loop.set_control_flow(ControlFlow::Wait);
-            }
             if let Some(w) = &self.window {
                 w.request_redraw();
             }
@@ -766,6 +856,11 @@ fn run_preview(
         needs_redraw: false,
         frame_duration,
         last_frame_time: Instant::now(),
+        mouse_dragging: false,
+        last_mouse_pos: None,
+        target_yaw: 0.0,
+        target_pitch: 0.0,
+        target_fov: 75.0,
     };
 
     event_loop.run_app(&mut app)?;
