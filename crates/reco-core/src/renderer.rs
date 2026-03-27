@@ -147,9 +147,10 @@ impl Renderer {
     /// This is called once during pipeline initialization.
     pub fn new(
         gpu: &GpuContext,
-        calibration: &MatchCalibration,
         output_width: u32,
         output_height: u32,
+        input_width: u32,
+        input_height: u32,
     ) -> Self {
         let device = &gpu.device;
 
@@ -264,7 +265,8 @@ impl Renderer {
             &texture_layout,
             &uniform_layout,
             &sampler,
-            &calibration.left,
+            input_width,
+            input_height,
             "left",
         );
         let right = Self::create_plane_resources(
@@ -272,7 +274,8 @@ impl Renderer {
             &texture_layout,
             &uniform_layout,
             &sampler,
-            &calibration.right,
+            input_width,
+            input_height,
             "right",
         );
 
@@ -320,14 +323,15 @@ impl Renderer {
         texture_layout: &wgpu::BindGroupLayout,
         uniform_layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
-        camera: &CameraParams,
+        width: u32,
+        height: u32,
         label: &str,
     ) -> PlaneResources {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&format!("{label}_video")),
             size: wgpu::Extent3d {
-                width: camera.width,
-                height: camera.height,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -375,8 +379,8 @@ impl Renderer {
             texture_bind_group,
             uniform_buffer,
             uniform_bind_group,
-            width: camera.width,
-            height: camera.height,
+            width,
+            height,
         }
     }
 

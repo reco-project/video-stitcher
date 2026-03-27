@@ -67,6 +67,26 @@ fn main() -> anyhow::Result<()> {
         } => {
             log::info!("Stitching: {left} + {right} → {output}");
 
+            // Open video decoders first to get input dimensions
+            let mut left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&left))?;
+            let mut right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&right))?;
+
+            let input_width = left_dec.width();
+            let input_height = left_dec.height();
+
+            log::info!(
+                "Left video: {}x{} @ {:.1} fps",
+                input_width,
+                input_height,
+                left_dec.fps()
+            );
+            log::info!(
+                "Right video: {}x{} @ {:.1} fps",
+                right_dec.width(),
+                right_dec.height(),
+                right_dec.fps()
+            );
+
             let json = std::fs::read_to_string(&calibration)?;
             let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)?;
 
@@ -76,29 +96,16 @@ fn main() -> anyhow::Result<()> {
                 ..Default::default()
             };
 
-            let pipeline =
-                pollster::block_on(reco_core::pipeline::StitchPipeline::new(cal, viewport))?;
+            let pipeline = pollster::block_on(reco_core::pipeline::StitchPipeline::new(
+                cal,
+                viewport,
+                input_width,
+                input_height,
+            ))?;
 
             println!(
                 "Pipeline ready: GPU = {}, output = {width}x{height}",
                 pipeline.gpu.adapter_info.name
-            );
-
-            // Open video decoders
-            let mut left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&left))?;
-            let mut right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&right))?;
-
-            log::info!(
-                "Left video: {}x{} @ {:.1} fps",
-                left_dec.width(),
-                left_dec.height(),
-                left_dec.fps()
-            );
-            log::info!(
-                "Right video: {}x{} @ {:.1} fps",
-                right_dec.width(),
-                right_dec.height(),
-                right_dec.fps()
             );
 
             // Create encoder using the left video's frame rate

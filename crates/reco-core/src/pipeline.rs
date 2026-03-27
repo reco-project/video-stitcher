@@ -15,7 +15,7 @@
 //! let calibration: MatchCalibration = todo!("load from JSON");
 //! let viewport = ViewportConfig::default();
 //!
-//! let pipeline = StitchPipeline::new(calibration, viewport).await?;
+//! let pipeline = StitchPipeline::new(calibration, viewport, 1920, 1080).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -70,10 +70,18 @@ impl StitchPipeline {
     pub async fn new(
         calibration: MatchCalibration,
         viewport: ViewportConfig,
+        input_width: u32,
+        input_height: u32,
     ) -> Result<Self, PipelineError> {
         let gpu = GpuContext::new().await?;
         let scene = SceneGeometry::from_layout(&calibration.layout);
-        let renderer = Renderer::new(&gpu, &calibration, viewport.width, viewport.height);
+        let renderer = Renderer::new(
+            &gpu,
+            viewport.width,
+            viewport.height,
+            input_width,
+            input_height,
+        );
 
         log::info!(
             "Pipeline initialized: {}x{} output, GPU: {}",
