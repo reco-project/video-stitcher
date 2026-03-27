@@ -61,6 +61,7 @@ macro_rules! profile_scope {
 pub(crate) use profile_scope;
 
 pub mod calibration;
+pub mod cuda_interop;
 pub mod detector;
 pub mod director;
 pub mod encoder;
@@ -70,3 +71,5 @@ pub mod renderer;
 pub mod scene;
 pub mod source;
 pub mod viewport;
+#[cfg(target_os = "linux")]
+pub mod vulkan_interop;

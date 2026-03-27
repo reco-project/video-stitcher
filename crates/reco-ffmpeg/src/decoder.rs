@@ -152,6 +152,8 @@ impl VideoDecoder {
     /// Tries hardware acceleration in order: CUDA (NVDEC), VAAPI, then
     /// falls back to software decode. Hardware acceleration is transparent —
     /// the output is always YUV420P regardless of backend.
+    ///
+    /// Set `RECO_NO_HWACCEL=1` to force software decode (useful for benchmarking).
     pub fn open(path: &Path) -> Result<Self, DecodeError> {
         crate::init();
 
@@ -169,8 +171,13 @@ impl VideoDecoder {
         // count(0) = auto-detect optimal thread count.
         context.set_threading(ffmpeg::threading::Config::count(0));
 
-        // Try hardware acceleration
-        let (backend, hw_device_ref) = try_hwaccel(&mut context);
+        // Try hardware acceleration (unless disabled via env var)
+        let (backend, hw_device_ref) = if std::env::var("RECO_NO_HWACCEL").is_ok() {
+            log::info!("Hardware acceleration disabled via RECO_NO_HWACCEL");
+            (DecodeBackend::Software, ptr::null_mut())
+        } else {
+            try_hwaccel(&mut context)
+        };
 
         let decoder = context.decoder().video()?;
 
