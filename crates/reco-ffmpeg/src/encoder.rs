@@ -22,6 +22,10 @@ pub enum EncodeError {
     /// H.264 encoder not found (libx264 not available).
     #[error("H.264 encoder not found — is FFmpeg built with libx264?")]
     CodecNotFound,
+
+    /// Frame data has wrong size.
+    #[error("frame data size mismatch: expected {expected} bytes, got {actual}")]
+    FrameSizeMismatch { expected: usize, actual: usize },
 }
 
 /// Video encoder that writes RGBA frames to an H.264 MP4 file.
@@ -47,6 +51,18 @@ pub struct VideoEncoder {
     frame_count: i64,
     width: u32,
     height: u32,
+    finished: bool,
+}
+
+impl Drop for VideoEncoder {
+    fn drop(&mut self) {
+        if !self.finished {
+            log::warn!(
+                "VideoEncoder dropped without calling finish() — output file may be corrupt"
+            );
+            let _ = self.flush_and_finalize();
+        }
+    }
 }
 
 impl VideoEncoder {
@@ -59,7 +75,7 @@ impl VideoEncoder {
     /// - `height`: Frame height in pixels
     /// - `fps`: Frame rate as a rational (e.g., `Rational(30, 1)` for 30fps)
     pub fn new(path: &Path, width: u32, height: u32, fps: Rational) -> Result<Self, EncodeError> {
-        ffmpeg::init()?;
+        crate::init();
 
         let mut octx = format::output(path)?;
 
@@ -133,6 +149,7 @@ impl VideoEncoder {
             frame_count: 0,
             width,
             height,
+            finished: false,
         })
     }
 
@@ -140,6 +157,13 @@ impl VideoEncoder {
     ///
     /// `rgba_data` must be exactly `width * height * 4` bytes (tightly packed).
     pub fn write_frame(&mut self, rgba_data: &[u8]) -> Result<(), EncodeError> {
+        let expected = (self.width * self.height * 4) as usize;
+        if rgba_data.len() != expected {
+            return Err(EncodeError::FrameSizeMismatch {
+                expected,
+                actual: rgba_data.len(),
+            });
+        }
         // Create RGBA source frame
         let mut rgba_frame = VideoFrame::new(Pixel::RGBA, self.width, self.height);
 
@@ -171,12 +195,23 @@ impl VideoEncoder {
 
     /// Flush the encoder and finalize the output file.
     ///
-    /// Must be called after all frames have been written.
+    /// Must be called after all frames have been written. Safe to call
+    /// multiple times — subsequent calls are no-ops.
     pub fn finish(&mut self) -> Result<(), EncodeError> {
+        if self.finished {
+            return Ok(());
+        }
+        self.flush_and_finalize()?;
+        self.finished = true;
+        log::info!("Encoder finished: {} frames written", self.frame_count);
+        Ok(())
+    }
+
+    /// Internal flush used by both `finish()` and `Drop`.
+    fn flush_and_finalize(&mut self) -> Result<(), EncodeError> {
         self.encoder.send_eof()?;
         self.receive_and_write_packets()?;
         self.octx.write_trailer()?;
-        log::info!("Encoder finished: {} frames written", self.frame_count);
         Ok(())
     }
 

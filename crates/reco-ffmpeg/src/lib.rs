@@ -25,3 +25,14 @@
 
 pub mod decoder;
 pub mod encoder;
+
+use std::sync::Once;
+
+static FFMPEG_INIT: Once = Once::new();
+
+/// Initialize FFmpeg (safe to call multiple times, only runs once).
+pub fn init() {
+    FFMPEG_INIT.call_once(|| {
+        ffmpeg_next::init().expect("FFmpeg initialization failed");
+    });
+}

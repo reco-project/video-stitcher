@@ -319,8 +319,7 @@ impl Renderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        let depth_texture_view =
-            depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth_texture_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Staging buffer for CPU readback
         let bytes_per_row = align_to_256(output_width * 4);
@@ -683,6 +682,15 @@ impl Renderer {
 // ---- Helper functions ----
 
 fn upload_frame(gpu: &GpuContext, plane: &PlaneResources, rgba_data: &[u8]) {
+    let expected = (plane.width * plane.height * 4) as usize;
+    assert_eq!(
+        rgba_data.len(),
+        expected,
+        "frame data size mismatch: expected {expected} bytes ({}x{}x4), got {}",
+        plane.width,
+        plane.height,
+        rgba_data.len()
+    );
     gpu.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture: &plane.texture,

@@ -68,7 +68,7 @@ pub struct VideoDecoder {
 impl VideoDecoder {
     /// Open a video file for decoding.
     pub fn open(path: &Path) -> Result<Self, DecodeError> {
-        ffmpeg::init()?;
+        crate::init();
 
         let ictx = input(path)?;
 
@@ -129,8 +129,13 @@ impl VideoDecoder {
     }
 
     /// Frame rate as an FFmpeg rational (numerator/denominator).
+    ///
+    /// Falls back to 30fps if the decoder cannot determine the frame rate.
     pub fn frame_rate(&self) -> ffmpeg::Rational {
-        self.decoder.frame_rate().unwrap_or(ffmpeg::Rational(30, 1))
+        self.decoder.frame_rate().unwrap_or_else(|| {
+            log::warn!("Could not determine frame rate, defaulting to 30fps");
+            ffmpeg::Rational(30, 1)
+        })
     }
 
     /// Frame rate as frames per second.

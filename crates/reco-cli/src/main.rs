@@ -106,6 +106,15 @@ fn main() -> anyhow::Result<()> {
             let input_width = left_dec.width();
             let input_height = left_dec.height();
 
+            anyhow::ensure!(
+                input_width == right_dec.width() && input_height == right_dec.height(),
+                "Video dimension mismatch: left={}x{}, right={}x{}",
+                input_width,
+                input_height,
+                right_dec.width(),
+                right_dec.height()
+            );
+
             log::info!(
                 "Left video: {}x{} @ {:.1} fps",
                 input_width,
@@ -241,6 +250,15 @@ fn run_preview(
     let input_width = left_dec.width();
     let input_height = left_dec.height();
 
+    anyhow::ensure!(
+        input_width == right_dec.width() && input_height == right_dec.height(),
+        "Video dimension mismatch: left={}x{}, right={}x{}",
+        input_width,
+        input_height,
+        right_dec.width(),
+        right_dec.height()
+    );
+
     let json = std::fs::read_to_string(calibration_path)?;
     let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)?;
 
@@ -250,8 +268,12 @@ fn run_preview(
     );
 
     // Pre-decode first frame for initial display
-    let first_left = left_dec.next_frame()?.expect("empty left video");
-    let first_right = right_dec.next_frame()?.expect("empty right video");
+    let first_left = left_dec
+        .next_frame()?
+        .ok_or_else(|| anyhow::anyhow!("left video has no frames"))?;
+    let first_right = right_dec
+        .next_frame()?
+        .ok_or_else(|| anyhow::anyhow!("right video has no frames"))?;
 
     struct App {
         window: Option<Window>,
@@ -279,18 +301,36 @@ fn run_preview(
 
     impl App {
         fn advance_frame(&mut self) {
-            if let (Some(l), Some(r)) = (
-                self.left_dec.next_frame().ok().flatten(),
-                self.right_dec.next_frame().ok().flatten(),
-            ) {
-                self.current_left = l.data;
-                self.current_right = r.data;
-                self.frame_count += 1;
-                self.needs_redraw = true;
-            } else {
-                self.playing = false;
-                println!("End of video");
-            }
+            let left = match self.left_dec.next_frame() {
+                Ok(Some(f)) => f,
+                Ok(None) => {
+                    self.playing = false;
+                    println!("End of video");
+                    return;
+                }
+                Err(e) => {
+                    log::error!("Left decode error: {e}");
+                    self.playing = false;
+                    return;
+                }
+            };
+            let right = match self.right_dec.next_frame() {
+                Ok(Some(f)) => f,
+                Ok(None) => {
+                    self.playing = false;
+                    println!("End of video");
+                    return;
+                }
+                Err(e) => {
+                    log::error!("Right decode error: {e}");
+                    self.playing = false;
+                    return;
+                }
+            };
+            self.current_left = left.data;
+            self.current_right = right.data;
+            self.frame_count += 1;
+            self.needs_redraw = true;
         }
     }
 
@@ -306,7 +346,7 @@ fn run_preview(
             let instance = wgpu::Instance::default();
             let surface = instance.create_surface(&window).expect("create surface");
 
-            let gpu = pollster::block_on(async {
+            let (gpu, caps) = pollster::block_on(async {
                 let adapter = instance
                     .request_adapter(&wgpu::RequestAdapterOptions {
                         power_preference: wgpu::PowerPreference::HighPerformance,
@@ -319,6 +359,8 @@ fn run_preview(
                 let info = adapter.get_info();
                 log::info!("Preview GPU: {} ({:?})", info.name, info.backend);
 
+                let caps = surface.get_capabilities(&adapter);
+
                 let (device, queue) = adapter
                     .request_device(&wgpu::DeviceDescriptor {
                         label: Some("reco_preview"),
@@ -327,23 +369,15 @@ fn run_preview(
                     .await
                     .expect("request device");
 
-                reco_core::gpu::GpuContext {
-                    device,
-                    queue,
-                    adapter_info: info,
-                }
+                (
+                    reco_core::gpu::GpuContext {
+                        device,
+                        queue,
+                        adapter_info: info,
+                    },
+                    caps,
+                )
             });
-
-            let caps = surface.get_capabilities(&pollster::block_on(async {
-                instance
-                    .request_adapter(&wgpu::RequestAdapterOptions {
-                        power_preference: wgpu::PowerPreference::HighPerformance,
-                        compatible_surface: Some(&surface),
-                        ..Default::default()
-                    })
-                    .await
-                    .expect("adapter for caps")
-            }));
 
             self.surface_format = caps.formats[0];
             self.alpha_mode = caps.alpha_modes[0];
@@ -408,8 +442,7 @@ fn run_preview(
                     if size.width > 0 && size.height > 0 {
                         self.width = size.width;
                         self.height = size.height;
-                        if let (Some(surface), Some(pipeline)) =
-                            (&self.surface, &mut self.pipeline)
+                        if let (Some(surface), Some(pipeline)) = (&self.surface, &mut self.pipeline)
                         {
                             surface.configure(
                                 &pipeline.gpu.device,
@@ -475,9 +508,7 @@ fn run_preview(
                                     self.advance_frame();
                                 }
                             }
-                            PhysicalKey::Code(
-                                KeyCode::Equal | KeyCode::NumpadAdd,
-                            ) => {
+                            PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
                                 // Zoom in (decrease FOV)
                                 if let Some(p) = &mut self.pipeline {
                                     p.viewport.fov_degrees =
@@ -486,9 +517,7 @@ fn run_preview(
                                     self.needs_redraw = true;
                                 }
                             }
-                            PhysicalKey::Code(
-                                KeyCode::Minus | KeyCode::NumpadSubtract,
-                            ) => {
+                            PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
                                 // Zoom out (increase FOV)
                                 if let Some(p) = &mut self.pipeline {
                                     p.viewport.fov_degrees =
@@ -534,7 +563,9 @@ fn run_preview(
                 _ => {}
             }
 
-            if self.needs_redraw && let Some(w) = &self.window {
+            if self.needs_redraw
+                && let Some(w) = &self.window
+            {
                 w.request_redraw();
             }
         }
