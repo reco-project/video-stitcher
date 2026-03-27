@@ -256,6 +256,8 @@ fn run_preview(
     struct App {
         window: Option<Window>,
         surface: Option<wgpu::Surface<'static>>,
+        surface_format: wgpu::TextureFormat,
+        alpha_mode: wgpu::CompositeAlphaMode,
         pipeline: Option<reco_core::pipeline::StitchPipeline>,
         left_dec: reco_ffmpeg::decoder::VideoDecoder,
         right_dec: reco_ffmpeg::decoder::VideoDecoder,
@@ -271,6 +273,8 @@ fn run_preview(
         frame_count: u64,
         playing: bool,
         needs_redraw: bool,
+        frame_duration: std::time::Duration,
+        last_frame_time: Instant,
     }
 
     impl App {
@@ -341,7 +345,9 @@ fn run_preview(
                     .expect("adapter for caps")
             }));
 
-            let surface_format = caps.formats[0];
+            self.surface_format = caps.formats[0];
+            self.alpha_mode = caps.alpha_modes[0];
+            let surface_format = self.surface_format;
             log::info!("Surface format: {:?}", surface_format);
 
             surface.configure(
@@ -353,7 +359,7 @@ fn run_preview(
                     height: self.height,
                     present_mode: wgpu::PresentMode::Fifo,
                     desired_maximum_frame_latency: 2,
-                    alpha_mode: caps.alpha_modes[0],
+                    alpha_mode: self.alpha_mode,
                     view_formats: vec![],
                 },
             );
@@ -398,6 +404,33 @@ fn run_preview(
         ) {
             match event {
                 WindowEvent::CloseRequested => event_loop.exit(),
+                WindowEvent::Resized(size) => {
+                    if size.width > 0 && size.height > 0 {
+                        self.width = size.width;
+                        self.height = size.height;
+                        if let (Some(surface), Some(pipeline)) =
+                            (&self.surface, &mut self.pipeline)
+                        {
+                            surface.configure(
+                                &pipeline.gpu.device,
+                                &wgpu::SurfaceConfiguration {
+                                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                                    format: self.surface_format,
+                                    width: self.width,
+                                    height: self.height,
+                                    present_mode: wgpu::PresentMode::Fifo,
+                                    desired_maximum_frame_latency: 2,
+                                    alpha_mode: self.alpha_mode,
+                                    view_formats: vec![],
+                                },
+                            );
+                            pipeline.viewport.width = self.width;
+                            pipeline.viewport.height = self.height;
+                            pipeline.resize_depth(self.width, self.height);
+                            self.needs_redraw = true;
+                        }
+                    }
+                }
                 WindowEvent::KeyboardInput { event, .. } => {
                     use winit::keyboard::{KeyCode, PhysicalKey};
                     if event.state == winit::event::ElementState::Pressed {
@@ -504,8 +537,9 @@ fn run_preview(
         }
 
         fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-            if self.playing {
+            if self.playing && self.last_frame_time.elapsed() >= self.frame_duration {
                 self.advance_frame();
+                self.last_frame_time = Instant::now();
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
@@ -515,9 +549,14 @@ fn run_preview(
 
     let event_loop = EventLoop::new()?;
 
+    let fps = left_dec.fps();
+    let frame_duration = std::time::Duration::from_secs_f64(1.0 / fps);
+
     let mut app = App {
         window: None,
         surface: None,
+        surface_format: wgpu::TextureFormat::Bgra8UnormSrgb, // overwritten in resumed()
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
         pipeline: None,
         left_dec,
         right_dec,
@@ -533,6 +572,8 @@ fn run_preview(
         frame_count: 1,
         playing: false,
         needs_redraw: false,
+        frame_duration,
+        last_frame_time: Instant::now(),
     };
 
     event_loop.run_app(&mut app)?;

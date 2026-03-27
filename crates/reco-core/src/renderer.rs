@@ -575,7 +575,7 @@ impl Renderer {
         blend_width: f32,
         target_view: &wgpu::TextureView,
     ) {
-        let aspect = self.output_width as f32 / self.output_height as f32;
+        let aspect = viewport.config.width as f32 / viewport.config.height as f32;
         let projection = opengl_to_wgpu_matrix()
             * Perspective3::new(aspect, viewport.config.fov_degrees.to_radians(), 0.01, 5.0)
                 .to_homogeneous();
@@ -644,6 +644,29 @@ impl Renderer {
         }
 
         gpu.queue.submit(Some(encoder.finish()));
+    }
+
+    /// Resize the output dimensions (recreates depth texture).
+    ///
+    /// Called when the preview window is resized. The render target and
+    /// output buffer are only used for CPU readback, so they are left as-is.
+    pub fn resize_depth(&mut self, gpu: &GpuContext, width: u32, height: u32) {
+        let depth_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth_texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth24Plus,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        self.depth_texture_view =
+            depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
     }
 
     /// Width of the output render target.

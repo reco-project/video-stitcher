@@ -151,6 +151,11 @@ impl StitchPipeline {
         );
     }
 
+    /// Resize the depth buffer for the preview window.
+    pub fn resize_depth(&mut self, width: u32, height: u32) {
+        self.renderer.resize_depth(&self.gpu, width, height);
+    }
+
     /// Process a single frame through the GPU pipeline.
     ///
     /// Uploads left and right RGBA frames to the GPU, renders the stitched
