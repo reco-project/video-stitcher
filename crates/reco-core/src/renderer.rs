@@ -737,16 +737,18 @@ fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32) -> Matrix4<f32> {
     let eye = Point3::new(position[0], position[1], position[2]);
     // Base direction: eye → origin (the L-shape corner)
     let base_forward = -eye.coords.normalize();
-    // Compose rotations like v1 Three.js: yaw around world Y first,
-    // then pitch around the camera-local right axis. This makes
-    // up/down always relative to the current view direction.
+    let world_up = Vector3::new(0.0, 1.0, 0.0);
+    // Camera's base right axis — perpendicular to view in the horizontal plane.
+    // This accounts for the camera being at 45° in the XZ plane.
+    let base_right = base_forward.cross(&world_up).normalize();
+    // Yaw: rotate around world Y (horizontal pan)
     let yaw_q = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw);
-    let right = yaw_q * Vector3::x_axis();
-    let pitch_q =
-        UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(right.into_inner()), pitch);
+    // Pitch: rotate around the yaw-rotated camera right axis (head nod)
+    let right = yaw_q * base_right;
+    let pitch_q = UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(right), pitch);
     let rotation = pitch_q * yaw_q;
     let forward = rotation * base_forward;
-    let up = rotation * Vector3::new(0.0, 1.0, 0.0);
+    let up = rotation * world_up;
     let target = Point3::from(eye.coords + forward);
     nalgebra::Isometry3::look_at_rh(&eye, &target, &up).to_homogeneous()
 }
