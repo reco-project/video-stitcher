@@ -268,6 +268,68 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
+/// A pair of decoded RGBA frames (left + right), sent from the decode thread.
+struct FramePair {
+    left: Vec<u8>,
+    right: Vec<u8>,
+}
+
+/// Spawn a background thread that decodes both video files in lockstep
+/// and sends frame pairs through a bounded channel.
+fn spawn_decode_thread(
+    left_path: String,
+    right_path: String,
+) -> std::sync::mpsc::Receiver<FramePair> {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
+
+    std::thread::spawn(move || {
+        let mut left_dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&left_path)) {
+            Ok(d) => d,
+            Err(e) => {
+                log::error!("Failed to open left video: {e}");
+                return;
+            }
+        };
+        let mut right_dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&right_path)) {
+            Ok(d) => d,
+            Err(e) => {
+                log::error!("Failed to open right video: {e}");
+                return;
+            }
+        };
+
+        loop {
+            let left = match left_dec.next_frame() {
+                Ok(Some(f)) => f,
+                Ok(None) => break,
+                Err(e) => {
+                    log::error!("Left decode error: {e}");
+                    break;
+                }
+            };
+            let right = match right_dec.next_frame() {
+                Ok(Some(f)) => f,
+                Ok(None) => break,
+                Err(e) => {
+                    log::error!("Right decode error: {e}");
+                    break;
+                }
+            };
+            if tx
+                .send(FramePair {
+                    left: left.data,
+                    right: right.data,
+                })
+                .is_err()
+            {
+                break; // Receiver dropped (window closed)
+            }
+        }
+    });
+
+    rx
+}
+
 fn run_preview(
     left_path: &str,
     right_path: &str,
@@ -280,8 +342,8 @@ fn run_preview(
     use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
     use winit::window::{Window, WindowAttributes, WindowId};
 
-    let mut left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(left_path))?;
-    let mut right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
+    let left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(left_path))?;
+    let right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
 
     let input_width = left_dec.width();
     let input_height = left_dec.height();
@@ -295,6 +357,11 @@ fn run_preview(
         right_dec.height()
     );
 
+    let fps = left_dec.fps();
+    // Drop the decoders — the thread will open its own
+    drop(left_dec);
+    drop(right_dec);
+
     let json = std::fs::read_to_string(calibration_path)?;
     let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)?;
 
@@ -303,13 +370,11 @@ fn run_preview(
         input_width, input_height, width, height
     );
 
-    // Pre-decode first frame for initial display
-    let first_left = left_dec
-        .next_frame()?
-        .ok_or_else(|| anyhow::anyhow!("left video has no frames"))?;
-    let first_right = right_dec
-        .next_frame()?
-        .ok_or_else(|| anyhow::anyhow!("right video has no frames"))?;
+    // Spawn decode thread and get the first frame for initial display
+    let frame_rx = spawn_decode_thread(left_path.to_string(), right_path.to_string());
+    let first = frame_rx
+        .recv()
+        .map_err(|_| anyhow::anyhow!("videos have no frames"))?;
 
     struct App {
         window: Option<Window>,
@@ -317,8 +382,7 @@ fn run_preview(
         surface_format: wgpu::TextureFormat,
         alpha_mode: wgpu::CompositeAlphaMode,
         pipeline: Option<reco_core::pipeline::StitchPipeline>,
-        left_dec: reco_ffmpeg::decoder::VideoDecoder,
-        right_dec: reco_ffmpeg::decoder::VideoDecoder,
+        frame_rx: std::sync::mpsc::Receiver<FramePair>,
         cal: reco_core::calibration::MatchCalibration,
         input_width: u32,
         input_height: u32,
@@ -337,36 +401,37 @@ fn run_preview(
 
     impl App {
         fn advance_frame(&mut self) {
-            let left = match self.left_dec.next_frame() {
-                Ok(Some(f)) => f,
-                Ok(None) => {
+            match self.frame_rx.try_recv() {
+                Ok(pair) => {
+                    self.current_left = pair.left;
+                    self.current_right = pair.right;
+                    self.frame_count += 1;
+                    self.needs_redraw = true;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // Decode thread hasn't caught up yet — skip this frame
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.playing = false;
                     println!("End of video");
-                    return;
                 }
-                Err(e) => {
-                    log::error!("Left decode error: {e}");
-                    self.playing = false;
-                    return;
+            }
+        }
+
+        /// Blocking advance for step mode (N key, P key).
+        fn step_frame(&mut self) {
+            match self.frame_rx.recv() {
+                Ok(pair) => {
+                    self.current_left = pair.left;
+                    self.current_right = pair.right;
+                    self.frame_count += 1;
+                    self.needs_redraw = true;
                 }
-            };
-            let right = match self.right_dec.next_frame() {
-                Ok(Some(f)) => f,
-                Ok(None) => {
+                Err(_) => {
                     self.playing = false;
                     println!("End of video");
-                    return;
                 }
-                Err(e) => {
-                    log::error!("Right decode error: {e}");
-                    self.playing = false;
-                    return;
-                }
-            };
-            self.current_left = left.data;
-            self.current_right = right.data;
-            self.frame_count += 1;
-            self.needs_redraw = true;
+            }
         }
     }
 
@@ -534,14 +599,14 @@ fn run_preview(
                                 }
                             }
                             PhysicalKey::Code(KeyCode::KeyN) => {
-                                // Step one frame
+                                // Step one frame (blocking — waits for decode)
                                 self.playing = false;
-                                self.advance_frame();
+                                self.step_frame();
                             }
                             PhysicalKey::Code(KeyCode::KeyP) => {
-                                // Skip 30 frames
+                                // Skip 30 frames (blocking — waits for decode)
                                 for _ in 0..30 {
-                                    self.advance_frame();
+                                    self.step_frame();
                                 }
                             }
                             PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
@@ -631,7 +696,6 @@ fn run_preview(
 
     let event_loop = EventLoop::new()?;
 
-    let fps = left_dec.fps();
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / fps);
 
     let mut app = App {
@@ -640,15 +704,14 @@ fn run_preview(
         surface_format: wgpu::TextureFormat::Bgra8UnormSrgb, // overwritten in resumed()
         alpha_mode: wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
         pipeline: None,
-        left_dec,
-        right_dec,
+        frame_rx,
         cal,
         input_width,
         input_height,
         width,
         height,
-        current_left: first_left.data,
-        current_right: first_right.data,
+        current_left: first.left,
+        current_right: first.right,
         yaw: 0.0,
         pitch: 0.0,
         frame_count: 1,
