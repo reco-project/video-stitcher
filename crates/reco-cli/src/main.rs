@@ -232,7 +232,7 @@ fn run_preview(
 ) -> anyhow::Result<()> {
     use winit::application::ApplicationHandler;
     use winit::event::WindowEvent;
-    use winit::event_loop::{ActiveEventLoop, EventLoop};
+    use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
     use winit::window::{Window, WindowAttributes, WindowId};
 
     let mut left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(left_path))?;
@@ -456,10 +456,13 @@ fn run_preview(
                             }
                             PhysicalKey::Code(KeyCode::Space) => {
                                 self.playing = !self.playing;
-                                println!(
-                                    "{}",
-                                    if self.playing { "Playing" } else { "Paused" }
-                                );
+                                if self.playing {
+                                    event_loop.set_control_flow(ControlFlow::Poll);
+                                    println!("Playing");
+                                } else {
+                                    event_loop.set_control_flow(ControlFlow::Wait);
+                                    println!("Paused");
+                                }
                             }
                             PhysicalKey::Code(KeyCode::KeyN) => {
                                 // Step one frame
@@ -536,10 +539,14 @@ fn run_preview(
             }
         }
 
-        fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
             if self.playing && self.last_frame_time.elapsed() >= self.frame_duration {
                 self.advance_frame();
                 self.last_frame_time = Instant::now();
+                if !self.playing {
+                    // Video ended
+                    event_loop.set_control_flow(ControlFlow::Wait);
+                }
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
