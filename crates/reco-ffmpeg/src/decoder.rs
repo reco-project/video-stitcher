@@ -1,7 +1,8 @@
-//! Video decoder: file → RGBA frames.
+//! Video decoder: file → YUV420P frames.
 //!
-//! Wraps FFmpeg's demuxer, decoder, and swscale to produce RGBA pixel data
-//! frame-by-frame from any video file FFmpeg can read.
+//! Wraps FFmpeg's demuxer and decoder to produce YUV420P plane data
+//! frame-by-frame from any video file FFmpeg can read. YUV planes are
+//! uploaded directly to the GPU, eliminating CPU-side color conversion.
 
 extern crate ffmpeg_next as ffmpeg;
 
@@ -9,6 +10,19 @@ use ffmpeg::format::{Pixel, input};
 use ffmpeg::media::Type;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
 use ffmpeg::util::frame::video::Video as VideoFrame;
+
+/// Create a tracing span guard (no-op when `profiling` feature is disabled).
+#[cfg(feature = "profiling")]
+macro_rules! profile_scope {
+    ($name:expr) => {
+        let _span = tracing::info_span!($name).entered();
+    };
+}
+
+#[cfg(not(feature = "profiling"))]
+macro_rules! profile_scope {
+    ($name:expr) => {};
+}
 use std::path::Path;
 use thiserror::Error;
 
@@ -24,10 +38,19 @@ pub enum DecodeError {
     NoVideoStream,
 }
 
-/// A decoded RGBA frame with timestamp.
-pub struct RgbaFrame {
-    /// Raw RGBA pixel data (width * height * 4 bytes, tightly packed).
-    pub data: Vec<u8>,
+/// A decoded YUV420P frame with timestamp.
+///
+/// Contains tightly-packed plane data (no stride padding):
+/// - Y: `width × height` bytes (luma, full resolution)
+/// - U: `(width/2) × (height/2)` bytes (chroma blue, half resolution)
+/// - V: `(width/2) × (height/2)` bytes (chroma red, half resolution)
+pub struct YuvFrame {
+    /// Y (luma) plane data, tightly packed.
+    pub y: Vec<u8>,
+    /// U (Cb) plane data, tightly packed.
+    pub u: Vec<u8>,
+    /// V (Cr) plane data, tightly packed.
+    pub v: Vec<u8>,
     /// Frame width in pixels.
     pub width: u32,
     /// Frame height in pixels.
@@ -36,10 +59,12 @@ pub struct RgbaFrame {
     pub timestamp_us: i64,
 }
 
-/// Video decoder that produces RGBA frames from a video file.
+/// Video decoder that produces YUV420P frames from a video file.
 ///
-/// Uses FFmpeg's software decoder and swscale for pixel format conversion.
-/// Call [`Self::next_frame`] repeatedly to decode frames.
+/// Uses FFmpeg's software decoder. If the input pixel format is already
+/// YUV420P (the common case for H.264), planes are extracted directly
+/// without any color conversion. For other formats, swscale converts
+/// to YUV420P first.
 ///
 /// # Example
 ///
@@ -55,18 +80,18 @@ pub struct RgbaFrame {
 pub struct VideoDecoder {
     input: ffmpeg::format::context::Input,
     decoder: ffmpeg::decoder::Video,
-    scaler: ScalingContext,
+    /// Only created when input format is not YUV420P.
+    scaler: Option<ScalingContext>,
     video_stream_index: usize,
     time_base_num: i64,
     time_base_den: i64,
     width: u32,
     height: u32,
     eof_sent: bool,
-    /// Reusable frame buffers to avoid per-frame allocation.
+    /// Reusable decode buffer.
     decoded_frame: VideoFrame,
-    rgba_frame: VideoFrame,
-    /// Pre-allocated output buffer, reused across frames.
-    output_buf: Vec<u8>,
+    /// Reusable conversion buffer (only used when scaler is active).
+    converted_frame: VideoFrame,
 }
 
 impl VideoDecoder {
@@ -91,27 +116,37 @@ impl VideoDecoder {
 
         let width = decoder.width();
         let height = decoder.height();
+        let format = decoder.format();
 
         log::info!(
             "Decoder: {}x{} {:?}, time_base={}/{}",
             width,
             height,
-            decoder.format(),
+            format,
             time_base.0,
             time_base.1
         );
 
-        let scaler = ScalingContext::get(
-            decoder.format(),
-            width,
-            height,
-            Pixel::RGBA,
-            width,
-            height,
-            ScalingFlags::BILINEAR,
-        )?;
-
-        let frame_bytes = width as usize * height as usize * 4;
+        // Only create a scaler if the input isn't already YUV420P.
+        // For YUV420P (the common H.264 case), we extract planes directly.
+        let scaler = if format != Pixel::YUV420P {
+            log::info!(
+                "Input format {:?} is not YUV420P — swscale will convert",
+                format
+            );
+            Some(ScalingContext::get(
+                format,
+                width,
+                height,
+                Pixel::YUV420P,
+                width,
+                height,
+                ScalingFlags::POINT,
+            )?)
+        } else {
+            log::info!("Input is YUV420P — direct plane extraction (no swscale)");
+            None
+        };
 
         Ok(Self {
             input: ictx,
@@ -124,8 +159,7 @@ impl VideoDecoder {
             height,
             eof_sent: false,
             decoded_frame: VideoFrame::empty(),
-            rgba_frame: VideoFrame::empty(),
-            output_buf: vec![0u8; frame_bytes],
+            converted_frame: VideoFrame::empty(),
         })
     }
 
@@ -155,12 +189,12 @@ impl VideoDecoder {
         r.0 as f64 / r.1 as f64
     }
 
-    /// Decode the next RGBA frame, or `None` if the video is finished.
+    /// Decode the next YUV420P frame, or `None` if the video is finished.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame")
     )]
-    pub fn next_frame(&mut self) -> Result<Option<RgbaFrame>, DecodeError> {
+    pub fn next_frame(&mut self) -> Result<Option<YuvFrame>, DecodeError> {
         if self.eof_sent {
             return Ok(None);
         }
@@ -168,15 +202,18 @@ impl VideoDecoder {
         // Try to receive a frame from packets already sent to the decoder,
         // or read new packets until we get one.
         loop {
-            if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                return Ok(Some(self.convert_frame()));
+            {
+                profile_scope!("h264_decode");
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                    return Ok(Some(self.extract_yuv()));
+                }
             }
 
             // Need more data — read next video packet
             let mut found_packet = false;
-            // We need to use packets() iterator but break after processing one video packet
             for (stream, packet) in self.input.packets() {
                 if stream.index() == self.video_stream_index {
+                    profile_scope!("send_packet");
                     self.decoder.send_packet(&packet)?;
                     found_packet = true;
                     break;
@@ -184,23 +221,30 @@ impl VideoDecoder {
             }
 
             if !found_packet {
-                // EOF — flush the decoder
                 self.eof_sent = true;
                 self.decoder.send_eof()?;
                 if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    return Ok(Some(self.convert_frame()));
+                    return Ok(Some(self.extract_yuv()));
                 }
                 return Ok(None);
             }
         }
     }
 
-    /// Convert the current decoded frame to RGBA and return it.
-    /// Reuses internal buffers to avoid allocation.
-    fn convert_frame(&mut self) -> RgbaFrame {
-        self.scaler
-            .run(&self.decoded_frame, &mut self.rgba_frame)
-            .expect("swscale conversion failed");
+    /// Extract YUV420P planes from the current decoded frame.
+    ///
+    /// If input is YUV420P, reads planes directly (zero conversion).
+    /// Otherwise, uses swscale to convert to YUV420P first.
+    fn extract_yuv(&mut self) -> YuvFrame {
+        let source = if let Some(scaler) = &mut self.scaler {
+            profile_scope!("swscale");
+            scaler
+                .run(&self.decoded_frame, &mut self.converted_frame)
+                .expect("swscale conversion failed");
+            &self.converted_frame
+        } else {
+            &self.decoded_frame
+        };
 
         let pts = self.decoded_frame.pts().unwrap_or(0);
         let timestamp_us = if self.time_base_den != 0 {
@@ -209,30 +253,38 @@ impl VideoDecoder {
             0
         };
 
-        // Copy RGBA data into reusable buffer, handling potential stride padding
-        let stride = self.rgba_frame.stride(0);
-        let row_bytes = self.width as usize * 4;
-        let src = self.rgba_frame.data(0);
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let uv_w = w / 2;
+        let uv_h = h / 2;
 
-        if stride == row_bytes {
-            self.output_buf[..row_bytes * self.height as usize]
-                .copy_from_slice(&src[..row_bytes * self.height as usize]);
-        } else {
-            for y in 0..self.height as usize {
-                let src_start = y * stride;
-                let dst_start = y * row_bytes;
-                self.output_buf[dst_start..dst_start + row_bytes]
-                    .copy_from_slice(&src[src_start..src_start + row_bytes]);
-            }
-        }
+        let y = extract_plane(source.data(0), source.stride(0), w, h);
+        let u = extract_plane(source.data(1), source.stride(1), uv_w, uv_h);
+        let v = extract_plane(source.data(2), source.stride(2), uv_w, uv_h);
 
-        // We still need to clone here because the caller owns the Vec.
-        // But output_buf stays allocated for next frame.
-        RgbaFrame {
-            data: self.output_buf.clone(),
+        YuvFrame {
+            y,
+            u,
+            v,
             width: self.width,
             height: self.height,
             timestamp_us,
         }
+    }
+}
+
+/// Copy one plane from an FFmpeg frame, removing stride padding.
+///
+/// If stride == width (common for 1920-wide frames), this is a single memcpy.
+fn extract_plane(data: &[u8], stride: usize, width: usize, height: usize) -> Vec<u8> {
+    if stride == width {
+        data[..width * height].to_vec()
+    } else {
+        let mut out = Vec::with_capacity(width * height);
+        for row in 0..height {
+            let start = row * stride;
+            out.extend_from_slice(&data[start..start + width]);
+        }
+        out
     }
 }

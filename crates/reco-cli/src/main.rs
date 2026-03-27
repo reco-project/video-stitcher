@@ -275,7 +275,17 @@ fn main() -> anyhow::Result<()> {
                     }
                 };
 
-                let stitched = pipeline.process_frame(&pair.left, &pair.right, yaw, pitch)?;
+                let left = reco_core::pipeline::YuvPlanes {
+                    y: &pair.left.y,
+                    u: &pair.left.u,
+                    v: &pair.left.v,
+                };
+                let right = reco_core::pipeline::YuvPlanes {
+                    y: &pair.right.y,
+                    u: &pair.right.u,
+                    v: &pair.right.v,
+                };
+                let stitched = pipeline.process_frame(&left, &right, yaw, pitch)?;
 
                 encoder.write_frame(&stitched)?;
                 frame_count += 1;
@@ -328,15 +338,22 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-/// A pair of decoded RGBA frames (left + right), sent from the decode thread.
-struct FramePair {
-    left: Vec<u8>,
-    right: Vec<u8>,
+/// Owned YUV420P plane data for one camera.
+struct YuvBuf {
+    y: Vec<u8>,
+    u: Vec<u8>,
+    v: Vec<u8>,
 }
 
-/// Spawn a single-video decode thread that sends raw RGBA frames through a channel.
-fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::Receiver<Vec<u8>> {
-    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(4);
+/// A pair of decoded YUV frames (left + right), sent from the decode thread.
+struct FramePair {
+    left: YuvBuf,
+    right: YuvBuf,
+}
+
+/// Spawn a single-video decode thread that sends YUV frames through a channel.
+fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::Receiver<YuvBuf> {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<YuvBuf>(4);
 
     std::thread::Builder::new()
         .name(format!("decode_{label}"))
@@ -351,7 +368,12 @@ fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::R
             loop {
                 match dec.next_frame() {
                     Ok(Some(f)) => {
-                        if tx.send(f.data).is_err() {
+                        let buf = YuvBuf {
+                            y: f.y,
+                            u: f.u,
+                            v: f.v,
+                        };
+                        if tx.send(buf).is_err() {
                             break; // Receiver dropped
                         }
                     }
@@ -453,8 +475,8 @@ fn run_preview(
         input_height: u32,
         width: u32,
         height: u32,
-        current_left: Vec<u8>,
-        current_right: Vec<u8>,
+        current_left: YuvBuf,
+        current_right: YuvBuf,
         yaw: f32,
         pitch: f32,
         frame_count: u64,
@@ -475,10 +497,7 @@ fn run_preview(
         fn advance_frame(&mut self) {
             match self.frame_rx.try_recv() {
                 Ok(pair) => {
-                    self.current_left = pair.left;
-                    self.current_right = pair.right;
-                    self.frame_count += 1;
-                    self.needs_redraw = true;
+                    self.apply_pair(pair);
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     // Decode thread hasn't caught up yet — skip this frame
@@ -494,16 +513,20 @@ fn run_preview(
         fn step_frame(&mut self) {
             match self.frame_rx.recv() {
                 Ok(pair) => {
-                    self.current_left = pair.left;
-                    self.current_right = pair.right;
-                    self.frame_count += 1;
-                    self.needs_redraw = true;
+                    self.apply_pair(pair);
                 }
                 Err(_) => {
                     self.playing = false;
                     println!("End of video");
                 }
             }
+        }
+
+        fn apply_pair(&mut self, pair: FramePair) {
+            self.current_left = pair.left;
+            self.current_right = pair.right;
+            self.frame_count += 1;
+            self.needs_redraw = true;
         }
 
         /// Interpolate yaw/pitch/fov toward their targets for smooth camera.
@@ -795,13 +818,17 @@ fn run_preview(
                         .texture
                         .create_view(&wgpu::TextureViewDescriptor::default());
 
-                    pipeline.render_to_view(
-                        &self.current_left,
-                        &self.current_right,
-                        self.yaw,
-                        self.pitch,
-                        &view,
-                    );
+                    let left = reco_core::pipeline::YuvPlanes {
+                        y: &self.current_left.y,
+                        u: &self.current_left.u,
+                        v: &self.current_left.v,
+                    };
+                    let right = reco_core::pipeline::YuvPlanes {
+                        y: &self.current_right.y,
+                        u: &self.current_right.u,
+                        v: &self.current_right.v,
+                    };
+                    pipeline.render_to_view(&left, &right, self.yaw, self.pitch, &view);
 
                     frame.present();
                 }
@@ -867,6 +894,7 @@ fn run_preview(
         height,
         current_left: first.left,
         current_right: first.right,
+
         yaw: 0.0,
         pitch: 0.0,
         frame_count: 1,

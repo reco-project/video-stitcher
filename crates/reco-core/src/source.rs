@@ -2,7 +2,7 @@
 //!
 //! The pipeline doesn't care where frames come from — video files,
 //! live cameras, network streams, or test patterns. Each source
-//! implements [`FrameSource`] and delivers stereo frame pairs.
+//! implements [`FrameSource`] and delivers stereo YUV420P frame pairs.
 //!
 //! ## Implementations
 //!
@@ -12,10 +12,14 @@
 //!
 //! ## Design
 //!
-//! Frame data is always RGBA bytes on the CPU in phase 1. In the future,
-//! sources may provide GPU-resident frames (e.g. NVDEC output as a
-//! wgpu texture) to avoid CPU↔GPU transfers entirely. The trait is
-//! designed so that extension doesn't break existing sources.
+//! Frame data is always YUV420P on the CPU: three separate planes
+//! (Y full-res, U half-res, V half-res). The GPU pipeline uploads
+//! these directly and converts to RGB in the shader, avoiding any
+//! CPU-side color conversion.
+//!
+//! In the future, sources may provide GPU-resident frames (e.g. NVDEC
+//! output) to avoid CPU↔GPU transfers entirely. The trait is designed
+//! so that extension doesn't break existing sources.
 
 use thiserror::Error;
 
@@ -31,15 +35,30 @@ pub enum SourceError {
     Read(String),
 }
 
+/// Owned YUV420P plane data.
+///
+/// Tightly packed (no stride padding):
+/// - Y: `width × height` bytes
+/// - U: `(width/2) × (height/2)` bytes
+/// - V: `(width/2) × (height/2)` bytes
+pub struct YuvData {
+    /// Y (luma) plane, full resolution.
+    pub y: Vec<u8>,
+    /// U (Cb) plane, half resolution.
+    pub u: Vec<u8>,
+    /// V (Cr) plane, half resolution.
+    pub v: Vec<u8>,
+}
+
 /// A stereo frame pair from the source.
 ///
-/// Contains left and right camera data as RGBA bytes (CPU-resident).
+/// Contains left and right camera data as YUV420P planes (CPU-resident).
 /// Both frames must have the same dimensions.
 pub struct FramePair {
-    /// Left camera RGBA data (width * height * 4 bytes).
-    pub left: Vec<u8>,
-    /// Right camera RGBA data (width * height * 4 bytes).
-    pub right: Vec<u8>,
+    /// Left camera YUV420P data.
+    pub left: YuvData,
+    /// Right camera YUV420P data.
+    pub right: YuvData,
 }
 
 /// Metadata about the frame source.
@@ -54,29 +73,10 @@ pub struct SourceInfo {
 
 /// Trait for stereo frame sources.
 ///
-/// A frame source delivers pairs of left/right RGBA frames to the
+/// A frame source delivers pairs of left/right YUV420P frames to the
 /// pipeline. Implementations handle their own threading — the pipeline
 /// calls [`Self::next_pair`] from the main thread and expects it to
 /// return quickly (either with data or `None` for end-of-stream).
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use reco_core::source::{FrameSource, SourceInfo, FramePair, SourceError};
-///
-/// struct TestPatternSource { frame: u64 }
-///
-/// impl FrameSource for TestPatternSource {
-///     fn info(&self) -> SourceInfo {
-///         SourceInfo { width: 1920, height: 1080, fps: 30.0 }
-///     }
-///
-///     fn next_pair(&mut self) -> Result<Option<FramePair>, SourceError> {
-///         // Generate test pattern...
-///         Ok(None)
-///     }
-/// }
-/// ```
 pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).
     fn info(&self) -> SourceInfo;

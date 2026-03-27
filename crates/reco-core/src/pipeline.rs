@@ -29,6 +29,21 @@ use crate::viewport::{ResolvedViewport, ViewportConfig};
 
 use thiserror::Error;
 
+/// Borrowed YUV420P plane references for pipeline input.
+///
+/// Tightly packed (no stride padding):
+/// - `y`: `width × height` bytes
+/// - `u`: `(width/2) × (height/2)` bytes
+/// - `v`: `(width/2) × (height/2)` bytes
+pub struct YuvPlanes<'a> {
+    /// Y (luma) plane, full resolution.
+    pub y: &'a [u8],
+    /// U (Cb) plane, half resolution.
+    pub u: &'a [u8],
+    /// V (Cr) plane, half resolution.
+    pub v: &'a [u8],
+}
+
 /// Errors from the stitch pipeline.
 #[derive(Debug, Error)]
 pub enum PipelineError {
@@ -44,7 +59,7 @@ pub enum PipelineError {
 /// The main stitching pipeline.
 ///
 /// Owns the GPU context, scene geometry, and renderer. Consumers provide
-/// RGBA frames and receive stitched output via [`Self::process_frame`].
+/// YUV420P frames and receive stitched RGBA output via [`Self::process_frame`].
 pub struct StitchPipeline {
     /// GPU device and queue.
     pub gpu: GpuContext,
@@ -127,14 +142,16 @@ impl StitchPipeline {
     /// stays on the GPU and is presented to the surface.
     pub fn render_to_view(
         &self,
-        left_rgba: &[u8],
-        right_rgba: &[u8],
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
         yaw: f32,
         pitch: f32,
         target_view: &wgpu::TextureView,
     ) {
-        self.renderer.upload_left_frame(&self.gpu, left_rgba);
-        self.renderer.upload_right_frame(&self.gpu, right_rgba);
+        self.renderer
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v);
+        self.renderer
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v);
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
@@ -158,7 +175,7 @@ impl StitchPipeline {
 
     /// Process a single frame through the GPU pipeline.
     ///
-    /// Uploads left and right RGBA frames to the GPU, renders the stitched
+    /// Uploads left and right YUV420P planes to the GPU, renders the stitched
     /// panorama at the given viewport position, and reads back the result.
     #[cfg_attr(
         feature = "profiling",
@@ -166,13 +183,15 @@ impl StitchPipeline {
     )]
     pub fn process_frame(
         &self,
-        left_rgba: &[u8],
-        right_rgba: &[u8],
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, PipelineError> {
-        self.renderer.upload_left_frame(&self.gpu, left_rgba);
-        self.renderer.upload_right_frame(&self.gpu, right_rgba);
+        self.renderer
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v);
+        self.renderer
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v);
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),

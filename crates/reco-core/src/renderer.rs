@@ -6,13 +6,16 @@
 //! ## Pipeline
 //!
 //! ```text
-//! Left RGBA frame  ──► GPU texture ──┐
-//!                                    ├──► Render pass ──► RGBA output
-//! Right RGBA frame ──► GPU texture ──┘
+//! Left YUV420P ──► Y/U/V textures ──┐
+//!                                    ├──► Render pass (YUV→RGB + fisheye) ──► RGBA output
+//! Right YUV420P ──► Y/U/V textures ──┘
 //! ```
 //!
 //! Each plane is a textured quad positioned in 3D space (L-shape geometry).
-//! The fisheye undistortion and color correction happen in the fragment shader.
+//! YUV→RGB conversion (BT.709), fisheye undistortion, and color correction
+//! all happen in the fragment shader. Uploading YUV420P directly reduces
+//! CPU↔GPU transfer from 8.3 MB to 3.1 MB per frame (62% less bandwidth)
+//! and eliminates CPU-side swscale color conversion entirely.
 
 use crate::calibration::{CameraParams, MatchCalibration};
 use crate::gpu::GpuContext;
@@ -114,9 +117,11 @@ fn quad_vertices(aspect: f32) -> [Vertex; 6] {
 
 // ---- Renderer ----
 
-/// Per-plane GPU resources (texture + uniform buffer + bind groups).
+/// Per-plane GPU resources (YUV textures + uniform buffer + bind groups).
 struct PlaneResources {
-    texture: wgpu::Texture,
+    y_texture: wgpu::Texture,
+    u_texture: wgpu::Texture,
+    v_texture: wgpu::Texture,
     texture_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
@@ -170,22 +175,25 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        // Bind group layouts
+        // Bind group layouts — YUV420P: 3 plane textures + 1 sampler
+        let texture_entry = |binding: u32| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        };
         let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("texture_layout"),
             entries: &[
+                texture_entry(0), // Y plane
+                texture_entry(1), // U plane
+                texture_entry(2), // V plane
                 wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 3,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -353,32 +361,52 @@ impl Renderer {
         height: u32,
         label: &str,
     ) -> PlaneResources {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&format!("{label}_video")),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
 
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let create_plane_texture = |name: &str, w: u32, h: u32| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(&format!("{label}_{name}")),
+                size: wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R8Unorm,
+                usage,
+                view_formats: &[],
+            })
+        };
+
+        // YUV420P: Y at full resolution, U/V at half resolution
+        let y_texture = create_plane_texture("y", width, height);
+        let u_texture = create_plane_texture("u", width / 2, height / 2);
+        let v_texture = create_plane_texture("v", width / 2, height / 2);
+
+        let y_view = y_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let u_view = u_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let v_view = v_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&format!("{label}_texture_bg")),
             layout: texture_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
+                    resource: wgpu::BindingResource::TextureView(&y_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&u_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&v_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
                     resource: wgpu::BindingResource::Sampler(sampler),
                 },
             ],
@@ -401,7 +429,9 @@ impl Renderer {
         });
 
         PlaneResources {
-            texture,
+            y_texture,
+            u_texture,
+            v_texture,
             texture_bind_group,
             uniform_buffer,
             uniform_bind_group,
@@ -410,18 +440,18 @@ impl Renderer {
         }
     }
 
-    /// Upload an RGBA frame to the left camera texture.
+    /// Upload YUV420P planes to the left camera textures.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "gpu_upload")
     )]
-    pub fn upload_left_frame(&self, gpu: &GpuContext, rgba_data: &[u8]) {
-        upload_frame(gpu, &self.left, rgba_data);
+    pub fn upload_left_yuv(&self, gpu: &GpuContext, y: &[u8], u: &[u8], v: &[u8]) {
+        upload_yuv(gpu, &self.left, y, u, v);
     }
 
-    /// Upload an RGBA frame to the right camera texture.
-    pub fn upload_right_frame(&self, gpu: &GpuContext, rgba_data: &[u8]) {
-        upload_frame(gpu, &self.right, rgba_data);
+    /// Upload YUV420P planes to the right camera textures.
+    pub fn upload_right_yuv(&self, gpu: &GpuContext, y: &[u8], u: &[u8], v: &[u8]) {
+        upload_yuv(gpu, &self.right, y, u, v);
     }
 
     /// Render a stitched frame and read back the RGBA result.
@@ -696,35 +726,56 @@ impl Renderer {
 
 // ---- Helper functions ----
 
-fn upload_frame(gpu: &GpuContext, plane: &PlaneResources, rgba_data: &[u8]) {
-    let expected = (plane.width * plane.height * 4) as usize;
-    assert_eq!(
-        rgba_data.len(),
-        expected,
-        "frame data size mismatch: expected {expected} bytes ({}x{}x4), got {}",
-        plane.width,
-        plane.height,
-        rgba_data.len()
-    );
+/// Upload a single R8Unorm plane to a GPU texture.
+fn upload_plane(gpu: &GpuContext, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
     gpu.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
-            texture: &plane.texture,
+            texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        rgba_data,
+        data,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(plane.width * 4),
-            rows_per_image: Some(plane.height),
+            bytes_per_row: Some(width),
+            rows_per_image: Some(height),
         },
         wgpu::Extent3d {
-            width: plane.width,
-            height: plane.height,
+            width,
+            height,
             depth_or_array_layers: 1,
         },
     );
+}
+
+/// Upload YUV420P planes (Y full-res, U/V half-res) to GPU textures.
+fn upload_yuv(gpu: &GpuContext, plane: &PlaneResources, y: &[u8], u: &[u8], v: &[u8]) {
+    let w = plane.width;
+    let h = plane.height;
+    let uv_w = w / 2;
+    let uv_h = h / 2;
+
+    assert_eq!(
+        y.len(),
+        (w * h) as usize,
+        "Y plane size mismatch: expected {} bytes ({}x{}), got {}",
+        w * h,
+        w,
+        h,
+        y.len()
+    );
+    assert_eq!(
+        u.len(),
+        (uv_w * uv_h) as usize,
+        "U plane size mismatch: expected {} bytes, got {}",
+        uv_w * uv_h,
+        u.len()
+    );
+
+    upload_plane(gpu, &plane.y_texture, y, w, h);
+    upload_plane(gpu, &plane.u_texture, u, uv_w, uv_h);
+    upload_plane(gpu, &plane.v_texture, v, uv_w, uv_h);
 }
 
 /// Build the view matrix for the virtual camera.

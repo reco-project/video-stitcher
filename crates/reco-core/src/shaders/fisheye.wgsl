@@ -17,8 +17,11 @@ struct Uniforms {
     flags: vec4<u32>,
 };
 
-@group(0) @binding(0) var t_video: texture_2d<f32>;
-@group(0) @binding(1) var s_video: sampler;
+// YUV420P plane textures (Y = full res R8Unorm, U/V = half res R8Unorm)
+@group(0) @binding(0) var t_y: texture_2d<f32>;
+@group(0) @binding(1) var t_u: texture_2d<f32>;
+@group(0) @binding(2) var t_v: texture_2d<f32>;
+@group(0) @binding(3) var s_video: sampler;
 @group(1) @binding(0) var<uniform> u: Uniforms;
 
 struct VertexInput {
@@ -125,6 +128,34 @@ fn apply_reinhard_lab(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> ve
     return clamp(xyz_to_rgb(lab_to_xyz(lab)), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+// ---- YUV → RGB conversion ----
+
+/// Sample YUV420P textures and convert to linear RGB via BT.709.
+///
+/// The Y/U/V planes are stored as R8Unorm textures (byte → [0,1]).
+/// H.264 uses limited range (Y: 16–235, Cb/Cr: 16–240).
+/// After the BT.709 matrix, we get sRGB-like gamma values, which
+/// we linearize with srgb_to_linear to match the Rgba8UnormSrgb
+/// auto-decode path (identical visual output to the old RGBA upload).
+fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
+    let y_raw = textureSample(t_y, s_video, uv).r;
+    let u_raw = textureSample(t_u, s_video, uv).r;
+    let v_raw = textureSample(t_v, s_video, uv).r;
+
+    // BT.709 limited-range YCbCr → full-range R'G'B'
+    let y = (y_raw - 16.0 / 255.0) * (255.0 / 219.0);
+    let cb = (u_raw - 128.0 / 255.0) * (255.0 / 224.0);
+    let cr = (v_raw - 128.0 / 255.0) * (255.0 / 224.0);
+
+    let r = y + 1.5748 * cr;
+    let g = y - 0.1873 * cb - 0.4681 * cr;
+    let b = y + 1.8556 * cb;
+
+    let rgb = clamp(vec3<f32>(r, g, b), vec3<f32>(0.0), vec3<f32>(1.0));
+    // sRGB gamma → linear, matching what Rgba8UnormSrgb textures do on sample
+    return vec4<f32>(srgb_to_linear(rgb), 1.0);
+}
+
 // ---- Fragment shader ----
 
 @fragment
@@ -162,7 +193,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
 
-    let tex_color = textureSample(t_video, s_video, distorted_uv);
+    let tex_color = sample_yuv(distorted_uv);
     var color = tex_color.rgb;
 
     // Apply Reinhard LAB color transfer
