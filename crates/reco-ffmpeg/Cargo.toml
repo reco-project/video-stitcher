@@ -7,6 +7,6 @@ license = "AGPL-3.0-only"
 repository = "https://github.com/reco-project/video-stitcher"
 
 [dependencies]
-reco-core = { path = "../reco-core" }
+ffmpeg-next = { version = "8", default-features = false, features = ["codec", "format", "software-scaling"] }
 log = "0.4"
 thiserror = "2"

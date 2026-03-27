@@ -1,24 +1,27 @@
 //! FFmpeg-based video decode and encode for Reco.
 //!
-//! Provides [`FrameSource`] for decoding video files via FFmpeg, and
-//! an [`reco_core::encoder::Encoder`] implementation for encoding
-//! the stitched output.
+//! Provides [`decoder::VideoDecoder`] for reading video files frame-by-frame
+//! as RGBA pixel data, and [`encoder::VideoEncoder`] for writing RGBA frames
+//! to H.264 MP4 files.
+//!
+//! ## Architecture
+//!
+//! This crate wraps [`ffmpeg_next`] (Rust bindings for FFmpeg) and is
+//! deliberately independent of `reco-core`. The CLI binary ties them together:
+//!
+//! ```text
+//! reco-ffmpeg (decode) → RGBA frames → reco-core (GPU stitch) → RGBA frames → reco-ffmpeg (encode)
+//! ```
 //!
 //! ## Phase 1
 //!
-//! Software decode (libavcodec) → CPU buffer → wgpu texture upload.
-//! This path works on all platforms without hardware-specific setup.
+//! Software decode (libavcodec) → swscale to RGBA → CPU buffer.
+//! Software encode (libx264) ← swscale from RGBA ← CPU buffer.
 //!
 //! ## Future
 //!
 //! Hardware-accelerated decode (NVDEC, VideoToolbox, VAAPI) with
-//! zero-copy GPU surface handoff to wgpu.
+//! zero-copy GPU surface handoff to wgpu (following Gyroflow's pattern).
 
-// FFmpeg bindings will be added when we integrate actual video decode.
-// For now, this crate defines the interfaces and stubs.
-
-/// Placeholder for FFmpeg decoder implementation.
-pub struct FfmpegDecoder;
-
-/// Placeholder for FFmpeg encoder implementation.
-pub struct FfmpegEncoder;
+pub mod decoder;
+pub mod encoder;
