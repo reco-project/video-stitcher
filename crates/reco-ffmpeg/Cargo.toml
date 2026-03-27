@@ -1,0 +1,12 @@
+[package]
+name = "reco-ffmpeg"
+version = "0.1.0"
+edition = "2024"
+description = "FFmpeg-based video decode and encode for Reco"
+license = "AGPL-3.0-only"
+repository = "https://github.com/reco-project/video-stitcher"
+
+[dependencies]
+reco-core = { path = "../reco-core" }
+log = "0.4"
+thiserror = "2"

@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/reco-core",
+    "crates/reco-cli",
+    "crates/reco-ffmpeg",
+]
+
+[workspace.package]
+edition = "2024"
+license = "AGPL-3.0-only"
+repository = "https://github.com/reco-project/video-stitcher"

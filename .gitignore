@@ -1,3 +1,6 @@
+# Rust
+target/
+
 node_modules/
 
 # Development user data (not packaged)
