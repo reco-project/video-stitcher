@@ -123,7 +123,7 @@ impl StitchPipeline {
 
     /// Render a frame directly to a texture view (for window display).
     ///
-    /// Unlike [`process_frame`], this does NOT read back to CPU — the result
+    /// Unlike [`Self::process_frame`], this does NOT read back to CPU — the result
     /// stays on the GPU and is presented to the surface.
     pub fn render_to_view(
         &self,

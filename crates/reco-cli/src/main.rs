@@ -177,8 +177,11 @@ fn main() -> anyhow::Result<()> {
             drop(left_dec);
             drop(right_dec);
 
-            let json = std::fs::read_to_string(&calibration)?;
-            let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)?;
+            let json = std::fs::read_to_string(&calibration).map_err(|e| {
+                anyhow::anyhow!("cannot read calibration file '{calibration}': {e}")
+            })?;
+            let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)
+                .map_err(|e| anyhow::anyhow!("invalid calibration JSON '{calibration}': {e}"))?;
 
             let viewport = reco_core::viewport::ViewportConfig {
                 width,
@@ -404,8 +407,10 @@ fn run_preview(
     drop(left_dec);
     drop(right_dec);
 
-    let json = std::fs::read_to_string(calibration_path)?;
-    let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)?;
+    let json = std::fs::read_to_string(calibration_path)
+        .map_err(|e| anyhow::anyhow!("cannot read calibration file '{calibration_path}': {e}"))?;
+    let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)
+        .map_err(|e| anyhow::anyhow!("invalid calibration JSON '{calibration_path}': {e}"))?;
 
     println!(
         "Preview: {}x{} input, {}x{} window",
