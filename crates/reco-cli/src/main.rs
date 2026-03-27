@@ -55,6 +55,14 @@ enum Commands {
         /// Maximum number of frames to process.
         #[arg(long)]
         max_frames: Option<u64>,
+
+        /// Force a specific encoder (e.g., h264_nvenc, libx264). Auto-detects by default.
+        #[arg(long)]
+        encoder: Option<String>,
+
+        /// Quality preset: fast, balanced, high.
+        #[arg(long, default_value = "balanced")]
+        quality: String,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -96,6 +104,8 @@ fn main() -> anyhow::Result<()> {
             height,
             duration,
             max_frames,
+            encoder,
+            quality,
         } => {
             log::info!("Stitching: {left} + {right} → {output}");
 
@@ -151,8 +161,23 @@ fn main() -> anyhow::Result<()> {
 
             // Create encoder using the left video's frame rate
             let fps = left_dec.frame_rate();
-            let mut encoder =
-                reco_ffmpeg::encoder::VideoEncoder::new(Path::new(&output), width, height, fps)?;
+            let quality = match quality.as_str() {
+                "fast" => reco_ffmpeg::encoder::Quality::Fast,
+                "high" => reco_ffmpeg::encoder::Quality::High,
+                _ => reco_ffmpeg::encoder::Quality::Balanced,
+            };
+            let enc_config = reco_ffmpeg::encoder::EncoderConfig {
+                encoder_name: encoder,
+                quality,
+            };
+            let mut encoder = reco_ffmpeg::encoder::VideoEncoder::new(
+                Path::new(&output),
+                width,
+                height,
+                fps,
+                &enc_config,
+            )?;
+            println!("Encoder: {}", encoder.encoder_name());
 
             // Compute frame limit from --duration and --max-frames
             let frame_limit: u64 = match (duration, max_frames) {
@@ -227,6 +252,17 @@ fn main() -> anyhow::Result<()> {
             println!("GPU: {}", gpu.adapter_info.name);
             println!("Backend: {:?}", gpu.adapter_info.backend);
             println!("Driver: {}", gpu.adapter_info.driver);
+
+            println!("\nH.264 encoders:");
+            let encoders = reco_ffmpeg::encoder::available_h264_encoders();
+            if encoders.is_empty() {
+                println!("  (none found)");
+            } else {
+                for enc in &encoders {
+                    let tag = if enc.is_hardware { "HW" } else { "SW" };
+                    println!("  {} [{}] — {}", enc.name, tag, enc.description);
+                }
+            }
             Ok(())
         }
     }
