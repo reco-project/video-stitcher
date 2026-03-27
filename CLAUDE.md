@@ -27,6 +27,8 @@ cargo fmt --all               # Auto-format
 cargo doc --no-deps --open    # Generate and open docs
 cargo run -p reco-cli -- info # Show GPU info
 cargo run -p reco-cli -- stitch left.mp4 right.mp4 -c match.json -o out.mp4
+cargo run -p reco-cli -- preview left.mp4 right.mp4 -c match.json
+cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp4 -c match.json -o out.mp4 --max-frames 300  # Profile 300 frames → reco-trace.json (open in ui.perfetto.dev)
 ```
 
 ### v1 (Node/Python)
@@ -49,6 +51,8 @@ npm run lint             # Lint JS
 - Module-level docs (`//!`) explaining purpose
 - Tests in each module (`#[cfg(test)] mod tests`)
 - All PRs must pass: `cargo fmt --check && cargo clippy && cargo test`
+- Clippy must also pass with `--features profiling`
+- `profiling` feature: opt-in `tracing` + `tracing-chrome` instrumentation (zero-cost when off)
 
 ### JavaScript/Python (v1)
 - Python: black formatting, type hints required on public functions

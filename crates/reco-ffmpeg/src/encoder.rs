@@ -321,6 +321,10 @@ impl VideoEncoder {
     /// Write an RGBA frame to the output file.
     ///
     /// `rgba_data` must be exactly `width * height * 4` bytes (tightly packed).
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "encode_frame")
+    )]
     pub fn write_frame(&mut self, rgba_data: &[u8]) -> Result<(), EncodeError> {
         let expected = (self.width * self.height * 4) as usize;
         if rgba_data.len() != expected {

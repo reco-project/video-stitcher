@@ -44,6 +44,21 @@
 //! let calibration: MatchCalibration = serde_json::from_str(&json).unwrap();
 //! ```
 
+/// Create a tracing span guard (no-op when `profiling` feature is disabled).
+#[cfg(feature = "profiling")]
+macro_rules! profile_scope {
+    ($name:expr) => {
+        let _span = tracing::info_span!($name).entered();
+    };
+}
+
+#[cfg(not(feature = "profiling"))]
+macro_rules! profile_scope {
+    ($name:expr) => {};
+}
+
+pub(crate) use profile_scope;
+
 pub mod calibration;
 pub mod detector;
 pub mod director;

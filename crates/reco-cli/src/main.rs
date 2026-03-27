@@ -9,6 +9,33 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+/// Create a tracing span guard (no-op when `profiling` feature is disabled).
+#[cfg(feature = "profiling")]
+macro_rules! profile_scope {
+    ($name:expr) => {
+        let _span = tracing::info_span!($name).entered();
+    };
+}
+
+#[cfg(not(feature = "profiling"))]
+macro_rules! profile_scope {
+    ($name:expr) => {};
+}
+
+/// Initialize the tracing profiler. Returns a guard that must be held
+/// until the end of `main()` — the trace file is written on drop.
+#[cfg(feature = "profiling")]
+fn init_profiling() -> tracing_chrome::FlushGuard {
+    use tracing_subscriber::prelude::*;
+    let (chrome_layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
+        .file("reco-trace.json")
+        .include_args(true)
+        .build();
+    tracing_subscriber::registry().with(chrome_layer).init();
+    eprintln!("Profiling enabled — trace will be written to reco-trace.json");
+    guard
+}
+
 #[derive(Parser)]
 #[command(
     name = "reco",
@@ -91,7 +118,13 @@ enum Commands {
 }
 
 fn main() -> anyhow::Result<()> {
+    // When profiling, tracing-subscriber owns the global logger;
+    // otherwise, use env_logger for RUST_LOG filtering.
+    #[cfg(feature = "profiling")]
+    let _profiling_guard = init_profiling();
+    #[cfg(not(feature = "profiling"))]
     env_logger::init();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -109,9 +142,9 @@ fn main() -> anyhow::Result<()> {
         } => {
             log::info!("Stitching: {left} + {right} → {output}");
 
-            // Open video decoders first to get input dimensions
-            let mut left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&left))?;
-            let mut right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&right))?;
+            // Open video decoders to get input dimensions and fps
+            let left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&left))?;
+            let right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&right))?;
 
             let input_width = left_dec.width();
             let input_height = left_dec.height();
@@ -138,6 +171,12 @@ fn main() -> anyhow::Result<()> {
                 right_dec.fps()
             );
 
+            let fps_val = left_dec.fps();
+            let fps_rational = left_dec.frame_rate();
+            // Drop decoders — the decode thread opens its own
+            drop(left_dec);
+            drop(right_dec);
+
             let json = std::fs::read_to_string(&calibration)?;
             let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)?;
 
@@ -159,8 +198,6 @@ fn main() -> anyhow::Result<()> {
                 pipeline.gpu.adapter_info.name
             );
 
-            // Create encoder using the left video's frame rate
-            let fps = left_dec.frame_rate();
             let quality = match quality.as_str() {
                 "fast" => reco_ffmpeg::encoder::Quality::Fast,
                 "high" => reco_ffmpeg::encoder::Quality::High,
@@ -174,7 +211,7 @@ fn main() -> anyhow::Result<()> {
                 Path::new(&output),
                 width,
                 height,
-                fps,
+                fps_rational,
                 &enc_config,
             )?;
             println!("Encoder: {}", encoder.encoder_name());
@@ -182,10 +219,10 @@ fn main() -> anyhow::Result<()> {
             // Compute frame limit from --duration and --max-frames
             let frame_limit: u64 = match (duration, max_frames) {
                 (Some(dur), Some(mf)) => {
-                    let dur_frames = (dur * left_dec.fps()) as u64;
+                    let dur_frames = (dur * fps_val) as u64;
                     dur_frames.min(mf)
                 }
-                (Some(dur), None) => (dur * left_dec.fps()) as u64,
+                (Some(dur), None) => (dur * fps_val) as u64,
                 (None, Some(mf)) => mf,
                 (None, None) => u64::MAX,
             };
@@ -193,6 +230,9 @@ fn main() -> anyhow::Result<()> {
             if frame_limit < u64::MAX {
                 println!("Processing up to {frame_limit} frames");
             }
+
+            // Spawn decode thread for pipelined decode
+            let frame_rx = spawn_decode_thread(left, right);
 
             let start = Instant::now();
             let mut frame_count: u64 = 0;
@@ -206,16 +246,15 @@ fn main() -> anyhow::Result<()> {
                     break;
                 }
 
-                let left_frame = left_dec.next_frame()?;
-                let right_frame = right_dec.next_frame()?;
-
-                let (left_frame, right_frame) = match (left_frame, right_frame) {
-                    (Some(l), Some(r)) => (l, r),
-                    _ => break, // Either stream ended
+                let pair = {
+                    profile_scope!("wait_decode");
+                    match frame_rx.recv() {
+                        Ok(p) => p,
+                        Err(_) => break, // Decode thread finished
+                    }
                 };
 
-                let stitched =
-                    pipeline.process_frame(&left_frame.data, &right_frame.data, yaw, pitch)?;
+                let stitched = pipeline.process_frame(&pair.left, &pair.right, yaw, pitch)?;
 
                 encoder.write_frame(&stitched)?;
                 frame_count += 1;
@@ -274,58 +313,61 @@ struct FramePair {
     right: Vec<u8>,
 }
 
-/// Spawn a background thread that decodes both video files in lockstep
-/// and sends frame pairs through a bounded channel.
+/// Spawn a single-video decode thread that sends raw RGBA frames through a channel.
+fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::Receiver<Vec<u8>> {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(4);
+
+    std::thread::Builder::new()
+        .name(format!("decode_{label}"))
+        .spawn(move || {
+            let mut dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("Failed to open {label} video: {e}");
+                    return;
+                }
+            };
+            loop {
+                match dec.next_frame() {
+                    Ok(Some(f)) => {
+                        if tx.send(f.data).is_err() {
+                            break; // Receiver dropped
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        log::error!("{label} decode error: {e}");
+                        break;
+                    }
+                }
+            }
+        })
+        .expect("spawn decode thread");
+
+    rx
+}
+
+/// Spawn parallel decode threads (one per video) and a pairing thread
+/// that zips frames into `FramePair`s through a bounded channel.
 fn spawn_decode_thread(
     left_path: String,
     right_path: String,
 ) -> std::sync::mpsc::Receiver<FramePair> {
+    let left_rx = spawn_single_decoder(left_path, "left");
+    let right_rx = spawn_single_decoder(right_path, "right");
+
     let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
 
-    std::thread::spawn(move || {
-        let mut left_dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&left_path)) {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("Failed to open left video: {e}");
-                return;
-            }
-        };
-        let mut right_dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&right_path)) {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("Failed to open right video: {e}");
-                return;
-            }
-        };
-
-        loop {
-            let left = match left_dec.next_frame() {
-                Ok(Some(f)) => f,
-                Ok(None) => break,
-                Err(e) => {
-                    log::error!("Left decode error: {e}");
-                    break;
+    std::thread::Builder::new()
+        .name("decode_pair".into())
+        .spawn(move || {
+            while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
+                if tx.send(FramePair { left, right }).is_err() {
+                    break; // Consumer dropped
                 }
-            };
-            let right = match right_dec.next_frame() {
-                Ok(Some(f)) => f,
-                Ok(None) => break,
-                Err(e) => {
-                    log::error!("Right decode error: {e}");
-                    break;
-                }
-            };
-            if tx
-                .send(FramePair {
-                    left: left.data,
-                    right: right.data,
-                })
-                .is_err()
-            {
-                break; // Receiver dropped (window closed)
             }
-        }
-    });
+        })
+        .expect("spawn pairing thread");
 
     rx
 }

@@ -411,6 +411,10 @@ impl Renderer {
     }
 
     /// Upload an RGBA frame to the left camera texture.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "gpu_upload")
+    )]
     pub fn upload_left_frame(&self, gpu: &GpuContext, rgba_data: &[u8]) {
         upload_frame(gpu, &self.left, rgba_data);
     }
@@ -424,6 +428,10 @@ impl Renderer {
     ///
     /// Both camera textures must be uploaded before calling this.
     /// Returns a tightly-packed RGBA buffer of `output_width * output_height * 4` bytes.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "gpu_render")
+    )]
     pub fn render_frame(
         &self,
         gpu: &GpuContext,
@@ -529,34 +537,41 @@ impl Renderer {
             },
         );
 
-        gpu.queue.submit(Some(encoder.finish()));
-
-        // Readback: map the staging buffer and copy to CPU
-        let buffer_slice = self.output_buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-        gpu.device
-            .poll(wgpu::PollType::wait())
-            .map_err(|_| RenderError::BufferMapFailed)?;
-        rx.recv()
-            .map_err(|_| RenderError::BufferMapFailed)?
-            .map_err(|_| RenderError::BufferMapFailed)?;
-
-        let mapped = buffer_slice.get_mapped_range();
-
-        // Remove row padding (bytes_per_row is aligned to 256)
-        let tight_row = self.output_width as usize * 4;
-        let padded_row = bytes_per_row as usize;
-        let mut output = Vec::with_capacity(tight_row * self.output_height as usize);
-        for row in 0..self.output_height as usize {
-            let start = row * padded_row;
-            output.extend_from_slice(&mapped[start..start + tight_row]);
+        {
+            crate::profile_scope!("gpu_submit");
+            gpu.queue.submit(Some(encoder.finish()));
         }
 
-        drop(mapped);
-        self.output_buffer.unmap();
+        // Readback: map the staging buffer and copy to CPU
+        let output = {
+            crate::profile_scope!("gpu_readback");
+            let buffer_slice = self.output_buffer.slice(..);
+            let (tx, rx) = std::sync::mpsc::sync_channel(1);
+            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+            gpu.device
+                .poll(wgpu::PollType::wait())
+                .map_err(|_| RenderError::BufferMapFailed)?;
+            rx.recv()
+                .map_err(|_| RenderError::BufferMapFailed)?
+                .map_err(|_| RenderError::BufferMapFailed)?;
+
+            let mapped = buffer_slice.get_mapped_range();
+
+            // Remove row padding (bytes_per_row is aligned to 256)
+            let tight_row = self.output_width as usize * 4;
+            let padded_row = bytes_per_row as usize;
+            let mut output = Vec::with_capacity(tight_row * self.output_height as usize);
+            for row in 0..self.output_height as usize {
+                let start = row * padded_row;
+                output.extend_from_slice(&mapped[start..start + tight_row]);
+            }
+
+            drop(mapped);
+            self.output_buffer.unmap();
+            output
+        };
 
         Ok(output)
     }
@@ -722,8 +737,14 @@ fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32) -> Matrix4<f32> {
     let eye = Point3::new(position[0], position[1], position[2]);
     // Base direction: eye → origin (the L-shape corner)
     let base_forward = -eye.coords.normalize();
-    // Build rotation relative to base look direction
-    let rotation = UnitQuaternion::from_euler_angles(pitch, yaw, 0.0);
+    // Compose rotations like v1 Three.js: yaw around world Y first,
+    // then pitch around the camera-local right axis. This makes
+    // up/down always relative to the current view direction.
+    let yaw_q = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw);
+    let right = yaw_q * Vector3::x_axis();
+    let pitch_q =
+        UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(right.into_inner()), pitch);
+    let rotation = pitch_q * yaw_q;
     let forward = rotation * base_forward;
     let up = rotation * Vector3::new(0.0, 1.0, 0.0);
     let target = Point3::from(eye.coords + forward);

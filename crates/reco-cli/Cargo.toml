@@ -10,6 +10,9 @@ repository = "https://github.com/reco-project/video-stitcher"
 name = "reco"
 path = "src/main.rs"
 
+[features]
+profiling = ["reco-core/profiling", "reco-ffmpeg/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
+
 [dependencies]
 reco-core = { path = "../reco-core" }
 reco-ffmpeg = { path = "../reco-ffmpeg" }
@@ -21,3 +24,6 @@ serde_json = "1"
 pollster = "0.4"
 winit = "0.30"
 wgpu = "25"
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = ["registry"] }
+tracing-chrome = { version = "0.7", optional = true }

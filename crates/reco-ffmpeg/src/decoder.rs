@@ -79,7 +79,10 @@ impl VideoDecoder {
         let video_stream_index = stream.index();
         let time_base = stream.time_base();
 
-        let context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
+        let mut context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
+        // Enable multithreaded decode (frame-level threading).
+        // count(0) = auto-detect optimal thread count.
+        context.set_threading(ffmpeg::threading::Config::count(0));
         let decoder = context.decoder().video()?;
 
         let width = decoder.width();
@@ -145,6 +148,10 @@ impl VideoDecoder {
     }
 
     /// Decode the next RGBA frame, or `None` if the video is finished.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "decode_frame")
+    )]
     pub fn next_frame(&mut self) -> Result<Option<RgbaFrame>, DecodeError> {
         // Return buffered frames first
         if let Some(frame) = self.pending_frames.pop() {

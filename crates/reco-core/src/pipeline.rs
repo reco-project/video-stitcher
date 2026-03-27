@@ -160,6 +160,10 @@ impl StitchPipeline {
     ///
     /// Uploads left and right RGBA frames to the GPU, renders the stitched
     /// panorama at the given viewport position, and reads back the result.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "process_frame")
+    )]
     pub fn process_frame(
         &self,
         left_rgba: &[u8],
