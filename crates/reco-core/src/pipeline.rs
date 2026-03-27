@@ -73,7 +73,28 @@ impl StitchPipeline {
         input_width: u32,
         input_height: u32,
     ) -> Result<Self, PipelineError> {
-        let gpu = GpuContext::new().await?;
+        Self::with_gpu(
+            GpuContext::new().await?,
+            calibration,
+            viewport,
+            input_width,
+            input_height,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        )
+    }
+
+    /// Create a pipeline with an existing GPU context and custom output format.
+    ///
+    /// Used by the preview window which needs a specific surface format
+    /// and provides its own GPU context (selected with surface compatibility).
+    pub fn with_gpu(
+        gpu: GpuContext,
+        calibration: MatchCalibration,
+        viewport: ViewportConfig,
+        input_width: u32,
+        input_height: u32,
+        output_format: wgpu::TextureFormat,
+    ) -> Result<Self, PipelineError> {
         let scene = SceneGeometry::from_layout(&calibration.layout);
         let renderer = Renderer::new(
             &gpu,
@@ -81,6 +102,7 @@ impl StitchPipeline {
             viewport.height,
             input_width,
             input_height,
+            output_format,
         );
 
         log::info!(
@@ -99,22 +121,40 @@ impl StitchPipeline {
         })
     }
 
+    /// Render a frame directly to a texture view (for window display).
+    ///
+    /// Unlike [`process_frame`], this does NOT read back to CPU — the result
+    /// stays on the GPU and is presented to the surface.
+    pub fn render_to_view(
+        &self,
+        left_rgba: &[u8],
+        right_rgba: &[u8],
+        yaw: f32,
+        pitch: f32,
+        target_view: &wgpu::TextureView,
+    ) {
+        self.renderer.upload_left_frame(&self.gpu, left_rgba);
+        self.renderer.upload_right_frame(&self.gpu, right_rgba);
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition { yaw, pitch },
+        };
+
+        self.renderer.render_to_view(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            0.0,
+            target_view,
+        );
+    }
+
     /// Process a single frame through the GPU pipeline.
     ///
     /// Uploads left and right RGBA frames to the GPU, renders the stitched
     /// panorama at the given viewport position, and reads back the result.
-    ///
-    /// # Arguments
-    ///
-    /// - `left_rgba`: Raw RGBA pixel data for the left camera frame
-    /// - `right_rgba`: Raw RGBA pixel data for the right camera frame
-    /// - `yaw`: Horizontal pan angle in radians (0 = center/seam)
-    /// - `pitch`: Vertical tilt angle in radians (0 = level)
-    ///
-    /// # Returns
-    ///
-    /// RGBA pixel data for the stitched output frame
-    /// (`viewport.width * viewport.height * 4` bytes).
     pub fn process_frame(
         &self,
         left_rgba: &[u8],

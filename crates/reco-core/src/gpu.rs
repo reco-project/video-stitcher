@@ -53,13 +53,21 @@ impl GpuContext {
     ///
     /// Returns [`GpuError::NoAdapter`] if no compatible GPU is found.
     pub async fn new() -> Result<Self, GpuError> {
+        Self::with_surface(None).await
+    }
+
+    /// Initialize a GPU context with an optional compatible surface.
+    ///
+    /// When a surface is provided, the adapter selection will prefer GPUs
+    /// that can present to that surface (needed for windowed rendering).
+    pub async fn with_surface(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, GpuError> {
         let instance = wgpu::Instance::default();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
-                compatible_surface: None,
+                compatible_surface: surface,
             })
             .await?;
 

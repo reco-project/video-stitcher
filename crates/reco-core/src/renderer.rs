@@ -135,6 +135,7 @@ pub struct Renderer {
     right: PlaneResources,
     render_target: wgpu::Texture,
     render_target_view: wgpu::TextureView,
+    depth_texture_view: wgpu::TextureView,
     output_buffer: wgpu::Buffer,
     output_width: u32,
     output_height: u32,
@@ -151,6 +152,7 @@ impl Renderer {
         output_height: u32,
         input_width: u32,
         input_height: u32,
+        output_format: wgpu::TextureFormat,
     ) -> Self {
         let device = &gpu.device;
 
@@ -227,7 +229,7 @@ impl Renderer {
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    format: output_format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent {
                             src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -245,7 +247,13 @@ impl Renderer {
                 cull_mode: None, // Both sides visible
                 ..Default::default()
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth24Plus,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
@@ -290,11 +298,29 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: output_format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let render_target_view = render_target.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Depth buffer for correct L-shape occlusion
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth_texture"),
+            size: wgpu::Extent3d {
+                width: output_width,
+                height: output_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth24Plus,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let depth_texture_view =
+            depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Staging buffer for CPU readback
         let bytes_per_row = align_to_256(output_width * 4);
@@ -312,6 +338,7 @@ impl Renderer {
             right,
             render_target,
             render_target_view,
+            depth_texture_view,
             output_buffer,
             output_width,
             output_height,
@@ -453,7 +480,14 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -528,6 +562,90 @@ impl Renderer {
         Ok(output)
     }
 
+    /// Render a stitched frame directly to a texture view (e.g., a window surface).
+    ///
+    /// Unlike [`render_frame`], this does NOT read back the result to CPU.
+    /// Used for interactive preview windows.
+    pub fn render_to_view(
+        &self,
+        gpu: &GpuContext,
+        scene: &SceneGeometry,
+        calibration: &MatchCalibration,
+        viewport: &ResolvedViewport,
+        blend_width: f32,
+        target_view: &wgpu::TextureView,
+    ) {
+        let aspect = self.output_width as f32 / self.output_height as f32;
+        let projection = opengl_to_wgpu_matrix()
+            * Perspective3::new(aspect, viewport.config.fov_degrees.to_radians(), 0.01, 5.0)
+                .to_homogeneous();
+        let view = view_matrix(
+            &scene.camera_position,
+            viewport.position.yaw,
+            viewport.position.pitch,
+        );
+
+        let left_mvp = projection * view * scene.model_matrix_left();
+        let left_uniforms = build_gpu_uniforms(&left_mvp, &calibration.left, false, blend_width);
+
+        let right_mvp = projection * view * scene.model_matrix_right();
+        let right_uniforms = build_gpu_uniforms(&right_mvp, &calibration.right, true, blend_width);
+
+        gpu.queue.write_buffer(
+            &self.left.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&left_uniforms),
+        );
+        gpu.queue.write_buffer(
+            &self.right.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&right_uniforms),
+        );
+
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("preview_frame"),
+            });
+
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("preview_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            pass.set_pipeline(&self.pipeline);
+            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+            pass.set_bind_group(0, &self.left.texture_bind_group, &[]);
+            pass.set_bind_group(1, &self.left.uniform_bind_group, &[]);
+            pass.draw(0..6, 0..1);
+
+            pass.set_bind_group(0, &self.right.texture_bind_group, &[]);
+            pass.set_bind_group(1, &self.right.uniform_bind_group, &[]);
+            pass.draw(0..6, 0..1);
+        }
+
+        gpu.queue.submit(Some(encoder.finish()));
+    }
+
     /// Width of the output render target.
     pub fn output_width(&self) -> u32 {
         self.output_width
@@ -565,12 +683,17 @@ fn upload_frame(gpu: &GpuContext, plane: &PlaneResources, rgba_data: &[u8]) {
 
 /// Build the view matrix for the virtual camera.
 ///
-/// Camera sits at `position` and looks along -Z by default.
-/// `yaw` rotates around Y (left/right), `pitch` around X (up/down).
+/// Camera sits at `position` and looks at the origin (corner where the two
+/// planes meet) by default. This matches v1 Three.js where the OrbitControls
+/// target is `[0, 0, 0]`. `yaw` rotates around Y (left/right from center),
+/// `pitch` rotates around X (up/down).
 fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32) -> Matrix4<f32> {
     let eye = Point3::new(position[0], position[1], position[2]);
+    // Base direction: eye → origin (the L-shape corner)
+    let base_forward = -eye.coords.normalize();
+    // Build rotation relative to base look direction
     let rotation = UnitQuaternion::from_euler_angles(pitch, yaw, 0.0);
-    let forward = rotation * Vector3::new(0.0, 0.0, -1.0);
+    let forward = rotation * base_forward;
     let up = rotation * Vector3::new(0.0, 1.0, 0.0);
     let target = Point3::from(eye.coords + forward);
     nalgebra::Isometry3::look_at_rh(&eye, &target, &up).to_homogeneous()

@@ -87,8 +87,11 @@ impl VideoEncoder {
             encoder.set_flags(codec::Flags::GLOBAL_HEADER);
         }
 
+        // Set threading to auto (x264 will use available cores)
+        encoder.set_threading(ffmpeg::threading::Config::count(0));
+
         let mut opts = ffmpeg::Dictionary::new();
-        opts.set("preset", "medium");
+        opts.set("preset", "fast");
         opts.set("crf", "23");
 
         let encoder = encoder.open_with(opts)?;

@@ -5,6 +5,7 @@
 //! ```
 
 use clap::{Parser, Subcommand};
+use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
@@ -46,6 +47,35 @@ enum Commands {
         /// Output height in pixels.
         #[arg(long, default_value_t = 1080)]
         height: u32,
+
+        /// Maximum number of seconds to process.
+        #[arg(long)]
+        duration: Option<f64>,
+
+        /// Maximum number of frames to process.
+        #[arg(long)]
+        max_frames: Option<u64>,
+    },
+
+    /// Open an interactive preview window to debug the stitch.
+    Preview {
+        /// Path to the left camera video file.
+        left: String,
+
+        /// Path to the right camera video file.
+        right: String,
+
+        /// Path to the calibration JSON file (v1-compatible match format).
+        #[arg(short, long)]
+        calibration: String,
+
+        /// Window width in pixels.
+        #[arg(long, default_value_t = 1280)]
+        width: u32,
+
+        /// Window height in pixels.
+        #[arg(long, default_value_t = 720)]
+        height: u32,
     },
 
     /// Display information about the GPU and system capabilities.
@@ -64,6 +94,8 @@ fn main() -> anyhow::Result<()> {
             output,
             width,
             height,
+            duration,
+            max_frames,
         } => {
             log::info!("Stitching: {left} + {right} → {output}");
 
@@ -113,14 +145,33 @@ fn main() -> anyhow::Result<()> {
             let mut encoder =
                 reco_ffmpeg::encoder::VideoEncoder::new(Path::new(&output), width, height, fps)?;
 
+            // Compute frame limit from --duration and --max-frames
+            let frame_limit: u64 = match (duration, max_frames) {
+                (Some(dur), Some(mf)) => {
+                    let dur_frames = (dur * left_dec.fps()) as u64;
+                    dur_frames.min(mf)
+                }
+                (Some(dur), None) => (dur * left_dec.fps()) as u64,
+                (None, Some(mf)) => mf,
+                (None, None) => u64::MAX,
+            };
+
+            if frame_limit < u64::MAX {
+                println!("Processing up to {frame_limit} frames");
+            }
+
             let start = Instant::now();
             let mut frame_count: u64 = 0;
 
-            // Static camera: yaw=0, pitch=0 (no pan/tilt)
+            // Static camera: yaw=0, pitch=0 (centered on seam)
             let yaw = 0.0_f32;
             let pitch = 0.0_f32;
 
             loop {
+                if frame_count >= frame_limit {
+                    break;
+                }
+
                 let left_frame = left_dec.next_frame()?;
                 let right_frame = right_dec.next_frame()?;
 
@@ -139,6 +190,7 @@ fn main() -> anyhow::Result<()> {
                     let elapsed = start.elapsed().as_secs_f64();
                     let fps_actual = frame_count as f64 / elapsed;
                     print!("\rProcessed {frame_count} frames ({fps_actual:.1} fps)");
+                    let _ = std::io::stdout().flush();
                 }
             }
 
@@ -153,6 +205,14 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
 
+        Commands::Preview {
+            left,
+            right,
+            calibration,
+            width,
+            height,
+        } => run_preview(&left, &right, &calibration, width, height),
+
         Commands::Info => {
             let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
             println!("GPU: {}", gpu.adapter_info.name);
@@ -161,4 +221,320 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+fn run_preview(
+    left_path: &str,
+    right_path: &str,
+    calibration_path: &str,
+    width: u32,
+    height: u32,
+) -> anyhow::Result<()> {
+    use winit::application::ApplicationHandler;
+    use winit::event::WindowEvent;
+    use winit::event_loop::{ActiveEventLoop, EventLoop};
+    use winit::window::{Window, WindowAttributes, WindowId};
+
+    let mut left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(left_path))?;
+    let mut right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
+
+    let input_width = left_dec.width();
+    let input_height = left_dec.height();
+
+    let json = std::fs::read_to_string(calibration_path)?;
+    let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)?;
+
+    println!(
+        "Preview: {}x{} input, {}x{} window",
+        input_width, input_height, width, height
+    );
+
+    // Pre-decode first frame for initial display
+    let first_left = left_dec.next_frame()?.expect("empty left video");
+    let first_right = right_dec.next_frame()?.expect("empty right video");
+
+    struct App {
+        window: Option<Window>,
+        surface: Option<wgpu::Surface<'static>>,
+        pipeline: Option<reco_core::pipeline::StitchPipeline>,
+        left_dec: reco_ffmpeg::decoder::VideoDecoder,
+        right_dec: reco_ffmpeg::decoder::VideoDecoder,
+        cal: reco_core::calibration::MatchCalibration,
+        input_width: u32,
+        input_height: u32,
+        width: u32,
+        height: u32,
+        current_left: Vec<u8>,
+        current_right: Vec<u8>,
+        yaw: f32,
+        pitch: f32,
+        frame_count: u64,
+        playing: bool,
+        needs_redraw: bool,
+    }
+
+    impl App {
+        fn advance_frame(&mut self) {
+            if let (Some(l), Some(r)) = (
+                self.left_dec.next_frame().ok().flatten(),
+                self.right_dec.next_frame().ok().flatten(),
+            ) {
+                self.current_left = l.data;
+                self.current_right = r.data;
+                self.frame_count += 1;
+                self.needs_redraw = true;
+            } else {
+                self.playing = false;
+                println!("End of video");
+            }
+        }
+    }
+
+    impl ApplicationHandler for App {
+        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            let attrs = WindowAttributes::default()
+                .with_title("Reco Preview")
+                .with_inner_size(winit::dpi::PhysicalSize::new(self.width, self.height));
+
+            let window = event_loop.create_window(attrs).expect("create window");
+
+            // Create wgpu surface and GPU context
+            let instance = wgpu::Instance::default();
+            let surface = instance.create_surface(&window).expect("create surface");
+
+            let gpu = pollster::block_on(async {
+                let adapter = instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::HighPerformance,
+                        force_fallback_adapter: false,
+                        compatible_surface: Some(&surface),
+                    })
+                    .await
+                    .expect("request adapter");
+
+                let info = adapter.get_info();
+                log::info!("Preview GPU: {} ({:?})", info.name, info.backend);
+
+                let (device, queue) = adapter
+                    .request_device(&wgpu::DeviceDescriptor {
+                        label: Some("reco_preview"),
+                        ..Default::default()
+                    })
+                    .await
+                    .expect("request device");
+
+                reco_core::gpu::GpuContext {
+                    device,
+                    queue,
+                    adapter_info: info,
+                }
+            });
+
+            let caps = surface.get_capabilities(&pollster::block_on(async {
+                instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::HighPerformance,
+                        compatible_surface: Some(&surface),
+                        ..Default::default()
+                    })
+                    .await
+                    .expect("adapter for caps")
+            }));
+
+            let surface_format = caps.formats[0];
+            log::info!("Surface format: {:?}", surface_format);
+
+            surface.configure(
+                &gpu.device,
+                &wgpu::SurfaceConfiguration {
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    format: surface_format,
+                    width: self.width,
+                    height: self.height,
+                    present_mode: wgpu::PresentMode::Fifo,
+                    desired_maximum_frame_latency: 2,
+                    alpha_mode: caps.alpha_modes[0],
+                    view_formats: vec![],
+                },
+            );
+
+            let viewport = reco_core::viewport::ViewportConfig {
+                width: self.width,
+                height: self.height,
+                ..Default::default()
+            };
+
+            let pipeline = reco_core::pipeline::StitchPipeline::with_gpu(
+                gpu,
+                self.cal.clone(),
+                viewport,
+                self.input_width,
+                self.input_height,
+                surface_format,
+            )
+            .expect("create pipeline");
+
+            println!(
+                "Preview ready: GPU = {}, format = {:?}",
+                pipeline.gpu.adapter_info.name, surface_format
+            );
+            println!("Controls: Space = play/pause, N = next frame, P = skip 30 frames");
+            println!("          Arrows = pan, +/- = zoom, Q/Escape = quit");
+
+            // SAFETY: surface lifetime is tied to window which we keep alive
+            self.surface = Some(unsafe {
+                std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(surface)
+            });
+            self.pipeline = Some(pipeline);
+            self.window = Some(window);
+            self.needs_redraw = true;
+        }
+
+        fn window_event(
+            &mut self,
+            event_loop: &ActiveEventLoop,
+            _window_id: WindowId,
+            event: WindowEvent,
+        ) {
+            match event {
+                WindowEvent::CloseRequested => event_loop.exit(),
+                WindowEvent::KeyboardInput { event, .. } => {
+                    use winit::keyboard::{KeyCode, PhysicalKey};
+                    if event.state == winit::event::ElementState::Pressed {
+                        match event.physical_key {
+                            PhysicalKey::Code(KeyCode::Escape | KeyCode::KeyQ) => {
+                                event_loop.exit();
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowLeft) => {
+                                self.yaw -= 0.05;
+                                self.needs_redraw = true;
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowRight) => {
+                                self.yaw += 0.05;
+                                self.needs_redraw = true;
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowUp) => {
+                                self.pitch += 0.05;
+                                self.needs_redraw = true;
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowDown) => {
+                                self.pitch -= 0.05;
+                                self.needs_redraw = true;
+                            }
+                            PhysicalKey::Code(KeyCode::Space) => {
+                                self.playing = !self.playing;
+                                println!(
+                                    "{}",
+                                    if self.playing { "Playing" } else { "Paused" }
+                                );
+                            }
+                            PhysicalKey::Code(KeyCode::KeyN) => {
+                                // Step one frame
+                                self.playing = false;
+                                self.advance_frame();
+                            }
+                            PhysicalKey::Code(KeyCode::KeyP) => {
+                                // Skip 30 frames
+                                for _ in 0..30 {
+                                    self.advance_frame();
+                                }
+                            }
+                            PhysicalKey::Code(
+                                KeyCode::Equal | KeyCode::NumpadAdd,
+                            ) => {
+                                // Zoom in (decrease FOV)
+                                if let Some(p) = &mut self.pipeline {
+                                    p.viewport.fov_degrees =
+                                        (p.viewport.fov_degrees - 5.0).max(20.0);
+                                    println!("FOV: {:.0}°", p.viewport.fov_degrees);
+                                    self.needs_redraw = true;
+                                }
+                            }
+                            PhysicalKey::Code(
+                                KeyCode::Minus | KeyCode::NumpadSubtract,
+                            ) => {
+                                // Zoom out (increase FOV)
+                                if let Some(p) = &mut self.pipeline {
+                                    p.viewport.fov_degrees =
+                                        (p.viewport.fov_degrees + 5.0).min(150.0);
+                                    println!("FOV: {:.0}°", p.viewport.fov_degrees);
+                                    self.needs_redraw = true;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                WindowEvent::RedrawRequested => {
+                    if !self.needs_redraw && !self.playing {
+                        return;
+                    }
+                    self.needs_redraw = false;
+
+                    let surface = self.surface.as_ref().unwrap();
+                    let pipeline = self.pipeline.as_ref().unwrap();
+
+                    let frame = match surface.get_current_texture() {
+                        Ok(f) => f,
+                        Err(e) => {
+                            log::warn!("Surface error: {e}");
+                            return;
+                        }
+                    };
+                    let view = frame
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+
+                    pipeline.render_to_view(
+                        &self.current_left,
+                        &self.current_right,
+                        self.yaw,
+                        self.pitch,
+                        &view,
+                    );
+
+                    frame.present();
+                }
+                _ => {}
+            }
+
+            if self.needs_redraw && let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
+
+        fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+            if self.playing {
+                self.advance_frame();
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+        }
+    }
+
+    let event_loop = EventLoop::new()?;
+
+    let mut app = App {
+        window: None,
+        surface: None,
+        pipeline: None,
+        left_dec,
+        right_dec,
+        cal,
+        input_width,
+        input_height,
+        width,
+        height,
+        current_left: first_left.data,
+        current_right: first_right.data,
+        yaw: 0.0,
+        pitch: 0.0,
+        frame_count: 1,
+        playing: false,
+        needs_redraw: false,
+    };
+
+    event_loop.run_app(&mut app)?;
+    Ok(())
 }
