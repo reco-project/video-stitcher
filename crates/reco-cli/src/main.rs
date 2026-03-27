@@ -439,11 +439,11 @@ fn run_preview(
                                 event_loop.exit();
                             }
                             PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                                self.yaw -= 0.05;
+                                self.yaw += 0.05;
                                 self.needs_redraw = true;
                             }
                             PhysicalKey::Code(KeyCode::ArrowRight) => {
-                                self.yaw += 0.05;
+                                self.yaw -= 0.05;
                                 self.needs_redraw = true;
                             }
                             PhysicalKey::Code(KeyCode::ArrowUp) => {
@@ -540,16 +540,24 @@ fn run_preview(
         }
 
         fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-            if self.playing && self.last_frame_time.elapsed() >= self.frame_duration {
-                self.advance_frame();
-                self.last_frame_time = Instant::now();
-                if !self.playing {
-                    // Video ended
-                    event_loop.set_control_flow(ControlFlow::Wait);
-                }
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+            if !self.playing {
+                return;
+            }
+
+            let elapsed = self.last_frame_time.elapsed();
+            if elapsed < self.frame_duration {
+                // Yield CPU until next frame is due instead of busy-spinning
+                std::thread::sleep(self.frame_duration - elapsed);
+            }
+
+            self.advance_frame();
+            self.last_frame_time = Instant::now();
+
+            if !self.playing {
+                event_loop.set_control_flow(ControlFlow::Wait);
+            }
+            if let Some(w) = &self.window {
+                w.request_redraw();
             }
         }
     }
