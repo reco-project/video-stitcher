@@ -227,14 +227,33 @@ fn main() -> anyhow::Result<()> {
                 encoder_name: encoder,
                 quality,
             };
-            let mut encoder = reco_ffmpeg::encoder::VideoEncoder::new(
-                Path::new(&output),
-                width,
-                height,
-                fps_rational,
-                &enc_config,
-            )?;
-            println!("Encoder: {}", encoder.encoder_name());
+
+            // Spawn encoder on its own thread (FFmpeg contexts aren't Send,
+            // so we create the encoder there). Bounded channel provides backpressure.
+            let (encode_tx, encode_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(2);
+            let encode_thread = {
+                let output = output.clone();
+                std::thread::Builder::new()
+                    .name("encode".into())
+                    .spawn(move || -> anyhow::Result<()> {
+                        let mut encoder = reco_ffmpeg::encoder::VideoEncoder::new(
+                            Path::new(&output),
+                            width,
+                            height,
+                            fps_rational,
+                            &enc_config,
+                        )?;
+                        println!("Encoder: {}", encoder.encoder_name());
+
+                        for frame_data in encode_rx {
+                            encoder.write_frame(&frame_data)?;
+                        }
+
+                        encoder.finish()?;
+                        Ok(())
+                    })
+                    .expect("spawn encode thread")
+            };
 
             // Compute frame limit from --duration and --max-frames
             let frame_limit: u64 = match (duration, max_frames) {
@@ -276,7 +295,9 @@ fn main() -> anyhow::Result<()> {
 
                 let stitched = pipeline.process_frame(&pair.left, &pair.right, yaw, pitch)?;
 
-                encoder.write_frame(&stitched)?;
+                if encode_tx.send(stitched).is_err() {
+                    break; // Encoder thread died
+                }
                 frame_count += 1;
 
                 if frame_count.is_multiple_of(30) {
@@ -287,7 +308,12 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            encoder.finish()?;
+            // Signal encoder to finish by dropping the sender, then wait
+            drop(encode_tx);
+            encode_thread
+                .join()
+                .expect("encode thread panicked")
+                .map_err(|e| anyhow::anyhow!("encode failed: {e}"))?;
 
             let elapsed = start.elapsed().as_secs_f64();
             let fps_actual = frame_count as f64 / elapsed;

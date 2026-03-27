@@ -30,8 +30,9 @@
 //! ## Modularity
 //!
 //! The crate defines traits for pluggable components:
-//! - [`director::Director`] — controls where the virtual camera pans
+//! - [`source::FrameSource`] — delivers stereo frame pairs (files, cameras, streams)
 //! - [`detector::Detector`] — detects objects in raw frames (e.g. ball tracking)
+//! - [`director::Director`] — controls where the virtual camera pans
 //! - [`encoder::Encoder`] — receives stitched GPU frames for encoding
 //!
 //! ## Usage
@@ -67,4 +68,5 @@ pub mod gpu;
 pub mod pipeline;
 pub mod renderer;
 pub mod scene;
+pub mod source;
 pub mod viewport;
