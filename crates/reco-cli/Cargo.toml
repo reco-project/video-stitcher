@@ -11,11 +11,12 @@ name = "reco"
 path = "src/main.rs"
 
 [features]
-profiling = ["reco-core/profiling", "reco-ffmpeg/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
+gstreamer = ["reco-io/gstreamer"]
+profiling = ["reco-core/profiling", "reco-io/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
-reco-ffmpeg = { path = "../reco-ffmpeg" }
+reco-io = { path = "../reco-io", features = ["ffmpeg"] }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 log = "0.4"

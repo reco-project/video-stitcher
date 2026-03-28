@@ -122,7 +122,7 @@ impl std::fmt::Display for DecodeBackend {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reco_ffmpeg::decoder::VideoDecoder;
+/// use reco_io::ffmpeg::decoder::VideoDecoder;
 /// use std::path::Path;
 ///
 /// let mut decoder = VideoDecoder::open(Path::new("video.mp4")).unwrap();

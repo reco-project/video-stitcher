@@ -124,6 +124,70 @@ enum Commands {
         height: u32,
     },
 
+    /// Stitch live camera feeds in real time.
+    #[cfg(feature = "gstreamer")]
+    Camera {
+        /// Left camera device (sensor ID on Jetson, e.g. "0"; device path on Linux, e.g. "/dev/video0").
+        #[arg(long)]
+        left_device: String,
+
+        /// Right camera device.
+        #[arg(long)]
+        right_device: String,
+
+        /// Path to the calibration JSON file.
+        #[arg(short, long)]
+        calibration: String,
+
+        /// Output file path.
+        #[arg(short, long)]
+        output: String,
+
+        /// Capture width in pixels.
+        #[arg(long, default_value_t = 3840)]
+        capture_width: u32,
+
+        /// Capture height in pixels.
+        #[arg(long, default_value_t = 2160)]
+        capture_height: u32,
+
+        /// Capture frame rate.
+        #[arg(long, default_value_t = 30)]
+        capture_fps: u32,
+
+        /// Output width in pixels.
+        #[arg(long, default_value_t = 1920)]
+        width: u32,
+
+        /// Output height in pixels.
+        #[arg(long, default_value_t = 1080)]
+        height: u32,
+
+        /// Force a specific encoder (e.g. "libx264", "h264_nvenc").
+        #[arg(long)]
+        encoder: Option<String>,
+
+        /// Output codec: h264, hevc, av1.
+        #[arg(long, default_value = "h264")]
+        codec: String,
+
+        /// Quality preset: fast, balanced, high.
+        #[arg(long, default_value = "fast")]
+        quality: String,
+
+        /// Seam blend width (0.0-1.0).
+        #[arg(long, default_value_t = 0.15)]
+        blend: f32,
+
+        /// Maximum number of frames to capture.
+        #[arg(long)]
+        max_frames: Option<u64>,
+
+        /// Duration in seconds to capture.
+        #[arg(long)]
+        duration: Option<f64>,
+    },
+
     /// Display information about the GPU and system capabilities.
     Info,
 }
@@ -171,8 +235,8 @@ fn main() -> anyhow::Result<()> {
             log::info!("Stitching: {left} + {right} → {output}");
 
             // Open video decoders to get input dimensions and fps
-            let left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&left))?;
-            let right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&right))?;
+            let left_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&left))?;
+            let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&right))?;
 
             let input_width = left_dec.width();
             let input_height = left_dec.height();
@@ -260,22 +324,22 @@ fn main() -> anyhow::Result<()> {
             );
 
             let quality = match quality.as_str() {
-                "fast" => reco_ffmpeg::encoder::Quality::Fast,
-                "high" => reco_ffmpeg::encoder::Quality::High,
-                _ => reco_ffmpeg::encoder::Quality::Balanced,
+                "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
+                "high" => reco_io::ffmpeg::encoder::Quality::High,
+                _ => reco_io::ffmpeg::encoder::Quality::Balanced,
             };
-            let video_codec = reco_ffmpeg::encoder::VideoCodec::from_str_loose(&codec)
+            let video_codec = reco_io::ffmpeg::encoder::VideoCodec::from_str_loose(&codec)
                 .unwrap_or_else(|| {
                     eprintln!("Unknown codec '{codec}', defaulting to H.264");
-                    reco_ffmpeg::encoder::VideoCodec::H264
+                    reco_io::ffmpeg::encoder::VideoCodec::H264
                 });
-            let enc_config = reco_ffmpeg::encoder::EncoderConfig {
+            let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
                 encoder_name: encoder,
                 codec: video_codec,
                 quality,
             };
 
-            let mut encoder = reco_ffmpeg::encoder::VideoEncoder::new(
+            let mut encoder = reco_io::ffmpeg::encoder::VideoEncoder::new(
                 Path::new(&output),
                 width,
                 height,
@@ -394,6 +458,175 @@ fn main() -> anyhow::Result<()> {
             height,
         } => run_preview(&left, &right, &calibration, width, height),
 
+        #[cfg(feature = "gstreamer")]
+        Commands::Camera {
+            left_device,
+            right_device,
+            calibration,
+            output,
+            capture_width,
+            capture_height,
+            capture_fps,
+            width,
+            height,
+            encoder,
+            codec,
+            quality,
+            blend,
+            max_frames,
+            duration,
+        } => {
+            use reco_core::source::FrameSource;
+            use reco_io::gstreamer::camera::{CameraConfig, GstreamerCameraSource};
+
+            log::info!("Camera capture: {left_device} + {right_device} -> {output}");
+
+            let cam_config = CameraConfig {
+                width: capture_width,
+                height: capture_height,
+                fps: capture_fps,
+                left_device,
+                right_device,
+            };
+
+            let mut source = GstreamerCameraSource::open(&cam_config)?;
+            let source_info = source.info();
+
+            log::info!(
+                "Capture: {}x{} @ {} fps",
+                source_info.width,
+                source_info.height,
+                source_info.fps
+            );
+
+            let json = std::fs::read_to_string(&calibration)
+                .map_err(|e| anyhow::anyhow!("cannot read calibration: {e}"))?;
+            let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)
+                .map_err(|e| anyhow::anyhow!("invalid calibration JSON: {e}"))?;
+
+            let viewport = reco_core::viewport::ViewportConfig {
+                width,
+                height,
+                blend_width: blend,
+                ..Default::default()
+            };
+
+            let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
+
+            let pipeline = reco_core::pipeline::StitchPipeline::with_gpu(
+                gpu,
+                cal,
+                viewport,
+                source_info.width,
+                source_info.height,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                reco_core::renderer::InputFormat::Yuv420p,
+            )?;
+
+            let nv12_converter =
+                reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height);
+
+            println!(
+                "Pipeline ready: GPU = {}, capture = {}x{}@{}fps, output = {}x{}",
+                pipeline.gpu.adapter_info.name,
+                capture_width,
+                capture_height,
+                capture_fps,
+                width,
+                height
+            );
+
+            reco_io::init();
+            let quality = match quality.as_str() {
+                "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
+                "high" => reco_io::ffmpeg::encoder::Quality::High,
+                _ => reco_io::ffmpeg::encoder::Quality::Balanced,
+            };
+            let video_codec = reco_io::ffmpeg::encoder::VideoCodec::from_str_loose(&codec)
+                .unwrap_or_else(|| {
+                    eprintln!("Unknown codec '{codec}', defaulting to H.264");
+                    reco_io::ffmpeg::encoder::VideoCodec::H264
+                });
+            let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
+                encoder_name: encoder,
+                codec: video_codec,
+                quality,
+            };
+
+            let fps_rational = reco_io::ffmpeg::Rational::new(capture_fps as i32, 1);
+            let mut enc = reco_io::ffmpeg::encoder::VideoEncoder::new(
+                Path::new(&output),
+                width,
+                height,
+                fps_rational,
+                &enc_config,
+            )?;
+            println!("Encoder: {}", enc.encoder_name());
+
+            let frame_limit: u64 = match (duration, max_frames) {
+                (Some(dur), Some(mf)) => ((dur * source_info.fps) as u64).min(mf),
+                (Some(dur), None) => (dur * source_info.fps) as u64,
+                (None, Some(mf)) => mf,
+                (None, None) => u64::MAX,
+            };
+
+            if frame_limit < u64::MAX {
+                println!("Capturing up to {frame_limit} frames");
+            }
+
+            let start = Instant::now();
+            let mut frame_count: u64 = 0;
+            let yaw = 0.0_f32;
+            let pitch = 0.0_f32;
+
+            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                let pair = match source.next_pair()? {
+                    Some(p) => p,
+                    None => break,
+                };
+
+                let left_planes = reco_core::pipeline::YuvPlanes {
+                    y: &pair.left.y,
+                    u: &pair.left.u,
+                    v: &pair.left.v,
+                };
+                let right_planes = reco_core::pipeline::YuvPlanes {
+                    y: &pair.right.y,
+                    u: &pair.right.u,
+                    v: &pair.right.v,
+                };
+
+                let render_buf = pipeline.render_to_target(&left_planes, &right_planes, yaw, pitch);
+                let nv12_data = nv12_converter.convert_and_readback(
+                    &pipeline.gpu,
+                    pipeline.render_target(),
+                    render_buf,
+                )?;
+                {
+                    profile_scope!("encode_nv12_frame");
+                    enc.write_nv12_frame(&nv12_data)?;
+                }
+                frame_count += 1;
+
+                if frame_count.is_multiple_of(30) {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let fps_actual = frame_count as f64 / elapsed;
+                    print!("\rProcessed {frame_count} frames ({fps_actual:.1} fps)");
+                    let _ = std::io::stdout().flush();
+                }
+            }
+
+            enc.finish()?;
+
+            let elapsed = start.elapsed().as_secs_f64();
+            let fps_actual = frame_count as f64 / elapsed;
+            println!(
+                "\nDone: {frame_count} frames in {elapsed:.1}s ({fps_actual:.1} fps) -> {output}"
+            );
+
+            Ok(())
+        }
+
         Commands::Info => {
             let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
             println!("GPU: {}", gpu.adapter_info.name);
@@ -401,7 +634,7 @@ fn main() -> anyhow::Result<()> {
             println!("Driver: {}", gpu.adapter_info.driver);
 
             println!("\nH.264 encoders:");
-            let encoders = reco_ffmpeg::encoder::available_h264_encoders();
+            let encoders = reco_io::ffmpeg::encoder::available_h264_encoders();
             if encoders.is_empty() {
                 println!("  (none found)");
             } else {
@@ -435,7 +668,7 @@ fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::R
     std::thread::Builder::new()
         .name(format!("decode_{label}"))
         .spawn(move || {
-            let mut dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
+            let mut dec = match reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
                 Ok(d) => {
                     log::info!(
                         "{label} decoder: {} ({}x{})",
@@ -534,7 +767,7 @@ fn spawn_single_decoder_gpu(
     std::thread::Builder::new()
         .name(format!("decode_{label}_gpu"))
         .spawn(move || {
-            let mut dec = match reco_ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
+            let mut dec = match reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
                 Ok(d) => {
                     log::info!(
                         "{label} GPU decoder: {} ({}x{})",
@@ -662,7 +895,7 @@ fn spawn_decode_thread_gpu(
 #[allow(clippy::too_many_arguments)]
 fn run_stitch_zero_copy(
     pipeline: &mut reco_core::pipeline::StitchPipeline,
-    encoder: &mut reco_ffmpeg::encoder::VideoEncoder,
+    encoder: &mut reco_io::ffmpeg::encoder::VideoEncoder,
     nv12_converter: &reco_core::nv12_converter::Nv12Converter,
     left_path: &str,
     right_path: &str,
@@ -855,8 +1088,8 @@ fn run_preview(
     use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
     use winit::window::{Window, WindowAttributes, WindowId};
 
-    let left_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(left_path))?;
-    let right_dec = reco_ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
+    let left_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(left_path))?;
+    let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
 
     let input_width = left_dec.width();
     let input_height = left_dec.height();

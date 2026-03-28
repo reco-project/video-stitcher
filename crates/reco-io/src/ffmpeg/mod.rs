@@ -1,0 +1,22 @@
+//! FFmpeg-based video decode and encode.
+//!
+//! Handles file I/O and network protocols (RTMP, SRT, RTSP).
+//! Supports hardware-accelerated decode (NVDEC, VA-API) and
+//! encode (NVENC, VideoToolbox, QSV).
+
+pub mod decoder;
+pub mod encoder;
+
+/// Re-export ffmpeg_next::Rational for callers that need fps as num/den.
+pub use ffmpeg_next::Rational;
+
+use std::sync::Once;
+
+static FFMPEG_INIT: Once = Once::new();
+
+/// Initialize FFmpeg (safe to call multiple times, only runs once).
+pub fn init() {
+    FFMPEG_INIT.call_once(|| {
+        ffmpeg_next::init().expect("FFmpeg initialization failed");
+    });
+}

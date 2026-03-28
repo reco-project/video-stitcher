@@ -273,7 +273,7 @@ pub struct EncoderConfig {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reco_ffmpeg::encoder::{VideoEncoder, EncoderConfig};
+/// use reco_io::ffmpeg::encoder::{VideoEncoder, EncoderConfig};
 /// use std::path::Path;
 /// use ffmpeg_next::Rational;
 ///
@@ -298,6 +298,10 @@ pub struct VideoEncoder {
     rgba_frame: VideoFrame,
     yuv_frame: VideoFrame,
 }
+
+// SAFETY: VideoEncoder is only used from a single thread. The raw pointers
+// inside FFmpeg's SwsContext/Encoder are not shared across threads.
+unsafe impl Send for VideoEncoder {}
 
 impl Drop for VideoEncoder {
     fn drop(&mut self) {

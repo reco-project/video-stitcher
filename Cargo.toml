@@ -3,7 +3,7 @@ resolver = "3"
 members = [
     "crates/reco-core",
     "crates/reco-cli",
-    "crates/reco-ffmpeg",
+    "crates/reco-io",
 ]
 
 [workspace.package]
