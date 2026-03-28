@@ -96,6 +96,11 @@ enum Commands {
         /// Quality preset: fast, balanced, high.
         #[arg(long, default_value = "balanced")]
         quality: String,
+
+        /// Seam blend width (0.0–1.0). Controls how much the two camera views
+        /// are blended at the seam. 0 = hard edge, 0.15 = smooth transition.
+        #[arg(long, default_value_t = 0.15)]
+        blend: f32,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -161,6 +166,7 @@ fn main() -> anyhow::Result<()> {
             encoder,
             codec,
             quality,
+            blend,
         } => {
             log::info!("Stitching: {left} + {right} → {output}");
 
@@ -208,6 +214,7 @@ fn main() -> anyhow::Result<()> {
             let viewport = reco_core::viewport::ViewportConfig {
                 width,
                 height,
+                blend_width: blend,
                 ..Default::default()
             };
 

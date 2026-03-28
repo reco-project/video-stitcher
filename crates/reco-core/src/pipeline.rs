@@ -166,7 +166,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            0.0,
+            self.viewport.blend_width,
             target_view,
         );
     }
@@ -201,9 +201,13 @@ impl StitchPipeline {
             position: ViewportPosition { yaw, pitch },
         };
 
-        Ok(self
-            .renderer
-            .render_frame(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)?)
+        Ok(self.renderer.render_frame(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        )?)
     }
 
     /// Render a frame assuming textures are already populated (zero-copy path).
@@ -220,9 +224,13 @@ impl StitchPipeline {
             position: ViewportPosition { yaw, pitch },
         };
 
-        Ok(self
-            .renderer
-            .render_frame(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)?)
+        Ok(self.renderer.render_frame(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        )?)
     }
 
     /// Render a frame to the internal render target without CPU readback.
@@ -251,8 +259,13 @@ impl StitchPipeline {
             position: ViewportPosition { yaw, pitch },
         };
 
-        self.renderer
-            .render_to_target(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)
+        self.renderer.render_to_target(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        )
     }
 
     /// Render to the internal target without upload or readback (zero-copy path).
@@ -269,8 +282,13 @@ impl StitchPipeline {
             position: ViewportPosition { yaw, pitch },
         };
 
-        self.renderer
-            .render_to_target(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)
+        self.renderer.render_to_target(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        )
     }
 
     /// Access the rendered RGBA texture for NV12 conversion.

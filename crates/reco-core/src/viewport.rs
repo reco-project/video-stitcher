@@ -18,6 +18,12 @@ pub struct ViewportConfig {
     /// Controls how "zoomed in" the output is. Larger values show more
     /// of the panorama. Default: 75.0 (matches v1 Three.js camera FOV).
     pub fov_degrees: f32,
+    /// Seam blend width in UV space (0.0–1.0).
+    ///
+    /// Controls how much of the right plane's left edge fades in over the
+    /// left plane using a smoothstep alpha gradient. `0.0` = hard seam,
+    /// `0.15` = blend over 15% of the plane width. Default: 0.15.
+    pub blend_width: f32,
 }
 
 impl Default for ViewportConfig {
@@ -26,6 +32,7 @@ impl Default for ViewportConfig {
             width: 1920,
             height: 1080,
             fov_degrees: 75.0,
+            blend_width: 0.15,
         }
     }
 }
