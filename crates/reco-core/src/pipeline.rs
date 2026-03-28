@@ -44,6 +44,18 @@ pub struct YuvPlanes<'a> {
     pub v: &'a [u8],
 }
 
+/// Borrowed NV12 plane references for pipeline input.
+///
+/// Tightly packed (no stride padding):
+/// - `y`: `width × height` bytes
+/// - `uv`: `width × (height/2)` bytes (interleaved U,V)
+pub struct Nv12Planes<'a> {
+    /// Y (luma) plane, full resolution.
+    pub y: &'a [u8],
+    /// Interleaved UV (CbCr) plane, half resolution in each dimension.
+    pub uv: &'a [u8],
+}
+
 /// Errors from the stitch pipeline.
 #[derive(Debug, Error)]
 pub enum PipelineError {
@@ -253,6 +265,41 @@ impl StitchPipeline {
             .upload_left_yuv(&self.gpu, left.y, left.u, left.v);
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v);
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition { yaw, pitch },
+        };
+
+        self.renderer.render_to_target(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        )
+    }
+
+    /// Upload NV12 frames and render to the internal target.
+    ///
+    /// Like `render_to_target` but accepts NV12 input (Y + interleaved UV)
+    /// instead of YUV420P. Requires the pipeline to be initialized with
+    /// `InputFormat::Nv12`.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "render_to_target_nv12")
+    )]
+    pub fn render_to_target_nv12(
+        &self,
+        left: &Nv12Planes<'_>,
+        right: &Nv12Planes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.renderer
+            .upload_left_nv12(&self.gpu, left.y, left.uv);
+        self.renderer
+            .upload_right_nv12(&self.gpu, right.y, right.uv);
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),

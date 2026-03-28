@@ -500,6 +500,33 @@ impl Renderer {
         upload_yuv(gpu, &self.right, y, u, v);
     }
 
+    /// Upload NV12 planes to the left camera textures.
+    ///
+    /// Y is R8Unorm at full resolution, UV is Rg8Unorm at half resolution.
+    /// Requires the renderer to be initialized with `InputFormat::Nv12`.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "gpu_upload_nv12")
+    )]
+    pub fn upload_left_nv12(&self, gpu: &GpuContext, y: &[u8], uv: &[u8]) {
+        debug_assert_eq!(
+            self.input_format,
+            InputFormat::Nv12,
+            "upload_left_nv12 requires InputFormat::Nv12"
+        );
+        upload_nv12(gpu, &self.left, y, uv);
+    }
+
+    /// Upload NV12 planes to the right camera textures.
+    pub fn upload_right_nv12(&self, gpu: &GpuContext, y: &[u8], uv: &[u8]) {
+        debug_assert_eq!(
+            self.input_format,
+            InputFormat::Nv12,
+            "upload_right_nv12 requires InputFormat::Nv12"
+        );
+        upload_nv12(gpu, &self.right, y, uv);
+    }
+
     /// Replace the left plane's textures with shared CUDA/Vulkan textures.
     ///
     /// Call this to switch to zero-copy mode. The provided textures must be
@@ -1085,6 +1112,56 @@ fn upload_yuv(gpu: &GpuContext, plane: &PlaneResources, y: &[u8], u: &[u8], v: &
     upload_plane(gpu, &plane.y_texture, y, w, h);
     upload_plane(gpu, &plane.u_texture, u, uv_w, uv_h);
     upload_plane(gpu, &plane.v_texture, v, uv_w, uv_h);
+}
+
+/// Upload NV12 planes (Y full-res, interleaved UV half-res) to GPU textures.
+///
+/// UV plane is `Rg8Unorm` at half resolution in each dimension.
+/// Each texel contains (U, V) as two bytes.
+fn upload_nv12(gpu: &GpuContext, plane: &PlaneResources, y: &[u8], uv: &[u8]) {
+    let w = plane.width;
+    let h = plane.height;
+    let uv_w = w / 2;
+    let uv_h = h / 2;
+
+    assert_eq!(
+        y.len(),
+        (w * h) as usize,
+        "NV12 Y plane size mismatch: expected {} bytes ({}x{}), got {}",
+        w * h,
+        w,
+        h,
+        y.len()
+    );
+    assert_eq!(
+        uv.len(),
+        (uv_w * uv_h * 2) as usize,
+        "NV12 UV plane size mismatch: expected {} bytes, got {}",
+        uv_w * uv_h * 2,
+        uv.len()
+    );
+
+    upload_plane(gpu, &plane.y_texture, y, w, h);
+    // UV plane is Rg8Unorm: 2 bytes per texel, so bytes_per_row = uv_w * 2
+    gpu.queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &plane.u_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        uv,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(uv_w * 2),
+            rows_per_image: Some(uv_h),
+        },
+        wgpu::Extent3d {
+            width: uv_w,
+            height: uv_h,
+            depth_or_array_layers: 1,
+        },
+    );
 }
 
 /// Build the view matrix for the virtual camera.

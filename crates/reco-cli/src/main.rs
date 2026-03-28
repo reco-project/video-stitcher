@@ -476,8 +476,7 @@ fn main() -> anyhow::Result<()> {
             max_frames,
             duration,
         } => {
-            use reco_core::source::FrameSource;
-            use reco_io::gstreamer::camera::{CameraConfig, GstreamerCameraSource};
+            use reco_io::gstreamer::camera::CameraConfig;
 
             log::info!("Camera capture: {left_device} + {right_device} -> {output}");
 
@@ -488,16 +487,6 @@ fn main() -> anyhow::Result<()> {
                 left_device,
                 right_device,
             };
-
-            let mut source = GstreamerCameraSource::open(&cam_config)?;
-            let source_info = source.info();
-
-            log::info!(
-                "Capture: {}x{} @ {} fps",
-                source_info.width,
-                source_info.height,
-                source_info.fps
-            );
 
             let json = std::fs::read_to_string(&calibration)
                 .map_err(|e| anyhow::anyhow!("cannot read calibration: {e}"))?;
@@ -513,25 +502,36 @@ fn main() -> anyhow::Result<()> {
 
             let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
 
+            // Use NV12 capture on Jetson to skip the NV12->I420 conversion
+            // in nvvidconv. The NVIDIA ISP natively outputs NV12.
+            let use_nv12_capture = cfg!(target_arch = "aarch64");
+            let input_format = if use_nv12_capture {
+                reco_core::renderer::InputFormat::Nv12
+            } else {
+                reco_core::renderer::InputFormat::Yuv420p
+            };
+
             let pipeline = reco_core::pipeline::StitchPipeline::with_gpu(
                 gpu,
                 cal,
                 viewport,
-                source_info.width,
-                source_info.height,
+                capture_width,
+                capture_height,
                 wgpu::TextureFormat::Rgba8UnormSrgb,
-                reco_core::renderer::InputFormat::Yuv420p,
+                input_format,
             )?;
 
             let nv12_converter =
                 reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height);
 
+            let mode_str = if use_nv12_capture { "NV12" } else { "I420" };
             println!(
-                "Pipeline ready: GPU = {}, capture = {}x{}@{}fps, output = {}x{}",
+                "Pipeline ready: GPU = {}, capture = {}x{}@{}fps ({}), output = {}x{}",
                 pipeline.gpu.adapter_info.name,
                 capture_width,
                 capture_height,
                 capture_fps,
+                mode_str,
                 width,
                 height
             );
@@ -563,9 +563,10 @@ fn main() -> anyhow::Result<()> {
             )?;
             println!("Encoder: {}", enc.encoder_name());
 
+            let capture_fps_f64 = capture_fps as f64;
             let frame_limit: u64 = match (duration, max_frames) {
-                (Some(dur), Some(mf)) => ((dur * source_info.fps) as u64).min(mf),
-                (Some(dur), None) => (dur * source_info.fps) as u64,
+                (Some(dur), Some(mf)) => ((dur * capture_fps_f64) as u64).min(mf),
+                (Some(dur), None) => (dur * capture_fps_f64) as u64,
                 (None, Some(mf)) => mf,
                 (None, None) => u64::MAX,
             };
@@ -593,42 +594,92 @@ fn main() -> anyhow::Result<()> {
             let yaw = 0.0_f32;
             let pitch = 0.0_f32;
 
-            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-                let pair = {
-                    profile_scope!("wait_capture");
-                    match source.next_pair()? {
-                        Some(p) => p,
-                        None => break,
+            if use_nv12_capture {
+                // NV12 path: skip nvvidconv format conversion, upload 2 planes
+                let mut source =
+                    reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
+
+                while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                    let pair = {
+                        profile_scope!("wait_capture");
+                        match source.next_pair()? {
+                            Some(p) => p,
+                            None => break,
+                        }
+                    };
+
+                    let left_planes = reco_core::pipeline::Nv12Planes {
+                        y: &pair.left.y,
+                        uv: &pair.left.uv,
+                    };
+                    let right_planes = reco_core::pipeline::Nv12Planes {
+                        y: &pair.right.y,
+                        uv: &pair.right.uv,
+                    };
+
+                    let render_buf =
+                        pipeline.render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
+                    let nv12_data = nv12_converter.convert_and_readback(
+                        &pipeline.gpu,
+                        pipeline.render_target(),
+                        render_buf,
+                    )?;
+                    if encode_tx.send(nv12_data).is_err() {
+                        break;
                     }
-                };
+                    frame_count += 1;
 
-                let left_planes = reco_core::pipeline::YuvPlanes {
-                    y: &pair.left.y,
-                    u: &pair.left.u,
-                    v: &pair.left.v,
-                };
-                let right_planes = reco_core::pipeline::YuvPlanes {
-                    y: &pair.right.y,
-                    u: &pair.right.u,
-                    v: &pair.right.v,
-                };
-
-                let render_buf = pipeline.render_to_target(&left_planes, &right_planes, yaw, pitch);
-                let nv12_data = nv12_converter.convert_and_readback(
-                    &pipeline.gpu,
-                    pipeline.render_target(),
-                    render_buf,
-                )?;
-                if encode_tx.send(nv12_data).is_err() {
-                    break; // Encoder thread crashed
+                    if frame_count.is_multiple_of(30) {
+                        let elapsed = start.elapsed().as_secs_f64();
+                        let fps_actual = frame_count as f64 / elapsed;
+                        print!("\rProcessed {frame_count} frames ({fps_actual:.1} fps)");
+                        let _ = std::io::stdout().flush();
+                    }
                 }
-                frame_count += 1;
+            } else {
+                // I420 path: standard YUV420P upload with 3 planes
+                use reco_core::source::FrameSource;
+                let mut source =
+                    reco_io::gstreamer::camera::GstreamerCameraSource::open(&cam_config)?;
 
-                if frame_count.is_multiple_of(30) {
-                    let elapsed = start.elapsed().as_secs_f64();
-                    let fps_actual = frame_count as f64 / elapsed;
-                    print!("\rProcessed {frame_count} frames ({fps_actual:.1} fps)");
-                    let _ = std::io::stdout().flush();
+                while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                    let pair = {
+                        profile_scope!("wait_capture");
+                        match source.next_pair()? {
+                            Some(p) => p,
+                            None => break,
+                        }
+                    };
+
+                    let left_planes = reco_core::pipeline::YuvPlanes {
+                        y: &pair.left.y,
+                        u: &pair.left.u,
+                        v: &pair.left.v,
+                    };
+                    let right_planes = reco_core::pipeline::YuvPlanes {
+                        y: &pair.right.y,
+                        u: &pair.right.u,
+                        v: &pair.right.v,
+                    };
+
+                    let render_buf =
+                        pipeline.render_to_target(&left_planes, &right_planes, yaw, pitch);
+                    let nv12_data = nv12_converter.convert_and_readback(
+                        &pipeline.gpu,
+                        pipeline.render_target(),
+                        render_buf,
+                    )?;
+                    if encode_tx.send(nv12_data).is_err() {
+                        break;
+                    }
+                    frame_count += 1;
+
+                    if frame_count.is_multiple_of(30) {
+                        let elapsed = start.elapsed().as_secs_f64();
+                        let fps_actual = frame_count as f64 / elapsed;
+                        print!("\rProcessed {frame_count} frames ({fps_actual:.1} fps)");
+                        let _ = std::io::stdout().flush();
+                    }
                 }
             }
 

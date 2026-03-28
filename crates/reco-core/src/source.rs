@@ -50,6 +50,18 @@ pub struct YuvData {
     pub v: Vec<u8>,
 }
 
+/// Owned NV12 plane data.
+///
+/// Tightly packed (no stride padding):
+/// - Y: `width × height` bytes
+/// - UV: `width × (height/2)` bytes (interleaved U,V at half resolution)
+pub struct Nv12Data {
+    /// Y (luma) plane, full resolution.
+    pub y: Vec<u8>,
+    /// Interleaved UV (CbCr) plane, half resolution in each dimension.
+    pub uv: Vec<u8>,
+}
+
 /// A stereo frame pair from the source.
 ///
 /// Contains left and right camera data as YUV420P planes (CPU-resident).
@@ -59,6 +71,18 @@ pub struct FramePair {
     pub left: YuvData,
     /// Right camera YUV420P data.
     pub right: YuvData,
+}
+
+/// A stereo NV12 frame pair from the source.
+///
+/// Contains left and right camera data as NV12 planes (CPU-resident).
+/// NV12 is the native output of NVIDIA ISP (nvarguscamerasrc) and NVDEC,
+/// so this avoids an NV12 -> I420 conversion on capture.
+pub struct Nv12FramePair {
+    /// Left camera NV12 data.
+    pub left: Nv12Data,
+    /// Right camera NV12 data.
+    pub right: Nv12Data,
 }
 
 /// Metadata about the frame source.
