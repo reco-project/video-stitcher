@@ -574,15 +574,32 @@ fn main() -> anyhow::Result<()> {
                 println!("Capturing up to {frame_limit} frames");
             }
 
+            // Async encode: send NV12 data to a background thread so
+            // encoding overlaps with the next frame's capture + render.
+            let (encode_tx, encode_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(2);
+            let encode_thread = std::thread::Builder::new()
+                .name("encode".into())
+                .spawn(move || -> Result<(), anyhow::Error> {
+                    while let Ok(nv12_data) = encode_rx.recv() {
+                        enc.write_nv12_frame(&nv12_data)?;
+                    }
+                    enc.finish()?;
+                    Ok(())
+                })
+                .expect("spawn encode thread");
+
             let start = Instant::now();
             let mut frame_count: u64 = 0;
             let yaw = 0.0_f32;
             let pitch = 0.0_f32;
 
             while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-                let pair = match source.next_pair()? {
-                    Some(p) => p,
-                    None => break,
+                let pair = {
+                    profile_scope!("wait_capture");
+                    match source.next_pair()? {
+                        Some(p) => p,
+                        None => break,
+                    }
                 };
 
                 let left_planes = reco_core::pipeline::YuvPlanes {
@@ -602,9 +619,8 @@ fn main() -> anyhow::Result<()> {
                     pipeline.render_target(),
                     render_buf,
                 )?;
-                {
-                    profile_scope!("encode_nv12_frame");
-                    enc.write_nv12_frame(&nv12_data)?;
+                if encode_tx.send(nv12_data).is_err() {
+                    break; // Encoder thread crashed
                 }
                 frame_count += 1;
 
@@ -616,7 +632,9 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            enc.finish()?;
+            // Signal encoder to finish by dropping the sender
+            drop(encode_tx);
+            encode_thread.join().expect("encode thread panicked")?;
 
             let elapsed = start.elapsed().as_secs_f64();
             let fps_actual = frame_count as f64 / elapsed;

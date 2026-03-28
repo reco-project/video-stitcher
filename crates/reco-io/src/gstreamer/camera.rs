@@ -1,13 +1,15 @@
 //! Live stereo camera capture via GStreamer.
 //!
 //! Builds a GStreamer pipeline per camera, pulls I420 frames from
-//! `appsink`, and pairs them into stereo `FramePair`s.
+//! `appsink` in dedicated threads, and pairs them into stereo
+//! `FramePair`s via a bounded channel.
 
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use reco_core::source::{FramePair, SourceError, SourceInfo, YuvData};
 use std::path::Path;
+use std::sync::mpsc;
 
 /// Camera capture configuration.
 #[derive(Debug, Clone)]
@@ -27,164 +29,216 @@ pub struct CameraConfig {
     pub right_device: String,
 }
 
-/// A single-camera GStreamer capture pipeline.
-struct CameraPipeline {
-    pipeline: gst::Pipeline,
-    appsink: gst_app::AppSink,
+/// Build the platform-appropriate GStreamer pipeline string.
+fn build_pipeline_string(device: &str, width: u32, height: u32, fps: u32) -> String {
+    if is_jetson() {
+        // Jetson: nvarguscamerasrc runs the full NVIDIA ISP
+        // (debayer, AWB, AE, denoise). Output is NV12 in NVMM;
+        // nvvidconv copies to system memory as I420.
+        format!(
+            "nvarguscamerasrc sensor-id={device} ! \
+             video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
+             nvvidconv ! \
+             video/x-raw,format=I420 ! \
+             appsink name=sink emit-signals=false sync=false"
+        )
+    } else if cfg!(target_os = "macos") {
+        format!(
+            "avfvideosrc device-index={device} ! \
+             video/x-raw,width={width},height={height},framerate={fps}/1 ! \
+             videoconvert ! \
+             video/x-raw,format=I420 ! \
+             appsink name=sink emit-signals=false sync=false"
+        )
+    } else if cfg!(target_os = "windows") {
+        format!(
+            "mfvideosrc device-index={device} ! \
+             video/x-raw,width={width},height={height},framerate={fps}/1 ! \
+             videoconvert ! \
+             video/x-raw,format=I420 ! \
+             appsink name=sink emit-signals=false sync=false"
+        )
+    } else {
+        // Linux: generic V4L2
+        format!(
+            "v4l2src device={device} ! \
+             video/x-raw,width={width},height={height},framerate={fps}/1 ! \
+             videoconvert ! \
+             video/x-raw,format=I420 ! \
+             appsink name=sink emit-signals=false sync=false"
+        )
+    }
+}
+
+/// Detect if we're running on a Jetson (L4T/Tegra).
+fn is_jetson() -> bool {
+    Path::new("/etc/nv_tegra_release").exists()
+        || std::fs::read_to_string("/proc/device-tree/compatible")
+            .unwrap_or_default()
+            .contains("nvidia,tegra")
+}
+
+/// Extract I420 planes from a GStreamer buffer.
+fn extract_i420(data: &[u8], width: u32, height: u32) -> Result<YuvData, SourceError> {
+    let y_size = (width * height) as usize;
+    let uv_size = ((width / 2) * (height / 2)) as usize;
+
+    if data.len() < y_size + 2 * uv_size {
+        return Err(SourceError::Read(format!(
+            "buffer too small: {} < {}",
+            data.len(),
+            y_size + 2 * uv_size
+        )));
+    }
+
+    Ok(YuvData {
+        y: data[..y_size].to_vec(),
+        u: data[y_size..y_size + uv_size].to_vec(),
+        v: data[y_size + uv_size..y_size + 2 * uv_size].to_vec(),
+    })
+}
+
+/// Spawn a GStreamer capture thread for one camera.
+///
+/// The thread builds and runs the pipeline internally, pulling I420
+/// frames from appsink and sending them through a bounded channel.
+/// This keeps GStreamer's pipeline and thread model self-contained.
+fn spawn_capture_thread(
+    device: String,
+    label: &'static str,
     width: u32,
     height: u32,
-}
+    fps: u32,
+) -> mpsc::Receiver<YuvData> {
+    let (tx, rx) = mpsc::sync_channel::<YuvData>(2);
 
-impl CameraPipeline {
-    /// Build and start a capture pipeline for one camera.
-    fn new(device: &str, width: u32, height: u32, fps: u32) -> Result<Self, SourceError> {
-        gst::init().map_err(|e| SourceError::Init(format!("GStreamer init: {e}")))?;
+    std::thread::Builder::new()
+        .name(format!("capture_{label}"))
+        .spawn(move || {
+            if let Err(e) = gst::init() {
+                log::error!("{label} GStreamer init failed: {e}");
+                return;
+            }
 
-        let pipeline_str = Self::build_pipeline_string(device, width, height, fps);
-        log::info!("GStreamer pipeline: {pipeline_str}");
+            let pipeline_str = build_pipeline_string(&device, width, height, fps);
+            log::info!("{label} pipeline: {pipeline_str}");
 
-        let pipeline = gst::parse::launch(&pipeline_str)
-            .map_err(|e| SourceError::Init(format!("pipeline parse: {e}")))?
-            .downcast::<gst::Pipeline>()
-            .map_err(|_| SourceError::Init("not a pipeline".into()))?;
+            let pipeline = match gst::parse::launch(&pipeline_str) {
+                Ok(p) => match p.downcast::<gst::Pipeline>() {
+                    Ok(p) => p,
+                    Err(_) => {
+                        log::error!("{label}: not a pipeline");
+                        return;
+                    }
+                },
+                Err(e) => {
+                    log::error!("{label} pipeline parse: {e}");
+                    return;
+                }
+            };
 
-        let appsink = pipeline
-            .by_name("sink")
-            .ok_or_else(|| SourceError::Init("appsink 'sink' not found".into()))?
-            .downcast::<gst_app::AppSink>()
-            .map_err(|_| SourceError::Init("element is not an AppSink".into()))?;
+            let appsink = match pipeline.by_name("sink") {
+                Some(elem) => match elem.downcast::<gst_app::AppSink>() {
+                    Ok(s) => s,
+                    Err(_) => {
+                        log::error!("{label}: element is not an AppSink");
+                        return;
+                    }
+                },
+                None => {
+                    log::error!("{label}: appsink not found");
+                    return;
+                }
+            };
 
-        // Drop old frames, keep buffer small for low latency
-        appsink.set_max_buffers(2);
-        appsink.set_drop(true);
+            appsink.set_max_buffers(2);
+            appsink.set_drop(true);
 
-        pipeline
-            .set_state(gst::State::Playing)
-            .map_err(|e| SourceError::Init(format!("set_state(Playing): {e}")))?;
+            if let Err(e) = pipeline.set_state(gst::State::Playing) {
+                log::error!("{label} set_state(Playing): {e}");
+                return;
+            }
 
-        Ok(Self {
-            pipeline,
-            appsink,
-            width,
-            height,
+            loop {
+                let sample = match appsink.pull_sample() {
+                    Ok(s) => s,
+                    Err(_) => break, // EOS
+                };
+
+                let Some(buffer) = sample.buffer() else {
+                    log::error!("{label}: sample has no buffer");
+                    break;
+                };
+
+                let Ok(map) = buffer.map_readable() else {
+                    log::error!("{label}: buffer map failed");
+                    break;
+                };
+
+                match extract_i420(map.as_slice(), width, height) {
+                    Ok(yuv) => {
+                        if tx.send(yuv).is_err() {
+                            break; // Receiver dropped
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("{label}: {e}");
+                        break;
+                    }
+                }
+            }
+
+            let _ = pipeline.set_state(gst::State::Null);
         })
-    }
+        .expect("spawn capture thread");
 
-    /// Build the platform-appropriate pipeline string.
-    fn build_pipeline_string(device: &str, width: u32, height: u32, fps: u32) -> String {
-        if Self::is_jetson() {
-            // Jetson: nvarguscamerasrc runs the full NVIDIA ISP
-            // (debayer, AWB, AE, denoise). Output is NV12 in NVMM;
-            // nvvidconv copies to system memory as I420.
-            format!(
-                "nvarguscamerasrc sensor-id={device} ! \
-                 video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
-                 nvvidconv ! \
-                 video/x-raw,format=I420 ! \
-                 appsink name=sink emit-signals=false sync=false"
-            )
-        } else if cfg!(target_os = "macos") {
-            format!(
-                "avfvideosrc device-index={device} ! \
-                 video/x-raw,width={width},height={height},framerate={fps}/1 ! \
-                 videoconvert ! \
-                 video/x-raw,format=I420 ! \
-                 appsink name=sink emit-signals=false sync=false"
-            )
-        } else if cfg!(target_os = "windows") {
-            format!(
-                "mfvideosrc device-index={device} ! \
-                 video/x-raw,width={width},height={height},framerate={fps}/1 ! \
-                 videoconvert ! \
-                 video/x-raw,format=I420 ! \
-                 appsink name=sink emit-signals=false sync=false"
-            )
-        } else {
-            // Linux: generic V4L2
-            format!(
-                "v4l2src device={device} ! \
-                 video/x-raw,width={width},height={height},framerate={fps}/1 ! \
-                 videoconvert ! \
-                 video/x-raw,format=I420 ! \
-                 appsink name=sink emit-signals=false sync=false"
-            )
-        }
-    }
-
-    /// Detect if we're running on a Jetson (L4T/Tegra).
-    fn is_jetson() -> bool {
-        Path::new("/etc/nv_tegra_release").exists()
-            || std::fs::read_to_string("/proc/device-tree/compatible")
-                .unwrap_or_default()
-                .contains("nvidia,tegra")
-    }
-
-    /// Pull one I420 frame from the appsink. Blocks until a frame arrives.
-    fn pull_frame(&self) -> Result<Option<YuvData>, SourceError> {
-        let sample = match self.appsink.pull_sample() {
-            Ok(s) => s,
-            Err(_) => return Ok(None), // EOS or pipeline stopped
-        };
-
-        let buffer = sample
-            .buffer()
-            .ok_or_else(|| SourceError::Read("sample has no buffer".into()))?;
-
-        let map = buffer
-            .map_readable()
-            .map_err(|e| SourceError::Read(format!("buffer map: {e}")))?;
-
-        let data = map.as_slice();
-
-        // I420 layout: Y plane (w*h), U plane (w/2 * h/2), V plane (w/2 * h/2)
-        let y_size = (self.width * self.height) as usize;
-        let uv_size = ((self.width / 2) * (self.height / 2)) as usize;
-
-        if data.len() < y_size + 2 * uv_size {
-            return Err(SourceError::Read(format!(
-                "buffer too small: {} < {}",
-                data.len(),
-                y_size + 2 * uv_size
-            )));
-        }
-
-        Ok(Some(YuvData {
-            y: data[..y_size].to_vec(),
-            u: data[y_size..y_size + uv_size].to_vec(),
-            v: data[y_size + uv_size..y_size + 2 * uv_size].to_vec(),
-        }))
-    }
-}
-
-impl Drop for CameraPipeline {
-    fn drop(&mut self) {
-        let _ = self.pipeline.set_state(gst::State::Null);
-    }
+    rx
 }
 
 /// Stereo camera source using GStreamer.
 ///
-/// Captures from two cameras simultaneously and delivers paired I420
-/// frames. On Jetson, uses `nvarguscamerasrc` which runs the full
-/// NVIDIA ISP pipeline (debayer, AWB, AE, denoise). On desktop Linux,
-/// uses `v4l2src`.
+/// Each camera runs in its own thread pulling frames from appsink.
+/// A pairing thread zips left+right into `FramePair`s and sends
+/// them through a bounded channel. This ensures both cameras are
+/// captured in parallel rather than sequentially.
 pub struct GstreamerCameraSource {
-    left: CameraPipeline,
-    right: CameraPipeline,
+    rx: mpsc::Receiver<FramePair>,
     info: SourceInfo,
 }
 
 impl GstreamerCameraSource {
-    /// Open a stereo camera source.
+    /// Open a stereo camera source with threaded capture.
     pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
-        let left =
-            CameraPipeline::new(&config.left_device, config.width, config.height, config.fps)?;
-        let right = CameraPipeline::new(
-            &config.right_device,
+        gst::init().map_err(|e| SourceError::Init(format!("GStreamer init: {e}")))?;
+
+        let left_rx = spawn_capture_thread(
+            config.left_device.clone(),
+            "left",
             config.width,
             config.height,
             config.fps,
-        )?;
+        );
+        let right_rx = spawn_capture_thread(
+            config.right_device.clone(),
+            "right",
+            config.width,
+            config.height,
+            config.fps,
+        );
+
+        // Pairing thread: zip left + right by arrival order
+        let (tx, rx) = mpsc::sync_channel::<FramePair>(2);
+
+        std::thread::Builder::new()
+            .name("capture_pair".into())
+            .spawn(move || {
+                while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
+                    if tx.send(FramePair { left, right }).is_err() {
+                        break;
+                    }
+                }
+            })
+            .expect("spawn pairing thread");
 
         let info = SourceInfo {
             width: config.width,
@@ -193,13 +247,13 @@ impl GstreamerCameraSource {
         };
 
         log::info!(
-            "Camera source ready: {}x{} @ {} fps",
+            "Camera source ready: {}x{} @ {} fps (threaded)",
             config.width,
             config.height,
             config.fps
         );
 
-        Ok(Self { left, right, info })
+        Ok(Self { rx, info })
     }
 }
 
@@ -213,14 +267,9 @@ impl reco_core::source::FrameSource for GstreamerCameraSource {
     }
 
     fn next_pair(&mut self) -> Result<Option<FramePair>, SourceError> {
-        let left = match self.left.pull_frame()? {
-            Some(f) => f,
-            None => return Ok(None),
-        };
-        let right = match self.right.pull_frame()? {
-            Some(f) => f,
-            None => return Ok(None),
-        };
-        Ok(Some(FramePair { left, right }))
+        match self.rx.recv() {
+            Ok(pair) => Ok(Some(pair)),
+            Err(_) => Ok(None),
+        }
     }
 }
