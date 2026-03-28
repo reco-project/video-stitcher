@@ -14,9 +14,9 @@ use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use reco_core::source::{FramePair, Nv12Data, Nv12FramePair, SourceError, SourceInfo, YuvData};
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 
 /// Camera capture configuration.
 #[derive(Debug, Clone)]
@@ -197,14 +197,20 @@ fn spawn_capture_thread(
     std::thread::Builder::new()
         .name(format!("capture_{label}"))
         .spawn(move || {
-            let (pipeline, appsink) =
-                match build_capture_pipeline(&device, label, width, height, fps, CaptureFormat::I420) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        log::error!("{e}");
-                        return;
-                    }
-                };
+            let (pipeline, appsink) = match build_capture_pipeline(
+                &device,
+                label,
+                width,
+                height,
+                fps,
+                CaptureFormat::I420,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("{e}");
+                    return;
+                }
+            };
 
             loop {
                 let sample = match appsink.pull_sample() {
@@ -259,14 +265,20 @@ fn spawn_nv12_capture_thread(
     std::thread::Builder::new()
         .name(format!("capture_{label}"))
         .spawn(move || {
-            let (pipeline, appsink) =
-                match build_capture_pipeline(&device, label, width, height, fps, CaptureFormat::Nv12) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        log::error!("{e}");
-                        return;
-                    }
-                };
+            let (pipeline, appsink) = match build_capture_pipeline(
+                &device,
+                label,
+                width,
+                height,
+                fps,
+                CaptureFormat::Nv12,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("{e}");
+                    return;
+                }
+            };
 
             loop {
                 if stop.load(Ordering::Relaxed) {

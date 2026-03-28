@@ -296,8 +296,7 @@ impl StitchPipeline {
         yaw: f32,
         pitch: f32,
     ) -> wgpu::CommandBuffer {
-        self.renderer
-            .upload_left_nv12(&self.gpu, left.y, left.uv);
+        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv);
         self.renderer
             .upload_right_nv12(&self.gpu, right.y, right.uv);
 
