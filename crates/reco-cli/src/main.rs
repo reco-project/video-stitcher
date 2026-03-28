@@ -589,7 +589,6 @@ fn main() -> anyhow::Result<()> {
                 })
                 .expect("spawn encode thread");
 
-            let start = Instant::now();
             let mut frame_count: u64 = 0;
             let yaw = 0.0_f32;
             let pitch = 0.0_f32;
@@ -598,6 +597,31 @@ fn main() -> anyhow::Result<()> {
                 // NV12 path: skip nvvidconv format conversion, upload 2 planes
                 let mut source =
                     reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
+
+                // Warm up: discard first frame (camera ISP + pipeline init)
+                if let Some(pair) = source.next_pair()? {
+                    let left_planes = reco_core::pipeline::Nv12Planes {
+                        y: &pair.left.y,
+                        uv: &pair.left.uv,
+                    };
+                    let right_planes = reco_core::pipeline::Nv12Planes {
+                        y: &pair.right.y,
+                        uv: &pair.right.uv,
+                    };
+                    let render_buf =
+                        pipeline.render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
+                    let nv12_data = nv12_converter.convert_and_readback(
+                        &pipeline.gpu,
+                        pipeline.render_target(),
+                        render_buf,
+                    )?;
+                    if encode_tx.send(nv12_data).is_err() {
+                        anyhow::bail!("encoder thread died during warmup");
+                    }
+                    println!("Warmup complete, starting capture...");
+                }
+
+                let start = Instant::now();
 
                 while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
                     let pair = {
@@ -636,11 +660,23 @@ fn main() -> anyhow::Result<()> {
                         let _ = std::io::stdout().flush();
                     }
                 }
+
+                // Signal encoder to finish by dropping the sender
+                drop(encode_tx);
+                encode_thread.join().expect("encode thread panicked")?;
+
+                let elapsed = start.elapsed().as_secs_f64();
+                let fps_actual = frame_count as f64 / elapsed;
+                println!(
+                    "\nDone: {frame_count} frames in {elapsed:.1}s ({fps_actual:.1} fps) -> {output}"
+                );
             } else {
                 // I420 path: standard YUV420P upload with 3 planes
                 use reco_core::source::FrameSource;
                 let mut source =
                     reco_io::gstreamer::camera::GstreamerCameraSource::open(&cam_config)?;
+
+                let start = Instant::now();
 
                 while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
                     let pair = {
@@ -681,17 +717,16 @@ fn main() -> anyhow::Result<()> {
                         let _ = std::io::stdout().flush();
                     }
                 }
+
+                drop(encode_tx);
+                encode_thread.join().expect("encode thread panicked")?;
+
+                let elapsed = start.elapsed().as_secs_f64();
+                let fps_actual = frame_count as f64 / elapsed;
+                println!(
+                    "\nDone: {frame_count} frames in {elapsed:.1}s ({fps_actual:.1} fps) -> {output}"
+                );
             }
-
-            // Signal encoder to finish by dropping the sender
-            drop(encode_tx);
-            encode_thread.join().expect("encode thread panicked")?;
-
-            let elapsed = start.elapsed().as_secs_f64();
-            let fps_actual = frame_count as f64 / elapsed;
-            println!(
-                "\nDone: {frame_count} frames in {elapsed:.1}s ({fps_actual:.1} fps) -> {output}"
-            );
 
             Ok(())
         }
