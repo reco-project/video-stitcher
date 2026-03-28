@@ -14,7 +14,9 @@ use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use reco_core::source::{FramePair, Nv12Data, Nv12FramePair, SourceError, SourceInfo, YuvData};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 
 /// Camera capture configuration.
 #[derive(Debug, Clone)]
@@ -241,12 +243,16 @@ fn spawn_capture_thread(
 }
 
 /// Spawn a GStreamer capture thread for one camera (NV12 output).
+///
+/// The stop signal allows graceful shutdown: send EOS, wait for pipeline
+/// to reach Null state, then exit. This prevents Argus teardown crashes.
 fn spawn_nv12_capture_thread(
     device: String,
     label: &'static str,
     width: u32,
     height: u32,
     fps: u32,
+    stop: Arc<AtomicBool>,
 ) -> mpsc::Receiver<Nv12Data> {
     let (tx, rx) = mpsc::sync_channel::<Nv12Data>(2);
 
@@ -263,6 +269,10 @@ fn spawn_nv12_capture_thread(
                 };
 
             loop {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+
                 let sample = match appsink.pull_sample() {
                     Ok(s) => s,
                     Err(_) => break,
@@ -291,7 +301,13 @@ fn spawn_nv12_capture_thread(
                 }
             }
 
+            // Graceful shutdown: send EOS, then transition to Null
+            log::info!("{label}: sending EOS for graceful shutdown");
+            pipeline.send_event(gst::event::Eos::new());
             let _ = pipeline.set_state(gst::State::Null);
+            // Wait for state change to complete
+            let _ = pipeline.state(gst::ClockTime::from_seconds(2));
+            log::info!("{label}: pipeline stopped");
         })
         .expect("spawn capture thread");
 
@@ -381,9 +397,12 @@ impl reco_core::source::FrameSource for GstreamerCameraSource {
 /// the native output of NVIDIA's ISP. This avoids the NV12->I420
 /// conversion that nvvidconv would otherwise perform, saving CPU time
 /// and memory bandwidth on Jetson.
+///
+/// Implements graceful shutdown via `Drop` to avoid Argus teardown crashes.
 pub struct GstreamerNv12CameraSource {
     rx: mpsc::Receiver<Nv12FramePair>,
     info: SourceInfo,
+    stop: Arc<AtomicBool>,
 }
 
 impl GstreamerNv12CameraSource {
@@ -391,12 +410,15 @@ impl GstreamerNv12CameraSource {
     pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
         gst::init().map_err(|e| SourceError::Init(format!("GStreamer init: {e}")))?;
 
+        let stop = Arc::new(AtomicBool::new(false));
+
         let left_rx = spawn_nv12_capture_thread(
             config.left_device.clone(),
             "left",
             config.width,
             config.height,
             config.fps,
+            stop.clone(),
         );
         let right_rx = spawn_nv12_capture_thread(
             config.right_device.clone(),
@@ -404,6 +426,7 @@ impl GstreamerNv12CameraSource {
             config.width,
             config.height,
             config.fps,
+            stop.clone(),
         );
 
         let (tx, rx) = mpsc::sync_channel::<Nv12FramePair>(2);
@@ -432,7 +455,12 @@ impl GstreamerNv12CameraSource {
             config.fps
         );
 
-        Ok(Self { rx, info })
+        Ok(Self { rx, info, stop })
+    }
+
+    /// Signal capture threads to stop.
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
     }
 
     /// Source metadata.
@@ -450,5 +478,15 @@ impl GstreamerNv12CameraSource {
             Ok(pair) => Ok(Some(pair)),
             Err(_) => Ok(None),
         }
+    }
+}
+
+impl Drop for GstreamerNv12CameraSource {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        // Drain any pending frames to unblock capture threads
+        while self.rx.try_recv().is_ok() {}
+        // Give capture threads time to send EOS and reach Null state
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }

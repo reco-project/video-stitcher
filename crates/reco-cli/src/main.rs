@@ -661,7 +661,8 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                // Signal encoder to finish by dropping the sender
+                // Stop cameras gracefully before finishing encoder
+                source.stop();
                 drop(encode_tx);
                 encode_thread.join().expect("encode thread panicked")?;
 
@@ -670,6 +671,9 @@ fn main() -> anyhow::Result<()> {
                 println!(
                     "\nDone: {frame_count} frames in {elapsed:.1}s ({fps_actual:.1} fps) -> {output}"
                 );
+
+                // Drop source explicitly to allow graceful GStreamer/Argus teardown
+                drop(source);
             } else {
                 // I420 path: standard YUV420P upload with 3 planes
                 use reco_core::source::FrameSource;
