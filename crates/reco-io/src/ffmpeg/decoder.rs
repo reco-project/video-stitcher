@@ -47,6 +47,10 @@ pub enum DecodeError {
     /// No video stream found in the file.
     #[error("no video stream found")]
     NoVideoStream,
+
+    /// Pixel format conversion failed.
+    #[error("format conversion: {0}")]
+    ConversionError(String),
 }
 
 /// A decoded NV12 frame still on the GPU (CUDA device memory).
@@ -281,7 +285,7 @@ impl VideoDecoder {
             {
                 profile_scope!("h264_decode");
                 if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    return Ok(Some(self.extract_yuv()));
+                    return Ok(Some(self.extract_yuv()?));
                 }
             }
 
@@ -300,7 +304,7 @@ impl VideoDecoder {
                 self.eof_sent = true;
                 self.decoder.send_eof()?;
                 if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    return Ok(Some(self.extract_yuv()));
+                    return Ok(Some(self.extract_yuv()?));
                 }
                 return Ok(None);
             }
@@ -396,7 +400,7 @@ impl VideoDecoder {
     /// For hardware-decoded frames, transfers from GPU to CPU first.
     /// If the frame format isn't YUV420P (e.g. NV12 from NVDEC),
     /// swscale converts it (very cheap for NV12→YUV420P: just deinterleave UV).
-    fn extract_yuv(&mut self) -> YuvFrame {
+    fn extract_yuv(&mut self) -> Result<YuvFrame, DecodeError> {
         // If hardware-decoded, transfer GPU frame to CPU
         let cpu_frame = if is_hw_frame(&self.decoded_frame) {
             profile_scope!("hw_transfer");
@@ -447,7 +451,11 @@ impl VideoDecoder {
                         self.height,
                         ScalingFlags::POINT,
                     )
-                    .expect("create scaler for hwaccel format"),
+                    .map_err(|e| {
+                        DecodeError::ConversionError(format!(
+                            "cannot create scaler for {frame_format:?}: {e}"
+                        ))
+                    })?,
                 );
             }
 
@@ -455,7 +463,9 @@ impl VideoDecoder {
                 profile_scope!("swscale");
                 scaler
                     .run(cpu_frame, &mut self.converted_frame)
-                    .expect("swscale conversion failed");
+                    .map_err(|e| {
+                        DecodeError::ConversionError(format!("swscale failed: {e}"))
+                    })?;
                 &self.converted_frame
             } else {
                 cpu_frame
@@ -481,14 +491,14 @@ impl VideoDecoder {
         let u = extract_plane(source.data(1), source.stride(1), uv_w, uv_h);
         let v = extract_plane(source.data(2), source.stride(2), uv_w, uv_h);
 
-        YuvFrame {
+        Ok(YuvFrame {
             y,
             u,
             v,
             width: self.width,
             height: self.height,
             timestamp_us,
-        }
+        })
     }
 }
 

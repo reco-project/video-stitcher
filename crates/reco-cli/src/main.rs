@@ -113,7 +113,7 @@ enum Commands {
 
         /// Seam blend width (0.0–1.0). Controls how much the two camera views
         /// are blended at the seam. 0 = hard edge, 0.15 = smooth transition.
-        #[arg(long, default_value_t = 0.15)]
+        #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
         blend: f32,
     },
 
@@ -190,7 +190,7 @@ enum Commands {
         quality: String,
 
         /// Seam blend width (0.0-1.0).
-        #[arg(long, default_value_t = 0.15)]
+        #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
         blend: f32,
 
         /// Maximum number of frames to capture.
@@ -204,6 +204,16 @@ enum Commands {
 
     /// Display information about the GPU and system capabilities.
     Info,
+}
+
+/// Parse and validate blend width to [0.0, 1.0].
+fn parse_blend(s: &str) -> Result<f32, String> {
+    let v: f32 = s.parse().map_err(|e| format!("{e}"))?;
+    if (0.0..=1.0).contains(&v) {
+        Ok(v)
+    } else {
+        Err(format!("{v} is not in 0.0..=1.0"))
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -348,7 +358,7 @@ fn main() -> anyhow::Result<()> {
             // GPU RGBA→NV12 compute shader: eliminates CPU swscale and
             // reduces GPU→CPU readback bandwidth by 2.7×
             let mut nv12_converter =
-                reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height);
+                reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height)?;
 
             println!(
                 "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {}",
@@ -588,7 +598,7 @@ fn main() -> anyhow::Result<()> {
             )?;
 
             let mut nv12_converter =
-                reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height);
+                reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height)?;
 
             let mode_str = if use_nv12_capture { "NV12" } else { "I420" };
             println!(

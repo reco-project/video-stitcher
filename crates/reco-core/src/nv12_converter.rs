@@ -58,16 +58,18 @@ pub struct Nv12Converter {
 impl Nv12Converter {
     /// Create a new NV12 converter for the given output dimensions.
     ///
-    /// `width` must be divisible by 4 and `height` must be even.
-    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Self {
-        assert!(
-            width.is_multiple_of(4),
-            "NV12 converter requires width divisible by 4, got {width}"
-        );
-        assert!(
-            height.is_multiple_of(2),
-            "NV12 converter requires even height, got {height}"
-        );
+    /// Returns an error if `width` is not divisible by 4 or `height` is not even.
+    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, Nv12Error> {
+        if !width.is_multiple_of(4) {
+            return Err(Nv12Error::InvalidDimensions(format!(
+                "width must be divisible by 4, got {width}"
+            )));
+        }
+        if !height.is_multiple_of(2) {
+            return Err(Nv12Error::InvalidDimensions(format!(
+                "height must be even, got {height}"
+            )));
+        }
 
         let device = &gpu.device;
 
@@ -173,7 +175,7 @@ impl Nv12Converter {
             dispatch_y,
         );
 
-        Self {
+        Ok(Self {
             pipeline,
             bind_group_layout,
             params_buffer,
@@ -184,7 +186,7 @@ impl Nv12Converter {
             height,
             dispatch_x,
             dispatch_y,
-        }
+        })
     }
 
     /// Convert the RGBA render target to NV12 and read back to CPU.
@@ -315,4 +317,8 @@ pub enum Nv12Error {
     /// GPU buffer mapping failed.
     #[error("NV12 buffer mapping failed")]
     BufferMapFailed,
+
+    /// Invalid output dimensions.
+    #[error("invalid NV12 dimensions: {0}")]
+    InvalidDimensions(String),
 }
