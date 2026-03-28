@@ -1206,20 +1206,17 @@ fn run_stitch_zero_copy(
         }
     }
 
-    // Leak shared textures intentionally — their Vulkan/CUDA cleanup interaction
-    // causes a segfault (double-free between wgpu's internal VkImage destruction
-    // and our drop_callback). These resources live for the entire pipeline operation
-    // and the OS reclaims all GPU memory at process exit. This is standard practice
-    // in GPU interop code (cf. Gyroflow).
-    log::info!("Leaking shared textures (cleaned up at process exit)");
-    std::mem::forget(left_y_0);
-    std::mem::forget(left_uv_0);
-    std::mem::forget(left_y_1);
-    std::mem::forget(left_uv_1);
-    std::mem::forget(right_y_0);
-    std::mem::forget(right_uv_0);
-    std::mem::forget(right_y_1);
-    std::mem::forget(right_uv_1);
+    // Drop shared textures explicitly: wgpu texture (VkImage + VkDeviceMemory)
+    // must be freed before the CUDA shared memory is unmapped.
+    // SharedTexture field order guarantees this (texture before _shared_mem).
+    drop(left_y_0);
+    drop(left_uv_0);
+    drop(left_y_1);
+    drop(left_uv_1);
+    drop(right_y_0);
+    drop(right_uv_0);
+    drop(right_y_1);
+    drop(right_uv_1);
     Ok(frame_count)
 }
 

@@ -322,6 +322,9 @@ impl Drop for CudaSharedMemory {
                 (cuda.cu_mem_address_free)(self.device_ptr, self.alloc_size);
             }
         }
+        // Note: shared_handle (fd) is NOT closed here. Vulkan's vkAllocateMemory
+        // with VkImportMemoryFdInfoKHR takes ownership of the fd per the spec.
+        // It is closed when vkFreeMemory runs (via the SharedTexture drop_callback).
     }
 }
 
