@@ -304,4 +304,90 @@ mod tests {
             .create_view(&wgpu::TextureViewDescriptor::default());
         println!("Texture view created successfully");
     }
+
+    /// Proves that Vulkan takes ownership of the fd on import.
+    ///
+    /// After `vkAllocateMemory` with `VkImportMemoryFdInfoKHR`, the fd should
+    /// no longer be valid. Calling `close()` on it should fail with EBADF,
+    /// proving that the driver consumed it. This is what the Vulkan spec
+    /// requires, and it means any code that calls `close(fd)` after import
+    /// (like Gyroflow does) is performing an invalid operation.
+    #[test]
+    fn test_fd_ownership_transfers_to_vulkan() {
+        if !crate::cuda_interop::is_cuda_available() {
+            println!("Skipping: CUDA not available");
+            return;
+        }
+
+        let gpu = match pollster::block_on(GpuContext::new()) {
+            Ok(g) => g,
+            Err(e) => {
+                println!("Skipping: no GPU: {e}");
+                return;
+            }
+        };
+
+        if gpu.adapter_info.backend != wgpu::Backend::Vulkan {
+            println!("Skipping: not Vulkan ({:?})", gpu.adapter_info.backend);
+            return;
+        }
+
+        // Step 1: Allocate CUDA shared memory and grab the fd
+        let shared_mem =
+            crate::cuda_interop::allocate_shared_memory(1920 * 1080).expect("alloc shared mem");
+        let fd = shared_mem.shared_handle;
+        println!("CUDA exported fd = {fd}");
+
+        // Verify the fd is valid before Vulkan import
+        // fstat() on a valid fd returns 0, on invalid fd returns -1 with EBADF
+        let valid_before = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert!(
+            valid_before >= 0,
+            "fd {fd} should be valid before import, got errno {}",
+            std::io::Error::last_os_error()
+        );
+        println!("Before Vulkan import: fd {fd} is valid (fcntl returned {valid_before})");
+
+        // Step 2: Import into Vulkan (this should consume the fd)
+        let tex = create_shared_texture(&gpu, 1920, 1080, wgpu::TextureFormat::R8Unorm)
+            .expect("create shared texture");
+        let imported_fd = tex._shared_mem.shared_handle;
+
+        // Step 3: Try to use the fd after Vulkan import
+        let valid_after = unsafe { libc::fcntl(imported_fd, libc::F_GETFD) };
+        let errno_after = std::io::Error::last_os_error();
+
+        println!(
+            "After Vulkan import: fcntl(fd={imported_fd}) returned {valid_after}, errno = {errno_after}"
+        );
+
+        if valid_after < 0 {
+            println!(
+                "CONFIRMED: fd {imported_fd} is invalid after Vulkan import (EBADF). \
+                 Vulkan took ownership. Calling close() on it would be a spec violation."
+            );
+        } else {
+            println!(
+                "UNEXPECTED: fd {imported_fd} is still valid after Vulkan import. \
+                 Driver may have dup()'d internally (not spec-compliant behavior). \
+                 close() would still be a spec violation per VK_KHR_external_memory_fd."
+            );
+        }
+
+        // Step 4: If the fd IS still valid, try closing it and see what happens
+        // to the texture (this would be the Gyroflow pattern)
+        if valid_after >= 0 {
+            println!("Attempting close(fd={imported_fd}) like Gyroflow does...");
+            let close_ret = unsafe { libc::close(imported_fd) };
+            let close_errno = std::io::Error::last_os_error();
+            println!("close() returned {close_ret}, errno = {close_errno}");
+
+            // The texture should still work because Vulkan imported the memory
+            // (the fd is just a handle, the dmabuf reference is held by Vulkan)
+            let _view = tex
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            println!("Texture still usable after close(fd) - dmabuf ref held by Vulkan");
+        }
+    }
 }

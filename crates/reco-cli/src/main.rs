@@ -291,11 +291,26 @@ fn main() -> anyhow::Result<()> {
             drop(left_dec);
             drop(right_dec);
 
+            {
+                const MAX_CAL_BYTES: u64 = 1024 * 1024; // 1 MiB
+                let size = std::fs::metadata(&calibration)
+                    .map_err(|e| {
+                        anyhow::anyhow!("cannot stat calibration file '{calibration}': {e}")
+                    })?
+                    .len();
+                anyhow::ensure!(
+                    size <= MAX_CAL_BYTES,
+                    "calibration file '{calibration}' is too large ({size} bytes, max {MAX_CAL_BYTES})"
+                );
+            }
             let json = std::fs::read_to_string(&calibration).map_err(|e| {
                 anyhow::anyhow!("cannot read calibration file '{calibration}': {e}")
             })?;
             let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)
                 .map_err(|e| anyhow::anyhow!("invalid calibration JSON '{calibration}': {e}"))?;
+            cal.validate().map_err(|e| {
+                anyhow::anyhow!("calibration validation failed '{calibration}': {e}")
+            })?;
 
             let viewport = reco_core::viewport::ViewportConfig {
                 width,
@@ -527,10 +542,22 @@ fn main() -> anyhow::Result<()> {
                 right_device,
             };
 
+            {
+                const MAX_CAL_BYTES: u64 = 1024 * 1024; // 1 MiB
+                let size = std::fs::metadata(&calibration)
+                    .map_err(|e| anyhow::anyhow!("cannot stat calibration file: {e}"))?
+                    .len();
+                anyhow::ensure!(
+                    size <= MAX_CAL_BYTES,
+                    "calibration file is too large ({size} bytes, max {MAX_CAL_BYTES})"
+                );
+            }
             let json = std::fs::read_to_string(&calibration)
                 .map_err(|e| anyhow::anyhow!("cannot read calibration: {e}"))?;
             let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)
                 .map_err(|e| anyhow::anyhow!("invalid calibration JSON: {e}"))?;
+            cal.validate()
+                .map_err(|e| anyhow::anyhow!("calibration validation failed: {e}"))?;
 
             let viewport = reco_core::viewport::ViewportConfig {
                 width,
@@ -1138,6 +1165,31 @@ fn run_stitch_zero_copy(
 
     println!("Zero-copy pipeline active: NVDEC → cuMemcpy2D → shared texture → render");
 
+    // Pre-create all 4 bind groups (left/right x slot 0/1) before the render
+    // loop. There are only ever 4 possible combinations, so we build them
+    // once here and clone the relevant pair each frame. wgpu::BindGroup::clone
+    // is a cheap Arc refcount increment - no GPU allocation on the hot path.
+    let left_bg_0 = pipeline.renderer_mut().create_texture_bind_group(
+        &left_y_0.texture,
+        &left_uv_0.texture,
+        "left_slot0",
+    );
+    let left_bg_1 = pipeline.renderer_mut().create_texture_bind_group(
+        &left_y_1.texture,
+        &left_uv_1.texture,
+        "left_slot1",
+    );
+    let right_bg_0 = pipeline.renderer_mut().create_texture_bind_group(
+        &right_y_0.texture,
+        &right_uv_0.texture,
+        "right_slot0",
+    );
+    let right_bg_1 = pipeline.renderer_mut().create_texture_bind_group(
+        &right_y_1.texture,
+        &right_uv_1.texture,
+        "right_slot1",
+    );
+
     let mut frame_count: u64 = 0;
 
     loop {
@@ -1153,30 +1205,18 @@ fn run_stitch_zero_copy(
             }
         };
 
-        // Set the appropriate bind groups for this frame's buffer slots
+        // Select pre-built bind groups for this frame's double-buffer slots.
+        // Clone is a cheap Arc refcount increment - no GPU allocation.
         let renderer = pipeline.renderer_mut();
-        let left_idx = signal.left_slot as usize;
-        let right_idx = signal.right_slot as usize;
-
-        // Rebuild bind groups for the active double-buffer slots.
-        // Bind group creation is cheap (~10µs) vs the 2.56ms we save.
-        let left_bg = if left_idx == 0 {
-            renderer.create_texture_bind_group(&left_y_0.texture, &left_uv_0.texture, "left_active")
+        let left_bg = if signal.left_slot == 0 {
+            left_bg_0.clone()
         } else {
-            renderer.create_texture_bind_group(&left_y_1.texture, &left_uv_1.texture, "left_active")
+            left_bg_1.clone()
         };
-        let right_bg = if right_idx == 0 {
-            renderer.create_texture_bind_group(
-                &right_y_0.texture,
-                &right_uv_0.texture,
-                "right_active",
-            )
+        let right_bg = if signal.right_slot == 0 {
+            right_bg_0.clone()
         } else {
-            renderer.create_texture_bind_group(
-                &right_y_1.texture,
-                &right_uv_1.texture,
-                "right_active",
-            )
+            right_bg_1.clone()
         };
 
         renderer.set_left_bind_group(left_bg);
@@ -1252,10 +1292,22 @@ fn run_preview(
     drop(left_dec);
     drop(right_dec);
 
+    {
+        const MAX_CAL_BYTES: u64 = 1024 * 1024; // 1 MiB
+        let size = std::fs::metadata(calibration_path)
+            .map_err(|e| anyhow::anyhow!("cannot stat calibration file '{calibration_path}': {e}"))?
+            .len();
+        anyhow::ensure!(
+            size <= MAX_CAL_BYTES,
+            "calibration file '{calibration_path}' is too large ({size} bytes, max {MAX_CAL_BYTES})"
+        );
+    }
     let json = std::fs::read_to_string(calibration_path)
         .map_err(|e| anyhow::anyhow!("cannot read calibration file '{calibration_path}': {e}"))?;
     let cal: reco_core::calibration::MatchCalibration = serde_json::from_str(&json)
         .map_err(|e| anyhow::anyhow!("invalid calibration JSON '{calibration_path}': {e}"))?;
+    cal.validate()
+        .map_err(|e| anyhow::anyhow!("calibration validation failed '{calibration_path}': {e}"))?;
 
     println!(
         "Preview: {}x{} input, {}x{} window",

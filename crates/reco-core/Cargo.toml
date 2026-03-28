@@ -27,3 +27,4 @@ tracing = { workspace = true, optional = true }
 [dev-dependencies]
 approx = "0.5"
 env_logger = "0.11"
+libc = "0.2"

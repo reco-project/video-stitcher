@@ -46,20 +46,62 @@ pub enum CaptureFormat {
     Nv12,
 }
 
+/// Validate a device string before interpolating it into a GStreamer pipeline.
+///
+/// Accepted formats per platform:
+/// - Jetson (nvarguscamerasrc): numeric sensor ID only, e.g. `"0"`, `"1"`
+/// - macOS (avfvideosrc): numeric device index only
+/// - Windows (mfvideosrc): numeric device index only
+/// - Linux V4L2: path matching `/dev/video<digits>`, e.g. `/dev/video0`
+///
+/// Returns `Err` with a descriptive message if the device string does not
+/// match the expected pattern, preventing injection of arbitrary GStreamer
+/// elements or shell metacharacters into the pipeline description.
+fn validate_device_string(device: &str) -> Result<(), String> {
+    if is_tegra() || cfg!(target_os = "macos") || cfg!(target_os = "windows") {
+        // Numeric index only (one or more digits, nothing else)
+        if device.chars().all(|c| c.is_ascii_digit()) && !device.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "invalid device string {device:?}: expected a numeric index (e.g. \"0\")"
+            ))
+        }
+    } else {
+        // Linux V4L2: must be exactly /dev/video<digits>
+        let valid = device.starts_with("/dev/video")
+            && device["/dev/video".len()..]
+                .chars()
+                .all(|c| c.is_ascii_digit())
+            && device.len() > "/dev/video".len();
+        if valid {
+            Ok(())
+        } else {
+            Err(format!(
+                "invalid device string {device:?}: expected a V4L2 path like \"/dev/video0\""
+            ))
+        }
+    }
+}
+
 /// Build the platform-appropriate GStreamer pipeline string.
+///
+/// Returns an error if `device` fails [`validate_device_string`].
 fn build_pipeline_string(
     device: &str,
     width: u32,
     height: u32,
     fps: u32,
     format: CaptureFormat,
-) -> String {
+) -> Result<String, String> {
+    validate_device_string(device)?;
+
     let fmt_str = match format {
         CaptureFormat::I420 => "I420",
         CaptureFormat::Nv12 => "NV12",
     };
 
-    if is_tegra() {
+    let pipeline = if is_tegra() {
         // Jetson: nvarguscamerasrc runs the full NVIDIA ISP
         // (debayer, AWB, AE, denoise). Output is NV12 in NVMM;
         // nvvidconv copies to system memory (and converts format if needed).
@@ -95,7 +137,9 @@ fn build_pipeline_string(
              video/x-raw,format={fmt_str} ! \
              appsink name=sink emit-signals=false sync=false"
         )
-    }
+    };
+
+    Ok(pipeline)
 }
 
 /// Detect if we're running on NVIDIA Tegra (Jetson platform).
@@ -160,7 +204,7 @@ fn build_capture_pipeline(
         return Err(format!("{label} GStreamer init failed: {e}"));
     }
 
-    let pipeline_str = build_pipeline_string(device, width, height, fps, format);
+    let pipeline_str = build_pipeline_string(device, width, height, fps, format)?;
     log::info!("{label} pipeline: {pipeline_str}");
 
     let pipeline = gst::parse::launch(&pipeline_str)
@@ -500,5 +544,57 @@ impl Drop for GstreamerNv12CameraSource {
         while self.rx.try_recv().is_ok() {}
         // Give capture threads time to send EOS and reach Null state
         std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_device_string;
+
+    // Helper: on non-Jetson Linux builds (the CI environment), V4L2 rules apply.
+    // On macOS/Windows CI the numeric rules apply. We test the logic that is
+    // actually compiled in, plus explicitly call the Tegra/numeric branch via
+    // the shared predicate (numeric-only) which is the same for all three
+    // non-V4L2 platforms.
+
+    /// Numeric strings must be accepted on every non-V4L2 platform.
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn numeric_index_accepted() {
+        assert!(validate_device_string("0").is_ok());
+        assert!(validate_device_string("1").is_ok());
+        assert!(validate_device_string("12").is_ok());
+    }
+
+    /// Non-numeric strings must be rejected on macOS/Windows.
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn non_numeric_rejected_on_non_linux() {
+        assert!(validate_device_string("").is_err());
+        assert!(validate_device_string("cam0").is_err());
+        assert!(validate_device_string("0 ! fakesrc").is_err());
+        assert!(validate_device_string("/dev/video0").is_err());
+    }
+
+    /// Valid V4L2 paths must be accepted on Linux (non-Tegra).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn v4l2_path_accepted() {
+        assert!(validate_device_string("/dev/video0").is_ok());
+        assert!(validate_device_string("/dev/video1").is_ok());
+        assert!(validate_device_string("/dev/video10").is_ok());
+    }
+
+    /// Injection attempts and malformed paths must be rejected on Linux.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn injection_rejected_on_linux() {
+        assert!(validate_device_string("").is_err());
+        assert!(validate_device_string("/dev/video").is_err()); // no trailing digit
+        assert!(validate_device_string("/dev/video0 ! fakesrc").is_err());
+        assert!(validate_device_string("0").is_err()); // numeric-only not valid for V4L2
+        assert!(validate_device_string("/dev/video0a").is_err());
+        assert!(validate_device_string("/dev/../etc/passwd").is_err());
+        assert!(validate_device_string("video0").is_err());
     }
 }

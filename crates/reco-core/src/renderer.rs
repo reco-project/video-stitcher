@@ -545,9 +545,13 @@ impl Renderer {
 
     /// Create a texture bind group from external textures.
     ///
-    /// Used for CUDA/Vulkan zero-copy: pre-build bind groups for each
-    /// double-buffer slot. The returned bind group can be set on a plane
-    /// via [`Self::set_left_bind_group`] / [`Self::set_right_bind_group`].
+    /// Used for CUDA/Vulkan zero-copy: pre-build one bind group per
+    /// double-buffer slot (before the render loop), then select the active
+    /// slot each frame by cloning the appropriate pre-built group (cheap
+    /// Arc refcount increment) and passing it to
+    /// [`Self::set_left_bind_group`] / [`Self::set_right_bind_group`].
+    /// `wgpu::BindGroup` implements `Clone`, so no GPU allocation occurs on
+    /// the per-frame path.
     pub fn create_texture_bind_group(
         &self,
         y_texture: &wgpu::Texture,

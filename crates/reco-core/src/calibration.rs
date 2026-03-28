@@ -16,6 +16,83 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Maximum allowed dimension (width or height) in pixels.
+///
+/// Values above this threshold indicate a malformed calibration file and would
+/// cause the GPU allocator to request an unreasonably large texture.
+pub const MAX_DIM: u32 = 8192;
+
+/// Minimum positive value accepted for focal lengths and the camera axis offset.
+///
+/// Values at or below this threshold would cause division-by-zero or
+/// zero-vector normalization in the stitching shaders.
+const EPSILON: f64 = 1e-6;
+
+/// Errors produced by [`MatchCalibration::validate`].
+#[derive(Debug, Error)]
+pub enum CalibrationError {
+    /// A required dimension (width or height) is zero.
+    #[error("{camera} camera {field} must be > 0, got {value}")]
+    ZeroDimension {
+        /// Which camera the error belongs to (`"left"` or `"right"`).
+        camera: &'static str,
+        /// Field name (`"width"` or `"height"`).
+        field: &'static str,
+        /// The offending value.
+        value: u32,
+    },
+
+    /// A dimension exceeds [`MAX_DIM`] and would cause an excessive GPU allocation.
+    #[error("{camera} camera {field} exceeds maximum allowed value of {max}, got {value}")]
+    DimensionTooLarge {
+        /// Which camera the error belongs to.
+        camera: &'static str,
+        /// Field name.
+        field: &'static str,
+        /// The offending value.
+        value: u32,
+        /// The limit that was exceeded.
+        max: u32,
+    },
+
+    /// A float field contains a non-finite value (NaN or infinity).
+    #[error("field '{field}' must be finite, got {value}")]
+    NonFiniteFloat {
+        /// Dotted field path, e.g. `"left.fx"` or `"params.d[2]"`.
+        field: String,
+        /// The string representation of the offending value.
+        value: String,
+    },
+
+    /// A focal length is too small, which would cause division-by-zero in the shader.
+    #[error("field '{field}' must be > {epsilon}, got {value}")]
+    FocalLengthTooSmall {
+        /// Field path.
+        field: &'static str,
+        /// The offending value.
+        value: f64,
+        /// The minimum threshold.
+        epsilon: f64,
+    },
+
+    /// `camera_axis_offset` is too small, which would cause zero-vector normalization.
+    #[error("params.cameraAxisOffset must be > {epsilon}, got {value}")]
+    AxisOffsetTooSmall {
+        /// The offending value.
+        value: f64,
+        /// The minimum threshold.
+        epsilon: f64,
+    },
+
+    /// `intersect` is outside the valid `[0.0, 1.0]` range.
+    #[error("params.intersect must be in [0.0, 1.0], got {value}")]
+    IntersectOutOfRange {
+        /// The offending value.
+        value: f64,
+    },
+}
 
 /// Camera intrinsic parameters from a lens profile.
 ///
@@ -126,6 +203,176 @@ pub struct MatchCalibration {
     pub layout: PlaneLayout,
 }
 
+impl MatchCalibration {
+    /// Validates all calibration parameters before they are used by the GPU pipeline.
+    ///
+    /// Catches malformed values that would otherwise cause GPU hangs, shader
+    /// division-by-zero, or excessive memory allocations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CalibrationError`] describing the first invalid field found.
+    pub fn validate(&self) -> Result<(), CalibrationError> {
+        validate_camera_params(&self.left, "left")?;
+        validate_camera_params(&self.right, "right")?;
+        validate_layout(&self.layout)?;
+        Ok(())
+    }
+}
+
+/// Validates a single camera's intrinsic parameters.
+fn validate_camera_params(p: &CameraParams, camera: &'static str) -> Result<(), CalibrationError> {
+    // Dimensions: non-zero and within the safe GPU allocation limit
+    if p.width == 0 {
+        return Err(CalibrationError::ZeroDimension {
+            camera,
+            field: "width",
+            value: p.width,
+        });
+    }
+    if p.height == 0 {
+        return Err(CalibrationError::ZeroDimension {
+            camera,
+            field: "height",
+            value: p.height,
+        });
+    }
+    if p.width > MAX_DIM {
+        return Err(CalibrationError::DimensionTooLarge {
+            camera,
+            field: "width",
+            value: p.width,
+            max: MAX_DIM,
+        });
+    }
+    if p.height > MAX_DIM {
+        return Err(CalibrationError::DimensionTooLarge {
+            camera,
+            field: "height",
+            value: p.height,
+            max: MAX_DIM,
+        });
+    }
+
+    // Focal lengths: finite and large enough to avoid division-by-zero
+    for (name, val) in [
+        (
+            if camera == "left" {
+                "left.fx"
+            } else {
+                "right.fx"
+            },
+            p.fx,
+        ),
+        (
+            if camera == "left" {
+                "left.fy"
+            } else {
+                "right.fy"
+            },
+            p.fy,
+        ),
+    ] {
+        if !val.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: name.to_owned(),
+                value: format!("{val}"),
+            });
+        }
+        if val <= EPSILON {
+            return Err(CalibrationError::FocalLengthTooSmall {
+                field: name,
+                value: val,
+                epsilon: EPSILON,
+            });
+        }
+    }
+
+    // Principal point: must be finite (zero is acceptable)
+    for (name, val) in [
+        (
+            if camera == "left" {
+                "left.cx"
+            } else {
+                "right.cx"
+            },
+            p.cx,
+        ),
+        (
+            if camera == "left" {
+                "left.cy"
+            } else {
+                "right.cy"
+            },
+            p.cy,
+        ),
+    ] {
+        if !val.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: name.to_owned(),
+                value: format!("{val}"),
+            });
+        }
+    }
+
+    // Distortion coefficients: must all be finite
+    let d_prefix = if camera == "left" { "left" } else { "right" };
+    for (i, coeff) in p.d.iter().enumerate() {
+        if !coeff.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: format!("{d_prefix}.d[{i}]"),
+                value: format!("{coeff}"),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates the plane layout parameters.
+fn validate_layout(l: &PlaneLayout) -> Result<(), CalibrationError> {
+    // camera_axis_offset: must be finite and large enough to avoid zero-vector normalisation
+    if !l.camera_axis_offset.is_finite() {
+        return Err(CalibrationError::NonFiniteFloat {
+            field: "params.cameraAxisOffset".to_owned(),
+            value: format!("{}", l.camera_axis_offset),
+        });
+    }
+    if l.camera_axis_offset <= EPSILON {
+        return Err(CalibrationError::AxisOffsetTooSmall {
+            value: l.camera_axis_offset,
+            epsilon: EPSILON,
+        });
+    }
+
+    // intersect: must be finite and within [0.0, 1.0]
+    if !l.intersect.is_finite() {
+        return Err(CalibrationError::NonFiniteFloat {
+            field: "params.intersect".to_owned(),
+            value: format!("{}", l.intersect),
+        });
+    }
+    if !(0.0..=1.0).contains(&l.intersect) {
+        return Err(CalibrationError::IntersectOutOfRange { value: l.intersect });
+    }
+
+    // Remaining float fields: finite check only (no magnitude constraint)
+    for (name, val) in [
+        ("params.xTy", l.x_ty),
+        ("params.xRz", l.x_rz),
+        ("params.zRx", l.z_rx),
+    ] {
+        if !val.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: name.to_owned(),
+                value: format!("{val}"),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +407,167 @@ mod tests {
         assert_eq!(cal.left.d.len(), 4);
         assert!((cal.layout.camera_axis_offset - 0.2398).abs() < 1e-4);
         assert!((cal.layout.intersect - 0.5446).abs() < 1e-4);
+    }
+
+    // --- validation tests ---
+
+    fn valid_cal() -> MatchCalibration {
+        MatchCalibration {
+            left: CameraParams {
+                width: 3840,
+                height: 2160,
+                fx: 1796.32,
+                fy: 1797.22,
+                cx: 1919.37,
+                cy: 1063.17,
+                d: [0.0342, 0.0677, -0.0741, 0.0299],
+            },
+            right: CameraParams {
+                width: 3840,
+                height: 2160,
+                fx: 1796.32,
+                fy: 1797.22,
+                cx: 1919.37,
+                cy: 1063.17,
+                d: [0.0342, 0.0677, -0.0741, 0.0299],
+            },
+            layout: PlaneLayout {
+                camera_axis_offset: 0.2398,
+                intersect: 0.5446,
+                x_ty: 0.00476,
+                x_rz: 0.00753,
+                z_rx: -0.00431,
+            },
+        }
+    }
+
+    #[test]
+    fn validate_valid_calibration_passes() {
+        assert!(valid_cal().validate().is_ok());
+    }
+
+    #[test]
+    fn validate_zero_fx_fails() {
+        let mut cal = valid_cal();
+        cal.left.fx = 0.0;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::FocalLengthTooSmall { .. }),
+            "unexpected error variant: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_negative_fx_fails() {
+        let mut cal = valid_cal();
+        cal.right.fy = -500.0;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::FocalLengthTooSmall { .. }),
+            "unexpected error variant: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_nan_in_distortion_fails() {
+        let mut cal = valid_cal();
+        cal.left.d[2] = f64::NAN;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::NonFiniteFloat { ref field, .. } if field.contains("left.d[2]")),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_inf_in_distortion_fails() {
+        let mut cal = valid_cal();
+        cal.right.d[0] = f64::INFINITY;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::NonFiniteFloat { .. }),
+            "unexpected error variant: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_intersect_above_one_fails() {
+        let mut cal = valid_cal();
+        cal.layout.intersect = 1.001;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::IntersectOutOfRange { value } if (value - 1.001).abs() < 1e-9),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_intersect_negative_fails() {
+        let mut cal = valid_cal();
+        cal.layout.intersect = -0.1;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::IntersectOutOfRange { .. }),
+            "unexpected error variant: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_zero_width_fails() {
+        let mut cal = valid_cal();
+        cal.right.width = 0;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(
+                err,
+                CalibrationError::ZeroDimension {
+                    camera: "right",
+                    field: "width",
+                    ..
+                }
+            ),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_dimension_too_large_fails() {
+        let mut cal = valid_cal();
+        cal.left.height = MAX_DIM + 1;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(
+                err,
+                CalibrationError::DimensionTooLarge {
+                    camera: "left",
+                    field: "height",
+                    ..
+                }
+            ),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_zero_camera_axis_offset_fails() {
+        let mut cal = valid_cal();
+        cal.layout.camera_axis_offset = 0.0;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::AxisOffsetTooSmall { .. }),
+            "unexpected error variant: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_nan_camera_axis_offset_fails() {
+        let mut cal = valid_cal();
+        cal.layout.camera_axis_offset = f64::NAN;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::NonFiniteFloat { ref field, .. } if field == "params.cameraAxisOffset"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
