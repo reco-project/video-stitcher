@@ -945,10 +945,10 @@ fn spawn_single_decoder_gpu(
     label: &'static str,
     buf: GpuBufInfo,
     slot_free_rx: std::sync::mpsc::Receiver<u8>,
-) -> std::sync::mpsc::Receiver<u8> {
+) -> (std::sync::mpsc::Receiver<u8>, std::thread::JoinHandle<()>) {
     let (tx, rx) = std::sync::mpsc::sync_channel::<u8>(1);
 
-    std::thread::Builder::new()
+    let handle = std::thread::Builder::new()
         .name(format!("decode_{label}_gpu"))
         .spawn(move || {
             let mut dec = match reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
@@ -1028,7 +1028,7 @@ fn spawn_single_decoder_gpu(
         })
         .expect("spawn GPU decode thread");
 
-    rx
+    (rx, handle)
 }
 
 /// A pair of double-buffer slot indices from the decode threads.
@@ -1038,6 +1038,15 @@ struct GpuFrameSignal {
 }
 
 /// Spawn parallel GPU decode threads and a pairing thread.
+/// Handles for the GPU decode threads, used for graceful shutdown.
+struct GpuDecodeHandles {
+    frame_rx: std::sync::mpsc::Receiver<GpuFrameSignal>,
+    /// Join handles for the 2 decode threads + 1 pairing thread.
+    /// Must be joined before dropping shared textures to ensure FFmpeg's
+    /// CUDA context cleanup completes while shared memory is still valid.
+    join_handles: Vec<std::thread::JoinHandle<()>>,
+}
+
 fn spawn_decode_thread_gpu(
     left_path: String,
     right_path: String,
@@ -1045,13 +1054,15 @@ fn spawn_decode_thread_gpu(
     right_buf: GpuBufInfo,
     left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
     right_slot_free_rx: std::sync::mpsc::Receiver<u8>,
-) -> std::sync::mpsc::Receiver<GpuFrameSignal> {
-    let left_rx = spawn_single_decoder_gpu(left_path, "left", left_buf, left_slot_free_rx);
-    let right_rx = spawn_single_decoder_gpu(right_path, "right", right_buf, right_slot_free_rx);
+) -> GpuDecodeHandles {
+    let (left_rx, left_handle) =
+        spawn_single_decoder_gpu(left_path, "left", left_buf, left_slot_free_rx);
+    let (right_rx, right_handle) =
+        spawn_single_decoder_gpu(right_path, "right", right_buf, right_slot_free_rx);
 
     let (tx, rx) = std::sync::mpsc::sync_channel::<GpuFrameSignal>(1);
 
-    std::thread::Builder::new()
+    let pair_handle = std::thread::Builder::new()
         .name("decode_pair_gpu".into())
         .spawn(move || {
             while let (Ok(left_slot), Ok(right_slot)) = (left_rx.recv(), right_rx.recv()) {
@@ -1068,7 +1079,10 @@ fn spawn_decode_thread_gpu(
         })
         .expect("spawn GPU pairing thread");
 
-    rx
+    GpuDecodeHandles {
+        frame_rx: rx,
+        join_handles: vec![left_handle, right_handle, pair_handle],
+    }
 }
 
 /// Run the stitch loop using CUDA/Vulkan zero-copy (no CPU upload).
@@ -1164,7 +1178,7 @@ fn run_stitch_zero_copy(
     right_slot_free_tx.send(1).unwrap();
 
     // Spawn GPU decode threads
-    let frame_rx = spawn_decode_thread_gpu(
+    let decode = spawn_decode_thread_gpu(
         left_path.to_string(),
         right_path.to_string(),
         left_buf,
@@ -1172,6 +1186,7 @@ fn run_stitch_zero_copy(
         left_slot_free_rx,
         right_slot_free_rx,
     );
+    let frame_rx = decode.frame_rx;
 
     println!("Zero-copy pipeline active: NVDEC → cuMemcpy2D → shared texture → render");
 
@@ -1256,7 +1271,22 @@ fn run_stitch_zero_copy(
         }
     }
 
-    // Drop shared textures explicitly: wgpu texture (VkImage + VkDeviceMemory)
+    // Graceful shutdown: correct ordering prevents CUDA error 700.
+    //
+    // 1. Drop slot-free senders → decode threads' recv() returns Err → threads exit
+    // 2. Drop frame_rx → pairing thread's send() returns Err → thread exits
+    // 3. Join all threads → VideoDecoder::Drop completes FFmpeg CUDA cleanup
+    //    (cuMemFree) while the shared CUDA VMM memory is still mapped
+    // 4. Drop shared textures → cuMemUnmap + cuMemAddressFree (safe now that
+    //    FFmpeg is done with the CUDA context)
+    drop(left_slot_free_tx);
+    drop(right_slot_free_tx);
+    drop(frame_rx);
+    for handle in decode.join_handles {
+        let _ = handle.join();
+    }
+
+    // Drop shared textures: wgpu texture (VkImage + VkDeviceMemory)
     // must be freed before the CUDA shared memory is unmapped.
     // SharedTexture field order guarantees this (texture before _shared_mem).
     drop(left_y_0);
