@@ -463,9 +463,7 @@ impl VideoDecoder {
                 profile_scope!("swscale");
                 scaler
                     .run(cpu_frame, &mut self.converted_frame)
-                    .map_err(|e| {
-                        DecodeError::ConversionError(format!("swscale failed: {e}"))
-                    })?;
+                    .map_err(|e| DecodeError::ConversionError(format!("swscale failed: {e}")))?;
                 &self.converted_frame
             } else {
                 cpu_frame
