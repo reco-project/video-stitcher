@@ -19,11 +19,12 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install FFmpeg dev libraries
+      - name: Install system libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev \
             libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             pkg-config clang
       - name: Format check
         run: cargo fmt --all -- --check
@@ -39,11 +40,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install FFmpeg dev libraries
+      - name: Install system libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev \
             libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             pkg-config clang
       - name: Run tests
         run: cargo test --all
@@ -55,11 +57,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install FFmpeg dev libraries
+      - name: Install system libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev \
             libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             pkg-config clang
       - name: Build docs
         run: cargo doc --no-deps --all-features
