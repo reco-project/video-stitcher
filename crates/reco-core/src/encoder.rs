@@ -3,9 +3,9 @@
 //! The encoder is the final stage of the pipeline. It receives rendered
 //! frames from the GPU and produces the output video file or stream.
 //!
-//! ## Implementations
+//! ## Implementations (in `reco-io`)
 //!
-//! - `reco-ffmpeg`: FFmpeg-based encoding with support for software (libx264/libx265)
+//! - FFmpeg backend: encoding with support for software (libx264/libx265)
 //!   and hardware encoders (NVENC, VideoToolbox, VAAPI)
 //! - Future: direct NVENC for Jetson, WebRTC for livestreaming
 

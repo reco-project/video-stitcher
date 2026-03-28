@@ -6,7 +6,7 @@ Open-source GPU-accelerated panoramic sports camera software.
 
 - `crates/reco-core/` — GPU stitching engine (library crate)
 - `crates/reco-cli/` — CLI binary (`reco stitch`, `reco info`)
-- `crates/reco-ffmpeg/` — FFmpeg decode/encode plugin
+- `crates/reco-io/` — Pluggable I/O backends (FFmpeg decode/encode, GStreamer live cameras)
 
 ## v1 Architecture (Electron + React + Python) — legacy, on `main` branch
 

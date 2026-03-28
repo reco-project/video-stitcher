@@ -500,7 +500,7 @@ impl VideoEncoder {
         tracing::instrument(skip_all, name = "encode_frame")
     )]
     pub fn write_frame(&mut self, rgba_data: &[u8]) -> Result<(), EncodeError> {
-        let expected = (self.width * self.height * 4) as usize;
+        let expected = self.width as usize * self.height as usize * 4;
         if rgba_data.len() != expected {
             return Err(EncodeError::FrameSizeMismatch {
                 expected,
@@ -543,7 +543,7 @@ impl VideoEncoder {
         tracing::instrument(skip_all, name = "encode_nv12_frame")
     )]
     pub fn write_nv12_frame(&mut self, nv12_data: &[u8]) -> Result<(), EncodeError> {
-        let expected = (self.width * self.height * 3 / 2) as usize;
+        let expected = self.width as usize * self.height as usize * 3 / 2;
         if nv12_data.len() != expected {
             return Err(EncodeError::FrameSizeMismatch {
                 expected,
@@ -762,11 +762,12 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
         _ => {
             // libx264 and unknown encoders
             let (preset, crf) = match quality {
-                Quality::Fast => ("ultrafast", "28"),
-                Quality::Balanced => ("veryfast", "25"),
-                Quality::High => ("fast", "21"),
+                Quality::Fast => ("ultrafast", "32"),
+                Quality::Balanced => ("veryfast", "28"),
+                Quality::High => ("fast", "23"),
             };
             opts.set("preset", preset);
+            opts.set("tune", "zerolatency");
             opts.set("crf", crf);
             opts.set("profile", "high");
             // On Tegra (Jetson), limit threads to avoid starving other
@@ -777,7 +778,7 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
                     .unwrap_or_default()
                     .contains("nvidia,tegra")
             {
-                opts.set("threads", "3");
+                opts.set("threads", "4");
             }
         }
     }

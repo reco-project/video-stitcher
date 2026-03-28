@@ -14,8 +14,9 @@
 // Dispatch: (ceil(width/4), height, 1)
 // Requires: width divisible by 4 (true for all standard video resolutions)
 //
-// Color space: BT.709 linear RGB → limited-range YCbCr
+// Color space: BT.709 sRGB → limited-range YCbCr
 // This is the inverse of the sample_yuv() function in fisheye.wgsl.
+// Input texture is Rgba8Unorm (sRGB values stored as-is, no hardware decode).
 
 @group(0) @binding(0) var input: texture_2d<f32>;
 @group(0) @binding(1) var<storage, read_write> output: array<u32>;
@@ -25,14 +26,6 @@ struct Params {
     height: u32,
 }
 @group(0) @binding(2) var<uniform> params: Params;
-
-fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
-    return select(
-        c * 12.92,
-        1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055,
-        c >= vec3<f32>(0.0031308)
-    );
-}
 
 // BT.709 sRGB [0,1] → limited-range Y [16,235]
 fn srgb_to_y(srgb: vec3<f32>) -> u32 {
@@ -65,13 +58,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // Load 4 RGBA pixels from the render target.
-    // textureLoad on Rgba8UnormSrgb returns linear RGB — convert back to sRGB
-    // for the BT.709 YCbCr matrix (which operates in gamma/sRGB domain).
-    let rgb0 = linear_to_srgb(textureLoad(input, vec2<u32>(px, py), 0).rgb);
-    let rgb1 = linear_to_srgb(textureLoad(input, vec2<u32>(min(px + 1u, w - 1u), py), 0).rgb);
-    let rgb2 = linear_to_srgb(textureLoad(input, vec2<u32>(min(px + 2u, w - 1u), py), 0).rgb);
-    let rgb3 = linear_to_srgb(textureLoad(input, vec2<u32>(min(px + 3u, w - 1u), py), 0).rgb);
+    // Load 4 RGBA pixels from the render target (Rgba8Unorm = sRGB values as-is).
+    let rgb0 = textureLoad(input, vec2<u32>(px, py), 0).rgb;
+    let rgb1 = textureLoad(input, vec2<u32>(min(px + 1u, w - 1u), py), 0).rgb;
+    let rgb2 = textureLoad(input, vec2<u32>(min(px + 2u, w - 1u), py), 0).rgb;
+    let rgb3 = textureLoad(input, vec2<u32>(min(px + 3u, w - 1u), py), 0).rgb;
 
     // Pack 4 Y values into one u32 (little-endian: Y0 in LSB)
     let y0 = srgb_to_y(rgb0);
@@ -88,10 +79,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (py & 1u) == 0u {
         // Load pixels from the row below for chroma averaging
         let ny = min(py + 1u, h - 1u);
-        let rgb0b = linear_to_srgb(textureLoad(input, vec2<u32>(px, ny), 0).rgb);
-        let rgb1b = linear_to_srgb(textureLoad(input, vec2<u32>(min(px + 1u, w - 1u), ny), 0).rgb);
-        let rgb2b = linear_to_srgb(textureLoad(input, vec2<u32>(min(px + 2u, w - 1u), ny), 0).rgb);
-        let rgb3b = linear_to_srgb(textureLoad(input, vec2<u32>(min(px + 3u, w - 1u), ny), 0).rgb);
+        let rgb0b = textureLoad(input, vec2<u32>(px, ny), 0).rgb;
+        let rgb1b = textureLoad(input, vec2<u32>(min(px + 1u, w - 1u), ny), 0).rgb;
+        let rgb2b = textureLoad(input, vec2<u32>(min(px + 2u, w - 1u), ny), 0).rgb;
+        let rgb3b = textureLoad(input, vec2<u32>(min(px + 3u, w - 1u), ny), 0).rgb;
 
         // Average each 2×2 block for chroma
         let avg_left = (rgb0 + rgb1 + rgb0b + rgb1b) * 0.25;

@@ -16,7 +16,10 @@ pub mod gstreamer;
 
 pub mod adapters;
 
-/// Initialize all enabled backends. Call once at program start.
+/// Initialize enabled backends. Call once at program start.
+///
+/// Currently initializes FFmpeg when the `ffmpeg` feature is active.
+/// GStreamer initializes lazily on first pipeline creation.
 pub fn init() {
     #[cfg(feature = "ffmpeg")]
     ffmpeg::init();

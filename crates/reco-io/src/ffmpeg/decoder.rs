@@ -560,7 +560,21 @@ fn try_hwaccel(
 /// Copy one plane from an FFmpeg frame, removing stride padding.
 ///
 /// If stride == width (common for 1920-wide frames), this is a single memcpy.
+/// Panics if the `data` slice is too small for the given dimensions.
 fn extract_plane(data: &[u8], stride: usize, width: usize, height: usize) -> Vec<u8> {
+    assert!(
+        stride >= width,
+        "extract_plane: stride ({stride}) < width ({width})"
+    );
+    if height > 0 {
+        let required = (height - 1) * stride + width;
+        assert!(
+            data.len() >= required,
+            "extract_plane: buffer too small: need {required} bytes for {width}x{height} (stride {stride}), got {}",
+            data.len()
+        );
+    }
+
     if stride == width {
         data[..width * height].to_vec()
     } else {

@@ -246,6 +246,14 @@ fn main() -> anyhow::Result<()> {
             quality,
             blend,
         } => {
+            const MAX_DIM: u32 = 8192;
+            anyhow::ensure!(
+                width > 0 && width <= MAX_DIM && height > 0 && height <= MAX_DIM,
+                "Output dimensions {}x{} out of range: width and height must be 1..={MAX_DIM}",
+                width,
+                height,
+            );
+
             log::info!("Stitching: {left} + {right} → {output}");
 
             // Open video decoders to get input dimensions and fps
@@ -318,7 +326,7 @@ fn main() -> anyhow::Result<()> {
                 viewport,
                 input_width,
                 input_height,
-                wgpu::TextureFormat::Rgba8UnormSrgb,
+                wgpu::TextureFormat::Rgba8Unorm,
                 input_format,
             )?;
 
@@ -470,7 +478,16 @@ fn main() -> anyhow::Result<()> {
             calibration,
             width,
             height,
-        } => run_preview(&left, &right, &calibration, width, height),
+        } => {
+            const MAX_DIM: u32 = 8192;
+            anyhow::ensure!(
+                width > 0 && width <= MAX_DIM && height > 0 && height <= MAX_DIM,
+                "Preview dimensions {}x{} out of range: width and height must be 1..={MAX_DIM}",
+                width,
+                height,
+            );
+            run_preview(&left, &right, &calibration, width, height)
+        }
 
         #[cfg(feature = "gstreamer")]
         Commands::Camera {
@@ -491,6 +508,14 @@ fn main() -> anyhow::Result<()> {
             duration,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
+
+            const MAX_DIM: u32 = 8192;
+            anyhow::ensure!(
+                width > 0 && width <= MAX_DIM && height > 0 && height <= MAX_DIM,
+                "Output dimensions {}x{} out of range: width and height must be 1..={MAX_DIM}",
+                width,
+                height,
+            );
 
             log::info!("Camera capture: {left_device} + {right_device} -> {output}");
 
@@ -531,7 +556,7 @@ fn main() -> anyhow::Result<()> {
                 viewport,
                 capture_width,
                 capture_height,
-                wgpu::TextureFormat::Rgba8UnormSrgb,
+                wgpu::TextureFormat::Rgba8Unorm,
                 input_format,
             )?;
 
@@ -1247,8 +1272,8 @@ fn run_preview(
         .map_err(|_| anyhow::anyhow!("videos have no frames"))?;
 
     struct App {
-        window: Option<Window>,
         surface: Option<wgpu::Surface<'static>>,
+        window: Option<Arc<Window>>,
         surface_format: wgpu::TextureFormat,
         alpha_mode: wgpu::CompositeAlphaMode,
         pipeline: Option<reco_core::pipeline::StitchPipeline>,
@@ -1357,11 +1382,14 @@ fn run_preview(
                 .with_title("Reco Preview")
                 .with_inner_size(winit::dpi::PhysicalSize::new(self.width, self.height));
 
-            let window = event_loop.create_window(attrs).expect("create window");
+            let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
 
             // Create wgpu surface and GPU context
+            // Arc<Window> gives Surface<'static> without transmute
             let instance = wgpu::Instance::default();
-            let surface = instance.create_surface(&window).expect("create surface");
+            let surface = instance
+                .create_surface(window.clone())
+                .expect("create surface");
 
             let (gpu, caps) = pollster::block_on(async {
                 let adapter = instance
@@ -1439,10 +1467,7 @@ fn run_preview(
             println!("Controls: Space = play/pause, N = next frame, P = skip 30 frames");
             println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
 
-            // SAFETY: surface lifetime is tied to window which we keep alive
-            self.surface = Some(unsafe {
-                std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(surface)
-            });
+            self.surface = Some(surface);
             self.pipeline = Some(pipeline);
             self.window = Some(window);
             self.needs_redraw = true;
@@ -1477,7 +1502,6 @@ fn run_preview(
                             );
                             pipeline.viewport.width = self.width;
                             pipeline.viewport.height = self.height;
-                            pipeline.resize_depth(self.width, self.height);
                             self.needs_redraw = true;
                         }
                     }

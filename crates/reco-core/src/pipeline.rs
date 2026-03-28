@@ -71,7 +71,8 @@ pub enum PipelineError {
 /// The main stitching pipeline.
 ///
 /// Owns the GPU context, scene geometry, and renderer. Consumers provide
-/// YUV420P frames and receive stitched RGBA output via [`Self::process_frame`].
+/// YUV420P or NV12 frames and receive stitched RGBA output via
+/// [`Self::process_frame`] or [`Self::render_to_target_nv12`].
 pub struct StitchPipeline {
     /// GPU device and queue.
     pub gpu: GpuContext,
@@ -181,11 +182,6 @@ impl StitchPipeline {
             self.viewport.blend_width,
             target_view,
         );
-    }
-
-    /// Resize the depth buffer for the preview window.
-    pub fn resize_depth(&mut self, width: u32, height: u32) {
-        self.renderer.resize_depth(&self.gpu, width, height);
     }
 
     /// Process a single frame through the GPU pipeline.

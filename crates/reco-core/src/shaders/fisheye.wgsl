@@ -169,8 +169,9 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
     let b = y + 1.8556 * cb;
 
     let rgb = clamp(vec3<f32>(r, g, b), vec3<f32>(0.0), vec3<f32>(1.0));
-    // sRGB gamma → linear, matching what Rgba8UnormSrgb textures do on sample
-    return vec4<f32>(srgb_to_linear(rgb), 1.0);
+    // BT.709 YCbCr→R'G'B' produces sRGB-domain values directly.
+    // Render target is Rgba8Unorm, so we write sRGB values as-is.
+    return vec4<f32>(rgb, 1.0);
 }
 
 // ---- Fragment shader ----

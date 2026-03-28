@@ -133,11 +133,11 @@ impl Nv12Converter {
         });
 
         // NV12 buffer size: Y plane (w*h) + UV plane (w*h/2) = w*h*3/2 bytes
-        let nv12_bytes = width * height * 3 / 2;
+        let nv12_bytes = width as u64 * height as u64 * 3 / 2;
         // GPU storage buffer for compute shader output
         let nv12_gpu_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("nv12_gpu"),
-            size: nv12_bytes as u64,
+            size: nv12_bytes,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -145,7 +145,7 @@ impl Nv12Converter {
         // CPU-readable staging buffer for readback
         let nv12_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("nv12_staging"),
-            size: nv12_bytes as u64,
+            size: nv12_bytes,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });

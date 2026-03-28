@@ -7,7 +7,8 @@
 //! - macOS: `avfvideosrc` (AVFoundation)
 //! - Windows: `mfvideosrc` (Media Foundation)
 //!
-//! All pipelines output I420 (YUV420P planar) via `appsink` for
-//! compatibility with the existing reco-core `YuvPlanes` interface.
+//! Pipelines output I420 (YUV420P) or NV12 via `appsink`. NV12
+//! is the native NVIDIA ISP output, avoiding format conversion
+//! on Jetson for lower latency.
 
 pub mod camera;

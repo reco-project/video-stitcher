@@ -6,16 +6,22 @@
 //! ## Pipeline
 //!
 //! ```text
-//! Left YUV420P ──► Y/U/V textures ──┐
-//!                                    ├──► Render pass (YUV→RGB + fisheye) ──► RGBA output
-//! Right YUV420P ──► Y/U/V textures ──┘
+//! YUV420P path:
+//!   Left Y/U/V planes ──► 3 textures ──┐
+//!                                       ├──► Render pass (YUV→RGB + fisheye) ──► RGBA output
+//!   Right Y/U/V planes ──► 3 textures ──┘
+//!
+//! NV12 path:
+//!   Left Y + UV planes ──► 2 textures ──┐
+//!                                        ├──► Render pass (NV12→RGB + fisheye) ──► RGBA output
+//!   Right Y + UV planes ──► 2 textures ──┘
 //! ```
 //!
 //! Each plane is a textured quad positioned in 3D space (L-shape geometry).
-//! YUV→RGB conversion (BT.709), fisheye undistortion, and color correction
-//! all happen in the fragment shader. Uploading YUV420P directly reduces
-//! CPU↔GPU transfer from 8.3 MB to 3.1 MB per frame (62% less bandwidth)
-//! and eliminates CPU-side swscale color conversion entirely.
+//! YUV/NV12 to RGB conversion (BT.709), fisheye undistortion, and color
+//! correction all happen in the fragment shader. Uploading YUV directly
+//! reduces CPU-GPU transfer from 8.3 MB to 3.1 MB per frame (62% less
+//! bandwidth) and eliminates CPU-side swscale color conversion entirely.
 
 use crate::calibration::{CameraParams, MatchCalibration};
 use crate::gpu::GpuContext;
@@ -151,7 +157,6 @@ pub struct Renderer {
     right: PlaneResources,
     render_target: wgpu::Texture,
     render_target_view: wgpu::TextureView,
-    depth_texture_view: wgpu::TextureView,
     output_buffer: wgpu::Buffer,
     output_width: u32,
     output_height: u32,
@@ -278,13 +283,7 @@ impl Renderer {
                 cull_mode: None, // Both sides visible
                 ..Default::default()
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth24Plus,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
+            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
@@ -339,28 +338,11 @@ impl Renderer {
         });
         let render_target_view = render_target.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Depth buffer for correct L-shape occlusion
-        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth_texture"),
-            size: wgpu::Extent3d {
-                width: output_width,
-                height: output_height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth24Plus,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let depth_texture_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
         // Staging buffer for CPU readback
         let bytes_per_row = align_to_256(output_width * 4);
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("output_staging"),
-            size: (bytes_per_row * output_height) as u64,
+            size: bytes_per_row as u64 * output_height as u64,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -372,7 +354,6 @@ impl Renderer {
             right,
             render_target,
             render_target_view,
-            depth_texture_view,
             output_buffer,
             output_width,
             output_height,
@@ -689,14 +670,7 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -852,14 +826,7 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -956,14 +923,7 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -981,29 +941,6 @@ impl Renderer {
         }
 
         gpu.queue.submit(Some(encoder.finish()));
-    }
-
-    /// Resize the output dimensions (recreates depth texture).
-    ///
-    /// Called when the preview window is resized. The render target and
-    /// output buffer are only used for CPU readback, so they are left as-is.
-    pub fn resize_depth(&mut self, gpu: &GpuContext, width: u32, height: u32) {
-        let depth_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth_texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth24Plus,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        self.depth_texture_view =
-            depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
     }
 
     /// Width of the output render target.

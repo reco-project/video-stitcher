@@ -1,25 +1,27 @@
 //! Frame source trait for pluggable input backends.
 //!
-//! The pipeline doesn't care where frames come from — video files,
+//! The pipeline doesn't care where frames come from - video files,
 //! live cameras, network streams, or test patterns. Each source
-//! implements [`FrameSource`] and delivers stereo YUV420P frame pairs.
+//! implements [`FrameSource`] and delivers stereo frame pairs in
+//! YUV420P or NV12 format.
 //!
-//! ## Implementations
+//! ## Implementations (in `reco-io`)
 //!
-//! - `reco-ffmpeg`: file-based decode via FFmpeg (software + hardware)
-//! - Future: V4L2/libcamera for direct sensor input (e.g. IMX on Jetson)
-//! - Future: GStreamer pipeline for network streams
+//! - FFmpeg backend: file-based decode via FFmpeg (software + hardware)
+//! - GStreamer backend: live camera capture (Jetson ISP, V4L2, AVFoundation, Media Foundation)
 //!
 //! ## Design
 //!
-//! Frame data is always YUV420P on the CPU: three separate planes
-//! (Y full-res, U half-res, V half-res). The GPU pipeline uploads
-//! these directly and converts to RGB in the shader, avoiding any
-//! CPU-side color conversion.
+//! Frame data is YUV420P or NV12 on the CPU. YUV420P uses three
+//! separate planes (Y full-res, U half-res, V half-res). NV12 uses
+//! two planes (Y full-res, interleaved UV half-res) and is the
+//! native output of NVIDIA ISP and NVDEC. The GPU pipeline uploads
+//! either format directly and converts to RGB in the shader, avoiding
+//! any CPU-side color conversion.
 //!
-//! In the future, sources may provide GPU-resident frames (e.g. NVDEC
-//! output) to avoid CPU↔GPU transfers entirely. The trait is designed
-//! so that extension doesn't break existing sources.
+//! For GPU-resident frames (e.g. NVDEC output via CUDA interop),
+//! sources can write directly to shared GPU textures, avoiding
+//! CPU-GPU transfers entirely. See `cuda_interop` in `reco-core`.
 
 use thiserror::Error;
 
@@ -98,9 +100,10 @@ pub struct SourceInfo {
 /// Trait for stereo frame sources.
 ///
 /// A frame source delivers pairs of left/right YUV420P frames to the
-/// pipeline. Implementations handle their own threading — the pipeline
-/// calls [`Self::next_pair`] from the main thread and expects it to
-/// return quickly (either with data or `None` for end-of-stream).
+/// pipeline. Implementations handle their own threading (e.g. dedicated
+/// capture threads with bounded channels). The pipeline calls
+/// [`Self::next_pair`] and expects it to return quickly (either with
+/// data or `None` for end-of-stream).
 pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).
     fn info(&self) -> SourceInfo;

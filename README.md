@@ -63,7 +63,7 @@ right.mp4 ──► decode (thread) ──┘
 | Crate | Purpose |
 |---|---|
 | `reco-core` | GPU stitching engine (wgpu) — usable as a standalone library |
-| `reco-ffmpeg` | FFmpeg decode/encode with hardware acceleration |
+| `reco-io` | Pluggable I/O backends: FFmpeg (files, encode/decode) and GStreamer (live cameras) |
 | `reco-cli` | CLI binary: `reco stitch`, `reco preview`, `reco info` |
 
 ### Quick start (v2)
