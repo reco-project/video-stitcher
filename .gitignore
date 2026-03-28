@@ -1,6 +1,10 @@
 # Rust
 target/
 
+# Video artifacts and profiling traces
+*.mp4
+reco-trace.json
+
 node_modules/
 
 # Development user data (not packaged)

@@ -11,6 +11,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+/// Detect if we're running on NVIDIA Tegra (Jetson platform).
+///
+/// Checks for L4T (Linux for Tegra) release file or Tegra device-tree entry.
+/// Used to enable platform-specific optimizations:
+/// - NV12 native capture (NVIDIA ISP outputs NV12 directly)
+/// - Thread-count tuning for the lower core count
+#[cfg(feature = "gstreamer")]
+fn is_tegra() -> bool {
+    Path::new("/etc/nv_tegra_release").exists()
+        || std::fs::read_to_string("/proc/device-tree/compatible")
+            .unwrap_or_default()
+            .contains("nvidia,tegra")
+}
+
 /// Create a tracing span guard (no-op when `profiling` feature is disabled).
 #[cfg(feature = "profiling")]
 macro_rules! profile_scope {
@@ -310,7 +324,7 @@ fn main() -> anyhow::Result<()> {
 
             // GPU RGBA→NV12 compute shader: eliminates CPU swscale and
             // reduces GPU→CPU readback bandwidth by 2.7×
-            let nv12_converter =
+            let mut nv12_converter =
                 reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height);
 
             println!(
@@ -374,7 +388,7 @@ fn main() -> anyhow::Result<()> {
                 frame_count = run_stitch_zero_copy(
                     &mut pipeline,
                     &mut encoder,
-                    &nv12_converter,
+                    &mut nv12_converter,
                     &left,
                     &right,
                     input_width,
@@ -504,7 +518,7 @@ fn main() -> anyhow::Result<()> {
 
             // Use NV12 capture on Jetson to skip the NV12->I420 conversion
             // in nvvidconv. The NVIDIA ISP natively outputs NV12.
-            let use_nv12_capture = cfg!(target_arch = "aarch64");
+            let use_nv12_capture = is_tegra();
             let input_format = if use_nv12_capture {
                 reco_core::renderer::InputFormat::Nv12
             } else {
@@ -521,7 +535,7 @@ fn main() -> anyhow::Result<()> {
                 input_format,
             )?;
 
-            let nv12_converter =
+            let mut nv12_converter =
                 reco_core::nv12_converter::Nv12Converter::new(&pipeline.gpu, width, height);
 
             let mode_str = if use_nv12_capture { "NV12" } else { "I420" };
@@ -1004,7 +1018,7 @@ fn spawn_decode_thread_gpu(
 fn run_stitch_zero_copy(
     pipeline: &mut reco_core::pipeline::StitchPipeline,
     encoder: &mut reco_io::ffmpeg::encoder::VideoEncoder,
-    nv12_converter: &reco_core::nv12_converter::Nv12Converter,
+    nv12_converter: &mut reco_core::nv12_converter::Nv12Converter,
     left_path: &str,
     right_path: &str,
     input_width: u32,

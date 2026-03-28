@@ -769,10 +769,16 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
             opts.set("preset", preset);
             opts.set("crf", crf);
             opts.set("profile", "high");
-            // On ARM (Jetson), limit threads to avoid starving other pipeline
-            // stages. x264 defaults to num_cpus which over-subscribes.
-            #[cfg(target_arch = "aarch64")]
-            opts.set("threads", "3");
+            // On Tegra (Jetson), limit threads to avoid starving other
+            // pipeline stages (capture + pairing threads need CPU too).
+            // x264 defaults to num_cpus which over-subscribes.
+            if std::path::Path::new("/etc/nv_tegra_release").exists()
+                || std::fs::read_to_string("/proc/device-tree/compatible")
+                    .unwrap_or_default()
+                    .contains("nvidia,tegra")
+            {
+                opts.set("threads", "3");
+            }
         }
     }
 

@@ -44,6 +44,10 @@ pub struct Nv12Converter {
     params_buffer: wgpu::Buffer,
     nv12_gpu_buffer: wgpu::Buffer,
     nv12_staging_buffer: wgpu::Buffer,
+    /// Cached bind group for the current render target. Avoids per-frame
+    /// descriptor pool allocation which causes OOM on Vulkan (wgpu#7525).
+    /// Stores a raw pointer to the texture for identity comparison (never dereferenced).
+    cached_bind_group: Option<(*const wgpu::Texture, wgpu::BindGroup)>,
     width: u32,
     height: u32,
     /// Dispatch dimensions for the compute shader.
@@ -175,6 +179,7 @@ impl Nv12Converter {
             params_buffer,
             nv12_gpu_buffer,
             nv12_staging_buffer,
+            cached_bind_group: None,
             width,
             height,
             dispatch_x,
@@ -195,32 +200,45 @@ impl Nv12Converter {
         tracing::instrument(skip_all, name = "nv12_convert_readback")
     )]
     pub fn convert_and_readback(
-        &self,
+        &mut self,
         gpu: &GpuContext,
         render_target: &wgpu::Texture,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<Vec<u8>, Nv12Error> {
-        let render_target_view = render_target.create_view(&wgpu::TextureViewDescriptor::default());
+        // Cache the bind group to avoid per-frame descriptor pool allocation,
+        // which causes OOM on the Vulkan backend (wgpu#7525). Rebuild only
+        // if the render target texture changes.
+        let texture_ptr: *const wgpu::Texture = render_target;
+        let needs_rebuild = self
+            .cached_bind_group
+            .as_ref()
+            .is_none_or(|(ptr, _)| *ptr != texture_ptr);
 
-        // Create bind group referencing the current render target
-        let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("nv12_bind_group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&render_target_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: self.nv12_gpu_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: self.params_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        if needs_rebuild {
+            let render_target_view =
+                render_target.create_view(&wgpu::TextureViewDescriptor::default());
+            let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("nv12_bind_group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&render_target_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: self.nv12_gpu_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: self.params_buffer.as_entire_binding(),
+                    },
+                ],
+            });
+            self.cached_bind_group = Some((texture_ptr, bind_group));
+        }
+
+        let (_, bind_group) = self.cached_bind_group.as_ref().unwrap();
 
         let mut encoder = gpu
             .device
@@ -236,7 +254,7 @@ impl Nv12Converter {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_bind_group(0, bind_group, &[]);
             pass.dispatch_workgroups(self.dispatch_x, self.dispatch_y, 1);
         }
 

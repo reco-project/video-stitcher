@@ -59,7 +59,7 @@ fn build_pipeline_string(
         CaptureFormat::Nv12 => "NV12",
     };
 
-    if is_jetson() {
+    if is_tegra() {
         // Jetson: nvarguscamerasrc runs the full NVIDIA ISP
         // (debayer, AWB, AE, denoise). Output is NV12 in NVMM;
         // nvvidconv copies to system memory (and converts format if needed).
@@ -98,8 +98,8 @@ fn build_pipeline_string(
     }
 }
 
-/// Detect if we're running on a Jetson (L4T/Tegra).
-fn is_jetson() -> bool {
+/// Detect if we're running on NVIDIA Tegra (Jetson platform).
+fn is_tegra() -> bool {
     Path::new("/etc/nv_tegra_release").exists()
         || std::fs::read_to_string("/proc/device-tree/compatible")
             .unwrap_or_default()
