@@ -762,13 +762,17 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
         _ => {
             // libx264 and unknown encoders
             let (preset, crf) = match quality {
-                Quality::Fast => ("veryfast", "25"),
-                Quality::Balanced => ("fast", "23"),
-                Quality::High => ("medium", "19"),
+                Quality::Fast => ("ultrafast", "28"),
+                Quality::Balanced => ("veryfast", "25"),
+                Quality::High => ("fast", "21"),
             };
             opts.set("preset", preset);
             opts.set("crf", crf);
             opts.set("profile", "high");
+            // On ARM (Jetson), limit threads to avoid starving other pipeline
+            // stages. x264 defaults to num_cpus which over-subscribes.
+            #[cfg(target_arch = "aarch64")]
+            opts.set("threads", "3");
         }
     }
 
