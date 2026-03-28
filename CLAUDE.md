@@ -62,7 +62,7 @@ npm run lint             # Lint JS
 ## Context
 - Public open-source project (AGPL-3.0) with a growing community and forum
 - Users include football clubs, amateur sports teams — prioritize UX clarity
-- Competitors: Veo, Pixellot (proprietary, expensive) — Reco is the open alternative
+- Open alternative to proprietary sports camera solutions
 - v2 targets: desktop (Win/macOS/Linux), NVIDIA Jetson, cloud, mobile
 - Always use `sudo -A` for any system commands
 

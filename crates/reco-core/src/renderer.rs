@@ -129,6 +129,17 @@ struct PlaneResources {
     height: u32,
 }
 
+/// Input pixel format for the renderer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputFormat {
+    /// YUV420P: three separate R8 textures (Y full-res, U half-res, V half-res).
+    /// Used with software decode or CPU-side conversion.
+    Yuv420p,
+    /// NV12: Y as R8 (full-res) + interleaved UV as Rg8 (half-res).
+    /// NVDEC native output format. V texture is a 1×1 dummy.
+    Nv12,
+}
+
 /// The GPU renderer for panoramic stitching.
 ///
 /// Holds all wgpu resources: pipelines, textures, bind groups, and buffers.
@@ -144,6 +155,14 @@ pub struct Renderer {
     output_buffer: wgpu::Buffer,
     output_width: u32,
     output_height: u32,
+    /// Input pixel format (YUV420P or NV12).
+    input_format: InputFormat,
+    /// Stored for rebuilding bind groups when swapping shared textures.
+    texture_layout: wgpu::BindGroupLayout,
+    /// Shared sampler, stored for bind group rebuilds.
+    sampler: wgpu::Sampler,
+    /// Device handle for creating bind groups (Arc-based, cheap to clone).
+    device: wgpu::Device,
 }
 
 impl Renderer {
@@ -151,6 +170,9 @@ impl Renderer {
     ///
     /// Allocates textures, buffers, and compiles the shader pipeline.
     /// This is called once during pipeline initialization.
+    ///
+    /// `input_format` selects between YUV420P (3 separate planes) and
+    /// NV12 (Y + interleaved UV). NV12 is the native NVDEC output format.
     pub fn new(
         gpu: &GpuContext,
         output_width: u32,
@@ -158,6 +180,7 @@ impl Renderer {
         input_width: u32,
         input_height: u32,
         output_format: wgpu::TextureFormat,
+        input_format: InputFormat,
     ) -> Self {
         let device = &gpu.device;
 
@@ -283,6 +306,7 @@ impl Renderer {
             &sampler,
             input_width,
             input_height,
+            input_format,
             "left",
         );
         let right = Self::create_plane_resources(
@@ -292,6 +316,7 @@ impl Renderer {
             &sampler,
             input_width,
             input_height,
+            input_format,
             "right",
         );
 
@@ -307,7 +332,9 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: output_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let render_target_view = render_target.create_view(&wgpu::TextureViewDescriptor::default());
@@ -349,6 +376,10 @@ impl Renderer {
             output_buffer,
             output_width,
             output_height,
+            input_format,
+            texture_layout,
+            sampler,
+            device: device.clone(),
         }
     }
 
@@ -359,11 +390,12 @@ impl Renderer {
         sampler: &wgpu::Sampler,
         width: u32,
         height: u32,
+        input_format: InputFormat,
         label: &str,
     ) -> PlaneResources {
         let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
 
-        let create_plane_texture = |name: &str, w: u32, h: u32| {
+        let create_texture = |name: &str, w: u32, h: u32, format: wgpu::TextureFormat| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(&format!("{label}_{name}")),
                 size: wgpu::Extent3d {
@@ -374,16 +406,30 @@ impl Renderer {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::R8Unorm,
+                format,
                 usage,
                 view_formats: &[],
             })
         };
 
-        // YUV420P: Y at full resolution, U/V at half resolution
-        let y_texture = create_plane_texture("y", width, height);
-        let u_texture = create_plane_texture("u", width / 2, height / 2);
-        let v_texture = create_plane_texture("v", width / 2, height / 2);
+        // Y plane is always R8Unorm at full resolution
+        let y_texture = create_texture("y", width, height, wgpu::TextureFormat::R8Unorm);
+
+        let (u_texture, v_texture) = match input_format {
+            InputFormat::Yuv420p => {
+                // YUV420P: separate R8 U and V at half resolution
+                let u = create_texture("u", width / 2, height / 2, wgpu::TextureFormat::R8Unorm);
+                let v = create_texture("v", width / 2, height / 2, wgpu::TextureFormat::R8Unorm);
+                (u, v)
+            }
+            InputFormat::Nv12 => {
+                // NV12: interleaved UV as Rg8Unorm at half resolution
+                let uv = create_texture("uv", width / 2, height / 2, wgpu::TextureFormat::Rg8Unorm);
+                // Dummy V texture — shader won't sample it in NV12 mode
+                let v_dummy = create_texture("v_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
+                (uv, v_dummy)
+            }
+        };
 
         let y_view = y_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let u_view = u_texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -454,6 +500,93 @@ impl Renderer {
         upload_yuv(gpu, &self.right, y, u, v);
     }
 
+    /// Replace the left plane's textures with shared CUDA/Vulkan textures.
+    ///
+    /// Call this to switch to zero-copy mode. The provided textures must be
+    /// NV12 format (Y: R8Unorm, UV: Rg8Unorm). After this call, CUDA writes
+    /// to the shared memory are visible to the GPU without any CPU copies.
+    pub fn replace_left_textures(&mut self, y_texture: wgpu::Texture, uv_texture: wgpu::Texture) {
+        rebuild_bind_group(
+            &self.device,
+            &mut self.left,
+            y_texture,
+            uv_texture,
+            &self.texture_layout,
+            &self.sampler,
+            "left",
+        );
+    }
+
+    /// Replace the right plane's textures with shared CUDA/Vulkan textures.
+    pub fn replace_right_textures(&mut self, y_texture: wgpu::Texture, uv_texture: wgpu::Texture) {
+        rebuild_bind_group(
+            &self.device,
+            &mut self.right,
+            y_texture,
+            uv_texture,
+            &self.texture_layout,
+            &self.sampler,
+            "right",
+        );
+    }
+
+    /// The current input pixel format.
+    pub fn input_format(&self) -> InputFormat {
+        self.input_format
+    }
+
+    /// Create a texture bind group from external textures.
+    ///
+    /// Used for CUDA/Vulkan zero-copy: pre-build bind groups for each
+    /// double-buffer slot. The returned bind group can be set on a plane
+    /// via [`Self::set_left_bind_group`] / [`Self::set_right_bind_group`].
+    pub fn create_texture_bind_group(
+        &self,
+        y_texture: &wgpu::Texture,
+        uv_texture: &wgpu::Texture,
+        label: &str,
+    ) -> wgpu::BindGroup {
+        let y_view = y_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let uv_view = uv_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let v_view = self
+            .left
+            .v_texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &self.texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&y_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&uv_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&v_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        })
+    }
+
+    /// Set the left plane's texture bind group for the next render.
+    pub fn set_left_bind_group(&mut self, bind_group: wgpu::BindGroup) {
+        self.left.texture_bind_group = bind_group;
+    }
+
+    /// Set the right plane's texture bind group for the next render.
+    pub fn set_right_bind_group(&mut self, bind_group: wgpu::BindGroup) {
+        self.right.texture_bind_group = bind_group;
+    }
+
     /// Render a stitched frame and read back the RGBA result.
     ///
     /// Both camera textures must be uploaded before calling this.
@@ -482,10 +615,22 @@ impl Renderer {
 
         // Build uniforms for both planes
         let left_mvp = projection * view * scene.model_matrix_left();
-        let left_uniforms = build_gpu_uniforms(&left_mvp, &calibration.left, false, blend_width);
+        let left_uniforms = build_gpu_uniforms(
+            &left_mvp,
+            &calibration.left,
+            false,
+            blend_width,
+            self.input_format,
+        );
 
         let right_mvp = projection * view * scene.model_matrix_right();
-        let right_uniforms = build_gpu_uniforms(&right_mvp, &calibration.right, true, blend_width);
+        let right_uniforms = build_gpu_uniforms(
+            &right_mvp,
+            &calibration.right,
+            true,
+            blend_width,
+            self.input_format,
+        );
 
         // Write uniform buffers (staged before submission)
         gpu.queue.write_buffer(
@@ -606,6 +751,115 @@ impl Renderer {
         Ok(output)
     }
 
+    /// Render a stitched frame to the internal render target, without readback.
+    ///
+    /// Returns the recorded `CommandBuffer` without submitting it.
+    /// The caller should submit it (typically together with NV12 conversion
+    /// commands) to ensure proper GPU synchronization.
+    /// Use [`Self::render_target`] to get a reference to the output texture.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "gpu_render_to_target")
+    )]
+    pub fn render_to_target(
+        &self,
+        gpu: &GpuContext,
+        scene: &SceneGeometry,
+        calibration: &MatchCalibration,
+        viewport: &ResolvedViewport,
+        blend_width: f32,
+    ) -> wgpu::CommandBuffer {
+        let aspect = self.output_width as f32 / self.output_height as f32;
+        let projection = opengl_to_wgpu_matrix()
+            * Perspective3::new(aspect, viewport.config.fov_degrees.to_radians(), 0.01, 5.0)
+                .to_homogeneous();
+        let view = view_matrix(
+            &scene.camera_position,
+            viewport.position.yaw,
+            viewport.position.pitch,
+        );
+
+        let left_mvp = projection * view * scene.model_matrix_left();
+        let left_uniforms = build_gpu_uniforms(
+            &left_mvp,
+            &calibration.left,
+            false,
+            blend_width,
+            self.input_format,
+        );
+
+        let right_mvp = projection * view * scene.model_matrix_right();
+        let right_uniforms = build_gpu_uniforms(
+            &right_mvp,
+            &calibration.right,
+            true,
+            blend_width,
+            self.input_format,
+        );
+
+        gpu.queue.write_buffer(
+            &self.left.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&left_uniforms),
+        );
+        gpu.queue.write_buffer(
+            &self.right.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&right_uniforms),
+        );
+
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("stitch_to_target"),
+            });
+
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("stitch_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.render_target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            pass.set_pipeline(&self.pipeline);
+            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+            pass.set_bind_group(0, &self.left.texture_bind_group, &[]);
+            pass.set_bind_group(1, &self.left.uniform_bind_group, &[]);
+            pass.draw(0..6, 0..1);
+
+            pass.set_bind_group(0, &self.right.texture_bind_group, &[]);
+            pass.set_bind_group(1, &self.right.uniform_bind_group, &[]);
+            pass.draw(0..6, 0..1);
+        }
+
+        encoder.finish()
+    }
+
+    /// Access the internal render target texture.
+    ///
+    /// Used by [`Nv12Converter`](crate::nv12_converter::Nv12Converter) to read
+    /// the RGBA output without an intermediate CPU copy.
+    pub fn render_target(&self) -> &wgpu::Texture {
+        &self.render_target
+    }
+
     /// Render a stitched frame directly to a texture view (e.g., a window surface).
     ///
     /// Unlike [`Self::render_frame`], this does NOT read back the result to CPU.
@@ -630,10 +884,22 @@ impl Renderer {
         );
 
         let left_mvp = projection * view * scene.model_matrix_left();
-        let left_uniforms = build_gpu_uniforms(&left_mvp, &calibration.left, false, blend_width);
+        let left_uniforms = build_gpu_uniforms(
+            &left_mvp,
+            &calibration.left,
+            false,
+            blend_width,
+            self.input_format,
+        );
 
         let right_mvp = projection * view * scene.model_matrix_right();
-        let right_uniforms = build_gpu_uniforms(&right_mvp, &calibration.right, true, blend_width);
+        let right_uniforms = build_gpu_uniforms(
+            &right_mvp,
+            &calibration.right,
+            true,
+            blend_width,
+            self.input_format,
+        );
 
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,
@@ -726,6 +992,49 @@ impl Renderer {
 
 // ---- Helper functions ----
 
+/// Rebuild a plane's texture bind group with new textures.
+fn rebuild_bind_group(
+    device: &wgpu::Device,
+    plane: &mut PlaneResources,
+    y_texture: wgpu::Texture,
+    uv_texture: wgpu::Texture,
+    texture_layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    label: &str,
+) {
+    let y_view = y_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let uv_view = uv_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let v_view = plane
+        .v_texture
+        .create_view(&wgpu::TextureViewDescriptor::default());
+
+    plane.texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(&format!("{label}_texture_bg")),
+        layout: texture_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&y_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&uv_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(&v_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+    });
+
+    plane.y_texture = y_texture;
+    plane.u_texture = uv_texture;
+}
+
 /// Upload a single R8Unorm plane to a GPU texture.
 fn upload_plane(gpu: &GpuContext, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
     gpu.queue.write_texture(
@@ -810,6 +1119,7 @@ fn build_gpu_uniforms(
     camera: &CameraParams,
     is_right: bool,
     blend_width: f32,
+    input_format: InputFormat,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -829,7 +1139,12 @@ fn build_gpu_uniforms(
         ],
         lab_scale: [1.0, 1.0, 1.0, 0.0], // identity (no color correction yet)
         lab_offset_blend: [0.0, 0.0, 0.0, blend_width],
-        flags: [is_right as u32, 0, 0, 0],
+        flags: [
+            is_right as u32,
+            (input_format == InputFormat::Nv12) as u32,
+            0,
+            0,
+        ],
     }
 }
 
@@ -891,14 +1206,15 @@ mod tests {
             d: [0.0342, 0.0677, -0.0741, 0.0299],
         };
         let mvp = Matrix4::identity();
-        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0);
+        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0, InputFormat::Yuv420p);
 
         // fx/width ≈ 0.4678
         assert!((u.intrinsics[0] - 1796.32 / 3840.0).abs() < 1e-4);
         // cy/height ≈ 0.4922
         assert!((u.intrinsics[3] - 1063.17 / 2160.0).abs() < 1e-4);
-        // is_right = 0
+        // is_right = 0, use_nv12 = 0
         assert_eq!(u.flags[0], 0);
+        assert_eq!(u.flags[1], 0);
     }
 
     #[test]

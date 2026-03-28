@@ -23,7 +23,7 @@
 use crate::calibration::MatchCalibration;
 use crate::director::ViewportPosition;
 use crate::gpu::{GpuContext, GpuError};
-use crate::renderer::{RenderError, Renderer};
+use crate::renderer::{InputFormat, RenderError, Renderer};
 use crate::scene::SceneGeometry;
 use crate::viewport::{ResolvedViewport, ViewportConfig};
 
@@ -95,6 +95,7 @@ impl StitchPipeline {
             input_width,
             input_height,
             wgpu::TextureFormat::Rgba8UnormSrgb,
+            InputFormat::Yuv420p,
         )
     }
 
@@ -109,6 +110,7 @@ impl StitchPipeline {
         input_width: u32,
         input_height: u32,
         output_format: wgpu::TextureFormat,
+        input_format: InputFormat,
     ) -> Result<Self, PipelineError> {
         let scene = SceneGeometry::from_layout(&calibration.layout);
         let renderer = Renderer::new(
@@ -118,6 +120,7 @@ impl StitchPipeline {
             input_width,
             input_height,
             output_format,
+            input_format,
         );
 
         log::info!(
@@ -201,5 +204,82 @@ impl StitchPipeline {
         Ok(self
             .renderer
             .render_frame(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)?)
+    }
+
+    /// Render a frame assuming textures are already populated (zero-copy path).
+    ///
+    /// Used with CUDA/Vulkan shared textures where the decode thread writes
+    /// frame data directly to GPU memory via `cuMemcpy2D`. No CPU upload needed.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "process_frame_gpu")
+    )]
+    pub fn process_frame_gpu(&self, yaw: f32, pitch: f32) -> Result<Vec<u8>, PipelineError> {
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition { yaw, pitch },
+        };
+
+        Ok(self
+            .renderer
+            .render_frame(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)?)
+    }
+
+    /// Render a frame to the internal render target without CPU readback.
+    ///
+    /// Uploads YUV planes and returns the render `CommandBuffer` without
+    /// submitting. The caller must submit it (typically together with NV12
+    /// conversion commands via [`Nv12Converter`](crate::nv12_converter::Nv12Converter)).
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "render_to_target")
+    )]
+    pub fn render_to_target(
+        &self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.renderer
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v);
+        self.renderer
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v);
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition { yaw, pitch },
+        };
+
+        self.renderer
+            .render_to_target(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)
+    }
+
+    /// Render to the internal target without upload or readback (zero-copy path).
+    ///
+    /// Returns the render `CommandBuffer` without submitting. Assumes textures
+    /// are already populated via CUDA/Vulkan shared memory.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "render_to_target_gpu")
+    )]
+    pub fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition { yaw, pitch },
+        };
+
+        self.renderer
+            .render_to_target(&self.gpu, &self.scene, &self.calibration, &viewport, 0.0)
+    }
+
+    /// Access the rendered RGBA texture for NV12 conversion.
+    pub fn render_target(&self) -> &wgpu::Texture {
+        self.renderer.render_target()
+    }
+
+    /// Mutable access to the renderer (for swapping shared textures).
+    pub fn renderer_mut(&mut self) -> &mut Renderer {
+        &mut self.renderer
     }
 }

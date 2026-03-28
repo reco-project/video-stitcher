@@ -136,6 +136,9 @@ type CUmemGenericAllocationHandle = u64;
 
 // ── Dynamic loader ──────────────────────────────────────────────────
 
+/// Opaque CUDA context handle.
+type CUcontext = *mut c_void;
+
 /// Dynamically loaded CUDA functions.
 ///
 /// Loaded once from `libcuda.so.1` (Linux) or `nvcuda.dll` (Windows).
@@ -148,6 +151,13 @@ struct CudaFunctions {
     cuda_get_device: unsafe extern "C" fn(*mut CUdevice) -> CUresult,
     cu_device_get_uuid: unsafe extern "C" fn(*mut CUuuid, CUdevice) -> CUresult,
     cu_ctx_synchronize: unsafe extern "C" fn() -> CUresult,
+
+    // Context management
+    cu_init: unsafe extern "C" fn(u32) -> CUresult,
+    cu_device_get: unsafe extern "C" fn(*mut CUdevice, i32) -> CUresult,
+    cu_device_primary_ctx_retain: unsafe extern "C" fn(*mut CUcontext, CUdevice) -> CUresult,
+    cu_ctx_get_current: unsafe extern "C" fn(*mut CUcontext) -> CUresult,
+    cu_ctx_set_current: unsafe extern "C" fn(CUcontext) -> CUresult,
 
     // VMM allocation
     cu_mem_get_allocation_granularity:
@@ -238,6 +248,11 @@ impl CudaFunctions {
                 cuda_get_device,
                 cu_device_get_uuid: load_sym!(lib_cuda, "cuDeviceGetUuid"),
                 cu_ctx_synchronize: load_sym!(lib_cuda, "cuCtxSynchronize"),
+                cu_init: load_sym!(lib_cuda, "cuInit"),
+                cu_device_get: load_sym!(lib_cuda, "cuDeviceGet"),
+                cu_device_primary_ctx_retain: load_sym!(lib_cuda, "cuDevicePrimaryCtxRetain"),
+                cu_ctx_get_current: load_sym!(lib_cuda, "cuCtxGetCurrent"),
+                cu_ctx_set_current: load_sym!(lib_cuda, "cuCtxSetCurrent"),
                 cu_mem_get_allocation_granularity: load_sym!(
                     lib_cuda,
                     "cuMemGetAllocationGranularity"
@@ -456,6 +471,38 @@ pub fn cuda_synchronize() -> Result<(), CudaInteropError> {
     let cuda = cuda()?;
     unsafe {
         check_cuda("cuCtxSynchronize", (cuda.cu_ctx_synchronize)())?;
+    }
+    Ok(())
+}
+
+/// Ensure a CUDA context is current on this thread.
+///
+/// FFmpeg's NVDEC backend pushes/pops its CUDA context around decode calls,
+/// which may leave no context current after `avcodec_receive_frame`. This
+/// function retains the primary context for device 0 and sets it as current
+/// if no context is active. Safe to call multiple times (idempotent).
+pub fn cuda_ensure_context() -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        let mut ctx: CUcontext = std::ptr::null_mut();
+        check_cuda("cuCtxGetCurrent", (cuda.cu_ctx_get_current)(&mut ctx))?;
+
+        if ctx.is_null() {
+            // No context current — retain and set the primary context
+            check_cuda("cuInit", (cuda.cu_init)(0))?;
+            let mut device: CUdevice = 0;
+            check_cuda("cuDeviceGet", (cuda.cu_device_get)(&mut device, 0))?;
+            let mut primary_ctx: CUcontext = std::ptr::null_mut();
+            check_cuda(
+                "cuDevicePrimaryCtxRetain",
+                (cuda.cu_device_primary_ctx_retain)(&mut primary_ctx, device),
+            )?;
+            check_cuda("cuCtxSetCurrent", (cuda.cu_ctx_set_current)(primary_ctx))?;
+            log::debug!(
+                "CUDA primary context set on thread {:?}",
+                std::thread::current().name()
+            );
+        }
     }
     Ok(())
 }

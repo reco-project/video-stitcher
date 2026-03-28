@@ -1,8 +1,8 @@
-//! Video encoder: RGBA frames → H.264 MP4 file.
+//! Video encoder: RGBA frames → MP4 file (H.264, HEVC, or AV1).
 //!
 //! Wraps FFmpeg's muxer, encoder, and swscale to write RGBA pixel data
-//! to an H.264-encoded MP4 file. Supports hardware-accelerated encoding
-//! (NVENC, QSV, VideoToolbox, VAAPI) with automatic fallback to libx264.
+//! to an encoded MP4 file. Supports hardware-accelerated encoding
+//! (NVENC, QSV, VideoToolbox, VAAPI) with automatic fallback to software.
 
 extern crate ffmpeg_next as ffmpeg;
 
@@ -20,16 +20,66 @@ pub enum EncodeError {
     #[error("FFmpeg: {0}")]
     Ffmpeg(#[from] ffmpeg::Error),
 
-    /// No H.264 encoder available.
-    #[error("no H.264 encoder found — is FFmpeg built with libx264 or a hardware encoder?")]
-    CodecNotFound,
+    /// No encoder available for the requested codec.
+    #[error("no encoder found for codec '{0}' — is FFmpeg built with the right encoder?")]
+    CodecNotFound(String),
 
     /// Frame data has wrong size.
     #[error("frame data size mismatch: expected {expected} bytes, got {actual}")]
     FrameSizeMismatch { expected: usize, actual: usize },
 }
 
+/// Output video codec.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum VideoCodec {
+    /// H.264 / AVC — widest compatibility.
+    #[default]
+    H264,
+    /// H.265 / HEVC — better quality per bit, good hardware support.
+    Hevc,
+    /// AV1 — best compression, requires modern hardware for encoding.
+    Av1,
+}
+
+impl VideoCodec {
+    /// Parse from a string (case-insensitive).
+    pub fn from_str_loose(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "h264" | "avc" | "h.264" => Some(Self::H264),
+            "hevc" | "h265" | "h.265" => Some(Self::Hevc),
+            "av1" => Some(Self::Av1),
+            _ => None,
+        }
+    }
+
+    fn candidates(self) -> &'static [EncoderCandidate] {
+        match self {
+            Self::H264 => H264_ENCODERS,
+            Self::Hevc => HEVC_ENCODERS,
+            Self::Av1 => AV1_ENCODERS,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::H264 => "H.264",
+            Self::Hevc => "HEVC",
+            Self::Av1 => "AV1",
+        }
+    }
+}
+
+struct EncoderCandidate {
+    name: &'static str,
+    is_hardware: bool,
+    pixel_format: Pixel,
+}
+
 /// Known H.264 encoder candidates, in preference order.
+///
+/// Covers: NVIDIA (NVENC), Intel (QSV), Apple (VideoToolbox), AMD (AMF/VAAPI),
+/// embedded Linux (V4L2 M2M), Android (MediaCodec), Windows fallback (MF),
+/// and software (libx264).
 const H264_ENCODERS: &[EncoderCandidate] = &[
     EncoderCandidate {
         name: "h264_nvenc",
@@ -47,7 +97,27 @@ const H264_ENCODERS: &[EncoderCandidate] = &[
         pixel_format: Pixel::NV12,
     },
     EncoderCandidate {
+        name: "h264_amf",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
         name: "h264_vaapi",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "h264_v4l2m2m",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "h264_mediacodec",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "h264_mf",
         is_hardware: true,
         pixel_format: Pixel::NV12,
     },
@@ -58,13 +128,90 @@ const H264_ENCODERS: &[EncoderCandidate] = &[
     },
 ];
 
-struct EncoderCandidate {
-    name: &'static str,
-    is_hardware: bool,
-    pixel_format: Pixel,
-}
+/// Known HEVC encoder candidates, in preference order.
+const HEVC_ENCODERS: &[EncoderCandidate] = &[
+    EncoderCandidate {
+        name: "hevc_nvenc",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "hevc_qsv",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "hevc_videotoolbox",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "hevc_amf",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "hevc_vaapi",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "hevc_v4l2m2m",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "hevc_mediacodec",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "hevc_mf",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "libx265",
+        is_hardware: false,
+        pixel_format: Pixel::YUV420P,
+    },
+];
 
-/// Information about an available H.264 encoder.
+/// Known AV1 encoder candidates, in preference order.
+const AV1_ENCODERS: &[EncoderCandidate] = &[
+    EncoderCandidate {
+        name: "av1_nvenc",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "av1_qsv",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "av1_amf",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "av1_vaapi",
+        is_hardware: true,
+        pixel_format: Pixel::NV12,
+    },
+    EncoderCandidate {
+        name: "libsvtav1",
+        is_hardware: false,
+        pixel_format: Pixel::YUV420P,
+    },
+    EncoderCandidate {
+        name: "libaom-av1",
+        is_hardware: false,
+        pixel_format: Pixel::YUV420P,
+    },
+];
+
+/// Information about an available encoder.
 #[derive(Debug, Clone)]
 pub struct EncoderInfo {
     /// FFmpeg codec name (e.g., `"h264_nvenc"`, `"libx264"`).
@@ -75,14 +222,13 @@ pub struct EncoderInfo {
     pub is_hardware: bool,
 }
 
-/// Detect which H.264 encoders are available in the linked FFmpeg build.
+/// Detect which encoders are available for a given codec.
 ///
 /// Returns encoders in preference order (hardware first, then software).
-/// An encoder appearing here means it is compiled in, but it may still
-/// fail to open if the hardware is absent at runtime.
-pub fn available_h264_encoders() -> Vec<EncoderInfo> {
+pub fn available_encoders(codec: VideoCodec) -> Vec<EncoderInfo> {
     crate::init();
-    H264_ENCODERS
+    codec
+        .candidates()
         .iter()
         .filter_map(|c| {
             encoder::find_by_name(c.name).map(|codec| EncoderInfo {
@@ -92,6 +238,11 @@ pub fn available_h264_encoders() -> Vec<EncoderInfo> {
             })
         })
         .collect()
+}
+
+/// Detect which H.264 encoders are available (convenience wrapper).
+pub fn available_h264_encoders() -> Vec<EncoderInfo> {
+    available_encoders(VideoCodec::H264)
 }
 
 /// Encoder quality preset.
@@ -111,11 +262,13 @@ pub enum Quality {
 pub struct EncoderConfig {
     /// Force a specific encoder by name, or `None` for auto-detection.
     pub encoder_name: Option<String>,
+    /// Output video codec (H.264, HEVC, AV1). Default: H.264.
+    pub codec: VideoCodec,
     /// Quality preset.
     pub quality: Quality,
 }
 
-/// Video encoder that writes RGBA frames to an H.264 MP4 file.
+/// Video encoder that writes RGBA frames to an MP4 file.
 ///
 /// # Example
 ///
@@ -158,7 +311,7 @@ impl Drop for VideoEncoder {
 }
 
 impl VideoEncoder {
-    /// Create a new H.264 MP4 encoder.
+    /// Create a new MP4 encoder.
     ///
     /// Auto-detects the best available encoder (hardware first, then software)
     /// unless `config.encoder_name` is set.
@@ -171,14 +324,26 @@ impl VideoEncoder {
     ) -> Result<Self, EncodeError> {
         crate::init();
 
+        let all_candidates = config.codec.candidates();
+
         // Build candidate list
         let candidates: Vec<(&str, bool, Pixel)> = if let Some(ref name) = config.encoder_name {
-            let candidate = H264_ENCODERS.iter().find(|c| c.name == name.as_str());
+            // When a specific encoder is forced, look it up in all codec tables
+            let candidate = all_candidates
+                .iter()
+                .find(|c| c.name == name.as_str())
+                .or_else(|| {
+                    // Also check other codec tables for cross-codec --encoder usage
+                    [H264_ENCODERS, HEVC_ENCODERS, AV1_ENCODERS]
+                        .iter()
+                        .flat_map(|t| t.iter())
+                        .find(|c| c.name == name.as_str())
+                });
             let pixel_fmt = candidate.map_or(Pixel::YUV420P, |c| c.pixel_format);
             let is_hw = candidate.is_some_and(|c| c.is_hardware);
             vec![(name.as_str(), is_hw, pixel_fmt)]
         } else {
-            H264_ENCODERS
+            all_candidates
                 .iter()
                 .filter(|c| encoder::find_by_name(c.name).is_some())
                 .map(|c| (c.name, c.is_hardware, c.pixel_format))
@@ -186,7 +351,7 @@ impl VideoEncoder {
         };
 
         if candidates.is_empty() {
-            return Err(EncodeError::CodecNotFound);
+            return Err(EncodeError::CodecNotFound(config.codec.label().to_string()));
         }
 
         // Try each candidate — create a fresh output context per attempt
@@ -231,7 +396,7 @@ impl VideoEncoder {
                         finished: false,
                         encoder_name: name.to_string(),
                         rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
-                        yuv_frame: VideoFrame::empty(),
+                        yuv_frame: VideoFrame::new(*pixel_fmt, width, height),
                     });
                 }
                 Err(e) => {
@@ -241,7 +406,7 @@ impl VideoEncoder {
             }
         }
 
-        Err(last_err.unwrap_or(EncodeError::CodecNotFound))
+        Err(last_err.unwrap_or(EncodeError::CodecNotFound(config.codec.label().to_string())))
     }
 
     /// Attempt to open a specific encoder. Returns the opened encoder + scaler
@@ -362,6 +527,82 @@ impl VideoEncoder {
         Ok(())
     }
 
+    /// Write a pre-converted NV12 frame to the output file.
+    ///
+    /// `nv12_data` must be exactly `width * height * 3 / 2` bytes:
+    /// Y plane (`width * height`) followed by interleaved UV plane (`width * height / 2`).
+    ///
+    /// This bypasses the CPU swscale RGBA→NV12 conversion, which is the main
+    /// performance benefit of GPU-side NV12 conversion.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "encode_nv12_frame")
+    )]
+    pub fn write_nv12_frame(&mut self, nv12_data: &[u8]) -> Result<(), EncodeError> {
+        let expected = (self.width * self.height * 3 / 2) as usize;
+        if nv12_data.len() != expected {
+            return Err(EncodeError::FrameSizeMismatch {
+                expected,
+                actual: nv12_data.len(),
+            });
+        }
+
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let y_size = w * h;
+
+        // Copy Y plane
+        let y_stride = self.yuv_frame.stride(0);
+        if y_stride == w {
+            self.yuv_frame.data_mut(0)[..y_size].copy_from_slice(&nv12_data[..y_size]);
+        } else {
+            for row in 0..h {
+                let src_start = row * w;
+                let dst_start = row * y_stride;
+                self.yuv_frame.data_mut(0)[dst_start..dst_start + w]
+                    .copy_from_slice(&nv12_data[src_start..src_start + w]);
+            }
+        }
+
+        // Copy UV/chroma data depending on encoder pixel format
+        let uv_data = &nv12_data[y_size..];
+        let chroma_h = h / 2;
+        let chroma_w = w / 2;
+
+        if self.yuv_frame.format() == Pixel::NV12 {
+            // NV12: interleaved UV plane (same layout as input)
+            let uv_stride = self.yuv_frame.stride(1);
+            if uv_stride == w {
+                self.yuv_frame.data_mut(1)[..uv_data.len()].copy_from_slice(uv_data);
+            } else {
+                for row in 0..chroma_h {
+                    let src_start = row * w;
+                    let dst_start = row * uv_stride;
+                    self.yuv_frame.data_mut(1)[dst_start..dst_start + w]
+                        .copy_from_slice(&uv_data[src_start..src_start + w]);
+                }
+            }
+        } else {
+            // YUV420P: de-interleave UV into separate U and V planes
+            let u_stride = self.yuv_frame.stride(1);
+            let v_stride = self.yuv_frame.stride(2);
+            for row in 0..chroma_h {
+                for col in 0..chroma_w {
+                    let uv_idx = row * w + col * 2;
+                    self.yuv_frame.data_mut(1)[row * u_stride + col] = uv_data[uv_idx];
+                    self.yuv_frame.data_mut(2)[row * v_stride + col] = uv_data[uv_idx + 1];
+                }
+            }
+        }
+
+        self.yuv_frame.set_pts(Some(self.frame_count));
+        self.encoder.send_frame(&self.yuv_frame)?;
+        self.receive_and_write_packets()?;
+
+        self.frame_count += 1;
+        Ok(())
+    }
+
     /// Flush the encoder and finalize the output file.
     ///
     /// Must be called after all frames have been written. Safe to call
@@ -415,6 +656,35 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
             opts.set("spatial-aq", "1");
             opts.set("temporal-aq", "1");
         }
+        "hevc_nvenc" => {
+            let (preset, cq) = match quality {
+                Quality::Fast => ("p3", "28"),
+                Quality::Balanced => ("p4", "23"),
+                Quality::High => ("p5", "19"),
+            };
+            opts.set("preset", preset);
+            opts.set("tune", "hq");
+            opts.set("rc", "vbr");
+            opts.set("cq", cq);
+            opts.set("b:v", "10M");
+            opts.set("maxrate", "15M");
+            opts.set("profile", "main");
+            opts.set("spatial-aq", "1");
+            opts.set("temporal-aq", "1");
+        }
+        "av1_nvenc" => {
+            let (preset, cq) = match quality {
+                Quality::Fast => ("p3", "32"),
+                Quality::Balanced => ("p4", "27"),
+                Quality::High => ("p5", "22"),
+            };
+            opts.set("preset", preset);
+            opts.set("tune", "hq");
+            opts.set("rc", "vbr");
+            opts.set("cq", cq);
+            opts.set("b:v", "8M");
+            opts.set("maxrate", "12M");
+        }
         "h264_qsv" => {
             let gq = match quality {
                 Quality::Fast => "28",
@@ -434,16 +704,59 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
             opts.set("q:v", q);
             opts.set("profile", "high");
         }
-        "h264_vaapi" => {
+        "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
             let qp = match quality {
                 Quality::Fast => "28",
                 Quality::Balanced => "23",
                 Quality::High => "19",
             };
             opts.set("qp", qp);
-            opts.set("profile", "high");
+            if name == "h264_vaapi" {
+                opts.set("profile", "high");
+            }
+        }
+        "h264_amf" | "hevc_amf" | "av1_amf" => {
+            let q = match quality {
+                Quality::Fast => "22",
+                Quality::Balanced => "18",
+                Quality::High => "14",
+            };
+            opts.set("quality", "balanced");
+            opts.set("qp_i", q);
+            opts.set("qp_p", q);
+            opts.set("rc", "cqp");
+        }
+        "libx265" => {
+            let (preset, crf) = match quality {
+                Quality::Fast => ("veryfast", "28"),
+                Quality::Balanced => ("fast", "25"),
+                Quality::High => ("medium", "21"),
+            };
+            opts.set("preset", preset);
+            opts.set("crf", crf);
+            opts.set("profile", "main");
+        }
+        "libsvtav1" => {
+            let (preset, crf) = match quality {
+                Quality::Fast => ("10", "35"),
+                Quality::Balanced => ("7", "30"),
+                Quality::High => ("4", "25"),
+            };
+            opts.set("preset", preset);
+            opts.set("crf", crf);
+        }
+        "libaom-av1" => {
+            let (crf, cpu_used) = match quality {
+                Quality::Fast => ("35", "8"),
+                Quality::Balanced => ("30", "6"),
+                Quality::High => ("25", "4"),
+            };
+            opts.set("crf", crf);
+            opts.set("cpu-used", cpu_used);
+            opts.set("row-mt", "1");
         }
         _ => {
+            // libx264 and unknown encoders
             let (preset, crf) = match quality {
                 Quality::Fast => ("veryfast", "25"),
                 Quality::Balanced => ("fast", "23"),

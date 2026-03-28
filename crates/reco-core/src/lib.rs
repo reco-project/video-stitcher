@@ -66,6 +66,7 @@ pub mod detector;
 pub mod director;
 pub mod encoder;
 pub mod gpu;
+pub mod nv12_converter;
 pub mod pipeline;
 pub mod renderer;
 pub mod scene;
