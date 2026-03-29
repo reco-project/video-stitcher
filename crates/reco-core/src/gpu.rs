@@ -10,6 +10,8 @@
 //! - **macOS/iOS**: Metal
 //! - **Windows**: Vulkan or DirectX 12
 //! - **Headless (Jetson, CI)**: Vulkan with no surface
+//!
+//! Override backend selection with `WGPU_BACKEND=vulkan|dx12|metal|gl`.
 
 use thiserror::Error;
 
@@ -60,24 +62,18 @@ impl GpuContext {
     ///
     /// When a surface is provided, the adapter selection will prefer GPUs
     /// that can present to that surface (needed for windowed rendering).
+    ///
+    /// Respects `WGPU_BACKEND` environment variable for backend selection.
+    /// On Windows, tries DX12 first if no backend is specified (Vulkan
+    /// drivers on some AMD iGPUs crash during instance creation).
     pub async fn with_surface(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, GpuError> {
-        // Debug markers for crash diagnosis on Windows
-        use std::io::Write;
-        let debug_log = |msg: &str| {
-            let _ = writeln!(std::io::stderr(), "[gpu] {msg}");
-            let _ = std::io::stderr().flush();
-            // Also write to a file in case stderr is swallowed
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open("reco_gpu_debug.log")
-            {
-                let _ = writeln!(f, "{msg}");
-            }
-        };
-        debug_log("creating wgpu instance...");
-        let instance = wgpu::Instance::default();
-        debug_log("instance created, requesting adapter...");
+        let backends = Self::select_backends();
+        log::info!("wgpu backends: {:?}", backends);
+
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends,
+            ..Default::default()
+        });
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -88,17 +84,12 @@ impl GpuContext {
             .await?;
 
         let adapter_info = adapter.get_info();
-        eprintln!(
-            "[gpu] adapter: {} ({:?})",
-            adapter_info.name, adapter_info.backend
-        );
         log::info!(
             "Selected GPU: {} ({:?})",
             adapter_info.name,
             adapter_info.backend
         );
 
-        eprintln!("[gpu] requesting device...");
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
@@ -107,13 +98,41 @@ impl GpuContext {
                 ..Default::default()
             })
             .await?;
-        eprintln!("[gpu] device acquired");
 
         Ok(Self {
             device,
             queue,
             adapter_info,
         })
+    }
+
+    /// Select wgpu backends based on environment and platform.
+    ///
+    /// Checks `WGPU_BACKEND` first (user override). Otherwise uses
+    /// platform defaults: DX12 on Windows, Vulkan on Linux, Metal
+    /// on macOS.
+    fn select_backends() -> wgpu::Backends {
+        if let Ok(val) = std::env::var("WGPU_BACKEND") {
+            match val.to_lowercase().as_str() {
+                "vulkan" | "vk" => return wgpu::Backends::VULKAN,
+                "dx12" | "d3d12" => return wgpu::Backends::DX12,
+                "metal" | "mtl" => return wgpu::Backends::METAL,
+                "gl" | "opengl" => return wgpu::Backends::GL,
+                _ => log::warn!("Unknown WGPU_BACKEND={val:?}, using platform default"),
+            }
+        }
+
+        if cfg!(target_os = "windows") {
+            // DX12 only — some AMD Vulkan drivers crash during instance
+            // creation (STATUS_HEAP_CORRUPTION). Users can opt into
+            // Vulkan via WGPU_BACKEND=vulkan if their driver supports it.
+            wgpu::Backends::DX12
+        } else if cfg!(target_os = "macos") || cfg!(target_os = "ios") {
+            wgpu::Backends::METAL
+        } else {
+            // Linux, Android, etc.
+            wgpu::Backends::VULKAN
+        }
     }
 
     /// The name of the selected GPU adapter (e.g. "NVIDIA GeForce RTX 5070").
