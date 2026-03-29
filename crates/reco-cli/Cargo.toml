@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [features]
 gstreamer = ["reco-io/gstreamer"]
+rpi = ["reco-io/rpi"]
 profiling = ["reco-core/profiling", "reco-io/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
 
 [dependencies]
