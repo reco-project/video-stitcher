@@ -131,7 +131,7 @@ impl GpuContext {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
                 required_features: wgpu::Features::empty(),
-                required_limits: adapter.limits(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
                 ..Default::default()
             })
             .await?;
@@ -213,7 +213,7 @@ impl GpuContext {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
                 required_features: wgpu::Features::empty(),
-                required_limits: adapter.limits(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
                 ..Default::default()
             })
             .await?;
