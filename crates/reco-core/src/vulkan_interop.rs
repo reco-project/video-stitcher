@@ -137,9 +137,8 @@ pub fn create_shared_texture(
                         "No DEVICE_LOCAL memory type for imported image, \
                          falling back to any supported type (unified memory GPU?)"
                     );
-                    (0..mem_props.memory_type_count).find(|&i| {
-                        (mem_reqs.memory_type_bits & (1 << i)) != 0
-                    })
+                    (0..mem_props.memory_type_count)
+                        .find(|&i| (mem_reqs.memory_type_bits & (1 << i)) != 0)
                 })
                 .ok_or_else(|| {
                     CudaInteropError::VulkanError(
