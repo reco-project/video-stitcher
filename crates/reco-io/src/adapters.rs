@@ -23,6 +23,7 @@ use crate::ffmpeg;
 pub struct FfmpegFileSource {
     rx: std::sync::mpsc::Receiver<FramePair>,
     info: SourceInfo,
+    decode_backend: ffmpeg::decoder::DecodeBackend,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -39,13 +40,23 @@ impl FfmpegFileSource {
             height: probe.height(),
             fps: probe.fps(),
         };
+        let decode_backend = probe.backend();
         drop(probe);
 
         let left = left_path.to_path_buf();
         let right = right_path.to_path_buf();
         let rx = Self::spawn_decode_pipeline(left, right);
 
-        Ok(Self { rx, info })
+        Ok(Self {
+            rx,
+            info,
+            decode_backend,
+        })
+    }
+
+    /// The decode backend selected during probe (CUDA, VAAPI, or software).
+    pub fn decode_backend(&self) -> ffmpeg::decoder::DecodeBackend {
+        self.decode_backend
     }
 
     /// Returns the FFmpeg frame rate rational (num/den) for encoder setup.

@@ -408,11 +408,15 @@ pub fn run_stitch(
         ..Default::default()
     };
 
-    // Detect zero-copy capability: CUDA available + Vulkan backend + Linux
+    // Detect zero-copy capability: CUDA decode + CUDA interop + Vulkan backend + Linux.
+    // On Jetson/Tegra, CUDA runtime is available but FFmpeg uses V4L2 NVDEC
+    // (not CUVID), so zero-copy shared textures don't work.
     let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
 
     #[cfg(target_os = "linux")]
     let use_zero_copy = std::env::var("RECO_NO_HWACCEL").is_err()
+        && source.as_ref().unwrap().decode_backend()
+            == reco_io::ffmpeg::decoder::DecodeBackend::Cuda
         && reco_core::cuda_interop::is_cuda_available()
         && gpu.adapter_info.backend == wgpu::Backend::Vulkan;
     #[cfg(not(target_os = "linux"))]
