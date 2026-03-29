@@ -67,6 +67,7 @@ macro_rules! profile_scope {
 pub use wgpu;
 
 pub mod calibration;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
 pub mod detector;
 pub mod director;
