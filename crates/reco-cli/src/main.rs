@@ -321,9 +321,9 @@ fn main() -> anyhow::Result<()> {
 
         Commands::Info => {
             let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
-            println!("GPU: {}", gpu.adapter_info.name);
-            println!("Backend: {:?}", gpu.adapter_info.backend);
-            println!("Driver: {}", gpu.adapter_info.driver);
+            println!("GPU: {}", gpu.gpu_name());
+            println!("Backend: {}", gpu.backend_name());
+            println!("Driver: {}", gpu.driver_info());
 
             println!("\nH.264 encoders:");
             let encoders = reco_io::ffmpeg::encoder::available_h264_encoders();

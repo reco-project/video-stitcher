@@ -60,6 +60,12 @@ macro_rules! profile_scope {
     ($name:expr) => {};
 }
 
+/// Re-export of [`wgpu`] for windowed consumers that need surface management.
+///
+/// Headless consumers (CLI encode, cloud workers) should not need this -
+/// use [`gpu::OutputFormat`] and the [`session`] API instead.
+pub use wgpu;
+
 pub mod calibration;
 pub mod cuda_interop;
 pub mod detector;

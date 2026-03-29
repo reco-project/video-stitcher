@@ -139,8 +139,8 @@ pub fn run_preview(
     let mut app = App {
         window: None,
         surface: None,
-        surface_format: wgpu::TextureFormat::Bgra8UnormSrgb, // overwritten in resumed()
-        alpha_mode: wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
+        surface_format: reco_core::wgpu::TextureFormat::Bgra8UnormSrgb, // overwritten in resumed()
+        alpha_mode: reco_core::wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
         pipeline: None,
         frame_rx,
         cal,
@@ -170,10 +170,10 @@ pub fn run_preview(
 }
 
 struct App {
-    surface: Option<wgpu::Surface<'static>>,
+    surface: Option<reco_core::wgpu::Surface<'static>>,
     window: Option<Arc<Window>>,
-    surface_format: wgpu::TextureFormat,
-    alpha_mode: wgpu::CompositeAlphaMode,
+    surface_format: reco_core::wgpu::TextureFormat,
+    alpha_mode: reco_core::wgpu::CompositeAlphaMode,
     pipeline: Option<reco_core::pipeline::StitchPipeline>,
     frame_rx: std::sync::mpsc::Receiver<FramePair>,
     cal: reco_core::calibration::MatchCalibration,
@@ -280,59 +280,30 @@ impl ApplicationHandler for App {
 
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
 
-        // Create wgpu surface and GPU context
+        // Create wgpu surface and GPU context via reco-core helper
         // Arc<Window> gives Surface<'static> without transmute
-        let instance = wgpu::Instance::default();
+        let instance = reco_core::wgpu::Instance::default();
         let surface = instance
             .create_surface(window.clone())
             .expect("create surface");
 
-        let (gpu, caps) = pollster::block_on(async {
-            let adapter = instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::HighPerformance,
-                    force_fallback_adapter: false,
-                    compatible_surface: Some(&surface),
-                })
-                .await
-                .expect("request adapter");
+        let (gpu, surface_info) =
+            pollster::block_on(reco_core::gpu::GpuContext::for_surface(&instance, &surface))
+                .expect("create GPU context for surface");
 
-            let info = adapter.get_info();
-            log::info!("Preview GPU: {} ({:?})", info.name, info.backend);
-
-            let caps = surface.get_capabilities(&adapter);
-
-            let (device, queue) = adapter
-                .request_device(&wgpu::DeviceDescriptor {
-                    label: Some("reco_preview"),
-                    ..Default::default()
-                })
-                .await
-                .expect("request device");
-
-            (
-                reco_core::gpu::GpuContext {
-                    device,
-                    queue,
-                    adapter_info: info,
-                },
-                caps,
-            )
-        });
-
-        self.surface_format = caps.formats[0];
-        self.alpha_mode = caps.alpha_modes[0];
+        self.surface_format = surface_info.format;
+        self.alpha_mode = surface_info.alpha_modes[0];
         let surface_format = self.surface_format;
         log::info!("Surface format: {:?}", surface_format);
 
         surface.configure(
-            &gpu.device,
-            &wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            gpu.device(),
+            &reco_core::wgpu::SurfaceConfiguration {
+                usage: reco_core::wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: surface_format,
                 width: self.width,
                 height: self.height,
-                present_mode: wgpu::PresentMode::Fifo,
+                present_mode: reco_core::wgpu::PresentMode::Fifo,
                 desired_maximum_frame_latency: 2,
                 alpha_mode: self.alpha_mode,
                 view_formats: vec![],
@@ -384,13 +355,13 @@ impl ApplicationHandler for App {
                     self.height = size.height;
                     if let (Some(surface), Some(pipeline)) = (&self.surface, &mut self.pipeline) {
                         surface.configure(
-                            &pipeline.gpu().device,
-                            &wgpu::SurfaceConfiguration {
-                                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            pipeline.gpu().device(),
+                            &reco_core::wgpu::SurfaceConfiguration {
+                                usage: reco_core::wgpu::TextureUsages::RENDER_ATTACHMENT,
                                 format: self.surface_format,
                                 width: self.width,
                                 height: self.height,
-                                present_mode: wgpu::PresentMode::Fifo,
+                                present_mode: reco_core::wgpu::PresentMode::Fifo,
                                 desired_maximum_frame_latency: 2,
                                 alpha_mode: self.alpha_mode,
                                 view_formats: vec![],
@@ -511,8 +482,8 @@ impl ApplicationHandler for App {
                 let pipeline = self.pipeline.as_ref().unwrap();
 
                 let frame = match surface.get_current_texture() {
-                    wgpu::CurrentSurfaceTexture::Success(f)
-                    | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    reco_core::wgpu::CurrentSurfaceTexture::Success(f)
+                    | reco_core::wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
                     other => {
                         log::warn!("Surface error: {other:?}");
                         return;
@@ -520,7 +491,7 @@ impl ApplicationHandler for App {
                 };
                 let view = frame
                     .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
+                    .create_view(&reco_core::wgpu::TextureViewDescriptor::default());
 
                 let left = reco_core::pipeline::YuvPlanes {
                     y: &self.current_left.y,

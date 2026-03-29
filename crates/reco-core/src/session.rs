@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::calibration::MatchCalibration;
 use crate::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
-use crate::gpu::{GpuContext, GpuError};
+use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::{Nv12Converter, Nv12Error};
 use crate::pipeline::{PipelineError, StitchPipeline};
 use crate::renderer::InputFormat;
@@ -39,8 +39,8 @@ pub struct SessionConfig {
     pub input_width: u32,
     /// Input frame height in pixels.
     pub input_height: u32,
-    /// GPU render target format (typically `Rgba8Unorm` for encoding).
-    pub output_format: wgpu::TextureFormat,
+    /// GPU render target format (typically [`OutputFormat::Rgba8Unorm`] for encoding).
+    pub output_format: OutputFormat,
     /// Input pixel format (YUV420P or NV12).
     pub input_format: InputFormat,
 }

@@ -194,7 +194,7 @@ fn run_stitch_zero_copy(
     interrupted: &Arc<AtomicBool>,
     progress: &crate::helpers::ProgressReporter,
 ) -> anyhow::Result<u64> {
-    use reco_core::vulkan_interop::create_shared_texture;
+    use reco_core::vulkan_interop::{Nv12Plane, create_nv12_shared_texture};
 
     // Create double-buffered shared textures for each camera (Y + UV per slot)
     log::info!("Creating shared textures for zero-copy...");
@@ -206,16 +206,11 @@ fn run_stitch_zero_copy(
         reco_core::vulkan_interop::SharedTexture,
         reco_core::vulkan_interop::SharedTexture,
     )> {
-        let y = create_shared_texture(gpu, input_width, input_height, wgpu::TextureFormat::R8Unorm)
+        let y = create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Y)
             .map_err(|e| anyhow::anyhow!("{label} Y[{slot}] shared texture: {e}"))?;
 
-        let uv = create_shared_texture(
-            gpu,
-            input_width / 2,
-            input_height / 2,
-            wgpu::TextureFormat::Rg8Unorm,
-        )
-        .map_err(|e| anyhow::anyhow!("{label} UV[{slot}] shared texture: {e}"))?;
+        let uv = create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Uv)
+            .map_err(|e| anyhow::anyhow!("{label} UV[{slot}] shared texture: {e}"))?;
 
         Ok((y, uv))
     };
@@ -277,14 +272,8 @@ fn run_stitch_zero_copy(
 
     // Configure bind groups for GPU-resident shared textures
     let bind_groups = session.pipeline_mut().configure_gpu_source(
-        [
-            (&left_y_0.texture, &left_uv_0.texture),
-            (&left_y_1.texture, &left_uv_1.texture),
-        ],
-        [
-            (&right_y_0.texture, &right_uv_0.texture),
-            (&right_y_1.texture, &right_uv_1.texture),
-        ],
+        [(&left_y_0, &left_uv_0), (&left_y_1, &left_uv_1)],
+        [(&right_y_0, &right_uv_0), (&right_y_1, &right_uv_1)],
     );
 
     let mut frame_count: u64 = 0;
@@ -418,7 +407,7 @@ pub fn run_stitch(
         && source.as_ref().unwrap().decode_backend()
             == reco_io::ffmpeg::decoder::DecodeBackend::Cuda
         && reco_core::cuda_interop::is_cuda_available()
-        && gpu.adapter_info.backend == wgpu::Backend::Vulkan;
+        && gpu.is_vulkan();
     #[cfg(not(target_os = "linux"))]
     let use_zero_copy = false;
 
@@ -433,7 +422,7 @@ pub fn run_stitch(
         viewport,
         input_width,
         input_height,
-        output_format: wgpu::TextureFormat::Rgba8Unorm,
+        output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
         input_format,
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;

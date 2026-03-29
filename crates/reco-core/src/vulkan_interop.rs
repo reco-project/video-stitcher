@@ -280,6 +280,36 @@ fn wgpu_format_to_vk(format: wgpu::TextureFormat) -> ash::vk::Format {
     }
 }
 
+/// NV12 plane identifier for [`create_nv12_shared_texture`].
+#[derive(Debug, Clone, Copy)]
+pub enum Nv12Plane {
+    /// Luminance plane (full resolution, `R8Unorm`).
+    Y,
+    /// Chrominance plane (half resolution in each dimension, `Rg8Unorm`).
+    Uv,
+}
+
+/// Create a shared texture sized and formatted for an NV12 plane.
+///
+/// This is a convenience wrapper around [`create_shared_texture`] that
+/// infers the format and dimensions from the plane type:
+/// - `Y`: full `width` x `height`, `R8Unorm`
+/// - `UV`: `width/2` x `height/2`, `Rg8Unorm`
+#[cfg(target_os = "linux")]
+pub fn create_nv12_shared_texture(
+    gpu: &GpuContext,
+    width: u32,
+    height: u32,
+    plane: Nv12Plane,
+) -> Result<SharedTexture, CudaInteropError> {
+    match plane {
+        Nv12Plane::Y => create_shared_texture(gpu, width, height, wgpu::TextureFormat::R8Unorm),
+        Nv12Plane::Uv => {
+            create_shared_texture(gpu, width / 2, height / 2, wgpu::TextureFormat::Rg8Unorm)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

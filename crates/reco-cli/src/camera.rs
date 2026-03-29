@@ -59,7 +59,7 @@ pub fn run_camera(
         viewport,
         input_width: capture_width,
         input_height: capture_height,
-        output_format: wgpu::TextureFormat::Rgba8Unorm,
+        output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
         input_format,
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;

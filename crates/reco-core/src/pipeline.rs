@@ -132,9 +132,10 @@ impl StitchPipeline {
         viewport: ViewportConfig,
         input_width: u32,
         input_height: u32,
-        output_format: wgpu::TextureFormat,
+        output_format: impl Into<wgpu::TextureFormat>,
         input_format: InputFormat,
     ) -> Result<Self, PipelineError> {
+        let output_format = output_format.into();
         let scene = SceneGeometry::from_layout(&calibration.layout);
         let renderer = Renderer::new(
             &gpu,
@@ -206,27 +207,33 @@ impl StitchPipeline {
     #[cfg(target_os = "linux")]
     pub fn configure_gpu_source(
         &mut self,
-        left_textures: [(&wgpu::Texture, &wgpu::Texture); 2],
-        right_textures: [(&wgpu::Texture, &wgpu::Texture); 2],
+        left_textures: [(
+            &crate::vulkan_interop::SharedTexture,
+            &crate::vulkan_interop::SharedTexture,
+        ); 2],
+        right_textures: [(
+            &crate::vulkan_interop::SharedTexture,
+            &crate::vulkan_interop::SharedTexture,
+        ); 2],
     ) -> GpuSourceBindGroups {
         let left_bg_0 = self.renderer.create_texture_bind_group(
-            left_textures[0].0,
-            left_textures[0].1,
+            &left_textures[0].0.texture,
+            &left_textures[0].1.texture,
             "left_slot0",
         );
         let left_bg_1 = self.renderer.create_texture_bind_group(
-            left_textures[1].0,
-            left_textures[1].1,
+            &left_textures[1].0.texture,
+            &left_textures[1].1.texture,
             "left_slot1",
         );
         let right_bg_0 = self.renderer.create_texture_bind_group(
-            right_textures[0].0,
-            right_textures[0].1,
+            &right_textures[0].0.texture,
+            &right_textures[0].1.texture,
             "right_slot0",
         );
         let right_bg_1 = self.renderer.create_texture_bind_group(
-            right_textures[1].0,
-            right_textures[1].1,
+            &right_textures[1].0.texture,
+            &right_textures[1].1.texture,
             "right_slot1",
         );
         GpuSourceBindGroups {

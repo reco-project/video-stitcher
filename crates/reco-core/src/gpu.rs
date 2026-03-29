@@ -15,6 +15,32 @@
 
 use thiserror::Error;
 
+/// Output pixel format for the render target.
+///
+/// Wraps the subset of [`wgpu::TextureFormat`] variants actually used by
+/// the stitching pipeline. Headless consumers use this instead of depending
+/// on `wgpu` directly. Windowed consumers that need the surface's native
+/// format can pass a raw `wgpu::TextureFormat` via the re-export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    /// 8-bit RGBA, linear (typical for encoding).
+    Rgba8Unorm,
+    /// 8-bit RGBA, sRGB (typical for on-screen display).
+    Rgba8UnormSrgb,
+    /// 8-bit BGRA, sRGB (some surface formats on macOS/Windows).
+    Bgra8UnormSrgb,
+}
+
+impl From<OutputFormat> for wgpu::TextureFormat {
+    fn from(fmt: OutputFormat) -> Self {
+        match fmt {
+            OutputFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+            OutputFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+            OutputFormat::Bgra8UnormSrgb => wgpu::TextureFormat::Bgra8UnormSrgb,
+        }
+    }
+}
+
 /// Errors that can occur during GPU initialization.
 #[derive(Debug, Error)]
 pub enum GpuError {
@@ -31,17 +57,29 @@ pub enum GpuError {
     DeviceRequest(#[from] wgpu::RequestDeviceError),
 }
 
+/// Information about a surface's capabilities, returned by
+/// [`GpuContext::for_surface`].
+pub struct SurfaceInfo {
+    /// The preferred texture format for this surface.
+    pub format: wgpu::TextureFormat,
+    /// Supported alpha compositing modes.
+    pub alpha_modes: Vec<wgpu::CompositeAlphaMode>,
+}
+
 /// Shared GPU context used by all pipeline stages.
 ///
 /// Created once at startup and passed to the pipeline, scene renderer,
 /// and viewport modules. Wrapping in `Arc` is left to the caller.
+///
+/// Headless consumers create this with [`GpuContext::new`]. Windowed
+/// consumers that need surface compatibility use [`GpuContext::for_surface`].
 pub struct GpuContext {
     /// The wgpu device handle.
-    pub device: wgpu::Device,
+    pub(crate) device: wgpu::Device,
     /// The command submission queue.
-    pub queue: wgpu::Queue,
+    pub(crate) queue: wgpu::Queue,
     /// Information about the selected adapter.
-    pub adapter_info: wgpu::AdapterInfo,
+    pub(crate) adapter_info: wgpu::AdapterInfo,
 }
 
 impl GpuContext {
@@ -134,9 +172,97 @@ impl GpuContext {
         }
     }
 
+    /// Initialize a GPU context for a windowed surface.
+    ///
+    /// Creates a device compatible with the given surface and returns
+    /// the surface's preferred format and alpha modes. The caller is
+    /// responsible for creating the `wgpu::Instance` and `wgpu::Surface`
+    /// (since surface creation requires a platform window handle).
+    ///
+    /// ```rust,ignore
+    /// let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+    /// let surface = instance.create_surface(window)?;
+    /// let (gpu, surface_info) = GpuContext::for_surface(&instance, &surface).await?;
+    /// ```
+    pub async fn for_surface(
+        instance: &wgpu::Instance,
+        surface: &wgpu::Surface<'_>,
+    ) -> Result<(Self, SurfaceInfo), GpuError> {
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
+                compatible_surface: Some(surface),
+            })
+            .await?;
+
+        let adapter_info = adapter.get_info();
+        log::info!(
+            "Selected GPU: {} ({:?})",
+            adapter_info.name,
+            adapter_info.backend
+        );
+
+        let caps = surface.get_capabilities(&adapter);
+        let surface_info = SurfaceInfo {
+            format: caps.formats[0],
+            alpha_modes: caps.alpha_modes,
+        };
+
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("reco"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                ..Default::default()
+            })
+            .await?;
+
+        let ctx = Self {
+            device,
+            queue,
+            adapter_info,
+        };
+        Ok((ctx, surface_info))
+    }
+
     /// The name of the selected GPU adapter (e.g. "NVIDIA GeForce RTX 5070").
     pub fn gpu_name(&self) -> &str {
         &self.adapter_info.name
+    }
+
+    /// The GPU backend name (e.g. "Vulkan", "Dx12", "Metal").
+    pub fn backend_name(&self) -> &str {
+        match self.adapter_info.backend {
+            wgpu::Backend::Vulkan => "Vulkan",
+            wgpu::Backend::Dx12 => "Dx12",
+            wgpu::Backend::Metal => "Metal",
+            wgpu::Backend::Gl => "OpenGL",
+            _ => "Unknown",
+        }
+    }
+
+    /// The GPU driver version string.
+    pub fn driver_info(&self) -> &str {
+        &self.adapter_info.driver_info
+    }
+
+    /// Whether the GPU backend is Vulkan (needed for CUDA/Vulkan interop).
+    pub fn is_vulkan(&self) -> bool {
+        self.adapter_info.backend == wgpu::Backend::Vulkan
+    }
+
+    /// Access the wgpu device handle.
+    ///
+    /// Windowed consumers need this for surface configuration.
+    /// Headless consumers should not need direct device access.
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    /// Access the wgpu command queue.
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
     }
 }
 
