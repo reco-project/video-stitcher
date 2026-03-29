@@ -276,12 +276,12 @@ impl StitchPipeline {
         yaw: f32,
         pitch: f32,
     ) -> wgpu::CommandBuffer {
-        let left_bg =
-            self.renderer
-                .create_texture_bind_group(left_y, left_uv, "metal_left");
-        let right_bg =
-            self.renderer
-                .create_texture_bind_group(right_y, right_uv, "metal_right");
+        let left_bg = self
+            .renderer
+            .create_texture_bind_group(left_y, left_uv, "metal_left");
+        let right_bg = self
+            .renderer
+            .create_texture_bind_group(right_y, right_uv, "metal_right");
         self.renderer.set_left_bind_group(left_bg);
         self.renderer.set_right_bind_group(right_bg);
         self.render_to_target_gpu(yaw, pitch)

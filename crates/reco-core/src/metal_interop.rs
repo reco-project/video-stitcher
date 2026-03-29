@@ -174,10 +174,8 @@ impl MetalTextureCache {
         plane_index: u64,
         gpu: &GpuContext,
     ) -> Result<ImportedPlaneTexture, MetalInteropError> {
-        let width =
-            unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, plane_index) } as u32;
-        let height =
-            unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, plane_index) } as u32;
+        let width = unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, plane_index) } as u32;
+        let height = unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, plane_index) } as u32;
 
         let (mtl_format, wgpu_format) = match plane_index {
             0 => (MTL_PIXEL_FORMAT_R8_UNORM, wgpu::TextureFormat::R8Unorm),
@@ -213,13 +211,8 @@ impl MetalTextureCache {
         }
 
         // Wrap as a wgpu texture via the Metal HAL
-        let wgpu_texture = Self::wrap_mtl_texture(
-            mtl_texture_ptr,
-            width,
-            height,
-            wgpu_format,
-            gpu,
-        )?;
+        let wgpu_texture =
+            Self::wrap_mtl_texture(mtl_texture_ptr, width, height, wgpu_format, gpu)?;
 
         Ok(ImportedPlaneTexture {
             texture: wgpu_texture,

@@ -522,11 +522,17 @@ pub fn run_stitch(
         session.gpu_name(),
         if use_zero_copy {
             #[cfg(target_os = "linux")]
-            { "zero-copy (CUDA/Vulkan)" }
+            {
+                "zero-copy (CUDA/Vulkan)"
+            }
             #[cfg(target_os = "macos")]
-            { "zero-copy (VideoToolbox/Metal)" }
+            {
+                "zero-copy (VideoToolbox/Metal)"
+            }
             #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-            { "zero-copy" }
+            {
+                "zero-copy"
+            }
         } else {
             "CPU upload"
         }
