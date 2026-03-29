@@ -75,15 +75,25 @@ pub enum PipelineError {
 /// [`Self::process_frame`] or [`Self::render_to_target_nv12`].
 pub struct StitchPipeline {
     /// GPU device and queue.
-    pub gpu: GpuContext,
+    pub(crate) gpu: GpuContext,
     /// 3D scene layout computed from calibration.
-    pub scene: SceneGeometry,
+    pub(crate) scene: SceneGeometry,
     /// Calibration data (camera intrinsics + layout).
-    pub calibration: MatchCalibration,
+    pub(crate) calibration: MatchCalibration,
     /// Output viewport configuration.
-    pub viewport: ViewportConfig,
+    pub(crate) viewport: ViewportConfig,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
+}
+
+/// Pre-built bind groups for GPU-resident zero-copy sources.
+///
+/// Created by [`StitchPipeline::configure_gpu_source`]. Each slot
+/// corresponds to a double-buffer index used by the decode thread.
+#[cfg(target_os = "linux")]
+pub struct GpuSourceBindGroups {
+    left: [wgpu::BindGroup; 2],
+    right: [wgpu::BindGroup; 2],
 }
 
 impl StitchPipeline {
@@ -150,6 +160,140 @@ impl StitchPipeline {
             viewport,
             renderer,
         })
+    }
+
+    /// The name of the GPU this pipeline is running on.
+    pub fn gpu_name(&self) -> &str {
+        self.gpu.gpu_name()
+    }
+
+    /// Shared reference to the GPU context.
+    ///
+    /// Needed by consumers that create their own wgpu resources
+    /// (e.g. surface configuration for a preview window).
+    pub fn gpu(&self) -> &GpuContext {
+        &self.gpu
+    }
+
+    /// Current viewport configuration.
+    pub fn viewport(&self) -> &ViewportConfig {
+        &self.viewport
+    }
+
+    /// Resize the output viewport.
+    ///
+    /// Call this when the window or output dimensions change.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.viewport.width = width;
+        self.viewport.height = height;
+    }
+
+    /// Set the horizontal field of view in degrees.
+    pub fn set_fov(&mut self, fov_degrees: f32) {
+        self.viewport.fov_degrees = fov_degrees;
+    }
+
+    /// Get the current field of view in degrees.
+    pub fn fov(&self) -> f32 {
+        self.viewport.fov_degrees
+    }
+
+    /// Set up bind groups for GPU-resident zero-copy input.
+    ///
+    /// Creates bind groups for the provided shared textures (Y + UV per slot
+    /// per camera). Call once during setup, then pass the result to
+    /// [`Self::render_gpu_frame`] each frame.
+    #[cfg(target_os = "linux")]
+    pub fn configure_gpu_source(
+        &mut self,
+        left_textures: [(&wgpu::Texture, &wgpu::Texture); 2],
+        right_textures: [(&wgpu::Texture, &wgpu::Texture); 2],
+    ) -> GpuSourceBindGroups {
+        let left_bg_0 = self.renderer.create_texture_bind_group(
+            left_textures[0].0,
+            left_textures[0].1,
+            "left_slot0",
+        );
+        let left_bg_1 = self.renderer.create_texture_bind_group(
+            left_textures[1].0,
+            left_textures[1].1,
+            "left_slot1",
+        );
+        let right_bg_0 = self.renderer.create_texture_bind_group(
+            right_textures[0].0,
+            right_textures[0].1,
+            "right_slot0",
+        );
+        let right_bg_1 = self.renderer.create_texture_bind_group(
+            right_textures[1].0,
+            right_textures[1].1,
+            "right_slot1",
+        );
+        GpuSourceBindGroups {
+            left: [left_bg_0, left_bg_1],
+            right: [right_bg_0, right_bg_1],
+        }
+    }
+
+    /// Select bind groups for a GPU-resident frame and render.
+    ///
+    /// Call this instead of manually setting bind groups via `renderer_mut()`.
+    #[cfg(target_os = "linux")]
+    pub fn render_gpu_frame(
+        &mut self,
+        bind_groups: &GpuSourceBindGroups,
+        left_slot: u8,
+        right_slot: u8,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.renderer
+            .set_left_bind_group(bind_groups.left[left_slot as usize].clone());
+        self.renderer
+            .set_right_bind_group(bind_groups.right[right_slot as usize].clone());
+        self.render_to_target_gpu(yaw, pitch)
+    }
+
+    /// Process a CPU-resident stereo frame and return the render command buffer.
+    ///
+    /// Handles YUV420P vs NV12 format differences internally.
+    /// For GPU-resident frames, use [`Self::render_gpu_frame`] instead.
+    pub fn render_stereo_frame(
+        &self,
+        frame: &crate::source::StereoFrame,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        use crate::source::StereoFrame;
+        match frame {
+            StereoFrame::Yuv420p(pair) => {
+                let left = YuvPlanes {
+                    y: &pair.left.y,
+                    u: &pair.left.u,
+                    v: &pair.left.v,
+                };
+                let right = YuvPlanes {
+                    y: &pair.right.y,
+                    u: &pair.right.u,
+                    v: &pair.right.v,
+                };
+                self.render_to_target(&left, &right, yaw, pitch)
+            }
+            StereoFrame::Nv12(pair) => {
+                let left = Nv12Planes {
+                    y: &pair.left.y,
+                    uv: &pair.left.uv,
+                };
+                let right = Nv12Planes {
+                    y: &pair.right.y,
+                    uv: &pair.right.uv,
+                };
+                self.render_to_target_nv12(&left, &right, yaw, pitch)
+            }
+            StereoFrame::GpuResident { .. } => {
+                panic!("GpuResident frames must use render_gpu_frame()")
+            }
+        }
     }
 
     /// Render a frame directly to a texture view (for window display).

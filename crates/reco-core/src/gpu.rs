@@ -93,6 +93,11 @@ impl GpuContext {
             adapter_info,
         })
     }
+
+    /// The name of the selected GPU adapter (e.g. "NVIDIA GeForce RTX 5070").
+    pub fn gpu_name(&self) -> &str {
+        &self.adapter_info.name
+    }
 }
 
 #[cfg(test)]
