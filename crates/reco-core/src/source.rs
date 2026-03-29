@@ -87,6 +87,23 @@ pub struct Nv12FramePair {
     pub right: Nv12Data,
 }
 
+/// A stereo frame in any supported format.
+///
+/// Sources produce whichever format is most efficient for their backend:
+/// - File decode (CPU path): `Yuv420p`
+/// - Jetson ISP / NVDEC NV12: `Nv12`
+/// - NVDEC zero-copy (CUDA/Vulkan shared textures): `GpuResident`
+pub enum StereoFrame {
+    /// CPU-resident YUV420P planes (3 planes per camera).
+    Yuv420p(FramePair),
+    /// CPU-resident NV12 planes (2 planes per camera).
+    Nv12(Nv12FramePair),
+    /// GPU-resident: data already written to shared textures by the source.
+    /// The `u8` values are double-buffer slot indices that the pipeline
+    /// uses to select the correct bind group.
+    GpuResident { left_slot: u8, right_slot: u8 },
+}
+
 /// Metadata about the frame source.
 pub struct SourceInfo {
     /// Frame width in pixels.
@@ -99,18 +116,21 @@ pub struct SourceInfo {
 
 /// Trait for stereo frame sources.
 ///
-/// A frame source delivers pairs of left/right YUV420P frames to the
-/// pipeline. Implementations handle their own threading (e.g. dedicated
-/// capture threads with bounded channels). The pipeline calls
-/// [`Self::next_pair`] and expects it to return quickly (either with
-/// data or `None` for end-of-stream).
+/// A frame source delivers stereo frame pairs to the pipeline in whatever
+/// format is most efficient for the backend. The pipeline handles format
+/// differences internally via [`StereoFrame`].
+///
+/// Implementations handle their own threading (e.g. dedicated capture
+/// threads with bounded channels). The pipeline calls [`Self::next_frame`]
+/// and expects it to block until data is ready or return `None` for
+/// end-of-stream.
 pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).
     fn info(&self) -> SourceInfo;
 
-    /// Get the next stereo frame pair, or `None` if the source is exhausted.
+    /// Get the next stereo frame, or `None` if the source is exhausted.
     ///
     /// For live sources (cameras), this blocks until a frame is available.
     /// For file sources, returns `None` at end of file.
-    fn next_pair(&mut self) -> Result<Option<FramePair>, SourceError>;
+    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError>;
 }
