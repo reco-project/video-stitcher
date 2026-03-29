@@ -122,6 +122,9 @@ pub fn create_shared_texture(
                 instance.get_physical_device_memory_properties(physical_device)
             };
 
+            // Prefer DEVICE_LOCAL, but fall back to any supported memory type.
+            // On unified-memory GPUs (Jetson/Tegra) the driver may not flag
+            // imported-fd-compatible types as DEVICE_LOCAL.
             let memory_type_index = (0..mem_props.memory_type_count)
                 .find(|&i| {
                     let type_bits = 1 << i;
@@ -129,9 +132,18 @@ pub fn create_shared_texture(
                     let props = mem_props.memory_types[i as usize].property_flags;
                     is_supported && props.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
                 })
+                .or_else(|| {
+                    log::warn!(
+                        "No DEVICE_LOCAL memory type for imported image, \
+                         falling back to any supported type (unified memory GPU?)"
+                    );
+                    (0..mem_props.memory_type_count).find(|&i| {
+                        (mem_reqs.memory_type_bits & (1 << i)) != 0
+                    })
+                })
                 .ok_or_else(|| {
                     CudaInteropError::VulkanError(
-                        "no DEVICE_LOCAL memory type for imported image".into(),
+                        "no compatible memory type for imported image".into(),
                     )
                 })?;
 
@@ -290,12 +302,15 @@ mod tests {
             return;
         }
 
-        let tex = create_shared_texture(&gpu, 1920, 1080, wgpu::TextureFormat::R8Unorm)
+        // Use a small texture - this test verifies the interop pipeline works,
+        // not that it handles production sizes. Smaller textures avoid OOM on
+        // memory-constrained devices (e.g. Jetson with shared CPU/GPU RAM).
+        let tex = create_shared_texture(&gpu, 256, 256, wgpu::TextureFormat::R8Unorm)
             .expect("should create shared texture");
 
         println!(
             "Shared texture created: {}x{}, cuda_ptr=0x{:x}, pitch={}",
-            1920, 1080, tex.cuda_ptr, tex.pitch
+            256, 256, tex.cuda_ptr, tex.pitch
         );
 
         // Verify the texture is usable by creating a view
@@ -332,9 +347,9 @@ mod tests {
             return;
         }
 
-        // Step 1: Allocate CUDA shared memory and grab the fd
+        // Step 1: Allocate CUDA shared memory and grab the fd (small size for Jetson compat)
         let shared_mem =
-            crate::cuda_interop::allocate_shared_memory(1920 * 1080).expect("alloc shared mem");
+            crate::cuda_interop::allocate_shared_memory(256 * 256).expect("alloc shared mem");
         let fd = shared_mem.shared_handle;
         println!("CUDA exported fd = {fd}");
 
@@ -349,7 +364,7 @@ mod tests {
         println!("Before Vulkan import: fd {fd} is valid (fcntl returned {valid_before})");
 
         // Step 2: Import into Vulkan (this should consume the fd)
-        let tex = create_shared_texture(&gpu, 1920, 1080, wgpu::TextureFormat::R8Unorm)
+        let tex = create_shared_texture(&gpu, 256, 256, wgpu::TextureFormat::R8Unorm)
             .expect("create shared texture");
         let imported_fd = tex._shared_mem.shared_handle;
 
