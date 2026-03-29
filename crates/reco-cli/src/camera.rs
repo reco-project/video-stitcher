@@ -157,7 +157,7 @@ pub fn run_camera(
                 pipeline.render_target(),
                 render_buf,
             )?;
-            if encode_tx.send(nv12_data).is_err() {
+            if encode_tx.send(nv12_data.to_vec()).is_err() {
                 anyhow::bail!("encoder thread died during warmup");
             }
             println!("Warmup complete, starting capture...");
@@ -190,7 +190,7 @@ pub fn run_camera(
                 pipeline.render_target(),
                 render_buf,
             )?;
-            if encode_tx.send(nv12_data).is_err() {
+            if encode_tx.send(nv12_data.to_vec()).is_err() {
                 break;
             }
             frame_count += 1;
@@ -243,7 +243,7 @@ pub fn run_camera(
                 pipeline.render_target(),
                 render_buf,
             )?;
-            if encode_tx.send(nv12_data).is_err() {
+            if encode_tx.send(nv12_data.to_vec()).is_err() {
                 break;
             }
             frame_count += 1;

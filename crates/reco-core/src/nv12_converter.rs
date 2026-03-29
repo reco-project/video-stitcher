@@ -48,6 +48,11 @@ pub struct Nv12Converter {
     /// descriptor pool allocation which causes OOM on Vulkan (wgpu#7525).
     /// Stores a raw pointer to the texture for identity comparison (never dereferenced).
     cached_bind_group: Option<(*const wgpu::Texture, wgpu::BindGroup)>,
+    /// Reusable readback buffer (avoids 3 MB allocation per frame at 1080p).
+    readback_buffer: Vec<u8>,
+    /// Reusable channel for map_async signaling (avoids per-frame channel alloc).
+    map_tx: std::sync::mpsc::SyncSender<Result<(), wgpu::BufferAsyncError>>,
+    map_rx: std::sync::mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
     width: u32,
     height: u32,
     /// Dispatch dimensions for the compute shader.
@@ -175,6 +180,8 @@ impl Nv12Converter {
             dispatch_y,
         );
 
+        let (map_tx, map_rx) = std::sync::mpsc::sync_channel(1);
+
         Ok(Self {
             pipeline,
             bind_group_layout,
@@ -182,6 +189,9 @@ impl Nv12Converter {
             nv12_gpu_buffer,
             nv12_staging_buffer,
             cached_bind_group: None,
+            readback_buffer: vec![0u8; nv12_bytes as usize],
+            map_tx,
+            map_rx,
             width,
             height,
             dispatch_x,
@@ -195,8 +205,10 @@ impl Nv12Converter {
     /// It is submitted together with the compute shader in a single
     /// `queue.submit` call to guarantee correct GPU synchronization.
     ///
-    /// The returned `Vec<u8>` contains tightly-packed NV12 data:
+    /// Returns a borrowed slice of tightly-packed NV12 data:
     /// `[Y plane: width*height bytes] [UV plane: width*height/2 bytes]`
+    ///
+    /// The slice is valid until the next call to this method.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "nv12_convert_readback")
@@ -206,7 +218,7 @@ impl Nv12Converter {
         gpu: &GpuContext,
         render_target: &wgpu::Texture,
         render_commands: wgpu::CommandBuffer,
-    ) -> Result<Vec<u8>, Nv12Error> {
+    ) -> Result<&[u8], Nv12Error> {
         // Cache the bind group to avoid per-frame descriptor pool allocation,
         // which causes OOM on the Vulkan backend (wgpu#7525). Rebuild only
         // if the render target texture changes.
@@ -275,29 +287,29 @@ impl Nv12Converter {
             gpu.queue.submit([render_commands, encoder.finish()]);
         }
 
-        // Readback from staging buffer
-        let output = {
+        // Readback from staging buffer into reusable buffer
+        {
             crate::profile_scope!("nv12_readback");
             let buffer_slice = self.nv12_staging_buffer.slice(..);
-            let (tx, rx) = std::sync::mpsc::sync_channel(1);
+            let tx = self.map_tx.clone();
             buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
                 let _ = tx.send(result);
             });
             gpu.device
                 .poll(wgpu::PollType::wait())
                 .map_err(|_| Nv12Error::BufferMapFailed)?;
-            rx.recv()
+            self.map_rx
+                .recv()
                 .map_err(|_| Nv12Error::BufferMapFailed)?
                 .map_err(|_| Nv12Error::BufferMapFailed)?;
 
             let mapped = buffer_slice.get_mapped_range();
-            let output = mapped.to_vec();
+            self.readback_buffer.copy_from_slice(&mapped);
             drop(mapped);
             self.nv12_staging_buffer.unmap();
-            output
-        };
+        }
 
-        Ok(output)
+        Ok(&self.readback_buffer)
     }
 
     /// Output width in pixels.

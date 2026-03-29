@@ -314,7 +314,7 @@ fn run_stitch_zero_copy(
             pipeline.render_target(),
             render_buf,
         )?;
-        encoder.write_nv12_frame(&nv12_data)?;
+        encoder.write_nv12_frame(nv12_data)?;
 
         // GPU is done reading these slots - release them for decode to reuse.
         // poll(Wait) inside convert_and_readback guarantees the render pass
@@ -534,7 +534,7 @@ pub fn run_stitch(
                 pipeline.render_target(),
                 render_buf,
             )?;
-            encoder.write_nv12_frame(&nv12_data)?;
+            encoder.write_nv12_frame(nv12_data)?;
             frame_count += 1;
 
             progress.report(frame_count);
