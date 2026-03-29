@@ -261,6 +261,32 @@ impl StitchPipeline {
         self.render_to_target_gpu(yaw, pitch)
     }
 
+    /// Render from imported GPU textures (e.g. Metal/VideoToolbox zero-copy).
+    ///
+    /// Takes raw Y + UV texture references for each camera, creates bind groups,
+    /// and renders. Unlike [`Self::render_gpu_frame`] which uses pre-built
+    /// double-buffered bind groups, this creates them per-frame (the overhead
+    /// is negligible compared to decode time).
+    pub fn render_imported_textures(
+        &mut self,
+        left_y: &wgpu::Texture,
+        left_uv: &wgpu::Texture,
+        right_y: &wgpu::Texture,
+        right_uv: &wgpu::Texture,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        let left_bg =
+            self.renderer
+                .create_texture_bind_group(left_y, left_uv, "metal_left");
+        let right_bg =
+            self.renderer
+                .create_texture_bind_group(right_y, right_uv, "metal_right");
+        self.renderer.set_left_bind_group(left_bg);
+        self.renderer.set_right_bind_group(right_bg);
+        self.render_to_target_gpu(yaw, pitch)
+    }
+
     /// Process a CPU-resident stereo frame and return the render command buffer.
     ///
     /// Handles YUV420P vs NV12 format differences internally.

@@ -252,6 +252,11 @@ impl GpuContext {
         self.adapter_info.backend == wgpu::Backend::Vulkan
     }
 
+    /// Whether the GPU backend is Metal (needed for VideoToolbox interop).
+    pub fn is_metal(&self) -> bool {
+        self.adapter_info.backend == wgpu::Backend::Metal
+    }
+
     /// Access the wgpu device handle.
     ///
     /// Windowed consumers need this for surface configuration.

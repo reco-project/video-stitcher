@@ -344,6 +344,80 @@ fn run_stitch_zero_copy(
     Ok(frame_count)
 }
 
+/// Run the stitch loop using VideoToolbox/Metal zero-copy (macOS).
+///
+/// Each frame: VideoToolbox decode -> CVPixelBuffer -> CVMetalTextureCache ->
+/// MTLTexture -> wgpu bind group -> render -> NV12 readback -> encode.
+#[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
+fn run_stitch_metal_zero_copy(
+    session: &mut reco_core::session::StitchSession,
+    encoder: &mut dyn reco_core::encoder::Encoder,
+    left_path: &str,
+    right_path: &str,
+    frame_limit: u64,
+    yaw: f32,
+    pitch: f32,
+    interrupted: &Arc<AtomicBool>,
+    progress: &crate::helpers::ProgressReporter,
+) -> anyhow::Result<u64> {
+    use reco_core::metal_interop::MetalTextureCache;
+    use reco_io::ffmpeg::decoder::VideoDecoder;
+    use std::path::Path;
+
+    let mut left_dec = VideoDecoder::open(Path::new(left_path))?;
+    let mut right_dec = VideoDecoder::open(Path::new(right_path))?;
+
+    log::info!(
+        "Metal zero-copy: left={} ({}), right={} ({})",
+        left_dec.backend(),
+        left_dec.backend(),
+        right_dec.backend(),
+        right_dec.backend(),
+    );
+
+    // Create the Metal texture cache (bridges CVPixelBuffer -> MTLTexture)
+    let cache = MetalTextureCache::new(session.gpu())?;
+
+    let mut frame_count: u64 = 0;
+
+    while !interrupted.load(Ordering::Relaxed) && frame_count < frame_limit {
+        // Decode one frame from each camera
+        let left_vt = match left_dec.next_frame_vt()? {
+            Some(f) => f,
+            None => break,
+        };
+        let right_vt = match right_dec.next_frame_vt()? {
+            Some(f) => f,
+            None => break,
+        };
+
+        // Import NV12 planes as Metal textures (zero-copy via IOSurface)
+        let (left_y, left_uv) = cache.import_nv12(left_vt.cv_pixel_buffer, session.gpu())?;
+        let (right_y, right_uv) = cache.import_nv12(right_vt.cv_pixel_buffer, session.gpu())?;
+
+        // Render using the imported textures
+        let render_buf = session.pipeline_mut().render_imported_textures(
+            &left_y.texture,
+            &left_uv.texture,
+            &right_y.texture,
+            &right_uv.texture,
+            yaw,
+            pitch,
+        );
+
+        // Convert to NV12 and submit to encoder
+        session.submit_render_output(render_buf, encoder)?;
+
+        frame_count += 1;
+        progress.report(frame_count);
+
+        // ImportedPlaneTextures drop here, releasing CVMetalTextureRefs
+    }
+
+    Ok(frame_count)
+}
+
 /// Run the stitch subcommand: decode two video files and encode a stitched panorama.
 #[allow(clippy::too_many_arguments)]
 pub fn run_stitch(
@@ -419,7 +493,12 @@ pub fn run_stitch(
             == reco_io::ffmpeg::decoder::DecodeBackend::Cuda
         && reco_core::cuda_interop::is_cuda_available()
         && gpu.is_vulkan();
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    let use_zero_copy = std::env::var("RECO_NO_HWACCEL").is_err()
+        && source.as_ref().unwrap().decode_backend()
+            == reco_io::ffmpeg::decoder::DecodeBackend::VideoToolbox
+        && gpu.is_metal();
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let use_zero_copy = false;
 
     let input_format = if use_zero_copy {
@@ -442,7 +521,12 @@ pub fn run_stitch(
         "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {}",
         session.gpu_name(),
         if use_zero_copy {
-            "zero-copy (CUDA/Vulkan)"
+            #[cfg(target_os = "linux")]
+            { "zero-copy (CUDA/Vulkan)" }
+            #[cfg(target_os = "macos")]
+            { "zero-copy (VideoToolbox/Metal)" }
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            { "zero-copy" }
         } else {
             "CPU upload"
         }
@@ -507,6 +591,24 @@ pub fn run_stitch(
             right,
             input_width,
             input_height,
+            frame_limit,
+            yaw,
+            pitch,
+            interrupted,
+            &progress,
+        )?;
+    }
+
+    #[cfg(target_os = "macos")]
+    if use_zero_copy {
+        // Drop the CPU source - Metal zero-copy opens its own decoders.
+        source.take();
+
+        frame_count = run_stitch_metal_zero_copy(
+            &mut session,
+            &mut encoder,
+            left,
+            right,
             frame_limit,
             yaw,
             pitch,
