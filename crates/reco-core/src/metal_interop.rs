@@ -272,7 +272,7 @@ impl MetalTextureCache {
             <Metal as wgpu::hal::Api>::Device::texture_from_raw(
                 retained,
                 format,
-                MTLTextureType::D2,
+                MTLTextureType::Type2D,
                 1, // array layers
                 1, // mip levels
                 wgpu::hal::CopyExtent {
