@@ -19,6 +19,25 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::helpers;
 
+// ---- Preview constants ----
+
+/// Yaw/pitch increment per arrow key press (radians).
+const ARROW_PAN_STEP: f32 = 0.05;
+/// Mouse drag sensitivity: radians per pixel of cursor movement.
+const MOUSE_SENSITIVITY: f32 = 0.005;
+/// FOV change per +/- key press (degrees).
+const FOV_KEY_STEP: f32 = 5.0;
+/// FOV change per scroll tick (degrees).
+const FOV_SCROLL_STEP: f32 = 3.0;
+/// Minimum FOV (degrees) - prevents extreme zoom-in.
+const FOV_MIN: f32 = 20.0;
+/// Maximum FOV (degrees) - prevents extreme zoom-out.
+const FOV_MAX: f32 = 150.0;
+/// Default FOV at startup (degrees).
+const FOV_DEFAULT: f32 = 75.0;
+/// Number of frames to skip on P key press.
+const FRAME_SKIP_COUNT: usize = 30;
+
 /// Spawn a single-video decode thread that sends YUV frames through a channel.
 fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::Receiver<YuvData> {
     let (tx, rx) = std::sync::mpsc::sync_channel::<YuvData>(4);
@@ -162,7 +181,7 @@ pub fn run_preview(
         last_mouse_pos: None,
         target_yaw: 0.0,
         target_pitch: 0.0,
-        target_fov: 75.0,
+        target_fov: FOV_DEFAULT,
     };
 
     event_loop.run_app(&mut app)?;
@@ -380,19 +399,19 @@ impl ApplicationHandler for App {
                             event_loop.exit();
                         }
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            self.target_yaw += 0.05;
+                            self.target_yaw += ARROW_PAN_STEP;
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            self.target_yaw -= 0.05;
+                            self.target_yaw -= ARROW_PAN_STEP;
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            self.target_pitch += 0.05;
+                            self.target_pitch += ARROW_PAN_STEP;
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            self.target_pitch -= 0.05;
+                            self.target_pitch -= ARROW_PAN_STEP;
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Space) => {
@@ -412,16 +431,16 @@ impl ApplicationHandler for App {
                         }
                         PhysicalKey::Code(KeyCode::KeyP) => {
                             // Skip 30 frames (blocking - waits for decode)
-                            for _ in 0..30 {
+                            for _ in 0..FRAME_SKIP_COUNT {
                                 self.step_frame();
                             }
                         }
                         PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            self.target_fov = (self.target_fov - 5.0).max(20.0);
+                            self.target_fov = (self.target_fov - FOV_KEY_STEP).max(FOV_MIN);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            self.target_fov = (self.target_fov + 5.0).min(150.0);
+                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(FOV_MAX);
                             self.needs_redraw = true;
                         }
                         _ => {}
@@ -451,8 +470,8 @@ impl ApplicationHandler for App {
                         let dx = position.x - prev_x;
                         let dy = position.y - prev_y;
                         // Accumulate into smoothing targets (raw deltas)
-                        self.target_yaw += dx as f32 * 0.005;
-                        self.target_pitch += dy as f32 * 0.005;
+                        self.target_yaw += dx as f32 * MOUSE_SENSITIVITY;
+                        self.target_pitch += dy as f32 * MOUSE_SENSITIVITY;
                     } else {
                         // First move after click - switch to Poll for smooth updates
                         event_loop.set_control_flow(ControlFlow::Poll);
@@ -465,7 +484,8 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
                 };
-                self.target_fov = (self.target_fov - scroll as f32 * 3.0).clamp(20.0, 150.0);
+                self.target_fov =
+                    (self.target_fov - scroll as f32 * FOV_SCROLL_STEP).clamp(FOV_MIN, FOV_MAX);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {

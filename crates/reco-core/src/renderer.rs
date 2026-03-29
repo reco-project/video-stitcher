@@ -33,6 +33,15 @@ use nalgebra::{Matrix4, Perspective3, Point3, UnitQuaternion, Vector3};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
+// ---- Constants ----
+
+/// Near clipping plane for the perspective projection.
+const NEAR_PLANE: f32 = 0.01;
+/// Far clipping plane for the perspective projection.
+const FAR_PLANE: f32 = 5.0;
+/// Aspect ratio of scene planes (matches GoPro 16:9 capture).
+pub const PLANE_ASPECT: f32 = 16.0 / 9.0;
+
 /// Errors from the renderer.
 #[derive(Debug, Error)]
 pub enum RenderError {
@@ -196,7 +205,7 @@ impl Renderer {
         });
 
         // Vertex buffer (quad for both planes — same shape, different model matrices)
-        let vertices = quad_vertices(16.0 / 9.0);
+        let vertices = quad_vertices(PLANE_ASPECT);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad_vertices"),
             contents: bytemuck::cast_slice(&vertices),
@@ -599,33 +608,36 @@ impl Renderer {
         self.right.texture_bind_group = bind_group;
     }
 
-    /// Render a stitched frame and read back the RGBA result.
+    /// Encode the shared stitch render pass: projection, uniforms, and draw calls.
     ///
-    /// Both camera textures must be uploaded before calling this.
-    /// Returns a tightly-packed RGBA buffer of `output_width * output_height * 4` bytes.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "gpu_render")
-    )]
-    pub fn render_frame(
+    /// Returns the command encoder with the render pass already recorded.
+    /// Callers handle submission, readback, or further encoding as needed.
+    #[allow(clippy::too_many_arguments)]
+    fn encode_stitch_pass(
         &self,
         gpu: &GpuContext,
         scene: &SceneGeometry,
         calibration: &MatchCalibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
-    ) -> Result<Vec<u8>, RenderError> {
-        let aspect = self.output_width as f32 / self.output_height as f32;
+        target_view: &wgpu::TextureView,
+        aspect: f32,
+        encoder_label: &str,
+    ) -> wgpu::CommandEncoder {
         let projection = opengl_to_wgpu_matrix()
-            * Perspective3::new(aspect, viewport.config.fov_degrees.to_radians(), 0.01, 5.0)
-                .to_homogeneous();
+            * Perspective3::new(
+                aspect,
+                viewport.config.fov_degrees.to_radians(),
+                NEAR_PLANE,
+                FAR_PLANE,
+            )
+            .to_homogeneous();
         let view = view_matrix(
             &scene.camera_position,
             viewport.position.yaw,
             viewport.position.pitch,
         );
 
-        // Build uniforms for both planes
         let left_mvp = projection * view * scene.model_matrix_left();
         let left_uniforms = build_gpu_uniforms(
             &left_mvp,
@@ -644,7 +656,6 @@ impl Renderer {
             self.input_format,
         );
 
-        // Write uniform buffers (staged before submission)
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,
             0,
@@ -656,18 +667,17 @@ impl Renderer {
             bytemuck::bytes_of(&right_uniforms),
         );
 
-        // Encode render pass
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("stitch_frame"),
+                label: Some(encoder_label),
             });
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("stitch_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.render_target_view,
+                    view: target_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -684,16 +694,45 @@ impl Renderer {
             pass.set_pipeline(&self.pipeline);
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
-            // Draw left plane (fully opaque base layer)
             pass.set_bind_group(0, &self.left.texture_bind_group, &[]);
             pass.set_bind_group(1, &self.left.uniform_bind_group, &[]);
             pass.draw(0..6, 0..1);
 
-            // Draw right plane (blends over left at seam)
             pass.set_bind_group(0, &self.right.texture_bind_group, &[]);
             pass.set_bind_group(1, &self.right.uniform_bind_group, &[]);
             pass.draw(0..6, 0..1);
         }
+
+        encoder
+    }
+
+    /// Render a stitched frame and read back the RGBA result.
+    ///
+    /// Both camera textures must be uploaded before calling this.
+    /// Returns a tightly-packed RGBA buffer of `output_width * output_height * 4` bytes.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "gpu_render")
+    )]
+    pub fn render_frame(
+        &self,
+        gpu: &GpuContext,
+        scene: &SceneGeometry,
+        calibration: &MatchCalibration,
+        viewport: &ResolvedViewport,
+        blend_width: f32,
+    ) -> Result<Vec<u8>, RenderError> {
+        let aspect = self.output_width as f32 / self.output_height as f32;
+        let mut encoder = self.encode_stitch_pass(
+            gpu,
+            scene,
+            calibration,
+            viewport,
+            blend_width,
+            &self.render_target_view,
+            aspect,
+            "stitch_frame",
+        );
 
         // Copy render target to staging buffer
         let bytes_per_row = align_to_256(self.output_width * 4);
@@ -777,80 +816,16 @@ impl Renderer {
         blend_width: f32,
     ) -> wgpu::CommandBuffer {
         let aspect = self.output_width as f32 / self.output_height as f32;
-        let projection = opengl_to_wgpu_matrix()
-            * Perspective3::new(aspect, viewport.config.fov_degrees.to_radians(), 0.01, 5.0)
-                .to_homogeneous();
-        let view = view_matrix(
-            &scene.camera_position,
-            viewport.position.yaw,
-            viewport.position.pitch,
-        );
-
-        let left_mvp = projection * view * scene.model_matrix_left();
-        let left_uniforms = build_gpu_uniforms(
-            &left_mvp,
-            &calibration.left,
-            false,
+        let encoder = self.encode_stitch_pass(
+            gpu,
+            scene,
+            calibration,
+            viewport,
             blend_width,
-            self.input_format,
+            &self.render_target_view,
+            aspect,
+            "stitch_to_target",
         );
-
-        let right_mvp = projection * view * scene.model_matrix_right();
-        let right_uniforms = build_gpu_uniforms(
-            &right_mvp,
-            &calibration.right,
-            true,
-            blend_width,
-            self.input_format,
-        );
-
-        gpu.queue.write_buffer(
-            &self.left.uniform_buffer,
-            0,
-            bytemuck::bytes_of(&left_uniforms),
-        );
-        gpu.queue.write_buffer(
-            &self.right.uniform_buffer,
-            0,
-            bytemuck::bytes_of(&right_uniforms),
-        );
-
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("stitch_to_target"),
-            });
-
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("stitch_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.render_target_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
-
-            pass.set_pipeline(&self.pipeline);
-            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-
-            pass.set_bind_group(0, &self.left.texture_bind_group, &[]);
-            pass.set_bind_group(1, &self.left.uniform_bind_group, &[]);
-            pass.draw(0..6, 0..1);
-
-            pass.set_bind_group(0, &self.right.texture_bind_group, &[]);
-            pass.set_bind_group(1, &self.right.uniform_bind_group, &[]);
-            pass.draw(0..6, 0..1);
-        }
-
         encoder.finish()
     }
 
@@ -876,80 +851,16 @@ impl Renderer {
         target_view: &wgpu::TextureView,
     ) {
         let aspect = viewport.config.width as f32 / viewport.config.height as f32;
-        let projection = opengl_to_wgpu_matrix()
-            * Perspective3::new(aspect, viewport.config.fov_degrees.to_radians(), 0.01, 5.0)
-                .to_homogeneous();
-        let view = view_matrix(
-            &scene.camera_position,
-            viewport.position.yaw,
-            viewport.position.pitch,
-        );
-
-        let left_mvp = projection * view * scene.model_matrix_left();
-        let left_uniforms = build_gpu_uniforms(
-            &left_mvp,
-            &calibration.left,
-            false,
+        let encoder = self.encode_stitch_pass(
+            gpu,
+            scene,
+            calibration,
+            viewport,
             blend_width,
-            self.input_format,
+            target_view,
+            aspect,
+            "preview_frame",
         );
-
-        let right_mvp = projection * view * scene.model_matrix_right();
-        let right_uniforms = build_gpu_uniforms(
-            &right_mvp,
-            &calibration.right,
-            true,
-            blend_width,
-            self.input_format,
-        );
-
-        gpu.queue.write_buffer(
-            &self.left.uniform_buffer,
-            0,
-            bytemuck::bytes_of(&left_uniforms),
-        );
-        gpu.queue.write_buffer(
-            &self.right.uniform_buffer,
-            0,
-            bytemuck::bytes_of(&right_uniforms),
-        );
-
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("preview_frame"),
-            });
-
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("preview_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
-
-            pass.set_pipeline(&self.pipeline);
-            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-
-            pass.set_bind_group(0, &self.left.texture_bind_group, &[]);
-            pass.set_bind_group(1, &self.left.uniform_bind_group, &[]);
-            pass.draw(0..6, 0..1);
-
-            pass.set_bind_group(0, &self.right.texture_bind_group, &[]);
-            pass.set_bind_group(1, &self.right.uniform_bind_group, &[]);
-            pass.draw(0..6, 0..1);
-        }
-
         gpu.queue.submit(Some(encoder.finish()));
     }
 

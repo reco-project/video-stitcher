@@ -55,7 +55,7 @@ impl SceneGeometry {
     ///   `rotation = [0, 0, xRz]`
     pub fn from_layout(layout: &PlaneLayout) -> Self {
         let plane_width: f32 = 1.0;
-        let aspect: f32 = 16.0 / 9.0;
+        let aspect: f32 = crate::renderer::PLANE_ASPECT;
         let half_offset = (plane_width / 2.0) * (1.0 - layout.intersect as f32);
 
         Self {
