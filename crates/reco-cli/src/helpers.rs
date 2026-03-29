@@ -26,6 +26,7 @@ pub fn load_calibration(path: &Path) -> anyhow::Result<MatchCalibration> {
 }
 
 /// Progress reporter that prints frame count and FPS every N frames.
+#[derive(Clone, Copy)]
 pub struct ProgressReporter {
     start: std::time::Instant,
     interval: u64,

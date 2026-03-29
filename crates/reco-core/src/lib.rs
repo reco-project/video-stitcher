@@ -70,6 +70,7 @@ pub mod nv12_converter;
 pub mod pipeline;
 pub mod renderer;
 pub mod scene;
+pub mod session;
 pub mod source;
 pub mod viewport;
 #[cfg(target_os = "linux")]

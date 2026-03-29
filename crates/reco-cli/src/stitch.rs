@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use reco_core::encoder::Encoder;
 use reco_core::profile_scope;
 
 // ---- GPU decode types for zero-copy path ----
@@ -181,9 +182,8 @@ fn spawn_decode_thread_gpu(
 #[cfg(target_os = "linux")]
 #[allow(clippy::too_many_arguments)]
 fn run_stitch_zero_copy(
-    pipeline: &mut reco_core::pipeline::StitchPipeline,
-    encoder: &mut reco_io::ffmpeg::encoder::VideoEncoder,
-    nv12_converter: &mut reco_core::nv12_converter::Nv12Converter,
+    session: &mut reco_core::session::StitchSession,
+    encoder: &mut dyn reco_core::encoder::Encoder,
     left_path: &str,
     right_path: &str,
     input_width: u32,
@@ -199,7 +199,7 @@ fn run_stitch_zero_copy(
     // Create double-buffered shared textures for each camera (Y + UV per slot)
     log::info!("Creating shared textures for zero-copy...");
 
-    let gpu = pipeline.gpu();
+    let gpu = session.gpu();
     let create_pair = |label: &str,
                        slot: usize|
      -> anyhow::Result<(
@@ -276,7 +276,7 @@ fn run_stitch_zero_copy(
     println!("Zero-copy pipeline active: NVDEC -> cuMemcpy2D -> shared texture -> render");
 
     // Configure bind groups for GPU-resident shared textures
-    let bind_groups = pipeline.configure_gpu_source(
+    let bind_groups = session.pipeline_mut().configure_gpu_source(
         [
             (&left_y_0.texture, &left_uv_0.texture),
             (&left_y_1.texture, &left_uv_1.texture),
@@ -302,19 +302,14 @@ fn run_stitch_zero_copy(
             }
         };
 
-        let render_buf = pipeline.render_gpu_frame(
+        let render_buf = session.pipeline_mut().render_gpu_frame(
             &bind_groups,
             signal.left_slot,
             signal.right_slot,
             yaw,
             pitch,
         );
-        let nv12_data = nv12_converter.convert_and_readback(
-            pipeline.gpu(),
-            pipeline.render_target(),
-            render_buf,
-        )?;
-        encoder.write_nv12_frame(nv12_data)?;
+        session.submit_render_output(render_buf, encoder)?;
 
         // GPU is done reading these slots - release them for decode to reuse.
         // poll(Wait) inside convert_and_readback guarantees the render pass
@@ -384,10 +379,15 @@ pub fn run_stitch(
 
     log::info!("Stitching: {left} + {right} -> {output}");
 
-    // Open file source to get input dimensions and fps
-    let mut source = reco_io::adapters::FfmpegFileSource::open(Path::new(left), Path::new(right))?;
+    // Probe input dimensions and fps. The source is kept for CPU upload path
+    // but dropped early in the zero-copy path (its CUDA decoders would conflict
+    // with shared texture cleanup).
+    let mut source = Some(reco_io::adapters::FfmpegFileSource::open(
+        Path::new(left),
+        Path::new(right),
+    )?);
     let fps_rational = reco_io::adapters::FfmpegFileSource::frame_rate(Path::new(left))?;
-    let info = source.info();
+    let info = source.as_ref().unwrap().info();
     let input_width = info.width;
     let input_height = info.height;
     let fps_val = info.fps;
@@ -424,24 +424,19 @@ pub fn run_stitch(
         reco_core::renderer::InputFormat::Yuv420p
     };
 
-    let mut pipeline = reco_core::pipeline::StitchPipeline::with_gpu(
-        gpu,
-        cal,
+    let session_config = reco_core::session::SessionConfig {
+        calibration: cal,
         viewport,
         input_width,
         input_height,
-        wgpu::TextureFormat::Rgba8Unorm,
+        output_format: wgpu::TextureFormat::Rgba8Unorm,
         input_format,
-    )?;
-
-    // GPU RGBA->NV12 compute shader: eliminates CPU swscale and
-    // reduces GPU->CPU readback bandwidth by 2.7x
-    let mut nv12_converter =
-        reco_core::nv12_converter::Nv12Converter::new(pipeline.gpu(), width, height)?;
+    };
+    let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
     println!(
         "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {}",
-        pipeline.gpu_name(),
+        session.gpu_name(),
         if use_zero_copy {
             "zero-copy (CUDA/Vulkan)"
         } else {
@@ -465,7 +460,7 @@ pub fn run_stitch(
         quality: quality_enum,
     };
 
-    let mut encoder = reco_io::ffmpeg::encoder::VideoEncoder::new(
+    let mut encoder = reco_io::adapters::FfmpegFileEncoder::new(
         Path::new(output),
         width,
         height,
@@ -496,11 +491,14 @@ pub fn run_stitch(
 
     #[cfg(target_os = "linux")]
     if use_zero_copy {
-        // Zero-copy path: CUDA/Vulkan shared textures, no CPU upload
+        // Drop the CPU source - zero-copy spawns its own GPU decode threads.
+        // Must drop before shared texture cleanup to avoid CUDA context conflicts
+        // (the source's decoders hold CUDA resources from hardware probe).
+        source.take();
+
         frame_count = run_stitch_zero_copy(
-            &mut pipeline,
+            &mut session,
             &mut encoder,
-            &mut nv12_converter,
             left,
             right,
             input_width,
@@ -515,30 +513,16 @@ pub fn run_stitch(
 
     if !use_zero_copy {
         // CPU upload path: use FfmpegFileSource for decoding
-        loop {
-            if frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
-                break;
-            }
-
-            let frame = {
-                profile_scope!("wait_decode");
-                match source.next_frame()? {
-                    Some(f) => f,
-                    None => break,
-                }
-            };
-
-            let render_buf = pipeline.render_stereo_frame(&frame, yaw, pitch);
-            let nv12_data = nv12_converter.convert_and_readback(
-                pipeline.gpu(),
-                pipeline.render_target(),
-                render_buf,
-            )?;
-            encoder.write_nv12_frame(nv12_data)?;
-            frame_count += 1;
-
-            progress.report(frame_count);
-        }
+        let source = source.as_mut().expect("source dropped in CPU path");
+        frame_count = session.run(
+            source,
+            &mut encoder,
+            frame_limit,
+            interrupted,
+            Some(Box::new(move |p| {
+                progress.report(p.frames_completed);
+            })),
+        )?;
     }
 
     log::info!("Finishing encoder...");
@@ -547,9 +531,9 @@ pub fn run_stitch(
 
     progress.finish(frame_count, output);
 
-    log::info!("Dropping pipeline...");
-    drop(pipeline);
-    log::info!("Pipeline dropped, exiting");
+    log::info!("Dropping session...");
+    drop(session);
+    log::info!("Session dropped, exiting");
 
     Ok(())
 }

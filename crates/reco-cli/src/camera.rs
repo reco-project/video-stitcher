@@ -54,23 +54,20 @@ pub fn run_camera(
     let capture_width = cam_config.width;
     let capture_height = cam_config.height;
 
-    let pipeline = reco_core::pipeline::StitchPipeline::with_gpu(
-        gpu,
-        cal,
+    let session_config = reco_core::session::SessionConfig {
+        calibration: cal,
         viewport,
-        capture_width,
-        capture_height,
-        wgpu::TextureFormat::Rgba8Unorm,
+        input_width: capture_width,
+        input_height: capture_height,
+        output_format: wgpu::TextureFormat::Rgba8Unorm,
         input_format,
-    )?;
-
-    let mut nv12_converter =
-        reco_core::nv12_converter::Nv12Converter::new(pipeline.gpu(), width, height)?;
+    };
+    let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
     let mode_str = if use_nv12_capture { "NV12" } else { "I420" };
     println!(
         "Pipeline ready: GPU = {}, capture = {}x{}@{}fps ({}), output = {}x{}",
-        pipeline.gpu_name(),
+        session.gpu_name(),
         capture_width,
         capture_height,
         capture_fps,
@@ -151,12 +148,10 @@ pub fn run_camera(
                 uv: &pair.right.uv,
             };
             let render_buf =
-                pipeline.render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
-            let nv12_data = nv12_converter.convert_and_readback(
-                pipeline.gpu(),
-                pipeline.render_target(),
-                render_buf,
-            )?;
+                session
+                    .pipeline()
+                    .render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
+            let nv12_data = session.convert_to_nv12(render_buf)?;
             if encode_tx.send(nv12_data.to_vec()).is_err() {
                 anyhow::bail!("encoder thread died during warmup");
             }
@@ -184,12 +179,10 @@ pub fn run_camera(
             };
 
             let render_buf =
-                pipeline.render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
-            let nv12_data = nv12_converter.convert_and_readback(
-                pipeline.gpu(),
-                pipeline.render_target(),
-                render_buf,
-            )?;
+                session
+                    .pipeline()
+                    .render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
+            let nv12_data = session.convert_to_nv12(render_buf)?;
             if encode_tx.send(nv12_data.to_vec()).is_err() {
                 break;
             }
@@ -237,12 +230,11 @@ pub fn run_camera(
                 v: &pair.right.v,
             };
 
-            let render_buf = pipeline.render_to_target(&left_planes, &right_planes, yaw, pitch);
-            let nv12_data = nv12_converter.convert_and_readback(
-                pipeline.gpu(),
-                pipeline.render_target(),
-                render_buf,
-            )?;
+            let render_buf =
+                session
+                    .pipeline()
+                    .render_to_target(&left_planes, &right_planes, yaw, pitch);
+            let nv12_data = session.convert_to_nv12(render_buf)?;
             if encode_tx.send(nv12_data.to_vec()).is_err() {
                 break;
             }
