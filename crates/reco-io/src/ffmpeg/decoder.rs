@@ -75,6 +75,27 @@ pub struct GpuFrame {
     pub timestamp_us: i64,
 }
 
+/// A decoded frame from VideoToolbox, holding a `CVPixelBufferRef`.
+///
+/// The pixel buffer is backed by an IOSurface and can be imported into
+/// Metal as a texture via `CVMetalTextureCache` without a CPU copy.
+///
+/// **Lifetime:** The `CVPixelBufferRef` is only valid until the next
+/// `next_frame_vt()` call. The caller must import it into Metal textures
+/// (or retain it) before decoding the next frame.
+#[cfg(target_os = "macos")]
+pub struct VtFrame {
+    /// Opaque `CVPixelBufferRef` pointer from the decoded AVFrame.
+    /// Cast from `frame->data[3]` per FFmpeg's hwaccel convention.
+    pub cv_pixel_buffer: *mut std::ffi::c_void,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+    /// Presentation timestamp in microseconds.
+    pub timestamp_us: i64,
+}
+
 /// A decoded YUV420P frame with timestamp.
 ///
 /// Contains tightly-packed plane data (no stride padding):
@@ -105,6 +126,8 @@ pub enum DecodeBackend {
     Cuda,
     /// VA-API (Intel/AMD on Linux).
     Vaapi,
+    /// Apple VideoToolbox (macOS).
+    VideoToolbox,
 }
 
 impl std::fmt::Display for DecodeBackend {
@@ -113,6 +136,7 @@ impl std::fmt::Display for DecodeBackend {
             Self::Software => write!(f, "software"),
             Self::Cuda => write!(f, "NVDEC (CUDA)"),
             Self::Vaapi => write!(f, "VA-API"),
+            Self::VideoToolbox => write!(f, "VideoToolbox"),
         }
     }
 }
@@ -368,6 +392,80 @@ impl VideoDecoder {
         }
     }
 
+    /// Decode the next frame and return a VideoToolbox `CVPixelBufferRef`.
+    ///
+    /// Returns `Ok(None)` if the backend is not VideoToolbox or EOF is reached.
+    /// The returned `VtFrame.cv_pixel_buffer` is only valid until the next call
+    /// to this method - the caller must import it into Metal textures before
+    /// decoding another frame.
+    #[cfg(target_os = "macos")]
+    pub fn next_frame_vt(&mut self) -> Result<Option<VtFrame>, DecodeError> {
+        if self.backend != DecodeBackend::VideoToolbox {
+            return Ok(None);
+        }
+
+        if self.eof_sent {
+            return Ok(None);
+        }
+
+        loop {
+            {
+                profile_scope!("h264_decode");
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                    if is_hw_frame(&self.decoded_frame) {
+                        return Ok(Some(self.extract_vt_frame()));
+                    }
+                    return Ok(None);
+                }
+            }
+
+            let mut found_packet = false;
+            for (stream, packet) in self.input.packets() {
+                if stream.index() == self.video_stream_index {
+                    profile_scope!("send_packet");
+                    self.decoder.send_packet(&packet)?;
+                    found_packet = true;
+                    break;
+                }
+            }
+
+            if !found_packet {
+                self.eof_sent = true;
+                self.decoder.send_eof()?;
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok()
+                    && is_hw_frame(&self.decoded_frame)
+                {
+                    return Ok(Some(self.extract_vt_frame()));
+                }
+                return Ok(None);
+            }
+        }
+    }
+
+    /// Extract the `CVPixelBufferRef` from a VideoToolbox-decoded frame.
+    ///
+    /// Per FFmpeg's hwaccel convention, `frame->data[3]` holds the surface
+    /// pointer (CVPixelBufferRef for VideoToolbox).
+    #[cfg(target_os = "macos")]
+    fn extract_vt_frame(&self) -> VtFrame {
+        let raw = unsafe { &*self.decoded_frame.as_ptr() };
+
+        let pts = raw.pts;
+        let pts = if pts == ffi::AV_NOPTS_VALUE { 0 } else { pts };
+        let timestamp_us = if self.time_base_den != 0 {
+            pts * self.time_base_num * 1_000_000 / self.time_base_den
+        } else {
+            0
+        };
+
+        VtFrame {
+            cv_pixel_buffer: raw.data[3] as *mut std::ffi::c_void,
+            width: self.width,
+            height: self.height,
+            timestamp_us,
+        }
+    }
+
     /// Extract CUDA device pointers from an NVDEC-decoded NV12 frame.
     ///
     /// The frame's `data[0]` is the Y plane device pointer, `data[1]` is
@@ -521,6 +619,11 @@ fn try_hwaccel(
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
             DecodeBackend::Vaapi,
+        ),
+        #[cfg(target_os = "macos")]
+        (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
+            DecodeBackend::VideoToolbox,
         ),
     ];
 

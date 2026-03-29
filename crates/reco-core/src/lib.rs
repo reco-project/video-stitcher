@@ -69,6 +69,8 @@ pub use wgpu;
 pub mod calibration;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
+#[cfg(target_os = "macos")]
+pub mod metal_interop;
 pub mod detector;
 pub mod director;
 pub mod encoder;
