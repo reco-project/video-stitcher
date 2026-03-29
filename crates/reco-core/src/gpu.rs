@@ -61,7 +61,9 @@ impl GpuContext {
     /// When a surface is provided, the adapter selection will prefer GPUs
     /// that can present to that surface (needed for windowed rendering).
     pub async fn with_surface(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, GpuError> {
+        eprintln!("[gpu] creating wgpu instance...");
         let instance = wgpu::Instance::default();
+        eprintln!("[gpu] instance created, requesting adapter...");
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -72,12 +74,17 @@ impl GpuContext {
             .await?;
 
         let adapter_info = adapter.get_info();
+        eprintln!(
+            "[gpu] adapter: {} ({:?})",
+            adapter_info.name, adapter_info.backend
+        );
         log::info!(
             "Selected GPU: {} ({:?})",
             adapter_info.name,
             adapter_info.backend
         );
 
+        eprintln!("[gpu] requesting device...");
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
@@ -86,6 +93,7 @@ impl GpuContext {
                 ..Default::default()
             })
             .await?;
+        eprintln!("[gpu] device acquired");
 
         Ok(Self {
             device,
