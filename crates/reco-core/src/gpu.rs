@@ -61,9 +61,23 @@ impl GpuContext {
     /// When a surface is provided, the adapter selection will prefer GPUs
     /// that can present to that surface (needed for windowed rendering).
     pub async fn with_surface(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, GpuError> {
-        eprintln!("[gpu] creating wgpu instance...");
+        // Debug markers for crash diagnosis on Windows
+        use std::io::Write;
+        let debug_log = |msg: &str| {
+            let _ = writeln!(std::io::stderr(), "[gpu] {msg}");
+            let _ = std::io::stderr().flush();
+            // Also write to a file in case stderr is swallowed
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("reco_gpu_debug.log")
+            {
+                let _ = writeln!(f, "{msg}");
+            }
+        };
+        debug_log("creating wgpu instance...");
         let instance = wgpu::Instance::default();
-        eprintln!("[gpu] instance created, requesting adapter...");
+        debug_log("instance created, requesting adapter...");
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
