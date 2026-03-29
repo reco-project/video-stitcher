@@ -4,6 +4,8 @@
 //! reco stitch left.mp4 right.mp4 --calibration match.json -o output.mp4
 //! ```
 
+mod helpers;
+
 use clap::{Parser, Subcommand};
 use std::io::Write;
 use std::path::Path;
