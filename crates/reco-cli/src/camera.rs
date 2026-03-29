@@ -154,10 +154,12 @@ pub fn run_camera(
                 y: &pair.right.y,
                 uv: &pair.right.uv,
             };
-            let render_buf =
-                session
-                    .pipeline()
-                    .render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
+            let render_buf = session.pipeline().render_to_target_nv12(
+                &left_planes,
+                &right_planes,
+                yaw,
+                pitch,
+            )?;
             let nv12_data = session.convert_to_nv12(render_buf)?;
             if encode_tx.send(nv12_data.to_vec()).is_err() {
                 anyhow::bail!("encoder thread died during warmup");
@@ -185,10 +187,12 @@ pub fn run_camera(
                 uv: &pair.right.uv,
             };
 
-            let render_buf =
-                session
-                    .pipeline()
-                    .render_to_target_nv12(&left_planes, &right_planes, yaw, pitch);
+            let render_buf = session.pipeline().render_to_target_nv12(
+                &left_planes,
+                &right_planes,
+                yaw,
+                pitch,
+            )?;
             let nv12_data = session.convert_to_nv12(render_buf)?;
             if encode_tx.send(nv12_data.to_vec()).is_err() {
                 break;
@@ -240,7 +244,7 @@ pub fn run_camera(
             let render_buf =
                 session
                     .pipeline()
-                    .render_to_target(&left_planes, &right_planes, yaw, pitch);
+                    .render_to_target(&left_planes, &right_planes, yaw, pitch)?;
             let nv12_data = session.convert_to_nv12(render_buf)?;
             if encode_tx.send(nv12_data.to_vec()).is_err() {
                 break;

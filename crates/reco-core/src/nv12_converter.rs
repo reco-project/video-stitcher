@@ -252,7 +252,10 @@ impl Nv12Converter {
             self.cached_bind_group = Some((texture_ptr, bind_group));
         }
 
-        let (_, bind_group) = self.cached_bind_group.as_ref().unwrap();
+        let (_, bind_group) = self
+            .cached_bind_group
+            .as_ref()
+            .expect("bind group was just built above");
 
         let mut encoder = gpu
             .device

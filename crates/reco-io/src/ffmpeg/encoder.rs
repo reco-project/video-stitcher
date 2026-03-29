@@ -466,7 +466,10 @@ impl VideoEncoder {
 
         octx.write_header()?;
 
-        let output_time_base = octx.stream(stream_index).unwrap().time_base();
+        let output_time_base = octx
+            .stream(stream_index)
+            .expect("stream we just added")
+            .time_base();
 
         let scaler = ScalingContext::get(
             Pixel::RGBA,

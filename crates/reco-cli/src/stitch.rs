@@ -252,10 +252,10 @@ fn run_stitch_zero_copy(
     let (left_slot_free_tx, left_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
     let (right_slot_free_tx, right_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
     // Both slots start as free
-    left_slot_free_tx.send(0).unwrap();
-    left_slot_free_tx.send(1).unwrap();
-    right_slot_free_tx.send(0).unwrap();
-    right_slot_free_tx.send(1).unwrap();
+    left_slot_free_tx.send(0).expect("seed slot channel");
+    left_slot_free_tx.send(1).expect("seed slot channel");
+    right_slot_free_tx.send(0).expect("seed slot channel");
+    right_slot_free_tx.send(1).expect("seed slot channel");
 
     // Spawn GPU decode threads
     let decode = spawn_decode_thread_gpu(

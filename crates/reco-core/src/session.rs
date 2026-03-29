@@ -142,7 +142,7 @@ impl StitchSession {
         pitch: f32,
         encoder: &mut dyn Encoder,
     ) -> Result<(), SessionError> {
-        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch);
+        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
         self.submit_render_output(render_buf, encoder)
     }
 
@@ -237,7 +237,7 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<&[u8], SessionError> {
-        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch);
+        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.pipeline.gpu(),
             self.pipeline.render_target(),

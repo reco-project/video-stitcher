@@ -270,7 +270,7 @@ impl StitchPipeline {
         frame: &crate::source::StereoFrame,
         yaw: f32,
         pitch: f32,
-    ) -> wgpu::CommandBuffer {
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         use crate::source::StereoFrame;
         match frame {
             StereoFrame::Yuv420p(pair) => {
@@ -314,11 +314,11 @@ impl StitchPipeline {
         yaw: f32,
         pitch: f32,
         target_view: &wgpu::TextureView,
-    ) {
+    ) -> Result<(), PipelineError> {
         self.renderer
-            .upload_left_yuv(&self.gpu, left.y, left.u, left.v);
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
         self.renderer
-            .upload_right_yuv(&self.gpu, right.y, right.u, right.v);
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
@@ -333,6 +333,7 @@ impl StitchPipeline {
             self.viewport.blend_width,
             target_view,
         );
+        Ok(())
     }
 
     /// Process a single frame through the GPU pipeline.
@@ -351,9 +352,9 @@ impl StitchPipeline {
         pitch: f32,
     ) -> Result<Vec<u8>, PipelineError> {
         self.renderer
-            .upload_left_yuv(&self.gpu, left.y, left.u, left.v);
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
         self.renderer
-            .upload_right_yuv(&self.gpu, right.y, right.u, right.v);
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
@@ -407,24 +408,24 @@ impl StitchPipeline {
         right: &YuvPlanes<'_>,
         yaw: f32,
         pitch: f32,
-    ) -> wgpu::CommandBuffer {
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.renderer
-            .upload_left_yuv(&self.gpu, left.y, left.u, left.v);
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
         self.renderer
-            .upload_right_yuv(&self.gpu, right.y, right.u, right.v);
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition { yaw, pitch },
         };
 
-        self.renderer.render_to_target(
+        Ok(self.renderer.render_to_target(
             &self.gpu,
             &self.scene,
             &self.calibration,
             &viewport,
             self.viewport.blend_width,
-        )
+        ))
     }
 
     /// Upload NV12 frames and render to the internal target.
@@ -442,23 +443,23 @@ impl StitchPipeline {
         right: &Nv12Planes<'_>,
         yaw: f32,
         pitch: f32,
-    ) -> wgpu::CommandBuffer {
-        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv);
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
         self.renderer
-            .upload_right_nv12(&self.gpu, right.y, right.uv);
+            .upload_right_nv12(&self.gpu, right.y, right.uv)?;
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition { yaw, pitch },
         };
 
-        self.renderer.render_to_target(
+        Ok(self.renderer.render_to_target(
             &self.gpu,
             &self.scene,
             &self.calibration,
             &viewport,
             self.viewport.blend_width,
-        )
+        ))
     }
 
     /// Render to the internal target without upload or readback (zero-copy path).

@@ -498,8 +498,11 @@ impl ApplicationHandler for App {
                 }
                 self.needs_redraw = false;
 
-                let surface = self.surface.as_ref().unwrap();
-                let pipeline = self.pipeline.as_ref().unwrap();
+                let (Some(surface), Some(pipeline)) =
+                    (self.surface.as_ref(), self.pipeline.as_ref())
+                else {
+                    return;
+                };
 
                 let frame = match surface.get_current_texture() {
                     reco_core::wgpu::CurrentSurfaceTexture::Success(f)
@@ -523,7 +526,11 @@ impl ApplicationHandler for App {
                     u: &self.current_right.u,
                     v: &self.current_right.v,
                 };
-                pipeline.render_to_view(&left, &right, self.yaw, self.pitch, &view);
+                if let Err(e) = pipeline.render_to_view(&left, &right, self.yaw, self.pitch, &view)
+                {
+                    log::error!("Render failed: {e}");
+                    return;
+                }
 
                 frame.present();
             }
