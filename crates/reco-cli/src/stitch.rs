@@ -10,6 +10,7 @@ use reco_core::profile_scope;
 // ---- GPU decode types for zero-copy path ----
 
 /// CUDA buffer info passed to decode threads for cuMemcpy2D destination.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 #[derive(Clone)]
 struct GpuBufInfo {
     /// CUDA device pointers for double-buffered Y textures.
@@ -25,12 +26,14 @@ struct GpuBufInfo {
 }
 
 /// A pair of double-buffer slot indices from the decode threads.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 struct GpuFrameSignal {
     left_slot: u8,
     right_slot: u8,
 }
 
 /// Handles for the GPU decode threads, used for graceful shutdown.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 struct GpuDecodeHandles {
     frame_rx: std::sync::mpsc::Receiver<GpuFrameSignal>,
     /// Join handles for the 2 decode threads + 1 pairing thread.
@@ -45,6 +48,7 @@ struct GpuDecodeHandles {
 /// Uses `slot_free_rx` for backpressure: the decode thread waits for a slot
 /// to be released by the main thread before writing to it. This prevents
 /// NVDEC from overwriting a slot that the GPU render pass is still reading.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn spawn_single_decoder_gpu(
     path: String,
     label: &'static str,
@@ -137,6 +141,7 @@ fn spawn_single_decoder_gpu(
 }
 
 /// Spawn parallel GPU decode threads and a pairing thread.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn spawn_decode_thread_gpu(
     left_path: String,
     right_path: String,
