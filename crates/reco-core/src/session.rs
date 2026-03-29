@@ -129,7 +129,7 @@ impl StitchSession {
     /// Render a single CPU-resident stereo frame and submit it to the encoder.
     ///
     /// Handles YUV420P and NV12 input formats. For GPU-resident frames
-    /// (zero-copy path), use [`process_gpu_frame`](Self::process_gpu_frame)
+    /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
     /// instead.
     #[cfg_attr(
         feature = "profiling",
