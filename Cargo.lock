@@ -1330,8 +1330,7 @@ checksum = "956787520e75e9bd233246045d19f42fb73242759cc57fba9611d940ae96d4b0"
 [[package]]
 name = "naga"
 version = "29.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa2630921705b9b01dcdd0b6864b9562ca3c1951eecd0f0c4f5f04f61e412647"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -2940,8 +2939,7 @@ dependencies = [
 [[package]]
 name = "wgpu"
 version = "29.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72c239a9a747bbd379590985bac952c2e53cb19873f7072b3370c6a6a8e06837"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "arrayvec",
  "bitflags 2.11.0",
@@ -2970,8 +2968,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "29.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e80ac6cf1895df6342f87d975162108f9d98772a0d74bc404ab7304ac29469e"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -3002,27 +2999,24 @@ dependencies = [
 
 [[package]]
 name = "wgpu-core-deps-apple"
-version = "29.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43acd053312501689cd92a01a9638d37f3e41a5fd9534875efa8917ee2d11ac0"
+version = "29.0.1"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "wgpu-hal",
 ]
 
 [[package]]
 name = "wgpu-core-deps-emscripten"
-version = "29.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef043bf135cc68b6f667c55ff4e345ce2b5924d75bad36a47921b0287ca4b24a"
+version = "29.0.1"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "wgpu-hal",
 ]
 
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
-version = "29.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "725d5c006a8c02967b6d93ef04f6537ec4593313e330cfe86d9d3f946eb90f28"
+version = "29.0.1"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "wgpu-hal",
 ]
@@ -3030,8 +3024,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "29.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89a47aef47636562f3937285af4c44b4b5b404b46577471411cc5313a921da7e"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -3083,8 +3076,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "29.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4684f4410da0cf95a4cb63bb5edaac022461dedb6adf0b64d0d9b5f6890d51"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -3093,8 +3085,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "29.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec2675540fb1a5cfa5ef122d3d5f390e2c75711a0b946410f2d6ac3a0f77d1f6"
+source = "git+https://github.com/mohamedtahaguelzim/wgpu.git?branch=fix%2Fshader-draw-parameters-v29.0.1#71ab2421a77d51411da07c11fee6cddc8ebc6dd6"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
