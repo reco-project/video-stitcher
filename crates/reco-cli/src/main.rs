@@ -759,12 +759,16 @@ fn main() -> anyhow::Result<()> {
                 let start = Instant::now();
 
                 while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-                    let pair = {
+                    let frame = {
                         profile_scope!("wait_capture");
-                        match source.next_pair()? {
-                            Some(p) => p,
+                        match source.next_frame()? {
+                            Some(f) => f,
                             None => break,
                         }
+                    };
+                    let pair = match frame {
+                        reco_core::source::StereoFrame::Yuv420p(p) => p,
+                        _ => anyhow::bail!("expected Yuv420p frame from I420 camera source"),
                     };
 
                     let left_planes = reco_core::pipeline::YuvPlanes {

@@ -12,7 +12,9 @@
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
-use reco_core::source::{FramePair, Nv12Data, Nv12FramePair, SourceError, SourceInfo, YuvData};
+use reco_core::source::{
+    FramePair, Nv12Data, Nv12FramePair, SourceError, SourceInfo, StereoFrame, YuvData,
+};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -439,9 +441,9 @@ impl reco_core::source::FrameSource for GstreamerCameraSource {
         }
     }
 
-    fn next_pair(&mut self) -> Result<Option<FramePair>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
         match self.rx.recv() {
-            Ok(pair) => Ok(Some(pair)),
+            Ok(pair) => Ok(Some(StereoFrame::Yuv420p(pair))),
             Err(_) => Ok(None),
         }
     }

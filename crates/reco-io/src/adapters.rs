@@ -6,7 +6,7 @@
 //! plumbing lives here.
 
 use reco_core::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
-use reco_core::source::{FramePair, SourceError, SourceInfo, YuvData};
+use reco_core::source::{FramePair, SourceError, SourceInfo, StereoFrame, YuvData};
 
 #[cfg(feature = "ffmpeg")]
 use crate::ffmpeg;
@@ -140,9 +140,9 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         }
     }
 
-    fn next_pair(&mut self) -> Result<Option<FramePair>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
         match self.rx.recv() {
-            Ok(pair) => Ok(Some(pair)),
+            Ok(pair) => Ok(Some(StereoFrame::Yuv420p(pair))),
             Err(_) => Ok(None),
         }
     }
