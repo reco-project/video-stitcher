@@ -32,6 +32,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Clippy (with profiling)
         run: cargo clippy --all-targets --features profiling -- -D warnings
+      - name: Clippy (with gstreamer)
+        run: cargo clippy --all-targets --features gstreamer -- -D warnings
 
   test:
     name: Test
@@ -68,3 +70,12 @@ jobs:
         run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: "-D warnings"
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

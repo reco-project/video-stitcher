@@ -67,5 +67,5 @@ impl ProgressReporter {
 pub fn is_tegra() -> bool {
     Path::new("/etc/nv_tegra_release").exists()
         || std::fs::read_to_string("/proc/device-tree/compatible")
-            .map_or(false, |s| s.contains("nvidia,tegra"))
+            .is_ok_and(|s| s.contains("nvidia,tegra"))
 }

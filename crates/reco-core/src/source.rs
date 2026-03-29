@@ -43,6 +43,7 @@ pub enum SourceError {
 /// - Y: `width × height` bytes
 /// - U: `(width/2) × (height/2)` bytes
 /// - V: `(width/2) × (height/2)` bytes
+#[derive(Debug, Clone)]
 pub struct YuvData {
     /// Y (luma) plane, full resolution.
     pub y: Vec<u8>,
@@ -57,6 +58,7 @@ pub struct YuvData {
 /// Tightly packed (no stride padding):
 /// - Y: `width × height` bytes
 /// - UV: `width × (height/2)` bytes (interleaved U,V at half resolution)
+#[derive(Debug, Clone)]
 pub struct Nv12Data {
     /// Y (luma) plane, full resolution.
     pub y: Vec<u8>,
@@ -68,6 +70,7 @@ pub struct Nv12Data {
 ///
 /// Contains left and right camera data as YUV420P planes (CPU-resident).
 /// Both frames must have the same dimensions.
+#[derive(Debug, Clone)]
 pub struct FramePair {
     /// Left camera YUV420P data.
     pub left: YuvData,
@@ -80,6 +83,7 @@ pub struct FramePair {
 /// Contains left and right camera data as NV12 planes (CPU-resident).
 /// NV12 is the native output of NVIDIA ISP (nvarguscamerasrc) and NVDEC,
 /// so this avoids an NV12 -> I420 conversion on capture.
+#[derive(Debug, Clone)]
 pub struct Nv12FramePair {
     /// Left camera NV12 data.
     pub left: Nv12Data,

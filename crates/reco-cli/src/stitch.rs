@@ -366,6 +366,12 @@ pub fn run_stitch(
         height,
     );
 
+    // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
+    anyhow::ensure!(
+        !output.contains("://"),
+        "Output path looks like a network URL ({output}). Only local file paths are supported.",
+    );
+
     log::info!("Stitching: {left} + {right} -> {output}");
 
     // Probe input dimensions and fps. The source is kept for CPU upload path

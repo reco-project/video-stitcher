@@ -16,6 +16,7 @@ use crate::helpers;
 /// Captures frames from two cameras via GStreamer, stitches them into a
 /// panoramic view on the GPU, and encodes the result to `output`. Uses
 /// NV12 native capture on Jetson (Tegra) and I420 elsewhere.
+#[allow(clippy::too_many_arguments)] // Will be refactored into a config struct in Phase 2
 pub fn run_camera(
     cam_config: CameraConfig,
     calibration: &str,
@@ -31,6 +32,12 @@ pub fn run_camera(
     capture_fps: u32,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
+    anyhow::ensure!(
+        !output.contains("://"),
+        "Output path looks like a network URL ({output}). Only local file paths are supported.",
+    );
+
     let cal = helpers::load_calibration(Path::new(calibration))?;
 
     let viewport = reco_core::viewport::ViewportConfig {

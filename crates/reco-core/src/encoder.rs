@@ -41,6 +41,7 @@ pub enum PixelFormat {
 /// Contains the pixel data read back from the GPU. In phase 1, this
 /// is always a CPU buffer (GPU readback). In the future, this may
 /// carry a GPU surface handle for zero-copy hardware encoding.
+#[derive(Debug, Clone)]
 pub struct OutputFrame {
     /// Raw pixel data.
     pub data: Vec<u8>,
