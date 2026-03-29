@@ -320,6 +320,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         Commands::Info => {
+            println!("DEBUG: About to create GPU context...");
             let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
             println!("GPU: {}", gpu.adapter_info.name);
             println!("Backend: {:?}", gpu.adapter_info.backend);
