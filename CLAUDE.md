@@ -8,16 +8,8 @@ Open-source GPU-accelerated panoramic sports camera software.
 - `crates/reco-cli/` — CLI binary (`reco stitch`, `reco info`)
 - `crates/reco-io/` — Pluggable I/O backends (FFmpeg decode/encode, GStreamer live cameras)
 
-## v1 Architecture (Electron + React + Python) — legacy, on `main` branch
-
-- `electron/` — Electron shell, packaging, IPC
-- `frontend/` — React UI (Vite)
-- `backend/` — FastAPI Python server (video processing, stitching)
-- `scripts/` — build/dev utilities
-
 ## Key commands
 
-### v2 (Rust)
 ```bash
 cargo build                   # Build all crates
 cargo test --all              # Run all tests
@@ -31,20 +23,8 @@ cargo run -p reco-cli -- preview left.mp4 right.mp4 -c match.json
 cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp4 -c match.json -o out.mp4 --max-frames 300  # Profile 300 frames → reco-trace.json (open in ui.perfetto.dev)
 ```
 
-### v1 (Node/Python)
-```bash
-npm run dev              # Start full stack (electron + frontend + backend)
-npm run backend-dev      # FastAPI only
-npm run frontend-dev     # React only
-npm run build            # Production build
-npm run test             # Run all tests
-npm run format           # Format all (JS + Python)
-npm run lint             # Lint JS
-```
-
 ## Code standards
 
-### Rust (v2)
 - `rustfmt` formatting (config in `rustfmt.toml`)
 - `clippy` linting with `-D warnings` (zero warnings policy)
 - Doc comments (`///`) on all public items
@@ -54,17 +34,11 @@ npm run lint             # Lint JS
 - Clippy must also pass with `--features profiling`
 - `profiling` feature: opt-in `tracing` + `tracing-chrome` instrumentation (zero-cost when off)
 
-### JavaScript/Python (v1)
-- Python: black formatting, type hints required on public functions
-- JS/React: ESLint config in repo, follow existing component patterns
-- GPU/OpenCV code: comment non-obvious stitching math
-
 ## Context
 - Public open-source project (AGPL-3.0) with a growing community and forum
 - Users include football clubs, amateur sports teams — prioritize UX clarity
 - Open alternative to proprietary sports camera solutions
 - v2 targets: desktop (Win/macOS/Linux), NVIDIA Jetson, cloud, mobile
-- Always use `sudo -A` for any system commands
 
 ## When writing code
 - Production-grade: handle errors, validate inputs at API boundaries

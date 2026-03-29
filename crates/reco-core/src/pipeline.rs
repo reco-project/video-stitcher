@@ -237,7 +237,7 @@ impl StitchPipeline {
 
     /// Select bind groups for a GPU-resident frame and render.
     ///
-    /// Call this instead of manually setting bind groups via `renderer_mut()`.
+    /// Call this instead of manually setting bind groups on the renderer.
     #[cfg(target_os = "linux")]
     pub fn render_gpu_frame(
         &mut self,
@@ -480,10 +480,5 @@ impl StitchPipeline {
     /// Access the rendered RGBA texture for NV12 conversion.
     pub fn render_target(&self) -> &wgpu::Texture {
         self.renderer.render_target()
-    }
-
-    /// Mutable access to the renderer (for swapping shared textures).
-    pub fn renderer_mut(&mut self) -> &mut Renderer {
-        &mut self.renderer
     }
 }

@@ -1,0 +1,555 @@
+//! Stitch subcommand: encode two video files into a panoramic output.
+
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use reco_core::profile_scope;
+
+// ---- GPU decode types for zero-copy path ----
+
+/// CUDA buffer info passed to decode threads for cuMemcpy2D destination.
+#[derive(Clone)]
+struct GpuBufInfo {
+    /// CUDA device pointers for double-buffered Y textures.
+    y_ptr: [u64; 2],
+    /// CUDA device pointers for double-buffered UV textures.
+    uv_ptr: [u64; 2],
+    /// Row pitch of shared Y textures (may differ from width due to alignment).
+    y_pitch: [usize; 2],
+    /// Row pitch of shared UV textures.
+    uv_pitch: [usize; 2],
+    width: u32,
+    height: u32,
+}
+
+/// A pair of double-buffer slot indices from the decode threads.
+struct GpuFrameSignal {
+    left_slot: u8,
+    right_slot: u8,
+}
+
+/// Handles for the GPU decode threads, used for graceful shutdown.
+struct GpuDecodeHandles {
+    frame_rx: std::sync::mpsc::Receiver<GpuFrameSignal>,
+    /// Join handles for the 2 decode threads + 1 pairing thread.
+    /// Must be joined before dropping shared textures to ensure FFmpeg's
+    /// CUDA context cleanup completes while shared memory is still valid.
+    join_handles: Vec<std::thread::JoinHandle<()>>,
+}
+
+/// Spawn a single-video GPU decode thread that writes NV12 frames directly
+/// to CUDA/Vulkan shared textures via cuMemcpy2D.
+///
+/// Uses `slot_free_rx` for backpressure: the decode thread waits for a slot
+/// to be released by the main thread before writing to it. This prevents
+/// NVDEC from overwriting a slot that the GPU render pass is still reading.
+fn spawn_single_decoder_gpu(
+    path: String,
+    label: &'static str,
+    buf: GpuBufInfo,
+    slot_free_rx: std::sync::mpsc::Receiver<u8>,
+) -> (std::sync::mpsc::Receiver<u8>, std::thread::JoinHandle<()>) {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<u8>(1);
+
+    let handle = std::thread::Builder::new()
+        .name(format!("decode_{label}_gpu"))
+        .spawn(move || {
+            let mut dec = match reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
+                Ok(d) => {
+                    log::info!(
+                        "{label} GPU decoder: {} ({}x{})",
+                        d.backend(),
+                        d.width(),
+                        d.height()
+                    );
+                    d
+                }
+                Err(e) => {
+                    log::error!("Failed to open {label} video: {e}");
+                    return;
+                }
+            };
+
+            while let Ok(slot) = slot_free_rx.recv() {
+                match dec.next_frame_gpu() {
+                    Ok(Some(frame)) => {
+                        let s = slot as usize;
+
+                        // Ensure CUDA context is current (FFmpeg may have popped it)
+                        if let Err(e) = reco_core::cuda_interop::cuda_ensure_context() {
+                            log::error!("{label} cuda_ensure_context: {e}");
+                            break;
+                        }
+
+                        // Copy Y plane: NVDEC -> shared texture
+                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
+                            buf.y_ptr[s],
+                            buf.y_pitch[s],
+                            frame.y_ptr,
+                            frame.y_pitch,
+                            buf.width as usize, // Y: 1 byte/pixel
+                            buf.height as usize,
+                        ) {
+                            log::error!("{label} cuMemcpy2D Y: {e}");
+                            break;
+                        }
+
+                        // Copy UV plane: NVDEC -> shared texture
+                        // NV12 UV: width bytes per row, height/2 rows
+                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
+                            buf.uv_ptr[s],
+                            buf.uv_pitch[s],
+                            frame.uv_ptr,
+                            frame.uv_pitch,
+                            buf.width as usize, // UV: 2 bytes x width/2 = width
+                            buf.height as usize / 2,
+                        ) {
+                            log::error!("{label} cuMemcpy2D UV: {e}");
+                            break;
+                        }
+
+                        // Synchronize CUDA to ensure copies complete before GPU reads
+                        if let Err(e) = reco_core::cuda_interop::cuda_synchronize() {
+                            log::error!("{label} cuCtxSynchronize: {e}");
+                            break;
+                        }
+
+                        if tx.send(slot).is_err() {
+                            break; // Receiver dropped
+                        }
+                    }
+                    Ok(None) => {
+                        log::error!("{label}: next_frame_gpu returned None (non-CUDA?)");
+                        break;
+                    }
+                    Err(e) => {
+                        log::error!("{label} decode error: {e}");
+                        break;
+                    }
+                }
+            }
+        })
+        .expect("spawn GPU decode thread");
+
+    (rx, handle)
+}
+
+/// Spawn parallel GPU decode threads and a pairing thread.
+fn spawn_decode_thread_gpu(
+    left_path: String,
+    right_path: String,
+    left_buf: GpuBufInfo,
+    right_buf: GpuBufInfo,
+    left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
+    right_slot_free_rx: std::sync::mpsc::Receiver<u8>,
+) -> GpuDecodeHandles {
+    let (left_rx, left_handle) =
+        spawn_single_decoder_gpu(left_path, "left", left_buf, left_slot_free_rx);
+    let (right_rx, right_handle) =
+        spawn_single_decoder_gpu(right_path, "right", right_buf, right_slot_free_rx);
+
+    let (tx, rx) = std::sync::mpsc::sync_channel::<GpuFrameSignal>(1);
+
+    let pair_handle = std::thread::Builder::new()
+        .name("decode_pair_gpu".into())
+        .spawn(move || {
+            while let (Ok(left_slot), Ok(right_slot)) = (left_rx.recv(), right_rx.recv()) {
+                if tx
+                    .send(GpuFrameSignal {
+                        left_slot,
+                        right_slot,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .expect("spawn GPU pairing thread");
+
+    GpuDecodeHandles {
+        frame_rx: rx,
+        join_handles: vec![left_handle, right_handle, pair_handle],
+    }
+}
+
+/// Run the stitch loop using CUDA/Vulkan zero-copy (no CPU upload).
+///
+/// Creates double-buffered shared textures, spawns GPU decode threads,
+/// and renders directly from GPU-resident data.
+#[cfg(target_os = "linux")]
+#[allow(clippy::too_many_arguments)]
+fn run_stitch_zero_copy(
+    pipeline: &mut reco_core::pipeline::StitchPipeline,
+    encoder: &mut reco_io::ffmpeg::encoder::VideoEncoder,
+    nv12_converter: &mut reco_core::nv12_converter::Nv12Converter,
+    left_path: &str,
+    right_path: &str,
+    input_width: u32,
+    input_height: u32,
+    frame_limit: u64,
+    yaw: f32,
+    pitch: f32,
+    interrupted: &Arc<AtomicBool>,
+    progress: &crate::helpers::ProgressReporter,
+) -> anyhow::Result<u64> {
+    use reco_core::vulkan_interop::create_shared_texture;
+
+    // Create double-buffered shared textures for each camera (Y + UV per slot)
+    log::info!("Creating shared textures for zero-copy...");
+
+    let gpu = pipeline.gpu();
+    let create_pair = |label: &str,
+                       slot: usize|
+     -> anyhow::Result<(
+        reco_core::vulkan_interop::SharedTexture,
+        reco_core::vulkan_interop::SharedTexture,
+    )> {
+        let y = create_shared_texture(gpu, input_width, input_height, wgpu::TextureFormat::R8Unorm)
+            .map_err(|e| anyhow::anyhow!("{label} Y[{slot}] shared texture: {e}"))?;
+
+        let uv = create_shared_texture(
+            gpu,
+            input_width / 2,
+            input_height / 2,
+            wgpu::TextureFormat::Rg8Unorm,
+        )
+        .map_err(|e| anyhow::anyhow!("{label} UV[{slot}] shared texture: {e}"))?;
+
+        Ok((y, uv))
+    };
+
+    let (left_y_0, left_uv_0) = create_pair("left", 0)?;
+    let (left_y_1, left_uv_1) = create_pair("left", 1)?;
+    let (right_y_0, right_uv_0) = create_pair("right", 0)?;
+    let (right_y_1, right_uv_1) = create_pair("right", 1)?;
+
+    log::info!(
+        "Shared textures created: left Y pitch={}/{}, UV pitch={}/{}",
+        left_y_0.pitch,
+        left_y_1.pitch,
+        left_uv_0.pitch,
+        left_uv_1.pitch
+    );
+
+    // Build GPU buffer info for decode threads (just CUDA pointers + pitches)
+    let left_buf = GpuBufInfo {
+        y_ptr: [left_y_0.cuda_ptr, left_y_1.cuda_ptr],
+        uv_ptr: [left_uv_0.cuda_ptr, left_uv_1.cuda_ptr],
+        y_pitch: [left_y_0.pitch, left_y_1.pitch],
+        uv_pitch: [left_uv_0.pitch, left_uv_1.pitch],
+        width: input_width,
+        height: input_height,
+    };
+    let right_buf = GpuBufInfo {
+        y_ptr: [right_y_0.cuda_ptr, right_y_1.cuda_ptr],
+        uv_ptr: [right_uv_0.cuda_ptr, right_uv_1.cuda_ptr],
+        y_pitch: [right_y_0.pitch, right_y_1.pitch],
+        uv_pitch: [right_uv_0.pitch, right_uv_1.pitch],
+        width: input_width,
+        height: input_height,
+    };
+
+    // Slot-free channels: decode threads wait for a slot to be released by
+    // main before writing to it. This prevents NVDEC from overwriting a
+    // shared texture that the GPU render pass is still reading.
+    let (left_slot_free_tx, left_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
+    let (right_slot_free_tx, right_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
+    // Both slots start as free
+    left_slot_free_tx.send(0).unwrap();
+    left_slot_free_tx.send(1).unwrap();
+    right_slot_free_tx.send(0).unwrap();
+    right_slot_free_tx.send(1).unwrap();
+
+    // Spawn GPU decode threads
+    let decode = spawn_decode_thread_gpu(
+        left_path.to_string(),
+        right_path.to_string(),
+        left_buf,
+        right_buf,
+        left_slot_free_rx,
+        right_slot_free_rx,
+    );
+    let frame_rx = decode.frame_rx;
+
+    println!("Zero-copy pipeline active: NVDEC -> cuMemcpy2D -> shared texture -> render");
+
+    // Configure bind groups for GPU-resident shared textures
+    let bind_groups = pipeline.configure_gpu_source(
+        [
+            (&left_y_0.texture, &left_uv_0.texture),
+            (&left_y_1.texture, &left_uv_1.texture),
+        ],
+        [
+            (&right_y_0.texture, &right_uv_0.texture),
+            (&right_y_1.texture, &right_uv_1.texture),
+        ],
+    );
+
+    let mut frame_count: u64 = 0;
+
+    loop {
+        if frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
+            break;
+        }
+
+        let signal = {
+            profile_scope!("wait_decode");
+            match frame_rx.recv() {
+                Ok(s) => s,
+                Err(_) => break,
+            }
+        };
+
+        let render_buf = pipeline.render_gpu_frame(
+            &bind_groups,
+            signal.left_slot,
+            signal.right_slot,
+            yaw,
+            pitch,
+        );
+        let nv12_data = nv12_converter.convert_and_readback(
+            pipeline.gpu(),
+            pipeline.render_target(),
+            render_buf,
+        )?;
+        encoder.write_nv12_frame(&nv12_data)?;
+
+        // GPU is done reading these slots - release them for decode to reuse.
+        // poll(Wait) inside convert_and_readback guarantees the render pass
+        // has finished reading from the shared textures.
+        let _ = left_slot_free_tx.send(signal.left_slot);
+        let _ = right_slot_free_tx.send(signal.right_slot);
+
+        frame_count += 1;
+        progress.report(frame_count);
+    }
+
+    // Graceful shutdown: correct ordering prevents CUDA error 700.
+    //
+    // 1. Drop slot-free senders -> decode threads' recv() returns Err -> threads exit
+    // 2. Drop frame_rx -> pairing thread's send() returns Err -> thread exits
+    // 3. Join all threads -> VideoDecoder::Drop completes FFmpeg CUDA cleanup
+    //    (cuMemFree) while the shared CUDA VMM memory is still mapped
+    // 4. Drop shared textures -> cuMemUnmap + cuMemAddressFree (safe now that
+    //    FFmpeg is done with the CUDA context)
+    drop(left_slot_free_tx);
+    drop(right_slot_free_tx);
+    drop(frame_rx);
+    for handle in decode.join_handles {
+        let _ = handle.join();
+    }
+
+    // Drop shared textures: wgpu texture (VkImage + VkDeviceMemory)
+    // must be freed before the CUDA shared memory is unmapped.
+    // SharedTexture field order guarantees this (texture before _shared_mem).
+    drop(left_y_0);
+    drop(left_uv_0);
+    drop(left_y_1);
+    drop(left_uv_1);
+    drop(right_y_0);
+    drop(right_uv_0);
+    drop(right_y_1);
+    drop(right_uv_1);
+    Ok(frame_count)
+}
+
+/// Run the stitch subcommand: decode two video files and encode a stitched panorama.
+#[allow(clippy::too_many_arguments)]
+pub fn run_stitch(
+    left: &str,
+    right: &str,
+    calibration: &str,
+    output: &str,
+    width: u32,
+    height: u32,
+    blend: f32,
+    duration: Option<f64>,
+    max_frames: Option<u64>,
+    encoder_name: Option<String>,
+    codec: &str,
+    quality: &str,
+    interrupted: &Arc<AtomicBool>,
+) -> anyhow::Result<()> {
+    use reco_core::source::FrameSource;
+
+    const MAX_DIM: u32 = 8192;
+    anyhow::ensure!(
+        width > 0 && width <= MAX_DIM && height > 0 && height <= MAX_DIM,
+        "Output dimensions {}x{} out of range: width and height must be 1..={MAX_DIM}",
+        width,
+        height,
+    );
+
+    log::info!("Stitching: {left} + {right} -> {output}");
+
+    // Open file source to get input dimensions and fps
+    let mut source = reco_io::adapters::FfmpegFileSource::open(Path::new(left), Path::new(right))?;
+    let fps_rational = reco_io::adapters::FfmpegFileSource::frame_rate(Path::new(left))?;
+    let info = source.info();
+    let input_width = info.width;
+    let input_height = info.height;
+    let fps_val = info.fps;
+
+    log::info!(
+        "Input: {}x{} @ {:.1} fps",
+        input_width,
+        input_height,
+        fps_val
+    );
+
+    let cal = crate::helpers::load_calibration(Path::new(calibration))?;
+
+    let viewport = reco_core::viewport::ViewportConfig {
+        width,
+        height,
+        blend_width: blend,
+        ..Default::default()
+    };
+
+    // Detect zero-copy capability: CUDA available + Vulkan backend + Linux
+    let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
+
+    #[cfg(target_os = "linux")]
+    let use_zero_copy = std::env::var("RECO_NO_HWACCEL").is_err()
+        && reco_core::cuda_interop::is_cuda_available()
+        && gpu.adapter_info.backend == wgpu::Backend::Vulkan;
+    #[cfg(not(target_os = "linux"))]
+    let use_zero_copy = false;
+
+    let input_format = if use_zero_copy {
+        reco_core::renderer::InputFormat::Nv12
+    } else {
+        reco_core::renderer::InputFormat::Yuv420p
+    };
+
+    let mut pipeline = reco_core::pipeline::StitchPipeline::with_gpu(
+        gpu,
+        cal,
+        viewport,
+        input_width,
+        input_height,
+        wgpu::TextureFormat::Rgba8Unorm,
+        input_format,
+    )?;
+
+    // GPU RGBA->NV12 compute shader: eliminates CPU swscale and
+    // reduces GPU->CPU readback bandwidth by 2.7x
+    let mut nv12_converter =
+        reco_core::nv12_converter::Nv12Converter::new(pipeline.gpu(), width, height)?;
+
+    println!(
+        "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {}",
+        pipeline.gpu_name(),
+        if use_zero_copy {
+            "zero-copy (CUDA/Vulkan)"
+        } else {
+            "CPU upload"
+        }
+    );
+
+    let quality_enum = match quality {
+        "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
+        "high" => reco_io::ffmpeg::encoder::Quality::High,
+        _ => reco_io::ffmpeg::encoder::Quality::Balanced,
+    };
+    let video_codec =
+        reco_io::ffmpeg::encoder::VideoCodec::from_str_loose(codec).unwrap_or_else(|| {
+            eprintln!("Unknown codec '{codec}', defaulting to H.264");
+            reco_io::ffmpeg::encoder::VideoCodec::H264
+        });
+    let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
+        encoder_name,
+        codec: video_codec,
+        quality: quality_enum,
+    };
+
+    let mut encoder = reco_io::ffmpeg::encoder::VideoEncoder::new(
+        Path::new(output),
+        width,
+        height,
+        fps_rational,
+        &enc_config,
+    )?;
+    println!("Encoder: {}", encoder.encoder_name());
+
+    // Compute frame limit from --duration and --max-frames
+    let frame_limit: u64 = match (duration, max_frames) {
+        (Some(dur), Some(mf)) => {
+            let dur_frames = (dur * fps_val) as u64;
+            dur_frames.min(mf)
+        }
+        (Some(dur), None) => (dur * fps_val) as u64,
+        (None, Some(mf)) => mf,
+        (None, None) => u64::MAX,
+    };
+
+    if frame_limit < u64::MAX {
+        println!("Processing up to {frame_limit} frames");
+    }
+
+    let progress = crate::helpers::ProgressReporter::new(30);
+    let mut frame_count: u64 = 0;
+    let yaw = 0.0_f32;
+    let pitch = 0.0_f32;
+
+    #[cfg(target_os = "linux")]
+    if use_zero_copy {
+        // Zero-copy path: CUDA/Vulkan shared textures, no CPU upload
+        frame_count = run_stitch_zero_copy(
+            &mut pipeline,
+            &mut encoder,
+            &mut nv12_converter,
+            left,
+            right,
+            input_width,
+            input_height,
+            frame_limit,
+            yaw,
+            pitch,
+            interrupted,
+            &progress,
+        )?;
+    }
+
+    if !use_zero_copy {
+        // CPU upload path: use FfmpegFileSource for decoding
+        loop {
+            if frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let frame = {
+                profile_scope!("wait_decode");
+                match source.next_frame()? {
+                    Some(f) => f,
+                    None => break,
+                }
+            };
+
+            let render_buf = pipeline.render_stereo_frame(&frame, yaw, pitch);
+            let nv12_data = nv12_converter.convert_and_readback(
+                pipeline.gpu(),
+                pipeline.render_target(),
+                render_buf,
+            )?;
+            encoder.write_nv12_frame(&nv12_data)?;
+            frame_count += 1;
+
+            progress.report(frame_count);
+        }
+    }
+
+    log::info!("Finishing encoder...");
+    encoder.finish()?;
+    log::info!("Encoder finished");
+
+    progress.finish(frame_count, output);
+
+    log::info!("Dropping pipeline...");
+    drop(pipeline);
+    log::info!("Pipeline dropped, exiting");
+
+    Ok(())
+}
