@@ -455,7 +455,7 @@ pub fn allocate_shared_memory(size: usize) -> Result<CudaSharedMemory, CudaInter
         )?;
 
         log::debug!(
-            "CUDA shared memory allocated: {} bytes at 0x{:x} (fd={})",
+            "CUDA shared memory allocated: {} bytes at 0x{:x} (handle={:?})",
             alloc_size,
             device_ptr,
             shared_handle,
@@ -584,7 +584,7 @@ mod tests {
         assert!(mem.shared_handle >= 0, "shared fd should be valid");
 
         println!(
-            "Shared memory: {} bytes at 0x{:x}, fd={}",
+            "Shared memory: {} bytes at 0x{:x}, handle={:?}",
             mem.alloc_size, mem.device_ptr, mem.shared_handle
         );
         // Drop will clean up
