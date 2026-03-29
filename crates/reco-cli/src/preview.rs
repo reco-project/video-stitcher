@@ -511,9 +511,10 @@ impl ApplicationHandler for App {
                 let pipeline = self.pipeline.as_ref().unwrap();
 
                 let frame = match surface.get_current_texture() {
-                    Ok(f) => f,
-                    Err(e) => {
-                        log::warn!("Surface error: {e}");
+                    wgpu::CurrentSurfaceTexture::Success(f)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    other => {
+                        log::warn!("Surface error: {other:?}");
                         return;
                     }
                 };

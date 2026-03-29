@@ -11,8 +11,8 @@ readme = "README.md"
 profiling = ["tracing"]
 
 [dependencies]
-wgpu = { version = "25", features = ["vulkan-portability"] }
-wgpu-hal = "25"
+wgpu = { version = "29", features = ["vulkan-portability"] }
+wgpu-hal = "29"
 ash = "0.38"
 libloading = "0.9"
 bytemuck = { version = "1", features = ["derive"] }

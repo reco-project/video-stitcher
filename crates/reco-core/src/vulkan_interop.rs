@@ -73,110 +73,110 @@ pub fn create_shared_texture(
 
     // Access the raw Vulkan device through wgpu's HAL
     let (vk_image, device_memory, actual_pitch) = unsafe {
-        gpu.device.as_hal::<Vulkan, _, _>(|hal_device| {
-            let hal_device = hal_device.ok_or(CudaInteropError::NotVulkan)?;
-            let raw_device = hal_device.raw_device();
-            let physical_device = hal_device.raw_physical_device();
-            let vk_format = wgpu_format_to_vk(format);
+        let hal_device_guard = gpu
+            .device
+            .as_hal::<Vulkan>()
+            .ok_or(CudaInteropError::NotVulkan)?;
+        let hal_device = &*hal_device_guard;
+        let raw_device = hal_device.raw_device();
+        let physical_device = hal_device.raw_physical_device();
+        let vk_format = wgpu_format_to_vk(format);
 
-            // Create VkImage with external memory support
-            let mut external_info = vk::ExternalMemoryImageCreateInfo::default()
-                .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+        // Create VkImage with external memory support
+        let mut external_info = vk::ExternalMemoryImageCreateInfo::default()
+            .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
 
-            let image_info = vk::ImageCreateInfo::default()
-                .image_type(vk::ImageType::TYPE_2D)
-                .format(vk_format)
-                .extent(vk::Extent3D {
-                    width,
-                    height,
-                    depth: 1,
-                })
-                .mip_levels(1)
-                .array_layers(1)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .tiling(vk::ImageTiling::LINEAR)
-                .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
-                .sharing_mode(vk::SharingMode::EXCLUSIVE)
-                .initial_layout(vk::ImageLayout::PREINITIALIZED)
-                .push_next(&mut external_info);
-
-            let vk_image = raw_device
-                .create_image(&image_info, None)
-                .map_err(|e| CudaInteropError::VulkanError(format!("vkCreateImage: {e:?}")))?;
-
-            // Get memory requirements
-            let mem_reqs = raw_device.get_image_memory_requirements(vk_image);
-
-            // Get actual row pitch from the image layout
-            let subresource = vk::ImageSubresource {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                array_layer: 0,
-            };
-            let layout = raw_device.get_image_subresource_layout(vk_image, subresource);
-            let actual_pitch = layout.row_pitch as usize;
-
-            // Find a DEVICE_LOCAL memory type
-            let mem_props = {
-                let instance = hal_device.shared_instance().raw_instance();
-                instance.get_physical_device_memory_properties(physical_device)
-            };
-
-            // Prefer DEVICE_LOCAL, but fall back to any supported memory type.
-            // On unified-memory GPUs (Jetson/Tegra) the driver may not flag
-            // imported-fd-compatible types as DEVICE_LOCAL.
-            let memory_type_index = (0..mem_props.memory_type_count)
-                .find(|&i| {
-                    let type_bits = 1 << i;
-                    let is_supported = (mem_reqs.memory_type_bits & type_bits) != 0;
-                    let props = mem_props.memory_types[i as usize].property_flags;
-                    is_supported && props.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                })
-                .or_else(|| {
-                    log::warn!(
-                        "No DEVICE_LOCAL memory type for imported image, \
-                         falling back to any supported type (unified memory GPU?)"
-                    );
-                    (0..mem_props.memory_type_count)
-                        .find(|&i| (mem_reqs.memory_type_bits & (1 << i)) != 0)
-                })
-                .ok_or_else(|| {
-                    CudaInteropError::VulkanError(
-                        "no compatible memory type for imported image".into(),
-                    )
-                })?;
-
-            // Import the CUDA fd as Vulkan memory
-            let mut import_info = vk::ImportMemoryFdInfoKHR::default()
-                .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD)
-                .fd(fd);
-
-            let alloc_info = vk::MemoryAllocateInfo::default()
-                .allocation_size(shared_mem.alloc_size as u64)
-                .memory_type_index(memory_type_index)
-                .push_next(&mut import_info);
-
-            let device_memory = raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
-                CudaInteropError::VulkanError(format!("vkAllocateMemory (import fd): {e:?}"))
-            })?;
-
-            // Bind the imported memory to the image
-            raw_device
-                .bind_image_memory(vk_image, device_memory, 0)
-                .map_err(|e| CudaInteropError::VulkanError(format!("vkBindImageMemory: {e:?}")))?;
-
-            log::info!(
-                "Vulkan image created: {}x{} {:?}, pitch={}, imported fd={}",
+        let image_info = vk::ImageCreateInfo::default()
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk_format)
+            .extent(vk::Extent3D {
                 width,
                 height,
-                format,
-                actual_pitch,
-                fd
-            );
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::LINEAR)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .initial_layout(vk::ImageLayout::PREINITIALIZED)
+            .push_next(&mut external_info);
 
-            Ok((vk_image, device_memory, actual_pitch))
-        })
-    }?;
+        let vk_image = raw_device
+            .create_image(&image_info, None)
+            .map_err(|e| CudaInteropError::VulkanError(format!("vkCreateImage: {e:?}")))?;
+
+        // Get memory requirements
+        let mem_reqs = raw_device.get_image_memory_requirements(vk_image);
+
+        // Get actual row pitch from the image layout
+        let subresource = vk::ImageSubresource {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            mip_level: 0,
+            array_layer: 0,
+        };
+        let layout = raw_device.get_image_subresource_layout(vk_image, subresource);
+        let actual_pitch = layout.row_pitch as usize;
+
+        // Find a DEVICE_LOCAL memory type
+        let mem_props = {
+            let instance = hal_device.shared_instance().raw_instance();
+            instance.get_physical_device_memory_properties(physical_device)
+        };
+
+        // Prefer DEVICE_LOCAL, but fall back to any supported memory type.
+        // On unified-memory GPUs (Jetson/Tegra) the driver may not flag
+        // imported-fd-compatible types as DEVICE_LOCAL.
+        let memory_type_index = (0..mem_props.memory_type_count)
+            .find(|&i| {
+                let type_bits = 1 << i;
+                let is_supported = (mem_reqs.memory_type_bits & type_bits) != 0;
+                let props = mem_props.memory_types[i as usize].property_flags;
+                is_supported && props.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+            })
+            .or_else(|| {
+                log::warn!(
+                    "No DEVICE_LOCAL memory type for imported image, \
+                         falling back to any supported type (unified memory GPU?)"
+                );
+                (0..mem_props.memory_type_count)
+                    .find(|&i| (mem_reqs.memory_type_bits & (1 << i)) != 0)
+            })
+            .ok_or_else(|| {
+                CudaInteropError::VulkanError("no compatible memory type for imported image".into())
+            })?;
+
+        // Import the CUDA fd as Vulkan memory
+        let mut import_info = vk::ImportMemoryFdInfoKHR::default()
+            .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD)
+            .fd(fd);
+
+        let alloc_info = vk::MemoryAllocateInfo::default()
+            .allocation_size(shared_mem.alloc_size as u64)
+            .memory_type_index(memory_type_index)
+            .push_next(&mut import_info);
+
+        let device_memory = raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
+            CudaInteropError::VulkanError(format!("vkAllocateMemory (import fd): {e:?}"))
+        })?;
+
+        // Bind the imported memory to the image
+        raw_device
+            .bind_image_memory(vk_image, device_memory, 0)
+            .map_err(|e| CudaInteropError::VulkanError(format!("vkBindImageMemory: {e:?}")))?;
+
+        log::info!(
+            "Vulkan image created: {}x{} {:?}, pitch={}, imported fd={}",
+            width,
+            height,
+            format,
+            actual_pitch,
+            fd
+        );
+
+        (vk_image, device_memory, actual_pitch)
+    };
 
     // Wrap the VkImage into a wgpu texture via HAL.
     //
@@ -192,20 +192,23 @@ pub fn create_shared_texture(
         // SAFETY: these Vulkan resources are no longer referenced after
         // the wgpu texture is dropped.
         unsafe {
-            device_for_drop.as_hal::<Vulkan, _, _>(|hal_device| {
-                if let Some(hal_device) = hal_device {
-                    let raw = hal_device.raw_device();
-                    raw.destroy_image(drop_image, None);
-                    raw.free_memory(drop_memory, None);
-                }
-            });
+            if let Some(hal_device) = device_for_drop.as_hal::<Vulkan>() {
+                let raw = hal_device.raw_device();
+                raw.destroy_image(drop_image, None);
+                raw.free_memory(drop_memory, None);
+            }
         }
     });
 
     // SAFETY: we've created a valid VkImage backed by imported CUDA memory,
     // and the drop_callback will clean up both when the texture is released.
     let wgpu_texture = unsafe {
-        let hal_texture = <Vulkan as wgpu::hal::Api>::Device::texture_from_raw(
+        let hal_device_guard = gpu
+            .device
+            .as_hal::<Vulkan>()
+            .ok_or(CudaInteropError::NotVulkan)?;
+
+        let hal_texture = hal_device_guard.texture_from_raw(
             vk_image,
             &wgpu::hal::TextureDescriptor {
                 label: Some("cuda_shared"),
@@ -223,7 +226,11 @@ pub fn create_shared_texture(
                 view_formats: vec![],
             },
             Some(drop_callback),
+            wgpu::hal::vulkan::TextureMemory::External,
         );
+
+        // Drop the HAL device guard before calling create_texture_from_hal
+        drop(hal_device_guard);
 
         gpu.device.create_texture_from_hal::<Vulkan>(
             hal_texture,

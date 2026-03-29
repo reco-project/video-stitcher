@@ -126,8 +126,8 @@ impl Nv12Converter {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("nv12_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -296,7 +296,7 @@ impl Nv12Converter {
                 let _ = tx.send(result);
             });
             gpu.device
-                .poll(wgpu::PollType::wait())
+                .poll(wgpu::PollType::wait_indefinitely())
                 .map_err(|_| Nv12Error::BufferMapFailed)?;
             self.map_rx
                 .recv()

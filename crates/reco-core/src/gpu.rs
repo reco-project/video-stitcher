@@ -70,10 +70,9 @@ impl GpuContext {
         let backends = Self::select_backends();
         log::info!("wgpu backends: {:?}", backends);
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends,
-            ..Default::default()
-        });
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = backends;
+        let instance = wgpu::Instance::new(desc);
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {

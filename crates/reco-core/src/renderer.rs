@@ -246,8 +246,8 @@ impl Renderer {
         // Pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stitch_pipeline_layout"),
-            bind_group_layouts: &[&texture_layout, &uniform_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&texture_layout), Some(&uniform_layout)],
+            immediate_size: 0,
         });
 
         // Render pipeline with alpha blending for seam transition
@@ -285,7 +285,7 @@ impl Renderer {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -673,10 +673,12 @@ impl Renderer {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
+                multiview_mask: None,
             });
 
             pass.set_pipeline(&self.pipeline);
@@ -731,7 +733,7 @@ impl Renderer {
                 let _ = tx.send(result);
             });
             gpu.device
-                .poll(wgpu::PollType::wait())
+                .poll(wgpu::PollType::wait_indefinitely())
                 .map_err(|_| RenderError::BufferMapFailed)?;
             rx.recv()
                 .map_err(|_| RenderError::BufferMapFailed)?
@@ -829,10 +831,12 @@ impl Renderer {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
+                multiview_mask: None,
             });
 
             pass.set_pipeline(&self.pipeline);
@@ -926,10 +930,12 @@ impl Renderer {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
+                multiview_mask: None,
             });
 
             pass.set_pipeline(&self.pipeline);
