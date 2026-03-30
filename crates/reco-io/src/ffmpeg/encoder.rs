@@ -711,6 +711,15 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
             opts.set("q:v", q);
             opts.set("profile", "high");
         }
+        "hevc_videotoolbox" => {
+            let q = match quality {
+                Quality::Fast => "55",
+                Quality::Balanced => "65",
+                Quality::High => "80",
+            };
+            opts.set("q:v", q);
+            opts.set("profile", "main");
+        }
         "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
             let qp = match quality {
                 Quality::Fast => "28",
@@ -721,6 +730,15 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
             if name == "h264_vaapi" {
                 opts.set("profile", "high");
             }
+        }
+        "h264_v4l2m2m" | "hevc_v4l2m2m" => {
+            let qp = match quality {
+                Quality::Fast => "28",
+                Quality::Balanced => "23",
+                Quality::High => "19",
+            };
+            opts.set("qp", qp);
+            // Don't set profile - v4l2m2m drivers pick appropriate defaults.
         }
         "h264_amf" | "hevc_amf" | "av1_amf" => {
             let q = match quality {
@@ -762,8 +780,7 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
             opts.set("cpu-used", cpu_used);
             opts.set("row-mt", "1");
         }
-        _ => {
-            // libx264 and unknown encoders
+        "libx264" => {
             let (preset, crf) = match quality {
                 Quality::Fast => ("ultrafast", "32"),
                 Quality::Balanced => ("veryfast", "28"),
@@ -783,6 +800,9 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
             {
                 opts.set("threads", "4");
             }
+        }
+        _ => {
+            // Unknown encoders: don't set profile, let FFmpeg pick defaults.
         }
     }
 
