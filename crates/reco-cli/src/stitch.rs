@@ -447,10 +447,8 @@ fn run_stitch_metal_zero_copy(
 
         // Import NV12 planes as Metal textures (zero-copy via IOSurface)
         // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid (retained).
-        let (left_y, left_uv) =
-            unsafe { cache.import_nv12(pair.left.as_ptr(), session.gpu())? };
-        let (right_y, right_uv) =
-            unsafe { cache.import_nv12(pair.right.as_ptr(), session.gpu())? };
+        let (left_y, left_uv) = unsafe { cache.import_nv12(pair.left.as_ptr(), session.gpu())? };
+        let (right_y, right_uv) = unsafe { cache.import_nv12(pair.right.as_ptr(), session.gpu())? };
 
         // Render using the imported textures
         let render_buf = session.pipeline_mut().render_imported_textures(
