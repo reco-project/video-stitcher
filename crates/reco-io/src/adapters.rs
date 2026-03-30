@@ -157,6 +157,14 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             Err(_) => Ok(None),
         }
     }
+
+    fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+        match self.rx.try_recv() {
+            Ok(pair) => Ok(Some(StereoFrame::Yuv420p(pair))),
+            Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Ok(None),
+        }
+    }
 }
 
 // -- FFmpeg File Encoder --

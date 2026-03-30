@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use reco_core::source::{FramePair, YuvData};
+use reco_core::source::{FrameSource, YuvData};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -38,76 +38,14 @@ const FOV_DEFAULT: f32 = 75.0;
 /// Number of frames to skip on P key press.
 const FRAME_SKIP_COUNT: usize = 30;
 
-/// Spawn a single-video decode thread that sends YUV frames through a channel.
-fn spawn_single_decoder(path: String, label: &'static str) -> std::sync::mpsc::Receiver<YuvData> {
-    let (tx, rx) = std::sync::mpsc::sync_channel::<YuvData>(4);
-
-    std::thread::Builder::new()
-        .name(format!("decode_{label}"))
-        .spawn(move || {
-            let mut dec = match reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
-                Ok(d) => {
-                    log::info!(
-                        "{label} decoder: {} ({}x{})",
-                        d.backend(),
-                        d.width(),
-                        d.height()
-                    );
-                    d
-                }
-                Err(e) => {
-                    log::error!("Failed to open {label} video: {e}");
-                    return;
-                }
-            };
-            loop {
-                match dec.next_frame() {
-                    Ok(Some(f)) => {
-                        let buf = YuvData {
-                            y: f.y,
-                            u: f.u,
-                            v: f.v,
-                        };
-                        if tx.send(buf).is_err() {
-                            break; // Receiver dropped
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        log::error!("{label} decode error: {e}");
-                        break;
-                    }
-                }
-            }
-        })
-        .expect("spawn decode thread");
-
-    rx
-}
-
-/// Spawn parallel decode threads (one per video) and a pairing thread
-/// that zips frames into `FramePair`s through a bounded channel.
-fn spawn_preview_decode_thread(
-    left_path: String,
-    right_path: String,
-) -> std::sync::mpsc::Receiver<FramePair> {
-    let left_rx = spawn_single_decoder(left_path, "left");
-    let right_rx = spawn_single_decoder(right_path, "right");
-
-    let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
-
-    std::thread::Builder::new()
-        .name("decode_pair".into())
-        .spawn(move || {
-            while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                if tx.send(FramePair { left, right }).is_err() {
-                    break; // Consumer dropped
-                }
-            }
-        })
-        .expect("spawn pairing thread");
-
-    rx
+/// Extract a [`YuvData`] pair from a [`StereoFrame`].
+///
+/// Panics if the frame is not `Yuv420p` (preview always uses CPU decode).
+fn unwrap_yuv_pair(frame: reco_core::source::StereoFrame) -> (YuvData, YuvData) {
+    match frame {
+        reco_core::source::StereoFrame::Yuv420p(pair) => (pair.left, pair.right),
+        _ => panic!("preview expects Yuv420p frames"),
+    }
 }
 
 /// Run the interactive preview window.
@@ -118,42 +56,40 @@ pub fn run_preview(
     width: u32,
     height: u32,
 ) -> anyhow::Result<()> {
-    let left_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(left_path))?;
+    // Probe the right file to verify dimensions match
     let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
+    let right_dims = (right_dec.width(), right_dec.height());
+    drop(right_dec);
 
-    let input_width = left_dec.width();
-    let input_height = left_dec.height();
+    let mut source =
+        reco_io::adapters::FfmpegFileSource::open(Path::new(left_path), Path::new(right_path))?;
+    let info = source.info();
 
     anyhow::ensure!(
-        input_width == right_dec.width() && input_height == right_dec.height(),
+        info.width == right_dims.0 && info.height == right_dims.1,
         "Video dimension mismatch: left={}x{}, right={}x{}",
-        input_width,
-        input_height,
-        right_dec.width(),
-        right_dec.height()
+        info.width,
+        info.height,
+        right_dims.0,
+        right_dims.1
     );
-
-    let fps = left_dec.fps();
-    // Drop the decoders - the thread will open its own
-    drop(left_dec);
-    drop(right_dec);
 
     let cal = helpers::load_calibration(Path::new(calibration_path))?;
 
     println!(
         "Preview: {}x{} input, {}x{} window",
-        input_width, input_height, width, height
+        info.width, info.height, width, height
     );
 
-    // Spawn decode thread and get the first frame for initial display
-    let frame_rx = spawn_preview_decode_thread(left_path.to_string(), right_path.to_string());
-    let first = frame_rx
-        .recv()
-        .map_err(|_| anyhow::anyhow!("videos have no frames"))?;
+    // Get the first frame for initial display
+    let first = source
+        .next_frame()?
+        .ok_or_else(|| anyhow::anyhow!("videos have no frames"))?;
+    let (first_left, first_right) = unwrap_yuv_pair(first);
 
     let event_loop = EventLoop::new()?;
 
-    let frame_duration = std::time::Duration::from_secs_f64(1.0 / fps);
+    let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
 
     let mut app = App {
         window: None,
@@ -161,14 +97,14 @@ pub fn run_preview(
         surface_format: reco_core::wgpu::TextureFormat::Bgra8UnormSrgb, // overwritten in resumed()
         alpha_mode: reco_core::wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
         pipeline: None,
-        frame_rx,
+        source,
         cal,
-        input_width,
-        input_height,
+        input_width: info.width,
+        input_height: info.height,
         width,
         height,
-        current_left: first.left,
-        current_right: first.right,
+        current_left: first_left,
+        current_right: first_right,
 
         yaw: 0.0,
         pitch: 0.0,
@@ -194,7 +130,7 @@ struct App {
     surface_format: reco_core::wgpu::TextureFormat,
     alpha_mode: reco_core::wgpu::CompositeAlphaMode,
     pipeline: Option<reco_core::pipeline::StitchPipeline>,
-    frame_rx: std::sync::mpsc::Receiver<FramePair>,
+    source: reco_io::adapters::FfmpegFileSource,
     cal: reco_core::calibration::MatchCalibration,
     input_width: u32,
     input_height: u32,
@@ -220,14 +156,19 @@ struct App {
 
 impl App {
     fn advance_frame(&mut self) {
-        match self.frame_rx.try_recv() {
-            Ok(pair) => {
-                self.apply_pair(pair);
+        match self.source.try_next_frame() {
+            Ok(Some(frame)) => {
+                let (left, right) = unwrap_yuv_pair(frame);
+                self.current_left = left;
+                self.current_right = right;
+                self.frame_count += 1;
+                self.needs_redraw = true;
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => {
-                // Decode thread hasn't caught up yet - skip this frame
+            Ok(None) => {
+                // Decode thread hasn't caught up yet, or end of stream
             }
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            Err(e) => {
+                log::error!("Decode error: {e}");
                 self.playing = false;
                 println!("End of video");
             }
@@ -236,22 +177,19 @@ impl App {
 
     /// Blocking advance for step mode (N key, P key).
     fn step_frame(&mut self) {
-        match self.frame_rx.recv() {
-            Ok(pair) => {
-                self.apply_pair(pair);
+        match self.source.next_frame() {
+            Ok(Some(frame)) => {
+                let (left, right) = unwrap_yuv_pair(frame);
+                self.current_left = left;
+                self.current_right = right;
+                self.frame_count += 1;
+                self.needs_redraw = true;
             }
-            Err(_) => {
+            Ok(None) | Err(_) => {
                 self.playing = false;
                 println!("End of video");
             }
         }
-    }
-
-    fn apply_pair(&mut self, pair: FramePair) {
-        self.current_left = pair.left;
-        self.current_right = pair.right;
-        self.frame_count += 1;
-        self.needs_redraw = true;
     }
 
     /// Interpolate yaw/pitch/fov toward their targets for smooth camera.

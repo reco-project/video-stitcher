@@ -137,4 +137,15 @@ pub trait FrameSource: Send {
     /// For live sources (cameras), this blocks until a frame is available.
     /// For file sources, returns `None` at end of file.
     fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError>;
+
+    /// Non-blocking attempt to get the next frame.
+    ///
+    /// Returns `Ok(None)` if no frame is available yet (not exhausted,
+    /// just not ready). Used by interactive consumers (preview window)
+    /// that need to poll without blocking the UI thread.
+    ///
+    /// Default implementation delegates to [`Self::next_frame`] (blocking).
+    fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+        self.next_frame()
+    }
 }

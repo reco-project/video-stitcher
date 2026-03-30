@@ -103,3 +103,4 @@ pub mod source;
 pub mod viewport;
 #[cfg(target_os = "linux")]
 pub mod vulkan_interop;
+pub mod zero_copy;

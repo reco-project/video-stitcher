@@ -2,477 +2,9 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use reco_core::profile_scope;
-
-// ---- GPU decode types for zero-copy path ----
-
-/// CUDA buffer info passed to decode threads for cuMemcpy2D destination.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-#[derive(Clone)]
-struct GpuBufInfo {
-    /// CUDA device pointers for double-buffered Y textures.
-    y_ptr: [u64; 2],
-    /// CUDA device pointers for double-buffered UV textures.
-    uv_ptr: [u64; 2],
-    /// Row pitch of shared Y textures (may differ from width due to alignment).
-    y_pitch: [usize; 2],
-    /// Row pitch of shared UV textures.
-    uv_pitch: [usize; 2],
-    width: u32,
-    height: u32,
-}
-
-/// A pair of double-buffer slot indices from the decode threads.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-struct GpuFrameSignal {
-    left_slot: u8,
-    right_slot: u8,
-}
-
-/// Handles for the GPU decode threads, used for graceful shutdown.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-struct GpuDecodeHandles {
-    frame_rx: std::sync::mpsc::Receiver<GpuFrameSignal>,
-    /// Join handles for the 2 decode threads + 1 pairing thread.
-    /// Must be joined before dropping shared textures to ensure FFmpeg's
-    /// CUDA context cleanup completes while shared memory is still valid.
-    join_handles: Vec<std::thread::JoinHandle<()>>,
-}
-
-/// Spawn a single-video GPU decode thread that writes NV12 frames directly
-/// to CUDA/Vulkan shared textures via cuMemcpy2D.
-///
-/// Uses `slot_free_rx` for backpressure: the decode thread waits for a slot
-/// to be released by the main thread before writing to it. This prevents
-/// NVDEC from overwriting a slot that the GPU render pass is still reading.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-fn spawn_single_decoder_gpu(
-    path: String,
-    label: &'static str,
-    buf: GpuBufInfo,
-    slot_free_rx: std::sync::mpsc::Receiver<u8>,
-) -> (std::sync::mpsc::Receiver<u8>, std::thread::JoinHandle<()>) {
-    let (tx, rx) = std::sync::mpsc::sync_channel::<u8>(1);
-
-    let handle = std::thread::Builder::new()
-        .name(format!("decode_{label}_gpu"))
-        .spawn(move || {
-            let mut dec = match reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(&path)) {
-                Ok(d) => {
-                    log::info!(
-                        "{label} GPU decoder: {} ({}x{})",
-                        d.backend(),
-                        d.width(),
-                        d.height()
-                    );
-                    d
-                }
-                Err(e) => {
-                    log::error!("Failed to open {label} video: {e}");
-                    return;
-                }
-            };
-
-            while let Ok(slot) = slot_free_rx.recv() {
-                match dec.next_frame_gpu() {
-                    Ok(Some(frame)) => {
-                        let s = slot as usize;
-
-                        // Ensure CUDA context is current (FFmpeg may have popped it)
-                        if let Err(e) = reco_core::cuda_interop::cuda_ensure_context() {
-                            log::error!("{label} cuda_ensure_context: {e}");
-                            break;
-                        }
-
-                        // Copy Y plane: NVDEC -> shared texture
-                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
-                            buf.y_ptr[s],
-                            buf.y_pitch[s],
-                            frame.y_ptr,
-                            frame.y_pitch,
-                            buf.width as usize, // Y: 1 byte/pixel
-                            buf.height as usize,
-                        ) {
-                            log::error!("{label} cuMemcpy2D Y: {e}");
-                            break;
-                        }
-
-                        // Copy UV plane: NVDEC -> shared texture
-                        // NV12 UV: width bytes per row, height/2 rows
-                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
-                            buf.uv_ptr[s],
-                            buf.uv_pitch[s],
-                            frame.uv_ptr,
-                            frame.uv_pitch,
-                            buf.width as usize, // UV: 2 bytes x width/2 = width
-                            buf.height as usize / 2,
-                        ) {
-                            log::error!("{label} cuMemcpy2D UV: {e}");
-                            break;
-                        }
-
-                        // Synchronize CUDA to ensure copies complete before GPU reads
-                        if let Err(e) = reco_core::cuda_interop::cuda_synchronize() {
-                            log::error!("{label} cuCtxSynchronize: {e}");
-                            break;
-                        }
-
-                        if tx.send(slot).is_err() {
-                            break; // Receiver dropped
-                        }
-                    }
-                    Ok(None) => {
-                        log::error!("{label}: next_frame_gpu returned None (non-CUDA?)");
-                        break;
-                    }
-                    Err(e) => {
-                        log::error!("{label} decode error: {e}");
-                        break;
-                    }
-                }
-            }
-        })
-        .expect("spawn GPU decode thread");
-
-    (rx, handle)
-}
-
-/// Spawn parallel GPU decode threads and a pairing thread.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-fn spawn_decode_thread_gpu(
-    left_path: String,
-    right_path: String,
-    left_buf: GpuBufInfo,
-    right_buf: GpuBufInfo,
-    left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
-    right_slot_free_rx: std::sync::mpsc::Receiver<u8>,
-) -> GpuDecodeHandles {
-    let (left_rx, left_handle) =
-        spawn_single_decoder_gpu(left_path, "left", left_buf, left_slot_free_rx);
-    let (right_rx, right_handle) =
-        spawn_single_decoder_gpu(right_path, "right", right_buf, right_slot_free_rx);
-
-    let (tx, rx) = std::sync::mpsc::sync_channel::<GpuFrameSignal>(1);
-
-    let pair_handle = std::thread::Builder::new()
-        .name("decode_pair_gpu".into())
-        .spawn(move || {
-            while let (Ok(left_slot), Ok(right_slot)) = (left_rx.recv(), right_rx.recv()) {
-                if tx
-                    .send(GpuFrameSignal {
-                        left_slot,
-                        right_slot,
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-        .expect("spawn GPU pairing thread");
-
-    GpuDecodeHandles {
-        frame_rx: rx,
-        join_handles: vec![left_handle, right_handle, pair_handle],
-    }
-}
-
-/// Run the stitch loop using CUDA/Vulkan zero-copy (no CPU upload).
-///
-/// Creates double-buffered shared textures, spawns GPU decode threads,
-/// and renders directly from GPU-resident data.
-#[cfg(target_os = "linux")]
-#[allow(clippy::too_many_arguments)]
-fn run_stitch_zero_copy(
-    session: &mut reco_core::session::StitchSession,
-    left_path: &str,
-    right_path: &str,
-    input_width: u32,
-    input_height: u32,
-    frame_limit: u64,
-    yaw: f32,
-    pitch: f32,
-    interrupted: &Arc<AtomicBool>,
-    progress: &crate::helpers::ProgressReporter,
-) -> anyhow::Result<u64> {
-    use reco_core::vulkan_interop::{Nv12Plane, create_nv12_shared_texture};
-
-    // Create double-buffered shared textures for each camera (Y + UV per slot)
-    log::info!("Creating shared textures for zero-copy...");
-
-    let gpu = session.gpu();
-    let create_pair = |label: &str,
-                       slot: usize|
-     -> anyhow::Result<(
-        reco_core::vulkan_interop::SharedTexture,
-        reco_core::vulkan_interop::SharedTexture,
-    )> {
-        let y = create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Y)
-            .map_err(|e| anyhow::anyhow!("{label} Y[{slot}] shared texture: {e}"))?;
-
-        let uv = create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Uv)
-            .map_err(|e| anyhow::anyhow!("{label} UV[{slot}] shared texture: {e}"))?;
-
-        Ok((y, uv))
-    };
-
-    let (left_y_0, left_uv_0) = create_pair("left", 0)?;
-    let (left_y_1, left_uv_1) = create_pair("left", 1)?;
-    let (right_y_0, right_uv_0) = create_pair("right", 0)?;
-    let (right_y_1, right_uv_1) = create_pair("right", 1)?;
-
-    log::info!(
-        "Shared textures created: left Y pitch={}/{}, UV pitch={}/{}",
-        left_y_0.pitch,
-        left_y_1.pitch,
-        left_uv_0.pitch,
-        left_uv_1.pitch
-    );
-
-    // Build GPU buffer info for decode threads (just CUDA pointers + pitches)
-    let left_buf = GpuBufInfo {
-        y_ptr: [left_y_0.cuda_ptr, left_y_1.cuda_ptr],
-        uv_ptr: [left_uv_0.cuda_ptr, left_uv_1.cuda_ptr],
-        y_pitch: [left_y_0.pitch, left_y_1.pitch],
-        uv_pitch: [left_uv_0.pitch, left_uv_1.pitch],
-        width: input_width,
-        height: input_height,
-    };
-    let right_buf = GpuBufInfo {
-        y_ptr: [right_y_0.cuda_ptr, right_y_1.cuda_ptr],
-        uv_ptr: [right_uv_0.cuda_ptr, right_uv_1.cuda_ptr],
-        y_pitch: [right_y_0.pitch, right_y_1.pitch],
-        uv_pitch: [right_uv_0.pitch, right_uv_1.pitch],
-        width: input_width,
-        height: input_height,
-    };
-
-    // Slot-free channels: decode threads wait for a slot to be released by
-    // main before writing to it. This prevents NVDEC from overwriting a
-    // shared texture that the GPU render pass is still reading.
-    let (left_slot_free_tx, left_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
-    let (right_slot_free_tx, right_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
-    // Both slots start as free
-    left_slot_free_tx.send(0).expect("seed slot channel");
-    left_slot_free_tx.send(1).expect("seed slot channel");
-    right_slot_free_tx.send(0).expect("seed slot channel");
-    right_slot_free_tx.send(1).expect("seed slot channel");
-
-    // Spawn GPU decode threads
-    let decode = spawn_decode_thread_gpu(
-        left_path.to_string(),
-        right_path.to_string(),
-        left_buf,
-        right_buf,
-        left_slot_free_rx,
-        right_slot_free_rx,
-    );
-    let frame_rx = decode.frame_rx;
-
-    println!("Zero-copy pipeline active: NVDEC -> cuMemcpy2D -> shared texture -> render");
-
-    // Configure bind groups for GPU-resident shared textures
-    let bind_groups = session.pipeline_mut().configure_gpu_source(
-        [(&left_y_0, &left_uv_0), (&left_y_1, &left_uv_1)],
-        [(&right_y_0, &right_uv_0), (&right_y_1, &right_uv_1)],
-    );
-
-    let mut frame_count: u64 = 0;
-
-    loop {
-        if frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
-            break;
-        }
-
-        let signal = {
-            profile_scope!("wait_decode");
-            match frame_rx.recv() {
-                Ok(s) => s,
-                Err(_) => break,
-            }
-        };
-
-        let render_buf = session.pipeline_mut().render_gpu_frame(
-            &bind_groups,
-            signal.left_slot,
-            signal.right_slot,
-            yaw,
-            pitch,
-        );
-        session.submit_render_output(render_buf)?;
-
-        // GPU is done reading these slots - release them for decode to reuse.
-        // poll(Wait) inside convert_and_readback guarantees the render pass
-        // has finished reading from the shared textures.
-        let _ = left_slot_free_tx.send(signal.left_slot);
-        let _ = right_slot_free_tx.send(signal.right_slot);
-
-        frame_count += 1;
-        progress.report(frame_count);
-    }
-
-    // Graceful shutdown: correct ordering prevents CUDA error 700.
-    //
-    // 1. Drop slot-free senders -> decode threads' recv() returns Err -> threads exit
-    // 2. Drop frame_rx -> pairing thread's send() returns Err -> thread exits
-    // 3. Join all threads -> VideoDecoder::Drop completes FFmpeg CUDA cleanup
-    //    (cuMemFree) while the shared CUDA VMM memory is still mapped
-    // 4. Drop shared textures -> cuMemUnmap + cuMemAddressFree (safe now that
-    //    FFmpeg is done with the CUDA context)
-    drop(left_slot_free_tx);
-    drop(right_slot_free_tx);
-    drop(frame_rx);
-    for handle in decode.join_handles {
-        let _ = handle.join();
-    }
-
-    // Drop shared textures: wgpu texture (VkImage + VkDeviceMemory)
-    // must be freed before the CUDA shared memory is unmapped.
-    // SharedTexture field order guarantees this (texture before _shared_mem).
-    drop(left_y_0);
-    drop(left_uv_0);
-    drop(left_y_1);
-    drop(left_uv_1);
-    drop(right_y_0);
-    drop(right_uv_0);
-    drop(right_y_1);
-    drop(right_uv_1);
-    Ok(frame_count)
-}
-
-/// A retained CVPixelBuffer pair from two decode threads, ready for Metal import.
-#[cfg(target_os = "macos")]
-struct VtFramePair {
-    left: reco_core::metal_interop::RetainedCVPixelBuffer,
-    right: reco_core::metal_interop::RetainedCVPixelBuffer,
-}
-
-/// Spawn a VideoToolbox decode thread that sends retained CVPixelBuffers.
-#[cfg(target_os = "macos")]
-fn spawn_vt_decode_thread(
-    path: std::path::PathBuf,
-    label: &'static str,
-) -> std::sync::mpsc::Receiver<reco_core::metal_interop::RetainedCVPixelBuffer> {
-    use reco_core::metal_interop::RetainedCVPixelBuffer;
-    use reco_io::ffmpeg::decoder::VideoDecoder;
-
-    let (tx, rx) = std::sync::mpsc::sync_channel::<RetainedCVPixelBuffer>(4);
-
-    std::thread::Builder::new()
-        .name(format!("vt_decode_{label}"))
-        .spawn(move || {
-            let mut dec = match VideoDecoder::open(&path) {
-                Ok(d) => d,
-                Err(e) => {
-                    log::error!("Failed to open {label} video: {e}");
-                    return;
-                }
-            };
-            log::info!("VT decode thread {label}: backend={}", dec.backend());
-
-            loop {
-                match dec.next_frame_vt() {
-                    Ok(Some(vt)) => {
-                        let retained = unsafe { RetainedCVPixelBuffer::retain(vt.cv_pixel_buffer) };
-                        if tx.send(retained).is_err() {
-                            break;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        log::error!("{label} VT decode error: {e}");
-                        break;
-                    }
-                }
-            }
-        })
-        .expect("spawn VT decode thread");
-
-    rx
-}
-
-/// Run the stitch loop using VideoToolbox/Metal zero-copy (macOS).
-///
-/// Decode runs on two threads (one per camera), the main thread does
-/// Metal texture import, render, NV12 readback, and encode.
-#[cfg(target_os = "macos")]
-#[allow(clippy::too_many_arguments)]
-fn run_stitch_metal_zero_copy(
-    session: &mut reco_core::session::StitchSession,
-    left_path: &str,
-    right_path: &str,
-    frame_limit: u64,
-    yaw: f32,
-    pitch: f32,
-    interrupted: &Arc<AtomicBool>,
-    progress: &crate::helpers::ProgressReporter,
-) -> anyhow::Result<u64> {
-    use reco_core::metal_interop::MetalTextureCache;
-    use std::path::PathBuf;
-
-    // Spawn decode threads (VT decode overlaps with render/encode)
-    let left_rx = spawn_vt_decode_thread(PathBuf::from(left_path), "left");
-    let right_rx = spawn_vt_decode_thread(PathBuf::from(right_path), "right");
-
-    // Pair frames from the two decode threads
-    let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<VtFramePair>(4);
-    std::thread::Builder::new()
-        .name("vt_pair".into())
-        .spawn(move || {
-            while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                if pair_tx.send(VtFramePair { left, right }).is_err() {
-                    break;
-                }
-            }
-        })
-        .expect("spawn VT pairing thread");
-
-    // Create the Metal texture cache (bridges CVPixelBuffer -> MTLTexture)
-    let cache = MetalTextureCache::new(session.gpu())?;
-
-    let mut frame_count: u64 = 0;
-
-    while !interrupted.load(Ordering::Relaxed) && frame_count < frame_limit {
-        // Receive pre-decoded frame pair (decode overlapped with previous render/encode)
-        let pair = match pair_rx.recv() {
-            Ok(p) => p,
-            Err(_) => break,
-        };
-
-        // Import NV12 planes as Metal textures (zero-copy via IOSurface)
-        // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid (retained).
-        let (left_y, left_uv) = unsafe { cache.import_nv12(pair.left.as_ptr(), session.gpu())? };
-        let (right_y, right_uv) = unsafe { cache.import_nv12(pair.right.as_ptr(), session.gpu())? };
-
-        // Render using the imported textures
-        let render_buf = session.pipeline_mut().render_imported_textures(
-            &left_y.texture,
-            &left_uv.texture,
-            &right_y.texture,
-            &right_uv.texture,
-            yaw,
-            pitch,
-        );
-
-        // Convert to NV12 and submit to encoder
-        session.submit_render_output(render_buf)?;
-
-        frame_count += 1;
-        progress.report(frame_count);
-
-        // Flush texture cache periodically to release stale entries
-        if frame_count.is_multiple_of(60) {
-            cache.flush();
-        }
-
-        // ImportedPlaneTextures and RetainedCVPixelBuffers drop here
-    }
-
-    Ok(frame_count)
-}
+use reco_core::source::FrameSource;
 
 /// Run the stitch subcommand: decode two video files and encode a stitched panorama.
 #[allow(clippy::too_many_arguments)]
@@ -491,8 +23,6 @@ pub fn run_stitch(
     quality: &str,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    use reco_core::source::FrameSource;
-
     const MAX_DIM: u32 = 8192;
     anyhow::ensure!(
         width > 0 && width <= MAX_DIM && height > 0 && height <= MAX_DIM,
@@ -500,8 +30,6 @@ pub fn run_stitch(
         width,
         height,
     );
-
-    // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
         !output.contains("://"),
         "Output path looks like a network URL ({output}). Only local file paths are supported.",
@@ -509,28 +37,17 @@ pub fn run_stitch(
 
     log::info!("Stitching: {left} + {right} -> {output}");
 
-    // Probe input dimensions and fps. The source is kept for CPU upload path
-    // but dropped early in the zero-copy path (its CUDA decoders would conflict
-    // with shared texture cleanup).
+    // Probe input and create source (kept for CPU path, dropped for zero-copy)
     let mut source = Some(reco_io::adapters::FfmpegFileSource::open(
         Path::new(left),
         Path::new(right),
     )?);
     let fps_rational = reco_io::adapters::FfmpegFileSource::frame_rate(Path::new(left))?;
     let info = source.as_ref().unwrap().info();
-    let input_width = info.width;
-    let input_height = info.height;
-    let fps_val = info.fps;
-
-    log::info!(
-        "Input: {}x{} @ {:.1} fps",
-        input_width,
-        input_height,
-        fps_val
-    );
+    let (input_width, input_height, fps_val) = (info.width, info.height, info.fps);
+    log::info!("Input: {input_width}x{input_height} @ {fps_val:.1} fps");
 
     let cal = crate::helpers::load_calibration(Path::new(calibration))?;
-
     let viewport = reco_core::viewport::ViewportConfig {
         width,
         height,
@@ -538,9 +55,7 @@ pub fn run_stitch(
         ..Default::default()
     };
 
-    // Detect zero-copy capability: CUDA decode + CUDA interop + Vulkan backend + Linux.
-    // On Jetson/Tegra, CUDA runtime is available but FFmpeg uses V4L2 NVDEC
-    // (not CUVID), so zero-copy shared textures don't work.
+    // Detect zero-copy capability
     let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
 
     #[cfg(target_os = "linux")]
@@ -573,27 +88,28 @@ pub fn run_stitch(
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
-    println!(
-        "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {}",
-        session.gpu_name(),
-        if use_zero_copy {
-            #[cfg(target_os = "linux")]
-            {
-                "zero-copy (CUDA/Vulkan)"
-            }
-            #[cfg(target_os = "macos")]
-            {
-                "zero-copy (VideoToolbox/Metal)"
-            }
-            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-            {
-                "zero-copy"
-            }
-        } else {
-            "CPU upload"
+    let mode_str = if use_zero_copy {
+        #[cfg(target_os = "linux")]
+        {
+            "zero-copy (CUDA/Vulkan)"
         }
+        #[cfg(target_os = "macos")]
+        {
+            "zero-copy (VideoToolbox/Metal)"
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            "zero-copy"
+        }
+    } else {
+        "CPU upload"
+    };
+    println!(
+        "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {mode_str}",
+        session.gpu_name(),
     );
 
+    // Set up encoder
     let quality_enum = match quality {
         "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
         "high" => reco_io::ffmpeg::encoder::Quality::High,
@@ -609,7 +125,6 @@ pub fn run_stitch(
         codec: video_codec,
         quality: quality_enum,
     };
-
     let encoder = reco_io::adapters::FfmpegFileEncoder::new(
         Path::new(output),
         width,
@@ -618,89 +133,164 @@ pub fn run_stitch(
         &enc_config,
     )?;
     println!("Encoder: {}", encoder.encoder_name());
-
     session.set_encoder(Box::new(encoder), 2);
 
-    // Compute frame limit from --duration and --max-frames
+    // Compute frame limit
     let frame_limit: u64 = match (duration, max_frames) {
-        (Some(dur), Some(mf)) => {
-            let dur_frames = (dur * fps_val) as u64;
-            dur_frames.min(mf)
-        }
+        (Some(dur), Some(mf)) => ((dur * fps_val) as u64).min(mf),
         (Some(dur), None) => (dur * fps_val) as u64,
         (None, Some(mf)) => mf,
         (None, None) => u64::MAX,
     };
-
     if frame_limit < u64::MAX {
         println!("Processing up to {frame_limit} frames");
     }
 
     let progress = crate::helpers::ProgressReporter::new(30);
-    let mut frame_count: u64 = 0;
-    let yaw = 0.0_f32;
-    let pitch = 0.0_f32;
+    #[allow(clippy::needless_late_init)] // cfg-gated branches each assign independently
+    let frame_count;
 
+    // Run the appropriate pipeline
     #[cfg(target_os = "linux")]
     if use_zero_copy {
-        // Drop the CPU source - zero-copy spawns its own GPU decode threads.
-        // Must drop before shared texture cleanup to avoid CUDA context conflicts
-        // (the source's decoders hold CUDA resources from hardware probe).
-        source.take();
-
-        frame_count = run_stitch_zero_copy(
+        source.take(); // Drop CPU source before zero-copy setup
+        frame_count = run_zero_copy_linux(
             &mut session,
             left,
             right,
             input_width,
             input_height,
             frame_limit,
-            yaw,
-            pitch,
             interrupted,
             &progress,
+        )?;
+    } else {
+        frame_count = run_cpu_path(
+            &mut session,
+            &mut source,
+            frame_limit,
+            interrupted,
+            progress,
         )?;
     }
 
     #[cfg(target_os = "macos")]
     if use_zero_copy {
-        // Drop the CPU source - Metal zero-copy opens its own decoders.
         source.take();
-
-        frame_count = run_stitch_metal_zero_copy(
+        frame_count = run_zero_copy_macos(
             &mut session,
             left,
             right,
             frame_limit,
-            yaw,
-            pitch,
             interrupted,
             &progress,
         )?;
-    }
-
-    if !use_zero_copy {
-        // CPU upload path: use FfmpegFileSource for decoding
-        let source = source.as_mut().expect("source dropped in CPU path");
-        frame_count = session.run(
-            source,
+    } else {
+        frame_count = run_cpu_path(
+            &mut session,
+            &mut source,
             frame_limit,
             interrupted,
-            Some(Box::new(move |p: &reco_core::session::FrameProgress| {
-                progress.report(p.frames_completed);
-            })),
+            progress,
         )?;
     }
 
-    log::info!("Finishing session...");
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        frame_count = run_cpu_path(
+            &mut session,
+            &mut source,
+            frame_limit,
+            interrupted,
+            progress,
+        )?;
+    }
+
     session.finish()?;
-    log::info!("Session finished");
-
     progress.finish(frame_count, output);
-
-    log::info!("Dropping session...");
-    drop(session);
-    log::info!("Session dropped, exiting");
-
     Ok(())
+}
+
+/// Run the CPU upload path using `session.run()`.
+fn run_cpu_path(
+    session: &mut reco_core::session::StitchSession,
+    source: &mut Option<reco_io::adapters::FfmpegFileSource>,
+    frame_limit: u64,
+    interrupted: &Arc<AtomicBool>,
+    progress: crate::helpers::ProgressReporter,
+) -> anyhow::Result<u64> {
+    let source = source.as_mut().expect("source dropped in CPU path");
+    let count = session.run(
+        source,
+        frame_limit,
+        interrupted,
+        Some(Box::new(move |p: &reco_core::session::FrameProgress| {
+            progress.report(p.frames_completed);
+        })),
+    )?;
+    Ok(count)
+}
+
+/// Set up and run the CUDA/Vulkan zero-copy pipeline.
+#[cfg(target_os = "linux")]
+fn run_zero_copy_linux(
+    session: &mut reco_core::session::StitchSession,
+    left: &str,
+    right: &str,
+    input_width: u32,
+    input_height: u32,
+    frame_limit: u64,
+    interrupted: &Arc<AtomicBool>,
+    progress: &crate::helpers::ProgressReporter,
+) -> anyhow::Result<u64> {
+    let mut shared = session.create_shared_textures(input_width, input_height)?;
+
+    let decode_handles = reco_io::zero_copy::spawn_decode_threads_gpu(
+        left.to_string(),
+        right.to_string(),
+        shared.left_buf.clone(),
+        shared.right_buf.clone(),
+        shared.left_slot_free_rx.take().expect("left slot rx"),
+        shared.right_slot_free_rx.take().expect("right slot rx"),
+    );
+
+    println!("Zero-copy pipeline active: NVDEC -> cuMemcpy2D -> shared texture -> render");
+
+    let progress = *progress;
+    let count = session.run_zero_copy_linux(
+        shared,
+        decode_handles,
+        frame_limit,
+        interrupted,
+        Some(Box::new(move |p: &reco_core::session::FrameProgress| {
+            progress.report(p.frames_completed);
+        })),
+    )?;
+    Ok(count)
+}
+
+/// Set up and run the VideoToolbox/Metal zero-copy pipeline.
+#[cfg(target_os = "macos")]
+fn run_zero_copy_macos(
+    session: &mut reco_core::session::StitchSession,
+    left: &str,
+    right: &str,
+    frame_limit: u64,
+    interrupted: &Arc<AtomicBool>,
+    progress: &crate::helpers::ProgressReporter,
+) -> anyhow::Result<u64> {
+    let pair_rx = reco_io::zero_copy::spawn_vt_decode_pair(left, right);
+
+    println!("Zero-copy pipeline active: VideoToolbox -> CVMetalTextureCache -> Metal render");
+
+    let progress = *progress;
+    let count = session.run_zero_copy_macos(
+        pair_rx,
+        frame_limit,
+        interrupted,
+        Some(Box::new(move |p: &reco_core::session::FrameProgress| {
+            progress.report(p.frames_completed);
+        })),
+    )?;
+    Ok(count)
 }

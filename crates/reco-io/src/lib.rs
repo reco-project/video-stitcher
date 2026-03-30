@@ -16,6 +16,9 @@ pub mod gstreamer;
 
 pub mod adapters;
 
+#[cfg(feature = "ffmpeg")]
+pub mod zero_copy;
+
 /// Initialize enabled backends. Call once at program start.
 ///
 /// Currently initializes FFmpeg when the `ffmpeg` feature is active.
