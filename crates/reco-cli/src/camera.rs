@@ -160,9 +160,10 @@ pub fn run_camera(
                 yaw,
                 pitch,
             )?;
-            let nv12_data = session.convert_to_nv12(render_buf)?;
-            if encode_tx.send(nv12_data.to_vec()).is_err() {
-                anyhow::bail!("encoder thread died during warmup");
+            if let Some(nv12_data) = session.convert_to_nv12(render_buf)? {
+                if encode_tx.send(nv12_data.to_vec()).is_err() {
+                    anyhow::bail!("encoder thread died during warmup");
+                }
             }
             println!("Warmup complete, starting capture...");
         }
@@ -193,9 +194,10 @@ pub fn run_camera(
                 yaw,
                 pitch,
             )?;
-            let nv12_data = session.convert_to_nv12(render_buf)?;
-            if encode_tx.send(nv12_data.to_vec()).is_err() {
-                break;
+            if let Some(nv12_data) = session.convert_to_nv12(render_buf)? {
+                if encode_tx.send(nv12_data.to_vec()).is_err() {
+                    break;
+                }
             }
             frame_count += 1;
             progress.report(frame_count);
@@ -204,7 +206,6 @@ pub fn run_camera(
         // Flush the last pending frame from the double-buffered NV12 pipeline.
         if let Some(last_frame) = session.flush_pending_nv12()? {
             let _ = encode_tx.send(last_frame.to_vec());
-            frame_count += 1;
         }
 
         // Stop cameras gracefully before finishing encoder
@@ -251,9 +252,10 @@ pub fn run_camera(
                 session
                     .pipeline()
                     .render_to_target(&left_planes, &right_planes, yaw, pitch)?;
-            let nv12_data = session.convert_to_nv12(render_buf)?;
-            if encode_tx.send(nv12_data.to_vec()).is_err() {
-                break;
+            if let Some(nv12_data) = session.convert_to_nv12(render_buf)? {
+                if encode_tx.send(nv12_data.to_vec()).is_err() {
+                    break;
+                }
             }
             frame_count += 1;
             progress.report(frame_count);
@@ -262,7 +264,6 @@ pub fn run_camera(
         // Flush the last pending frame from the double-buffered NV12 pipeline.
         if let Some(last_frame) = session.flush_pending_nv12()? {
             let _ = encode_tx.send(last_frame.to_vec());
-            frame_count += 1;
         }
 
         drop(encode_tx);

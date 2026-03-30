@@ -235,13 +235,13 @@ impl Nv12Converter {
     /// It is submitted together with the compute shader in a single
     /// `queue.submit` call to guarantee correct GPU synchronization.
     ///
-    /// Returns a borrowed slice of tightly-packed NV12 data:
+    /// Returns `None` on the first call (GPU work is submitted but no
+    /// previous frame is available yet). From the second call onward,
+    /// returns the *previous* frame's NV12 data as a borrowed slice:
     /// `[Y plane: width*height bytes] [UV plane: width*height/2 bytes]`
     ///
-    /// **Important:** On the first call, this does a synchronous readback.
-    /// From the second call onward, it returns the *previous* frame's data
-    /// (1-frame latency). Call [`flush_pending`](Self::flush_pending) after
-    /// the frame loop to get the last frame's data.
+    /// Call [`flush_pending`](Self::flush_pending) after the frame loop
+    /// to get the last frame's data.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "nv12_convert_readback")
@@ -251,34 +251,33 @@ impl Nv12Converter {
         gpu: &GpuContext,
         render_target: &wgpu::Texture,
         render_commands: wgpu::CommandBuffer,
-    ) -> Result<&[u8], Nv12Error> {
+    ) -> Result<Option<&[u8]>, Nv12Error> {
         let write_slot = self.current_slot;
         let read_slot = 1 - write_slot;
+
+        // --- Read back the previous frame BEFORE submitting new work ---
+        // This ordering matters: we map the previous staging buffer first,
+        // then submit new GPU work. The single poll(wait) below completes
+        // both the (already-finished) previous buffer's map and the new
+        // GPU submission, giving maximum overlap.
+        let has_result = if self.has_pending {
+            self.readback_staging(gpu, read_slot)?;
+            true
+        } else {
+            false
+        };
 
         // --- Submit this frame's GPU work to staging[write_slot] ---
         self.submit_gpu_work(gpu, render_target, render_commands, write_slot)?;
 
-        // --- Read back the previous frame from staging[read_slot] ---
-        if self.has_pending {
-            // The GPU had a full frame of work time to finish writing to
-            // staging[read_slot], so this map should complete almost instantly.
-            self.readback_staging(gpu, read_slot)?;
-        } else {
-            // First frame: no previous data to read. Do a synchronous
-            // readback of the current frame instead.
-            self.readback_staging(gpu, write_slot)?;
-        }
-
         self.has_pending = true;
         self.current_slot = 1 - write_slot;
 
-        // Return data from the slot we just read
-        let result_slot = if self.has_pending && write_slot != read_slot {
-            read_slot
+        if has_result {
+            Ok(Some(&self.readback_buffers[read_slot]))
         } else {
-            write_slot
-        };
-        Ok(&self.readback_buffers[result_slot])
+            Ok(None)
+        }
     }
 
     /// Flush the last pending frame from the double-buffer pipeline.

@@ -170,13 +170,17 @@ impl StitchSession {
             render_commands,
         )?;
 
-        encoder.submit(OutputFrame {
-            data: nv12_data,
-            width,
-            height,
-            format: PixelFormat::Nv12,
-            pts_us: 0, // PTS handled by encoder from frame sequence
-        })?;
+        // First call returns None (GPU work submitted, no previous frame yet).
+        // From the second call onward, we get the previous frame's data.
+        if let Some(data) = nv12_data {
+            encoder.submit(OutputFrame {
+                data,
+                width,
+                height,
+                format: PixelFormat::Nv12,
+                pts_us: 0,
+            })?;
+        }
 
         self.frame_count += 1;
         Ok(())
@@ -262,7 +266,7 @@ impl StitchSession {
         frame: &StereoFrame,
         yaw: f32,
         pitch: f32,
-    ) -> Result<&[u8], SessionError> {
+    ) -> Result<Option<&[u8]>, SessionError> {
         let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.pipeline.gpu(),
@@ -285,7 +289,7 @@ impl StitchSession {
     pub fn convert_to_nv12(
         &mut self,
         render_commands: wgpu::CommandBuffer,
-    ) -> Result<&[u8], SessionError> {
+    ) -> Result<Option<&[u8]>, SessionError> {
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.pipeline.gpu(),
             self.pipeline.render_target(),
