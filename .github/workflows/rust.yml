@@ -67,7 +67,9 @@ jobs:
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             pkg-config clang
       - name: Build docs
-        run: cargo doc --no-deps --all-features
+        # Exclude `rpi` feature: requires patched FFmpeg with SAND pixel formats
+        # that aren't available in Ubuntu's standard libavcodec.
+        run: cargo doc --no-deps --features profiling,gstreamer
         env:
           RUSTDOCFLAGS: "-D warnings"
 
