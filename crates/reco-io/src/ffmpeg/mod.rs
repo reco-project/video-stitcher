@@ -7,9 +7,6 @@
 pub mod decoder;
 pub mod encoder;
 
-/// Re-export ffmpeg_next::Rational for callers that need fps as num/den.
-pub use ffmpeg_next::Rational;
-
 use std::sync::Once;
 
 static FFMPEG_INIT: Once = Once::new();

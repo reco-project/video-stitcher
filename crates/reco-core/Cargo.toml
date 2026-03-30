@@ -12,8 +12,6 @@ profiling = ["tracing"]
 
 [dependencies]
 wgpu = { version = "29", features = ["vulkan-portability"] }
-ash = "0.38"
-libloading = "0.9"
 bytemuck = { version = "1", features = ["derive"] }
 nalgebra = "0.33"
 serde = { version = "1", features = ["derive"] }
@@ -22,6 +20,12 @@ thiserror = "2"
 log = "0.4"
 pollster = "0.4"
 tracing = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ash = "0.38"
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+libloading = "0.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

@@ -38,7 +38,7 @@ pub fn run_camera(
         "Output path looks like a network URL ({output}). Only local file paths are supported.",
     );
 
-    let cal = helpers::load_calibration(Path::new(calibration))?;
+    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
 
     let viewport = reco_core::viewport::ViewportConfig {
         width,
@@ -100,12 +100,11 @@ pub fn run_camera(
         quality,
     };
 
-    let fps_rational = reco_io::ffmpeg::Rational::new(capture_fps as i32, 1);
     let encoder = reco_io::adapters::FfmpegFileEncoder::new(
         Path::new(output),
         width,
         height,
-        fps_rational,
+        (capture_fps as i32, 1),
         &enc_config,
     )?;
     println!("Encoder: {}", encoder.encoder_name());

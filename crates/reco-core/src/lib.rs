@@ -62,6 +62,12 @@ macro_rules! profile_scope {
 
 /// Re-export of [`wgpu`] for windowed consumers that need surface management.
 ///
+/// Windowed apps need wgpu types like `Instance`, `Surface`,
+/// `SurfaceConfiguration`, and `TextureFormat` for display setup.
+/// This re-export ensures version compatibility with `reco-core`'s
+/// internal wgpu usage - prefer this over adding `wgpu` as a
+/// direct dependency.
+///
 /// Headless consumers (CLI encode, cloud workers) should not need this -
 /// use [`gpu::OutputFormat`] and the [`session`] API instead.
 pub use wgpu;
@@ -84,7 +90,7 @@ pub fn drain_to_latest<T>(rx: &std::sync::mpsc::Receiver<T>, item: &mut T) -> u6
     dropped
 }
 
-pub mod async_encode;
+pub(crate) mod async_encode;
 pub mod calibration;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
@@ -94,12 +100,14 @@ pub mod encoder;
 pub mod gpu;
 #[cfg(target_os = "macos")]
 pub mod metal_interop;
-pub mod nv12_converter;
+pub(crate) mod nv12_converter;
 pub mod pipeline;
+pub mod projection;
 pub mod renderer;
 pub mod scene;
 pub mod session;
 pub mod source;
+pub mod tracker;
 pub mod viewport;
 #[cfg(target_os = "linux")]
 pub mod vulkan_interop;

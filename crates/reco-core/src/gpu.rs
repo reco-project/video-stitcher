@@ -259,6 +259,26 @@ impl GpuContext {
         self.adapter_info.backend == wgpu::Backend::Metal
     }
 
+    /// Whether this GPU context supports zero-copy decode.
+    ///
+    /// Checks that the GPU backend matches a supported interop path
+    /// (Vulkan + CUDA on Linux, Metal on macOS) and that the necessary
+    /// runtime libraries are available.
+    pub fn supports_zero_copy(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.is_vulkan() && crate::cuda_interop::is_cuda_available()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            self.is_metal()
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            false
+        }
+    }
+
     /// Access the wgpu device handle.
     ///
     /// Windowed consumers need this for surface configuration.

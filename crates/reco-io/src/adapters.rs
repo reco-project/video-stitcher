@@ -17,8 +17,14 @@ use crate::ffmpeg;
 ///
 /// Opens two video files (left + right camera) and delivers synchronized
 /// YUV420P frame pairs. Each decoder runs in its own thread; frames are
-/// paired by arrival order (assumes same-length files from the same
-/// recording session).
+/// paired after applying a temporal sync offset.
+///
+/// ## Sync Offset
+///
+/// When cameras don't start recording at the same instant, a frame offset
+/// aligns them temporally. Use [`Self::open_with_offset`]:
+/// - Positive offset: skip N frames from the **right** video (right started first)
+/// - Negative offset: skip N frames from the **left** video (left started first)
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileSource {
     rx: std::sync::mpsc::Receiver<FramePair>,
@@ -28,10 +34,24 @@ pub struct FfmpegFileSource {
 
 #[cfg(feature = "ffmpeg")]
 impl FfmpegFileSource {
-    /// Open a stereo file source from two video file paths.
+    /// Open a stereo file source from two video file paths (no sync offset).
     pub fn open(
         left_path: &std::path::Path,
         right_path: &std::path::Path,
+    ) -> Result<Self, SourceError> {
+        Self::open_with_offset(left_path, right_path, 0)
+    }
+
+    /// Open a stereo file source with a temporal sync offset.
+    ///
+    /// `sync_offset` specifies how many frames to skip for alignment:
+    /// - Positive: skip N frames from the **right** video (right started first)
+    /// - Negative: skip N frames from the **left** video (left started first)
+    /// - Zero: pair by arrival order (no offset)
+    pub fn open_with_offset(
+        left_path: &std::path::Path,
+        right_path: &std::path::Path,
+        sync_offset: i64,
     ) -> Result<Self, SourceError> {
         let probe = ffmpeg::decoder::VideoDecoder::open(left_path)
             .map_err(|e| SourceError::Init(format!("left: {e}")))?;
@@ -45,7 +65,7 @@ impl FfmpegFileSource {
 
         let left = left_path.to_path_buf();
         let right = right_path.to_path_buf();
-        let rx = Self::spawn_decode_pipeline(left, right);
+        let rx = Self::spawn_decode_pipeline(left, right, sync_offset);
 
         Ok(Self {
             rx,
@@ -59,13 +79,33 @@ impl FfmpegFileSource {
         self.decode_backend
     }
 
-    /// Returns the FFmpeg frame rate rational (num/den) for encoder setup.
+    /// Whether this source's decode backend supports zero-copy GPU transfer.
+    ///
+    /// Returns `true` if the decoder uses a hardware path that can write
+    /// directly to GPU-shared memory (CUDA on Linux, VideoToolbox on macOS).
+    pub fn supports_zero_copy(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.decode_backend == ffmpeg::decoder::DecodeBackend::Cuda
+        }
+        #[cfg(target_os = "macos")]
+        {
+            self.decode_backend == ffmpeg::decoder::DecodeBackend::VideoToolbox
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            false
+        }
+    }
+
+    /// Returns the frame rate as `(numerator, denominator)` for encoder setup.
     ///
     /// Re-probes the left file. Call once during setup, not per-frame.
-    pub fn frame_rate(left_path: &std::path::Path) -> Result<ffmpeg_next::Rational, SourceError> {
+    pub fn frame_rate(left_path: &std::path::Path) -> Result<(i32, i32), SourceError> {
         let dec = ffmpeg::decoder::VideoDecoder::open(left_path)
             .map_err(|e| SourceError::Init(format!("{e}")))?;
-        Ok(dec.frame_rate())
+        let r = dec.frame_rate();
+        Ok((r.0, r.1))
     }
 
     fn spawn_single_decoder(
@@ -120,6 +160,7 @@ impl FfmpegFileSource {
     fn spawn_decode_pipeline(
         left_path: std::path::PathBuf,
         right_path: std::path::PathBuf,
+        sync_offset: i64,
     ) -> std::sync::mpsc::Receiver<FramePair> {
         let left_rx = Self::spawn_single_decoder(left_path, "left");
         let right_rx = Self::spawn_single_decoder(right_path, "right");
@@ -129,6 +170,26 @@ impl FfmpegFileSource {
         std::thread::Builder::new()
             .name("decode_pair".into())
             .spawn(move || {
+                // Apply sync offset: skip frames from the camera that started first.
+                if sync_offset > 0 {
+                    // Right started first — skip N right frames.
+                    for _ in 0..sync_offset {
+                        if right_rx.recv().is_err() {
+                            return;
+                        }
+                    }
+                    log::info!("Sync offset: skipped {sync_offset} right frames");
+                } else if sync_offset < 0 {
+                    // Left started first — skip N left frames.
+                    let skip = sync_offset.unsigned_abs();
+                    for _ in 0..skip {
+                        if left_rx.recv().is_err() {
+                            return;
+                        }
+                    }
+                    log::info!("Sync offset: skipped {skip} left frames");
+                }
+
                 while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
                     if tx.send(FramePair { left, right }).is_err() {
                         break;
@@ -185,10 +246,11 @@ impl FfmpegFileEncoder {
         path: &std::path::Path,
         width: u32,
         height: u32,
-        fps: ffmpeg_next::Rational,
+        fps: (i32, i32),
         config: &ffmpeg::encoder::EncoderConfig,
     ) -> Result<Self, EncodeError> {
-        let inner = ffmpeg::encoder::VideoEncoder::new(path, width, height, fps, config)
+        let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
+        let inner = ffmpeg::encoder::VideoEncoder::new(path, width, height, fps_rational, config)
             .map_err(|e| EncodeError::Init(e.to_string()))?;
         Ok(Self { inner })
     }

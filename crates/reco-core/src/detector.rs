@@ -20,11 +20,47 @@ pub enum CameraId {
     Right,
 }
 
+/// Raw camera frame data for detection.
+///
+/// Provides access to all YUV planes so detectors can use luma-only
+/// (fast, sufficient for ball tracking) or full color (needed for
+/// jersey classification, field segmentation, etc.).
+pub struct RawFrame<'a> {
+    /// Y (luma) plane, full resolution (`width x height` bytes).
+    pub y: &'a [u8],
+    /// Chroma plane data (format depends on the decode pipeline).
+    pub chroma: ChromaFormat<'a>,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+}
+
+/// Chroma plane layout.
+///
+/// The format matches whatever the decode pipeline produces:
+/// - Software decode (FFmpeg): YUV420P with separate U and V planes
+/// - Hardware decode (NVDEC, V4L2): NV12 with interleaved UV
+pub enum ChromaFormat<'a> {
+    /// YUV420P: separate half-resolution U and V planes.
+    Yuv420p {
+        /// U (Cb) plane, `(width/2) x (height/2)` bytes.
+        u: &'a [u8],
+        /// V (Cr) plane, `(width/2) x (height/2)` bytes.
+        v: &'a [u8],
+    },
+    /// NV12: interleaved UV plane, `width x (height/2)` bytes.
+    Nv12 {
+        /// Interleaved U,V data.
+        uv: &'a [u8],
+    },
+}
+
 /// A detected object in a raw camera frame.
 ///
 /// Coordinates are in normalized image space `[0.0, 1.0]` relative to
-/// the frame dimensions. The director is responsible for mapping these
-/// to panorama-space yaw/pitch using the calibration data.
+/// the frame dimensions. Use [`crate::projection::camera_to_panorama`]
+/// to map these to panoramic yaw/pitch.
 #[derive(Debug, Clone)]
 pub struct Detection {
     /// Which camera this detection came from.
@@ -51,24 +87,19 @@ pub struct Detection {
 
 /// Trait for object detection on raw camera frames.
 ///
-/// Implementations should be async-friendly — detection may run on a
+/// Implementations should be async-friendly - detection may run on a
 /// separate thread or even a different device (e.g. a Jetson's DLA).
 ///
 /// # Frame Data
 ///
-/// The `frame_data` parameter is the raw pixel data of a single camera
-/// frame (before any stitching or undistortion). The format depends on
-/// the decode pipeline (typically NV12 or RGB).
+/// The [`RawFrame`] contains the full YUV data of a single camera frame
+/// (before any stitching or undistortion). Most detection models only
+/// need the Y (luma) plane for grayscale inference, but full color is
+/// available for tasks like jersey classification.
 pub trait Detector: Send {
     /// Run detection on a raw camera frame.
     ///
     /// Returns a list of detections found in the frame. May return an
     /// empty vector if no objects are detected.
-    fn detect(
-        &mut self,
-        camera: CameraId,
-        frame_data: &[u8],
-        width: u32,
-        height: u32,
-    ) -> Vec<Detection>;
+    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection>;
 }

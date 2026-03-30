@@ -48,10 +48,6 @@ pub enum RenderError {
     /// Frame data has wrong size.
     #[error("frame data size mismatch: expected {expected} bytes, got {actual}")]
     FrameSizeMismatch { expected: usize, actual: usize },
-
-    /// Buffer mapping failed.
-    #[error("GPU buffer mapping failed")]
-    BufferMapFailed,
 }
 
 // ---- GPU-side structs ----
@@ -159,21 +155,20 @@ pub enum InputFormat {
 ///
 /// Holds all wgpu resources: pipelines, textures, bind groups, and buffers.
 /// Created once per pipeline and reused for every frame.
-pub struct Renderer {
+pub(crate) struct Renderer {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     left: PlaneResources,
     right: PlaneResources,
     render_target: wgpu::Texture,
     render_target_view: wgpu::TextureView,
-    output_buffer: wgpu::Buffer,
     output_width: u32,
     output_height: u32,
     /// Input pixel format (YUV420P or NV12).
     input_format: InputFormat,
-    /// Stored for rebuilding bind groups when swapping shared textures.
+    /// Stored for creating bind groups from external textures (zero-copy).
     texture_layout: wgpu::BindGroupLayout,
-    /// Shared sampler, stored for bind group rebuilds.
+    /// Shared sampler, stored for bind group creation.
     sampler: wgpu::Sampler,
     /// Device handle for creating bind groups (Arc-based, cheap to clone).
     device: wgpu::Device,
@@ -347,15 +342,6 @@ impl Renderer {
         });
         let render_target_view = render_target.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Staging buffer for CPU readback
-        let bytes_per_row = align_to_256(output_width * 4);
-        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("output_staging"),
-            size: bytes_per_row as u64 * output_height as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
         Self {
             pipeline,
             vertex_buffer,
@@ -363,7 +349,6 @@ impl Renderer {
             right,
             render_target,
             render_target_view,
-            output_buffer,
             output_width,
             output_height,
             input_format,
@@ -539,41 +524,6 @@ impl Renderer {
         upload_nv12(gpu, &self.right, y, uv)
     }
 
-    /// Replace the left plane's textures with shared CUDA/Vulkan textures.
-    ///
-    /// Call this to switch to zero-copy mode. The provided textures must be
-    /// NV12 format (Y: R8Unorm, UV: Rg8Unorm). After this call, CUDA writes
-    /// to the shared memory are visible to the GPU without any CPU copies.
-    pub fn replace_left_textures(&mut self, y_texture: wgpu::Texture, uv_texture: wgpu::Texture) {
-        rebuild_bind_group(
-            &self.device,
-            &mut self.left,
-            y_texture,
-            uv_texture,
-            &self.texture_layout,
-            &self.sampler,
-            "left",
-        );
-    }
-
-    /// Replace the right plane's textures with shared CUDA/Vulkan textures.
-    pub fn replace_right_textures(&mut self, y_texture: wgpu::Texture, uv_texture: wgpu::Texture) {
-        rebuild_bind_group(
-            &self.device,
-            &mut self.right,
-            y_texture,
-            uv_texture,
-            &self.texture_layout,
-            &self.sampler,
-            "right",
-        );
-    }
-
-    /// The current input pixel format.
-    pub fn input_format(&self) -> InputFormat {
-        self.input_format
-    }
-
     /// Create a texture bind group from external textures.
     ///
     /// Used for CUDA/Vulkan zero-copy: pre-build one bind group per
@@ -728,97 +678,6 @@ impl Renderer {
         encoder
     }
 
-    /// Render a stitched frame and read back the RGBA result.
-    ///
-    /// Both camera textures must be uploaded before calling this.
-    /// Returns a tightly-packed RGBA buffer of `output_width * output_height * 4` bytes.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "gpu_render")
-    )]
-    pub fn render_frame(
-        &self,
-        gpu: &GpuContext,
-        scene: &SceneGeometry,
-        calibration: &MatchCalibration,
-        viewport: &ResolvedViewport,
-        blend_width: f32,
-    ) -> Result<Vec<u8>, RenderError> {
-        let aspect = self.output_width as f32 / self.output_height as f32;
-        let mut encoder = self.encode_stitch_pass(
-            gpu,
-            scene,
-            calibration,
-            viewport,
-            blend_width,
-            &self.render_target_view,
-            aspect,
-            "stitch_frame",
-        );
-
-        // Copy render target to staging buffer
-        let bytes_per_row = align_to_256(self.output_width * 4);
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.render_target,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &self.output_buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(bytes_per_row),
-                    rows_per_image: Some(self.output_height),
-                },
-            },
-            wgpu::Extent3d {
-                width: self.output_width,
-                height: self.output_height,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        {
-            crate::profile_scope!("gpu_submit");
-            gpu.queue.submit(Some(encoder.finish()));
-        }
-
-        // Readback: map the staging buffer and copy to CPU
-        let output = {
-            crate::profile_scope!("gpu_readback");
-            let buffer_slice = self.output_buffer.slice(..);
-            let (tx, rx) = std::sync::mpsc::sync_channel(1);
-            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-                let _ = tx.send(result);
-            });
-            gpu.device
-                .poll(wgpu::PollType::wait_indefinitely())
-                .map_err(|_| RenderError::BufferMapFailed)?;
-            rx.recv()
-                .map_err(|_| RenderError::BufferMapFailed)?
-                .map_err(|_| RenderError::BufferMapFailed)?;
-
-            let mapped = buffer_slice.get_mapped_range();
-
-            // Remove row padding (bytes_per_row is aligned to 256)
-            let tight_row = self.output_width as usize * 4;
-            let padded_row = bytes_per_row as usize;
-            let mut output = Vec::with_capacity(tight_row * self.output_height as usize);
-            for row in 0..self.output_height as usize {
-                let start = row * padded_row;
-                output.extend_from_slice(&mapped[start..start + tight_row]);
-            }
-
-            drop(mapped);
-            self.output_buffer.unmap();
-            output
-        };
-
-        Ok(output)
-    }
-
     /// Render a stitched frame to the internal render target, without readback.
     ///
     /// Returns the recorded `CommandBuffer` without submitting it.
@@ -885,62 +744,9 @@ impl Renderer {
         );
         gpu.queue.submit(Some(encoder.finish()));
     }
-
-    /// Width of the output render target.
-    pub fn output_width(&self) -> u32 {
-        self.output_width
-    }
-
-    /// Height of the output render target.
-    pub fn output_height(&self) -> u32 {
-        self.output_height
-    }
 }
 
 // ---- Helper functions ----
-
-/// Rebuild a plane's texture bind group with new textures.
-fn rebuild_bind_group(
-    device: &wgpu::Device,
-    plane: &mut PlaneResources,
-    y_texture: wgpu::Texture,
-    uv_texture: wgpu::Texture,
-    texture_layout: &wgpu::BindGroupLayout,
-    sampler: &wgpu::Sampler,
-    label: &str,
-) {
-    let y_view = y_texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let uv_view = uv_texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let v_view = plane
-        .v_texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
-
-    plane.texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(&format!("{label}_texture_bg")),
-        layout: texture_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&y_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(&uv_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::TextureView(&v_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: wgpu::BindingResource::Sampler(sampler),
-            },
-        ],
-    });
-
-    plane.y_texture = y_texture;
-    plane.u_texture = uv_texture;
-}
 
 /// Upload a single R8Unorm plane to a GPU texture.
 fn upload_plane(gpu: &GpuContext, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
@@ -1135,26 +941,9 @@ fn opengl_to_wgpu_matrix() -> Matrix4<f32> {
     )
 }
 
-/// Align a value up to the next multiple of 256.
-///
-/// wgpu requires `bytes_per_row` to be a multiple of 256 for texture↔buffer copies.
-fn align_to_256(value: u32) -> u32 {
-    (value + 255) & !255
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn align_to_256_works() {
-        assert_eq!(align_to_256(0), 0);
-        assert_eq!(align_to_256(1), 256);
-        assert_eq!(align_to_256(256), 256);
-        assert_eq!(align_to_256(257), 512);
-        // 1920 * 4 = 7680, already a multiple of 256
-        assert_eq!(align_to_256(7680), 7680);
-    }
 
     #[test]
     fn uniforms_are_normalized() {

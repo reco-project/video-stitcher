@@ -203,7 +203,34 @@ pub struct MatchCalibration {
     pub layout: PlaneLayout,
 }
 
+/// Maximum calibration file size (1 MB) to prevent loading unreasonably large files.
+const MAX_CALIBRATION_FILE_SIZE: u64 = 1_048_576;
+
 impl MatchCalibration {
+    /// Load and validate a calibration from a JSON file.
+    ///
+    /// Checks file size (max 1 MB), parses JSON, and runs
+    /// [`validate`](Self::validate). Returns a descriptive error on any failure.
+    pub fn from_file(path: &std::path::Path) -> Result<Self, CalibrationLoadError> {
+        let meta = std::fs::metadata(path).map_err(|e| CalibrationLoadError::Io {
+            path: path.display().to_string(),
+            source: e,
+        })?;
+        if meta.len() > MAX_CALIBRATION_FILE_SIZE {
+            return Err(CalibrationLoadError::TooLarge {
+                size: meta.len(),
+                max: MAX_CALIBRATION_FILE_SIZE,
+            });
+        }
+        let json = std::fs::read_to_string(path).map_err(|e| CalibrationLoadError::Io {
+            path: path.display().to_string(),
+            source: e,
+        })?;
+        let cal: Self = serde_json::from_str(&json).map_err(CalibrationLoadError::Parse)?;
+        cal.validate()?;
+        Ok(cal)
+    }
+
     /// Validates all calibration parameters before they are used by the GPU pipeline.
     ///
     /// Catches malformed values that would otherwise cause GPU hangs, shader
@@ -218,6 +245,33 @@ impl MatchCalibration {
         validate_layout(&self.layout)?;
         Ok(())
     }
+}
+
+/// Errors from loading a calibration file.
+#[derive(Debug, Error)]
+pub enum CalibrationLoadError {
+    /// File I/O error.
+    #[error("cannot read calibration file '{path}': {source}")]
+    Io {
+        /// Path that failed to read.
+        path: String,
+        /// Underlying I/O error.
+        source: std::io::Error,
+    },
+    /// File exceeds the maximum allowed size.
+    #[error("calibration file too large ({size} bytes, max {max})")]
+    TooLarge {
+        /// Actual file size in bytes.
+        size: u64,
+        /// Maximum allowed size.
+        max: u64,
+    },
+    /// JSON parse error.
+    #[error("invalid calibration JSON: {0}")]
+    Parse(#[from] serde_json::Error),
+    /// Calibration values are invalid.
+    #[error("calibration validation failed: {0}")]
+    Invalid(#[from] CalibrationError),
 }
 
 /// Validates a single camera's intrinsic parameters.

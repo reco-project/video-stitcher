@@ -13,6 +13,9 @@ use std::path::Path;
 /// Spawn a single-video GPU decode thread that writes NV12 frames directly
 /// to CUDA/Vulkan shared textures via `cuMemcpy2D`.
 ///
+/// `skip_frames` discards the first N frames (for temporal sync offset)
+/// before entering the slot-based GPU decode loop.
+///
 /// Uses `slot_free_rx` for backpressure: the decode thread waits for a slot
 /// to be released by the main thread before writing to it. This prevents
 /// NVDEC from overwriting a slot that the GPU render pass is still reading.
@@ -22,6 +25,7 @@ pub fn spawn_single_decoder_gpu(
     label: &'static str,
     buf: reco_core::zero_copy::GpuBufInfo,
     slot_free_rx: std::sync::mpsc::Receiver<u8>,
+    skip_frames: u64,
 ) -> (std::sync::mpsc::Receiver<u8>, std::thread::JoinHandle<()>) {
     use crate::ffmpeg::decoder::VideoDecoder;
 
@@ -45,6 +49,24 @@ pub fn spawn_single_decoder_gpu(
                     return;
                 }
             };
+
+            // Skip frames for temporal sync (decode and discard, no GPU write).
+            for i in 0..skip_frames {
+                match dec.next_frame() {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        log::error!("{label}: EOF after skipping {i}/{skip_frames} frames");
+                        return;
+                    }
+                    Err(e) => {
+                        log::error!("{label} skip decode error: {e}");
+                        return;
+                    }
+                }
+            }
+            if skip_frames > 0 {
+                log::info!("{label}: skipped {skip_frames} frames for sync offset");
+            }
 
             while let Ok(slot) = slot_free_rx.recv() {
                 match dec.next_frame_gpu() {
@@ -109,6 +131,9 @@ pub fn spawn_single_decoder_gpu(
 
 /// Spawn parallel GPU decode threads and a pairing thread.
 ///
+/// `sync_offset` applies temporal alignment: positive skips right frames,
+/// negative skips left frames (see [`FfmpegFileSource::open_with_offset`](crate::adapters::FfmpegFileSource::open_with_offset)).
+///
 /// Returns [`GpuDecodeHandles`](reco_core::zero_copy::GpuDecodeHandles) containing the paired frame signal
 /// receiver and join handles for graceful shutdown.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -119,13 +144,26 @@ pub fn spawn_decode_threads_gpu(
     right_buf: reco_core::zero_copy::GpuBufInfo,
     left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
     right_slot_free_rx: std::sync::mpsc::Receiver<u8>,
+    sync_offset: i64,
 ) -> reco_core::zero_copy::GpuDecodeHandles {
     use reco_core::zero_copy::{GpuDecodeHandles, GpuFrameSignal};
 
+    // Compute per-decoder skip counts from the sync offset.
+    let (left_skip, right_skip) = if sync_offset > 0 {
+        (0, sync_offset as u64)
+    } else {
+        (sync_offset.unsigned_abs(), 0)
+    };
+
     let (left_rx, left_handle) =
-        spawn_single_decoder_gpu(left_path, "left", left_buf, left_slot_free_rx);
-    let (right_rx, right_handle) =
-        spawn_single_decoder_gpu(right_path, "right", right_buf, right_slot_free_rx);
+        spawn_single_decoder_gpu(left_path, "left", left_buf, left_slot_free_rx, left_skip);
+    let (right_rx, right_handle) = spawn_single_decoder_gpu(
+        right_path,
+        "right",
+        right_buf,
+        right_slot_free_rx,
+        right_skip,
+    );
 
     let (tx, rx) = std::sync::mpsc::sync_channel::<GpuFrameSignal>(1);
 
@@ -198,12 +236,16 @@ pub fn spawn_vt_decode_thread(
 
 /// Spawn paired VideoToolbox decode threads and return the pair receiver.
 ///
+/// `sync_offset` applies temporal alignment: positive skips right frames,
+/// negative skips left frames.
+///
 /// Spawns two VT decode threads (left + right) and a pairing thread
 /// that zips frames into [`VtFramePair`]s.
 #[cfg(target_os = "macos")]
 pub fn spawn_vt_decode_pair(
     left_path: &str,
     right_path: &str,
+    sync_offset: i64,
 ) -> std::sync::mpsc::Receiver<reco_core::zero_copy::VtFramePair> {
     use reco_core::zero_copy::VtFramePair;
 
@@ -214,6 +256,24 @@ pub fn spawn_vt_decode_pair(
     std::thread::Builder::new()
         .name("vt_pair".into())
         .spawn(move || {
+            // Apply sync offset.
+            if sync_offset > 0 {
+                for _ in 0..sync_offset {
+                    if right_rx.recv().is_err() {
+                        return;
+                    }
+                }
+                log::info!("VT sync offset: skipped {sync_offset} right frames");
+            } else if sync_offset < 0 {
+                let skip = sync_offset.unsigned_abs();
+                for _ in 0..skip {
+                    if left_rx.recv().is_err() {
+                        return;
+                    }
+                }
+                log::info!("VT sync offset: skipped {skip} left frames");
+            }
+
             while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
                 if pair_tx.send(VtFramePair { left, right }).is_err() {
                     break;

@@ -1,29 +1,4 @@
-//! Shared CLI helpers: calibration loading, progress reporting, platform detection.
-
-use reco_core::calibration::MatchCalibration;
-use std::path::Path;
-
-/// Maximum calibration file size (1 MB) to prevent DoS from large files.
-const MAX_CALIBRATION_SIZE: u64 = 1_048_576;
-
-/// Load and validate a calibration file.
-///
-/// Checks file size, parses JSON, and runs validation. Returns a descriptive
-/// error on any failure.
-pub fn load_calibration(path: &Path) -> anyhow::Result<MatchCalibration> {
-    let meta = std::fs::metadata(path)?;
-    if meta.len() > MAX_CALIBRATION_SIZE {
-        anyhow::bail!(
-            "Calibration file too large ({} bytes, max {})",
-            meta.len(),
-            MAX_CALIBRATION_SIZE
-        );
-    }
-    let json = std::fs::read_to_string(path)?;
-    let cal: MatchCalibration = serde_json::from_str(&json)?;
-    cal.validate()?;
-    Ok(cal)
-}
+//! Shared CLI helpers: progress reporting, platform detection.
 
 /// Progress reporter that prints frame count and FPS every N frames.
 #[derive(Clone, Copy)]
@@ -65,7 +40,7 @@ impl ProgressReporter {
 /// Detect NVIDIA Jetson (Tegra) platform.
 #[cfg(feature = "gstreamer")]
 pub fn is_tegra() -> bool {
-    Path::new("/etc/nv_tegra_release").exists()
+    std::path::Path::new("/etc/nv_tegra_release").exists()
         || std::fs::read_to_string("/proc/device-tree/compatible")
             .is_ok_and(|s| s.contains("nvidia,tegra"))
 }

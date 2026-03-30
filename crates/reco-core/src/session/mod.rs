@@ -1,0 +1,796 @@
+//! High-level stitching session.
+//!
+//! [`StitchSession`] bundles the GPU pipeline with the NV12 converter,
+//! providing a single entry point for rendering and encoding stitched
+//! panoramic frames. This keeps encode orchestration inside `reco-core`
+//! so that every consumer (CLI, GUI, OBS plugin, cloud worker) gets the
+//! same optimized frame loop without duplicating pipeline plumbing.
+//!
+//! ## Two-level API
+//!
+//! - [`StitchSession::process_frame`] - render one frame and submit it
+//!   to an encoder. Use this for interactive/GUI applications or when
+//!   the caller controls the frame loop (e.g. zero-copy GPU decode).
+//!
+//! - [`StitchSession::run`] - batch-process an entire [`FrameSource`]
+//!   into an encoder, with optional progress reporting and interrupt
+//!   support. Use this for CLI batch encoding.
+
+#[cfg(target_os = "linux")]
+mod zero_copy_linux;
+#[cfg(target_os = "macos")]
+mod zero_copy_macos;
+
+#[cfg(target_os = "linux")]
+pub use zero_copy_linux::SharedTextureSet;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use crate::async_encode::AsyncEncodeThread;
+use crate::calibration::MatchCalibration;
+use crate::detector::{CameraId, Detection, Detector};
+use crate::director::{Director, DirectorContext, TrackedObject, ViewportPosition};
+use crate::encoder::{EncodeError, Encoder};
+use crate::gpu::{GpuContext, GpuError, OutputFormat};
+use crate::nv12_converter::{Nv12Converter, Nv12Error};
+use crate::pipeline::{PipelineError, StitchPipeline};
+use crate::projection;
+use crate::renderer::InputFormat;
+use crate::source::{FrameSource, SourceError, StereoFrame};
+use crate::tracker::Tracker;
+use crate::viewport::ViewportConfig;
+
+use thiserror::Error;
+
+/// Configuration for creating a [`StitchSession`].
+pub struct SessionConfig {
+    /// Camera calibration data.
+    pub calibration: MatchCalibration,
+    /// Output viewport (dimensions, blend width, FOV).
+    pub viewport: ViewportConfig,
+    /// Input frame width in pixels.
+    pub input_width: u32,
+    /// Input frame height in pixels.
+    pub input_height: u32,
+    /// GPU render target format (typically [`OutputFormat::Rgba8Unorm`] for encoding).
+    pub output_format: OutputFormat,
+    /// Input pixel format (YUV420P or NV12).
+    pub input_format: InputFormat,
+}
+
+/// Progress information passed to the progress callback.
+#[derive(Debug, Clone)]
+pub struct FrameProgress {
+    /// Number of frames processed so far.
+    pub frames_completed: u64,
+    /// Elapsed wall-clock time since the run started.
+    pub elapsed: std::time::Duration,
+}
+
+/// Callback for progress reporting during [`StitchSession::run`].
+pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
+
+/// Callback for receiving tracked detection data.
+///
+/// Called each frame with the tracked objects (may be empty on non-detection
+/// frames or when no detector is configured). Use this to build external
+/// consumers like coaching assistants, VAR systems, or stats pipelines.
+///
+/// Arguments: `(objects, frame_index, timestamp_ms)`
+pub type DetectionCallback = Box<dyn FnMut(&[TrackedObject], u64, f64) + Send>;
+
+/// Errors from [`StitchSession`].
+#[derive(Debug, Error)]
+pub enum SessionError {
+    /// GPU initialization error.
+    #[error("GPU: {0}")]
+    Gpu(#[from] GpuError),
+
+    /// GPU pipeline error.
+    #[error("pipeline: {0}")]
+    Pipeline(#[from] PipelineError),
+
+    /// NV12 conversion error.
+    #[error("NV12 converter: {0}")]
+    Nv12(#[from] Nv12Error),
+
+    /// Encoder error.
+    #[error("encoder: {0}")]
+    Encode(#[from] EncodeError),
+
+    /// Source error.
+    #[error("source: {0}")]
+    Source(#[from] SourceError),
+
+    /// Zero-copy setup or runtime error.
+    #[error("zero-copy: {0}")]
+    ZeroCopy(String),
+
+    /// Missing or invalid configuration.
+    #[error("config: {0}")]
+    Config(String),
+}
+
+/// Builder for constructing a [`StitchSession`] with sensible defaults.
+///
+/// Required fields: `calibration` and `input_dimensions`. Everything else
+/// has defaults or is optional.
+///
+/// ```rust,ignore
+/// let session = StitchSession::builder()
+///     .calibration(cal)
+///     .input_dimensions(1920, 1080)
+///     .viewport(viewport)
+///     .gpu(gpu)
+///     .build()?;
+/// ```
+pub struct StitchSessionBuilder {
+    calibration: Option<MatchCalibration>,
+    viewport: Option<ViewportConfig>,
+    input_width: Option<u32>,
+    input_height: Option<u32>,
+    output_format: OutputFormat,
+    input_format: InputFormat,
+    gpu: Option<GpuContext>,
+    encoder: Option<(Box<dyn Encoder + Send>, usize)>,
+    detector: Option<Box<dyn Detector>>,
+    tracker: Option<Box<dyn Tracker>>,
+    director: Option<Box<dyn Director>>,
+    detection_interval: u64,
+}
+
+impl StitchSessionBuilder {
+    /// Set the camera calibration (required).
+    pub fn calibration(mut self, cal: MatchCalibration) -> Self {
+        self.calibration = Some(cal);
+        self
+    }
+
+    /// Set the output viewport configuration.
+    ///
+    /// Defaults to 1920x1080 with blend_width 0.15 if not set.
+    pub fn viewport(mut self, viewport: ViewportConfig) -> Self {
+        self.viewport = Some(viewport);
+        self
+    }
+
+    /// Set the input frame dimensions (required).
+    pub fn input_dimensions(mut self, width: u32, height: u32) -> Self {
+        self.input_width = Some(width);
+        self.input_height = Some(height);
+        self
+    }
+
+    /// Set the GPU render target format.
+    ///
+    /// Defaults to [`OutputFormat::Rgba8Unorm`] (suitable for encoding).
+    pub fn output_format(mut self, format: OutputFormat) -> Self {
+        self.output_format = format;
+        self
+    }
+
+    /// Set the input pixel format.
+    ///
+    /// Defaults to [`InputFormat::Yuv420p`].
+    pub fn input_format(mut self, format: InputFormat) -> Self {
+        self.input_format = format;
+        self
+    }
+
+    /// Provide a pre-initialized GPU context.
+    ///
+    /// If not set, the builder will auto-detect the best available GPU.
+    pub fn gpu(mut self, gpu: GpuContext) -> Self {
+        self.gpu = Some(gpu);
+        self
+    }
+
+    /// Attach an encoder with the given double-buffer count.
+    pub fn encoder(mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) -> Self {
+        self.encoder = Some((encoder, buffer_count));
+        self
+    }
+
+    /// Attach a detector for object detection on raw frames.
+    pub fn detector(mut self, detector: Box<dyn Detector>) -> Self {
+        self.detector = Some(detector);
+        self
+    }
+
+    /// Attach a tracker for persistent object identity across frames.
+    ///
+    /// When set, raw detections are fed through the tracker before
+    /// reaching the director, providing persistent track IDs and
+    /// predicted positions for temporarily lost objects.
+    pub fn tracker(mut self, tracker: Box<dyn Tracker>) -> Self {
+        self.tracker = Some(tracker);
+        self
+    }
+
+    /// Attach a director for camera panning.
+    pub fn director(mut self, director: Box<dyn Director>) -> Self {
+        self.director = Some(director);
+        self
+    }
+
+    /// Set the detection interval (run detection every N frames).
+    ///
+    /// `1` = every frame (default), `3` = every 3rd frame, etc.
+    /// Detection is expensive (YOLO at 2-20ms/frame), so skipping
+    /// frames lets the render loop run faster while the director
+    /// interpolates using the latest detections.
+    pub fn detection_interval(mut self, interval: u64) -> Self {
+        self.detection_interval = interval.max(1);
+        self
+    }
+
+    /// Build the session, initializing GPU if not provided.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionError`] if required fields are missing or GPU
+    /// initialization fails.
+    pub fn build(self) -> Result<StitchSession, SessionError> {
+        let calibration = self.calibration.ok_or_else(|| {
+            SessionError::Config("StitchSessionBuilder: calibration is required".into())
+        })?;
+        let input_width = self.input_width.ok_or_else(|| {
+            SessionError::Config("StitchSessionBuilder: input_dimensions is required".into())
+        })?;
+        let input_height = self.input_height.ok_or_else(|| {
+            SessionError::Config("StitchSessionBuilder: input_dimensions is required".into())
+        })?;
+
+        let viewport = self.viewport.unwrap_or(ViewportConfig {
+            width: 1920,
+            height: 1080,
+            blend_width: 0.15,
+            ..Default::default()
+        });
+
+        let gpu = match self.gpu {
+            Some(g) => g,
+            None => pollster::block_on(GpuContext::new())?,
+        };
+
+        let config = SessionConfig {
+            calibration,
+            viewport,
+            input_width,
+            input_height,
+            output_format: self.output_format,
+            input_format: self.input_format,
+        };
+
+        let mut session = StitchSession::with_gpu(gpu, config)?;
+        session.detection_interval = self.detection_interval;
+
+        if let Some((enc, buf_count)) = self.encoder {
+            session.set_encoder(enc, buf_count);
+        }
+        if let Some(det) = self.detector {
+            session.set_detector(det);
+        }
+        if let Some(trk) = self.tracker {
+            session.set_tracker(trk);
+        }
+        if let Some(dir) = self.director {
+            session.set_director(dir);
+        }
+
+        Ok(session)
+    }
+}
+
+/// A high-level stitching session that owns the GPU pipeline, NV12
+/// converter, and optionally an async encoder.
+///
+/// Created once per encoding job or application lifetime. Call
+/// [`set_encoder`](Self::set_encoder) to attach an encoder before
+/// rendering, then use [`submit_render_output`](Self::submit_render_output)
+/// for per-frame control or [`run`](Self::run) for batch processing.
+/// Call [`finish`](Self::finish) to flush the last frame and finalize
+/// encoding.
+pub struct StitchSession {
+    pub(crate) pipeline: StitchPipeline,
+    pub(crate) nv12_converter: Nv12Converter,
+    pub(crate) encoder: Option<AsyncEncodeThread>,
+    pub(crate) detector: Option<Box<dyn Detector>>,
+    pub(crate) tracker: Option<Box<dyn Tracker>>,
+    pub(crate) director: Option<Box<dyn Director>>,
+    pub(crate) frame_count: u64,
+    /// Run detection every N frames (1 = every frame).
+    detection_interval: u64,
+    /// Callback for external consumers of detection data.
+    detection_callback: Option<DetectionCallback>,
+    /// Cached tracked objects from the last detection frame.
+    /// Reused on non-detection frames so the director still has context.
+    last_tracked_objects: Vec<TrackedObject>,
+}
+
+impl StitchSession {
+    /// Create a builder for configuring and constructing a session.
+    pub fn builder() -> StitchSessionBuilder {
+        StitchSessionBuilder {
+            calibration: None,
+            viewport: None,
+            input_width: None,
+            input_height: None,
+            output_format: OutputFormat::Rgba8Unorm,
+            input_format: InputFormat::Yuv420p,
+            gpu: None,
+            encoder: None,
+            detector: None,
+            tracker: None,
+            director: None,
+            detection_interval: 1,
+        }
+    }
+
+    /// Create a new session, initializing the GPU automatically.
+    pub async fn new(config: SessionConfig) -> Result<Self, SessionError> {
+        let gpu = GpuContext::new().await?;
+        Self::with_gpu(gpu, config)
+    }
+
+    /// Create a session with an existing GPU context.
+    ///
+    /// Use this when the caller needs to control GPU selection (e.g.
+    /// for zero-copy decode where the GPU must match the CUDA device).
+    pub fn with_gpu(gpu: GpuContext, config: SessionConfig) -> Result<Self, SessionError> {
+        let output_width = config.viewport.width;
+        let output_height = config.viewport.height;
+
+        let pipeline = StitchPipeline::with_gpu(
+            gpu,
+            config.calibration,
+            config.viewport,
+            config.input_width,
+            config.input_height,
+            config.output_format,
+            config.input_format,
+        )?;
+
+        let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
+
+        Ok(Self {
+            pipeline,
+            nv12_converter,
+            encoder: None,
+            detector: None,
+            tracker: None,
+            director: None,
+            frame_count: 0,
+            detection_interval: 1,
+            detection_callback: None,
+            last_tracked_objects: Vec::new(),
+        })
+    }
+
+    /// Attach an encoder to this session.
+    ///
+    /// The encoder is moved to a background thread for async encoding.
+    /// `buffer_count` controls how many frames can be in-flight between
+    /// the render thread and the encode thread (typically 2).
+    ///
+    /// Must be called before [`Self::submit_render_output`], [`Self::process_frame`],
+    /// or [`Self::run`].
+    pub fn set_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
+        let width = self.nv12_converter.width();
+        let height = self.nv12_converter.height();
+        self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
+    }
+
+    /// Attach a detector for object detection on raw camera frames.
+    ///
+    /// When set, the CPU batch loop ([`Self::run`]) runs detection on each
+    /// frame's raw YUV data and passes results through the tracker (if set)
+    /// to the director. Zero-copy paths skip detection (no CPU-accessible
+    /// frame data).
+    pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
+        self.detector = Some(detector);
+    }
+
+    /// Attach a tracker for persistent object identity across frames.
+    ///
+    /// When set, raw detections are fed through the tracker before
+    /// reaching the director, providing persistent track IDs.
+    /// Without a tracker, detections are passed directly with `track_id = 0`.
+    pub fn set_tracker(&mut self, tracker: Box<dyn Tracker>) {
+        self.tracker = Some(tracker);
+    }
+
+    /// Attach a director for AI-driven or scripted camera panning.
+    ///
+    /// When set, batch methods ([`Self::run`], [`Self::run_zero_copy_linux`],
+    /// [`Self::run_zero_copy_macos`]) use the director's viewport position
+    /// instead of the default centered view.
+    ///
+    /// The director receives a [`DirectorContext`] each frame containing
+    /// tracked objects with panorama coordinates and valid panning bounds.
+    pub fn set_director(&mut self, director: Box<dyn Director>) {
+        self.director = Some(director);
+    }
+
+    /// Set a callback for receiving tracked detection data.
+    ///
+    /// Called each frame with the current tracked objects, frame index,
+    /// and timestamp. Use this to build external consumers like coaching
+    /// assistants, VAR systems, or stats pipelines.
+    ///
+    /// The callback receives the same [`TrackedObject`] data as the director,
+    /// including panorama-space coordinates.
+    pub fn set_detection_callback(&mut self, cb: DetectionCallback) {
+        self.detection_callback = Some(cb);
+    }
+
+    /// Get the current viewport position from the director, or default.
+    ///
+    /// If the director provides a FOV override, applies it to the pipeline.
+    pub(crate) fn director_position(&mut self) -> ViewportPosition {
+        let pos = self
+            .director
+            .as_ref()
+            .map_or(ViewportPosition::default(), |d| d.position());
+        if let Some(fov) = pos.fov_degrees {
+            self.pipeline.set_fov(fov);
+        }
+        pos
+    }
+
+    /// Run detection on a stereo frame, track, map to panorama, and update the director.
+    ///
+    /// Detection only runs every `detection_interval` frames. On skipped
+    /// frames, the last tracked objects are reused so the director still
+    /// has context. The detection callback fires every frame.
+    pub(crate) fn detect_and_update_director(
+        &mut self,
+        frame: &StereoFrame,
+        elapsed: std::time::Duration,
+    ) {
+        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
+        let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
+
+        if should_detect {
+            let detections = self.run_detection(frame);
+            self.last_tracked_objects =
+                self.build_tracked_objects(self.frame_count, timestamp_ms, detections);
+        }
+
+        // Fire callback for external consumers.
+        if let Some(ref mut cb) = self.detection_callback {
+            cb(&self.last_tracked_objects, self.frame_count, timestamp_ms);
+        }
+
+        // Update director with full context.
+        if let Some(ref mut director) = self.director {
+            let fov = self.pipeline.fov();
+            let bounds =
+                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
+            let ctx = DirectorContext {
+                frame_index: self.frame_count,
+                timestamp_ms,
+                objects: &self.last_tracked_objects,
+                viewport_bounds: bounds,
+                current_fov: fov,
+            };
+            director.update(&ctx);
+        }
+    }
+
+    /// Update the director without detection (zero-copy paths).
+    ///
+    /// No CPU-accessible frame data is available, so detection is skipped.
+    /// The director still receives context with empty objects and valid bounds.
+    pub(crate) fn update_director(&mut self, elapsed: std::time::Duration) {
+        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
+
+        // Fire callback (empty objects).
+        if let Some(ref mut cb) = self.detection_callback {
+            cb(&[], self.frame_count, timestamp_ms);
+        }
+
+        if let Some(ref mut director) = self.director {
+            let fov = self.pipeline.fov();
+            let bounds =
+                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
+            let ctx = DirectorContext {
+                frame_index: self.frame_count,
+                timestamp_ms,
+                objects: &[],
+                viewport_bounds: bounds,
+                current_fov: fov,
+            };
+            director.update(&ctx);
+        }
+    }
+
+    /// Build tracked objects from raw detections.
+    ///
+    /// If a tracker is attached, runs detections through it for persistent IDs.
+    /// Then maps each detection to panorama coordinates via `camera_to_panorama`.
+    fn build_tracked_objects(
+        &mut self,
+        frame_index: u64,
+        timestamp_ms: f64,
+        detections: Vec<Detection>,
+    ) -> Vec<TrackedObject> {
+        let calibration = self.pipeline.calibration();
+        let scene = &self.pipeline.scene;
+
+        if let Some(ref mut tracker) = self.tracker {
+            // Tracker provides persistent IDs and handles prediction.
+            let tracks = tracker.update(frame_index, timestamp_ms, &detections);
+            tracks
+                .into_iter()
+                .map(|t| {
+                    let position = projection::camera_to_panorama(
+                        t.detection.camera,
+                        t.detection.center_x,
+                        t.detection.center_y,
+                        calibration,
+                        scene,
+                    );
+                    TrackedObject {
+                        track_id: t.id,
+                        camera: t.detection.camera,
+                        label: t.detection.label.clone(),
+                        confidence: t.detection.confidence,
+                        camera_center: (t.detection.center_x, t.detection.center_y),
+                        camera_size: (t.detection.width, t.detection.height),
+                        position,
+                        age: t.age,
+                    }
+                })
+                .collect()
+        } else {
+            // No tracker: each detection is independent (track_id = 0, age = 1).
+            detections
+                .iter()
+                .map(|d| {
+                    let position = projection::camera_to_panorama(
+                        d.camera,
+                        d.center_x,
+                        d.center_y,
+                        calibration,
+                        scene,
+                    );
+                    TrackedObject {
+                        track_id: 0,
+                        camera: d.camera,
+                        label: d.label.clone(),
+                        confidence: d.confidence,
+                        camera_center: (d.center_x, d.center_y),
+                        camera_size: (d.width, d.height),
+                        position,
+                        age: 1,
+                    }
+                })
+                .collect()
+        }
+    }
+
+    /// Run the detector on a stereo frame's raw data.
+    fn run_detection(&mut self, frame: &StereoFrame) -> Vec<Detection> {
+        use crate::detector::{ChromaFormat, RawFrame};
+
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+        let (width, height) = self.pipeline.source_info();
+        let mut detections = Vec::new();
+        match frame {
+            StereoFrame::Yuv420p(pair) => {
+                let left = RawFrame {
+                    y: &pair.left.y,
+                    chroma: ChromaFormat::Yuv420p {
+                        u: &pair.left.u,
+                        v: &pair.left.v,
+                    },
+                    width,
+                    height,
+                };
+                let right = RawFrame {
+                    y: &pair.right.y,
+                    chroma: ChromaFormat::Yuv420p {
+                        u: &pair.right.u,
+                        v: &pair.right.v,
+                    },
+                    width,
+                    height,
+                };
+                detections.extend(detector.detect(CameraId::Left, &left));
+                detections.extend(detector.detect(CameraId::Right, &right));
+            }
+            StereoFrame::Nv12(pair) => {
+                let left = RawFrame {
+                    y: &pair.left.y,
+                    chroma: ChromaFormat::Nv12 { uv: &pair.left.uv },
+                    width,
+                    height,
+                };
+                let right = RawFrame {
+                    y: &pair.right.y,
+                    chroma: ChromaFormat::Nv12 { uv: &pair.right.uv },
+                    width,
+                    height,
+                };
+                detections.extend(detector.detect(CameraId::Left, &left));
+                detections.extend(detector.detect(CameraId::Right, &right));
+            }
+            StereoFrame::GpuResident { .. } => {
+                // GPU-resident frames have no CPU-accessible data for detection
+            }
+        }
+        detections
+    }
+
+    /// Render a single CPU-resident stereo frame and submit it to the encoder.
+    ///
+    /// Handles YUV420P and NV12 input formats. For GPU-resident frames
+    /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
+    /// instead.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "session_process_frame")
+    )]
+    pub fn process_frame(
+        &mut self,
+        frame: &StereoFrame,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
+        self.submit_render_output(render_buf)
+    }
+
+    /// Render from GPU-resident textures and submit to the async encoder.
+    ///
+    /// Used with the zero-copy path where decode threads write directly
+    /// to shared GPU textures. The caller must configure bind groups via
+    /// [`pipeline_mut()`](Self::pipeline_mut) and call
+    /// [`StitchPipeline::render_gpu_frame`] to get the command buffer,
+    /// then pass it here.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "session_submit_render")
+    )]
+    pub fn submit_render_output(
+        &mut self,
+        render_commands: wgpu::CommandBuffer,
+    ) -> Result<(), SessionError> {
+        let nv12_data = self.nv12_converter.convert_and_readback(
+            self.pipeline.gpu(),
+            self.pipeline.render_target(),
+            render_commands,
+        )?;
+
+        // First call returns None (GPU work submitted, no previous frame yet).
+        // From the second call onward, we get the previous frame's data.
+        if let Some(data) = nv12_data
+            && let Some(ref encoder) = self.encoder
+        {
+            encoder.submit(data)?;
+        }
+
+        self.frame_count += 1;
+        Ok(())
+    }
+
+    /// Batch-process frames from a source into the encoder.
+    ///
+    /// Runs the full decode-render-encode loop until the source is
+    /// exhausted, the frame limit is reached, or the interrupt flag
+    /// is set. Returns the number of frames processed.
+    ///
+    /// Does NOT call [`Self::finish`] - the caller must do that after this
+    /// returns to flush the last frame and finalize encoding.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "session_run")
+    )]
+    pub fn run(
+        &mut self,
+        source: &mut dyn FrameSource,
+        frame_limit: u64,
+        interrupted: &AtomicBool,
+        mut on_progress: Option<ProgressCallback>,
+    ) -> Result<u64, SessionError> {
+        let start = std::time::Instant::now();
+
+        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+            let frame = {
+                crate::profile_scope!("wait_decode");
+                match source.next_frame()? {
+                    Some(f) => f,
+                    None => break,
+                }
+            };
+
+            self.detect_and_update_director(&frame, start.elapsed());
+            let pos = self.director_position();
+            self.process_frame(&frame, pos.yaw, pos.pitch)?;
+
+            if let Some(ref mut cb) = on_progress {
+                cb(&FrameProgress {
+                    frames_completed: self.frame_count,
+                    elapsed: start.elapsed(),
+                });
+            }
+        }
+
+        Ok(self.frame_count)
+    }
+
+    /// Flush the NV12 double-buffer and finalize the encoder.
+    ///
+    /// Submits the last pending frame from the double-buffer pipeline
+    /// to the encoder, then shuts down the encode thread and calls
+    /// [`Encoder::finish`]. Must be called after the frame loop ends.
+    pub fn finish(&mut self) -> Result<(), SessionError> {
+        // Flush the last frame from the NV12 double-buffer.
+        if let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
+            if let Some(ref encoder) = self.encoder {
+                encoder.submit(nv12_data)?;
+            }
+            self.frame_count += 1;
+        }
+
+        // Shut down the async encode thread.
+        if let Some(mut encoder) = self.encoder.take() {
+            encoder.finish()?;
+        }
+
+        Ok(())
+    }
+
+    /// Convert a pre-rendered frame to NV12 without encoding.
+    ///
+    /// Returns the previous frame's NV12 data (or `None` on first call).
+    /// Used by the preview path where the caller displays frames directly
+    /// instead of encoding them.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "session_convert_nv12")
+    )]
+    pub fn convert_to_nv12(
+        &mut self,
+        render_commands: wgpu::CommandBuffer,
+    ) -> Result<Option<&[u8]>, SessionError> {
+        let nv12_data = self.nv12_converter.convert_and_readback(
+            self.pipeline.gpu(),
+            self.pipeline.render_target(),
+            render_commands,
+        )?;
+        self.frame_count += 1;
+        Ok(nv12_data)
+    }
+
+    /// Number of frames processed so far.
+    pub fn frame_count(&self) -> u64 {
+        self.frame_count
+    }
+
+    /// Shared reference to the underlying pipeline.
+    pub fn pipeline(&self) -> &StitchPipeline {
+        &self.pipeline
+    }
+
+    /// Mutable reference to the underlying pipeline.
+    ///
+    /// Needed for zero-copy setup (configure_gpu_source) and viewport
+    /// changes (resize, set_fov).
+    pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
+        &mut self.pipeline
+    }
+
+    /// Shared reference to the GPU context.
+    pub fn gpu(&self) -> &GpuContext {
+        self.pipeline.gpu()
+    }
+
+    /// The name of the GPU this session is running on.
+    pub fn gpu_name(&self) -> &str {
+        self.pipeline.gpu_name()
+    }
+}

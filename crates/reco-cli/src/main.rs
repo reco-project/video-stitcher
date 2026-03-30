@@ -91,6 +91,12 @@ enum Commands {
         /// are blended at the seam. 0 = hard edge, 0.15 = smooth transition.
         #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
         blend: f32,
+
+        /// Frame offset for temporal sync between cameras.
+        /// Positive: skip N right frames (right started first).
+        /// Negative: skip N left frames (left started first).
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        sync_offset: i64,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -231,6 +237,7 @@ fn main() -> anyhow::Result<()> {
             codec,
             quality,
             blend,
+            sync_offset,
         } => stitch::run_stitch(
             &left,
             &right,
@@ -244,6 +251,7 @@ fn main() -> anyhow::Result<()> {
             encoder,
             &codec,
             &quality,
+            sync_offset,
             &interrupted,
         ),
 

@@ -21,6 +21,7 @@ pub fn run_stitch(
     encoder_name: Option<String>,
     codec: &str,
     quality: &str,
+    sync_offset: i64,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     const MAX_DIM: u32 = 8192;
@@ -38,16 +39,20 @@ pub fn run_stitch(
     log::info!("Stitching: {left} + {right} -> {output}");
 
     // Probe input and create source (kept for CPU path, dropped for zero-copy)
-    let mut source = Some(reco_io::adapters::FfmpegFileSource::open(
+    let mut source = Some(reco_io::adapters::FfmpegFileSource::open_with_offset(
         Path::new(left),
         Path::new(right),
+        sync_offset,
     )?);
     let fps_rational = reco_io::adapters::FfmpegFileSource::frame_rate(Path::new(left))?;
     let info = source.as_ref().unwrap().info();
     let (input_width, input_height, fps_val) = (info.width, info.height, info.fps);
     log::info!("Input: {input_width}x{input_height} @ {fps_val:.1} fps");
+    if sync_offset != 0 {
+        println!("Sync offset: {sync_offset} frames");
+    }
 
-    let cal = crate::helpers::load_calibration(Path::new(calibration))?;
+    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
     let viewport = reco_core::viewport::ViewportConfig {
         width,
         height,
@@ -57,20 +62,9 @@ pub fn run_stitch(
 
     // Detect zero-copy capability
     let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
-
-    #[cfg(target_os = "linux")]
     let use_zero_copy = std::env::var("RECO_NO_HWACCEL").is_err()
-        && source.as_ref().unwrap().decode_backend()
-            == reco_io::ffmpeg::decoder::DecodeBackend::Cuda
-        && reco_core::cuda_interop::is_cuda_available()
-        && gpu.is_vulkan();
-    #[cfg(target_os = "macos")]
-    let use_zero_copy = std::env::var("RECO_NO_HWACCEL").is_err()
-        && source.as_ref().unwrap().decode_backend()
-            == reco_io::ffmpeg::decoder::DecodeBackend::VideoToolbox
-        && gpu.is_metal();
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    let use_zero_copy = false;
+        && source.as_ref().unwrap().supports_zero_copy()
+        && gpu.supports_zero_copy();
 
     let input_format = if use_zero_copy {
         reco_core::renderer::InputFormat::Nv12
@@ -161,6 +155,7 @@ pub fn run_stitch(
             input_width,
             input_height,
             frame_limit,
+            sync_offset,
             interrupted,
             &progress,
         )?;
@@ -182,6 +177,7 @@ pub fn run_stitch(
             left,
             right,
             frame_limit,
+            sync_offset,
             interrupted,
             &progress,
         )?;
@@ -233,6 +229,7 @@ fn run_cpu_path(
 
 /// Set up and run the CUDA/Vulkan zero-copy pipeline.
 #[cfg(target_os = "linux")]
+#[allow(clippy::too_many_arguments)]
 fn run_zero_copy_linux(
     session: &mut reco_core::session::StitchSession,
     left: &str,
@@ -240,6 +237,7 @@ fn run_zero_copy_linux(
     input_width: u32,
     input_height: u32,
     frame_limit: u64,
+    sync_offset: i64,
     interrupted: &Arc<AtomicBool>,
     progress: &crate::helpers::ProgressReporter,
 ) -> anyhow::Result<u64> {
@@ -252,6 +250,7 @@ fn run_zero_copy_linux(
         shared.right_buf.clone(),
         shared.left_slot_free_rx.take().expect("left slot rx"),
         shared.right_slot_free_rx.take().expect("right slot rx"),
+        sync_offset,
     );
 
     println!("Zero-copy pipeline active: NVDEC -> cuMemcpy2D -> shared texture -> render");
@@ -276,10 +275,11 @@ fn run_zero_copy_macos(
     left: &str,
     right: &str,
     frame_limit: u64,
+    sync_offset: i64,
     interrupted: &Arc<AtomicBool>,
     progress: &crate::helpers::ProgressReporter,
 ) -> anyhow::Result<u64> {
-    let pair_rx = reco_io::zero_copy::spawn_vt_decode_pair(left, right);
+    let pair_rx = reco_io::zero_copy::spawn_vt_decode_pair(left, right, sync_offset);
 
     println!("Zero-copy pipeline active: VideoToolbox -> CVMetalTextureCache -> Metal render");
 

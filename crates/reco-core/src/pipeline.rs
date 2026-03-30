@@ -6,18 +6,20 @@
 //!
 //! ## Usage
 //!
-//! ```rust,no_run
+//! Most consumers should use [`StitchSession`](crate::session::StitchSession)
+//! instead of `StitchPipeline` directly. The pipeline is exposed for advanced
+//! use cases like preview windows that need direct surface rendering.
+//!
+//! ```rust,no_run,compile_fail
 //! use reco_core::pipeline::StitchPipeline;
-//! use reco_core::calibration::MatchCalibration;
-//! use reco_core::viewport::ViewportConfig;
+//! use reco_core::gpu::GpuContext;
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let calibration: MatchCalibration = todo!("load from JSON");
-//! let viewport = ViewportConfig::default();
-//!
-//! let pipeline = StitchPipeline::new(calibration, viewport, 1920, 1080).await?;
-//! # Ok(())
-//! # }
+//! let gpu = pollster::block_on(GpuContext::new())?;
+//! let pipeline = StitchPipeline::with_gpu(
+//!     gpu, calibration, viewport, 1920, 1080,
+//!     wgpu::TextureFormat::Rgba8UnormSrgb,
+//!     reco_core::renderer::InputFormat::Yuv420p,
+//! )?;
 //! ```
 
 use crate::calibration::MatchCalibration;
@@ -84,6 +86,9 @@ pub struct StitchPipeline {
     pub(crate) viewport: ViewportConfig,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
+    /// Input frame dimensions.
+    input_width: u32,
+    input_height: u32,
 }
 
 /// Pre-built bind groups for GPU-resident zero-copy sources.
@@ -97,31 +102,6 @@ pub struct GpuSourceBindGroups {
 }
 
 impl StitchPipeline {
-    /// Create a new stitch pipeline.
-    ///
-    /// Initializes the GPU, computes the scene geometry from the
-    /// calibration data, and creates the render pipeline.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PipelineError::Gpu`] if no compatible GPU is found.
-    pub async fn new(
-        calibration: MatchCalibration,
-        viewport: ViewportConfig,
-        input_width: u32,
-        input_height: u32,
-    ) -> Result<Self, PipelineError> {
-        Self::with_gpu(
-            GpuContext::new().await?,
-            calibration,
-            viewport,
-            input_width,
-            input_height,
-            wgpu::TextureFormat::Rgba8UnormSrgb,
-            InputFormat::Yuv420p,
-        )
-    }
-
     /// Create a pipeline with an existing GPU context and custom output format.
     ///
     /// Used by the preview window which needs a specific surface format
@@ -160,6 +140,8 @@ impl StitchPipeline {
             calibration,
             viewport,
             renderer,
+            input_width,
+            input_height,
         })
     }
 
@@ -176,9 +158,19 @@ impl StitchPipeline {
         &self.gpu
     }
 
-    /// Current viewport configuration.
+    /// The calibration data this pipeline was created with.
+    pub fn calibration(&self) -> &MatchCalibration {
+        &self.calibration
+    }
+
+    /// The current output viewport configuration.
     pub fn viewport(&self) -> &ViewportConfig {
         &self.viewport
+    }
+
+    /// Input frame dimensions as `(width, height)`.
+    pub fn source_info(&self) -> (u32, u32) {
+        (self.input_width, self.input_height)
     }
 
     /// Resize the output viewport.
@@ -348,7 +340,11 @@ impl StitchPipeline {
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition { yaw, pitch },
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
         };
 
         self.renderer.render_to_view(
@@ -360,63 +356,6 @@ impl StitchPipeline {
             target_view,
         );
         Ok(())
-    }
-
-    /// Process a single frame through the GPU pipeline.
-    ///
-    /// Uploads left and right YUV420P planes to the GPU, renders the stitched
-    /// panorama at the given viewport position, and reads back the result.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "process_frame")
-    )]
-    pub fn process_frame(
-        &self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, PipelineError> {
-        self.renderer
-            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
-        self.renderer
-            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
-
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition { yaw, pitch },
-        };
-
-        Ok(self.renderer.render_frame(
-            &self.gpu,
-            &self.scene,
-            &self.calibration,
-            &viewport,
-            self.viewport.blend_width,
-        )?)
-    }
-
-    /// Render a frame assuming textures are already populated (zero-copy path).
-    ///
-    /// Used with CUDA/Vulkan shared textures where the decode thread writes
-    /// frame data directly to GPU memory via `cuMemcpy2D`. No CPU upload needed.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "process_frame_gpu")
-    )]
-    pub fn process_frame_gpu(&self, yaw: f32, pitch: f32) -> Result<Vec<u8>, PipelineError> {
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition { yaw, pitch },
-        };
-
-        Ok(self.renderer.render_frame(
-            &self.gpu,
-            &self.scene,
-            &self.calibration,
-            &viewport,
-            self.viewport.blend_width,
-        )?)
     }
 
     /// Render a frame to the internal render target without CPU readback.
@@ -442,7 +381,11 @@ impl StitchPipeline {
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition { yaw, pitch },
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
         };
 
         Ok(self.renderer.render_to_target(
@@ -476,7 +419,11 @@ impl StitchPipeline {
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition { yaw, pitch },
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
         };
 
         Ok(self.renderer.render_to_target(
@@ -496,10 +443,14 @@ impl StitchPipeline {
         feature = "profiling",
         tracing::instrument(skip_all, name = "render_to_target_gpu")
     )]
-    pub fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
+    pub(crate) fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition { yaw, pitch },
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
         };
 
         self.renderer.render_to_target(

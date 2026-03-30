@@ -17,8 +17,6 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use crate::helpers;
-
 // ---- Preview constants ----
 
 /// Yaw/pitch increment per arrow key press (radians).
@@ -74,7 +72,7 @@ pub fn run_preview(
         right_dims.1
     );
 
-    let cal = helpers::load_calibration(Path::new(calibration_path))?;
+    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
 
     println!(
         "Preview: {}x{} input, {}x{} window",
