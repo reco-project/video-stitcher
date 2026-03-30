@@ -139,8 +139,8 @@ impl StitchSession {
     /// `buffer_count` controls how many frames can be in-flight between
     /// the render thread and the encode thread (typically 2).
     ///
-    /// Must be called before [`submit_render_output`], [`process_frame`],
-    /// or [`run`].
+    /// Must be called before [`Self::submit_render_output`], [`Self::process_frame`],
+    /// or [`Self::run`].
     pub fn set_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
         let width = self.nv12_converter.width();
         let height = self.nv12_converter.height();
@@ -205,7 +205,7 @@ impl StitchSession {
     /// exhausted, the frame limit is reached, or the interrupt flag
     /// is set. Returns the number of frames processed.
     ///
-    /// Does NOT call [`finish`] - the caller must do that after this
+    /// Does NOT call [`Self::finish`] - the caller must do that after this
     /// returns to flush the last frame and finalize encoding.
     #[cfg_attr(
         feature = "profiling",
