@@ -38,7 +38,7 @@ const FOV_DEFAULT: f32 = 75.0;
 /// Number of frames to skip on P key press.
 const FRAME_SKIP_COUNT: usize = 30;
 
-/// Extract a [`YuvData`] pair from a [`StereoFrame`].
+/// Extract a [`YuvData`] pair from a [`StereoFrame`](reco_core::source::StereoFrame).
 ///
 /// Panics if the frame is not `Yuv420p` (preview always uses CPU decode).
 fn unwrap_yuv_pair(frame: reco_core::source::StereoFrame) -> (YuvData, YuvData) {

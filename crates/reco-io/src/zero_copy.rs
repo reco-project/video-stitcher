@@ -109,7 +109,7 @@ pub fn spawn_single_decoder_gpu(
 
 /// Spawn parallel GPU decode threads and a pairing thread.
 ///
-/// Returns [`GpuDecodeHandles`] containing the paired frame signal
+/// Returns [`GpuDecodeHandles`](reco_core::zero_copy::GpuDecodeHandles) containing the paired frame signal
 /// receiver and join handles for graceful shutdown.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn spawn_decode_threads_gpu(
