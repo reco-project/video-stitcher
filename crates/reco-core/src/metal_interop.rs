@@ -62,6 +62,11 @@ unsafe extern "C" {
     fn CVPixelBufferGetPixelFormatType(pixel_buffer: CVPixelBufferRef) -> u32;
     fn CVPixelBufferGetWidthOfPlane(pixel_buffer: CVPixelBufferRef, plane_index: u64) -> u64;
     fn CVPixelBufferGetHeightOfPlane(pixel_buffer: CVPixelBufferRef, plane_index: u64) -> u64;
+
+    fn CVPixelBufferRetain(pixel_buffer: CVPixelBufferRef) -> CVPixelBufferRef;
+    fn CVPixelBufferRelease(pixel_buffer: CVPixelBufferRef);
+
+    fn CVMetalTextureCacheFlush(texture_cache: CVMetalTextureCacheRef, options: u64);
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -109,6 +114,50 @@ pub enum MetalInteropError {
     #[error("unsupported CVPixelBuffer format: 0x{0:08x}")]
     UnsupportedFormat(u32),
 }
+
+// ---------------------------------------------------------------------------
+// RetainedCVPixelBuffer — Send-safe retained CVPixelBuffer for threaded decode
+// ---------------------------------------------------------------------------
+
+/// A CVPixelBuffer with an extra retain, safe to send across threads.
+///
+/// VideoToolbox's `CVPixelBuffer` is reference-counted. The raw pointer from
+/// `AVFrame->data[3]` is only valid until the next decode call. Retaining it
+/// via `CVPixelBufferRetain` keeps the IOSurface alive so a decode thread
+/// can pass it to the render thread.
+pub struct RetainedCVPixelBuffer {
+    ptr: CVPixelBufferRef,
+}
+
+impl RetainedCVPixelBuffer {
+    /// Retain a CVPixelBuffer. The caller must ensure `ptr` is a valid
+    /// `CVPixelBufferRef` from a VideoToolbox-decoded AVFrame.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must be a valid, non-null `CVPixelBufferRef`.
+    pub unsafe fn retain(ptr: CVPixelBufferRef) -> Self {
+        debug_assert!(!ptr.is_null());
+        unsafe { CVPixelBufferRetain(ptr) };
+        Self { ptr }
+    }
+
+    /// Get the raw `CVPixelBufferRef` pointer for import.
+    pub fn as_ptr(&self) -> CVPixelBufferRef {
+        self.ptr
+    }
+}
+
+impl Drop for RetainedCVPixelBuffer {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            unsafe { CVPixelBufferRelease(self.ptr) };
+        }
+    }
+}
+
+// CVPixelBuffer is IOSurface-backed and reference-counted; safe to send.
+unsafe impl Send for RetainedCVPixelBuffer {}
 
 // ---------------------------------------------------------------------------
 // MetalTextureCache
@@ -162,13 +211,25 @@ impl MetalTextureCache {
         Ok(Self { cv_cache: cache })
     }
 
+    /// Flush stale entries from the texture cache.
+    ///
+    /// Call periodically (e.g. every 60 frames) to release cached textures
+    /// that are no longer in use. Without this, the cache can grow unbounded.
+    pub fn flush(&self) {
+        unsafe { CVMetalTextureCacheFlush(self.cv_cache, 0) };
+    }
+
     /// Import a single NV12 plane from a `CVPixelBuffer` as a wgpu texture.
     ///
     /// - `plane_index` 0 = Y plane (`R8Unorm`), 1 = UV plane (`Rg8Unorm`)
     ///
     /// The returned `ImportedPlaneTexture` keeps the underlying
     /// `CVMetalTextureRef` alive. Drop it when the GPU is done reading.
-    pub fn import_plane(
+    ///
+    /// # Safety
+    ///
+    /// `cv_pixel_buffer` must be a valid, non-null `CVPixelBufferRef`.
+    pub unsafe fn import_plane(
         &self,
         cv_pixel_buffer: CVPixelBufferRef,
         plane_index: u64,
@@ -223,7 +284,11 @@ impl MetalTextureCache {
     /// Import both NV12 planes (Y + UV) from a `CVPixelBuffer`.
     ///
     /// Returns `(y_texture, uv_texture)` ready for use in shader bind groups.
-    pub fn import_nv12(
+    ///
+    /// # Safety
+    ///
+    /// `cv_pixel_buffer` must be a valid, non-null `CVPixelBufferRef`.
+    pub unsafe fn import_nv12(
         &self,
         cv_pixel_buffer: CVPixelBufferRef,
         gpu: &GpuContext,
@@ -236,8 +301,9 @@ impl MetalTextureCache {
             return Err(MetalInteropError::UnsupportedFormat(format));
         }
 
-        let y = self.import_plane(cv_pixel_buffer, 0, gpu)?;
-        let uv = self.import_plane(cv_pixel_buffer, 1, gpu)?;
+        // SAFETY: caller guarantees cv_pixel_buffer is valid
+        let y = unsafe { self.import_plane(cv_pixel_buffer, 0, gpu)? };
+        let uv = unsafe { self.import_plane(cv_pixel_buffer, 1, gpu)? };
         Ok((y, uv))
     }
 
@@ -335,7 +401,11 @@ impl Drop for ImportedPlaneTexture {
 /// Validate that a `CVPixelBuffer` has a supported NV12 pixel format.
 ///
 /// Returns `true` for `420v` (video range) and `420f` (full range) NV12 formats.
-pub fn is_supported_format(cv_pixel_buffer: CVPixelBufferRef) -> bool {
+///
+/// # Safety
+///
+/// `cv_pixel_buffer` must be a valid, non-null `CVPixelBufferRef`.
+pub unsafe fn is_supported_format(cv_pixel_buffer: CVPixelBufferRef) -> bool {
     let format = unsafe { CVPixelBufferGetPixelFormatType(cv_pixel_buffer) };
     format == K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE
         || format == K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE

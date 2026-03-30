@@ -193,15 +193,15 @@ impl FfmpegFileEncoder {
 
 #[cfg(feature = "ffmpeg")]
 impl Encoder for FfmpegFileEncoder {
-    fn submit(&mut self, frame: OutputFrame) -> Result<(), EncodeError> {
+    fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError> {
         match frame.format {
             PixelFormat::Nv12 => self
                 .inner
-                .write_nv12_frame(&frame.data)
+                .write_nv12_frame(frame.data)
                 .map_err(|e| EncodeError::Frame(e.to_string())),
             PixelFormat::Rgba8 => self
                 .inner
-                .write_frame(&frame.data)
+                .write_frame(frame.data)
                 .map_err(|e| EncodeError::Frame(e.to_string())),
         }
     }

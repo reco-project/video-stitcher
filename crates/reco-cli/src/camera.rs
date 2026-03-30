@@ -201,6 +201,12 @@ pub fn run_camera(
             progress.report(frame_count);
         }
 
+        // Flush the last pending frame from the double-buffered NV12 pipeline.
+        if let Some(last_frame) = session.flush_pending_nv12()? {
+            let _ = encode_tx.send(last_frame.to_vec());
+            frame_count += 1;
+        }
+
         // Stop cameras gracefully before finishing encoder
         source.stop();
         drop(encode_tx);
@@ -251,6 +257,12 @@ pub fn run_camera(
             }
             frame_count += 1;
             progress.report(frame_count);
+        }
+
+        // Flush the last pending frame from the double-buffered NV12 pipeline.
+        if let Some(last_frame) = session.flush_pending_nv12()? {
+            let _ = encode_tx.send(last_frame.to_vec());
+            frame_count += 1;
         }
 
         drop(encode_tx);

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::encoder::Encoder;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use reco_core::profile_scope;
 
 // ---- GPU decode types for zero-copy path ----
@@ -344,10 +345,61 @@ fn run_stitch_zero_copy(
     Ok(frame_count)
 }
 
+/// A retained CVPixelBuffer pair from two decode threads, ready for Metal import.
+#[cfg(target_os = "macos")]
+struct VtFramePair {
+    left: reco_core::metal_interop::RetainedCVPixelBuffer,
+    right: reco_core::metal_interop::RetainedCVPixelBuffer,
+}
+
+/// Spawn a VideoToolbox decode thread that sends retained CVPixelBuffers.
+#[cfg(target_os = "macos")]
+fn spawn_vt_decode_thread(
+    path: std::path::PathBuf,
+    label: &'static str,
+) -> std::sync::mpsc::Receiver<reco_core::metal_interop::RetainedCVPixelBuffer> {
+    use reco_core::metal_interop::RetainedCVPixelBuffer;
+    use reco_io::ffmpeg::decoder::VideoDecoder;
+
+    let (tx, rx) = std::sync::mpsc::sync_channel::<RetainedCVPixelBuffer>(4);
+
+    std::thread::Builder::new()
+        .name(format!("vt_decode_{label}"))
+        .spawn(move || {
+            let mut dec = match VideoDecoder::open(&path) {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("Failed to open {label} video: {e}");
+                    return;
+                }
+            };
+            log::info!("VT decode thread {label}: backend={}", dec.backend());
+
+            loop {
+                match dec.next_frame_vt() {
+                    Ok(Some(vt)) => {
+                        let retained = unsafe { RetainedCVPixelBuffer::retain(vt.cv_pixel_buffer) };
+                        if tx.send(retained).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        log::error!("{label} VT decode error: {e}");
+                        break;
+                    }
+                }
+            }
+        })
+        .expect("spawn VT decode thread");
+
+    rx
+}
+
 /// Run the stitch loop using VideoToolbox/Metal zero-copy (macOS).
 ///
-/// Each frame: VideoToolbox decode -> CVPixelBuffer -> CVMetalTextureCache ->
-/// MTLTexture -> wgpu bind group -> render -> NV12 readback -> encode.
+/// Decode runs on two threads (one per camera), the main thread does
+/// Metal texture import, render, NV12 readback, and encode.
 #[cfg(target_os = "macos")]
 #[allow(clippy::too_many_arguments)]
 fn run_stitch_metal_zero_copy(
@@ -362,19 +414,24 @@ fn run_stitch_metal_zero_copy(
     progress: &crate::helpers::ProgressReporter,
 ) -> anyhow::Result<u64> {
     use reco_core::metal_interop::MetalTextureCache;
-    use reco_io::ffmpeg::decoder::VideoDecoder;
-    use std::path::Path;
+    use std::path::PathBuf;
 
-    let mut left_dec = VideoDecoder::open(Path::new(left_path))?;
-    let mut right_dec = VideoDecoder::open(Path::new(right_path))?;
+    // Spawn decode threads (VT decode overlaps with render/encode)
+    let left_rx = spawn_vt_decode_thread(PathBuf::from(left_path), "left");
+    let right_rx = spawn_vt_decode_thread(PathBuf::from(right_path), "right");
 
-    log::info!(
-        "Metal zero-copy: left={} ({}), right={} ({})",
-        left_dec.backend(),
-        left_dec.backend(),
-        right_dec.backend(),
-        right_dec.backend(),
-    );
+    // Pair frames from the two decode threads
+    let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<VtFramePair>(4);
+    std::thread::Builder::new()
+        .name("vt_pair".into())
+        .spawn(move || {
+            while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
+                if pair_tx.send(VtFramePair { left, right }).is_err() {
+                    break;
+                }
+            }
+        })
+        .expect("spawn VT pairing thread");
 
     // Create the Metal texture cache (bridges CVPixelBuffer -> MTLTexture)
     let cache = MetalTextureCache::new(session.gpu())?;
@@ -382,19 +439,18 @@ fn run_stitch_metal_zero_copy(
     let mut frame_count: u64 = 0;
 
     while !interrupted.load(Ordering::Relaxed) && frame_count < frame_limit {
-        // Decode one frame from each camera
-        let left_vt = match left_dec.next_frame_vt()? {
-            Some(f) => f,
-            None => break,
-        };
-        let right_vt = match right_dec.next_frame_vt()? {
-            Some(f) => f,
-            None => break,
+        // Receive pre-decoded frame pair (decode overlapped with previous render/encode)
+        let pair = match pair_rx.recv() {
+            Ok(p) => p,
+            Err(_) => break,
         };
 
         // Import NV12 planes as Metal textures (zero-copy via IOSurface)
-        let (left_y, left_uv) = cache.import_nv12(left_vt.cv_pixel_buffer, session.gpu())?;
-        let (right_y, right_uv) = cache.import_nv12(right_vt.cv_pixel_buffer, session.gpu())?;
+        // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid (retained).
+        let (left_y, left_uv) =
+            unsafe { cache.import_nv12(pair.left.as_ptr(), session.gpu())? };
+        let (right_y, right_uv) =
+            unsafe { cache.import_nv12(pair.right.as_ptr(), session.gpu())? };
 
         // Render using the imported textures
         let render_buf = session.pipeline_mut().render_imported_textures(
@@ -412,7 +468,12 @@ fn run_stitch_metal_zero_copy(
         frame_count += 1;
         progress.report(frame_count);
 
-        // ImportedPlaneTextures drop here, releasing CVMetalTextureRefs
+        // Flush texture cache periodically to release stale entries
+        if frame_count.is_multiple_of(60) {
+            cache.flush();
+        }
+
+        // ImportedPlaneTextures and RetainedCVPixelBuffers drop here
     }
 
     Ok(frame_count)
@@ -636,6 +697,9 @@ pub fn run_stitch(
             })),
         )?;
     }
+
+    // Flush the last pending frame from the double-buffered NV12 pipeline.
+    session.flush_to_encoder(&mut encoder)?;
 
     log::info!("Finishing encoder...");
     encoder.finish()?;

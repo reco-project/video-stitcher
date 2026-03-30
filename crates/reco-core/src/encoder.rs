@@ -38,13 +38,12 @@ pub enum PixelFormat {
 
 /// A rendered frame ready for encoding.
 ///
-/// Contains the pixel data read back from the GPU. In phase 1, this
-/// is always a CPU buffer (GPU readback). In the future, this may
-/// carry a GPU surface handle for zero-copy hardware encoding.
-#[derive(Debug, Clone)]
-pub struct OutputFrame {
-    /// Raw pixel data.
-    pub data: Vec<u8>,
+/// Borrows pixel data from the GPU readback buffer. The data is valid
+/// until the next frame is rendered (the readback buffer is reused).
+#[derive(Debug)]
+pub struct OutputFrame<'a> {
+    /// Raw pixel data (borrowed from readback buffer).
+    pub data: &'a [u8],
     /// Frame width in pixels.
     pub width: u32,
     /// Frame height in pixels.
@@ -64,7 +63,7 @@ pub trait Encoder: Send {
     ///
     /// Frames are submitted in presentation order. The encoder is
     /// responsible for buffering and reordering if needed (e.g. B-frames).
-    fn submit(&mut self, frame: OutputFrame) -> Result<(), EncodeError>;
+    fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError>;
 
     /// Signal that all frames have been submitted.
     ///

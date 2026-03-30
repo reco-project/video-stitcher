@@ -162,6 +162,8 @@ impl StitchSession {
         render_commands: wgpu::CommandBuffer,
         encoder: &mut dyn Encoder,
     ) -> Result<(), SessionError> {
+        let width = self.nv12_converter.width();
+        let height = self.nv12_converter.height();
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.pipeline.gpu(),
             self.pipeline.render_target(),
@@ -169,9 +171,9 @@ impl StitchSession {
         )?;
 
         encoder.submit(OutputFrame {
-            data: nv12_data.to_vec(),
-            width: self.nv12_converter.width(),
-            height: self.nv12_converter.height(),
+            data: nv12_data,
+            width,
+            height,
             format: PixelFormat::Nv12,
             pts_us: 0, // PTS handled by encoder from frame sequence
         })?;
@@ -220,7 +222,31 @@ impl StitchSession {
             }
         }
 
+        // Flush the last pending frame from the double-buffered pipeline.
+        self.flush_to_encoder(encoder)?;
+
         Ok(self.frame_count)
+    }
+
+    /// Flush the last pending frame from the NV12 double-buffer and submit
+    /// it to the encoder.
+    ///
+    /// Call this after any frame loop that uses [`submit_render_output`] or
+    /// [`process_frame`]. The [`run`] method calls this automatically.
+    pub fn flush_to_encoder(&mut self, encoder: &mut dyn Encoder) -> Result<(), SessionError> {
+        let width = self.nv12_converter.width();
+        let height = self.nv12_converter.height();
+        if let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
+            encoder.submit(OutputFrame {
+                data: nv12_data,
+                width,
+                height,
+                format: PixelFormat::Nv12,
+                pts_us: 0,
+            })?;
+            self.frame_count += 1;
+        }
+        Ok(())
     }
 
     /// Render a CPU-resident frame and return NV12 data without encoding.
@@ -267,6 +293,20 @@ impl StitchSession {
         )?;
         self.frame_count += 1;
         Ok(nv12_data)
+    }
+
+    /// Flush the last pending frame from the NV12 double-buffer, returning
+    /// the raw NV12 data without encoding.
+    ///
+    /// Use this when the caller manages encoding separately (e.g. the
+    /// camera path's async encode thread). For the batch path, use
+    /// [`flush_to_encoder`](Self::flush_to_encoder) instead.
+    pub fn flush_pending_nv12(&mut self) -> Result<Option<&[u8]>, SessionError> {
+        let data = self.nv12_converter.flush_pending(self.pipeline.gpu())?;
+        if data.is_some() {
+            self.frame_count += 1;
+        }
+        Ok(data)
     }
 
     /// Number of frames processed so far.

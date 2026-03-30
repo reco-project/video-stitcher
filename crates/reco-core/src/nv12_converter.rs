@@ -33,23 +33,36 @@ struct Nv12Params {
     height: u32,
 }
 
-/// GPU-accelerated RGBA → NV12 converter.
+/// GPU-accelerated RGBA → NV12 converter with double-buffered readback.
 ///
 /// Created once per pipeline alongside the [`Renderer`](crate::renderer::Renderer).
 /// Call [`convert_and_readback`](Self::convert_and_readback) after rendering
 /// each frame to get NV12 data ready for the encoder.
+///
+/// Uses two staging buffers to overlap GPU work with CPU readback:
+/// while frame N's staging buffer is mapped and read by the CPU,
+/// frame N+1's render and NV12 compute write to the other buffer.
+/// This hides the ~1.9ms readback stall on Apple M4 (and helps on all platforms).
+///
+/// Note: returns the *previous* frame's data (1-frame latency). Call
+/// [`flush_pending`](Self::flush_pending) after the frame loop to get the last frame.
 pub struct Nv12Converter {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     params_buffer: wgpu::Buffer,
     nv12_gpu_buffer: wgpu::Buffer,
-    nv12_staging_buffer: wgpu::Buffer,
+    /// Double-buffered staging buffers for pipelined readback.
+    nv12_staging_buffers: [wgpu::Buffer; 2],
+    /// Which staging buffer to write to next (0 or 1).
+    current_slot: usize,
+    /// Whether there is a pending readback from a previous frame.
+    has_pending: bool,
     /// Cached bind group for the current render target. Avoids per-frame
     /// descriptor pool allocation which causes OOM on Vulkan (wgpu#7525).
     /// Stores a raw pointer to the texture for identity comparison (never dereferenced).
     cached_bind_group: Option<(*const wgpu::Texture, wgpu::BindGroup)>,
-    /// Reusable readback buffer (avoids 3 MB allocation per frame at 1080p).
-    readback_buffer: Vec<u8>,
+    /// Double-buffered readback buffers (avoids 3 MB allocation per frame at 1080p).
+    readback_buffers: [Vec<u8>; 2],
     /// Reusable channel for map_async signaling (avoids per-frame channel alloc).
     map_tx: std::sync::mpsc::SyncSender<Result<(), wgpu::BufferAsyncError>>,
     map_rx: std::sync::mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
@@ -149,13 +162,21 @@ impl Nv12Converter {
             mapped_at_creation: false,
         });
 
-        // CPU-readable staging buffer for readback
-        let nv12_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("nv12_staging"),
-            size: nv12_bytes,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        // Double-buffered CPU-readable staging buffers for pipelined readback
+        let nv12_staging_buffers = [
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("nv12_staging_0"),
+                size: nv12_bytes,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }),
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("nv12_staging_1"),
+                size: nv12_bytes,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }),
+        ];
 
         // Uniform buffer with width/height
         let params = Nv12Params { width, height };
@@ -187,9 +208,14 @@ impl Nv12Converter {
             bind_group_layout,
             params_buffer,
             nv12_gpu_buffer,
-            nv12_staging_buffer,
+            nv12_staging_buffers,
+            current_slot: 0,
+            has_pending: false,
             cached_bind_group: None,
-            readback_buffer: vec![0u8; nv12_bytes as usize],
+            readback_buffers: [
+                vec![0u8; nv12_bytes as usize],
+                vec![0u8; nv12_bytes as usize],
+            ],
             map_tx,
             map_rx,
             width,
@@ -201,6 +227,10 @@ impl Nv12Converter {
 
     /// Convert the RGBA render target to NV12 and read back to CPU.
     ///
+    /// Uses double-buffered staging: while this frame's GPU work writes to
+    /// staging buffer N, the previous frame's data is read from staging buffer N-1.
+    /// This hides the readback latency behind GPU work.
+    ///
     /// `render_commands` is the command buffer from the preceding render pass.
     /// It is submitted together with the compute shader in a single
     /// `queue.submit` call to guarantee correct GPU synchronization.
@@ -208,7 +238,10 @@ impl Nv12Converter {
     /// Returns a borrowed slice of tightly-packed NV12 data:
     /// `[Y plane: width*height bytes] [UV plane: width*height/2 bytes]`
     ///
-    /// The slice is valid until the next call to this method.
+    /// **Important:** On the first call, this does a synchronous readback.
+    /// From the second call onward, it returns the *previous* frame's data
+    /// (1-frame latency). Call [`flush_pending`](Self::flush_pending) after
+    /// the frame loop to get the last frame's data.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "nv12_convert_readback")
@@ -219,6 +252,63 @@ impl Nv12Converter {
         render_target: &wgpu::Texture,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<&[u8], Nv12Error> {
+        let write_slot = self.current_slot;
+        let read_slot = 1 - write_slot;
+
+        // --- Submit this frame's GPU work to staging[write_slot] ---
+        self.submit_gpu_work(gpu, render_target, render_commands, write_slot)?;
+
+        // --- Read back the previous frame from staging[read_slot] ---
+        if self.has_pending {
+            // The GPU had a full frame of work time to finish writing to
+            // staging[read_slot], so this map should complete almost instantly.
+            self.readback_staging(gpu, read_slot)?;
+        } else {
+            // First frame: no previous data to read. Do a synchronous
+            // readback of the current frame instead.
+            self.readback_staging(gpu, write_slot)?;
+        }
+
+        self.has_pending = true;
+        self.current_slot = 1 - write_slot;
+
+        // Return data from the slot we just read
+        let result_slot = if self.has_pending && write_slot != read_slot {
+            read_slot
+        } else {
+            write_slot
+        };
+        Ok(&self.readback_buffers[result_slot])
+    }
+
+    /// Flush the last pending frame from the double-buffer pipeline.
+    ///
+    /// Call this after the frame loop ends to get the final frame's data.
+    /// Returns `None` if no frame is pending.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "nv12_flush")
+    )]
+    pub fn flush_pending(&mut self, gpu: &GpuContext) -> Result<Option<&[u8]>, Nv12Error> {
+        if !self.has_pending {
+            return Ok(None);
+        }
+        // The last submitted frame is in staging[1 - current_slot]
+        // (current_slot was already flipped after the last convert_and_readback)
+        let last_slot = 1 - self.current_slot;
+        self.readback_staging(gpu, last_slot)?;
+        self.has_pending = false;
+        Ok(Some(&self.readback_buffers[last_slot]))
+    }
+
+    /// Submit GPU render + NV12 compute + copy to a specific staging slot.
+    fn submit_gpu_work(
+        &mut self,
+        gpu: &GpuContext,
+        render_target: &wgpu::Texture,
+        render_commands: wgpu::CommandBuffer,
+        slot: usize,
+    ) -> Result<(), Nv12Error> {
         // Cache the bind group to avoid per-frame descriptor pool allocation,
         // which causes OOM on the Vulkan backend (wgpu#7525). Rebuild only
         // if the render target texture changes.
@@ -275,44 +365,44 @@ impl Nv12Converter {
             pass.dispatch_workgroups(self.dispatch_x, self.dispatch_y, 1);
         }
 
-        // Copy GPU buffer to staging buffer
+        // Copy GPU buffer to the target staging buffer
         encoder.copy_buffer_to_buffer(
             &self.nv12_gpu_buffer,
             0,
-            &self.nv12_staging_buffer,
+            &self.nv12_staging_buffers[slot],
             0,
             self.nv12_gpu_buffer.size(),
         );
 
         {
             crate::profile_scope!("nv12_submit");
-            // Submit render + compute together for correct synchronization
             gpu.queue.submit([render_commands, encoder.finish()]);
         }
 
-        // Readback from staging buffer into reusable buffer
-        {
-            crate::profile_scope!("nv12_readback");
-            let buffer_slice = self.nv12_staging_buffer.slice(..);
-            let tx = self.map_tx.clone();
-            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-                let _ = tx.send(result);
-            });
-            gpu.device
-                .poll(wgpu::PollType::wait_indefinitely())
-                .map_err(|_| Nv12Error::BufferMapFailed)?;
-            self.map_rx
-                .recv()
-                .map_err(|_| Nv12Error::BufferMapFailed)?
-                .map_err(|_| Nv12Error::BufferMapFailed)?;
+        Ok(())
+    }
 
-            let mapped = buffer_slice.get_mapped_range();
-            self.readback_buffer.copy_from_slice(&mapped);
-            drop(mapped);
-            self.nv12_staging_buffer.unmap();
-        }
+    /// Read back data from a specific staging buffer slot.
+    fn readback_staging(&mut self, gpu: &GpuContext, slot: usize) -> Result<(), Nv12Error> {
+        crate::profile_scope!("nv12_readback");
+        let buffer_slice = self.nv12_staging_buffers[slot].slice(..);
+        let tx = self.map_tx.clone();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+        gpu.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(|_| Nv12Error::BufferMapFailed)?;
+        self.map_rx
+            .recv()
+            .map_err(|_| Nv12Error::BufferMapFailed)?
+            .map_err(|_| Nv12Error::BufferMapFailed)?;
 
-        Ok(&self.readback_buffer)
+        let mapped = buffer_slice.get_mapped_range();
+        self.readback_buffers[slot].copy_from_slice(&mapped);
+        drop(mapped);
+        self.nv12_staging_buffers[slot].unmap();
+        Ok(())
     }
 
     /// Output width in pixels.
