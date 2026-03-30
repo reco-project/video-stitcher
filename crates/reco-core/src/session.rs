@@ -18,8 +18,9 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
-use crate::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
+use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::{Nv12Converter, Nv12Error};
 use crate::pipeline::{PipelineError, StitchPipeline};
@@ -81,14 +82,19 @@ pub enum SessionError {
     Source(#[from] SourceError),
 }
 
-/// A high-level stitching session that owns the GPU pipeline and NV12 converter.
+/// A high-level stitching session that owns the GPU pipeline, NV12
+/// converter, and optionally an async encoder.
 ///
-/// Created once per encoding job or application lifetime. Provides
-/// [`process_frame`](Self::process_frame) for per-frame control and
-/// [`run`](Self::run) for batch processing.
+/// Created once per encoding job or application lifetime. Call
+/// [`set_encoder`](Self::set_encoder) to attach an encoder before
+/// rendering, then use [`submit_render_output`](Self::submit_render_output)
+/// for per-frame control or [`run`](Self::run) for batch processing.
+/// Call [`finish`](Self::finish) to flush the last frame and finalize
+/// encoding.
 pub struct StitchSession {
     pipeline: StitchPipeline,
     nv12_converter: Nv12Converter,
+    encoder: Option<AsyncEncodeThread>,
     frame_count: u64,
 }
 
@@ -122,8 +128,23 @@ impl StitchSession {
         Ok(Self {
             pipeline,
             nv12_converter,
+            encoder: None,
             frame_count: 0,
         })
+    }
+
+    /// Attach an encoder to this session.
+    ///
+    /// The encoder is moved to a background thread for async encoding.
+    /// `buffer_count` controls how many frames can be in-flight between
+    /// the render thread and the encode thread (typically 2).
+    ///
+    /// Must be called before [`submit_render_output`], [`process_frame`],
+    /// or [`run`].
+    pub fn set_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
+        let width = self.nv12_converter.width();
+        let height = self.nv12_converter.height();
+        self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
     }
 
     /// Render a single CPU-resident stereo frame and submit it to the encoder.
@@ -140,13 +161,12 @@ impl StitchSession {
         frame: &StereoFrame,
         yaw: f32,
         pitch: f32,
-        encoder: &mut dyn Encoder,
     ) -> Result<(), SessionError> {
         let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
-        self.submit_render_output(render_buf, encoder)
+        self.submit_render_output(render_buf)
     }
 
-    /// Render from GPU-resident textures and submit to the encoder.
+    /// Render from GPU-resident textures and submit to the async encoder.
     ///
     /// Used with the zero-copy path where decode threads write directly
     /// to shared GPU textures. The caller must configure bind groups via
@@ -160,10 +180,7 @@ impl StitchSession {
     pub fn submit_render_output(
         &mut self,
         render_commands: wgpu::CommandBuffer,
-        encoder: &mut dyn Encoder,
     ) -> Result<(), SessionError> {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.pipeline.gpu(),
             self.pipeline.render_target(),
@@ -172,25 +189,24 @@ impl StitchSession {
 
         // First call returns None (GPU work submitted, no previous frame yet).
         // From the second call onward, we get the previous frame's data.
-        if let Some(data) = nv12_data {
-            encoder.submit(OutputFrame {
-                data,
-                width,
-                height,
-                format: PixelFormat::Nv12,
-                pts_us: 0,
-            })?;
+        if let Some(data) = nv12_data
+            && let Some(ref encoder) = self.encoder
+        {
+            encoder.submit(data)?;
         }
 
         self.frame_count += 1;
         Ok(())
     }
 
-    /// Batch-process frames from a source into an encoder.
+    /// Batch-process frames from a source into the encoder.
     ///
     /// Runs the full decode-render-encode loop until the source is
     /// exhausted, the frame limit is reached, or the interrupt flag
     /// is set. Returns the number of frames processed.
+    ///
+    /// Does NOT call [`finish`] - the caller must do that after this
+    /// returns to flush the last frame and finalize encoding.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_run")
@@ -198,7 +214,6 @@ impl StitchSession {
     pub fn run(
         &mut self,
         source: &mut dyn FrameSource,
-        encoder: &mut dyn Encoder,
         frame_limit: u64,
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
@@ -216,7 +231,7 @@ impl StitchSession {
                 }
             };
 
-            self.process_frame(&frame, yaw, pitch, encoder)?;
+            self.process_frame(&frame, yaw, pitch)?;
 
             if let Some(ref mut cb) = on_progress {
                 cb(&FrameProgress {
@@ -226,62 +241,36 @@ impl StitchSession {
             }
         }
 
-        // Flush the last pending frame from the double-buffered pipeline.
-        self.flush_to_encoder(encoder)?;
-
         Ok(self.frame_count)
     }
 
-    /// Flush the last pending frame from the NV12 double-buffer and submit
-    /// it to the encoder.
+    /// Flush the NV12 double-buffer and finalize the encoder.
     ///
-    /// Call this after any frame loop that uses [`submit_render_output`] or
-    /// [`process_frame`]. The [`run`] method calls this automatically.
-    pub fn flush_to_encoder(&mut self, encoder: &mut dyn Encoder) -> Result<(), SessionError> {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
+    /// Submits the last pending frame from the double-buffer pipeline
+    /// to the encoder, then shuts down the encode thread and calls
+    /// [`Encoder::finish`]. Must be called after the frame loop ends.
+    pub fn finish(&mut self) -> Result<(), SessionError> {
+        // Flush the last frame from the NV12 double-buffer.
         if let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
-            encoder.submit(OutputFrame {
-                data: nv12_data,
-                width,
-                height,
-                format: PixelFormat::Nv12,
-                pts_us: 0,
-            })?;
+            if let Some(ref encoder) = self.encoder {
+                encoder.submit(nv12_data)?;
+            }
             self.frame_count += 1;
         }
-        Ok(())
-    }
 
-    /// Render a CPU-resident frame and return NV12 data without encoding.
-    ///
-    /// Useful when the caller manages encoding separately (e.g. async
-    /// encode thread for live camera capture).
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "session_render_nv12")
-    )]
-    pub fn render_to_nv12(
-        &mut self,
-        frame: &StereoFrame,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Option<&[u8]>, SessionError> {
-        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
-        let nv12_data = self.nv12_converter.convert_and_readback(
-            self.pipeline.gpu(),
-            self.pipeline.render_target(),
-            render_buf,
-        )?;
-        self.frame_count += 1;
-        Ok(nv12_data)
+        // Shut down the async encode thread.
+        if let Some(mut encoder) = self.encoder.take() {
+            encoder.finish()?;
+        }
+
+        Ok(())
     }
 
     /// Convert a pre-rendered frame to NV12 without encoding.
     ///
-    /// Like [`render_to_nv12`](Self::render_to_nv12) but accepts an
-    /// already-submitted render command buffer. Used with the NV12
-    /// camera path and zero-copy GPU decode.
+    /// Returns the previous frame's NV12 data (or `None` on first call).
+    /// Used by the preview path where the caller displays frames directly
+    /// instead of encoding them.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_convert_nv12")
@@ -297,20 +286,6 @@ impl StitchSession {
         )?;
         self.frame_count += 1;
         Ok(nv12_data)
-    }
-
-    /// Flush the last pending frame from the NV12 double-buffer, returning
-    /// the raw NV12 data without encoding.
-    ///
-    /// Use this when the caller manages encoding separately (e.g. the
-    /// camera path's async encode thread). For the batch path, use
-    /// [`flush_to_encoder`](Self::flush_to_encoder) instead.
-    pub fn flush_pending_nv12(&mut self) -> Result<Option<&[u8]>, SessionError> {
-        let data = self.nv12_converter.flush_pending(self.pipeline.gpu())?;
-        if data.is_some() {
-            self.frame_count += 1;
-        }
-        Ok(data)
     }
 
     /// Number of frames processed so far.

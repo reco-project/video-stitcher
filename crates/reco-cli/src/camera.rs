@@ -101,14 +101,16 @@ pub fn run_camera(
     };
 
     let fps_rational = reco_io::ffmpeg::Rational::new(capture_fps as i32, 1);
-    let mut enc = reco_io::ffmpeg::encoder::VideoEncoder::new(
+    let encoder = reco_io::adapters::FfmpegFileEncoder::new(
         Path::new(output),
         width,
         height,
         fps_rational,
         &enc_config,
     )?;
-    println!("Encoder: {}", enc.encoder_name());
+    println!("Encoder: {}", encoder.encoder_name());
+
+    session.set_encoder(Box::new(encoder), 2);
 
     let capture_fps_f64 = capture_fps as f64;
     let frame_limit: u64 = match (duration, max_frames) {
@@ -121,20 +123,6 @@ pub fn run_camera(
     if frame_limit < u64::MAX {
         println!("Capturing up to {frame_limit} frames");
     }
-
-    // Async encode: send NV12 data to a background thread so
-    // encoding overlaps with the next frame's capture + render.
-    let (encode_tx, encode_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(2);
-    let encode_thread = std::thread::Builder::new()
-        .name("encode".into())
-        .spawn(move || -> Result<(), anyhow::Error> {
-            while let Ok(nv12_data) = encode_rx.recv() {
-                enc.write_nv12_frame(&nv12_data)?;
-            }
-            enc.finish()?;
-            Ok(())
-        })
-        .expect("spawn encode thread");
 
     let mut frame_count: u64 = 0;
     let yaw = 0.0_f32;
@@ -160,11 +148,7 @@ pub fn run_camera(
                 yaw,
                 pitch,
             )?;
-            if let Some(nv12_data) = session.convert_to_nv12(render_buf)?
-                && encode_tx.send(nv12_data.to_vec()).is_err()
-            {
-                anyhow::bail!("encoder thread died during warmup");
-            }
+            session.submit_render_output(render_buf)?;
             println!("Warmup complete, starting capture...");
         }
 
@@ -194,24 +178,14 @@ pub fn run_camera(
                 yaw,
                 pitch,
             )?;
-            if let Some(nv12_data) = session.convert_to_nv12(render_buf)?
-                && encode_tx.send(nv12_data.to_vec()).is_err()
-            {
-                break;
-            }
+            session.submit_render_output(render_buf)?;
             frame_count += 1;
             progress.report(frame_count);
         }
 
-        // Flush the last pending frame from the double-buffered NV12 pipeline.
-        if let Some(last_frame) = session.flush_pending_nv12()? {
-            let _ = encode_tx.send(last_frame.to_vec());
-        }
-
         // Stop cameras gracefully before finishing encoder
         source.stop();
-        drop(encode_tx);
-        encode_thread.join().expect("encode thread panicked")?;
+        session.finish()?;
 
         progress.finish(frame_count, output);
 
@@ -252,22 +226,12 @@ pub fn run_camera(
                 session
                     .pipeline()
                     .render_to_target(&left_planes, &right_planes, yaw, pitch)?;
-            if let Some(nv12_data) = session.convert_to_nv12(render_buf)?
-                && encode_tx.send(nv12_data.to_vec()).is_err()
-            {
-                break;
-            }
+            session.submit_render_output(render_buf)?;
             frame_count += 1;
             progress.report(frame_count);
         }
 
-        // Flush the last pending frame from the double-buffered NV12 pipeline.
-        if let Some(last_frame) = session.flush_pending_nv12()? {
-            let _ = encode_tx.send(last_frame.to_vec());
-        }
-
-        drop(encode_tx);
-        encode_thread.join().expect("encode thread panicked")?;
+        session.finish()?;
 
         progress.finish(frame_count, output);
     }

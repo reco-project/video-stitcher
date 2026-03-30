@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use reco_core::encoder::Encoder;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use reco_core::profile_scope;
 
@@ -189,7 +188,6 @@ fn spawn_decode_thread_gpu(
 #[allow(clippy::too_many_arguments)]
 fn run_stitch_zero_copy(
     session: &mut reco_core::session::StitchSession,
-    encoder: &mut dyn reco_core::encoder::Encoder,
     left_path: &str,
     right_path: &str,
     input_width: u32,
@@ -304,7 +302,7 @@ fn run_stitch_zero_copy(
             yaw,
             pitch,
         );
-        session.submit_render_output(render_buf, encoder)?;
+        session.submit_render_output(render_buf)?;
 
         // GPU is done reading these slots - release them for decode to reuse.
         // poll(Wait) inside convert_and_readback guarantees the render pass
@@ -404,7 +402,6 @@ fn spawn_vt_decode_thread(
 #[allow(clippy::too_many_arguments)]
 fn run_stitch_metal_zero_copy(
     session: &mut reco_core::session::StitchSession,
-    encoder: &mut dyn reco_core::encoder::Encoder,
     left_path: &str,
     right_path: &str,
     frame_limit: u64,
@@ -461,7 +458,7 @@ fn run_stitch_metal_zero_copy(
         );
 
         // Convert to NV12 and submit to encoder
-        session.submit_render_output(render_buf, encoder)?;
+        session.submit_render_output(render_buf)?;
 
         frame_count += 1;
         progress.report(frame_count);
@@ -613,7 +610,7 @@ pub fn run_stitch(
         quality: quality_enum,
     };
 
-    let mut encoder = reco_io::adapters::FfmpegFileEncoder::new(
+    let encoder = reco_io::adapters::FfmpegFileEncoder::new(
         Path::new(output),
         width,
         height,
@@ -621,6 +618,8 @@ pub fn run_stitch(
         &enc_config,
     )?;
     println!("Encoder: {}", encoder.encoder_name());
+
+    session.set_encoder(Box::new(encoder), 2);
 
     // Compute frame limit from --duration and --max-frames
     let frame_limit: u64 = match (duration, max_frames) {
@@ -651,7 +650,6 @@ pub fn run_stitch(
 
         frame_count = run_stitch_zero_copy(
             &mut session,
-            &mut encoder,
             left,
             right,
             input_width,
@@ -671,7 +669,6 @@ pub fn run_stitch(
 
         frame_count = run_stitch_metal_zero_copy(
             &mut session,
-            &mut encoder,
             left,
             right,
             frame_limit,
@@ -687,21 +684,17 @@ pub fn run_stitch(
         let source = source.as_mut().expect("source dropped in CPU path");
         frame_count = session.run(
             source,
-            &mut encoder,
             frame_limit,
             interrupted,
-            Some(Box::new(move |p| {
+            Some(Box::new(move |p: &reco_core::session::FrameProgress| {
                 progress.report(p.frames_completed);
             })),
         )?;
     }
 
-    // Flush the last pending frame from the double-buffered NV12 pipeline.
-    session.flush_to_encoder(&mut encoder)?;
-
-    log::info!("Finishing encoder...");
-    encoder.finish()?;
-    log::info!("Encoder finished");
+    log::info!("Finishing session...");
+    session.finish()?;
+    log::info!("Session finished");
 
     progress.finish(frame_count, output);
 
