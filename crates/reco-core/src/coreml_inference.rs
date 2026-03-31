@@ -15,6 +15,9 @@ use std::ffi::c_void;
 use std::path::Path;
 use std::ptr::NonNull;
 
+use block2::RcBlock;
+
+use objc2::AnyThread;
 use objc2::msg_send_id;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
@@ -165,10 +168,10 @@ impl CoreMlModel {
             // Create feature provider with the input tensor.
             let feature_value = MLFeatureValue::featureValueWithMultiArray(&input_array);
 
-            let dict: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::from_id_slice(
-                &[self.input_name.clone()],
-                &[Retained::into_super(Retained::into_super(feature_value))],
-            );
+            let feature_obj: Retained<AnyObject> =
+                Retained::into_super(Retained::into_super(feature_value));
+            let dict: Retained<NSDictionary<NSString, AnyObject>> =
+                NSDictionary::from_retained_objects(&[&*self.input_name], &[feature_obj]);
 
             let provider = MLDictionaryFeatureProvider::initWithDictionary_error(
                 MLDictionaryFeatureProvider::alloc(),
@@ -204,9 +207,15 @@ impl CoreMlModel {
             };
 
             let count = output_array.count() as usize;
-            let out_ptr = output_array.dataPointer();
-            let out_slice = std::slice::from_raw_parts(out_ptr.as_ptr() as *const f32, count);
-            let data = out_slice.to_vec();
+            let data = std::cell::RefCell::new(Vec::new());
+            let block = RcBlock::new(
+                |bytes: NonNull<c_void>, _size: objc2_foundation::NSInteger| {
+                    let slice = std::slice::from_raw_parts(bytes.as_ptr() as *const f32, count);
+                    *data.borrow_mut() = slice.to_vec();
+                },
+            );
+            output_array.getBytesWithHandler(&block);
+            let data = data.into_inner();
 
             Ok((n_detections, data))
         }
