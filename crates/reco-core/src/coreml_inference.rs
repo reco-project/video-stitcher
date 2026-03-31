@@ -17,13 +17,12 @@ use std::ptr::NonNull;
 
 use block2::RcBlock;
 
-use objc2::AnyThread;
-use objc2::msg_send_id;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2::{AnyThread, msg_send};
 use objc2_core_ml::{
-    MLComputeUnits, MLDictionaryFeatureProvider, MLFeatureProvider, MLFeatureValue, MLModel,
-    MLModelConfiguration, MLMultiArray, MLMultiArrayDataType,
+    MLComputeUnits, MLDictionaryFeatureProvider, MLFeatureValue, MLModel, MLModelConfiguration,
+    MLMultiArray, MLMultiArrayDataType,
 };
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSNumber, NSString, NSURL};
 
@@ -188,7 +187,7 @@ impl CoreMlModel {
 
             // Extract output tensor.
             let output_value: Option<Retained<MLFeatureValue>> =
-                msg_send_id![&*output, featureValueForName: &*self.output_name];
+                msg_send![&*output, featureValueForName: &*self.output_name];
 
             let output_value = output_value
                 .ok_or_else(|| CoreMlError::OutputExtraction("output feature not found".into()))?;
