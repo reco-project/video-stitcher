@@ -13,7 +13,7 @@ use crate::cuda_interop::{CUdeviceptr, CudaInteropError, CudaKernel};
 /// PTX source for the normalize + HWC-to-CHW transpose kernel.
 ///
 /// This kernel reads packed RGB u8 pixels (HWC layout) and writes
-/// float32 values in CHW layout, dividing by 255.0 for [0,1] normalization.
+/// float32 values in CHW layout, dividing by 255.0 for \[0,1\] normalization.
 ///
 /// Parameters: src (u8*), dst (f32*), width (u32), height (u32)
 ///
@@ -137,7 +137,7 @@ fn get_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
         })
 }
 
-/// Convert packed RGB u8 (HWC) to float32 (CHW) with [0,1] normalization.
+/// Convert packed RGB u8 (HWC) to float32 (CHW) with \[0,1\] normalization.
 ///
 /// This is the final preprocessing step before YOLO inference: takes the
 /// NPP-produced RGB u8 buffer and produces a `[1, 3, H, W]` float32 tensor.
