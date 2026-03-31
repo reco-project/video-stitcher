@@ -36,8 +36,6 @@ pub struct MetalYoloDetector {
     scale: f32,
     pad_x: f32,
     pad_y: f32,
-    frame_width: u32,
-    frame_height: u32,
     /// Frame counter for periodic texture cache flush.
     frame_counter: u64,
 }
@@ -129,8 +127,6 @@ impl MetalYoloDetector {
             scale,
             pad_x,
             pad_y,
-            frame_width,
-            frame_height,
             frame_counter: 0,
         })
     }
