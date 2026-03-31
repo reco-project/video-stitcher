@@ -14,15 +14,13 @@
 //! unified memory), so the CPU can read the tensor data directly
 //! without an explicit GPU-to-CPU copy.
 
-use std::ffi::c_void;
-
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
     MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCompileOptions,
     MTLComputeCommandEncoder, MTLComputePipelineState, MTLDevice, MTLLibrary, MTLResourceOptions,
-    MTLSize, MTLTexture,
+    MTLSize,
 };
 
 use crate::gpu::GpuContext;

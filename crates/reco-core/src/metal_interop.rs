@@ -59,9 +59,15 @@ unsafe extern "C" {
 
     fn CVMetalTextureGetTexture(image: CVMetalTextureRef) -> *mut c_void;
 
-    fn CVPixelBufferGetPixelFormatType(pixel_buffer: CVPixelBufferRef) -> u32;
-    fn CVPixelBufferGetWidthOfPlane(pixel_buffer: CVPixelBufferRef, plane_index: u64) -> u64;
-    fn CVPixelBufferGetHeightOfPlane(pixel_buffer: CVPixelBufferRef, plane_index: u64) -> u64;
+    pub(crate) fn CVPixelBufferGetPixelFormatType(pixel_buffer: CVPixelBufferRef) -> u32;
+    pub(crate) fn CVPixelBufferGetWidthOfPlane(
+        pixel_buffer: CVPixelBufferRef,
+        plane_index: u64,
+    ) -> u64;
+    pub(crate) fn CVPixelBufferGetHeightOfPlane(
+        pixel_buffer: CVPixelBufferRef,
+        plane_index: u64,
+    ) -> u64;
 
     fn CVPixelBufferRetain(pixel_buffer: CVPixelBufferRef) -> CVPixelBufferRef;
     fn CVPixelBufferRelease(pixel_buffer: CVPixelBufferRef);
