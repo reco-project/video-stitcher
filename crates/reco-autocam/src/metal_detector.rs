@@ -2,8 +2,11 @@
 //!
 //! Runs the entire detection pipeline on GPU via Metal compute shaders:
 //! NV12 color conversion, resize with letterbox, normalize + CHW transpose,
-//! then inference via ORT with CoreML EP (or CPU fallback). Only the small
-//! detection output (~7KB for `[1, 300, 6]`) is processed on CPU.
+//! then inference via either:
+//! - **CoreML native** (`.mlmodelc`) - dispatches to Neural Engine for best perf
+//! - **ORT with CoreML EP** (`.onnx`) - runtime ONNX-to-CoreML conversion
+//!
+//! Only the small detection output (~7KB for `[1, 300, 6]`) is processed on CPU.
 //!
 //! The Metal output buffer uses shared storage mode (Apple Silicon unified
 //! memory), so the preprocessed tensor is CPU-accessible without an
@@ -11,7 +14,7 @@
 
 use std::path::Path;
 
-use ort::session::Session;
+use reco_core::coreml_inference::CoreMlModel;
 use reco_core::detector::{CameraId, Detection, MetalDetector};
 use reco_core::gpu::GpuContext;
 use reco_core::metal_compute::MetalPreprocessPipeline;
@@ -19,15 +22,28 @@ use reco_core::metal_interop::CVPixelBufferRef;
 
 use crate::detector::postprocess;
 
+/// Inference backend for the Metal YOLO detector.
+enum InferenceBackend {
+    /// Native CoreML inference (`.mlmodelc` bundle).
+    /// Dispatches to Neural Engine / GPU / CPU as CoreML sees fit.
+    CoreMlNative(CoreMlModel),
+    /// ORT inference with CoreML EP (`.onnx` model).
+    /// Runtime ONNX-to-CoreML conversion, may fall back to CPU.
+    OrtSession {
+        session: ort::session::Session,
+        input_size: u32,
+    },
+}
+
 /// YOLO detector that operates on Metal-resident NV12 frames.
 ///
-/// Uses a Metal compute shader for preprocessing and ORT with CoreML EP
-/// for inference. Pre-allocates the compute pipeline and shared buffers,
-/// reusing them across frames.
+/// Uses a Metal compute shader for preprocessing. For inference, supports
+/// both native CoreML (`.mlmodelc`) for Neural Engine acceleration and
+/// ORT with CoreML EP (`.onnx`) as a fallback.
 ///
 /// Created via [`MetalYoloDetector::try_new`].
 pub struct MetalYoloDetector {
-    session: Session,
+    backend: InferenceBackend,
     preprocess: MetalPreprocessPipeline,
     input_size: u32,
     confidence_threshold: f32,
@@ -41,10 +57,11 @@ pub struct MetalYoloDetector {
 }
 
 impl MetalYoloDetector {
-    /// Try to create a Metal YOLO detector.
+    /// Create a Metal YOLO detector.
     ///
-    /// Returns `Err` for real failures like missing model file, ORT errors,
-    /// or Metal pipeline creation failures.
+    /// The model path can be either:
+    /// - A `.mlmodelc` directory: uses native CoreML inference (Neural Engine)
+    /// - A `.onnx` file: uses ORT with CoreML EP (runtime conversion)
     ///
     /// `frame_width`/`frame_height` are the raw camera frame dimensions.
     /// Letterbox parameters are pre-computed from these dimensions.
@@ -56,39 +73,36 @@ impl MetalYoloDetector {
         confidence_threshold: f32,
         labels: Vec<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Load ORT session with CoreML EP (or CPU fallback).
-        #[allow(unused_mut)]
-        let mut builder = Session::builder()?
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?;
+        let path = model_path.as_ref();
 
-        #[cfg(feature = "coreml")]
-        let mut builder = {
-            match builder.with_execution_providers([ort::ep::CoreML::default()
-                .with_compute_units(ort::ep::coreml::ComputeUnits::All)
-                .with_model_cache_dir("/tmp/reco-coreml-cache")
-                .build()])
-            {
-                Ok(b) => {
-                    log::info!("MetalYoloDetector: CoreML EP enabled");
-                    b
-                }
-                Err(e) => {
-                    log::warn!("MetalYoloDetector: CoreML EP failed ({e}), falling back to CPU");
-                    e.recover()
-                }
-            }
-        };
+        let (backend, input_size) = if path.extension().is_some_and(|ext| ext == "mlmodelc")
+            || path.to_str().is_some_and(|s| s.ends_with(".mlmodelc"))
+        {
+            // Native CoreML: extract input size from directory name convention
+            // (e.g. "ball_v0_960.mlmodelc") or default to checking the path.
+            let input_size = extract_input_size_from_path(path).unwrap_or(1280);
 
-        let session = builder.commit_from_file(model_path.as_ref())?;
+            let coreml = CoreMlModel::load(
+                path,
+                "images",  // YOLO input tensor name
+                "output0", // YOLO output tensor name
+                [1, 3, input_size as i64, input_size as i64],
+            )?;
 
-        // Extract input size from model metadata.
-        let input_size = match session.inputs()[0].dtype() {
-            ort::value::ValueType::Tensor { shape, .. } => {
-                let h = shape[2];
-                if h > 0 { h as u32 } else { 1280 }
-            }
-            _ => 1280,
+            log::info!(
+                "MetalYoloDetector: using native CoreML (ANE/GPU), input={input_size}x{input_size}"
+            );
+            (InferenceBackend::CoreMlNative(coreml), input_size)
+        } else {
+            // ORT with CoreML EP fallback.
+            let (session, input_size) = Self::create_ort_session(path)?;
+            (
+                InferenceBackend::OrtSession {
+                    session,
+                    input_size,
+                },
+                input_size,
+            )
         };
 
         // Pre-compute letterbox parameters.
@@ -119,7 +133,7 @@ impl MetalYoloDetector {
         );
 
         Ok(Self {
-            session,
+            backend,
             preprocess,
             input_size,
             confidence_threshold,
@@ -129,6 +143,97 @@ impl MetalYoloDetector {
             pad_y,
             frame_counter: 0,
         })
+    }
+
+    /// Create an ORT session with CoreML EP (or CPU fallback).
+    fn create_ort_session(
+        model_path: &Path,
+    ) -> Result<(ort::session::Session, u32), Box<dyn std::error::Error>> {
+        use ort::session::Session;
+
+        #[allow(unused_mut)]
+        let mut builder = Session::builder()?
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
+            .with_intra_threads(4)?;
+
+        #[cfg(feature = "coreml")]
+        let builder = {
+            match builder.with_execution_providers([ort::ep::CoreML::default()
+                .with_compute_units(ort::ep::coreml::ComputeUnits::All)
+                .with_model_cache_dir("/tmp/reco-coreml-cache")
+                .build()])
+            {
+                Ok(b) => {
+                    log::info!("MetalYoloDetector: ORT CoreML EP enabled");
+                    b
+                }
+                Err(e) => {
+                    log::warn!("MetalYoloDetector: CoreML EP failed ({e}), falling back to CPU");
+                    e.recover()
+                }
+            }
+        };
+
+        let session = builder.commit_from_file(model_path)?;
+
+        let input_size = match session.inputs()[0].dtype() {
+            ort::value::ValueType::Tensor { shape, .. } => {
+                let h = shape[2];
+                if h > 0 { h as u32 } else { 1280 }
+            }
+            _ => 1280,
+        };
+
+        Ok((session, input_size))
+    }
+
+    /// Run inference and return (n_detections, output_data).
+    fn run_inference(&mut self, tensor_data: &mut [f32]) -> Option<(usize, Vec<f32>)> {
+        match &mut self.backend {
+            InferenceBackend::CoreMlNative(coreml) => {
+                reco_core::profile_scope!("coreml_native_inference");
+                match coreml.predict(tensor_data.as_mut_ptr(), tensor_data.len()) {
+                    Ok(result) => Some(result),
+                    Err(e) => {
+                        log::error!("CoreML native inference failed: {e}");
+                        None
+                    }
+                }
+            }
+            InferenceBackend::OrtSession {
+                session,
+                input_size,
+            } => {
+                reco_core::profile_scope!("metal_ort_inference");
+                let sz = *input_size as i64;
+                let tensor = match ort::value::TensorRef::from_array_view((
+                    [1i64, 3, sz, sz],
+                    &*tensor_data,
+                )) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::error!("Failed to create ORT tensor: {e}");
+                        return None;
+                    }
+                };
+
+                let outputs = match session.run(ort::inputs![tensor]) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        log::error!("ORT inference failed: {e}");
+                        return None;
+                    }
+                };
+
+                match outputs[0].try_extract_tensor::<f32>() {
+                    Ok((shape, slice)) => Some((shape[1] as usize, slice.to_vec())),
+                    Err(e) => {
+                        log::error!("Failed to extract YOLO output: {e}");
+                        None
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -156,39 +261,19 @@ impl MetalDetector for MetalYoloDetector {
             }
         };
 
-        // Step 2: Create ORT tensor from the unified-memory buffer and run inference.
-        let outputs = {
-            reco_core::profile_scope!("metal_ort_inference");
-
-            let sz = self.input_size as i64;
-            let tensor =
-                match ort::value::TensorRef::from_array_view(([1i64, 3, sz, sz], tensor_data)) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        log::error!("Failed to create ORT tensor: {e}");
-                        return Vec::new();
-                    }
-                };
-
-            match self.session.run(ort::inputs![tensor]) {
-                Ok(o) => o,
-                Err(e) => {
-                    log::error!("Metal YOLO inference failed: {e}");
-                    return Vec::new();
-                }
-            }
+        // Step 2: Run inference (CoreML native or ORT).
+        // SAFETY: preprocess returns a mutable slice to the shared MTLBuffer.
+        // We need a mutable pointer for CoreML's MLMultiArray wrapping.
+        let tensor_mut = unsafe {
+            std::slice::from_raw_parts_mut(tensor_data.as_ptr() as *mut f32, tensor_data.len())
         };
 
-        // Step 3: Extract output and postprocess on CPU.
-        let (n, data) = match outputs[0].try_extract_tensor::<f32>() {
-            Ok((shape, slice)) => (shape[1] as usize, slice.to_vec()),
-            Err(e) => {
-                log::error!("Failed to extract YOLO output: {e}");
-                return Vec::new();
-            }
+        let (n, data) = match self.run_inference(tensor_mut) {
+            Some(result) => result,
+            None => return Vec::new(),
         };
-        drop(outputs);
 
+        // Step 3: Postprocess on CPU (shared between all backends).
         let detections = postprocess(
             &data,
             n,
@@ -229,4 +314,15 @@ impl MetalDetector for MetalYoloDetector {
 
         detections
     }
+}
+
+/// Try to extract input size from a model path like "ball_v0_960.mlmodelc".
+fn extract_input_size_from_path(path: &Path) -> Option<u32> {
+    let stem = path.file_stem()?.to_str()?;
+    // Look for a trailing number after the last underscore.
+    let last_part = stem.rsplit('_').next()?;
+    last_part
+        .parse::<u32>()
+        .ok()
+        .filter(|&s| s >= 320 && s <= 2048)
 }

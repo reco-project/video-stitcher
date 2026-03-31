@@ -92,6 +92,8 @@ pub fn drain_to_latest<T>(rx: &std::sync::mpsc::Receiver<T>, item: &mut T) -> u6
 
 pub(crate) mod async_encode;
 pub mod calibration;
+#[cfg(target_os = "macos")]
+pub mod coreml_inference;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
 #[cfg(any(target_os = "linux", target_os = "windows"))]

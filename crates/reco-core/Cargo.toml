@@ -31,6 +31,11 @@ libloading = "0.9"
 objc2 = "0.6"
 objc2-metal = "0.3"
 objc2-foundation = "0.3"
+objc2-core-ml = { version = "0.3", features = [
+    "MLModel", "MLMultiArray", "MLFeatureValue", "MLFeatureProvider",
+    "MLDictionaryFeatureProvider", "MLModelConfiguration",
+] }
+block2 = "0.6"
 
 [dev-dependencies]
 approx = "0.5"
