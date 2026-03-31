@@ -13,6 +13,7 @@ path = "src/main.rs"
 [features]
 cuda = ["reco-autocam/cuda"]
 tensorrt = ["reco-autocam/tensorrt"]
+coreml = ["reco-autocam/coreml"]
 gstreamer = ["reco-io/gstreamer"]
 rpi = ["reco-io/rpi"]
 profiling = ["reco-core/profiling", "reco-io/profiling", "reco-autocam/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]

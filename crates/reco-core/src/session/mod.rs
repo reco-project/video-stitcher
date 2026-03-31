@@ -143,6 +143,8 @@ pub struct StitchSessionBuilder {
     director: Option<Box<dyn Director>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
+    #[cfg(target_os = "macos")]
+    metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
 }
 
@@ -227,6 +229,13 @@ impl StitchSessionBuilder {
         self
     }
 
+    /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
+    #[cfg(target_os = "macos")]
+    pub fn metal_detector(mut self, detector: Box<dyn crate::detector::MetalDetector>) -> Self {
+        self.metal_detector = Some(detector);
+        self
+    }
+
     /// Set the detection interval (run detection every N frames).
     ///
     /// `1` = every frame (default), `3` = every 3rd frame, etc.
@@ -295,6 +304,10 @@ impl StitchSessionBuilder {
         if let Some(gpu_det) = self.gpu_detector {
             session.set_gpu_detector(gpu_det);
         }
+        #[cfg(target_os = "macos")]
+        if let Some(metal_det) = self.metal_detector {
+            session.set_metal_detector(metal_det);
+        }
 
         Ok(session)
     }
@@ -316,6 +329,8 @@ pub struct StitchSession {
     pub(crate) detector: Option<Box<dyn Detector>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(crate) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
+    #[cfg(target_os = "macos")]
+    pub(crate) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     pub(crate) tracker: Option<Box<dyn Tracker>>,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
@@ -345,6 +360,8 @@ impl StitchSession {
             director: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
+            #[cfg(target_os = "macos")]
+            metal_detector: None,
             detection_interval: 1,
         }
     }
@@ -382,6 +399,8 @@ impl StitchSession {
             detector: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
+            #[cfg(target_os = "macos")]
+            metal_detector: None,
             tracker: None,
             director: None,
             frame_count: 0,
@@ -423,6 +442,15 @@ impl StitchSession {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
         self.gpu_detector = Some(detector);
+    }
+
+    /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
+    ///
+    /// When set, the macOS zero-copy frame loop runs detection using
+    /// Metal compute shaders for preprocessing and CoreML for inference.
+    #[cfg(target_os = "macos")]
+    pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
+        self.metal_detector = Some(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
@@ -597,6 +625,73 @@ impl StitchSession {
                 right_buf.uv_pitch[rs],
                 right_buf.width,
                 right_buf.height,
+            ));
+
+            self.last_tracked_objects =
+                self.build_tracked_objects(self.frame_count, timestamp_ms, detections);
+        }
+
+        // Fire callback for external consumers.
+        if let Some(ref mut cb) = self.detection_callback {
+            cb(&self.last_tracked_objects, self.frame_count, timestamp_ms);
+        }
+
+        // Update director with full context.
+        if let Some(ref mut director) = self.director {
+            let fov = self.pipeline.fov();
+            let bounds =
+                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
+            let ctx = DirectorContext {
+                frame_index: self.frame_count,
+                timestamp_ms,
+                objects: &self.last_tracked_objects,
+                viewport_bounds: bounds,
+                current_fov: fov,
+            };
+            director.update(&ctx);
+        }
+    }
+
+    /// Run Metal-resident detection and update the director.
+    ///
+    /// Uses the [`MetalDetector`](crate::detector::MetalDetector) to detect
+    /// objects directly from CVPixelBuffers via Metal compute shaders,
+    /// avoiding any GPU-to-CPU frame readback. Only the small detection
+    /// output is transferred to CPU for tracking and director updates.
+    ///
+    /// Falls back to [`update_director`](Self::update_director) if no
+    /// Metal detector is attached.
+    #[cfg(target_os = "macos")]
+    pub(crate) fn detect_and_update_director_metal(
+        &mut self,
+        left_cvpb: crate::metal_interop::CVPixelBufferRef,
+        right_cvpb: crate::metal_interop::CVPixelBufferRef,
+        width: u32,
+        height: u32,
+        elapsed: std::time::Duration,
+    ) {
+        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
+        let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
+
+        if should_detect && let Some(ref mut metal_det) = self.metal_detector {
+            crate::profile_scope!("metal_detect_total");
+
+            let gpu = self.pipeline.gpu();
+            let mut detections = Vec::new();
+
+            detections.extend(metal_det.detect_metal(
+                CameraId::Left,
+                left_cvpb,
+                width,
+                height,
+                gpu,
+            ));
+            detections.extend(metal_det.detect_metal(
+                CameraId::Right,
+                right_cvpb,
+                width,
+                height,
+                gpu,
             ));
 
             self.last_tracked_objects =

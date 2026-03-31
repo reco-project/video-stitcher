@@ -22,10 +22,14 @@ mod detector;
 mod director;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod gpu_detector;
+#[cfg(target_os = "macos")]
+mod metal_detector;
 mod tracker;
 
 pub use detector::YoloDetector;
 pub use director::BallDirector;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use gpu_detector::GpuYoloDetector;
+#[cfg(target_os = "macos")]
+pub use metal_detector::MetalYoloDetector;
 pub use tracker::EkfTracker;

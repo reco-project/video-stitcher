@@ -38,14 +38,29 @@ impl StitchSession {
                 Err(_) => break,
             };
 
+            let left_ptr = pair.left.as_ptr();
+            let right_ptr = pair.right.as_ptr();
+
             // Import NV12 planes as Metal textures (zero-copy via IOSurface).
             // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
-            let (left_y, left_uv) =
-                unsafe { cache.import_nv12(pair.left.as_ptr(), self.pipeline.gpu())? };
-            let (right_y, right_uv) =
-                unsafe { cache.import_nv12(pair.right.as_ptr(), self.pipeline.gpu())? };
+            let (left_y, left_uv) = unsafe { cache.import_nv12(left_ptr, self.pipeline.gpu())? };
+            let (right_y, right_uv) = unsafe { cache.import_nv12(right_ptr, self.pipeline.gpu())? };
 
-            self.update_director(start.elapsed());
+            // Run detection on GPU if a Metal detector is attached,
+            // otherwise just update the director with empty state.
+            if self.metal_detector.is_some() {
+                let width = pair.left.width();
+                let height = pair.left.height();
+                self.detect_and_update_director_metal(
+                    left_ptr,
+                    right_ptr,
+                    width,
+                    height,
+                    start.elapsed(),
+                );
+            } else {
+                self.update_director(start.elapsed());
+            }
             let pos = self.director_position();
             let render_buf = self.pipeline.render_imported_textures(
                 &left_y.texture,

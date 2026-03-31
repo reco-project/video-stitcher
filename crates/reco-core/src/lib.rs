@@ -101,6 +101,8 @@ pub mod director;
 pub mod encoder;
 pub mod gpu;
 #[cfg(target_os = "macos")]
+pub mod metal_compute;
+#[cfg(target_os = "macos")]
 pub mod metal_interop;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod npp_interop;

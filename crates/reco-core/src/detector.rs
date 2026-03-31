@@ -131,3 +131,33 @@ pub trait GpuDetector: Send {
         height: u32,
     ) -> Vec<Detection>;
 }
+
+/// Trait for object detection on Metal-resident NV12 frames (macOS).
+///
+/// Unlike [`GpuDetector`] which operates on CUDA device pointers,
+/// this trait takes `CVPixelBufferRef` pointers from VideoToolbox.
+/// Used in the macOS zero-copy pipeline where decoded frames are
+/// IOSurface-backed and can be imported as Metal textures.
+///
+/// Implementations must handle Metal-side preprocessing (NV12-to-RGB
+/// conversion, resize, normalization via compute shaders) and inference,
+/// reading back only the small detection output.
+#[cfg(target_os = "macos")]
+pub trait MetalDetector: Send {
+    /// Run detection on a Metal-resident NV12 frame.
+    ///
+    /// `cv_pixel_buffer` is a `CVPixelBufferRef` from VideoToolbox decode,
+    /// backed by an IOSurface. The implementor imports it as Metal textures
+    /// via `CVMetalTextureCache` for GPU-side preprocessing.
+    ///
+    /// `gpu` is needed for importing the CVPixelBuffer planes as Metal
+    /// textures via `CVMetalTextureCache`.
+    fn detect_metal(
+        &mut self,
+        camera: CameraId,
+        cv_pixel_buffer: crate::metal_interop::CVPixelBufferRef,
+        width: u32,
+        height: u32,
+        gpu: &crate::gpu::GpuContext,
+    ) -> Vec<Detection>;
+}

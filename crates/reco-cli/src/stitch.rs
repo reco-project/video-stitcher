@@ -161,6 +161,28 @@ pub fn run_stitch(
             }
         }
 
+        #[cfg(target_os = "macos")]
+        if use_zero_copy {
+            // Zero-copy path: use Metal detector (compute shaders + CoreML).
+            match reco_autocam::MetalYoloDetector::try_new(
+                model,
+                session.gpu(),
+                input_width,
+                input_height,
+                0.10,
+                vec!["ball".into()],
+            ) {
+                Ok(metal_det) => {
+                    session.set_metal_detector(Box::new(metal_det));
+                    detection_active = true;
+                    println!("Autocam: Metal YOLO ball tracking enabled (model: {model})");
+                }
+                Err(e) => {
+                    eprintln!("Warning: Metal detector init failed ({e}), ball tracking disabled");
+                }
+            }
+        }
+
         if !use_zero_copy {
             // CPU upload path: use CPU detector.
             let detector = reco_autocam::YoloDetector::from_file(model)?;

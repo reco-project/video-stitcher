@@ -146,6 +146,16 @@ impl RetainedCVPixelBuffer {
     pub fn as_ptr(&self) -> CVPixelBufferRef {
         self.ptr
     }
+
+    /// Frame width in pixels (from Y plane / plane 0).
+    pub fn width(&self) -> u32 {
+        unsafe { CVPixelBufferGetWidthOfPlane(self.ptr, 0) as u32 }
+    }
+
+    /// Frame height in pixels (from Y plane / plane 0).
+    pub fn height(&self) -> u32 {
+        unsafe { CVPixelBufferGetHeightOfPlane(self.ptr, 0) as u32 }
+    }
 }
 
 impl Drop for RetainedCVPixelBuffer {

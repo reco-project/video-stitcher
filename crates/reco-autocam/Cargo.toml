@@ -14,6 +14,7 @@ log = "0.4"
 [features]
 cuda = ["ort/cuda"]
 tensorrt = ["ort/tensorrt"]
+coreml = ["ort/coreml"]
 profiling = ["reco-core/profiling", "dep:tracing"]
 
 [dependencies.tracing]
