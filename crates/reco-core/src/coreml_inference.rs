@@ -147,7 +147,7 @@ impl CoreMlModel {
     pub fn predict(
         &self,
         tensor_ptr: *mut f32,
-        tensor_len: usize,
+        _tensor_len: usize,
     ) -> Result<(usize, Vec<f32>), CoreMlError> {
         unsafe {
             // Wrap the Metal shared buffer as an MLMultiArray (zero-copy).
@@ -207,15 +207,20 @@ impl CoreMlModel {
             };
 
             let count = output_array.count() as usize;
-            let data = std::cell::RefCell::new(Vec::new());
+            let mut data = Vec::with_capacity(count);
+            let data_ptr_out = data.as_mut_ptr();
             let block = RcBlock::new(
                 |bytes: NonNull<c_void>, _size: objc2_foundation::NSInteger| {
-                    let slice = std::slice::from_raw_parts(bytes.as_ptr() as *const f32, count);
-                    *data.borrow_mut() = slice.to_vec();
+                    std::ptr::copy_nonoverlapping(
+                        bytes.as_ptr() as *const f32,
+                        data_ptr_out,
+                        count,
+                    );
                 },
             );
             output_array.getBytesWithHandler(&block);
-            let data = data.into_inner();
+            drop(block);
+            data.set_len(count);
 
             Ok((n_detections, data))
         }
