@@ -157,7 +157,7 @@ impl MetalYoloDetector {
             .with_intra_threads(4)?;
 
         #[cfg(feature = "coreml")]
-        let builder = {
+        let mut builder = {
             match builder.with_execution_providers([ort::ep::CoreML::default()
                 .with_compute_units(ort::ep::coreml::ComputeUnits::All)
                 .with_model_cache_dir("/tmp/reco-coreml-cache")
