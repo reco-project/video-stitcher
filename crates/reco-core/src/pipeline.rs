@@ -74,7 +74,7 @@ pub enum PipelineError {
 ///
 /// Owns the GPU context, scene geometry, and renderer. Consumers provide
 /// YUV420P or NV12 frames and receive stitched RGBA output via
-/// [`Self::process_frame`] or [`Self::render_to_target_nv12`].
+/// [`Self::render_to_target`] or [`Self::render_to_target_nv12`].
 pub struct StitchPipeline {
     /// GPU device and queue.
     pub(crate) gpu: GpuContext,
@@ -323,7 +323,7 @@ impl StitchPipeline {
 
     /// Render a frame directly to a texture view (for window display).
     ///
-    /// Unlike [`Self::process_frame`], this does NOT read back to CPU — the result
+    /// Unlike the encode path, this does NOT read back to CPU — the result
     /// stays on the GPU and is presented to the surface.
     pub fn render_to_view(
         &self,
@@ -362,7 +362,7 @@ impl StitchPipeline {
     ///
     /// Uploads YUV planes and returns the render `CommandBuffer` without
     /// submitting. The caller must submit it (typically together with NV12
-    /// conversion commands via [`Nv12Converter`](crate::nv12_converter::Nv12Converter)).
+    /// conversion commands via the NV12 converter).
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "render_to_target")

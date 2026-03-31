@@ -103,3 +103,31 @@ pub trait Detector: Send {
     /// empty vector if no objects are detected.
     fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection>;
 }
+
+/// Trait for object detection on GPU-resident NV12 frames.
+///
+/// Unlike [`Detector`] which operates on CPU-accessible [`RawFrame`] data,
+/// this trait takes CUDA device pointers directly. Used in the zero-copy
+/// pipeline where decoded frames never leave the GPU.
+///
+/// Implementations must handle GPU-side preprocessing (NV12-to-RGB
+/// conversion, resize, normalization) and inference entirely on the GPU,
+/// reading back only the small detection output.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub trait GpuDetector: Send {
+    /// Run detection on a GPU-resident NV12 frame.
+    ///
+    /// `y_ptr` and `uv_ptr` are CUDA device pointers to the Y and
+    /// interleaved UV planes of an NV12 frame. `y_pitch` and `uv_pitch`
+    /// are the row strides (may differ from width due to alignment).
+    fn detect_gpu(
+        &mut self,
+        camera: CameraId,
+        y_ptr: u64,
+        y_pitch: usize,
+        uv_ptr: u64,
+        uv_pitch: usize,
+        width: u32,
+        height: u32,
+    ) -> Vec<Detection>;
+}

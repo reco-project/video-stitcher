@@ -11,13 +11,16 @@ name = "reco"
 path = "src/main.rs"
 
 [features]
+cuda = ["reco-autocam/cuda"]
+tensorrt = ["reco-autocam/tensorrt"]
 gstreamer = ["reco-io/gstreamer"]
 rpi = ["reco-io/rpi"]
-profiling = ["reco-core/profiling", "reco-io/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
+profiling = ["reco-core/profiling", "reco-io/profiling", "reco-autocam/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
 reco-io = { path = "../reco-io", features = ["ffmpeg"] }
+reco-autocam = { path = "../reco-autocam" }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 log = "0.4"

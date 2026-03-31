@@ -22,6 +22,8 @@ pub fn run_stitch(
     codec: &str,
     quality: &str,
     sync_offset: i64,
+    model_path: Option<&str>,
+    detection_interval: u64,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     const MAX_DIM: u32 = 8192;
@@ -128,6 +130,56 @@ pub fn run_stitch(
     )?;
     println!("Encoder: {}", encoder.encoder_name());
     session.set_encoder(Box::new(encoder), 2);
+
+    // Set up autocam (detector + tracker + director) if model provided
+    if let Some(model) = model_path {
+        let mut detection_active = false;
+
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        if use_zero_copy {
+            // Zero-copy path: use GPU detector (NPP + CUDA kernel + TensorRT).
+            match reco_autocam::GpuYoloDetector::try_new(
+                model,
+                input_width,
+                input_height,
+                0.10,
+                vec!["ball".into()],
+            ) {
+                Ok(Some(gpu_det)) => {
+                    session.set_gpu_detector(Box::new(gpu_det));
+                    detection_active = true;
+                    println!("Autocam: GPU YOLO ball tracking enabled (model: {model})");
+                }
+                Ok(None) => {
+                    eprintln!(
+                        "Warning: NPP not available, ball tracking disabled in zero-copy mode"
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Warning: GPU detector init failed ({e}), ball tracking disabled");
+                }
+            }
+        }
+
+        if !use_zero_copy {
+            // CPU upload path: use CPU detector.
+            let detector = reco_autocam::YoloDetector::from_file(model)?;
+            session.set_detector(Box::new(detector));
+            detection_active = true;
+            println!("Autocam: YOLO ball tracking enabled (model: {model})");
+        }
+
+        if detection_active {
+            let tracker = reco_autocam::EkfTracker::new();
+            let director = reco_autocam::BallDirector::new(fps_val as f32);
+            session.set_tracker(Box::new(tracker));
+            session.set_director(Box::new(director));
+            if detection_interval > 1 {
+                session.set_detection_interval(detection_interval);
+                println!("Detection interval: every {detection_interval} frames");
+            }
+        }
+    }
 
     // Compute frame limit
     let frame_limit: u64 = match (duration, max_frames) {

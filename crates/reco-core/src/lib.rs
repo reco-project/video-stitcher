@@ -94,12 +94,16 @@ pub(crate) mod async_encode;
 pub mod calibration;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub mod cuda_kernels;
 pub mod detector;
 pub mod director;
 pub mod encoder;
 pub mod gpu;
 #[cfg(target_os = "macos")]
 pub mod metal_interop;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub mod npp_interop;
 pub(crate) mod nv12_converter;
 pub mod pipeline;
 pub mod projection;

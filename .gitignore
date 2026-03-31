@@ -39,3 +39,6 @@ electron/resources/lens_profiles.sqlite
 backend/data/lens_profiles.sqlite
 .vscode-ctags
 docs/superpowers/
+docs/analysis/
+.claude/
+.cargo/

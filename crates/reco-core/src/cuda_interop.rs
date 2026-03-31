@@ -74,6 +74,7 @@ const CU_MEM_ACCESS_FLAGS_PROT_READWRITE: u32 = 3;
 const CU_MEM_ALLOC_GRANULARITY_MINIMUM: u32 = 0;
 
 /// Memory types for cuMemcpy2D.
+const CU_MEMORYTYPE_HOST: u32 = 1;
 const CU_MEMORYTYPE_DEVICE: u32 = 2;
 
 /// CUDA UUID (16 bytes, matching Vulkan's device UUID).
@@ -138,6 +139,9 @@ type CUmemGenericAllocationHandle = u64;
 
 /// Opaque CUDA context handle.
 type CUcontext = *mut c_void;
+type CUmodule = *mut c_void;
+type CUfunction = *mut c_void;
+type CUstream = *mut c_void;
 
 /// Dynamically loaded CUDA functions.
 ///
@@ -187,6 +191,31 @@ struct CudaFunctions {
 
     // 2D copy
     cu_memcpy_2d_v2: unsafe extern "C" fn(*const CudaMemcpy2D) -> CUresult,
+
+    // Device memory management
+    cu_mem_alloc_v2: unsafe extern "C" fn(*mut CUdeviceptr, usize) -> CUresult,
+    cu_mem_free_v2: unsafe extern "C" fn(CUdeviceptr) -> CUresult,
+    cu_memcpy_dtoh_v2: unsafe extern "C" fn(*mut c_void, CUdeviceptr, usize) -> CUresult,
+    cu_memset_d8_v2: unsafe extern "C" fn(CUdeviceptr, u8, usize) -> CUresult,
+
+    // Module / kernel launch
+    cu_module_load_data: unsafe extern "C" fn(*mut CUmodule, *const c_void) -> CUresult,
+    cu_module_unload: unsafe extern "C" fn(CUmodule) -> CUresult,
+    cu_module_get_function:
+        unsafe extern "C" fn(*mut CUfunction, CUmodule, *const std::ffi::c_char) -> CUresult,
+    cu_launch_kernel: unsafe extern "C" fn(
+        CUfunction,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+        CUstream,
+        *mut *mut c_void,
+        *mut *mut c_void,
+    ) -> CUresult,
 }
 
 // SAFETY: CudaFunctions contains function pointers and a library handle.
@@ -269,6 +298,14 @@ impl CudaFunctions {
                 cu_mem_unmap: load_sym!(lib_cuda, "cuMemUnmap"),
                 cu_mem_address_free: load_sym!(lib_cuda, "cuMemAddressFree"),
                 cu_memcpy_2d_v2: load_sym!(lib_cuda, "cuMemcpy2D_v2"),
+                cu_mem_alloc_v2: load_sym!(lib_cuda, "cuMemAlloc_v2"),
+                cu_mem_free_v2: load_sym!(lib_cuda, "cuMemFree_v2"),
+                cu_memcpy_dtoh_v2: load_sym!(lib_cuda, "cuMemcpyDtoH_v2"),
+                cu_memset_d8_v2: load_sym!(lib_cuda, "cuMemsetD8_v2"),
+                cu_module_load_data: load_sym!(lib_cuda, "cuModuleLoadData"),
+                cu_module_unload: load_sym!(lib_cuda, "cuModuleUnload"),
+                cu_module_get_function: load_sym!(lib_cuda, "cuModuleGetFunction"),
+                cu_launch_kernel: load_sym!(lib_cuda, "cuLaunchKernel"),
                 _lib_cuda: lib_cuda,
                 _lib_cudart: lib_cudart,
             })
@@ -548,6 +585,182 @@ pub fn cuda_2d_copy(
     }
 
     Ok(())
+}
+
+// ── Device memory management ────────────────────────────────────────
+
+/// Allocate `size` bytes of device memory.
+///
+/// Returns a CUDA device pointer. The caller must free it with
+/// [`cuda_mem_free`] when done.
+pub fn cuda_mem_alloc(size: usize) -> Result<CUdeviceptr, CudaInteropError> {
+    let cuda = cuda()?;
+    let mut ptr: CUdeviceptr = 0;
+    unsafe {
+        check_cuda("cuMemAlloc_v2", (cuda.cu_mem_alloc_v2)(&mut ptr, size))?;
+    }
+    Ok(ptr)
+}
+
+/// Free device memory previously allocated with [`cuda_mem_alloc`].
+pub fn cuda_mem_free(ptr: CUdeviceptr) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        check_cuda("cuMemFree_v2", (cuda.cu_mem_free_v2)(ptr))?;
+    }
+    Ok(())
+}
+
+/// Copy `size` bytes from device memory to host memory.
+///
+/// # Safety
+/// `dst` must point to at least `size` bytes of valid host memory.
+pub unsafe fn cuda_memcpy_dtoh(
+    dst: *mut c_void,
+    src: CUdeviceptr,
+    size: usize,
+) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        check_cuda("cuMemcpyDtoH_v2", (cuda.cu_memcpy_dtoh_v2)(dst, src, size))?;
+    }
+    Ok(())
+}
+
+/// Copy a 2D region from device memory to host memory.
+///
+/// Like [`cuda_2d_copy`] but the destination is host memory.
+pub fn cuda_2d_copy_dtoh(
+    dst: *mut c_void,
+    dst_pitch: usize,
+    src: CUdeviceptr,
+    src_pitch: usize,
+    width_bytes: usize,
+    height: usize,
+) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+
+    let desc = CudaMemcpy2D {
+        src_x_in_bytes: 0,
+        src_y: 0,
+        src_memory_type: CU_MEMORYTYPE_DEVICE,
+        src_host: std::ptr::null(),
+        src_device: src,
+        src_array: std::ptr::null(),
+        src_pitch,
+        dst_x_in_bytes: 0,
+        dst_y: 0,
+        dst_memory_type: CU_MEMORYTYPE_HOST,
+        dst_host: dst,
+        dst_device: 0,
+        dst_array: std::ptr::null(),
+        dst_pitch,
+        width_in_bytes: width_bytes,
+        height,
+    };
+
+    unsafe {
+        check_cuda("cuMemcpy2D_v2", (cuda.cu_memcpy_2d_v2)(&desc))?;
+    }
+
+    Ok(())
+}
+
+/// Fill `count` bytes of device memory with `value`.
+pub fn cuda_memset_d8(ptr: CUdeviceptr, value: u8, count: usize) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        check_cuda("cuMemsetD8_v2", (cuda.cu_memset_d8_v2)(ptr, value, count))?;
+    }
+    Ok(())
+}
+
+// ── CUDA kernel management ─────────────────────────────────────────
+
+/// A loaded CUDA kernel (module + function), ready for launch.
+///
+/// Created from PTX source via [`CudaKernel::from_ptx`]. The module
+/// is unloaded when the kernel is dropped.
+pub struct CudaKernel {
+    module: CUmodule,
+    function: CUfunction,
+}
+
+// SAFETY: CudaKernel holds opaque CUDA handles that are thread-safe
+// when used with proper context management (cuda_ensure_context).
+unsafe impl Send for CudaKernel {}
+unsafe impl Sync for CudaKernel {}
+
+impl CudaKernel {
+    /// Load a kernel from PTX source.
+    ///
+    /// `ptx` must be a null-terminated PTX string. `func_name` is the
+    /// `extern "C" __global__` entry point name.
+    pub fn from_ptx(ptx: &[u8], func_name: &str) -> Result<Self, CudaInteropError> {
+        let cuda = cuda()?;
+        let mut module: CUmodule = std::ptr::null_mut();
+        let mut function: CUfunction = std::ptr::null_mut();
+        let c_name = std::ffi::CString::new(func_name)
+            .map_err(|_| CudaInteropError::NotAvailable("invalid kernel name".into()))?;
+
+        unsafe {
+            check_cuda(
+                "cuModuleLoadData",
+                (cuda.cu_module_load_data)(&mut module, ptx.as_ptr().cast()),
+            )?;
+            check_cuda(
+                "cuModuleGetFunction",
+                (cuda.cu_module_get_function)(&mut function, module, c_name.as_ptr()),
+            )?;
+        }
+
+        log::debug!("CUDA kernel '{func_name}' loaded from PTX");
+        Ok(Self { module, function })
+    }
+
+    /// Launch the kernel with the given grid/block dimensions and arguments.
+    ///
+    /// # Safety
+    /// `args` must be an array of pointers to the kernel arguments,
+    /// matching the kernel's parameter list in order and type.
+    pub unsafe fn launch(
+        &self,
+        grid: (u32, u32, u32),
+        block: (u32, u32, u32),
+        shared_mem: u32,
+        args: &mut [*mut c_void],
+    ) -> Result<(), CudaInteropError> {
+        let cuda = cuda()?;
+        unsafe {
+            check_cuda(
+                "cuLaunchKernel",
+                (cuda.cu_launch_kernel)(
+                    self.function,
+                    grid.0,
+                    grid.1,
+                    grid.2,
+                    block.0,
+                    block.1,
+                    block.2,
+                    shared_mem,
+                    std::ptr::null_mut(), // default stream
+                    args.as_mut_ptr(),
+                    std::ptr::null_mut(),
+                ),
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for CudaKernel {
+    fn drop(&mut self) {
+        if let Ok(cuda) = cuda() {
+            unsafe {
+                let _ = (cuda.cu_module_unload)(self.module);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

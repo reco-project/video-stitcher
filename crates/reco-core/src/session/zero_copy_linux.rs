@@ -152,6 +152,8 @@ impl StitchSession {
         // Destructure to control drop ordering precisely.
         let SharedTextureSet {
             textures,
+            left_buf,
+            right_buf,
             bind_groups,
             left_slot_free_tx,
             right_slot_free_tx,
@@ -175,7 +177,13 @@ impl StitchSession {
                 }
             };
 
-            self.update_director(start.elapsed());
+            self.detect_and_update_director_gpu(
+                &left_buf,
+                &right_buf,
+                signal.left_slot,
+                signal.right_slot,
+                start.elapsed(),
+            );
             let pos = self.director_position();
             let render_buf = self.pipeline.render_gpu_frame(
                 &bind_groups,

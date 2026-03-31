@@ -97,6 +97,17 @@ enum Commands {
         /// Negative: skip N left frames (left started first).
         #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
         sync_offset: i64,
+
+        /// Path to a YOLO ONNX model for ball detection and auto-panning.
+        /// When provided, enables automatic camera direction that follows the ball.
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Run detection every N frames (default: 1 = every frame).
+        /// Higher values reduce detection overhead. The director uses
+        /// the last known detections on skipped frames.
+        #[arg(long, default_value_t = 1)]
+        detection_interval: u64,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -238,6 +249,8 @@ fn main() -> anyhow::Result<()> {
             quality,
             blend,
             sync_offset,
+            model,
+            detection_interval,
         } => stitch::run_stitch(
             &left,
             &right,
@@ -252,6 +265,8 @@ fn main() -> anyhow::Result<()> {
             &codec,
             &quality,
             sync_offset,
+            model.as_deref(),
+            detection_interval,
             &interrupted,
         ),
 

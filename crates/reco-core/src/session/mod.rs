@@ -136,6 +136,8 @@ pub struct StitchSessionBuilder {
     detector: Option<Box<dyn Detector>>,
     tracker: Option<Box<dyn Tracker>>,
     director: Option<Box<dyn Director>>,
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
     detection_interval: u64,
 }
 
@@ -213,6 +215,13 @@ impl StitchSessionBuilder {
         self
     }
 
+    /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn gpu_detector(mut self, detector: Box<dyn crate::detector::GpuDetector>) -> Self {
+        self.gpu_detector = Some(detector);
+        self
+    }
+
     /// Set the detection interval (run detection every N frames).
     ///
     /// `1` = every frame (default), `3` = every 3rd frame, etc.
@@ -277,6 +286,10 @@ impl StitchSessionBuilder {
         if let Some(dir) = self.director {
             session.set_director(dir);
         }
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        if let Some(gpu_det) = self.gpu_detector {
+            session.set_gpu_detector(gpu_det);
+        }
 
         Ok(session)
     }
@@ -296,6 +309,8 @@ pub struct StitchSession {
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
     pub(crate) detector: Option<Box<dyn Detector>>,
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub(crate) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
     pub(crate) tracker: Option<Box<dyn Tracker>>,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
@@ -323,6 +338,8 @@ impl StitchSession {
             detector: None,
             tracker: None,
             director: None,
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            gpu_detector: None,
             detection_interval: 1,
         }
     }
@@ -358,6 +375,8 @@ impl StitchSession {
             nv12_converter,
             encoder: None,
             detector: None,
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            gpu_detector: None,
             tracker: None,
             director: None,
             frame_count: 0,
@@ -391,6 +410,25 @@ impl StitchSession {
         self.detector = Some(detector);
     }
 
+    /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
+    ///
+    /// When set, the zero-copy frame loop runs detection entirely on GPU
+    /// using NV12 device pointers from shared textures. Only the small
+    /// detection output is read back to CPU.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
+        self.gpu_detector = Some(detector);
+    }
+
+    /// Set the detection interval (run detection every N frames).
+    ///
+    /// Default is 1 (every frame). Higher values reduce detection CPU load
+    /// at the cost of tracking responsiveness. The director still receives
+    /// the last known tracked objects on skipped frames.
+    pub fn set_detection_interval(&mut self, interval: u64) {
+        self.detection_interval = interval.max(1);
+    }
+
     /// Attach a tracker for persistent object identity across frames.
     ///
     /// When set, raw detections are fed through the tracker before
@@ -402,8 +440,8 @@ impl StitchSession {
 
     /// Attach a director for AI-driven or scripted camera panning.
     ///
-    /// When set, batch methods ([`Self::run`], [`Self::run_zero_copy_linux`],
-    /// [`Self::run_zero_copy_macos`]) use the director's viewport position
+    /// When set, batch methods (`run`, `run_zero_copy_linux`,
+    /// `run_zero_copy_macos`) use the director's viewport position
     /// instead of the default centered view.
     ///
     /// The director receives a [`DirectorContext`] each frame containing
@@ -482,6 +520,10 @@ impl StitchSession {
     ///
     /// No CPU-accessible frame data is available, so detection is skipped.
     /// The director still receives context with empty objects and valid bounds.
+    #[cfg_attr(
+        any(target_os = "linux", target_os = "windows"),
+        allow(dead_code, reason = "used by macOS zero-copy path")
+    )]
     pub(crate) fn update_director(&mut self, elapsed: std::time::Duration) {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
@@ -498,6 +540,78 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 objects: &[],
+                viewport_bounds: bounds,
+                current_fov: fov,
+            };
+            director.update(&ctx);
+        }
+    }
+
+    /// Run GPU-resident detection and update the director.
+    ///
+    /// Uses the [`GpuDetector`](crate::detector::GpuDetector) to detect
+    /// objects directly from CUDA device pointers (NV12 shared textures),
+    /// avoiding any GPU-to-CPU frame readback. Only the small detection
+    /// output is transferred to CPU for tracking and director updates.
+    ///
+    /// Falls back to [`update_director`](Self::update_director) if no
+    /// GPU detector is attached.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub(crate) fn detect_and_update_director_gpu(
+        &mut self,
+        left_buf: &crate::zero_copy::GpuBufInfo,
+        right_buf: &crate::zero_copy::GpuBufInfo,
+        left_slot: u8,
+        right_slot: u8,
+        elapsed: std::time::Duration,
+    ) {
+        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
+        let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
+
+        if should_detect && let Some(ref mut gpu_det) = self.gpu_detector {
+            crate::profile_scope!("gpu_detect_total");
+
+            let ls = left_slot as usize;
+            let rs = right_slot as usize;
+            let mut detections = Vec::new();
+
+            detections.extend(gpu_det.detect_gpu(
+                CameraId::Left,
+                left_buf.y_ptr[ls],
+                left_buf.y_pitch[ls],
+                left_buf.uv_ptr[ls],
+                left_buf.uv_pitch[ls],
+                left_buf.width,
+                left_buf.height,
+            ));
+            detections.extend(gpu_det.detect_gpu(
+                CameraId::Right,
+                right_buf.y_ptr[rs],
+                right_buf.y_pitch[rs],
+                right_buf.uv_ptr[rs],
+                right_buf.uv_pitch[rs],
+                right_buf.width,
+                right_buf.height,
+            ));
+
+            self.last_tracked_objects =
+                self.build_tracked_objects(self.frame_count, timestamp_ms, detections);
+        }
+
+        // Fire callback for external consumers.
+        if let Some(ref mut cb) = self.detection_callback {
+            cb(&self.last_tracked_objects, self.frame_count, timestamp_ms);
+        }
+
+        // Update director with full context.
+        if let Some(ref mut director) = self.director {
+            let fov = self.pipeline.fov();
+            let bounds =
+                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
+            let ctx = DirectorContext {
+                frame_index: self.frame_count,
+                timestamp_ms,
+                objects: &self.last_tracked_objects,
                 viewport_bounds: bounds,
                 current_fov: fov,
             };

@@ -4,6 +4,7 @@ members = [
     "crates/reco-core",
     "crates/reco-cli",
     "crates/reco-io",
+    "crates/reco-autocam",
 ]
 
 [workspace.package]
