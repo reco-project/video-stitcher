@@ -102,6 +102,11 @@ pub enum SessionError {
     #[error("source: {0}")]
     Source(#[from] SourceError),
 
+    /// Metal interop error (macOS zero-copy).
+    #[cfg(target_os = "macos")]
+    #[error("Metal interop: {0}")]
+    MetalInterop(#[from] crate::metal_interop::MetalInteropError),
+
     /// Zero-copy setup or runtime error.
     #[error("zero-copy: {0}")]
     ZeroCopy(String),
