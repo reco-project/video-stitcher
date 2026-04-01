@@ -129,6 +129,8 @@ pub fn run_preview(
         target_yaw: 0.0,
         target_pitch: 0.0,
         target_fov: FOV_DEFAULT,
+        camera_moving: false,
+        max_fov: FOV_MAX,
     };
 
     event_loop.run_app(&mut app)?;
@@ -163,6 +165,10 @@ struct App {
     target_yaw: f32,
     target_pitch: f32,
     target_fov: f32,
+    /// Whether the camera smoothing made progress in the last frame.
+    camera_moving: bool,
+    /// Maximum FOV from coverage boundary (computed when pipeline is created).
+    max_fov: f32,
 }
 
 impl App {
@@ -204,39 +210,65 @@ impl App {
     }
 
     /// Interpolate yaw/pitch/fov toward their targets for smooth camera.
-    /// Returns `true` if any values changed (needs redraw).
+    ///
+    /// After interpolation, enforces coverage bounds: FOV is capped to the
+    /// maximum that fits the panorama, and yaw/pitch are clamped so all four
+    /// viewport corners stay within coverage. This makes the boundary feel
+    /// like a solid wall the camera slides along.
+    ///
+    /// Returns `true` if the camera actually moved (position or FOV changed).
     fn smooth_camera(&mut self) -> bool {
         const SMOOTHING: f32 = 0.3;
         const EPSILON: f32 = 0.0001;
         const FOV_EPSILON: f32 = 0.01;
 
+        let prev_yaw = self.yaw;
+        let prev_pitch = self.pitch;
+        let prev_fov = self.pipeline.as_ref().map_or(self.target_fov, |p| p.fov());
+
+        // Interpolate toward targets
         let dy = self.target_yaw - self.yaw;
         let dp = self.target_pitch - self.pitch;
-        let current_fov = self.pipeline.as_ref().map_or(90.0, |p| p.fov());
-        let df = self.target_fov - current_fov;
-
-        if dy.abs() < EPSILON && dp.abs() < EPSILON && df.abs() < FOV_EPSILON {
-            return false;
-        }
+        let df = self.target_fov - prev_fov;
 
         self.yaw += dy * SMOOTHING;
         self.pitch += dp * SMOOTHING;
 
-        if let Some(p) = &mut self.pipeline {
-            let new_fov = p.fov() + df * SMOOTHING;
-            p.set_fov(new_fov);
-            if (self.target_fov - p.fov()).abs() < FOV_EPSILON {
-                p.set_fov(self.target_fov);
-            }
-        }
-
+        // Snap to target when close enough (before clamping)
         if (self.target_yaw - self.yaw).abs() < EPSILON {
             self.yaw = self.target_yaw;
         }
         if (self.target_pitch - self.pitch).abs() < EPSILON {
             self.pitch = self.target_pitch;
         }
-        true
+
+        if let Some(p) = &mut self.pipeline {
+            // Interpolate FOV
+            let new_fov = p.fov() + df * SMOOTHING;
+            p.set_fov(new_fov);
+            if (self.target_fov - p.fov()).abs() < FOV_EPSILON {
+                p.set_fov(self.target_fov);
+            }
+
+            // Enforce coverage bounds: clamp FOV first, then position.
+            if p.fov() > self.max_fov {
+                p.set_fov(self.max_fov);
+            }
+            if self.target_fov > self.max_fov {
+                self.target_fov = self.max_fov;
+            }
+
+            let clamped = p.coverage().safe_clamp(self.yaw, self.pitch, p.fov());
+            self.yaw = clamped.yaw;
+            self.pitch = clamped.pitch;
+        }
+
+        // Detect actual movement (not just target difference).
+        // This correctly converges at coverage boundaries.
+        let current_fov = self.pipeline.as_ref().map_or(self.target_fov, |p| p.fov());
+        (self.yaw - prev_yaw).abs() > EPSILON
+            || (self.pitch - prev_pitch).abs() > EPSILON
+            || (current_fov - prev_fov).abs() > FOV_EPSILON
     }
 }
 
@@ -306,10 +338,15 @@ impl ApplicationHandler for App {
         )
         .expect("create pipeline");
 
+        let aspect = self.width as f32 / self.height as f32;
+        self.max_fov = pipeline.coverage().max_fov_degrees(aspect);
+        log::info!("Max FOV: {:.1}°", self.max_fov);
+
         println!(
-            "Preview ready: GPU = {}, format = {:?}",
+            "Preview ready: GPU = {}, format = {:?}, max FOV = {:.0}°",
             pipeline.gpu_name(),
-            surface_format
+            surface_format,
+            self.max_fov,
         );
         println!("Controls: Space = play/pause, N = next frame, P = skip 30 frames");
         println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
@@ -353,6 +390,8 @@ impl ApplicationHandler for App {
                             },
                         );
                         pipeline.resize(self.width, self.height);
+                        let aspect = self.width as f32 / self.height as f32;
+                        self.max_fov = pipeline.coverage().max_fov_degrees(aspect);
                         self.needs_redraw = true;
                     }
                 }
@@ -406,7 +445,7 @@ impl ApplicationHandler for App {
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(FOV_MAX);
+                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(self.max_fov);
                             self.needs_redraw = true;
                         }
                         _ => {}
@@ -450,19 +489,20 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
                 };
-                self.target_fov =
-                    (self.target_fov - scroll as f32 * FOV_SCROLL_STEP).clamp(FOV_MIN, FOV_MAX);
+                self.target_fov = (self.target_fov - scroll as f32 * FOV_SCROLL_STEP)
+                    .clamp(FOV_MIN, self.max_fov);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {
-                // Apply camera smoothing before rendering
-                if self.smooth_camera() {
+                // Apply camera smoothing + coverage clamping before rendering
+                self.camera_moving = self.smooth_camera();
+                if self.camera_moving {
                     self.needs_redraw = true;
                 }
                 if !self.needs_redraw && !self.playing {
                     return;
                 }
-                self.needs_redraw = false;
+                self.needs_redraw = self.camera_moving;
 
                 let (Some(surface), Some(pipeline)) =
                     (self.surface.as_ref(), self.pipeline.as_ref())
@@ -515,13 +555,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // Keep animating while smoothing hasn't converged
-        let current_fov = self.pipeline.as_ref().map_or(self.target_fov, |p| p.fov());
-        let smoothing_active = (self.target_yaw - self.yaw).abs() > 0.0001
-            || (self.target_pitch - self.pitch).abs() > 0.0001
-            || (self.target_fov - current_fov).abs() > 0.01;
-
-        if !self.playing && !smoothing_active {
+        if !self.playing && !self.camera_moving && !self.needs_redraw {
             return;
         }
 

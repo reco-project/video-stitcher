@@ -519,6 +519,95 @@ impl CoverageBoundary {
             pitch: final_pitch,
         }
     }
+
+    /// Maximum vertical FOV (degrees) that fits within the coverage boundary.
+    ///
+    /// Binary-searches for the largest FOV where at least one valid
+    /// (yaw, pitch) position exists. The bottleneck is typically the
+    /// seam area where the two planes' pitch range is narrowest.
+    pub fn max_fov_degrees(&self, aspect: f32) -> f32 {
+        let mut lo = 1.0_f32;
+        let mut hi = 170.0_f32;
+
+        for _ in 0..20 {
+            let mid = (lo + hi) * 0.5;
+            if self.has_valid_position(mid, aspect) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+
+    /// Check if there exists any valid viewport position for the given FOV.
+    ///
+    /// Uses the same pitch/yaw constraint logic as [`Self::safe_clamp`] to test
+    /// whether the FOV produces a non-degenerate safe region.
+    fn has_valid_position(&self, fov_v_deg: f32, aspect: f32) -> bool {
+        let corners = CornerOffsets::compute(fov_v_deg, aspect);
+
+        let mut safe_pitch_min = f32::MIN;
+        let mut safe_pitch_max = f32::MAX;
+        for &(_, dp) in &corners.offsets {
+            safe_pitch_min = safe_pitch_min.max(self.pitch_min - dp);
+            safe_pitch_max = safe_pitch_max.min(self.pitch_max - dp);
+        }
+
+        let pitch_step = (self.pitch_max - self.pitch_min) / self.n_slices as f32;
+        let max_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MIN, f32::max);
+        let min_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MAX, f32::min);
+
+        {
+            let mut ceiling = safe_pitch_max;
+            let mut p = self.pitch_max - max_corner_dp;
+            while p >= self.pitch_min - min_corner_dp {
+                let all_ok = corners
+                    .offsets
+                    .iter()
+                    .all(|&(_, dp)| self.is_contiguous_at(p + dp));
+                if all_ok {
+                    ceiling = p;
+                    break;
+                }
+                p -= pitch_step;
+            }
+            safe_pitch_max = safe_pitch_max.min(ceiling);
+        }
+        {
+            let mut floor = safe_pitch_min;
+            let mut p = self.pitch_min - min_corner_dp;
+            while p <= self.pitch_max - max_corner_dp {
+                let all_ok = corners
+                    .offsets
+                    .iter()
+                    .all(|&(_, dp)| self.is_contiguous_at(p + dp));
+                if all_ok {
+                    floor = p;
+                    break;
+                }
+                p += pitch_step;
+            }
+            safe_pitch_min = safe_pitch_min.max(floor);
+        }
+
+        if safe_pitch_min >= safe_pitch_max {
+            return false;
+        }
+
+        // Check if there's a valid yaw at the midpoint pitch.
+        let mid_pitch = (safe_pitch_min + safe_pitch_max) * 0.5;
+        let mut safe_yaw_min = f32::MIN;
+        let mut safe_yaw_max = f32::MAX;
+        for &(dy, dp) in &corners.offsets {
+            let corner_pitch = mid_pitch + dp;
+            let (cov_yaw_min, cov_yaw_max) = self.yaw_range_at(corner_pitch);
+            safe_yaw_min = safe_yaw_min.max(cov_yaw_min - dy);
+            safe_yaw_max = safe_yaw_max.min(cov_yaw_max - dy);
+        }
+
+        safe_yaw_min < safe_yaw_max
+    }
 }
 
 // ---- Internal functions ----
