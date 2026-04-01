@@ -115,7 +115,6 @@ pub mod renderer;
 pub mod scene;
 pub mod session;
 pub mod source;
-pub mod tracker;
 pub mod viewport;
 #[cfg(target_os = "linux")]
 pub mod vulkan_interop;

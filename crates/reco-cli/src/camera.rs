@@ -78,7 +78,7 @@ pub fn run_camera(
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
-    // Set up autocam (detector + tracker + director) if model provided.
+    // Set up autocam (detector + director) if model provided.
     if let Some(model) = model_path {
         let detector = reco_autocam::YoloDetector::from_file(model)?;
         session.set_detector(Box::new(detector));
