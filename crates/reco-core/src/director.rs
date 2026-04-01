@@ -28,7 +28,7 @@
 //! pipelines on top of the detection data without modifying the director.
 
 use crate::detector::CameraId;
-use crate::projection::ViewportBounds;
+use crate::projection::CoverageBoundary;
 
 /// The viewport position output by a director.
 ///
@@ -113,9 +113,8 @@ pub struct DirectorContext<'a> {
     /// Empty if no detector is configured or detection was skipped.
     pub detections: &'a [MappedDetection],
 
-    /// Valid panning bounds for the current FOV ("no-black" region).
-    /// Panning within these bounds guarantees no black edges in the output.
-    pub viewport_bounds: ViewportBounds,
+    /// Precomputed coverage boundary for safe panning (built once at startup).
+    pub coverage: &'a CoverageBoundary,
 
     /// Current horizontal field of view in degrees.
     pub current_fov: f32,

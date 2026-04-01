@@ -328,6 +328,8 @@ pub struct StitchSession {
     pub(crate) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
+    /// Precomputed coverage boundary for safe viewport clamping.
+    coverage: projection::CoverageBoundary,
     /// Run detection every N frames (1 = every frame).
     detection_interval: u64,
     /// Callback for external consumers of detection data.
@@ -390,9 +392,14 @@ impl StitchSession {
 
         let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
 
+        // Build the coverage boundary once from calibration data.
+        let coverage =
+            projection::CoverageBoundary::from_calibration(pipeline.calibration(), &pipeline.scene);
+
         Ok(Self {
             pipeline,
             nv12_converter,
+            coverage,
             encoder: None,
             detector: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -535,16 +542,17 @@ impl StitchSession {
             cb(&self.last_detections, self.frame_count, timestamp_ms);
         }
 
-        // Update director with full context.
+        // Update director with coverage boundary (precomputed once at startup).
         if let Some(ref mut director) = self.director {
-            let fov = self.pipeline.fov();
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
+            let fov = director
+                .position()
+                .fov_degrees
+                .unwrap_or_else(|| self.pipeline.fov());
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
-                viewport_bounds: bounds,
+                coverage: &self.coverage,
                 current_fov: fov,
             };
             director.update(&ctx);
@@ -572,13 +580,11 @@ impl StitchSession {
                 .position()
                 .fov_degrees
                 .unwrap_or_else(|| self.pipeline.fov());
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &[],
-                viewport_bounds: bounds,
+                coverage: &self.coverage,
                 current_fov: fov,
             };
             director.update(&ctx);
@@ -640,19 +646,17 @@ impl StitchSession {
             cb(&self.last_detections, self.frame_count, timestamp_ms);
         }
 
-        // Update director with full context.
+        // Update director with coverage boundary (precomputed once at startup).
         if let Some(ref mut director) = self.director {
             let fov = director
                 .position()
                 .fov_degrees
                 .unwrap_or_else(|| self.pipeline.fov());
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
-                viewport_bounds: bounds,
+                coverage: &self.coverage,
                 current_fov: fov,
             };
             director.update(&ctx);
@@ -709,19 +713,17 @@ impl StitchSession {
             cb(&self.last_detections, self.frame_count, timestamp_ms);
         }
 
-        // Update director with full context.
+        // Update director with coverage boundary (precomputed once at startup).
         if let Some(ref mut director) = self.director {
             let fov = director
                 .position()
                 .fov_degrees
                 .unwrap_or_else(|| self.pipeline.fov());
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
-                viewport_bounds: bounds,
+                coverage: &self.coverage,
                 current_fov: fov,
             };
             director.update(&ctx);
@@ -735,9 +737,19 @@ impl StitchSession {
     fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
         let calibration = self.pipeline.calibration();
         let scene = &self.pipeline.scene;
+        let field_roi = &calibration.field_roi;
 
         detections
             .iter()
+            .filter(|d| {
+                // Filter out detections outside the field ROI if defined.
+                if let Some(roi) = field_roi {
+                    let is_left = d.camera == CameraId::Left;
+                    roi.contains(is_left, d.center_x, d.center_y)
+                } else {
+                    true
+                }
+            })
             .map(|d| {
                 let position = projection::camera_to_panorama(
                     d.camera,

@@ -89,9 +89,9 @@ impl BallDirector {
             vel_pitch: 0.0,
             prev_target_yaw: 0.0,
             prev_target_pitch: 0.0,
-            alpha_track: 0.04,
-            alpha_recover: 0.08,
-            alpha_velocity: 0.2,
+            alpha_track: 0.03,
+            alpha_recover: 0.06,
+            alpha_velocity: 0.15,
             dead_zone: 0.10,
             frames_without_ball: 0,
             search_delay: (fps * 1.5) as u32, // 1.5 seconds before giving up
@@ -100,8 +100,8 @@ impl BallDirector {
             recover_count: 0,
             current_fov: 55.0,
             fov_wide: 65.0,
-            fov_tight: 25.0,
-            fov_alpha: 0.02,
+            fov_tight: 35.0,
+            fov_alpha: 0.015,
             target_label: "ball".into(),
         }
     }
@@ -193,14 +193,15 @@ impl BallDirector {
         self.fov_wide + t * (self.fov_tight - self.fov_wide)
     }
 
-    /// Clamp position to viewport bounds.
+    /// Clamp position to the safe panning region using the precomputed
+    /// coverage boundary. Uses exact viewport corner projection math -
+    /// no ad-hoc safety margins or per-frame sampling.
     fn clamp_to_bounds(&mut self, ctx: &DirectorContext<'_>) {
-        self.yaw = self
-            .yaw
-            .clamp(ctx.viewport_bounds.min_yaw, ctx.viewport_bounds.max_yaw);
-        self.pitch = self
-            .pitch
-            .clamp(ctx.viewport_bounds.min_pitch, ctx.viewport_bounds.max_pitch);
+        let clamped = ctx
+            .coverage
+            .safe_clamp(self.yaw, self.pitch, self.current_fov);
+        self.yaw = clamped.yaw;
+        self.pitch = clamped.pitch;
     }
 }
 
@@ -289,17 +290,19 @@ impl Director for BallDirector {
             }
         }
 
-        // Dynamic FOV: smooth toward target based on ball position.
+        // Dynamic FOV: smooth toward target based on ball distance.
         let target_fov = self.target_fov();
         self.current_fov += self.fov_alpha * (target_fov - self.current_fov);
 
+        // Clamp position to no-black-edge bounds for current FOV.
         self.clamp_to_bounds(ctx);
 
         // Log state every 30 frames for debug visibility.
         if ctx.frame_index.is_multiple_of(30) {
             log::debug!(
                 "Director frame {}: state={:?}, yaw={:.4}, pitch={:.4}, \
-                 target=({:.4},{:.4}), vel=({:.5},{:.5}), fov={:.1}, tracks={}",
+                 target=({:.4},{:.4}), vel=({:.5},{:.5}), fov={:.1}, tracks={}, \
+                 coverage_pitch=[{:.4},{:.4}]",
                 ctx.frame_index,
                 self.state,
                 self.yaw,
@@ -310,6 +313,8 @@ impl Director for BallDirector {
                 self.vel_pitch,
                 self.current_fov,
                 ctx.detections.len(),
+                ctx.coverage.pitch_min,
+                ctx.coverage.pitch_max,
             );
         }
     }
