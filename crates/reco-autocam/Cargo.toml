@@ -15,6 +15,7 @@ log = "0.4"
 cuda = ["ort/cuda"]
 tensorrt = ["ort/tensorrt"]
 coreml = ["ort/coreml"]
+load-dynamic = ["ort/load-dynamic"]
 profiling = ["reco-core/profiling", "dep:tracing"]
 
 [dependencies.tracing]
