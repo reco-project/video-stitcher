@@ -464,9 +464,59 @@ impl CoverageBoundary {
 
         let clamped_yaw = yaw.clamp(safe_yaw_min, safe_yaw_max);
 
+        // Second pass: re-clamp pitch using the actual clamped yaw.
+        // The valid pitch range depends on yaw (wider at the sides,
+        // narrower at the center/seam). After we know the final yaw,
+        // tighten the pitch bounds by checking coverage at each corner's
+        // actual (yaw, pitch) position.
+        let mut yaw_pitch_min = f32::MIN;
+        let mut yaw_pitch_max = f32::MAX;
+        for &(dy, dp) in &corners.offsets {
+            let corner_yaw = clamped_yaw + dy;
+            // For each pitch slice, the corner yaw must be within coverage.
+            // Invert: find the pitch range where yaw_min(p+dp) <= corner_yaw <= yaw_max(p+dp).
+            // We scan the pitch slices to find the valid range.
+            let step = (self.pitch_max - self.pitch_min) / self.n_slices as f32;
+
+            // Scan from top to find ceiling for this corner.
+            let mut corner_ceiling = safe_pitch_max;
+            let mut p = safe_pitch_max;
+            while p >= safe_pitch_min {
+                let (ymin, ymax) = self.yaw_range_at(p + dp);
+                if corner_yaw >= ymin && corner_yaw <= ymax {
+                    corner_ceiling = p;
+                    break;
+                }
+                p -= step;
+            }
+
+            // Scan from bottom to find floor for this corner.
+            let mut corner_floor = safe_pitch_min;
+            let mut p = safe_pitch_min;
+            while p <= safe_pitch_max {
+                let (ymin, ymax) = self.yaw_range_at(p + dp);
+                if corner_yaw >= ymin && corner_yaw <= ymax {
+                    corner_floor = p;
+                    break;
+                }
+                p += step;
+            }
+
+            yaw_pitch_min = yaw_pitch_min.max(corner_floor);
+            yaw_pitch_max = yaw_pitch_max.min(corner_ceiling);
+        }
+
+        if yaw_pitch_min > yaw_pitch_max {
+            let mid = (yaw_pitch_min + yaw_pitch_max) * 0.5;
+            yaw_pitch_min = mid;
+            yaw_pitch_max = mid;
+        }
+
+        let final_pitch = clamped_pitch.clamp(yaw_pitch_min, yaw_pitch_max);
+
         ClampedPosition {
             yaw: clamped_yaw,
-            pitch: clamped_pitch,
+            pitch: final_pitch,
         }
     }
 }
