@@ -75,6 +75,11 @@ impl GpuYoloDetector {
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
             .with_intra_threads(4)?;
 
+        // TensorRT EP: runs inference on GPU-resident tensors directly.
+        // GPU tensors (TensorRefMut::from_raw) require TRT EP - without it,
+        // CPU EP's MLAS kernels segfault on CUDA device pointers.
+        // CUDA EP is avoided: deadlocks during lazy init when wgpu's Vulkan
+        // driver holds a CUDA context.
         #[cfg(feature = "tensorrt")]
         let mut builder = {
             match builder.with_execution_providers([ort::ep::TensorRT::default()
@@ -105,7 +110,7 @@ impl GpuYoloDetector {
                     b
                 }
                 Err(e) => {
-                    log::warn!("GpuYoloDetector: CUDA EP failed ({e}), falling back");
+                    log::warn!("GpuYoloDetector: CUDA EP failed ({e}), falling back to CPU");
                     e.recover()
                 }
             }
@@ -163,7 +168,7 @@ impl GpuYoloDetector {
             (rgb_size + resized_size + tensor_size) as f64 / 1024.0 / 1024.0,
         );
 
-        Ok(Some(Self {
+        let mut detector = Self {
             session,
             input_size,
             confidence_threshold,
@@ -176,7 +181,20 @@ impl GpuYoloDetector {
             rgb_u8,
             resized_u8,
             tensor_f32,
-        }))
+        };
+
+        // Warmup: force TRT EP to eagerly build the engine and initialize
+        // CUDA resources. Without this, the first real inference triggers
+        // lazy init which can conflict with NVDEC decode thread contexts.
+        {
+            let sz = input_size as usize;
+            let warmup_data = vec![0.0f32; 3 * sz * sz];
+            let tensor = ort::value::Tensor::from_array(([1, 3, sz, sz], warmup_data))?;
+            detector.session.run(ort::inputs![tensor])?;
+            log::info!("GpuYoloDetector: warmup inference complete");
+        }
+
+        Ok(Some(detector))
     }
 }
 
@@ -192,6 +210,16 @@ impl GpuDetector for GpuYoloDetector {
         height: u32,
     ) -> Vec<Detection> {
         reco_core::profile_scope!("gpu_yolo_detect");
+
+        // Ensure a CUDA context is current on this thread. The zero-copy
+        // frame loop may not have one after NVDEC decode pushes/pops its
+        // own context.
+        if let Err(e) = reco_core::cuda_interop::cuda_ensure_context() {
+            log::error!("GPU detect: failed to set CUDA context: {e}");
+            return Vec::new();
+        }
+
+        let _ = camera;
 
         // Step 1: NV12 -> packed RGB u8 via NPP.
         {

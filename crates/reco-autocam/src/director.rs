@@ -89,19 +89,19 @@ impl BallDirector {
             vel_pitch: 0.0,
             prev_target_yaw: 0.0,
             prev_target_pitch: 0.0,
-            alpha_track: 0.08,
-            alpha_recover: 0.15,
-            alpha_velocity: 0.3,
-            dead_zone: 0.05,
+            alpha_track: 0.04,
+            alpha_recover: 0.08,
+            alpha_velocity: 0.2,
+            dead_zone: 0.10,
             frames_without_ball: 0,
             search_delay: (fps * 1.5) as u32, // 1.5 seconds before giving up
             coast_frames: (fps * 2.0) as u32, // coast on velocity for 2s
             recover_confirm: (fps * 0.3) as u32, // 0.3 seconds to confirm
             recover_count: 0,
             current_fov: 55.0,
-            fov_wide: 60.0,
-            fov_tight: 30.0,
-            fov_alpha: 0.05,
+            fov_wide: 65.0,
+            fov_tight: 25.0,
+            fov_alpha: 0.02,
             target_label: "ball".into(),
         }
     }
@@ -179,33 +179,18 @@ impl BallDirector {
         self.vel_pitch *= 0.95;
     }
 
-    /// Compute target FOV based on ball's camera-space Y coordinate.
+    /// Compute target FOV based on ball's panorama-space pitch.
     ///
-    /// High Y (ball near bottom of frame = far on pitch) -> zoom in.
-    /// Low Y (ball near top/center = close to camera) -> zoom out.
-    fn target_fov(&self, ctx: &DirectorContext<'_>) -> f32 {
-        let ball = ctx
-            .detections
-            .iter()
-            .filter(|d| d.label == self.target_label && d.position.is_some())
-            .max_by(|a, b| {
-                a.confidence
-                    .partial_cmp(&b.confidence)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-
-        if let Some(det) = ball {
-            // camera_center.1 is normalized Y: 0=top, 1=bottom.
-            // In football, high Y means ball is far away on the pitch.
-            let cy = det.camera_center.1;
-            // Map Y from [0.2, 0.6] to [fov_wide, fov_tight].
-            // Below 0.2: very close, max wide. Above 0.6: very far, max tight.
-            let t = ((cy - 0.2) / 0.4).clamp(0.0, 1.0);
-            self.fov_wide + t * (self.fov_tight - self.fov_wide)
-        } else {
-            // No ball: tend toward wider FOV for context.
-            self.fov_wide
-        }
+    /// Higher pitch (ball further up the field) -> zoom in tighter.
+    /// Lower pitch (ball near the camera sideline) -> zoom out wider.
+    fn target_fov(&self) -> f32 {
+        // Use the current tracked pitch as the distance proxy.
+        // Pitch range for a typical football field: ~-0.05 (near) to ~0.25 (far).
+        // Map pitch from [pitch_near, pitch_far] to [fov_wide, fov_tight].
+        let pitch_near: f32 = -0.05;
+        let pitch_far: f32 = 0.20;
+        let t = ((self.target_pitch - pitch_near) / (pitch_far - pitch_near)).clamp(0.0, 1.0);
+        self.fov_wide + t * (self.fov_tight - self.fov_wide)
     }
 
     /// Clamp position to viewport bounds.
@@ -305,7 +290,7 @@ impl Director for BallDirector {
         }
 
         // Dynamic FOV: smooth toward target based on ball position.
-        let target_fov = self.target_fov(ctx);
+        let target_fov = self.target_fov();
         self.current_fov += self.fov_alpha * (target_fov - self.current_fov);
 
         self.clamp_to_bounds(ctx);
