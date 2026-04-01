@@ -86,48 +86,151 @@ pub fn viewport_bounds(
     calibration: &MatchCalibration,
     scene: &SceneGeometry,
 ) -> ViewportBounds {
-    // Half-FOV offset: the viewport edge is this far from the center
-    let half_fov = (fov_degrees * 0.5).to_radians();
+    // fov_degrees is the VERTICAL FOV (nalgebra Perspective3 convention).
+    // Derive horizontal FOV from aspect ratio using rectilinear projection.
+    let aspect = 16.0_f32 / 9.0;
+    let half_vfov = (fov_degrees * 0.5).to_radians();
+    let half_hfov = (half_vfov.tan() * aspect).atan();
 
-    // Sample corners and edge midpoints of both camera planes
-    let sample_points: &[(f32, f32)] = &[
-        (0.05, 0.05),
-        (0.5, 0.05),
-        (0.95, 0.05),
-        (0.05, 0.5),
-        (0.95, 0.5),
-        (0.05, 0.95),
-        (0.5, 0.95),
-        (0.95, 0.95),
-    ];
+    // The viewport corners reach further than edge midpoints due to the
+    // tangent projection. At a corner, the angular distance from center
+    // is: atan(sqrt(tan²(half_hfov) + tan²(half_vfov))). We account for
+    // this by using the DIAGONAL angular extent for constraints, ensuring
+    // even the corners stay inside coverage.
+    //
+    // For corner-aware bounds: when constraining yaw from a pitch bin,
+    // the viewport extends half_hfov in yaw at the CENTER pitch, but at
+    // the TOP/BOTTOM pitch (±half_vfov from center), the corner extends
+    // even further. For a perspective projection, the corner yaw extent
+    // at pitch offset dy is: atan(tan(half_hfov) / cos(dy)).
+    // This is ~3-5% wider than half_hfov at the edges.
+    let corner_hfov = (half_hfov.tan() / half_vfov.cos()).atan();
+    let corner_vfov = (half_vfov.tan() / half_hfov.cos()).atan();
 
-    let mut min_yaw = f32::MAX;
-    let mut max_yaw = f32::MIN;
-    let mut min_pitch = f32::MAX;
-    let mut max_pitch = f32::MIN;
+    // Sample the edges of both camera frames to find the coverage
+    // boundary ("frontier") in panorama space. Using 2%/98% avoids
+    // extreme fisheye corners where inverse distortion may diverge.
+    let edge_steps: u32 = 40;
+    let lo = 0.02_f32;
+    let hi = 0.98_f32;
+    let mut frontier: Vec<(f32, f32)> = Vec::with_capacity((edge_steps as usize + 1) * 8);
 
     for &camera in &[CameraId::Left, CameraId::Right] {
-        for &(nx, ny) in sample_points {
-            if let Some(pos) = camera_to_panorama(camera, nx, ny, calibration, scene) {
-                min_yaw = min_yaw.min(pos.yaw);
-                max_yaw = max_yaw.max(pos.yaw);
-                min_pitch = min_pitch.min(pos.pitch);
-                max_pitch = max_pitch.max(pos.pitch);
+        for i in 0..=edge_steps {
+            let t = lo + (hi - lo) * (i as f32 / edge_steps as f32);
+            for &(nx, ny) in &[(lo, t), (hi, t), (t, lo), (t, hi)] {
+                if let Some(pos) = camera_to_panorama(camera, nx, ny, calibration, scene) {
+                    frontier.push((pos.yaw, pos.pitch));
+                }
             }
         }
     }
 
-    // Shrink bounds by half-FOV so the viewport edge stays inside.
-    // Use vertical half-FOV for pitch (accounts for aspect ratio).
-    // Approximate: assume 16:9 aspect ratio for the pitch correction.
-    let aspect = 16.0 / 9.0;
-    let half_vfov = (half_fov.tan() / aspect).atan();
+    if frontier.is_empty() {
+        return ViewportBounds {
+            min_yaw: 0.0,
+            max_yaw: 0.0,
+            min_pitch: 0.0,
+            max_pitch: 0.0,
+        };
+    }
+
+    let pitch_min = frontier.iter().map(|p| p.1).fold(f32::MAX, f32::min);
+    let pitch_max = frontier.iter().map(|p| p.1).fold(f32::MIN, f32::max);
+    let yaw_min = frontier.iter().map(|p| p.0).fold(f32::MAX, f32::min);
+    let yaw_max = frontier.iter().map(|p| p.0).fold(f32::MIN, f32::max);
+
+    // Bin frontier points by pitch to find yaw coverage at each level.
+    // Use corner_hfov (not half_hfov) so the viewport CORNERS stay
+    // inside coverage, not just the edge midpoints.
+    let n_bins: usize = 20;
+    let pitch_range = pitch_max - pitch_min;
+    let pitch_bin_size = pitch_range / n_bins as f32;
+    let min_points_per_bin: usize = 4;
+
+    let mut bound_min_yaw = f32::MIN;
+    let mut bound_max_yaw = f32::MAX;
+
+    for bin in 0..n_bins {
+        let bin_lo = pitch_min + bin as f32 * pitch_bin_size;
+        let bin_hi = bin_lo + pitch_bin_size;
+
+        let (mut yaw_lo, mut yaw_hi, mut count) = (f32::MAX, f32::MIN, 0usize);
+        for &(yaw, pitch) in &frontier {
+            if pitch >= bin_lo && pitch < bin_hi {
+                yaw_lo = yaw_lo.min(yaw);
+                yaw_hi = yaw_hi.max(yaw);
+                count += 1;
+            }
+        }
+
+        if count < min_points_per_bin {
+            continue;
+        }
+
+        bound_min_yaw = bound_min_yaw.max(yaw_lo + corner_hfov);
+        bound_max_yaw = bound_max_yaw.min(yaw_hi - corner_hfov);
+    }
+
+    // Bin by yaw to find pitch coverage at each level.
+    let yaw_range = yaw_max - yaw_min;
+    let yaw_bin_size = yaw_range / n_bins as f32;
+
+    let mut bound_min_pitch = f32::MIN;
+    let mut bound_max_pitch = f32::MAX;
+
+    for bin in 0..n_bins {
+        let bin_lo = yaw_min + bin as f32 * yaw_bin_size;
+        let bin_hi = bin_lo + yaw_bin_size;
+
+        let (mut p_lo, mut p_hi, mut count) = (f32::MAX, f32::MIN, 0usize);
+        for &(yaw, pitch) in &frontier {
+            if yaw >= bin_lo && yaw < bin_hi {
+                p_lo = p_lo.min(pitch);
+                p_hi = p_hi.max(pitch);
+                count += 1;
+            }
+        }
+
+        if count < min_points_per_bin {
+            continue;
+        }
+
+        bound_min_pitch = bound_min_pitch.max(p_lo + corner_vfov);
+        bound_max_pitch = bound_max_pitch.min(p_hi - corner_vfov);
+    }
+
+    // Fallback if binning produced no constraints.
+    if bound_min_yaw == f32::MIN {
+        bound_min_yaw = yaw_min + corner_hfov;
+    }
+    if bound_max_yaw == f32::MAX {
+        bound_max_yaw = yaw_max - corner_hfov;
+    }
+    if bound_min_pitch == f32::MIN {
+        bound_min_pitch = pitch_min + corner_vfov;
+    }
+    if bound_max_pitch == f32::MAX {
+        bound_max_pitch = pitch_max - corner_vfov;
+    }
+
+    // Collapse to midpoint if bounds inverted (coverage too narrow).
+    if bound_min_yaw > bound_max_yaw {
+        let mid = (bound_min_yaw + bound_max_yaw) * 0.5;
+        bound_min_yaw = mid;
+        bound_max_yaw = mid;
+    }
+    if bound_min_pitch > bound_max_pitch {
+        let mid = (bound_min_pitch + bound_max_pitch) * 0.5;
+        bound_min_pitch = mid;
+        bound_max_pitch = mid;
+    }
 
     ViewportBounds {
-        min_yaw: min_yaw + half_fov,
-        max_yaw: max_yaw - half_fov,
-        min_pitch: min_pitch + half_vfov,
-        max_pitch: max_pitch - half_vfov,
+        min_yaw: bound_min_yaw,
+        max_yaw: bound_max_yaw,
+        min_pitch: bound_min_pitch,
+        max_pitch: bound_max_pitch,
     }
 }
 

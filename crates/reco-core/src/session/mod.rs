@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
 use crate::detector::{CameraId, Detection, Detector};
-use crate::director::{Director, DirectorContext, TrackedObject, ViewportPosition};
+use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::{Nv12Converter, Nv12Error};
@@ -37,7 +37,6 @@ use crate::pipeline::{PipelineError, StitchPipeline};
 use crate::projection;
 use crate::renderer::InputFormat;
 use crate::source::{FrameSource, SourceError, StereoFrame};
-use crate::tracker::Tracker;
 use crate::viewport::ViewportConfig;
 
 use thiserror::Error;
@@ -77,7 +76,7 @@ pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 /// consumers like coaching assistants, VAR systems, or stats pipelines.
 ///
 /// Arguments: `(objects, frame_index, timestamp_ms)`
-pub type DetectionCallback = Box<dyn FnMut(&[TrackedObject], u64, f64) + Send>;
+pub type DetectionCallback = Box<dyn FnMut(&[MappedDetection], u64, f64) + Send>;
 
 /// Errors from [`StitchSession`].
 #[derive(Debug, Error)]
@@ -139,13 +138,13 @@ pub struct StitchSessionBuilder {
     gpu: Option<GpuContext>,
     encoder: Option<(Box<dyn Encoder + Send>, usize)>,
     detector: Option<Box<dyn Detector>>,
-    tracker: Option<Box<dyn Tracker>>,
     director: Option<Box<dyn Director>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
     #[cfg(target_os = "macos")]
     metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
+    lookahead_frames: usize,
 }
 
 impl StitchSessionBuilder {
@@ -206,16 +205,6 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach a tracker for persistent object identity across frames.
-    ///
-    /// When set, raw detections are fed through the tracker before
-    /// reaching the director, providing persistent track IDs and
-    /// predicted positions for temporarily lost objects.
-    pub fn tracker(mut self, tracker: Box<dyn Tracker>) -> Self {
-        self.tracker = Some(tracker);
-        self
-    }
-
     /// Attach a director for camera panning.
     pub fn director(mut self, director: Box<dyn Director>) -> Self {
         self.director = Some(director);
@@ -244,6 +233,14 @@ impl StitchSessionBuilder {
     /// interpolates using the latest detections.
     pub fn detection_interval(mut self, interval: u64) -> Self {
         self.detection_interval = interval.max(1);
+        self
+    }
+
+    /// Set the number of frames to buffer ahead for lookahead.
+    ///
+    /// See [`StitchSession::set_lookahead`] for details.
+    pub fn lookahead(mut self, frames: usize) -> Self {
+        self.lookahead_frames = frames;
         self
     }
 
@@ -287,15 +284,13 @@ impl StitchSessionBuilder {
 
         let mut session = StitchSession::with_gpu(gpu, config)?;
         session.detection_interval = self.detection_interval;
+        session.lookahead_frames = self.lookahead_frames;
 
         if let Some((enc, buf_count)) = self.encoder {
             session.set_encoder(enc, buf_count);
         }
         if let Some(det) = self.detector {
             session.set_detector(det);
-        }
-        if let Some(trk) = self.tracker {
-            session.set_tracker(trk);
         }
         if let Some(dir) = self.director {
             session.set_director(dir);
@@ -331,16 +326,19 @@ pub struct StitchSession {
     pub(crate) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
     #[cfg(target_os = "macos")]
     pub(crate) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
-    pub(crate) tracker: Option<Box<dyn Tracker>>,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
     /// Run detection every N frames (1 = every frame).
     detection_interval: u64,
     /// Callback for external consumers of detection data.
     detection_callback: Option<DetectionCallback>,
-    /// Cached tracked objects from the last detection frame.
+    /// Cached mapped detections from the last detection frame.
     /// Reused on non-detection frames so the director still has context.
-    last_tracked_objects: Vec<TrackedObject>,
+    last_detections: Vec<MappedDetection>,
+    /// Number of frames to buffer ahead for lookahead.
+    /// When > 0, detection runs ahead of rendering so the director
+    /// anticipates action before it reaches the encoder.
+    lookahead_frames: usize,
 }
 
 impl StitchSession {
@@ -356,13 +354,13 @@ impl StitchSession {
             gpu: None,
             encoder: None,
             detector: None,
-            tracker: None,
             director: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
             #[cfg(target_os = "macos")]
             metal_detector: None,
             detection_interval: 1,
+            lookahead_frames: 0,
         }
     }
 
@@ -401,12 +399,12 @@ impl StitchSession {
             gpu_detector: None,
             #[cfg(target_os = "macos")]
             metal_detector: None,
-            tracker: None,
             director: None,
             frame_count: 0,
             detection_interval: 1,
             detection_callback: None,
-            last_tracked_objects: Vec::new(),
+            last_detections: Vec::new(),
+            lookahead_frames: 0,
         })
     }
 
@@ -427,7 +425,7 @@ impl StitchSession {
     /// Attach a detector for object detection on raw camera frames.
     ///
     /// When set, the CPU batch loop ([`Self::run`]) runs detection on each
-    /// frame's raw YUV data and passes results through the tracker (if set)
+    /// frame's raw YUV data and maps results to panorama coordinates
     /// to the director. Zero-copy paths skip detection (no CPU-accessible
     /// frame data).
     pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
@@ -462,13 +460,18 @@ impl StitchSession {
         self.detection_interval = interval.max(1);
     }
 
-    /// Attach a tracker for persistent object identity across frames.
+    /// Set the number of frames to buffer ahead for lookahead.
     ///
-    /// When set, raw detections are fed through the tracker before
-    /// reaching the director, providing persistent track IDs.
-    /// Without a tracker, detections are passed directly with `track_id = 0`.
-    pub fn set_tracker(&mut self, tracker: Box<dyn Tracker>) {
-        self.tracker = Some(tracker);
+    /// When > 0, the CPU batch loop decodes and runs detection on frames
+    /// ahead of rendering, so the director "sees" the future relative to
+    /// what's being encoded. This makes the camera anticipate action
+    /// rather than react to it.
+    ///
+    /// Typical value: `(fps * 0.5) as usize` for 0.5s lead time.
+    /// Only affects the CPU path ([`Self::run`]). Zero-copy paths are
+    /// not supported (frames are GPU-resident and can't be buffered).
+    pub fn set_lookahead(&mut self, frames: usize) {
+        self.lookahead_frames = frames;
     }
 
     /// Attach a director for AI-driven or scripted camera panning.
@@ -489,7 +492,7 @@ impl StitchSession {
     /// and timestamp. Use this to build external consumers like coaching
     /// assistants, VAR systems, or stats pipelines.
     ///
-    /// The callback receives the same [`TrackedObject`] data as the director,
+    /// The callback receives the same [`MappedDetection`] data as the director,
     /// including panorama-space coordinates.
     pub fn set_detection_callback(&mut self, cb: DetectionCallback) {
         self.detection_callback = Some(cb);
@@ -524,13 +527,12 @@ impl StitchSession {
 
         if should_detect {
             let detections = self.run_detection(frame);
-            self.last_tracked_objects =
-                self.build_tracked_objects(self.frame_count, timestamp_ms, detections);
+            self.last_detections = self.map_detections(detections);
         }
 
         // Fire callback for external consumers.
         if let Some(ref mut cb) = self.detection_callback {
-            cb(&self.last_tracked_objects, self.frame_count, timestamp_ms);
+            cb(&self.last_detections, self.frame_count, timestamp_ms);
         }
 
         // Update director with full context.
@@ -541,7 +543,7 @@ impl StitchSession {
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
-                objects: &self.last_tracked_objects,
+                detections: &self.last_detections,
                 viewport_bounds: bounds,
                 current_fov: fov,
             };
@@ -566,13 +568,16 @@ impl StitchSession {
         }
 
         if let Some(ref mut director) = self.director {
-            let fov = self.pipeline.fov();
+            let fov = director
+                .position()
+                .fov_degrees
+                .unwrap_or_else(|| self.pipeline.fov());
             let bounds =
                 projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
-                objects: &[],
+                detections: &[],
                 viewport_bounds: bounds,
                 current_fov: fov,
             };
@@ -627,24 +632,26 @@ impl StitchSession {
                 right_buf.height,
             ));
 
-            self.last_tracked_objects =
-                self.build_tracked_objects(self.frame_count, timestamp_ms, detections);
+            self.last_detections = self.map_detections(detections);
         }
 
         // Fire callback for external consumers.
         if let Some(ref mut cb) = self.detection_callback {
-            cb(&self.last_tracked_objects, self.frame_count, timestamp_ms);
+            cb(&self.last_detections, self.frame_count, timestamp_ms);
         }
 
         // Update director with full context.
         if let Some(ref mut director) = self.director {
-            let fov = self.pipeline.fov();
+            let fov = director
+                .position()
+                .fov_degrees
+                .unwrap_or_else(|| self.pipeline.fov());
             let bounds =
                 projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
-                objects: &self.last_tracked_objects,
+                detections: &self.last_detections,
                 viewport_bounds: bounds,
                 current_fov: fov,
             };
@@ -694,24 +701,26 @@ impl StitchSession {
                 gpu,
             ));
 
-            self.last_tracked_objects =
-                self.build_tracked_objects(self.frame_count, timestamp_ms, detections);
+            self.last_detections = self.map_detections(detections);
         }
 
         // Fire callback for external consumers.
         if let Some(ref mut cb) = self.detection_callback {
-            cb(&self.last_tracked_objects, self.frame_count, timestamp_ms);
+            cb(&self.last_detections, self.frame_count, timestamp_ms);
         }
 
         // Update director with full context.
         if let Some(ref mut director) = self.director {
-            let fov = self.pipeline.fov();
+            let fov = director
+                .position()
+                .fov_degrees
+                .unwrap_or_else(|| self.pipeline.fov());
             let bounds =
                 projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
-                objects: &self.last_tracked_objects,
+                detections: &self.last_detections,
                 viewport_bounds: bounds,
                 current_fov: fov,
             };
@@ -719,69 +728,34 @@ impl StitchSession {
         }
     }
 
-    /// Build tracked objects from raw detections.
+    /// Map raw detections to panorama coordinates.
     ///
-    /// If a tracker is attached, runs detections through it for persistent IDs.
-    /// Then maps each detection to panorama coordinates via `camera_to_panorama`.
-    fn build_tracked_objects(
-        &mut self,
-        frame_index: u64,
-        timestamp_ms: f64,
-        detections: Vec<Detection>,
-    ) -> Vec<TrackedObject> {
+    /// Each detection's camera-space center is projected to panorama
+    /// yaw/pitch via [`camera_to_panorama`](projection::camera_to_panorama).
+    fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
         let calibration = self.pipeline.calibration();
         let scene = &self.pipeline.scene;
 
-        if let Some(ref mut tracker) = self.tracker {
-            // Tracker provides persistent IDs and handles prediction.
-            let tracks = tracker.update(frame_index, timestamp_ms, &detections);
-            tracks
-                .into_iter()
-                .map(|t| {
-                    let position = projection::camera_to_panorama(
-                        t.detection.camera,
-                        t.detection.center_x,
-                        t.detection.center_y,
-                        calibration,
-                        scene,
-                    );
-                    TrackedObject {
-                        track_id: t.id,
-                        camera: t.detection.camera,
-                        label: t.detection.label.clone(),
-                        confidence: t.detection.confidence,
-                        camera_center: (t.detection.center_x, t.detection.center_y),
-                        camera_size: (t.detection.width, t.detection.height),
-                        position,
-                        age: t.age,
-                    }
-                })
-                .collect()
-        } else {
-            // No tracker: each detection is independent (track_id = 0, age = 1).
-            detections
-                .iter()
-                .map(|d| {
-                    let position = projection::camera_to_panorama(
-                        d.camera,
-                        d.center_x,
-                        d.center_y,
-                        calibration,
-                        scene,
-                    );
-                    TrackedObject {
-                        track_id: 0,
-                        camera: d.camera,
-                        label: d.label.clone(),
-                        confidence: d.confidence,
-                        camera_center: (d.center_x, d.center_y),
-                        camera_size: (d.width, d.height),
-                        position,
-                        age: 1,
-                    }
-                })
-                .collect()
-        }
+        detections
+            .iter()
+            .map(|d| {
+                let position = projection::camera_to_panorama(
+                    d.camera,
+                    d.center_x,
+                    d.center_y,
+                    calibration,
+                    scene,
+                );
+                MappedDetection {
+                    camera: d.camera,
+                    label: d.label.clone(),
+                    confidence: d.confidence,
+                    camera_center: (d.center_x, d.center_y),
+                    camera_size: (d.width, d.height),
+                    position,
+                }
+            })
+            .collect()
     }
 
     /// Run the detector on a stereo frame's raw data.
@@ -897,6 +871,11 @@ impl StitchSession {
     /// exhausted, the frame limit is reached, or the interrupt flag
     /// is set. Returns the number of frames processed.
     ///
+    /// When [`lookahead_frames`](Self::set_lookahead) > 0, decodes and
+    /// runs detection on frames ahead of rendering. The director "sees"
+    /// N frames into the future, so the camera anticipates action before
+    /// it reaches the encoder.
+    ///
     /// Does NOT call [`Self::finish`] - the caller must do that after this
     /// returns to flush the last frame and finalize encoding.
     #[cfg_attr(
@@ -909,6 +888,21 @@ impl StitchSession {
         frame_limit: u64,
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
+    ) -> Result<u64, SessionError> {
+        if self.lookahead_frames > 0 {
+            self.run_with_lookahead(source, frame_limit, interrupted, &mut on_progress)
+        } else {
+            self.run_immediate(source, frame_limit, interrupted, &mut on_progress)
+        }
+    }
+
+    /// Standard frame loop without lookahead.
+    fn run_immediate(
+        &mut self,
+        source: &mut dyn FrameSource,
+        frame_limit: u64,
+        interrupted: &AtomicBool,
+        on_progress: &mut Option<ProgressCallback>,
     ) -> Result<u64, SessionError> {
         let start = std::time::Instant::now();
 
@@ -925,7 +919,86 @@ impl StitchSession {
             let pos = self.director_position();
             self.process_frame(&frame, pos.yaw, pos.pitch)?;
 
-            if let Some(ref mut cb) = on_progress {
+            if let Some(cb) = on_progress.as_mut() {
+                cb(&FrameProgress {
+                    frames_completed: self.frame_count,
+                    elapsed: start.elapsed(),
+                });
+            }
+        }
+
+        Ok(self.frame_count)
+    }
+
+    /// Frame loop with lookahead buffering.
+    ///
+    /// Decodes `lookahead_frames` ahead of rendering so the director
+    /// has seen future frames by the time each frame is rendered.
+    fn run_with_lookahead(
+        &mut self,
+        source: &mut dyn FrameSource,
+        frame_limit: u64,
+        interrupted: &AtomicBool,
+        on_progress: &mut Option<ProgressCallback>,
+    ) -> Result<u64, SessionError> {
+        use std::collections::VecDeque;
+
+        let start = std::time::Instant::now();
+        let lookahead = self.lookahead_frames;
+        let mut buffer: VecDeque<StereoFrame> = VecDeque::with_capacity(lookahead + 1);
+
+        // Track how many frames have been decoded (for frame_limit).
+        let mut decoded_count: u64 = 0;
+
+        // Pre-fill: decode lookahead frames and run detection on each,
+        // but don't render yet. This advances the director ahead.
+        for _ in 0..lookahead {
+            if interrupted.load(Ordering::Relaxed) {
+                break;
+            }
+            let frame = {
+                crate::profile_scope!("wait_decode");
+                match source.next_frame()? {
+                    Some(f) => f,
+                    None => break,
+                }
+            };
+            decoded_count += 1;
+            self.detect_and_update_director(&frame, start.elapsed());
+            buffer.push_back(frame);
+        }
+
+        log::info!(
+            "Lookahead: pre-filled {} frames (requested {})",
+            buffer.len(),
+            lookahead,
+        );
+
+        // Main loop: decode one new frame, detect on it (advancing director),
+        // then render+encode the oldest buffered frame with the current
+        // director position.
+        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+            // Try to decode one more frame to keep the buffer full.
+            if decoded_count < frame_limit {
+                let frame = {
+                    crate::profile_scope!("wait_decode");
+                    source.next_frame()?
+                };
+                if let Some(f) = frame {
+                    decoded_count += 1;
+                    self.detect_and_update_director(&f, start.elapsed());
+                    buffer.push_back(f);
+                }
+            }
+
+            // Render the oldest buffered frame with the current director state.
+            let Some(render_frame) = buffer.pop_front() else {
+                break;
+            };
+            let pos = self.director_position();
+            self.process_frame(&render_frame, pos.yaw, pos.pitch)?;
+
+            if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
                     frames_completed: self.frame_count,
                     elapsed: start.elapsed(),

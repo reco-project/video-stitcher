@@ -24,6 +24,7 @@ pub fn run_stitch(
     sync_offset: i64,
     model_path: Option<&str>,
     detection_interval: u64,
+    lead_time: f64,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     const MAX_DIM: u32 = 8192;
@@ -131,7 +132,7 @@ pub fn run_stitch(
     println!("Encoder: {}", encoder.encoder_name());
     session.set_encoder(Box::new(encoder), 2);
 
-    // Set up autocam (detector + tracker + director) if model provided
+    // Set up autocam (detector + director) if model provided
     if let Some(model) = model_path {
         let mut detection_active = false;
 
@@ -143,7 +144,7 @@ pub fn run_stitch(
                 input_width,
                 input_height,
                 0.10,
-                vec!["ball".into()],
+                Vec::new(),
             ) {
                 Ok(Some(gpu_det)) => {
                     session.set_gpu_detector(Box::new(gpu_det));
@@ -170,7 +171,7 @@ pub fn run_stitch(
                 input_width,
                 input_height,
                 0.10,
-                vec!["ball".into()],
+                Vec::new(),
             ) {
                 Ok(metal_det) => {
                     session.set_metal_detector(Box::new(metal_det));
@@ -192,13 +193,18 @@ pub fn run_stitch(
         }
 
         if detection_active {
-            let tracker = reco_autocam::EkfTracker::new();
             let director = reco_autocam::BallDirector::new(fps_val as f32);
-            session.set_tracker(Box::new(tracker));
             session.set_director(Box::new(director));
             if detection_interval > 1 {
                 session.set_detection_interval(detection_interval);
                 println!("Detection interval: every {detection_interval} frames");
+            }
+            if lead_time > 0.0 && !use_zero_copy {
+                let lookahead = (fps_val * lead_time).round() as usize;
+                if lookahead > 0 {
+                    session.set_lookahead(lookahead);
+                    println!("Director lead time: {lead_time:.1}s ({lookahead} frames)");
+                }
             }
         }
     }

@@ -29,11 +29,17 @@ impl YoloDetector {
     ///
     /// The model is expected to take `[1, 3, H, W]` float32 input and produce
     /// `[1, N, 6]` float32 output with built-in NMS.
+    ///
+    /// Class labels are auto-detected from the ONNX model's `names` metadata
+    /// (standard for Ultralytics exports). Falls back to `["ball"]` if not found.
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, ort::Error> {
-        Self::with_config(path, 0.10, vec!["ball".into()])
+        Self::with_config(path, 0.10, Vec::new())
     }
 
     /// Load a YOLO ONNX model with custom confidence threshold and class labels.
+    ///
+    /// If `labels` is empty, labels are auto-detected from the model's `names`
+    /// metadata field (Ultralytics convention).
     pub fn with_config(
         path: impl AsRef<Path>,
         confidence_threshold: f32,
@@ -95,11 +101,18 @@ impl YoloDetector {
             _ => 1280,
         };
 
+        // Auto-detect labels from model metadata if not provided.
+        let labels = if labels.is_empty() {
+            parse_onnx_names(&session).unwrap_or_else(|| vec!["ball".into()])
+        } else {
+            labels
+        };
+
         log::info!(
-            "YoloDetector loaded: input={}x{}, classes={:?}, conf_thresh={}",
+            "YoloDetector loaded: input={}x{}, {} classes, conf_thresh={}",
             input_size,
             input_size,
-            labels,
+            labels.len(),
             confidence_threshold,
         );
 
@@ -351,4 +364,50 @@ impl Detector for YoloDetector {
 
         detections
     }
+}
+
+/// Parse class labels from ONNX model's `names` metadata field.
+///
+/// Ultralytics exports include a `names` field like:
+/// `{0: 'person', 1: 'bicycle', 2: 'car', ...}`
+///
+/// Returns `None` if the metadata is missing or unparseable.
+pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
+    let metadata = session.metadata().ok()?;
+    let names_str = metadata.custom("names")?;
+
+    // Parse Python-dict-style string: {0: 'person', 1: 'bicycle', ...}
+    let inner = names_str.trim().strip_prefix('{')?.strip_suffix('}')?;
+    if inner.is_empty() {
+        return None;
+    }
+
+    let mut labels: Vec<(usize, String)> = Vec::new();
+    for entry in inner.split(',') {
+        let entry = entry.trim();
+        let (idx_str, name) = entry.split_once(':')?;
+        let idx: usize = idx_str.trim().parse().ok()?;
+        let name = name.trim().trim_matches('\'').trim_matches('"').to_string();
+        labels.push((idx, name));
+    }
+
+    labels.sort_by_key(|(idx, _)| *idx);
+
+    // Build a dense label vector (fill gaps with "class_N").
+    let max_idx = labels.last()?.0;
+    let mut result = Vec::with_capacity(max_idx + 1);
+    let mut label_iter = labels.into_iter().peekable();
+    for i in 0..=max_idx {
+        if label_iter.peek().is_some_and(|(idx, _)| *idx == i) {
+            result.push(label_iter.next().unwrap().1);
+        } else {
+            result.push(format!("class_{i}"));
+        }
+    }
+
+    log::info!(
+        "Auto-detected {} class labels from model metadata",
+        result.len()
+    );
+    Some(result)
 }

@@ -8,18 +8,20 @@
 //!
 //! ```text
 //! Detector (raw detections)
-//!   -> Tracker (persistent identity)
+//!   -> coordinate mapping (camera pixels -> panorama yaw/pitch)
 //!     -> Director (panning decisions)
 //!     -> External consumers (coaching, stats, VAR)
 //! ```
 //!
-//! Directors receive [`TrackedObject`]s (detections enriched with panorama
-//! coordinates and persistent track IDs) via [`DirectorContext`], and output
-//! a [`ViewportPosition`] that controls where the virtual camera pans.
+//! Directors receive [`MappedDetection`]s (detections enriched with panorama
+//! coordinates) via [`DirectorContext`], and output a [`ViewportPosition`]
+//! that controls where the virtual camera pans. Tracking (persistent object
+//! identity) is not part of the pipeline - directors that need it can use
+//! tracking utilities internally (e.g. [`EkfTracker`](reco_autocam::EkfTracker)).
 //!
 //! ## External Consumers
 //!
-//! Detection data isn't just for the director. The same [`TrackedObject`]s
+//! Detection data isn't just for the director. The same [`MappedDetection`]s
 //! are available to external consumers via
 //! [`StitchSession::set_detection_callback`](crate::session::StitchSession::set_detection_callback).
 //! This enables building coaching assistants, VAR systems, and stats
@@ -63,23 +65,17 @@ impl Default for ViewportPosition {
     }
 }
 
-/// A tracked detection with panorama coordinates.
+/// A detection mapped to panorama coordinates.
 ///
 /// This is the primary data type that flows to both the [`Director`] and
-/// external consumers. It enriches the raw camera-space detection with:
-/// - A persistent track ID (from the [`Tracker`](crate::tracker::Tracker))
-/// - Panorama-space coordinates (yaw/pitch, computed via
-///   [`camera_to_panorama`](crate::projection::camera_to_panorama))
+/// external consumers. It enriches the raw camera-space detection with
+/// panorama-space coordinates (yaw/pitch, computed via
+/// [`camera_to_panorama`](crate::projection::camera_to_panorama)).
 ///
 /// External consumers (coaching, VAR, stats) receive these via the
 /// detection callback on [`StitchSession`](crate::session::StitchSession).
 #[derive(Debug, Clone)]
-pub struct TrackedObject {
-    /// Persistent track ID (stable across frames for the same object).
-    /// Comes from the [`Tracker`](crate::tracker::Tracker).
-    /// `0` when no tracker is configured (each detection is independent).
-    pub track_id: u64,
-
+pub struct MappedDetection {
     /// Which camera this detection came from.
     pub camera: CameraId,
 
@@ -98,9 +94,6 @@ pub struct TrackedObject {
     /// Position in panorama space (yaw/pitch).
     /// `None` if the detection couldn't be mapped (e.g. outside camera FOV).
     pub position: Option<ViewportPosition>,
-
-    /// Track age in frames (1 = just appeared).
-    pub age: u64,
 }
 
 /// Context passed to [`Director::update`] each frame.
@@ -116,9 +109,9 @@ pub struct DirectorContext<'a> {
     /// Elapsed time since the start of processing, in milliseconds.
     pub timestamp_ms: f64,
 
-    /// Tracked objects detected in this frame (or predicted from previous).
-    /// Empty if no detector/tracker is configured or detection was skipped.
-    pub objects: &'a [TrackedObject],
+    /// Detections mapped to panorama coordinates for this frame.
+    /// Empty if no detector is configured or detection was skipped.
+    pub detections: &'a [MappedDetection],
 
     /// Valid panning bounds for the current FOV ("no-black" region).
     /// Panning within these bounds guarantees no black edges in the output.

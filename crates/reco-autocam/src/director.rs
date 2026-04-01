@@ -109,23 +109,18 @@ impl BallDirector {
         self
     }
 
-    /// Find the best ball detection from tracked objects.
+    /// Find the best ball detection from mapped detections.
     ///
-    /// Prefers the highest-confidence detection with a panorama position,
-    /// prioritizing tracks with higher age (more established).
+    /// Returns the highest-confidence detection with a panorama position
+    /// matching the target label.
     fn find_ball<'a>(
         &self,
         ctx: &'a DirectorContext<'_>,
-    ) -> Option<&'a reco_core::director::TrackedObject> {
-        ctx.objects
+    ) -> Option<&'a reco_core::director::MappedDetection> {
+        ctx.detections
             .iter()
-            .filter(|obj| obj.label == self.target_label && obj.position.is_some())
+            .filter(|d| d.label == self.target_label && d.position.is_some())
             .max_by(|a, b| {
-                // Prefer older tracks (more established), then higher confidence.
-                let age_cmp = a.age.cmp(&b.age);
-                if age_cmp != std::cmp::Ordering::Equal {
-                    return age_cmp;
-                }
                 a.confidence
                     .partial_cmp(&b.confidence)
                     .unwrap_or(std::cmp::Ordering::Equal)
@@ -243,7 +238,7 @@ impl Director for BallDirector {
                 self.pitch,
                 self.target_yaw,
                 self.target_pitch,
-                ctx.objects.len(),
+                ctx.detections.len(),
             );
         }
     }

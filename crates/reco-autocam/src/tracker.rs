@@ -6,7 +6,21 @@
 //! number of consecutive misses.
 
 use reco_core::detector::Detection;
-use reco_core::tracker::{Track, Tracker};
+
+/// A detection with persistent identity across frames.
+///
+/// Produced by [`EkfTracker`] from raw [`Detection`]s. The `id`
+/// remains stable as long as the tracker considers the object the same
+/// entity (even if detection is missed for a few frames via prediction).
+#[derive(Debug, Clone)]
+pub struct Track {
+    /// Persistent identity for this tracked object.
+    pub id: u64,
+    /// The underlying detection for this frame.
+    pub detection: Detection,
+    /// How many consecutive frames this track has been alive.
+    pub age: u64,
+}
 
 /// A single tracked object's Kalman filter state.
 struct TrackState {
@@ -158,16 +172,13 @@ impl EkfTracker {
             max_distance_sq: (max_association_distance as f64).powi(2),
         }
     }
-}
 
-impl Default for EkfTracker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Tracker for EkfTracker {
-    fn update(
+    /// Update tracks with new detections for this frame.
+    ///
+    /// Associates detections to existing tracks by nearest distance,
+    /// creates new tracks for unmatched detections, and retires tracks
+    /// that have been missed too many frames.
+    pub fn update(
         &mut self,
         _frame_index: u64,
         timestamp_ms: f64,
@@ -232,5 +243,11 @@ impl Tracker for EkfTracker {
 
         // Output all active tracks.
         self.tracks.iter().map(|t| t.to_track()).collect()
+    }
+}
+
+impl Default for EkfTracker {
+    fn default() -> Self {
+        Self::new()
     }
 }

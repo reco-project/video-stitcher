@@ -108,6 +108,12 @@ enum Commands {
         /// the last known detections on skipped frames.
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
+
+        /// Director lead time in seconds. Buffers decoded frames and runs
+        /// detection ahead of rendering so the camera anticipates action.
+        /// Typical value: 0.5 (half a second). Only works with CPU path.
+        #[arg(long, default_value_t = 0.0)]
+        lead_time: f64,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -251,6 +257,7 @@ fn main() -> anyhow::Result<()> {
             sync_offset,
             model,
             detection_interval,
+            lead_time,
         } => stitch::run_stitch(
             &left,
             &right,
@@ -267,6 +274,7 @@ fn main() -> anyhow::Result<()> {
             sync_offset,
             model.as_deref(),
             detection_interval,
+            lead_time,
             &interrupted,
         ),
 
