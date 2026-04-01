@@ -94,8 +94,8 @@ impl BallDirector {
             alpha_velocity: 0.3,
             dead_zone: 0.05,
             frames_without_ball: 0,
-            search_delay: (fps * 1.5) as u32,   // 1.5 seconds before giving up
-            coast_frames: (fps * 2.0) as u32,    // coast on velocity for 2s
+            search_delay: (fps * 1.5) as u32, // 1.5 seconds before giving up
+            coast_frames: (fps * 2.0) as u32, // coast on velocity for 2s
             recover_confirm: (fps * 0.3) as u32, // 0.3 seconds to confirm
             recover_count: 0,
             current_fov: 55.0,
@@ -146,10 +146,9 @@ impl BallDirector {
 
         // Only update velocity if the jump is reasonable (not a teleport).
         if dy.abs() < 0.3 && dp.abs() < 0.3 {
-            self.vel_yaw = self.vel_yaw * (1.0 - self.alpha_velocity)
-                + dy * self.alpha_velocity;
-            self.vel_pitch = self.vel_pitch * (1.0 - self.alpha_velocity)
-                + dp * self.alpha_velocity;
+            self.vel_yaw = self.vel_yaw * (1.0 - self.alpha_velocity) + dy * self.alpha_velocity;
+            self.vel_pitch =
+                self.vel_pitch * (1.0 - self.alpha_velocity) + dp * self.alpha_velocity;
         }
 
         self.prev_target_yaw = new_yaw;

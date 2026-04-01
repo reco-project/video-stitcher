@@ -17,7 +17,7 @@
 //! coordinates) via [`DirectorContext`], and output a [`ViewportPosition`]
 //! that controls where the virtual camera pans. Tracking (persistent object
 //! identity) is not part of the pipeline - directors that need it can use
-//! tracking utilities internally (e.g. [`EkfTracker`](reco_autocam::EkfTracker)).
+//! tracking utilities internally (e.g. an EKF tracker from `reco-autocam`).
 //!
 //! ## External Consumers
 //!

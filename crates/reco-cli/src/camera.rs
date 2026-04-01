@@ -82,9 +82,9 @@ pub fn run_camera(
     if let Some(model) = model_path {
         let detector = reco_autocam::YoloDetector::from_file(model)?;
         session.set_detector(Box::new(detector));
-        session.set_director(Box::new(
-            reco_autocam::BallDirector::new(capture_fps as f32),
-        ));
+        session.set_director(Box::new(reco_autocam::BallDirector::new(
+            capture_fps as f32,
+        )));
         if detection_interval > 1 {
             session.set_detection_interval(detection_interval);
         }
@@ -216,4 +216,3 @@ pub fn run_camera(
 
     Ok(())
 }
-
