@@ -143,7 +143,7 @@ pub fn run_stitch(
                 model,
                 input_width,
                 input_height,
-                0.10,
+                0.05,
                 Vec::new(),
             ) {
                 Ok(Some(gpu_det)) => {
@@ -170,7 +170,7 @@ pub fn run_stitch(
                 session.gpu(),
                 input_width,
                 input_height,
-                0.10,
+                0.05,
                 Vec::new(),
             ) {
                 Ok(metal_det) => {

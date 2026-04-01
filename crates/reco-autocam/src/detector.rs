@@ -33,7 +33,7 @@ impl YoloDetector {
     /// Class labels are auto-detected from the ONNX model's `names` metadata
     /// (standard for Ultralytics exports). Falls back to `["ball"]` if not found.
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, ort::Error> {
-        Self::with_config(path, 0.10, Vec::new())
+        Self::with_config(path, 0.05, Vec::new())
     }
 
     /// Load a YOLO ONNX model with custom confidence threshold and class labels.

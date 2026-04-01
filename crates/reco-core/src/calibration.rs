@@ -201,6 +201,74 @@ pub struct MatchCalibration {
     /// 3D plane layout parameters.
     #[serde(rename = "params")]
     pub layout: PlaneLayout,
+
+    /// Optional field region of interest for filtering detections.
+    ///
+    /// When present, detections outside the defined polygon are discarded.
+    /// This filters false positives from objects outside the playing field
+    /// (spectators, players warming up, etc.).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field_roi: Option<FieldRoi>,
+}
+
+/// Region of interest defining the playing field boundaries per camera.
+///
+/// Each camera has a polygon defined as normalized `[0, 1]` coordinates
+/// in the camera frame. Detections whose center falls outside the polygon
+/// are filtered out before reaching the director.
+///
+/// ```json
+/// {
+///   "field_roi": {
+///     "left": [[0.05, 0.3], [0.95, 0.3], [0.85, 0.85], [0.15, 0.85]],
+///     "right": [[0.05, 0.3], [0.95, 0.3], [0.85, 0.85], [0.15, 0.85]]
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldRoi {
+    /// Polygon vertices for the left camera in normalized `[x, y]` coordinates.
+    /// `[0, 0]` is top-left, `[1, 1]` is bottom-right.
+    #[serde(default)]
+    pub left: Vec<[f32; 2]>,
+
+    /// Polygon vertices for the right camera in normalized `[x, y]` coordinates.
+    #[serde(default)]
+    pub right: Vec<[f32; 2]>,
+}
+
+impl FieldRoi {
+    /// Check if a point is inside a camera's ROI polygon using ray casting.
+    ///
+    /// Returns `true` if the point is inside or no polygon is defined for
+    /// that camera (empty polygon = no filtering).
+    pub fn contains(&self, camera_is_left: bool, x: f32, y: f32) -> bool {
+        let polygon = if camera_is_left {
+            &self.left
+        } else {
+            &self.right
+        };
+        if polygon.len() < 3 {
+            return true; // No polygon defined, accept all
+        }
+        point_in_polygon(x, y, polygon)
+    }
+}
+
+/// Ray-casting point-in-polygon test.
+fn point_in_polygon(x: f32, y: f32, polygon: &[[f32; 2]]) -> bool {
+    let n = polygon.len();
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = (polygon[i][0], polygon[i][1]);
+        let (xj, yj) = (polygon[j][0], polygon[j][1]);
+        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
 }
 
 /// Maximum calibration file size (1 MB) to prevent loading unreasonably large files.
@@ -492,6 +560,7 @@ mod tests {
                 x_rz: 0.00753,
                 z_rx: -0.00431,
             },
+            field_roi: None,
         }
     }
 
@@ -652,6 +721,7 @@ mod tests {
                 x_rz: 0.0,
                 z_rx: 0.0,
             },
+            field_roi: None,
         };
 
         let json = serde_json::to_string(&cal).unwrap();
@@ -659,5 +729,89 @@ mod tests {
 
         assert_eq!(parsed.left.width, cal.left.width);
         assert!((parsed.layout.intersect - cal.layout.intersect).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn point_in_polygon_basic() {
+        // Simple rectangle: (0.1, 0.3) to (0.9, 0.8)
+        let poly = vec![[0.1, 0.3], [0.9, 0.3], [0.9, 0.8], [0.1, 0.8]];
+        assert!(super::point_in_polygon(0.5, 0.5, &poly)); // center
+        assert!(super::point_in_polygon(0.2, 0.4, &poly)); // inside
+        assert!(!super::point_in_polygon(0.05, 0.5, &poly)); // left of
+        assert!(!super::point_in_polygon(0.5, 0.1, &poly)); // above
+        assert!(!super::point_in_polygon(0.5, 0.9, &poly)); // below
+    }
+
+    #[test]
+    fn field_roi_empty_polygon_accepts_all() {
+        let roi = FieldRoi {
+            left: vec![],
+            right: vec![],
+        };
+        assert!(roi.contains(true, 0.5, 0.5));
+        assert!(roi.contains(false, 0.5, 0.5));
+    }
+
+    #[test]
+    fn field_roi_filters_outside() {
+        let roi = FieldRoi {
+            left: vec![[0.1, 0.3], [0.9, 0.3], [0.9, 0.8], [0.1, 0.8]],
+            right: vec![[0.1, 0.3], [0.9, 0.3], [0.9, 0.8], [0.1, 0.8]],
+        };
+        assert!(roi.contains(true, 0.5, 0.5)); // inside
+        assert!(!roi.contains(true, 0.5, 0.1)); // outside (above field)
+        assert!(!roi.contains(false, 0.05, 0.5)); // outside (left of field)
+    }
+
+    #[test]
+    fn field_roi_deserializes_from_json() {
+        let json = r#"{
+            "left_uniforms": {
+                "width": 1920, "height": 1080,
+                "fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0,
+                "d": [0.0, 0.0, 0.0, 0.0]
+            },
+            "right_uniforms": {
+                "width": 1920, "height": 1080,
+                "fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0,
+                "d": [0.0, 0.0, 0.0, 0.0]
+            },
+            "params": {
+                "cameraAxisOffset": 0.25, "intersect": 0.5,
+                "xTy": 0.0, "xRz": 0.0, "zRx": 0.0
+            },
+            "field_roi": {
+                "left": [[0.1, 0.3], [0.9, 0.3], [0.9, 0.8], [0.1, 0.8]],
+                "right": [[0.05, 0.25], [0.95, 0.25], [0.85, 0.85], [0.15, 0.85]]
+            }
+        }"#;
+        let cal: MatchCalibration = serde_json::from_str(json).unwrap();
+        let roi = cal.field_roi.unwrap();
+        assert_eq!(roi.left.len(), 4);
+        assert_eq!(roi.right.len(), 4);
+        assert!(roi.contains(true, 0.5, 0.5));
+        assert!(!roi.contains(true, 0.5, 0.1));
+    }
+
+    #[test]
+    fn field_roi_absent_in_json_is_none() {
+        let json = r#"{
+            "left_uniforms": {
+                "width": 1920, "height": 1080,
+                "fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0,
+                "d": [0.0, 0.0, 0.0, 0.0]
+            },
+            "right_uniforms": {
+                "width": 1920, "height": 1080,
+                "fx": 1000.0, "fy": 1000.0, "cx": 960.0, "cy": 540.0,
+                "d": [0.0, 0.0, 0.0, 0.0]
+            },
+            "params": {
+                "cameraAxisOffset": 0.25, "intersect": 0.5,
+                "xTy": 0.0, "xRz": 0.0, "zRx": 0.0
+            }
+        }"#;
+        let cal: MatchCalibration = serde_json::from_str(json).unwrap();
+        assert!(cal.field_roi.is_none());
     }
 }
