@@ -122,6 +122,13 @@ impl GpuYoloDetector {
             _ => 1280,
         };
 
+        // Auto-detect labels from model metadata if not provided.
+        let labels = if labels.is_empty() {
+            crate::detector::parse_onnx_names(&session).unwrap_or_else(|| vec!["ball".into()])
+        } else {
+            labels
+        };
+
         // Pre-compute letterbox parameters.
         let (fw, fh) = (frame_width as f32, frame_height as f32);
         let is = input_size as f32;

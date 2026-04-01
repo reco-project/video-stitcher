@@ -501,7 +501,7 @@ impl StitchSession {
     /// Get the current viewport position from the director, or default.
     ///
     /// If the director provides a FOV override, applies it to the pipeline.
-    pub(crate) fn director_position(&mut self) -> ViewportPosition {
+    pub fn director_position(&mut self) -> ViewportPosition {
         let pos = self
             .director
             .as_ref()
@@ -517,7 +517,7 @@ impl StitchSession {
     /// Detection only runs every `detection_interval` frames. On skipped
     /// frames, the last tracked objects are reused so the director still
     /// has context. The detection callback fires every frame.
-    pub(crate) fn detect_and_update_director(
+    pub fn detect_and_update_director(
         &mut self,
         frame: &StereoFrame,
         elapsed: std::time::Duration,

@@ -1,12 +1,14 @@
 //! Live camera stitching via GStreamer.
 //!
 //! Captures stereo camera feeds, stitches them on the GPU, and encodes
-//! the panoramic output to a video file in real time.
+//! the panoramic output to a video file in real time. Supports optional
+//! YOLO ball detection and auto-tracking via the director pipeline.
 
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use reco_core::source::StereoFrame;
 use reco_io::gstreamer::camera::CameraConfig;
 
 use crate::helpers;
@@ -16,7 +18,10 @@ use crate::helpers;
 /// Captures frames from two cameras via GStreamer, stitches them into a
 /// panoramic view on the GPU, and encodes the result to `output`. Uses
 /// NV12 native capture on Jetson (Tegra) and I420 elsewhere.
-#[allow(clippy::too_many_arguments)] // Will be refactored into a config struct in Phase 2
+///
+/// When `model_path` is provided, sets up YOLO ball detection with
+/// EKF tracking and a ball-following director for automatic panning.
+#[allow(clippy::too_many_arguments)]
 pub fn run_camera(
     cam_config: CameraConfig,
     calibration: &str,
@@ -30,6 +35,8 @@ pub fn run_camera(
     duration: Option<f64>,
     max_frames: Option<u64>,
     capture_fps: u32,
+    model_path: Option<&str>,
+    detection_interval: u64,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
@@ -70,6 +77,19 @@ pub fn run_camera(
         input_format,
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
+
+    // Set up autocam (detector + tracker + director) if model provided.
+    if let Some(model) = model_path {
+        let detector = reco_autocam::YoloDetector::from_file(model)?;
+        session.set_detector(Box::new(detector));
+        session.set_director(Box::new(
+            reco_autocam::BallDirector::new(capture_fps as f32),
+        ));
+        if detection_interval > 1 {
+            session.set_detection_interval(detection_interval);
+        }
+        println!("Autocam: YOLO ball tracking enabled (model: {model})");
+    }
 
     let mode_str = if use_nv12_capture { "NV12" } else { "I420" };
     println!(
@@ -123,9 +143,8 @@ pub fn run_camera(
         println!("Capturing up to {frame_limit} frames");
     }
 
+    let start = std::time::Instant::now();
     let mut frame_count: u64 = 0;
-    let yaw = 0.0_f32;
-    let pitch = 0.0_f32;
 
     if use_nv12_capture {
         // NV12 path: skip nvvidconv format conversion, upload 2 planes
@@ -133,21 +152,10 @@ pub fn run_camera(
 
         // Warm up: discard first frame (camera ISP + pipeline init)
         if let Some(pair) = source.next_pair()? {
-            let left_planes = reco_core::pipeline::Nv12Planes {
-                y: &pair.left.y,
-                uv: &pair.left.uv,
-            };
-            let right_planes = reco_core::pipeline::Nv12Planes {
-                y: &pair.right.y,
-                uv: &pair.right.uv,
-            };
-            let render_buf = session.pipeline().render_to_target_nv12(
-                &left_planes,
-                &right_planes,
-                yaw,
-                pitch,
-            )?;
-            session.submit_render_output(render_buf)?;
+            let stereo = StereoFrame::Nv12(pair);
+            session.detect_and_update_director(&stereo, start.elapsed());
+            let pos = session.director_position();
+            session.process_frame(&stereo, pos.yaw, pos.pitch)?;
             println!("Warmup complete, starting capture...");
         }
 
@@ -162,22 +170,10 @@ pub fn run_camera(
                 }
             };
 
-            let left_planes = reco_core::pipeline::Nv12Planes {
-                y: &pair.left.y,
-                uv: &pair.left.uv,
-            };
-            let right_planes = reco_core::pipeline::Nv12Planes {
-                y: &pair.right.y,
-                uv: &pair.right.uv,
-            };
-
-            let render_buf = session.pipeline().render_to_target_nv12(
-                &left_planes,
-                &right_planes,
-                yaw,
-                pitch,
-            )?;
-            session.submit_render_output(render_buf)?;
+            let stereo = StereoFrame::Nv12(pair);
+            session.detect_and_update_director(&stereo, start.elapsed());
+            let pos = session.director_position();
+            session.process_frame(&stereo, pos.yaw, pos.pitch)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -205,27 +201,10 @@ pub fn run_camera(
                     None => break,
                 }
             };
-            let pair = match frame {
-                reco_core::source::StereoFrame::Yuv420p(p) => p,
-                _ => anyhow::bail!("expected Yuv420p frame from I420 camera source"),
-            };
 
-            let left_planes = reco_core::pipeline::YuvPlanes {
-                y: &pair.left.y,
-                u: &pair.left.u,
-                v: &pair.left.v,
-            };
-            let right_planes = reco_core::pipeline::YuvPlanes {
-                y: &pair.right.y,
-                u: &pair.right.u,
-                v: &pair.right.v,
-            };
-
-            let render_buf =
-                session
-                    .pipeline()
-                    .render_to_target(&left_planes, &right_planes, yaw, pitch)?;
-            session.submit_render_output(render_buf)?;
+            session.detect_and_update_director(&frame, start.elapsed());
+            let pos = session.director_position();
+            session.process_frame(&frame, pos.yaw, pos.pitch)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -237,3 +216,4 @@ pub fn run_camera(
 
     Ok(())
 }
+

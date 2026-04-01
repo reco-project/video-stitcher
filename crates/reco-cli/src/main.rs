@@ -199,6 +199,14 @@ enum Commands {
         /// Duration in seconds to capture.
         #[arg(long)]
         duration: Option<f64>,
+
+        /// Path to a YOLO ONNX model for ball detection and auto-tracking.
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Detection interval: run detection every N frames (default: 1).
+        #[arg(long, default_value_t = 1)]
+        detection_interval: u64,
     },
 
     /// Display information about the GPU and system capabilities.
@@ -312,6 +320,8 @@ fn main() -> anyhow::Result<()> {
             blend,
             max_frames,
             duration,
+            model,
+            detection_interval,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -346,6 +356,8 @@ fn main() -> anyhow::Result<()> {
                 duration,
                 max_frames,
                 capture_fps,
+                model.as_deref(),
+                detection_interval,
                 &interrupted,
             )
         }
