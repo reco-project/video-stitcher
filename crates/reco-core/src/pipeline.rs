@@ -25,6 +25,7 @@
 use crate::calibration::MatchCalibration;
 use crate::director::ViewportPosition;
 use crate::gpu::{GpuContext, GpuError};
+use crate::projection::CoverageBoundary;
 use crate::renderer::{InputFormat, RenderError, Renderer};
 use crate::scene::SceneGeometry;
 use crate::viewport::{ResolvedViewport, ViewportConfig};
@@ -89,6 +90,8 @@ pub struct StitchPipeline {
     /// Input frame dimensions.
     input_width: u32,
     input_height: u32,
+    /// Precomputed coverage boundary for viewport clamping.
+    coverage: CoverageBoundary,
 }
 
 /// Pre-built bind groups for GPU-resident zero-copy sources.
@@ -117,6 +120,7 @@ impl StitchPipeline {
     ) -> Result<Self, PipelineError> {
         let output_format = output_format.into();
         let scene = SceneGeometry::from_layout(&calibration.layout);
+        let coverage = CoverageBoundary::from_calibration(&calibration, &scene);
         let renderer = Renderer::new(
             &gpu,
             viewport.width,
@@ -142,6 +146,7 @@ impl StitchPipeline {
             renderer,
             input_width,
             input_height,
+            coverage,
         })
     }
 
@@ -189,6 +194,26 @@ impl StitchPipeline {
     /// Get the current field of view in degrees.
     pub fn fov(&self) -> f32 {
         self.viewport.fov_degrees
+    }
+
+    /// The precomputed coverage boundary for this pipeline's calibration.
+    pub fn coverage(&self) -> &CoverageBoundary {
+        &self.coverage
+    }
+
+    /// Build a [`ResolvedViewport`] with yaw/pitch clamped to the safe region.
+    fn clamped_viewport(&self, yaw: f32, pitch: f32) -> ResolvedViewport {
+        let clamped = self
+            .coverage
+            .safe_clamp(yaw, pitch, self.viewport.fov_degrees);
+        ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw: clamped.yaw,
+                pitch: clamped.pitch,
+                fov_degrees: None,
+            },
+        }
     }
 
     /// Set up bind groups for GPU-resident zero-copy input.
@@ -338,14 +363,7 @@ impl StitchPipeline {
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
+        let viewport = self.clamped_viewport(yaw, pitch);
 
         self.renderer.render_to_view(
             &self.gpu,
@@ -379,14 +397,7 @@ impl StitchPipeline {
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
+        let viewport = self.clamped_viewport(yaw, pitch);
 
         Ok(self.renderer.render_to_target(
             &self.gpu,
@@ -417,14 +428,7 @@ impl StitchPipeline {
         self.renderer
             .upload_right_nv12(&self.gpu, right.y, right.uv)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
+        let viewport = self.clamped_viewport(yaw, pitch);
 
         Ok(self.renderer.render_to_target(
             &self.gpu,
@@ -444,14 +448,7 @@ impl StitchPipeline {
         tracing::instrument(skip_all, name = "render_to_target_gpu")
     )]
     pub(crate) fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
+        let viewport = self.clamped_viewport(yaw, pitch);
 
         self.renderer.render_to_target(
             &self.gpu,

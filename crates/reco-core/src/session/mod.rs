@@ -328,8 +328,6 @@ pub struct StitchSession {
     pub(crate) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
-    /// Precomputed coverage boundary for safe viewport clamping.
-    coverage: projection::CoverageBoundary,
     /// Run detection every N frames (1 = every frame).
     detection_interval: u64,
     /// Callback for external consumers of detection data.
@@ -392,14 +390,9 @@ impl StitchSession {
 
         let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
 
-        // Build the coverage boundary once from calibration data.
-        let coverage =
-            projection::CoverageBoundary::from_calibration(pipeline.calibration(), &pipeline.scene);
-
         Ok(Self {
             pipeline,
             nv12_converter,
-            coverage,
             encoder: None,
             detector: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -552,7 +545,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
-                coverage: &self.coverage,
+                coverage: self.pipeline.coverage(),
                 current_fov: fov,
             };
             director.update(&ctx);
@@ -584,7 +577,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &[],
-                coverage: &self.coverage,
+                coverage: self.pipeline.coverage(),
                 current_fov: fov,
             };
             director.update(&ctx);
@@ -656,7 +649,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
-                coverage: &self.coverage,
+                coverage: self.pipeline.coverage(),
                 current_fov: fov,
             };
             director.update(&ctx);
@@ -723,7 +716,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
-                coverage: &self.coverage,
+                coverage: self.pipeline.coverage(),
                 current_fov: fov,
             };
             director.update(&ctx);
