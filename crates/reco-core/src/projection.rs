@@ -97,6 +97,9 @@ pub struct CoverageBoundary {
     left_slices: Vec<(f32, f32)>,
     /// Per-slice right-plane coverage: `(yaw_min, yaw_max)`.
     right_slices: Vec<(f32, f32)>,
+    /// Minimum pitch range across all yaw positions (computed from unfilled slices).
+    /// Used to determine max FOV: the seam area has the narrowest pitch range.
+    min_pitch_range: f32,
 }
 
 /// Result of clamping a viewport position to the safe panning region.
@@ -240,6 +243,7 @@ impl CoverageBoundary {
                 slices: vec![(0.0, 0.0); n_slices],
                 left_slices: vec![(0.0, 0.0); n_slices],
                 right_slices: vec![(0.0, 0.0); n_slices],
+                min_pitch_range: 0.0,
             };
         }
 
@@ -271,6 +275,60 @@ impl CoverageBoundary {
             slices[s].1 = slices[s].1.max(yaw);
         }
 
+        // Compute min pitch range from unfilled slices (before gap-fill).
+        // Samples many yaw positions and finds the narrowest pitch range -
+        // this is typically at the seam center where both planes meet.
+        let min_pitch_range = {
+            // Find approximate yaw range from the middle slices (most likely to have data).
+            let quarter = n_slices / 4;
+            let three_quarter = 3 * n_slices / 4;
+            let mut yaw_lo = f32::MAX;
+            let mut yaw_hi = f32::MIN;
+            for s in &slices[quarter..three_quarter] {
+                if s.0 <= s.1 {
+                    yaw_lo = yaw_lo.min(s.0);
+                    yaw_hi = yaw_hi.max(s.1);
+                }
+            }
+
+            if yaw_lo >= yaw_hi {
+                pitch_range
+            } else {
+                let n_samples = 50;
+                let mut min_pr = pitch_range;
+
+                for j in 0..=n_samples {
+                    let t = j as f32 / n_samples as f32;
+                    let test_yaw = yaw_lo + t * (yaw_hi - yaw_lo);
+
+                    let mut p_lo = f32::MAX;
+                    let mut p_hi = f32::MIN;
+
+                    for (s, ((left, right), _combined)) in left_slices
+                        .iter()
+                        .zip(right_slices.iter())
+                        .zip(slices.iter())
+                        .enumerate()
+                    {
+                        let in_left = left.0 <= left.1 && test_yaw >= left.0 && test_yaw <= left.1;
+                        let in_right =
+                            right.0 <= right.1 && test_yaw >= right.0 && test_yaw <= right.1;
+
+                        if in_left || in_right {
+                            let p = global_pitch_min + (s as f32 + 0.5) * slice_size;
+                            p_lo = p_lo.min(p);
+                            p_hi = p_hi.max(p);
+                        }
+                    }
+
+                    if p_hi > p_lo {
+                        min_pr = min_pr.min(p_hi - p_lo);
+                    }
+                }
+                min_pr
+            }
+        };
+
         // Fill gaps: slices with no samples inherit from neighbors.
         // This handles sparse coverage at extreme pitch values.
         for i in 1..n_slices {
@@ -288,6 +346,15 @@ impl CoverageBoundary {
             }
         }
 
+        log::info!(
+            "CoverageBoundary: pitch [{:.3}, {:.3}] ({:.1}°), min pitch range {:.3} ({:.1}°)",
+            global_pitch_min,
+            global_pitch_max,
+            (global_pitch_max - global_pitch_min).to_degrees(),
+            min_pitch_range,
+            min_pitch_range.to_degrees(),
+        );
+
         Self {
             n_slices,
             pitch_min: global_pitch_min,
@@ -295,6 +362,7 @@ impl CoverageBoundary {
             slices,
             left_slices,
             right_slices,
+            min_pitch_range,
         }
     }
 
@@ -522,91 +590,30 @@ impl CoverageBoundary {
 
     /// Maximum vertical FOV (degrees) that fits within the coverage boundary.
     ///
-    /// Binary-searches for the largest FOV where at least one valid
-    /// (yaw, pitch) position exists. The bottleneck is typically the
-    /// seam area where the two planes' pitch range is narrowest.
+    /// Based on the minimum pitch range across all yaw positions (computed
+    /// from unfilled slice data during construction). The bottleneck is
+    /// typically the seam area where the two planes' pitch range is narrowest.
+    ///
+    /// Binary-searches for the FOV whose corner vertical span matches this
+    /// minimum pitch range.
     pub fn max_fov_degrees(&self, aspect: f32) -> f32 {
+        if self.min_pitch_range <= 0.0 {
+            return 20.0;
+        }
         let mut lo = 1.0_f32;
         let mut hi = 170.0_f32;
-
         for _ in 0..20 {
             let mid = (lo + hi) * 0.5;
-            if self.has_valid_position(mid, aspect) {
+            let corners = CornerOffsets::compute(mid, aspect);
+            let dp_max = corners.offsets.iter().map(|c| c.1).fold(f32::MIN, f32::max);
+            let dp_min = corners.offsets.iter().map(|c| c.1).fold(f32::MAX, f32::min);
+            if (dp_max - dp_min) < self.min_pitch_range {
                 lo = mid;
             } else {
                 hi = mid;
             }
         }
         lo
-    }
-
-    /// Check if there exists any valid viewport position for the given FOV.
-    ///
-    /// Uses the same pitch/yaw constraint logic as [`Self::safe_clamp`] to test
-    /// whether the FOV produces a non-degenerate safe region.
-    fn has_valid_position(&self, fov_v_deg: f32, aspect: f32) -> bool {
-        let corners = CornerOffsets::compute(fov_v_deg, aspect);
-
-        let mut safe_pitch_min = f32::MIN;
-        let mut safe_pitch_max = f32::MAX;
-        for &(_, dp) in &corners.offsets {
-            safe_pitch_min = safe_pitch_min.max(self.pitch_min - dp);
-            safe_pitch_max = safe_pitch_max.min(self.pitch_max - dp);
-        }
-
-        let pitch_step = (self.pitch_max - self.pitch_min) / self.n_slices as f32;
-        let max_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MIN, f32::max);
-        let min_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MAX, f32::min);
-
-        {
-            let mut ceiling = safe_pitch_max;
-            let mut p = self.pitch_max - max_corner_dp;
-            while p >= self.pitch_min - min_corner_dp {
-                let all_ok = corners
-                    .offsets
-                    .iter()
-                    .all(|&(_, dp)| self.is_contiguous_at(p + dp));
-                if all_ok {
-                    ceiling = p;
-                    break;
-                }
-                p -= pitch_step;
-            }
-            safe_pitch_max = safe_pitch_max.min(ceiling);
-        }
-        {
-            let mut floor = safe_pitch_min;
-            let mut p = self.pitch_min - min_corner_dp;
-            while p <= self.pitch_max - max_corner_dp {
-                let all_ok = corners
-                    .offsets
-                    .iter()
-                    .all(|&(_, dp)| self.is_contiguous_at(p + dp));
-                if all_ok {
-                    floor = p;
-                    break;
-                }
-                p += pitch_step;
-            }
-            safe_pitch_min = safe_pitch_min.max(floor);
-        }
-
-        if safe_pitch_min >= safe_pitch_max {
-            return false;
-        }
-
-        // Check if there's a valid yaw at the midpoint pitch.
-        let mid_pitch = (safe_pitch_min + safe_pitch_max) * 0.5;
-        let mut safe_yaw_min = f32::MIN;
-        let mut safe_yaw_max = f32::MAX;
-        for &(dy, dp) in &corners.offsets {
-            let corner_pitch = mid_pitch + dp;
-            let (cov_yaw_min, cov_yaw_max) = self.yaw_range_at(corner_pitch);
-            safe_yaw_min = safe_yaw_min.max(cov_yaw_min - dy);
-            safe_yaw_max = safe_yaw_max.min(cov_yaw_max - dy);
-        }
-
-        safe_yaw_min < safe_yaw_max
     }
 }
 

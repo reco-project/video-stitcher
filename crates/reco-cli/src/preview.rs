@@ -477,6 +477,7 @@ impl ApplicationHandler for App {
                         // Accumulate into smoothing targets (raw deltas)
                         self.target_yaw += dx as f32 * MOUSE_SENSITIVITY;
                         self.target_pitch += dy as f32 * MOUSE_SENSITIVITY;
+                        self.needs_redraw = true;
                     } else {
                         // First move after click - switch to Poll for smooth updates
                         event_loop.set_control_flow(ControlFlow::Poll);
