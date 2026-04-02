@@ -338,8 +338,7 @@ impl ApplicationHandler for App {
         )
         .expect("create pipeline");
 
-        let aspect = self.width as f32 / self.height as f32;
-        self.max_fov = pipeline.coverage().max_fov_degrees(aspect);
+        self.max_fov = pipeline.coverage().max_fov_degrees();
         log::info!("Max FOV: {:.1}°", self.max_fov);
 
         println!(
@@ -390,8 +389,7 @@ impl ApplicationHandler for App {
                             },
                         );
                         pipeline.resize(self.width, self.height);
-                        let aspect = self.width as f32 / self.height as f32;
-                        self.max_fov = pipeline.coverage().max_fov_degrees(aspect);
+                        self.max_fov = pipeline.coverage().max_fov_degrees();
                         self.needs_redraw = true;
                     }
                 }

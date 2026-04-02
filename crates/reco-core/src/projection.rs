@@ -590,30 +590,16 @@ impl CoverageBoundary {
 
     /// Maximum vertical FOV (degrees) that fits within the coverage boundary.
     ///
-    /// Based on the minimum pitch range across all yaw positions (computed
-    /// from unfilled slice data during construction). The bottleneck is
-    /// typically the seam area where the two planes' pitch range is narrowest.
-    ///
-    /// Binary-searches for the FOV whose corner vertical span matches this
-    /// minimum pitch range.
-    pub fn max_fov_degrees(&self, aspect: f32) -> f32 {
+    /// The pipeline FOV is vertical (nalgebra `Perspective3` convention).
+    /// The pitch constraint is also vertical: the top/bottom edge centers
+    /// of the viewport sit at exactly `±fov_v/2` from center. So the max
+    /// vertical FOV is simply the minimum pitch range across all yaw
+    /// positions (computed from unfilled slice data during construction).
+    pub fn max_fov_degrees(&self) -> f32 {
         if self.min_pitch_range <= 0.0 {
             return 20.0;
         }
-        let mut lo = 1.0_f32;
-        let mut hi = 170.0_f32;
-        for _ in 0..20 {
-            let mid = (lo + hi) * 0.5;
-            let corners = CornerOffsets::compute(mid, aspect);
-            let dp_max = corners.offsets.iter().map(|c| c.1).fold(f32::MIN, f32::max);
-            let dp_min = corners.offsets.iter().map(|c| c.1).fold(f32::MAX, f32::min);
-            if (dp_max - dp_min) < self.min_pitch_range {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        lo
+        self.min_pitch_range.to_degrees()
     }
 }
 
