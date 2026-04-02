@@ -257,19 +257,36 @@ impl App {
             }
 
             let aspect = self.width as f32 / self.height as f32;
+
+            // Clamp position for CURRENT FOV (what we're rendering now).
             let clamped = p
                 .coverage()
                 .safe_clamp(self.yaw, self.pitch, p.fov(), aspect);
             self.yaw = clamped.yaw;
             self.pitch = clamped.pitch;
 
-            // Also clamp targets so the smoothing converges at the boundary
-            // instead of fighting between unclamped target and clamped position.
-            let ct = p
-                .coverage()
-                .safe_clamp(self.target_yaw, self.target_pitch, p.fov(), aspect);
+            // Clamp targets for TARGET FOV (where we're heading).
+            // This makes zoom-out + position adjustment feel simultaneous:
+            // targets anticipate the tighter bounds of the target FOV,
+            // so both FOV and position animate toward their goals together.
+            let ct = p.coverage().safe_clamp(
+                self.target_yaw,
+                self.target_pitch,
+                self.target_fov,
+                aspect,
+            );
             self.target_yaw = ct.yaw;
             self.target_pitch = ct.pitch;
+
+            log::debug!(
+                "cam: pos=({:.3},{:.3}) target=({:.3},{:.3}) fov={:.1}° target_fov={:.1}°",
+                self.yaw,
+                self.pitch,
+                self.target_yaw,
+                self.target_pitch,
+                p.fov(),
+                self.target_fov,
+            );
         }
 
         // Detect actual movement (not just target difference).
