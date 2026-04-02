@@ -113,6 +113,11 @@ pub struct DirectorContext<'a> {
     /// Empty if no detector is configured or detection was skipped.
     pub detections: &'a [MappedDetection],
 
+    /// Whether this frame ran fresh detection (true) or is reusing
+    /// cached detections from a previous frame (false). Directors
+    /// should only count detection confirmations on fresh frames.
+    pub fresh_detection: bool,
+
     /// Precomputed coverage boundary for safe panning (built once at startup).
     pub coverage: &'a CoverageBoundary,
 

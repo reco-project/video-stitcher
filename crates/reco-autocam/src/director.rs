@@ -71,6 +71,26 @@ pub struct BallDirector {
     fov_alpha: f32,
     /// Label to track (e.g. "ball").
     target_label: String,
+    /// Max distance (rad) a detection can be from the current smoothed
+    /// position to be considered plausible ball movement. Detections
+    /// beyond this radius are ignored while tracking. Scaled by
+    /// sqrt(detection_interval) at runtime.
+    max_jump: f32,
+    /// Detection interval (frames between actual detections). Set by the
+    /// session so the director can scale its jump threshold.
+    detection_interval: u32,
+    /// Candidate position being confirmed during Searching state.
+    search_candidate_yaw: f32,
+    search_candidate_pitch: f32,
+    /// Consecutive fresh detections near the candidate.
+    search_confirm_count: u32,
+    /// Fresh detections needed to accept a search candidate.
+    search_confirm_needed: u32,
+    /// Maximum distance (rad) from the camera to consider a detection
+    /// during Searching. Detections beyond this are rejected outright,
+    /// regardless of confirmation count. Prevents the camera from
+    /// chasing false positives on the other side of the panorama.
+    search_max_radius: f32,
 }
 
 impl BallDirector {
@@ -103,6 +123,20 @@ impl BallDirector {
             fov_tight: 35.0,
             fov_alpha: 0.015,
             target_label: "ball".into(),
+            // ~5 degrees from the current camera = plausible ball movement
+            // between consecutive detection frames. Scales with
+            // sqrt(detection_interval) at runtime.
+            max_jump: 0.09,
+            detection_interval: 1,
+            search_candidate_yaw: 0.0,
+            search_candidate_pitch: 0.0,
+            search_confirm_count: 0,
+            // 3 fresh detections at the same spot before accepting.
+            search_confirm_needed: 3,
+            // ~40 degrees: generous enough for real ball movement
+            // (including goal kicks and fast breaks) but rejects
+            // false positives on the other side of the panorama.
+            search_max_radius: 0.70,
         }
     }
 
@@ -122,6 +156,15 @@ impl BallDirector {
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.target_label = label.into();
         self
+    }
+
+    /// Set the detection interval so the jump threshold can scale.
+    ///
+    /// Higher intervals mean more frames between detections, so the ball
+    /// can legitimately move further between checks. Called by the session
+    /// when the detection interval is configured.
+    pub fn set_detection_interval(&mut self, interval: u32) {
+        self.detection_interval = interval.max(1);
     }
 
     /// Find the best ball detection from mapped detections.
@@ -193,6 +236,36 @@ impl BallDirector {
         self.fov_wide + t * (self.fov_tight - self.fov_wide)
     }
 
+    /// Check if a detection position is close enough to the current camera
+    /// to be a plausible ball movement. The threshold scales with detection
+    /// interval: at interval=5 the ball has 5x as many frames to travel.
+    fn is_plausible(&self, det_yaw: f32, det_pitch: f32) -> bool {
+        let scale = (self.detection_interval as f32).sqrt();
+        let threshold = self.max_jump * scale;
+        let dy = det_yaw - self.yaw;
+        let dp = det_pitch - self.pitch;
+        (dy * dy + dp * dp).sqrt() < threshold
+    }
+
+    /// Check if two positions are near each other (within the plausibility
+    /// threshold). Used for search candidate confirmation and recovery
+    /// target consistency.
+    fn is_near(&self, yaw_a: f32, pitch_a: f32, yaw_b: f32, pitch_b: f32) -> bool {
+        let scale = (self.detection_interval as f32).sqrt();
+        let threshold = self.max_jump * scale;
+        let dy = yaw_a - yaw_b;
+        let dp = pitch_a - pitch_b;
+        (dy * dy + dp * dp).sqrt() < threshold
+    }
+
+    /// Accept a detection: update velocity and set target.
+    fn accept_detection(&mut self, yaw: f32, pitch: f32) {
+        self.update_velocity(yaw, pitch);
+        self.target_yaw = yaw;
+        self.target_pitch = pitch;
+        self.frames_without_ball = 0;
+    }
+
     /// Clamp position to the safe panning region using the precomputed
     /// coverage boundary. Uses exact viewport corner projection math -
     /// no ad-hoc safety margins or per-frame sampling.
@@ -212,14 +285,32 @@ impl Director for BallDirector {
         let ball = self.find_ball(ctx);
 
         match (self.state, ball) {
-            // Tracking + ball visible: follow it.
+            // Tracking + ball visible: only follow if plausible.
+            // Far-away detections are ignored entirely while tracking.
+            // If the ball truly left the area, the camera will transition
+            // to Searching (after search_delay frames without a plausible
+            // detection), and only then accept detections from anywhere.
             (State::Tracking, Some(obj)) => {
                 let pos = obj.position.unwrap();
-                self.update_velocity(pos.yaw, pos.pitch);
-                self.target_yaw = pos.yaw;
-                self.target_pitch = pos.pitch;
+
+                if self.is_plausible(pos.yaw, pos.pitch) {
+                    self.accept_detection(pos.yaw, pos.pitch);
+                } else {
+                    // Implausible detection - treat as if ball is lost.
+                    self.frames_without_ball += 1;
+                    log::trace!(
+                        "Director: ignoring implausible detection ({:.3},{:.3}), \
+                         camera at ({:.3},{:.3}), gap={:.1}°",
+                        pos.yaw,
+                        pos.pitch,
+                        self.yaw,
+                        self.pitch,
+                        ((pos.yaw - self.yaw).powi(2) + (pos.pitch - self.pitch).powi(2))
+                            .sqrt()
+                            .to_degrees(),
+                    );
+                }
                 self.smooth_toward(self.alpha_track, ctx.current_fov);
-                self.frames_without_ball = 0;
             }
 
             // Tracking + ball lost: coast on velocity, count frames.
@@ -231,6 +322,7 @@ impl Director for BallDirector {
 
                 if self.frames_without_ball >= self.search_delay {
                     self.state = State::Searching;
+                    self.search_confirm_count = 0;
                     log::debug!(
                         "Director: Tracking -> Searching (lost for {} frames)",
                         self.frames_without_ball
@@ -238,17 +330,52 @@ impl Director for BallDirector {
                 }
             }
 
-            // Searching + ball found: start recovering.
-            (State::Searching, Some(obj)) => {
+            // Searching + ball found (fresh): confirm before recovering.
+            //
+            // Require multiple fresh detections near the same position
+            // AND within search_max_radius of the camera before
+            // transitioning. This prevents false positives from pulling
+            // the camera across the panorama.
+            (State::Searching, Some(obj)) if ctx.fresh_detection => {
                 let pos = obj.position.unwrap();
-                self.update_velocity(pos.yaw, pos.pitch);
-                self.target_yaw = pos.yaw;
-                self.target_pitch = pos.pitch;
-                self.state = State::Recovering;
-                self.recover_count = 0;
-                self.frames_without_ball = 0;
-                log::debug!("Director: Searching -> Recovering");
+
+                // Reject detections too far from the camera outright.
+                let dist = ((pos.yaw - self.yaw).powi(2) + (pos.pitch - self.pitch).powi(2)).sqrt();
+                if dist > self.search_max_radius {
+                    // Too far - don't even start confirming.
+                    self.search_confirm_count = 0;
+                } else {
+                    let near_candidate = self.is_near(
+                        pos.yaw,
+                        pos.pitch,
+                        self.search_candidate_yaw,
+                        self.search_candidate_pitch,
+                    );
+
+                    if near_candidate && self.search_confirm_count > 0 {
+                        self.search_confirm_count += 1;
+                    } else {
+                        // New candidate (first detection or different location).
+                        self.search_candidate_yaw = pos.yaw;
+                        self.search_candidate_pitch = pos.pitch;
+                        self.search_confirm_count = 1;
+                    }
+
+                    if self.search_confirm_count >= self.search_confirm_needed {
+                        self.update_velocity(pos.yaw, pos.pitch);
+                        self.target_yaw = pos.yaw;
+                        self.target_pitch = pos.pitch;
+                        self.state = State::Recovering;
+                        self.recover_count = 0;
+                        self.frames_without_ball = 0;
+                        self.search_confirm_count = 0;
+                        log::debug!("Director: Searching -> Recovering (confirmed)");
+                    }
+                }
             }
+
+            // Searching + cached detection (not fresh): ignore.
+            (State::Searching, Some(_)) => {}
 
             // Searching + still no ball: coast then hold.
             (State::Searching, None) => {
@@ -261,15 +388,24 @@ impl Director for BallDirector {
                 // Beyond coast window: camera holds position.
             }
 
-            // Recovering + ball visible: move toward it, confirm.
+            // Recovering + ball visible: move toward it if consistent.
+            //
+            // Only update the target if the detection is near the
+            // current recovery target. This prevents the camera from
+            // drifting across multiple false positives during recovery.
             (State::Recovering, Some(obj)) => {
                 let pos = obj.position.unwrap();
-                self.update_velocity(pos.yaw, pos.pitch);
-                self.target_yaw = pos.yaw;
-                self.target_pitch = pos.pitch;
+                if self.is_near(pos.yaw, pos.pitch, self.target_yaw, self.target_pitch) {
+                    self.update_velocity(pos.yaw, pos.pitch);
+                    self.target_yaw = pos.yaw;
+                    self.target_pitch = pos.pitch;
+                    self.recover_count += 1;
+                    self.frames_without_ball = 0;
+                } else {
+                    // Detection inconsistent with recovery target.
+                    self.frames_without_ball += 1;
+                }
                 self.smooth_toward(self.alpha_recover, ctx.current_fov);
-                self.recover_count += 1;
-                self.frames_without_ball = 0;
 
                 if self.recover_count >= self.recover_confirm {
                     self.state = State::Tracking;
