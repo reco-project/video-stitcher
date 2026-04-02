@@ -547,6 +547,7 @@ impl StitchSession {
                 detections: &self.last_detections,
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
+                aspect_ratio: self.pipeline.viewport().aspect_ratio(),
             };
             director.update(&ctx);
         }
@@ -579,6 +580,7 @@ impl StitchSession {
                 detections: &[],
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
+                aspect_ratio: self.pipeline.viewport().aspect_ratio(),
             };
             director.update(&ctx);
         }
@@ -651,6 +653,7 @@ impl StitchSession {
                 detections: &self.last_detections,
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
+                aspect_ratio: self.pipeline.viewport().aspect_ratio(),
             };
             director.update(&ctx);
         }
@@ -718,6 +721,7 @@ impl StitchSession {
                 detections: &self.last_detections,
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
+                aspect_ratio: self.pipeline.viewport().aspect_ratio(),
             };
             director.update(&ctx);
         }

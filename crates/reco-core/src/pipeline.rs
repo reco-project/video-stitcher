@@ -203,9 +203,12 @@ impl StitchPipeline {
 
     /// Build a [`ResolvedViewport`] with yaw/pitch clamped to the safe region.
     fn clamped_viewport(&self, yaw: f32, pitch: f32) -> ResolvedViewport {
-        let clamped = self
-            .coverage
-            .safe_clamp(yaw, pitch, self.viewport.fov_degrees);
+        let clamped = self.coverage.safe_clamp(
+            yaw,
+            pitch,
+            self.viewport.fov_degrees,
+            self.viewport.aspect_ratio(),
+        );
         ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {

@@ -29,8 +29,6 @@ const FOV_KEY_STEP: f32 = 5.0;
 const FOV_SCROLL_STEP: f32 = 3.0;
 /// Minimum FOV (degrees) - prevents extreme zoom-in.
 const FOV_MIN: f32 = 20.0;
-/// Maximum FOV (degrees) - prevents extreme zoom-out.
-const FOV_MAX: f32 = 150.0;
 /// Default FOV at startup (degrees).
 const FOV_DEFAULT: f32 = 75.0;
 /// Number of frames to skip on P key press.
@@ -130,7 +128,7 @@ pub fn run_preview(
         target_pitch: 0.0,
         target_fov: FOV_DEFAULT,
         camera_moving: false,
-        max_fov: FOV_MAX,
+        max_fov: f32::MAX,
     };
 
     event_loop.run_app(&mut app)?;
@@ -258,9 +256,20 @@ impl App {
                 self.target_fov = self.max_fov;
             }
 
-            let clamped = p.coverage().safe_clamp(self.yaw, self.pitch, p.fov());
+            let aspect = self.width as f32 / self.height as f32;
+            let clamped = p
+                .coverage()
+                .safe_clamp(self.yaw, self.pitch, p.fov(), aspect);
             self.yaw = clamped.yaw;
             self.pitch = clamped.pitch;
+
+            // Also clamp targets so the smoothing converges at the boundary
+            // instead of fighting between unclamped target and clamped position.
+            let ct = p
+                .coverage()
+                .safe_clamp(self.target_yaw, self.target_pitch, p.fov(), aspect);
+            self.target_yaw = ct.yaw;
+            self.target_pitch = ct.pitch;
         }
 
         // Detect actual movement (not just target difference).

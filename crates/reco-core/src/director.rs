@@ -116,8 +116,11 @@ pub struct DirectorContext<'a> {
     /// Precomputed coverage boundary for safe panning (built once at startup).
     pub coverage: &'a CoverageBoundary,
 
-    /// Current horizontal field of view in degrees.
+    /// Current vertical field of view in degrees.
     pub current_fov: f32,
+
+    /// Viewport aspect ratio (width / height).
+    pub aspect_ratio: f32,
 }
 
 /// Trait for virtual camera direction control.

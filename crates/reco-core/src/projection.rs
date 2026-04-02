@@ -80,9 +80,8 @@ pub fn camera_to_panorama(
 /// spherical decomposition). Stored as a pitch-indexed lookup table of yaw
 /// ranges, with per-plane tracking for seam gap detection.
 ///
-/// This replaces the per-frame frontier sampling approach with a mathematically
-/// exact, precomputed solution. Per-frame cost is negligible (a few table
-/// lookups with linear interpolation).
+/// Per-frame cost is negligible (a few table lookups with linear
+/// interpolation).
 #[derive(Debug, Clone)]
 pub struct CoverageBoundary {
     /// Number of pitch slices in the lookup table.
@@ -111,24 +110,24 @@ pub struct ClampedPosition {
     pub pitch: f32,
 }
 
-/// Angular offsets of the four viewport corners from center.
+/// Angular offsets of viewport boundary points from center.
 ///
-/// Each corner is `(delta_yaw, delta_pitch)` relative to the viewport center,
-/// computed from the perspective projection math (not the half-FOV
-/// approximation that breaks down at corners).
-struct CornerOffsets {
-    /// `(delta_yaw, delta_pitch)` for top-left, top-right, bottom-right, bottom-left.
-    offsets: [(f32, f32); 4],
+/// Includes 4 corners AND 4 edge midpoints. The edge midpoints provide
+/// the tightest per-axis constraints: top/bottom centers have the maximum
+/// pitch offset (`±fov_v/2`), left/right centers have the maximum yaw
+/// offset (`±fov_h/2`). Corners extend less per-axis due to the diagonal.
+struct ViewportOffsets {
+    /// `(delta_yaw, delta_pitch)` for 4 corners + 4 edge midpoints.
+    offsets: [(f32, f32); 8],
 }
 
-impl CornerOffsets {
-    /// Compute the actual angular offsets of the 4 viewport corners.
+impl ViewportOffsets {
+    /// Compute the angular offsets of 8 viewport boundary points.
     ///
     /// A perspective viewport maps a screen rectangle to a curved region
-    /// in (yaw, pitch) space. The corners extend further than `half_hfov`
-    /// and `half_vfov` along the diagonal. This function computes the exact
-    /// angular position of each corner by projecting the screen-space corner
-    /// directions through yaw/pitch decomposition.
+    /// in (yaw, pitch) space. Checking only corners misses the tightest
+    /// per-axis constraints (edge midpoints extend further along their
+    /// respective axis than any corner does).
     ///
     /// The offsets are computed at pitch=0 for simplicity. The error from
     /// spherical curvature at typical pitch values (< 0.3 rad) is negligible
@@ -137,31 +136,32 @@ impl CornerOffsets {
         let half_v = (fov_v_deg * 0.5_f32).to_radians();
         let half_h = (half_v.tan() * aspect).atan();
 
-        // Screen-space corner positions in the local camera frame.
+        // Screen-space positions in the local camera frame.
         // The camera looks along -Z, with X right and Y up.
         let tan_h = half_h.tan();
         let tan_v = half_v.tan();
 
-        let corners = [
+        let points = [
+            // 4 corners
             (-tan_h, tan_v),  // top-left
             (tan_h, tan_v),   // top-right
             (tan_h, -tan_v),  // bottom-right
             (-tan_h, -tan_v), // bottom-left
+            // 4 edge midpoints
+            (0.0, tan_v),  // top-center
+            (0.0, -tan_v), // bottom-center
+            (-tan_h, 0.0), // left-center
+            (tan_h, 0.0),  // right-center
         ];
 
-        let mut offsets = [(0.0_f32, 0.0_f32); 4];
-        for (i, &(sx, sy)) in corners.iter().enumerate() {
-            // Local direction: (sx, sy, -1), normalized
+        let mut offsets = [(0.0_f32, 0.0_f32); 8];
+        for (i, &(sx, sy)) in points.iter().enumerate() {
             let len = (sx * sx + sy * sy + 1.0).sqrt();
             let dx = sx / len;
             let dy = sy / len;
             let dz = -1.0 / len;
 
-            // Decompose into yaw/pitch offsets.
-            // yaw = atan2(dx, -dz), pitch = asin(dy)
-            let delta_yaw = dx.atan2(-dz);
-            let delta_pitch = dy.asin();
-            offsets[i] = (delta_yaw, delta_pitch);
+            offsets[i] = (dx.atan2(-dz), dy.asin());
         }
 
         Self { offsets }
@@ -304,11 +304,8 @@ impl CoverageBoundary {
                     let mut p_lo = f32::MAX;
                     let mut p_hi = f32::MIN;
 
-                    for (s, ((left, right), _combined)) in left_slices
-                        .iter()
-                        .zip(right_slices.iter())
-                        .zip(slices.iter())
-                        .enumerate()
+                    for (s, (left, right)) in
+                        left_slices.iter().zip(right_slices.iter()).enumerate()
                     {
                         let in_left = left.0 <= left.1 && test_yaw >= left.0 && test_yaw <= left.1;
                         let in_right =
@@ -439,9 +436,9 @@ impl CoverageBoundary {
     ///
     /// `yaw` and `pitch` are in panorama space (radians).
     /// `fov_v_deg` is the vertical field of view in degrees.
-    pub fn safe_clamp(&self, yaw: f32, pitch: f32, fov_v_deg: f32) -> ClampedPosition {
-        let aspect = 16.0_f32 / 9.0;
-        let corners = CornerOffsets::compute(fov_v_deg, aspect);
+    /// `aspect` is the viewport width/height ratio.
+    pub fn safe_clamp(&self, yaw: f32, pitch: f32, fov_v_deg: f32, aspect: f32) -> ClampedPosition {
+        let corners = ViewportOffsets::compute(fov_v_deg, aspect);
 
         // For each corner, compute the constraint it imposes on the viewport center.
         //
@@ -869,7 +866,7 @@ mod tests {
         let cb = CoverageBoundary::from_calibration(&cal, &scene);
 
         // Request an extreme position that should be clamped.
-        let clamped = cb.safe_clamp(10.0, 10.0, 55.0);
+        let clamped = cb.safe_clamp(10.0, 10.0, 55.0, 16.0 / 9.0);
         assert!(clamped.yaw.is_finite());
         assert!(clamped.pitch.is_finite());
 
@@ -895,17 +892,18 @@ mod tests {
         let scene = SceneGeometry::from_layout(&cal.layout);
         let cb = CoverageBoundary::from_calibration(&cal, &scene);
 
-        // Clamp a moderate position with narrow vs wide FOV.
+        // Clamp an extreme position with narrow vs wide FOV.
         // Wider FOV should clamp more aggressively (tighter range).
-        let narrow = cb.safe_clamp(0.5, 0.1, 30.0);
-        let wide = cb.safe_clamp(0.5, 0.1, 60.0);
+        let narrow = cb.safe_clamp(2.0, 0.5, 30.0, 16.0 / 9.0);
+        let wide = cb.safe_clamp(2.0, 0.5, 60.0, 16.0 / 9.0);
 
-        // With 60° FOV, the yaw should be clamped closer to center.
+        // With 60° FOV, the yaw should be clamped closer to center
+        // (or at least not further from center) than with 30° FOV.
         assert!(
-            wide.yaw <= narrow.yaw,
-            "wider FOV yaw ({:.4}) should be <= narrow FOV yaw ({:.4})",
-            wide.yaw,
-            narrow.yaw
+            wide.yaw.abs() <= narrow.yaw.abs(),
+            "wider FOV |yaw| ({:.4}) should be <= narrow FOV |yaw| ({:.4})",
+            wide.yaw.abs(),
+            narrow.yaw.abs()
         );
     }
 

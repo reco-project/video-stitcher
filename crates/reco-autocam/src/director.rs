@@ -197,9 +197,9 @@ impl BallDirector {
     /// coverage boundary. Uses exact viewport corner projection math -
     /// no ad-hoc safety margins or per-frame sampling.
     fn clamp_to_bounds(&mut self, ctx: &DirectorContext<'_>) {
-        let clamped = ctx
-            .coverage
-            .safe_clamp(self.yaw, self.pitch, self.current_fov);
+        let clamped =
+            ctx.coverage
+                .safe_clamp(self.yaw, self.pitch, self.current_fov, ctx.aspect_ratio);
         self.yaw = clamped.yaw;
         self.pitch = clamped.pitch;
     }
