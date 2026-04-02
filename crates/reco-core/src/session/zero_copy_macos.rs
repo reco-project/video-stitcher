@@ -61,7 +61,11 @@ impl StitchSession {
             } else {
                 self.update_director(start.elapsed());
             }
-            let pos = self.director_position();
+            let raw = self.director_position();
+            let pos = self.slew_limit_position(raw);
+            if let Some(cb) = self.trajectory_callback.as_mut() {
+                cb(self.frame_count, &pos, &raw);
+            }
             let render_buf = self.pipeline.render_imported_textures(
                 &left_y.texture,
                 &left_uv.texture,

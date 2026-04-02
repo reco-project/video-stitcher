@@ -184,7 +184,11 @@ impl StitchSession {
                 signal.right_slot,
                 start.elapsed(),
             );
-            let pos = self.director_position();
+            let raw = self.director_position();
+            let pos = self.slew_limit_position(raw);
+            if let Some(cb) = self.trajectory_callback.as_mut() {
+                cb(self.frame_count, &pos, &raw);
+            }
             let render_buf = self.pipeline.render_gpu_frame(
                 &bind_groups,
                 signal.left_slot,

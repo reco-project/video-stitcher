@@ -16,11 +16,14 @@
 //!   into an encoder, with optional progress reporting and interrupt
 //!   support. Use this for CLI batch encoding.
 
+mod lookahead;
+mod smoother;
 #[cfg(target_os = "linux")]
 mod zero_copy_linux;
 #[cfg(target_os = "macos")]
 mod zero_copy_macos;
 
+pub use lookahead::LookaheadConfig;
 #[cfg(target_os = "linux")]
 pub use zero_copy_linux::SharedTextureSet;
 
@@ -77,6 +80,13 @@ pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 ///
 /// Arguments: `(objects, frame_index, timestamp_ms)`
 pub type DetectionCallback = Box<dyn FnMut(&[MappedDetection], u64, f64) + Send>;
+
+/// Callback for trajectory logging.
+///
+/// Called each rendered frame with `(frame_index, rendered_position, raw_position)`.
+/// The raw position is the director's unsmoothed output; the rendered position
+/// is what actually gets used (after smoothing and clamping).
+pub type TrajectoryCallback = Box<dyn FnMut(u64, &ViewportPosition, &ViewportPosition) + Send>;
 
 /// Errors from [`StitchSession`].
 #[derive(Debug, Error)]
@@ -144,7 +154,7 @@ pub struct StitchSessionBuilder {
     #[cfg(target_os = "macos")]
     metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
-    lookahead_frames: usize,
+    lookahead_config: LookaheadConfig,
 }
 
 impl StitchSessionBuilder {
@@ -238,9 +248,13 @@ impl StitchSessionBuilder {
 
     /// Set the number of frames to buffer ahead for lookahead.
     ///
+    /// Enables lookahead with bidirectional trajectory smoothing.
     /// See [`StitchSession::set_lookahead`] for details.
     pub fn lookahead(mut self, frames: usize) -> Self {
-        self.lookahead_frames = frames;
+        self.lookahead_config = LookaheadConfig {
+            frames,
+            smooth: true,
+        };
         self
     }
 
@@ -284,7 +298,9 @@ impl StitchSessionBuilder {
 
         let mut session = StitchSession::with_gpu(gpu, config)?;
         session.detection_interval = self.detection_interval;
-        session.lookahead_frames = self.lookahead_frames;
+        if self.lookahead_config.frames > 0 {
+            session.set_lookahead(self.lookahead_config);
+        }
 
         if let Some((enc, buf_count)) = self.encoder {
             session.set_encoder(enc, buf_count);
@@ -335,10 +351,17 @@ pub struct StitchSession {
     /// Cached mapped detections from the last detection frame.
     /// Reused on non-detection frames so the director still has context.
     last_detections: Vec<MappedDetection>,
-    /// Number of frames to buffer ahead for lookahead.
-    /// When > 0, detection runs ahead of rendering so the director
-    /// anticipates action before it reaches the encoder.
-    lookahead_frames: usize,
+    /// Lookahead configuration (0 frames = disabled).
+    lookahead_config: LookaheadConfig,
+    /// Trajectory buffer for lookahead (None when disabled).
+    trajectory_buffer: Option<lookahead::LookaheadBuffer>,
+    /// Trajectory smoother (None when smoothing is disabled).
+    trajectory_smoother: Option<smoother::TrajectorySmoother>,
+    /// Optional trajectory logger callback.
+    trajectory_callback: Option<TrajectoryCallback>,
+    /// Last rendered position for slew rate limiting.
+    last_rendered_yaw: f32,
+    last_rendered_pitch: f32,
 }
 
 impl StitchSession {
@@ -360,7 +383,7 @@ impl StitchSession {
             #[cfg(target_os = "macos")]
             metal_detector: None,
             detection_interval: 1,
-            lookahead_frames: 0,
+            lookahead_config: LookaheadConfig::default(),
         }
     }
 
@@ -404,7 +427,12 @@ impl StitchSession {
             detection_interval: 1,
             detection_callback: None,
             last_detections: Vec::new(),
-            lookahead_frames: 0,
+            lookahead_config: LookaheadConfig::default(),
+            trajectory_buffer: None,
+            trajectory_smoother: None,
+            trajectory_callback: None,
+            last_rendered_yaw: 0.0,
+            last_rendered_pitch: 0.0,
         })
     }
 
@@ -460,18 +488,41 @@ impl StitchSession {
         self.detection_interval = interval.max(1);
     }
 
-    /// Set the number of frames to buffer ahead for lookahead.
+    /// Set a callback for per-frame trajectory logging.
     ///
-    /// When > 0, the CPU batch loop decodes and runs detection on frames
-    /// ahead of rendering, so the director "sees" the future relative to
-    /// what's being encoded. This makes the camera anticipate action
-    /// rather than react to it.
+    /// The callback receives `(frame_index, rendered_position, raw_position)`
+    /// for each rendered frame. Use this to dump a CSV for analysis.
+    pub fn set_trajectory_callback(&mut self, cb: TrajectoryCallback) {
+        self.trajectory_callback = Some(cb);
+    }
+
+    /// Configure lookahead for all decode paths.
     ///
-    /// Typical value: `(fps * 0.5) as usize` for 0.5s lead time.
-    /// Only affects the CPU path ([`Self::run`]). Zero-copy paths are
-    /// not supported (frames are GPU-resident and can't be buffered).
-    pub fn set_lookahead(&mut self, frames: usize) {
-        self.lookahead_frames = frames;
+    /// When `config.frames > 0`, detection runs ahead of rendering so
+    /// the director "sees" future frames. When `config.smooth` is true,
+    /// a bidirectional One Euro filter smooths the resulting trajectory,
+    /// producing zero-phase-lag camera movements.
+    ///
+    /// Typical usage: `(fps * 0.5) as usize` frames for 0.5s lead time.
+    pub fn set_lookahead(&mut self, config: LookaheadConfig) {
+        if config.frames > 0 {
+            self.trajectory_buffer = Some(lookahead::LookaheadBuffer::new(config.frames));
+            if config.smooth {
+                // TODO: get actual FPS from source info when available.
+                self.trajectory_smoother = Some(smoother::TrajectorySmoother::new(30.0));
+            } else {
+                self.trajectory_smoother = None;
+            }
+        } else {
+            self.trajectory_buffer = None;
+            self.trajectory_smoother = None;
+        }
+        self.lookahead_config = config;
+    }
+
+    /// Read-only access to the lookahead configuration.
+    pub fn lookahead_config(&self) -> &LookaheadConfig {
+        &self.lookahead_config
     }
 
     /// Attach a director for AI-driven or scripted camera panning.
@@ -496,6 +547,98 @@ impl StitchSession {
     /// including panorama-space coordinates.
     pub fn set_detection_callback(&mut self, cb: DetectionCallback) {
         self.detection_callback = Some(cb);
+    }
+
+    /// Record the director's current raw position into the trajectory buffer.
+    ///
+    /// Called after `detect_and_update_director()` (or GPU/Metal variants)
+    /// to capture the director's output for the lookahead smoother.
+    /// No-op when lookahead is disabled.
+    pub(crate) fn record_trajectory(&mut self) {
+        if let Some(ref mut buffer) = self.trajectory_buffer {
+            let raw_position = self
+                .director
+                .as_ref()
+                .map_or(ViewportPosition::default(), |d| d.position());
+            buffer.push(lookahead::TrajectoryEntry {
+                detections: self.last_detections.clone(),
+                raw_position,
+            });
+        }
+    }
+
+    /// Consume the oldest trajectory entry and return a smoothed (or raw)
+    /// viewport position for rendering.
+    ///
+    /// When smoothing is enabled, runs the bidirectional One Euro filter
+    /// over the current buffer window. When disabled, returns the oldest
+    /// entry's raw position. Re-applies `safe_clamp()` after smoothing
+    /// to ensure no black edges.
+    ///
+    /// Returns `None` when the trajectory buffer is empty or disabled.
+    /// Returns `(smoothed_position, raw_position)`.
+    pub(crate) fn consume_render_position(
+        &mut self,
+    ) -> Option<(ViewportPosition, ViewportPosition)> {
+        let buffer = self.trajectory_buffer.as_mut()?;
+
+        // Peek at the raw position before popping.
+        let raw = buffer.positions().next().copied()?;
+
+        let pos = if let Some(ref smoother) = self.trajectory_smoother {
+            let positions: Vec<ViewportPosition> = buffer.positions().copied().collect();
+            if positions.is_empty() {
+                return None;
+            }
+            smoother.smooth(&positions)
+        } else {
+            // No smoothing: use raw director position from oldest entry.
+            buffer.pop_front().map(|e| e.raw_position)?
+        };
+
+        // Pop the entry we just rendered (only if smoother path didn't already pop).
+        if self.trajectory_smoother.is_some() {
+            buffer.pop_front();
+        }
+
+        // Re-apply coverage clamping since smoothing may push slightly outside bounds.
+        let aspect = self.pipeline.viewport().aspect_ratio();
+        let fov = pos.fov_degrees.unwrap_or_else(|| self.pipeline.fov());
+        let clamped = self
+            .pipeline
+            .coverage()
+            .safe_clamp(pos.yaw, pos.pitch, fov, aspect);
+
+        Some((
+            ViewportPosition {
+                yaw: clamped.yaw,
+                pitch: clamped.pitch,
+                fov_degrees: pos.fov_degrees,
+            },
+            raw,
+        ))
+    }
+
+    /// Apply a maximum pan speed limit to a viewport position.
+    ///
+    /// Prevents teleporting when `safe_clamp` or the smoother outputs a
+    /// position far from the previous frame. The limit is 40 deg/s scaled
+    /// to radians per frame (assumes 30 fps if unknown).
+    fn slew_limit_position(&mut self, mut pos: ViewportPosition) -> ViewportPosition {
+        // 20 deg/s at 30 fps = ~0.012 rad/frame. Comfortable broadcast
+        // pan speed. Even if a false detection is accepted, the camera
+        // drifts slowly enough that the real ball usually reappears first.
+        // TODO: use actual FPS when available.
+        const MAX_SLEW: f32 = 20.0 * std::f32::consts::PI / 180.0 / 30.0;
+
+        let dy = pos.yaw - self.last_rendered_yaw;
+        let dp = pos.pitch - self.last_rendered_pitch;
+        pos.yaw = self.last_rendered_yaw + dy.clamp(-MAX_SLEW, MAX_SLEW);
+        pos.pitch = self.last_rendered_pitch + dp.clamp(-MAX_SLEW, MAX_SLEW);
+
+        self.last_rendered_yaw = pos.yaw;
+        self.last_rendered_pitch = pos.pitch;
+        pos
     }
 
     /// Get the current viewport position from the director, or default.
@@ -545,6 +688,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
+                fresh_detection: should_detect,
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
                 aspect_ratio: self.pipeline.viewport().aspect_ratio(),
@@ -578,6 +722,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &[],
+                fresh_detection: false,
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
                 aspect_ratio: self.pipeline.viewport().aspect_ratio(),
@@ -651,6 +796,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
+                fresh_detection: should_detect,
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
                 aspect_ratio: self.pipeline.viewport().aspect_ratio(),
@@ -719,6 +865,7 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
+                fresh_detection: should_detect,
                 coverage: self.pipeline.coverage(),
                 current_fov: fov,
                 aspect_ratio: self.pipeline.viewport().aspect_ratio(),
@@ -880,7 +1027,7 @@ impl StitchSession {
     /// exhausted, the frame limit is reached, or the interrupt flag
     /// is set. Returns the number of frames processed.
     ///
-    /// When [`lookahead_frames`](Self::set_lookahead) > 0, decodes and
+    /// When [`lookahead`](Self::set_lookahead) > 0 frames, decodes and
     /// runs detection on frames ahead of rendering. The director "sees"
     /// N frames into the future, so the camera anticipates action before
     /// it reaches the encoder.
@@ -898,7 +1045,7 @@ impl StitchSession {
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<u64, SessionError> {
-        if self.lookahead_frames > 0 {
+        if self.lookahead_config.frames > 0 {
             self.run_with_lookahead(source, frame_limit, interrupted, &mut on_progress)
         } else {
             self.run_immediate(source, frame_limit, interrupted, &mut on_progress)
@@ -925,7 +1072,11 @@ impl StitchSession {
             };
 
             self.detect_and_update_director(&frame, start.elapsed());
-            let pos = self.director_position();
+            let raw = self.director_position();
+            let pos = self.slew_limit_position(raw);
+            if let Some(cb) = self.trajectory_callback.as_mut() {
+                cb(self.frame_count, &pos, &raw);
+            }
             self.process_frame(&frame, pos.yaw, pos.pitch)?;
 
             if let Some(cb) = on_progress.as_mut() {
@@ -939,10 +1090,12 @@ impl StitchSession {
         Ok(self.frame_count)
     }
 
-    /// Frame loop with lookahead buffering.
+    /// Frame loop with lookahead buffering and optional trajectory smoothing.
     ///
-    /// Decodes `lookahead_frames` ahead of rendering so the director
-    /// has seen future frames by the time each frame is rendered.
+    /// Decodes frames ahead of rendering so the director has seen future
+    /// detections by the time each frame is rendered. When smoothing is
+    /// enabled, a bidirectional One Euro filter post-processes the
+    /// director's raw trajectory for zero-phase-lag camera movements.
     fn run_with_lookahead(
         &mut self,
         source: &mut dyn FrameSource,
@@ -953,14 +1106,14 @@ impl StitchSession {
         use std::collections::VecDeque;
 
         let start = std::time::Instant::now();
-        let lookahead = self.lookahead_frames;
-        let mut buffer: VecDeque<StereoFrame> = VecDeque::with_capacity(lookahead + 1);
+        let lookahead = self.lookahead_config.frames;
+        let mut frame_buffer: VecDeque<StereoFrame> = VecDeque::with_capacity(lookahead + 1);
 
         // Track how many frames have been decoded (for frame_limit).
         let mut decoded_count: u64 = 0;
 
-        // Pre-fill: decode lookahead frames and run detection on each,
-        // but don't render yet. This advances the director ahead.
+        // Phase 1: Pre-fill lookahead frames, run detection on each,
+        // record trajectory entries, but don't render yet.
         for _ in 0..lookahead {
             if interrupted.load(Ordering::Relaxed) {
                 break;
@@ -974,18 +1127,19 @@ impl StitchSession {
             };
             decoded_count += 1;
             self.detect_and_update_director(&frame, start.elapsed());
-            buffer.push_back(frame);
+            self.record_trajectory();
+            frame_buffer.push_back(frame);
         }
 
         log::info!(
             "Lookahead: pre-filled {} frames (requested {})",
-            buffer.len(),
+            frame_buffer.len(),
             lookahead,
         );
 
-        // Main loop: decode one new frame, detect on it (advancing director),
-        // then render+encode the oldest buffered frame with the current
-        // director position.
+        // Phase 2: Steady state. Decode one new frame, detect on it
+        // (advancing director), then render the oldest buffered frame
+        // with the smoothed (or raw) position.
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
             // Try to decode one more frame to keep the buffer full.
             if decoded_count < frame_limit {
@@ -996,15 +1150,26 @@ impl StitchSession {
                 if let Some(f) = frame {
                     decoded_count += 1;
                     self.detect_and_update_director(&f, start.elapsed());
-                    buffer.push_back(f);
+                    self.record_trajectory();
+                    frame_buffer.push_back(f);
                 }
             }
 
-            // Render the oldest buffered frame with the current director state.
-            let Some(render_frame) = buffer.pop_front() else {
+            // Render the oldest buffered frame.
+            let Some(render_frame) = frame_buffer.pop_front() else {
                 break;
             };
-            let pos = self.director_position();
+            let (unclamped, raw) = self.consume_render_position().unwrap_or_else(|| {
+                let p = self.director_position();
+                (p, p)
+            });
+            let pos = self.slew_limit_position(unclamped);
+            if let Some(cb) = self.trajectory_callback.as_mut() {
+                cb(self.frame_count, &pos, &raw);
+            }
+            if let Some(fov) = pos.fov_degrees {
+                self.pipeline.set_fov(fov);
+            }
             self.process_frame(&render_frame, pos.yaw, pos.pitch)?;
 
             if let Some(cb) = on_progress.as_mut() {

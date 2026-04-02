@@ -42,6 +42,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 enum Commands {
     /// Stitch two video files into a panoramic output.
     Stitch {
@@ -111,9 +112,19 @@ enum Commands {
 
         /// Director lead time in seconds. Buffers decoded frames and runs
         /// detection ahead of rendering so the camera anticipates action.
-        /// Typical value: 0.5 (half a second). Only works with CPU path.
+        /// Typical value: 0.5 (half a second).
         #[arg(long, default_value_t = 0.0)]
         lead_time: f64,
+
+        /// Disable bidirectional trajectory smoothing when using lead-time.
+        /// Keeps the raw director positions (same as old lookahead behavior).
+        #[arg(long)]
+        no_smooth: bool,
+
+        /// Dump per-frame trajectory to a CSV file for analysis.
+        /// Columns: frame,yaw,pitch,fov,raw_yaw,raw_pitch,raw_fov
+        #[arg(long)]
+        dump_trajectory: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -266,6 +277,8 @@ fn main() -> anyhow::Result<()> {
             model,
             detection_interval,
             lead_time,
+            no_smooth,
+            dump_trajectory,
         } => stitch::run_stitch(
             &left,
             &right,
@@ -283,6 +296,8 @@ fn main() -> anyhow::Result<()> {
             model.as_deref(),
             detection_interval,
             lead_time,
+            no_smooth,
+            dump_trajectory.as_deref(),
             &interrupted,
         ),
 

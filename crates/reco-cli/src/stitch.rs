@@ -25,6 +25,8 @@ pub fn run_stitch(
     model_path: Option<&str>,
     detection_interval: u64,
     lead_time: f64,
+    no_smooth: bool,
+    dump_trajectory: Option<&str>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     const MAX_DIM: u32 = 8192;
@@ -193,20 +195,50 @@ pub fn run_stitch(
         }
 
         if detection_active {
-            let director = reco_autocam::BallDirector::new(fps_val as f32);
-            session.set_director(Box::new(director));
+            let mut director = reco_autocam::BallDirector::new(fps_val as f32);
             if detection_interval > 1 {
+                director.set_detection_interval(detection_interval as u32);
                 session.set_detection_interval(detection_interval);
                 println!("Detection interval: every {detection_interval} frames");
             }
-            if lead_time > 0.0 && !use_zero_copy {
+            session.set_director(Box::new(director));
+            if lead_time > 0.0 {
                 let lookahead = (fps_val * lead_time).round() as usize;
                 if lookahead > 0 {
-                    session.set_lookahead(lookahead);
-                    println!("Director lead time: {lead_time:.1}s ({lookahead} frames)");
+                    let config = reco_core::session::LookaheadConfig {
+                        frames: lookahead,
+                        smooth: !no_smooth,
+                    };
+                    session.set_lookahead(config);
+                    println!(
+                        "Director lead time: {lead_time:.1}s ({lookahead} frames, smoothing: {})",
+                        if no_smooth { "off" } else { "on" }
+                    );
                 }
             }
         }
+    }
+
+    // Set up trajectory logging if requested.
+    if let Some(traj_path) = dump_trajectory {
+        use std::io::Write;
+        let file = std::fs::File::create(traj_path)?;
+        let mut writer = std::io::BufWriter::new(file);
+        writeln!(writer, "frame,yaw,pitch,fov,raw_yaw,raw_pitch,raw_fov")?;
+        session.set_trajectory_callback(Box::new(move |frame, pos, raw| {
+            let _ = writeln!(
+                writer,
+                "{},{:.6},{:.6},{:.2},{:.6},{:.6},{:.2}",
+                frame,
+                pos.yaw,
+                pos.pitch,
+                pos.fov_degrees.unwrap_or(55.0),
+                raw.yaw,
+                raw.pitch,
+                raw.fov_degrees.unwrap_or(55.0),
+            );
+        }));
+        println!("Trajectory log: {traj_path}");
     }
 
     // Compute frame limit
