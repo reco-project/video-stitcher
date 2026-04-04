@@ -171,6 +171,14 @@ pub struct PlaneLayout {
     /// X-axis rotation of the left plane (radians), correcting tilt misalignment.
     #[serde(rename = "zRx")]
     pub z_rx: f64,
+
+    /// Z-axis rotation of the left plane (radians), correcting roll misalignment.
+    ///
+    /// This is the 6th calibration parameter, added in v2. When both cameras
+    /// are tilted, this corrects the horizon so it stays level during panning.
+    /// Defaults to 0.0 for backward compatibility with v1 calibration files.
+    #[serde(rename = "zRz", default)]
+    pub z_rz: f64,
 }
 
 /// Complete calibration data for a stereo match.
@@ -415,6 +423,7 @@ fn validate_layout(l: &PlaneLayout) -> Result<(), CalibrationError> {
         ("params.xTy", l.x_ty),
         ("params.xRz", l.x_rz),
         ("params.zRx", l.z_rx),
+        ("params.zRz", l.z_rz),
     ] {
         if !val.is_finite() {
             return Err(CalibrationError::NonFiniteFloat {
@@ -491,6 +500,7 @@ mod tests {
                 x_ty: 0.00476,
                 x_rz: 0.00753,
                 z_rx: -0.00431,
+                z_rz: 0.0,
             },
         }
     }
@@ -651,6 +661,7 @@ mod tests {
                 x_ty: 0.0,
                 x_rz: 0.0,
                 z_rx: 0.0,
+                z_rz: 0.0,
             },
         };
 

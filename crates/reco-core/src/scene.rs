@@ -60,7 +60,11 @@ impl SceneGeometry {
 
         Self {
             left_position: [0.0, 0.0, half_offset],
-            left_rotation: [layout.z_rx as f32, std::f32::consts::FRAC_PI_2, 0.0],
+            left_rotation: [
+                layout.z_rx as f32,
+                std::f32::consts::FRAC_PI_2,
+                layout.z_rz as f32,
+            ],
             right_position: [half_offset, layout.x_ty as f32, 0.0],
             right_rotation: [0.0, 0.0, layout.x_rz as f32],
             camera_position: [
@@ -121,6 +125,7 @@ mod tests {
             x_ty: 0.0,
             x_rz: 0.0,
             z_rx: 0.0,
+            z_rz: 0.0,
         };
 
         let geom = SceneGeometry::from_layout(&layout);
@@ -140,6 +145,7 @@ mod tests {
             x_ty: 0.005,
             x_rz: 0.008,
             z_rx: -0.004,
+            z_rz: 0.0,
         };
 
         let geom = SceneGeometry::from_layout(&layout);

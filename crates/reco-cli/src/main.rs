@@ -4,6 +4,7 @@
 //! reco stitch left.mp4 right.mp4 --calibration match.json -o output.mp4
 //! ```
 
+mod calibrate;
 #[cfg(feature = "gstreamer")]
 mod camera;
 mod helpers;
@@ -209,6 +210,49 @@ enum Commands {
         detection_interval: u64,
     },
 
+    /// Calibrate two cameras: detect features and compute placement parameters.
+    Calibrate {
+        /// Path to the left camera video file.
+        left: String,
+
+        /// Path to the right camera video file.
+        right: String,
+
+        /// Path to the left camera lens profile JSON.
+        #[arg(long)]
+        left_profile: String,
+
+        /// Path to the right camera lens profile JSON.
+        #[arg(long)]
+        right_profile: String,
+
+        /// Number of frame pairs to sample from the video.
+        #[arg(long, default_value_t = 15)]
+        frames: usize,
+
+        /// Number of random-subset optimization iterations.
+        #[arg(long, default_value_t = 200)]
+        iterations: usize,
+
+        /// Disable the 6th parameter (left plane roll correction).
+        #[arg(long, default_value_t = false)]
+        no_left_roll: bool,
+
+        /// Frame offset for temporal sync between cameras.
+        /// Positive: right video is ahead by N frames.
+        /// Negative: left video is ahead by N frames.
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        sync_offset: i64,
+
+        /// Directory to write debug data (keypoints, matches as JSON + images).
+        #[arg(long)]
+        debug_dir: Option<String>,
+
+        /// Output calibration JSON file path.
+        #[arg(short, long, default_value = "match.json")]
+        output: String,
+    },
+
     /// Display information about the GPU and system capabilities.
     Info,
 }
@@ -361,6 +405,30 @@ fn main() -> anyhow::Result<()> {
                 &interrupted,
             )
         }
+
+        Commands::Calibrate {
+            left,
+            right,
+            left_profile,
+            right_profile,
+            frames,
+            iterations,
+            no_left_roll,
+            sync_offset,
+            debug_dir,
+            output,
+        } => calibrate::run_calibrate(
+            &left,
+            &right,
+            &left_profile,
+            &right_profile,
+            frames,
+            iterations,
+            no_left_roll,
+            sync_offset,
+            debug_dir.as_deref(),
+            &output,
+        ),
 
         Commands::Info => {
             let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;

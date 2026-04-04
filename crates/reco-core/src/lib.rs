@@ -102,6 +102,7 @@ pub mod detector;
 pub mod director;
 pub mod encoder;
 pub mod gpu;
+pub mod lens;
 #[cfg(target_os = "macos")]
 pub mod metal_compute;
 #[cfg(target_os = "macos")]
@@ -115,6 +116,7 @@ pub mod renderer;
 pub mod scene;
 pub mod session;
 pub mod source;
+pub mod undistort;
 pub mod viewport;
 #[cfg(target_os = "linux")]
 pub mod vulkan_interop;

@@ -1,0 +1,393 @@
+//! Stereo camera calibration for reco.
+//!
+//! Computes the relative positioning of two camera planes by detecting
+//! features in overlapping footage and optimizing placement parameters
+//! to minimize angular error between matched points.
+//!
+//! ## Pipeline
+//!
+//! ```text
+//! Frame pairs → AKAZE detect → Hamming match → Lowe's ratio test
+//!   → Spatial overlap filter → RANSAC outlier rejection
+//!   → Normalize to plane coordinates → Accumulate across frames
+//!   → Random-subset COBYLA optimization (parallel)
+//!   → Optional 6-param refinement → MatchCalibration output
+//! ```
+//!
+//! ## Usage
+//!
+//! ```ignore
+//! use reco_calibrate::{calibrate, CalibrationConfig, GrayFrame};
+//! use reco_core::calibration::CameraParams;
+//!
+//! let frames: Vec<(GrayFrame, GrayFrame)> = extract_from_video();
+//! let left_params: CameraParams = load_lens_profile("left.json");
+//! let right_params: CameraParams = load_lens_profile("right.json");
+//!
+//! let result = calibrate(&gpu, &frames, &left_params, &right_params, &CalibrationConfig::default())?;
+//! println!("Confidence: {:.1}%", result.confidence * 100.0);
+//! ```
+
+pub mod error;
+pub mod features;
+pub mod filter;
+pub mod geometry;
+pub mod optimizer;
+pub mod sampling;
+pub mod types;
+
+pub use error::CalibrateError;
+pub use types::{CalibrationConfig, CalibrationResult, GrayFrame, YuvFrame};
+
+use rayon::prelude::*;
+use reco_core::calibration::{CameraParams, MatchCalibration};
+use reco_core::gpu::GpuContext;
+use reco_core::undistort::GpuUndistort;
+
+use types::{FrameMatches, MatchedPoint};
+
+/// Process a single frame pair through the feature matching pipeline.
+///
+/// GPU-undistorts both frames to rectilinear RGBA, then detects AKAZE
+/// features on the undistorted output. This gives AKAZE clean rectilinear
+/// images where feature detection is reliable, and the resulting plane
+/// coordinates map 1:1 to the stitching shader's UV space.
+#[allow(clippy::too_many_arguments)]
+fn process_frame_pair(
+    gpu: &GpuContext,
+    left: &YuvFrame,
+    right: &YuvFrame,
+    left_undistort: &GpuUndistort,
+    right_undistort: &GpuUndistort,
+    left_params: &CameraParams,
+    right_params: &CameraParams,
+    frame_idx: usize,
+    config: &CalibrationConfig,
+) -> Option<FrameMatches> {
+    // GPU-undistort both frames to rectilinear RGBA.
+    // AKAZE works much better on undistorted images than raw fisheye - the
+    // strong radial distortion in KB4 fisheye degrades feature detection.
+    // The undistorted output maps 1:1 to the stitching shader's plane UV,
+    // so linear normalization gives correct plane coordinates.
+    let left_rgba = left_undistort.undistort(gpu, &left.y, &left.u, &left.v, left_params);
+    let right_rgba = right_undistort.undistort(gpu, &right.y, &right.u, &right.v, right_params);
+
+    // Undistorted output dimensions match the input dimensions
+    let (lw, lh) = (left.width, left.height);
+    let (rw, rh) = (right.width, right.height);
+
+    let sky = config.sky_mask_ratio as f32;
+    let inner = config.spatial_x_inner as f32;
+    let left_region = features::DetectRegion {
+        x_min: config.spatial_x_threshold as f32,
+        x_max: 1.0 - inner,
+        y_min: sky,
+        y_max: 1.0,
+    };
+    let right_region = features::DetectRegion {
+        x_min: inner,
+        x_max: 1.0 - config.spatial_x_threshold as f32,
+        y_min: sky,
+        y_max: 1.0,
+    };
+
+    let (kp_left, desc_left) =
+        features::detect(&left_rgba, lw, lh, Some(left_region), config.max_keypoints);
+    let (kp_right, desc_right) = features::detect(
+        &right_rgba,
+        rw,
+        rh,
+        Some(right_region),
+        config.max_keypoints,
+    );
+
+    log::debug!(
+        "frame {frame_idx}: {} left keypoints, {} right keypoints",
+        kp_left.len(),
+        kp_right.len()
+    );
+
+    if kp_left.is_empty() || kp_right.is_empty() {
+        log::warn!("frame {frame_idx}: no keypoints in one or both images");
+        return None;
+    }
+
+    // Match descriptors with Lowe's ratio test
+    let raw_matches = features::match_descriptors(&desc_left, &desc_right, config.lowe_ratio);
+    let post_ratio_test = raw_matches.len();
+
+    if raw_matches.len() < config.min_matches {
+        log::debug!(
+            "frame {frame_idx}: only {} matches after ratio test (need {})",
+            raw_matches.len(),
+            config.min_matches
+        );
+        return None;
+    }
+
+    // Spatial overlap filter
+    let spatial_matches =
+        filter::spatial_filter(&raw_matches, &kp_left, &kp_right, lw, lh, rw, rh, config);
+    let post_spatial_filter = spatial_matches.len();
+
+    // RANSAC outlier rejection
+    let inlier_indices = match filter::ransac_filter(&spatial_matches, &kp_left, &kp_right, config)
+    {
+        Ok(indices) => indices,
+        Err(e) => {
+            log::debug!("frame {frame_idx}: RANSAC failed: {e}");
+            return None;
+        }
+    };
+    let post_ransac = inlier_indices.len();
+
+    if post_ransac < config.min_matches {
+        log::debug!(
+            "frame {frame_idx}: only {} inliers after RANSAC (need {})",
+            post_ransac,
+            config.min_matches
+        );
+        return None;
+    }
+
+    // Normalize surviving matches to plane coordinates.
+    //
+    // Features were detected on the undistorted image (using original
+    // intrinsics), which maps 1:1 to the GPU shader's plane UV space.
+    // Linear normalization to [-0.5, 0.5] gives plane coordinates
+    // directly - no KB4 remapping needed.
+    //
+    // CRITICAL: Apply the left/right swap from v1 (processing.py:693).
+    // Right camera points -> left plane (x-plane) in optimizer space.
+    // Left camera points -> right plane (z-plane) in optimizer space.
+    let points: Vec<MatchedPoint> = inlier_indices
+        .iter()
+        .map(|&i| {
+            let m = &spatial_matches[i];
+            let lp = &kp_left[m.left_idx];
+            let rp = &kp_right[m.right_idx];
+
+            // Swap: right pixel -> left plane (x-plane), left pixel -> right plane (z-plane)
+            MatchedPoint {
+                left: geometry::normalize_to_plane(rp.x as f64, rp.y as f64, rw, rh),
+                right: geometry::normalize_to_plane(lp.x as f64, lp.y as f64, lw, lh),
+            }
+        })
+        .collect();
+
+    Some(FrameMatches {
+        points,
+        keypoints_left: kp_left.len(),
+        keypoints_right: kp_right.len(),
+        raw_matches: desc_left.len().min(desc_right.len()),
+        post_ratio_test,
+        post_spatial_filter,
+        post_ransac,
+    })
+}
+
+/// Run the full calibration pipeline.
+///
+/// Takes pre-extracted YUV frame pairs (left, right) along with camera
+/// intrinsics from lens profiles. GPU-undistorts each frame to rectilinear
+/// RGBA before detecting AKAZE features.
+///
+/// # Errors
+///
+/// Returns [`CalibrateError::NoUsableFrames`] if no frame pairs produce
+/// enough matches, or [`CalibrateError::OptimizerFailed`] if all
+/// optimization iterations fail.
+pub fn calibrate(
+    gpu: &GpuContext,
+    frames: &[(YuvFrame, YuvFrame)],
+    left_params: &CameraParams,
+    right_params: &CameraParams,
+    config: &CalibrationConfig,
+) -> Result<CalibrationResult, CalibrateError> {
+    // Create GPU undistort pipelines for each camera's resolution
+    let (lw, lh) = if let Some((left, _)) = frames.first() {
+        (left.width, left.height)
+    } else {
+        return Err(CalibrateError::NoUsableFrames);
+    };
+    let (rw, rh) = if let Some((_, right)) = frames.first() {
+        (right.width, right.height)
+    } else {
+        return Err(CalibrateError::NoUsableFrames);
+    };
+    let left_undistort = GpuUndistort::new(gpu, lw, lh);
+    let right_undistort = GpuUndistort::new(gpu, rw, rh);
+
+    // Process each frame pair through the matching pipeline
+    let per_frame: Vec<Option<FrameMatches>> = frames
+        .iter()
+        .enumerate()
+        .map(|(i, (left, right))| {
+            process_frame_pair(
+                gpu,
+                left,
+                right,
+                &left_undistort,
+                &right_undistort,
+                left_params,
+                right_params,
+                i,
+                config,
+            )
+        })
+        .collect();
+
+    // Collect all successful frame matches
+    let successful_frames: Vec<FrameMatches> = per_frame.into_iter().flatten().collect();
+
+    if successful_frames.is_empty() {
+        return Err(CalibrateError::NoUsableFrames);
+    }
+
+    let frames_used = successful_frames.len();
+    log::info!(
+        "{frames_used}/{} frame pairs produced matches",
+        frames.len()
+    );
+
+    // Accumulate all matched points across frames
+    let all_points: Vec<MatchedPoint> = successful_frames
+        .iter()
+        .flat_map(|fm| fm.points.iter().copied())
+        .collect();
+
+    let total_matches = all_points.len();
+    log::info!("{total_matches} total matched points");
+
+    // Log spatial distribution of matches for diagnostics
+    if !all_points.is_empty() {
+        let lx: Vec<f64> = all_points.iter().map(|p| p.left[0]).collect();
+        let ly: Vec<f64> = all_points.iter().map(|p| p.left[1]).collect();
+        let rx: Vec<f64> = all_points.iter().map(|p| p.right[0]).collect();
+        let ry: Vec<f64> = all_points.iter().map(|p| p.right[1]).collect();
+        log::info!(
+            "x-plane range: x=[{:.3}, {:.3}] y=[{:.3}, {:.3}]",
+            lx.iter().cloned().fold(f64::INFINITY, f64::min),
+            lx.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            ly.iter().cloned().fold(f64::INFINITY, f64::min),
+            ly.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+        );
+        log::info!(
+            "z-plane range: x=[{:.3}, {:.3}] y=[{:.3}, {:.3}]",
+            rx.iter().cloned().fold(f64::INFINITY, f64::min),
+            rx.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            ry.iter().cloned().fold(f64::INFINITY, f64::min),
+            ry.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+        );
+    }
+
+    if total_matches < config.min_matches {
+        return Err(CalibrateError::InsufficientMatches {
+            got: total_matches,
+            min: config.min_matches,
+        });
+    }
+
+    // Random-subset optimization (parallelized with rayon)
+    let results: Vec<_> = (0..config.iterations)
+        .into_par_iter()
+        .filter_map(|_| {
+            let mut rng = rand::rng();
+            let subset = sampling::random_subset(&all_points, config, &mut rng);
+
+            match optimizer::optimize(&subset, config) {
+                Ok((layout, _subset_residual)) => {
+                    // Evaluate this solution on the FULL point set
+                    let opt_params = geometry::OptParams {
+                        x_ty: layout.x_ty,
+                        intersect: layout.intersect,
+                        cam_d: layout.camera_axis_offset,
+                        x_rz: layout.x_rz,
+                        z_rx: layout.z_rx,
+                        z_rz: if config.enable_sixth_param {
+                            Some(layout.z_rz)
+                        } else {
+                            None
+                        },
+                    };
+                    // Use trimmed error (drop worst 20%) for robust selection.
+                    // Prevents outlier points from steering toward large-rotation
+                    // solutions that accommodate noise at the expense of the majority.
+                    let full_residual =
+                        geometry::trimmed_reprojection_error(&all_points, &opt_params, 0.2);
+                    Some((layout, full_residual))
+                }
+                Err(e) => {
+                    log::trace!("optimization iteration failed: {e}");
+                    None
+                }
+            }
+        })
+        .collect();
+
+    if results.is_empty() {
+        return Err(CalibrateError::OptimizerFailed {
+            max_evals: config.max_optimizer_evals,
+        });
+    }
+
+    // Pick the result with the lowest full-set residual
+    let (best_layout, best_residual) = results
+        .into_iter()
+        .min_by(|(_, r1), (_, r2)| r1.partial_cmp(r2).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap();
+
+    let confidence = (total_matches as f64 / 50.0).min(1.0);
+
+    // Log both metrics for diagnostic comparison
+    let best_params = geometry::OptParams {
+        x_ty: best_layout.x_ty,
+        intersect: best_layout.intersect,
+        cam_d: best_layout.camera_axis_offset,
+        x_rz: best_layout.x_rz,
+        z_rx: best_layout.z_rx,
+        z_rz: if config.enable_sixth_param {
+            Some(best_layout.z_rz)
+        } else {
+            None
+        },
+    };
+    let total_reproj = geometry::reprojection_error(&all_points, &best_params);
+    let angular_err = geometry::angular_error(&all_points, &best_params);
+    log::info!(
+        "calibration complete: trimmed_error={best_residual:.6}, total_reproj={total_reproj:.6}, \
+         angular_error={angular_err:.6}, confidence={confidence:.2}, z_rz={:.4}",
+        best_layout.z_rz
+    );
+
+    // Evaluate v1 reference params for diagnostic comparison
+    let v1_params = geometry::OptParams {
+        x_ty: 0.0047,
+        intersect: 0.5447,
+        cam_d: 0.2407,
+        x_rz: 0.0071,
+        z_rx: -0.0035,
+        z_rz: None,
+    };
+    let v1_reproj = geometry::reprojection_error(&all_points, &v1_params);
+    let v1_trimmed = geometry::trimmed_reprojection_error(&all_points, &v1_params, 0.2);
+    let v1_angular = geometry::angular_error(&all_points, &v1_params);
+    log::info!(
+        "v1 reference eval: reproj={v1_reproj:.6}, trimmed={v1_trimmed:.6}, angular={v1_angular:.6}"
+    );
+
+    let calibration = MatchCalibration {
+        left: left_params.clone(),
+        right: right_params.clone(),
+        layout: best_layout,
+    };
+
+    Ok(CalibrationResult {
+        calibration,
+        total_matches,
+        frames_used,
+        residual_error: best_residual,
+        confidence,
+        per_frame: successful_frames,
+    })
+}

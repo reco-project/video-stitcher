@@ -55,7 +55,7 @@ pub enum RenderError {
 /// Uniform buffer layout (must match `Uniforms` in fisheye.wgsl exactly).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct GpuUniforms {
+pub struct GpuUniforms {
     mvp: [[f32; 4]; 4],
     intrinsics: [f32; 4],
     dist: [f32; 4],
@@ -882,7 +882,7 @@ fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32) -> Matrix4<f32> {
 }
 
 /// Build the GPU uniform struct for one plane.
-fn build_gpu_uniforms(
+pub fn build_gpu_uniforms(
     mvp: &Matrix4<f32>,
     camera: &CameraParams,
     is_right: bool,
@@ -917,7 +917,7 @@ fn build_gpu_uniforms(
 }
 
 /// Convert a nalgebra `Matrix4` to column-major `[[f32; 4]; 4]` for wgpu.
-fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
+pub fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
     let s = m.as_slice();
     [
         [s[0], s[1], s[2], s[3]],
@@ -932,7 +932,7 @@ fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
 /// nalgebra's `Perspective3` uses OpenGL conventions. wgpu expects
 /// clip space Z in [0, 1], so we apply this correction.
 #[rustfmt::skip]
-fn opengl_to_wgpu_matrix() -> Matrix4<f32> {
+pub fn opengl_to_wgpu_matrix() -> Matrix4<f32> {
     Matrix4::new(
         1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.0,
