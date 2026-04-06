@@ -172,11 +172,17 @@ pub struct PlaneLayout {
     #[serde(rename = "zRx")]
     pub z_rx: f64,
 
-    /// Z-axis rotation of the left plane (radians), correcting roll misalignment.
+    /// X-axis rotation of the right plane (radians), correcting pitch misalignment.
     ///
-    /// This is the 6th calibration parameter, added in v2. When both cameras
-    /// are tilted, this corrects the horizon so it stays level during panning.
-    /// Defaults to 0.0 for backward compatibility with v1 calibration files.
+    /// Together with xRz (roll), this fully describes the right camera's
+    /// orientation. Defaults to 0.0 for backward compatibility with v1.
+    #[serde(rename = "xRx", default)]
+    pub x_rx: f64,
+
+    /// Z-axis rotation of the left plane (radians), correcting pitch misalignment.
+    ///
+    /// Together with zRx (roll), this fully describes the left camera's
+    /// orientation. Defaults to 0.0 for backward compatibility with v1.
     #[serde(rename = "zRz", default)]
     pub z_rz: f64,
 }
@@ -500,6 +506,7 @@ mod tests {
                 x_ty: 0.00476,
                 x_rz: 0.00753,
                 z_rx: -0.00431,
+                x_rx: 0.0,
                 z_rz: 0.0,
             },
         }
@@ -661,6 +668,7 @@ mod tests {
                 x_ty: 0.0,
                 x_rz: 0.0,
                 z_rx: 0.0,
+                x_rx: 0.0,
                 z_rz: 0.0,
             },
         };
