@@ -293,6 +293,17 @@ impl VideoDecoder {
         r.0 as f64 / r.1 as f64
     }
 
+    /// Video duration in seconds, or `None` if unknown.
+    pub fn duration_secs(&self) -> Option<f64> {
+        let dur = self.input.duration();
+        if dur > 0 {
+            // FFmpeg reports duration in AV_TIME_BASE units (microseconds).
+            Some(dur as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE))
+        } else {
+            None
+        }
+    }
+
     /// Decode the next YUV420P frame, or `None` if the video is finished.
     #[cfg_attr(
         feature = "profiling",
