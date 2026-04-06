@@ -134,6 +134,8 @@ pub fn run_calibrate(
     iterations: usize,
     no_left_roll: bool,
     sync_offset: i64,
+    skip_start: f64,
+    skip_end: f64,
     debug_dir: Option<&str>,
     output: &str,
 ) -> anyhow::Result<()> {
@@ -151,18 +153,30 @@ pub fn run_calibrate(
         right_params.height
     );
 
-    // Determine frame count from left video
+    // Determine frame count from both videos
     let left_decoder = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(left))?;
     let fps = left_decoder.fps();
     let total_frames = {
         let right_decoder = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right))?;
-        let left_est = (left_decoder.fps() * 60.0) as u64;
-        let right_est = (right_decoder.fps() * 60.0) as u64;
+        let left_est = left_decoder
+            .duration_secs()
+            .map(|d| (d * left_decoder.fps()) as u64)
+            .unwrap_or((left_decoder.fps() * 60.0) as u64);
+        let right_est = right_decoder
+            .duration_secs()
+            .map(|d| (d * right_decoder.fps()) as u64)
+            .unwrap_or((right_decoder.fps() * 60.0) as u64);
         left_est.min(right_est).max(100)
     };
     drop(left_decoder);
 
-    let frame_indices = reco_calibrate::sampling::select_frame_indices(total_frames, num_frames);
+    let frame_indices = reco_calibrate::sampling::select_frame_indices(
+        total_frames,
+        fps,
+        num_frames,
+        skip_start,
+        skip_end,
+    );
 
     // Apply sync offset
     let (left_indices, right_indices) = if sync_offset >= 0 {
@@ -224,6 +238,8 @@ pub fn run_calibrate(
         num_frames,
         iterations,
         enable_sixth_param: !no_left_roll,
+        skip_start_secs: skip_start,
+        skip_end_secs: skip_end,
         ..Default::default()
     };
 
@@ -275,6 +291,13 @@ pub fn run_calibrate(
                 fm.post_ransac,
             );
         }
+    }
+
+    // Debug: save per-frame match data as JSON
+    if let Some(dir) = debug_dir {
+        let matches_json = serde_json::to_string_pretty(&result.per_frame)?;
+        std::fs::write(format!("{dir}/matches.json"), &matches_json)?;
+        eprintln!("Match data saved to {dir}/matches.json");
     }
 
     Ok(())

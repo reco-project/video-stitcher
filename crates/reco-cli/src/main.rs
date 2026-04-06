@@ -136,6 +136,21 @@ enum Commands {
         /// Window height in pixels.
         #[arg(long, default_value_t = 720)]
         height: u32,
+
+        /// Frame offset to sync left/right videos.
+        /// Positive: skip N right frames (right started first).
+        /// Negative: skip N left frames (left started first).
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        sync_offset: i64,
+
+        /// Seam blend width (0.0 = hard cut, 0.15 = default smooth blend).
+        #[arg(long, default_value_t = 0.15)]
+        blend: f32,
+
+        /// Rig tilt in degrees. Rotates the entire scene to compensate for
+        /// a tilted camera rig, straightening vertical lines at the edges.
+        #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+        rig_tilt: f32,
     },
 
     /// Stitch live camera feeds in real time.
@@ -244,6 +259,14 @@ enum Commands {
         #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
         sync_offset: i64,
 
+        /// Seconds to skip from the start of the video (e.g. camera setup).
+        #[arg(long, default_value_t = 0.0)]
+        skip_start: f64,
+
+        /// Seconds to skip from the end of the video (e.g. teardown).
+        #[arg(long, default_value_t = 0.0)]
+        skip_end: f64,
+
         /// Directory to write debug data (keypoints, matches as JSON + images).
         #[arg(long)]
         debug_dir: Option<String>,
@@ -336,6 +359,9 @@ fn main() -> anyhow::Result<()> {
             calibration,
             width,
             height,
+            sync_offset,
+            blend,
+            rig_tilt,
         } => {
             const MAX_DIM: u32 = 8192;
             anyhow::ensure!(
@@ -344,7 +370,16 @@ fn main() -> anyhow::Result<()> {
                 width,
                 height,
             );
-            preview::run_preview(&left, &right, &calibration, width, height)
+            preview::run_preview(
+                &left,
+                &right,
+                &calibration,
+                width,
+                height,
+                sync_offset,
+                blend,
+                rig_tilt,
+            )
         }
 
         #[cfg(feature = "gstreamer")]
@@ -415,6 +450,8 @@ fn main() -> anyhow::Result<()> {
             iterations,
             no_left_roll,
             sync_offset,
+            skip_start,
+            skip_end,
             debug_dir,
             output,
         } => calibrate::run_calibrate(
@@ -426,6 +463,8 @@ fn main() -> anyhow::Result<()> {
             iterations,
             no_left_roll,
             sync_offset,
+            skip_start,
+            skip_end,
             debug_dir.as_deref(),
             &output,
         ),

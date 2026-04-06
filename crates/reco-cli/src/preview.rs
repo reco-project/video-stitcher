@@ -53,14 +53,20 @@ pub fn run_preview(
     calibration_path: &str,
     width: u32,
     height: u32,
+    sync_offset: i64,
+    blend_width: f32,
+    rig_tilt_degrees: f32,
 ) -> anyhow::Result<()> {
     // Probe the right file to verify dimensions match
     let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
     let right_dims = (right_dec.width(), right_dec.height());
     drop(right_dec);
 
-    let mut source =
-        reco_io::adapters::FfmpegFileSource::open(Path::new(left_path), Path::new(right_path))?;
+    let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
+        Path::new(left_path),
+        Path::new(right_path),
+        sync_offset,
+    )?;
     let info = source.info();
 
     anyhow::ensure!(
@@ -116,6 +122,8 @@ pub fn run_preview(
         target_yaw: 0.0,
         target_pitch: 0.0,
         target_fov: FOV_DEFAULT,
+        blend_width,
+        rig_tilt: rig_tilt_degrees.to_radians(),
     };
 
     event_loop.run_app(&mut app)?;
@@ -150,6 +158,8 @@ struct App {
     target_yaw: f32,
     target_pitch: f32,
     target_fov: f32,
+    blend_width: f32,
+    rig_tilt: f32,
 }
 
 impl App {
@@ -268,6 +278,8 @@ impl ApplicationHandler for App {
         let viewport = reco_core::viewport::ViewportConfig {
             width: self.width,
             height: self.height,
+            blend_width: self.blend_width,
+            rig_tilt: self.rig_tilt,
             ..Default::default()
         };
 
