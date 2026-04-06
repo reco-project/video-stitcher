@@ -1,24 +1,12 @@
 //! COBYLA-based position optimization.
 //!
-//! Finds the 5 or 6 placement parameters that minimize the total
-//! reprojection error between matched feature point pairs. Uses a
-//! three-phase strategy:
+//! Finds the 5 or 6 placement parameters that minimize the symmetric
+//! plane-to-plane reprojection error. Uses multi-start COBYLA to avoid
+//! local minima.
 //!
-//! 1. **Phase 0**: Translation-only optimization (3 params: `x_ty`,
-//!    `intersect`, `cam_d`) with rotations fixed at zero. Uses a wide
-//!    trust region and multi-start to find robust translation values.
-//!
-//! 2. **Phase 1**: Local 5-param refinement around the Phase 0 seed.
-//!    Adds rotations (`x_rz`, `z_rx`) with tight bounds (±0.05 rad,
-//!    ~3 degrees) and a small trust region to prevent rotations from
-//!    absorbing the vertical offset that Phase 0 established.
-//!
-//! 3. **Phase 2** (optional): Refine with a 6th parameter (`z_rz`,
-//!    left plane roll) using a tight trust region seeded from Phase 1.
-//!
-//! The phase separation is critical: without it, rotations can trade
-//! off against `x_ty`, producing mathematically lower error on the
-//! matched point set but visually worse stitching results.
+//! The reprojection error objective has a proper global minimum in all
+//! parameters (including cam_d), unlike the angular error used in v1
+//! which is degenerate in camera distance.
 
 use cobyla::{RhoBeg, StopTols};
 use reco_core::calibration::PlaneLayout;
@@ -27,21 +15,16 @@ use crate::error::CalibrateError;
 use crate::geometry::{self, OptParams};
 use crate::types::{CalibrationConfig, MatchedPoint};
 
-/// Bounds for the 3-parameter translation-only optimization (Phase 0).
+/// Bounds for the 5-parameter optimization.
 ///
-/// Order: `[x_ty, intersect, cam_d]`
-const BOUNDS_3: [(f64, f64); 3] = [
-    (-0.1, 0.1), // x_ty: vertical translation
-    (0.0, 1.0),  // intersect: overlap ratio
-    (0.1, 0.35), // cam_d: camera distance (matches v1 bounds)
+/// Order: `[x_ty, intersect, cam_d, x_rz, z_rx]`
+const BOUNDS_5: [(f64, f64); 5] = [
+    (-0.1, 0.1),   // x_ty: vertical translation
+    (0.0, 1.0),    // intersect: overlap ratio
+    (0.1, 0.35),   // cam_d: camera distance
+    (-0.05, 0.05), // x_rz: ~±3 degrees
+    (-0.05, 0.05), // z_rx: ~±3 degrees
 ];
-
-/// Rotation bound for Phase 1 refinement (about ±3 degrees).
-///
-/// Camera misalignment is typically sub-degree. A 3-degree bound
-/// allows correction of moderate misalignment without letting the
-/// optimizer trade rotations for vertical translation.
-const ROTATION_BOUND: f64 = 0.05;
 
 /// Maximum roll correction for the 6th parameter (about ±6 degrees).
 const Z_RZ_BOUND: f64 = 0.1;
@@ -55,173 +38,202 @@ fn stop_tols() -> StopTols {
     }
 }
 
-/// Starting points for the 3-parameter translation-only phase.
+/// Starting points for multi-start optimization.
 ///
-/// Explores diverse cam_d and intersect values to avoid local minima.
-const STARTS_3: [[f64; 3]; 5] = [
-    [0.0, 0.5, 0.25], // center
-    [0.0, 0.5, 0.15], // low cam_d
-    [0.0, 0.5, 0.30], // high cam_d
-    [0.0, 0.3, 0.25], // low intersect
-    [0.0, 0.7, 0.25], // high intersect
+/// Explores diverse cam_d and intersect values. Rotations always
+/// start at zero since the reprojection error landscape is well-behaved
+/// and COBYLA can find the rotation corrections from any cam_d start.
+const STARTS: [[f64; 5]; 6] = [
+    [0.0, 0.5, 0.225, 0.0, 0.0], // center (matches v1 initial guess)
+    [0.0, 0.5, 0.15, 0.0, 0.0],  // low cam_d
+    [0.0, 0.5, 0.30, 0.0, 0.0],  // high cam_d
+    [0.0, 0.3, 0.225, 0.0, 0.0], // low intersect
+    [0.0, 0.7, 0.225, 0.0, 0.0], // high intersect
+    [0.0, 0.5, 0.20, 0.0, 0.0],  // alternative cam_d
 ];
 
-/// Phase 0: Translation-only optimization (3 params).
+/// Optimize 5 parameters using multi-start Powell coordinate descent.
 ///
-/// Finds the best `[x_ty, intersect, cam_d]` with rotations fixed at zero.
-/// This establishes the translation baseline that Phase 1 refines.
-fn optimize_translations(points: &[MatchedPoint], max_evals: usize) -> Option<([f64; 3], f64)> {
-    let data = points;
-    let cons: Vec<&dyn cobyla::Func<&[MatchedPoint]>> = vec![];
-    let mut best: Option<([f64; 3], f64)> = None;
+/// Powell's method with conjugate direction updates naturally finds
+/// local minima in the reprojection error landscape. Multiple starts
+/// ensure we explore different basins.
+fn optimize_5param(
+    points: &[MatchedPoint],
+    _config: &CalibrationConfig,
+) -> Result<(OptParams, f64), CalibrateError> {
+    let mut best: Option<(OptParams, f64)> = None;
 
-    for init in &STARTS_3 {
-        let result = cobyla::minimize(
-            geometry::objective_3param,
-            init,
-            &BOUNDS_3,
-            &cons,
-            data,
-            max_evals,
-            RhoBeg::All(0.3),
-            Some(stop_tols()),
-        );
+    let eval = |p: &[f64; 5]| -> f64 {
+        let params = OptParams::from_5param(p);
+        geometry::reprojection_error(points, &params)
+    };
 
-        let (x, f) = match result {
-            Ok((_status, x, f)) => (x, f),
-            Err((_status, x, f)) if f.is_finite() => (x, f),
-            Err(_) => continue,
-        };
+    for init in &STARTS {
+        let result = powell_minimize(&eval, init, &BOUNDS_5, 20, 1e-12);
 
-        if best.as_ref().is_none_or(|(_, r)| f < *r) {
-            best = Some(([x[0], x[1], x[2]], f));
+        if let Some((x, f)) = result {
+            log::debug!(
+                "  start: x_ty={:.4}, intersect={:.4}, cam_d={:.4}, x_rz={:.5}, z_rx={:.5}, residual={f:.6}",
+                x[0],
+                x[1],
+                x[2],
+                x[3],
+                x[4]
+            );
+
+            if best.as_ref().is_none_or(|(_, r)| f < *r) {
+                best = Some((OptParams::from_5param(&x), f));
+            }
         }
     }
 
-    best
+    best.ok_or(CalibrateError::OptimizerFailed { max_evals: 0 })
 }
 
-/// Phase 1: 5-param refinement around Phase 0 seed.
+/// Powell's method with conjugate direction updates and bounded line search.
 ///
-/// Takes the Phase 0 translations as a seed and adds rotation
-/// corrections. x_ty and intersect stay close to Phase 0's values
-/// (tight bounds), but cam_d gets the full range because the
-/// angular error objective is degenerate in cam_d when rotations
-/// are zero - only joint optimization with rotations can find the
-/// correct cam_d.
-fn refine_5param(
-    seed: &[f64; 3],
-    points: &[MatchedPoint],
-    max_evals: usize,
-) -> Option<(OptParams, f64)> {
-    let init = [seed[0], seed[1], seed[2], 0.0, 0.0];
+/// Iteratively minimizes along coordinate directions, then replaces
+/// the direction of largest decrease with the conjugate (overall
+/// movement) direction. Uses golden-section line search within bounds.
+fn powell_minimize(
+    eval: &dyn Fn(&[f64; 5]) -> f64,
+    init: &[f64; 5],
+    bounds: &[(f64, f64); 5],
+    max_cycles: usize,
+    tol: f64,
+) -> Option<([f64; 5], f64)> {
+    let n = 5;
+    let mut x = *init;
+    let mut best_f = eval(&x);
 
-    // x_ty and intersect stay close to Phase 0 seed.
-    // cam_d gets the full range: Phase 0 always hits the upper bound
-    // because angular error decreases with distance when rotations=0.
-    // With rotations enabled, cam_d can settle at the correct value.
-    let bounds: [(f64, f64); 5] = [
-        ((seed[0] - 0.02).max(-0.1), (seed[0] + 0.02).min(0.1)),
-        ((seed[1] - 0.05).max(0.0), (seed[1] + 0.05).min(1.0)),
-        BOUNDS_3[2], // full cam_d range [0.1, 0.35]
-        (-ROTATION_BOUND, ROTATION_BOUND),
-        (-ROTATION_BOUND, ROTATION_BOUND),
-    ];
+    let mut dirs: Vec<[f64; 5]> = (0..n)
+        .map(|i| {
+            let mut d = [0.0; 5];
+            d[i] = 1.0;
+            d
+        })
+        .collect();
 
-    let data = points;
-    let cons: Vec<&dyn cobyla::Func<&[MatchedPoint]>> = vec![];
+    let line_min =
+        |base: &[f64; 5], dir: &[f64; 5], eval_fn: &dyn Fn(&[f64; 5]) -> f64| -> (f64, f64) {
+            let mut t_lo = f64::NEG_INFINITY;
+            let mut t_hi = f64::INFINITY;
+            for i in 0..n {
+                if dir[i].abs() > 1e-15 {
+                    let lo = (bounds[i].0 - base[i]) / dir[i];
+                    let hi = (bounds[i].1 - base[i]) / dir[i];
+                    let (lo, hi) = if lo < hi { (lo, hi) } else { (hi, lo) };
+                    t_lo = t_lo.max(lo);
+                    t_hi = t_hi.min(hi);
+                }
+            }
+            t_lo = t_lo.max(-2.0);
+            t_hi = t_hi.min(2.0);
 
-    let (x, f) = match cobyla::minimize(
-        geometry::objective_5param,
-        &init,
-        &bounds,
-        &cons,
-        data,
-        max_evals,
-        RhoBeg::All(0.1), // wider trust region so cam_d can move freely
-        Some(stop_tols()),
-    ) {
-        Ok((_status, x, f)) => (x, f),
-        Err((_status, x, f)) if f.is_finite() => (x, f),
-        Err(_) => return None,
-    };
+            if t_lo >= t_hi {
+                return (0.0, eval_fn(base));
+            }
 
-    Some((OptParams::from_5param(&x), f))
+            let golden = 0.381966011250105;
+            let mut a = t_lo;
+            let mut b = t_hi;
+
+            let point_at = |t: f64| -> [f64; 5] {
+                let mut p = *base;
+                for i in 0..n {
+                    p[i] = (base[i] + t * dir[i]).clamp(bounds[i].0, bounds[i].1);
+                }
+                p
+            };
+
+            for _ in 0..50 {
+                if (b - a) < 1e-14 {
+                    break;
+                }
+                let t1 = a + golden * (b - a);
+                let t2 = b - golden * (b - a);
+                if eval_fn(&point_at(t1)) < eval_fn(&point_at(t2)) {
+                    b = t2;
+                } else {
+                    a = t1;
+                }
+            }
+            let t_best = (a + b) / 2.0;
+            let p_best = point_at(t_best);
+            (t_best, eval_fn(&p_best))
+        };
+
+    for _cycle in 0..max_cycles {
+        let prev_f = best_f;
+        let x0 = x;
+
+        let mut max_decrease = 0.0f64;
+        let mut max_decrease_idx = 0;
+
+        for (di, dir) in dirs.iter().enumerate() {
+            let f_before = eval(&x);
+            let (t, f_after) = line_min(&x, dir, eval);
+            for i in 0..n {
+                x[i] = (x[i] + t * dir[i]).clamp(bounds[i].0, bounds[i].1);
+            }
+            best_f = f_after;
+
+            let decrease = f_before - f_after;
+            if decrease > max_decrease {
+                max_decrease = decrease;
+                max_decrease_idx = di;
+            }
+        }
+
+        // Conjugate direction update
+        let mut new_dir = [0.0; 5];
+        let mut norm_sq = 0.0;
+        for i in 0..n {
+            new_dir[i] = x[i] - x0[i];
+            norm_sq += new_dir[i] * new_dir[i];
+        }
+
+        if norm_sq > 1e-20 {
+            let norm = norm_sq.sqrt();
+            for d in &mut new_dir {
+                *d /= norm;
+            }
+
+            let (t, f_conj) = line_min(&x, &new_dir, eval);
+            if f_conj < best_f {
+                for i in 0..n {
+                    x[i] = (x[i] + t * new_dir[i]).clamp(bounds[i].0, bounds[i].1);
+                }
+                best_f = f_conj;
+                dirs[max_decrease_idx] = new_dir;
+            }
+        }
+
+        if (prev_f - best_f).abs() < tol {
+            break;
+        }
+    }
+
+    Some((x, best_f))
 }
 
-/// Run Phase 0 (translations) + Phase 1 (local refinement with rotations).
-fn optimize_5param(
-    points: &[MatchedPoint],
-    config: &CalibrationConfig,
-) -> Result<(OptParams, f64), CalibrateError> {
-    // Phase 0: translation-only to establish x_ty, intersect, cam_d
-    let (seed, seed_res) = optimize_translations(points, config.max_optimizer_evals).ok_or(
-        CalibrateError::OptimizerFailed {
-            max_evals: config.max_optimizer_evals,
-        },
-    )?;
-
-    log::debug!(
-        "  phase 0: x_ty={:.4}, intersect={:.4}, cam_d={:.4}, residual={seed_res:.6}",
-        seed[0],
-        seed[1],
-        seed[2]
-    );
-
-    // Phase 1: local 5-param refinement seeded from Phase 0
-    let (params, residual) = refine_5param(&seed, points, config.max_optimizer_evals)
-        .unwrap_or_else(|| {
-            // Fall back to Phase 0 result with zero rotations
-            log::debug!("  phase 1 failed, using phase 0 result");
-            (
-                OptParams {
-                    x_ty: seed[0],
-                    intersect: seed[1],
-                    cam_d: seed[2],
-                    x_rz: 0.0,
-                    z_rx: 0.0,
-                    z_rz: None,
-                },
-                seed_res,
-            )
-        });
-
-    log::debug!(
-        "  phase 1: x_ty={:.4}, intersect={:.4}, cam_d={:.4}, x_rz={:.5}, z_rx={:.5}, residual={residual:.6}",
-        params.x_ty,
-        params.intersect,
-        params.cam_d,
-        params.x_rz,
-        params.z_rx
-    );
-
-    Ok((params, residual))
-}
-
-/// Run the 6-parameter refinement (Phase 2).
+/// Refine with a 6th parameter (z_rz, left plane roll).
 ///
-/// Seeds from the Phase 1 result and adds `z_rz` with tight bounds.
+/// Seeds from the 5-param result and adds z_rz with tight bounds.
+/// Uses COBYLA since we're refining near a known good solution.
 fn refine_6param(
     points: &[MatchedPoint],
     seed: &OptParams,
     config: &CalibrationConfig,
 ) -> Result<(OptParams, f64), CalibrateError> {
-    let init = [
-        seed.x_ty,
-        seed.intersect,
-        seed.cam_d,
-        seed.x_rz,
-        seed.z_rx,
-        0.0, // z_rz starts at 0
-    ];
+    let init = seed.to_6param();
 
-    // Keep translations near Phase 1, rotations within ROTATION_BOUND
     let bounds: [(f64, f64); 6] = [
-        BOUNDS_3[0],
-        BOUNDS_3[1],
-        BOUNDS_3[2],
-        (-ROTATION_BOUND, ROTATION_BOUND),
-        (-ROTATION_BOUND, ROTATION_BOUND),
+        BOUNDS_5[0],
+        BOUNDS_5[1],
+        BOUNDS_5[2],
+        BOUNDS_5[3],
+        BOUNDS_5[4],
         (-Z_RZ_BOUND, Z_RZ_BOUND),
     ];
 
@@ -235,33 +247,24 @@ fn refine_6param(
         &cons,
         data,
         config.max_optimizer_evals,
-        RhoBeg::All(0.05), // tight trust region for refinement
+        RhoBeg::All(0.05),
         Some(stop_tols()),
     );
 
     match result {
-        Ok((_status, x_opt, f_opt)) => {
-            let params = OptParams::from_6param(&x_opt);
-            Ok((params, f_opt))
-        }
-        Err((_status, x, f)) => {
-            if f.is_finite() {
-                let params = OptParams::from_6param(&x);
-                Ok((params, f))
-            } else {
-                Err(CalibrateError::OptimizerFailed {
-                    max_evals: config.max_optimizer_evals,
-                })
-            }
-        }
+        Ok((_status, x, f)) => Ok((OptParams::from_6param(&x), f)),
+        Err((_status, x, f)) if f.is_finite() => Ok((OptParams::from_6param(&x), f)),
+        Err(_) => Err(CalibrateError::OptimizerFailed {
+            max_evals: config.max_optimizer_evals,
+        }),
     }
 }
 
 /// Run the full optimization pipeline on a set of matched points.
 ///
-/// Phase 1 optimizes 5 parameters. If `config.enable_sixth_param` is true,
-/// Phase 2 refines with the 6th parameter (left plane roll). The 6th
-/// parameter is only accepted if it improves the residual error.
+/// Optimizes 5 parameters with multi-start COBYLA. If `config.enable_sixth_param`
+/// is true, refines with a 6th parameter (left plane roll), accepted only
+/// if it improves the residual.
 pub fn optimize(
     points: &[MatchedPoint],
     config: &CalibrationConfig,
@@ -271,9 +274,7 @@ pub fn optimize(
     let (final_params, final_residual) = if config.enable_sixth_param {
         match refine_6param(points, &params_5, config) {
             Ok((params_6, residual_6)) if residual_6 < residual_5 => {
-                log::debug!(
-                    "6-param refinement improved residual: {residual_5:.6} -> {residual_6:.6}"
-                );
+                log::debug!("6-param improved: {residual_5:.6} -> {residual_6:.6}");
                 (params_6, residual_6)
             }
             Ok((_, residual_6)) => {
@@ -283,7 +284,7 @@ pub fn optimize(
                 (params_5, residual_5)
             }
             Err(e) => {
-                log::warn!("6-param refinement failed ({e}), keeping 5-param result");
+                log::warn!("6-param failed ({e}), keeping 5-param");
                 (params_5, residual_5)
             }
         }
@@ -297,6 +298,7 @@ pub fn optimize(
         x_ty: final_params.x_ty,
         x_rz: final_params.x_rz,
         z_rx: final_params.z_rx,
+        x_rx: 0.0,
         z_rz: final_params.z_rz.unwrap_or(0.0),
     };
 
@@ -310,10 +312,8 @@ mod tests {
 
     /// Create synthetic matched points for a known configuration.
     ///
-    /// Uses `apply_transformations` + `angular_error` in reverse: pick 2D
-    /// plane coordinates, forward-transform them, and verify zero error.
-    /// The points are spread across the overlap region to well-constrain
-    /// all 5 parameters.
+    /// Traces rays from the camera through both planes, producing
+    /// point pairs that are perfectly consistent with the given params.
     fn synthetic_points(true_params: &OptParams, n: usize) -> Vec<MatchedPoint> {
         use crate::geometry::PLANE_WIDTH;
 
@@ -328,17 +328,13 @@ mod tests {
                 if points.len() >= n {
                     break;
                 }
-                // Spread points across the overlap region
                 let fx = (ix as f64 + 0.5) / grid as f64;
                 let fy = (iy as f64 + 0.5) / grid as f64;
 
-                // Ray direction: sweep a wide angular range toward both planes
-                let yaw = -0.9 + fx * 0.5; // [-0.9, -0.4] - hits both planes
-                let pitch = (fy - 0.5) * 0.4; // [-0.2, 0.2] - vertical spread
-
+                let yaw = -0.9 + fx * 0.5;
+                let pitch = (fy - 0.5) * 0.4;
                 let d = nalgebra::Vector3::new(yaw, pitch, yaw - 0.3).normalize();
 
-                // Need both t > 0 for the ray to hit both planes
                 if d.z.abs() < 1e-10 || d.x.abs() < 1e-10 {
                     continue;
                 }
@@ -351,7 +347,6 @@ mod tests {
                 let hit_x = cam + t_x * d;
                 let hit_z = cam + t_z * d;
 
-                // Reverse-transform to untransformed plane coords
                 let x_coord = hit_x.x - half_offset;
                 let y_coord = -(hit_x.y - true_params.x_ty);
                 let z_coord = -(hit_z.z - half_offset);
@@ -384,11 +379,11 @@ mod tests {
             points.len()
         );
 
-        // Verify ground truth: both error metrics should be ~0 at true params
-        let true_angular = geometry::angular_error(&points, &true_params);
+        // Verify ground truth: reprojection error should be ~0
+        let true_err = geometry::reprojection_error(&points, &true_params);
         assert!(
-            true_angular < 0.001,
-            "synthetic points don't have near-zero angular error at true params: {true_angular}"
+            true_err < 0.001,
+            "synthetic points don't have near-zero error at true params: {true_err}"
         );
 
         let config = CalibrationConfig {
@@ -397,28 +392,11 @@ mod tests {
             ..Default::default()
         };
 
-        let (layout, residual) = optimize(&points, &config).expect("optimization should succeed");
+        let (layout, _) = optimize(&points, &config).expect("optimization should succeed");
 
-        // Residual should beat a random guess
-        let random_error = geometry::angular_error(
-            &points,
-            &OptParams {
-                x_ty: 0.5,
-                intersect: 0.2,
-                cam_d: 0.3,
-                x_rz: 0.1,
-                z_rx: 0.1,
-                z_rz: None,
-            },
-        );
-        assert!(
-            residual < random_error,
-            "optimizer should beat random params: {residual} vs {random_error}"
-        );
-
-        // Check recovered params are in a reasonable range
-        assert_abs_diff_eq!(layout.camera_axis_offset, 0.225, epsilon = 0.1);
-        assert_abs_diff_eq!(layout.intersect, 0.5, epsilon = 0.25);
+        assert_abs_diff_eq!(layout.camera_axis_offset, 0.225, epsilon = 0.05);
+        assert_abs_diff_eq!(layout.intersect, 0.5, epsilon = 0.1);
+        assert_abs_diff_eq!(layout.x_ty, 0.01, epsilon = 0.02);
     }
 
     #[test]
@@ -440,9 +418,6 @@ mod tests {
         };
 
         let (layout, _) = optimize(&points, &config).expect("optimization should succeed");
-
-        // z_rz should stay small when there's no actual roll.
-        // Z_RZ_BOUND is 0.1 rad (~6 deg), so staying under that is good.
         assert_abs_diff_eq!(layout.z_rz, 0.0, epsilon = Z_RZ_BOUND);
     }
 }

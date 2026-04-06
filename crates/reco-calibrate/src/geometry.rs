@@ -173,64 +173,64 @@ pub fn apply_transformations(
     (x_transformed, z_transformed)
 }
 
-/// Camera's forward direction: normalized vector from `[cam_d, 0, cam_d]`
-/// toward the origin (the L-shape corner).
-const CAMERA_FORWARD: Vector3<f64> = Vector3::new(-FRAC_1_SQRT_2, 0.0, -FRAC_1_SQRT_2);
-
-/// Camera's right axis: perpendicular to forward in the horizontal plane.
-/// Points from the z-plane side toward the x-plane side.
-const CAMERA_RIGHT: Vector3<f64> = Vector3::new(FRAC_1_SQRT_2, 0.0, -FRAC_1_SQRT_2);
-
-/// Camera's up axis.
-const CAMERA_UP: Vector3<f64> = Vector3::new(0.0, 1.0, 0.0);
-
-/// 1/sqrt(2), used for camera axis constants.
-const FRAC_1_SQRT_2: f64 = std::f64::consts::FRAC_1_SQRT_2;
-
-/// Compute the total reprojection error between matched point pairs.
+/// Symmetric plane-to-plane reprojection error (sum of squared distances).
 ///
-/// Projects both rays (camera to each transformed 3D point) onto a virtual
-/// image plane perpendicular to the camera's viewing direction. Measures
-/// the 2D Euclidean distance between the two projections on this plane.
+/// For each matched pair, shoots a ray from the camera through one point
+/// and measures where it hits the other plane. The squared distance between
+/// the intersection and the actual matched point is the error.
 ///
-/// This directly measures visual error - what the user would see as
-/// misalignment in the stitched output. Unlike angular error, it properly
-/// weights points based on their depth from the camera.
+/// Both directions are computed (x-plane → z-plane and z-plane → x-plane)
+/// for symmetry. This is the standard reprojection metric used in bundle
+/// adjustment and has a proper global minimum in cam_d, unlike angular
+/// error which is degenerate.
+///
+/// # Why this works
+///
+/// The x-plane stays at z=0 and the z-plane stays at x=0 even after
+/// their respective rotations (Rz around Z-axis preserves z=0, Rx around
+/// X-axis preserves x=0). So ray-plane intersection is a simple division.
 pub fn reprojection_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
     let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
     let (x_pts, z_pts) = apply_transformations(points, params);
 
     let mut total = 0.0;
     for (x_pt, z_pt) in x_pts.iter().zip(z_pts.iter()) {
-        let v_x = x_pt - camera;
-        let v_z = z_pt - camera;
-
-        let depth_x = v_x.dot(&CAMERA_FORWARD);
-        let depth_z = v_z.dot(&CAMERA_FORWARD);
-
-        // Guard against degenerate cases (points behind camera)
-        if depth_x <= 0.0 || depth_z <= 0.0 {
-            total += 1e6; // large penalty
-            continue;
+        // Forward: ray from camera through x_pt, intersect z-plane (x=0)
+        let dir_x = x_pt - camera;
+        if dir_x.x.abs() > 1e-15 {
+            let t = -camera.x / dir_x.x;
+            if t > 0.0 {
+                let hit = camera + t * dir_x;
+                let dy = hit.y - z_pt.y;
+                let dz = hit.z - z_pt.z;
+                total += dy * dy + dz * dz;
+            } else {
+                total += 1e6;
+            }
         }
 
-        // Project onto image plane (perspective divide)
-        let px = v_x.dot(&CAMERA_RIGHT) / depth_x;
-        let py = v_x.dot(&CAMERA_UP) / depth_x;
-        let qx = v_z.dot(&CAMERA_RIGHT) / depth_z;
-        let qy = v_z.dot(&CAMERA_UP) / depth_z;
-
-        let dx = px - qx;
-        let dy = py - qy;
-        total += (dx * dx + dy * dy).sqrt();
+        // Backward: ray from camera through z_pt, intersect x-plane (z=0)
+        let dir_z = z_pt - camera;
+        if dir_z.z.abs() > 1e-15 {
+            let t = -camera.z / dir_z.z;
+            if t > 0.0 {
+                let hit = camera + t * dir_z;
+                let dx = hit.x - x_pt.x;
+                let dy = hit.y - x_pt.y;
+                total += dx * dx + dy * dy;
+            } else {
+                total += 1e6;
+            }
+        }
     }
     total
 }
 
-/// Compute per-point reprojection errors.
+/// Compute per-point symmetric reprojection errors.
 ///
-/// Returns a vector of individual error values for each matched pair.
-/// Useful for outlier detection and trimmed evaluation.
+/// Returns a vector of individual error values (sum of forward + backward
+/// squared distances per pair). Used for outlier detection and trimmed
+/// evaluation.
 pub fn per_point_reprojection_error(points: &[MatchedPoint], params: &OptParams) -> Vec<f64> {
     let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
     let (x_pts, z_pts) = apply_transformations(points, params);
@@ -239,24 +239,35 @@ pub fn per_point_reprojection_error(points: &[MatchedPoint], params: &OptParams)
         .iter()
         .zip(z_pts.iter())
         .map(|(x_pt, z_pt)| {
-            let v_x = x_pt - camera;
-            let v_z = z_pt - camera;
+            let mut err = 0.0;
 
-            let depth_x = v_x.dot(&CAMERA_FORWARD);
-            let depth_z = v_z.dot(&CAMERA_FORWARD);
-
-            if depth_x <= 0.0 || depth_z <= 0.0 {
-                return 1e6;
+            let dir_x = x_pt - camera;
+            if dir_x.x.abs() > 1e-15 {
+                let t = -camera.x / dir_x.x;
+                if t > 0.0 {
+                    let hit = camera + t * dir_x;
+                    let dy = hit.y - z_pt.y;
+                    let dz = hit.z - z_pt.z;
+                    err += dy * dy + dz * dz;
+                } else {
+                    return 1e6;
+                }
             }
 
-            let px = v_x.dot(&CAMERA_RIGHT) / depth_x;
-            let py = v_x.dot(&CAMERA_UP) / depth_x;
-            let qx = v_z.dot(&CAMERA_RIGHT) / depth_z;
-            let qy = v_z.dot(&CAMERA_UP) / depth_z;
+            let dir_z = z_pt - camera;
+            if dir_z.z.abs() > 1e-15 {
+                let t = -camera.z / dir_z.z;
+                if t > 0.0 {
+                    let hit = camera + t * dir_z;
+                    let dx = hit.x - x_pt.x;
+                    let dy = hit.y - x_pt.y;
+                    err += dx * dx + dy * dy;
+                } else {
+                    return 1e6;
+                }
+            }
 
-            let dx = px - qx;
-            let dy = py - qy;
-            (dx * dx + dy * dy).sqrt()
+            err
         })
         .collect()
 }
@@ -299,42 +310,23 @@ pub fn angular_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
     total
 }
 
-/// 3-parameter objective function for COBYLA (translation-only phase).
+/// 5-parameter objective function for COBYLA (reprojection error).
 ///
-/// Optimizes only `[x_ty, intersect, cam_d]` with rotations fixed at zero.
-/// Uses angular error (same as v1's SciPy Powell objective).
-///
-/// Parameter vector order: `[x_ty, intersect, cam_d]`
-pub fn objective_3param(x: &[f64], points: &mut &[MatchedPoint]) -> f64 {
-    let params = OptParams {
-        x_ty: x[0],
-        intersect: x[1],
-        cam_d: x[2],
-        x_rz: 0.0,
-        z_rx: 0.0,
-        z_rz: None,
-    };
-    angular_error(points, &params)
-}
-
-/// 5-parameter objective function for COBYLA (angular error).
-///
-/// Matches v1's SciPy Powell objective: sum of arccos(dot) between
-/// direction vectors from the virtual camera to each transformed
-/// 3D point pair.
+/// Uses symmetric plane-to-plane squared reprojection error which
+/// has a proper global minimum in all parameters (including cam_d).
 ///
 /// Parameter vector order: `[x_ty, intersect, cam_d, x_rz, z_rx]`
 pub fn objective_5param(x: &[f64], points: &mut &[MatchedPoint]) -> f64 {
     let params = OptParams::from_5param(x);
-    angular_error(points, &params)
+    reprojection_error(points, &params)
 }
 
-/// 6-parameter objective function for COBYLA (angular error).
+/// 6-parameter objective function for COBYLA (reprojection error).
 ///
 /// Parameter vector order: `[x_ty, intersect, cam_d, x_rz, z_rx, z_rz]`
 pub fn objective_6param(x: &[f64], points: &mut &[MatchedPoint]) -> f64 {
     let params = OptParams::from_6param(x);
-    angular_error(points, &params)
+    reprojection_error(points, &params)
 }
 
 /// Normalize a pixel coordinate to plane coordinates.

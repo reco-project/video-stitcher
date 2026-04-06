@@ -12,18 +12,35 @@ use crate::types::{CalibrationConfig, GrayFrame, MatchedPoint};
 
 /// Compute frame indices to sample from a video.
 ///
-/// Skips the first and last 5% of the video (often contains setup/teardown),
-/// divides the usable 90% range into `num_samples` equal segments, and
-/// picks the midpoint of each segment.
+/// If `skip_start_secs` or `skip_end_secs` are set (> 0), those durations
+/// are skipped. Otherwise falls back to skipping the first/last 5%.
+/// Divides the usable range into `num_samples` equal segments and picks
+/// the midpoint of each.
 ///
 /// Returns frame indices sorted in ascending order.
-pub fn select_frame_indices(total_frames: u64, num_samples: usize) -> Vec<u64> {
+pub fn select_frame_indices(
+    total_frames: u64,
+    fps: f64,
+    num_samples: usize,
+    skip_start_secs: f64,
+    skip_end_secs: f64,
+) -> Vec<u64> {
     if total_frames == 0 || num_samples == 0 {
         return Vec::new();
     }
 
-    let start = (total_frames as f64 * 0.05) as u64;
-    let end = (total_frames as f64 * 0.95) as u64;
+    let start = if skip_start_secs > 0.0 {
+        ((skip_start_secs * fps) as u64).min(total_frames)
+    } else {
+        (total_frames as f64 * 0.05) as u64
+    };
+
+    let end = if skip_end_secs > 0.0 {
+        total_frames.saturating_sub((skip_end_secs * fps) as u64)
+    } else {
+        (total_frames as f64 * 0.95) as u64
+    };
+
     let usable = end.saturating_sub(start);
 
     if usable == 0 {
@@ -106,33 +123,43 @@ mod tests {
 
     #[test]
     fn select_frame_indices_basic() {
-        let indices = select_frame_indices(1000, 5);
+        // No skip overrides -> falls back to 5%/95%
+        let indices = select_frame_indices(1000, 30.0, 5, 0.0, 0.0);
         assert_eq!(indices.len(), 5);
 
-        // All indices should be in the 5%-95% range
         for &idx in &indices {
             assert!(idx >= 50, "index {idx} below 5% mark");
             assert!(idx < 950, "index {idx} above 95% mark");
         }
 
-        // Should be sorted ascending
         for w in indices.windows(2) {
             assert!(w[0] < w[1], "indices not sorted: {} >= {}", w[0], w[1]);
         }
     }
 
     #[test]
+    fn select_frame_indices_with_skip() {
+        // 1000 frames at 30fps, skip first 10s (300 frames) and last 5s (150 frames)
+        let indices = select_frame_indices(1000, 30.0, 5, 10.0, 5.0);
+        assert_eq!(indices.len(), 5);
+
+        for &idx in &indices {
+            assert!(idx >= 300, "index {idx} should be after 10s skip");
+            assert!(idx < 850, "index {idx} should be before 5s end skip");
+        }
+    }
+
+    #[test]
     fn select_frame_indices_short_video() {
-        // Very short video: should still return something
-        let indices = select_frame_indices(10, 5);
+        let indices = select_frame_indices(10, 30.0, 5, 0.0, 0.0);
         assert!(!indices.is_empty());
         assert!(indices.len() <= 5);
     }
 
     #[test]
     fn select_frame_indices_zero() {
-        assert!(select_frame_indices(0, 5).is_empty());
-        assert!(select_frame_indices(100, 0).is_empty());
+        assert!(select_frame_indices(0, 30.0, 5, 0.0, 0.0).is_empty());
+        assert!(select_frame_indices(100, 30.0, 0, 0.0, 0.0).is_empty());
     }
 
     #[test]

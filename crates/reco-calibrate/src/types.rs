@@ -109,6 +109,10 @@ pub struct CalibrationConfig {
     pub subset_ratio: f64,
     /// Maximum optimizer function evaluations per iteration.
     pub max_optimizer_evals: usize,
+    /// Seconds to skip from the start of the video (setup time).
+    pub skip_start_secs: f64,
+    /// Seconds to skip from the end of the video (teardown time).
+    pub skip_end_secs: f64,
 }
 
 impl Default for CalibrationConfig {
@@ -130,6 +134,8 @@ impl Default for CalibrationConfig {
             enable_sixth_param: true,
             subset_ratio: 0.6,
             max_optimizer_evals: 1000,
+            skip_start_secs: 0.0,
+            skip_end_secs: 0.0,
         }
     }
 }
