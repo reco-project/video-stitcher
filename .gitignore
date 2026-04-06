@@ -43,3 +43,6 @@ docs/analysis/
 .claude/
 .cargo/
 yolo26s.pt
+
+# Calibration debug workspace
+calibrate_debug/
