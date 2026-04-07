@@ -66,9 +66,11 @@ fn rotation_matrix(rx: f64, ry: f64, rz: f64) -> Matrix3<f64> {
     m
 }
 
-/// Parameters for the 5-variable optimization.
+/// Parameters for the optimization objective function.
 ///
-/// These are the values COBYLA optimizes over.
+/// The core model has 5 parameters: `cam_d`, `intersect`, `x_ty`, `x_rz`,
+/// `z_rx`. An optional 6th (`z_rz`) is available but deprecated in favor
+/// of the upcoming 4-param model (Phase 4).
 #[derive(Debug, Clone, Copy)]
 pub struct OptParams {
     /// Y-axis translation of the right plane (corrects vertical misalignment).
@@ -310,23 +312,77 @@ pub fn angular_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
     total
 }
 
-/// 5-parameter objective function for COBYLA (reprojection error).
+/// Seam-weighted symmetric reprojection error.
 ///
-/// Uses symmetric plane-to-plane squared reprojection error which
-/// has a proper global minimum in all parameters (including cam_d).
+/// Each point pair is weighted by a Gaussian centered on the stitch seam
+/// position. Points near the seam contribute more to the error, since
+/// that's where alignment matters most visually. The seam position
+/// updates dynamically with the current `intersect` value:
 ///
-/// Parameter vector order: `[x_ty, intersect, cam_d, x_rz, z_rx]`
-pub fn objective_5param(x: &[f64], points: &mut &[MatchedPoint]) -> f64 {
-    let params = OptParams::from_5param(x);
-    reprojection_error(points, &params)
-}
+/// - Left plane seam at `x_normalized = 1 - intersect/2`
+/// - Right plane seam at `x_normalized = intersect/2`
+///
+/// The `sigma` parameter controls the Gaussian width. Smaller sigma
+/// concentrates weight more tightly around the seam. A value of 0.08
+/// was confirmed to produce better stitches than unweighted error
+/// across all test footages.
+pub fn seam_weighted_reprojection_error(
+    points: &[MatchedPoint],
+    params: &OptParams,
+    sigma: f64,
+) -> f64 {
+    let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
+    let (x_pts, z_pts) = apply_transformations(points, params);
 
-/// 6-parameter objective function for COBYLA (reprojection error).
-///
-/// Parameter vector order: `[x_ty, intersect, cam_d, x_rz, z_rx, z_rz]`
-pub fn objective_6param(x: &[f64], points: &mut &[MatchedPoint]) -> f64 {
-    let params = OptParams::from_6param(x);
-    reprojection_error(points, &params)
+    // Seam position in normalized pixel space [0, 1].
+    // Left camera image: seam on the RIGHT side at (1 - intersect/2).
+    // Right camera image: seam on the LEFT side at (intersect/2).
+    //
+    // IMPORTANT: Due to the left/right swap (processing.py:693 convention),
+    // `left_pixel_nx` holds the RIGHT camera's pixel x, and
+    // `right_pixel_nx` holds the LEFT camera's pixel x. So we compare:
+    //   left_pixel_nx (right cam pixel) vs right_cam_seam
+    //   right_pixel_nx (left cam pixel) vs left_cam_seam
+    let left_cam_seam = 1.0 - params.intersect / 2.0;
+    let right_cam_seam = params.intersect / 2.0;
+    let inv_2sigma_sq = 1.0 / (2.0 * sigma * sigma);
+
+    let mut total = 0.0;
+    for (idx, (x_pt, z_pt)) in x_pts.iter().zip(z_pts.iter()).enumerate() {
+        // Gaussian weight: each pixel compared to its own camera's seam
+        let dl = points[idx].left_pixel_nx - right_cam_seam;
+        let dr = points[idx].right_pixel_nx - left_cam_seam;
+        let w = 0.5 * ((-dl * dl * inv_2sigma_sq).exp() + (-dr * dr * inv_2sigma_sq).exp());
+
+        // Forward: ray from camera through x_pt, intersect z-plane (x=0)
+        let dir_x = x_pt - camera;
+        if dir_x.x.abs() > 1e-15 {
+            let t = -camera.x / dir_x.x;
+            if t > 0.0 {
+                let hit = camera + t * dir_x;
+                let dy = hit.y - z_pt.y;
+                let dz = hit.z - z_pt.z;
+                total += w * (dy * dy + dz * dz);
+            } else {
+                total += w * 1e6;
+            }
+        }
+
+        // Backward: ray from camera through z_pt, intersect x-plane (z=0)
+        let dir_z = z_pt - camera;
+        if dir_z.z.abs() > 1e-15 {
+            let t = -camera.z / dir_z.z;
+            if t > 0.0 {
+                let hit = camera + t * dir_z;
+                let dx = hit.x - x_pt.x;
+                let dy = hit.y - x_pt.y;
+                total += w * (dx * dx + dy * dy);
+            } else {
+                total += w * 1e6;
+            }
+        }
+    }
+    total
 }
 
 /// Normalize a pixel coordinate to plane coordinates.
@@ -404,10 +460,7 @@ mod tests {
         // With full overlap (intersect=1), both planes meet at origin.
         // Points at (0,0) on both planes map to (0,0,0) in 3D.
         // Both rays from camera hit the same point, so reprojection error = 0.
-        let points = vec![MatchedPoint {
-            left: [0.0, 0.0],
-            right: [0.0, 0.0],
-        }];
+        let points = vec![MatchedPoint::from_planes([0.0, 0.0], [0.0, 0.0])];
         let params = OptParams {
             x_ty: 0.0,
             intersect: 1.0,
@@ -427,14 +480,8 @@ mod tests {
     #[test]
     fn reprojection_error_increases_with_misalignment() {
         let points = vec![
-            MatchedPoint {
-                left: [0.1, 0.0],
-                right: [0.1, 0.0],
-            },
-            MatchedPoint {
-                left: [0.2, 0.05],
-                right: [0.2, 0.05],
-            },
+            MatchedPoint::from_planes([0.1, 0.0], [0.1, 0.0]),
+            MatchedPoint::from_planes([0.2, 0.05], [0.2, 0.05]),
         ];
 
         let good_params = OptParams {
@@ -467,14 +514,8 @@ mod tests {
     fn reprojection_error_and_angular_error_agree_on_ordering() {
         // Both metrics should agree that good params are better than bad.
         let points = vec![
-            MatchedPoint {
-                left: [0.1, 0.0],
-                right: [0.1, 0.0],
-            },
-            MatchedPoint {
-                left: [-0.1, 0.05],
-                right: [-0.1, 0.05],
-            },
+            MatchedPoint::from_planes([0.1, 0.0], [0.1, 0.0]),
+            MatchedPoint::from_planes([-0.1, 0.05], [-0.1, 0.05]),
         ];
 
         let good = OptParams {
@@ -537,6 +578,59 @@ mod tests {
             unpacked.z_rz.unwrap(),
             params.z_rz.unwrap(),
             epsilon = 1e-15
+        );
+    }
+
+    #[test]
+    fn seam_weighted_error_weights_near_seam_higher() {
+        // Two identical points with different pixel positions: one near
+        // the stitch seam, one far from it. The seam-weighted error
+        // should give more weight to the near-seam point.
+        let params = OptParams {
+            x_ty: 0.0,
+            intersect: 0.5,
+            cam_d: 0.25,
+            x_rz: 0.0,
+            z_rx: 0.0,
+            z_rz: None,
+        };
+
+        // With intersect=0.5:
+        //   right_cam_seam = 0.25 (compared to left_pixel_nx, which is RIGHT cam px)
+        //   left_cam_seam  = 0.75 (compared to right_pixel_nx, which is LEFT cam px)
+        //
+        // Point near the seam: right cam pixel at 0.25, left cam pixel at 0.75
+        let near_seam = MatchedPoint {
+            left: [0.1, 0.0],
+            right: [0.1, 0.0],
+            left_pixel_nx: 0.25,  // right cam px, at right_cam_seam
+            right_pixel_nx: 0.75, // left cam px, at left_cam_seam
+        };
+
+        // Same plane coords but pixel position far from seam
+        let far_from_seam = MatchedPoint {
+            left: [0.1, 0.0],
+            right: [0.1, 0.0],
+            left_pixel_nx: 0.8,  // right cam px, far from right_cam_seam (0.25)
+            right_pixel_nx: 0.2, // left cam px, far from left_cam_seam (0.75)
+        };
+
+        let sigma = 0.08;
+
+        // With any non-zero raw error (which these points have due to
+        // geometry), the near-seam point should contribute more because
+        // its Gaussian weight is ~1.0 vs ~0 for the far point.
+        let err_near = seam_weighted_reprojection_error(&[near_seam], &params, sigma);
+        let err_far = seam_weighted_reprojection_error(&[far_from_seam], &params, sigma);
+
+        assert!(
+            err_near > err_far,
+            "near-seam point should contribute more error: {err_near} vs {err_far}"
+        );
+        // The far-from-seam point should be almost zero-weighted
+        assert!(
+            err_far < err_near * 1e-6,
+            "far point should be near-zero weighted"
         );
     }
 }

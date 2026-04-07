@@ -304,6 +304,20 @@ impl VideoDecoder {
         }
     }
 
+    /// Seek to approximately the given timestamp in seconds.
+    ///
+    /// Seeks to the nearest keyframe before the target time, then the
+    /// caller should call `next_frame()` to advance to the exact frame.
+    /// Flushes the decoder so that subsequent frames are decoded fresh.
+    pub fn seek_to_secs(&mut self, secs: f64) -> Result<(), DecodeError> {
+        // Convert seconds to AV_TIME_BASE (microseconds)
+        let ts = (secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)) as i64;
+        self.input.seek(ts, ..ts)?;
+        self.decoder.flush();
+        self.eof_sent = false;
+        Ok(())
+    }
+
     /// Decode the next YUV420P frame, or `None` if the video is finished.
     #[cfg_attr(
         feature = "profiling",

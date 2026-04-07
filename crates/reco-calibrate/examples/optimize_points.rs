@@ -26,10 +26,10 @@ fn main() {
         .map(|p| {
             let lp = &p["left_plane_coords"];
             let rp = &p["right_plane_coords"];
-            MatchedPoint {
-                left: [lp[0].as_f64().unwrap(), lp[1].as_f64().unwrap()],
-                right: [rp[0].as_f64().unwrap(), rp[1].as_f64().unwrap()],
-            }
+            MatchedPoint::from_planes(
+                [lp[0].as_f64().unwrap(), lp[1].as_f64().unwrap()],
+                [rp[0].as_f64().unwrap(), rp[1].as_f64().unwrap()],
+            )
         })
         .collect();
 
@@ -40,7 +40,6 @@ fn main() {
     );
 
     let config = CalibrationConfig {
-        enable_sixth_param: true,
         max_optimizer_evals: 5000,
         ..Default::default()
     };

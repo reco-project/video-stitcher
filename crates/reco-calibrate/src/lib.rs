@@ -28,12 +28,14 @@
 //! println!("Confidence: {:.1}%", result.confidence * 100.0);
 //! ```
 
+pub mod akaze;
 pub mod error;
 pub mod features;
 pub mod filter;
 pub mod geometry;
 pub mod optimizer;
 pub mod sampling;
+pub mod telemetry;
 pub mod types;
 
 pub use error::CalibrateError;
@@ -171,6 +173,9 @@ fn process_frame_pair(
             MatchedPoint {
                 left: geometry::normalize_to_plane(rp.x as f64, rp.y as f64, rw, rh),
                 right: geometry::normalize_to_plane(lp.x as f64, lp.y as f64, lw, lh),
+                // Store normalized pixel x for seam-proximity weighting
+                left_pixel_nx: rp.x as f64 / rw as f64,
+                right_pixel_nx: lp.x as f64 / lw as f64,
             }
         })
         .collect();
@@ -304,11 +309,7 @@ pub fn calibrate(
                         cam_d: layout.camera_axis_offset,
                         x_rz: layout.x_rz,
                         z_rx: layout.z_rx,
-                        z_rz: if config.enable_sixth_param {
-                            Some(layout.z_rz)
-                        } else {
-                            None
-                        },
+                        z_rz: None,
                     };
                     // Use trimmed error (drop worst 20%) for robust selection.
                     // Prevents outlier points from steering toward large-rotation
@@ -346,11 +347,7 @@ pub fn calibrate(
         cam_d: best_layout.camera_axis_offset,
         x_rz: best_layout.x_rz,
         z_rx: best_layout.z_rx,
-        z_rz: if config.enable_sixth_param {
-            Some(best_layout.z_rz)
-        } else {
-            None
-        },
+        z_rz: None,
     };
     let total_reproj = geometry::reprojection_error(&all_points, &best_params);
     let angular_err = geometry::angular_error(&all_points, &best_params);

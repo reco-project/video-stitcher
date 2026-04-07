@@ -1,15 +1,17 @@
 //! Feature detection and descriptor matching.
 //!
-//! Uses AKAZE (Accelerated-KAZE) for detection and M-LDB binary
-//! descriptors, plus brute-force Hamming distance matching with
-//! Lowe's ratio test.
+//! Uses a vendored AKAZE (Accelerated-KAZE) with bug fixes for
+//! detection and M-LDB binary descriptors, plus brute-force Hamming
+//! distance matching with Lowe's ratio test and cross-check.
 //!
-//! AKAZE builds a nonlinear scale space and computes gradient-based
-//! binary descriptors, making it far more discriminative than simple
-//! BRIEF for textured outdoor scenes with viewpoint changes.
+//! The detector backend is modular: the vendored AKAZE is the default
+//! (zero system dependencies). Alternative backends (e.g. OpenCV) can
+//! be added as separate implementations behind the same interface.
+
+use crate::akaze;
 
 /// Descriptor size in bytes (512 bits = 64 bytes, AKAZE M-LDB).
-const DESC_BYTES: usize = 64;
+const DESC_BYTES: usize = akaze::DESC_BYTES;
 
 /// A detected feature keypoint.
 #[derive(Debug, Clone, Copy)]
@@ -69,11 +71,11 @@ const DETECT_MAX_WIDTH: u32 = 1920;
 
 /// Detect features and compute descriptors using AKAZE.
 ///
-/// Accepts RGBA pixel data (as returned by [`GpuUndistort::undistort`]).
-/// Images wider than [`DETECT_MAX_WIDTH`] are downscaled before detection
-/// for performance; keypoint coordinates are mapped back to the original
-/// resolution. Detects on the full image, then filters to the region and
-/// caps to `max_keypoints` by response.
+/// Accepts RGBA pixel data (from GPU undistortion). Images wider than
+/// 1920px are downscaled before detection for performance; keypoint
+/// coordinates are mapped back to the original resolution. Detects on
+/// the full image, then filters to the region and caps to
+/// `max_keypoints` by response.
 pub fn detect(
     rgba: &[u8],
     width: u32,
@@ -108,8 +110,8 @@ pub fn detect(
         (dynamic, 1.0)
     };
 
-    let akaze = akaze::Akaze::default();
-    let (akaze_kps, akaze_descs) = akaze.extract(&detect_img);
+    let detector = akaze::Akaze::default();
+    let (akaze_kps, akaze_descs) = detector.extract(&detect_img);
 
     let total_detected = akaze_kps.len();
 
@@ -120,15 +122,13 @@ pub fn detect(
         .iter()
         .zip(akaze_descs.iter())
         .map(|(kp, d)| {
-            let mut desc = [0u8; DESC_BYTES];
-            desc.copy_from_slice(&d[..DESC_BYTES]);
             (
                 KeyPoint {
                     x: kp.point.0 * inv_scale,
                     y: kp.point.1 * inv_scale,
                     response: kp.response,
                 },
-                desc,
+                *d,
             )
         })
         .collect();
@@ -205,7 +205,7 @@ fn find_matches_one_way(
 /// Lowe's ratio test and cross-check verification.
 ///
 /// Cross-check requires that a match is the best in both directions:
-/// if L[i]'s best match is R[j], then R[j]'s best match must also be L[i].
+/// if L\[i\]'s best match is R\[j\], then R\[j\]'s best match must also be L\[i\].
 /// This eliminates many false positives where repetitive textures (field
 /// markings, clouds) produce plausible one-way matches.
 ///

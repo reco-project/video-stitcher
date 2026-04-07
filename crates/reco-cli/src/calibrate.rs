@@ -88,35 +88,31 @@ fn load_camera_params(path: &str) -> anyhow::Result<CameraParams> {
 }
 
 /// Extract YUV420P frames from a video at the given frame indices.
+///
+/// Seeks to each target timestamp and grabs the first decoded frame.
+/// The exact frame may differ slightly from the target index (lands on
+/// the nearest keyframe), but both cameras use the same indices so the
+/// left/right pairing and sync offset are preserved.
 fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec<YuvFrame>> {
     use reco_io::ffmpeg::decoder::VideoDecoder;
 
     let mut decoder = VideoDecoder::open(Path::new(video_path))?;
+    let fps = decoder.fps();
     let mut frames = Vec::with_capacity(frame_indices.len());
-    let mut frame_idx: u64 = 0;
-    let mut target_ptr = 0;
 
-    while target_ptr < frame_indices.len() {
-        match decoder.next_frame()? {
-            Some(yuv) => {
-                if frame_idx == frame_indices[target_ptr] {
-                    frames.push(YuvFrame {
-                        y: yuv.y,
-                        u: yuv.u,
-                        v: yuv.v,
-                        width: yuv.width,
-                        height: yuv.height,
-                    });
-                    target_ptr += 1;
+    for &target_idx in frame_indices {
+        let target_secs = target_idx as f64 / fps;
+        decoder.seek_to_secs(target_secs)?;
 
-                    while target_ptr < frame_indices.len() && frame_indices[target_ptr] == frame_idx
-                    {
-                        target_ptr += 1;
-                    }
-                }
-                frame_idx += 1;
-            }
-            None => break,
+        // Take the first frame after seeking
+        if let Some(yuv) = decoder.next_frame()? {
+            frames.push(YuvFrame {
+                y: yuv.y,
+                u: yuv.u,
+                v: yuv.v,
+                width: yuv.width,
+                height: yuv.height,
+            });
         }
     }
 
@@ -132,7 +128,7 @@ pub fn run_calibrate(
     right_profile: &str,
     num_frames: usize,
     iterations: usize,
-    no_left_roll: bool,
+    auto_imu: bool,
     sync_offset: i64,
     skip_start: f64,
     skip_end: f64,
@@ -140,6 +136,56 @@ pub fn run_calibrate(
     output: &str,
 ) -> anyhow::Result<()> {
     reco_io::init();
+
+    // IMU telemetry extraction (if requested)
+    let mut imu_sync_offset: Option<f64> = None;
+    let mut imu_xrz_seed: Option<f64> = None;
+    let mut enable_x_rx = false;
+
+    if auto_imu {
+        eprintln!("Extracting IMU telemetry...");
+        let left_path = std::path::Path::new(left);
+        let right_path = std::path::Path::new(right);
+
+        match (
+            reco_calibrate::telemetry::extract(left_path),
+            reco_calibrate::telemetry::extract(right_path),
+        ) {
+            (Ok(left_imu), Ok(right_imu)) => {
+                // Gyro cross-correlation for sync offset
+                if let Some(offset) =
+                    reco_calibrate::telemetry::estimate_sync_offset(&left_imu, &right_imu)
+                {
+                    eprintln!("  IMU sync offset: {offset:.3}s");
+                    imu_sync_offset = Some(offset);
+                }
+
+                // Differential orientation for xRz seed and xRx auto-enable
+                if let Some((roll, pitch)) =
+                    reco_calibrate::telemetry::differential_orientation(&left_imu, &right_imu)
+                {
+                    eprintln!(
+                        "  Differential roll: {:.2} deg, pitch: {:.2} deg",
+                        roll.to_degrees(),
+                        pitch.to_degrees()
+                    );
+                    imu_xrz_seed = Some(roll);
+                    if pitch.abs() > 2.0_f64.to_radians() {
+                        eprintln!("  Pitch > 2 deg, enabling x_rx parameter");
+                        enable_x_rx = true;
+                    }
+                }
+
+                // Rig tilt from gravity
+                if let Some(tilt) = reco_calibrate::telemetry::rig_tilt(&left_imu) {
+                    eprintln!("  Rig tilt: {:.1} deg", tilt.to_degrees());
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                eprintln!("  IMU extraction failed: {e} (continuing without IMU)");
+            }
+        }
+    }
 
     // Load lens profiles
     log::info!("loading lens profiles...");
@@ -178,9 +224,18 @@ pub fn run_calibrate(
         skip_end,
     );
 
+    // Refine IMU sync offset now that we know the actual fps
+    let effective_sync = if let Some(imu_offset) = imu_sync_offset {
+        let frames = (imu_offset * fps).round() as i64;
+        eprintln!("  IMU sync: {imu_offset:.3}s = {frames} frames @ {fps:.1}fps");
+        frames
+    } else {
+        sync_offset
+    };
+
     // Apply sync offset
-    let (left_indices, right_indices) = if sync_offset >= 0 {
-        let offset = sync_offset as u64;
+    let (left_indices, right_indices) = if effective_sync >= 0 {
+        let offset = effective_sync as u64;
         (
             frame_indices.clone(),
             frame_indices
@@ -189,7 +244,7 @@ pub fn run_calibrate(
                 .collect::<Vec<_>>(),
         )
     } else {
-        let offset = (-sync_offset) as u64;
+        let offset = (-effective_sync) as u64;
         (
             frame_indices
                 .iter()
@@ -200,7 +255,7 @@ pub fn run_calibrate(
     };
 
     log::info!(
-        "extracting {} frames (fps: {fps:.1}, sync_offset: {sync_offset})",
+        "extracting {} frames (fps: {fps:.1}, sync_offset: {effective_sync})",
         left_indices.len(),
     );
 
@@ -237,9 +292,10 @@ pub fn run_calibrate(
     let config = CalibrationConfig {
         num_frames,
         iterations,
-        enable_sixth_param: !no_left_roll,
         skip_start_secs: skip_start,
         skip_end_secs: skip_end,
+        imu_xrz_seed,
+        enable_x_rx,
         ..Default::default()
     };
 
@@ -293,14 +349,72 @@ pub fn run_calibrate(
         }
     }
 
-    // Debug: save per-frame match data as JSON
+    // Debug: save per-frame match data as JSON + keypoint visualizations
     if let Some(dir) = debug_dir {
         let matches_json = serde_json::to_string_pretty(&result.per_frame)?;
         std::fs::write(format!("{dir}/matches.json"), &matches_json)?;
-        eprintln!("Match data saved to {dir}/matches.json");
+
+        // Draw matched keypoints on the debug frames
+        let (w, h) = (frame_pairs[0].0.width, frame_pairs[0].0.height);
+        for (i, fm) in result.per_frame.iter().enumerate() {
+            let left_path = format!("{dir}/frame_{i:02}_left.png");
+            let right_path = format!("{dir}/frame_{i:02}_right.png");
+            if std::path::Path::new(&left_path).exists()
+                && std::path::Path::new(&right_path).exists()
+            {
+                // Load the saved debug frames and draw matches
+                let mut left_img = image::open(&left_path)?.to_rgba8();
+                let mut right_img = image::open(&right_path)?.to_rgba8();
+
+                // Convert plane coords back to pixel coords for visualization.
+                // Plane coords: x in [-0.5, 0.5], y in [-h/(2w), h/(2w)]
+                // Remember the swap: .left is right camera (x-plane), .right is left camera (z-plane)
+                for pt in &fm.points {
+                    // Right camera point on left image (before swap, .left = right cam)
+                    let rx = ((pt.left[0] + 0.5) * w as f64) as i32;
+                    let ry = ((pt.left[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
+                    let ry = ry as i32;
+                    draw_cross(&mut right_img, rx, ry, [0, 255, 0, 255]); // green
+
+                    // Left camera point on right image (before swap, .right = left cam)
+                    let lx = ((pt.right[0] + 0.5) * w as f64) as i32;
+                    let ly = ((pt.right[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
+                    let ly = ly as i32;
+                    draw_cross(&mut left_img, lx, ly, [255, 0, 0, 255]); // red
+                }
+
+                left_img.save(format!("{dir}/matches_{i:02}_left.png"))?;
+                right_img.save(format!("{dir}/matches_{i:02}_right.png"))?;
+            }
+        }
+
+        eprintln!("Match visualizations saved to {dir}/matches_*_{{left,right}}.png");
     }
 
     Ok(())
+}
+
+/// Draw a cross marker at (cx, cy) on an RGBA image.
+fn draw_cross(img: &mut image::RgbaImage, cx: i32, cy: i32, color: [u8; 4]) {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let size = 8;
+    let thickness = 2;
+    for d in -size..=size {
+        for t in -thickness..=thickness {
+            // Horizontal arm
+            let x = cx + d;
+            let y = cy + t;
+            if x >= 0 && x < w && y >= 0 && y < h {
+                img.put_pixel(x as u32, y as u32, image::Rgba(color));
+            }
+            // Vertical arm
+            let x = cx + t;
+            let y = cy + d;
+            if x >= 0 && x < w && y >= 0 && y < h {
+                img.put_pixel(x as u32, y as u32, image::Rgba(color));
+            }
+        }
+    }
 }
 
 /// Save RGBA pixel data as a PNG.

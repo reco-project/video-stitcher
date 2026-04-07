@@ -249,9 +249,11 @@ enum Commands {
         #[arg(long, default_value_t = 200)]
         iterations: usize,
 
-        /// Disable the 6th parameter (left plane roll correction).
+        /// Extract IMU telemetry to auto-detect sync offset, rig tilt,
+        /// and seed roll/pitch parameters. Overrides --sync-offset when
+        /// gyro data is available.
         #[arg(long, default_value_t = false)]
-        no_left_roll: bool,
+        auto_imu: bool,
 
         /// Frame offset for temporal sync between cameras.
         /// Positive: right video is ahead by N frames.
@@ -448,7 +450,7 @@ fn main() -> anyhow::Result<()> {
             right_profile,
             frames,
             iterations,
-            no_left_roll,
+            auto_imu,
             sync_offset,
             skip_start,
             skip_end,
@@ -461,7 +463,7 @@ fn main() -> anyhow::Result<()> {
             &right_profile,
             frames,
             iterations,
-            no_left_roll,
+            auto_imu,
             sync_offset,
             skip_start,
             skip_end,

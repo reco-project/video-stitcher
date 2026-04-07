@@ -38,12 +38,39 @@ pub struct YuvFrame {
 ///
 /// Coordinates are in the range `[-0.5, 0.5]` for X and
 /// `[-h/(2w), h/(2w)]` for Y, where the plane width is normalized to 1.0.
+///
+/// The `left_pixel_nx` / `right_pixel_nx` fields store the original
+/// pixel x-coordinate normalized to `[0, 1]`. These are used for
+/// seam-proximity weighting during optimization: points near the stitch
+/// seam are weighted more heavily than points far from it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MatchedPoint {
     /// Point on the left plane (x-plane in optimizer space).
     pub left: [f64; 2],
     /// Point on the right plane (z-plane in optimizer space).
     pub right: [f64; 2],
+    /// Normalized x-coordinate of the left point in pixel space `[0, 1]`.
+    #[serde(default)]
+    pub left_pixel_nx: f64,
+    /// Normalized x-coordinate of the right point in pixel space `[0, 1]`.
+    #[serde(default)]
+    pub right_pixel_nx: f64,
+}
+
+impl MatchedPoint {
+    /// Create a matched point from plane coordinates only.
+    ///
+    /// Sets pixel coordinates to 0.5 (image center), giving uniform
+    /// weight in seam-weighted optimization. Use this for synthetic
+    /// test data where pixel position is irrelevant.
+    pub fn from_planes(left: [f64; 2], right: [f64; 2]) -> Self {
+        Self {
+            left,
+            right,
+            left_pixel_nx: 0.5,
+            right_pixel_nx: 0.5,
+        }
+    }
 }
 
 /// Feature matching statistics for a single frame pair.
@@ -103,8 +130,6 @@ pub struct CalibrationConfig {
     /// Maximum number of keypoints to keep per image after detection,
     /// sorted by response strength. Matches v1's SIFT nfeatures behavior.
     pub max_keypoints: usize,
-    /// Enable the 6th parameter (left plane roll) for horizon correction.
-    pub enable_sixth_param: bool,
     /// Fraction of total matches used per random subset (0.0-1.0).
     pub subset_ratio: f64,
     /// Maximum optimizer function evaluations per iteration.
@@ -113,6 +138,26 @@ pub struct CalibrationConfig {
     pub skip_start_secs: f64,
     /// Seconds to skip from the end of the video (teardown time).
     pub skip_end_secs: f64,
+
+    // --- Optimizer settings ---
+    /// Gaussian sigma for seam-proximity weighting in the objective function.
+    ///
+    /// Points near the stitch seam are weighted more heavily. A smaller
+    /// sigma concentrates weight tighter around the seam. Confirmed
+    /// "much better" than unweighted at sigma=0.08 across all test footages.
+    pub seam_sigma: f64,
+
+    // --- IMU-derived settings (populated by telemetry module) ---
+    /// IMU-derived roll seed for the x_rz initial guess (radians).
+    ///
+    /// When set, adds an extra optimizer start point seeded with this
+    /// value, improving convergence for rigs with measurable roll offset.
+    pub imu_xrz_seed: Option<f64>,
+    /// Enable the x_rx parameter (right plane pitch).
+    ///
+    /// Auto-enabled when IMU detects differential pitch > 2 degrees
+    /// between cameras. When false, x_rx is fixed at 0.
+    pub enable_x_rx: bool,
 }
 
 impl Default for CalibrationConfig {
@@ -131,11 +176,13 @@ impl Default for CalibrationConfig {
             max_y_disparity: 0.1,
             sky_mask_ratio: 0.3,
             max_keypoints: 2000,
-            enable_sixth_param: true,
             subset_ratio: 0.6,
             max_optimizer_evals: 1000,
             skip_start_secs: 0.0,
             skip_end_secs: 0.0,
+            seam_sigma: 0.08,
+            imu_xrz_seed: None,
+            enable_x_rx: false,
         }
     }
 }

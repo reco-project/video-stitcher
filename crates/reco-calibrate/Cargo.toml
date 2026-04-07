@@ -8,9 +8,15 @@ description = "Stereo camera calibration for reco: feature matching and position
 
 [dependencies]
 reco-core = { path = "../reco-core" }
-akaze = { git = "https://github.com/Christopher22/akaze.git" }
-cobyla = "1.0"
+# Vendored AKAZE dependencies (was: akaze git dep, vendored for bug fixes)
+ndarray = "0.16"
+nshare = { version = "0.10", features = ["ndarray", "image"] }
+primal = "0.3"
+float-ord = "0.3"
+argmin = "0.11"
+argmin-math = { version = "0.5", features = ["vec"] }
 image = "0.25"
+telemetry-parser = "0.2"
 inlier = "0.1"
 log = "0.4"
 nalgebra = "0.33"

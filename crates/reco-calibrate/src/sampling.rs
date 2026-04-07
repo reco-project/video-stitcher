@@ -194,10 +194,7 @@ mod tests {
     #[test]
     fn random_subset_respects_ratio() {
         let points: Vec<MatchedPoint> = (0..100)
-            .map(|i| MatchedPoint {
-                left: [i as f64 * 0.01, 0.0],
-                right: [i as f64 * 0.01, 0.0],
-            })
+            .map(|i| MatchedPoint::from_planes([i as f64 * 0.01, 0.0], [i as f64 * 0.01, 0.0]))
             .collect();
 
         let config = CalibrationConfig {
