@@ -239,15 +239,20 @@ pub fn gravity_vector(data: &TelemetryData) -> Option<[f64; 3]> {
     Some([gx / n, gy / n, gz / n])
 }
 
-/// Compute the differential roll and pitch between two cameras from
-/// their gravity vectors.
+/// Differential orientation between two cameras from gravity vectors.
 ///
-/// Returns `(roll_diff, pitch_diff)` in radians. These can be used to:
-/// - Seed the `x_rz` optimizer parameter with `roll_diff`
-/// - Auto-enable `x_rx` when `pitch_diff.abs() > threshold`
+/// Returns `(roll_diff, pitch_diff, tilt_diff)` in radians:
+/// - `roll_diff`: differential roll (seeds x_rz)
+/// - `pitch_diff`: differential pitch (seeds x_rx when > 2 deg)
+/// - `tilt_diff`: differential tilt with rig tilt removed (seeds z_rx).
+///   Computed by subtracting the average tilt (rig tilt) from each
+///   camera's individual tilt, then taking the left camera's residual.
 ///
 /// Returns `None` if either camera lacks accelerometer data.
-pub fn differential_orientation(left: &TelemetryData, right: &TelemetryData) -> Option<(f64, f64)> {
+pub fn differential_orientation(
+    left: &TelemetryData,
+    right: &TelemetryData,
+) -> Option<(f64, f64, f64)> {
     let lg = gravity_vector(left)?;
     let rg = gravity_vector(right)?;
 
@@ -261,14 +266,26 @@ pub fn differential_orientation(left: &TelemetryData, right: &TelemetryData) -> 
     let right_pitch = rg[0].atan2(rg[2]);
     let pitch_diff = right_pitch - left_pitch;
 
+    // Tilt: each camera's forward-pitch angle from gravity.
+    // atan2(gz, -gy) gives the tilt in the camera's forward-looking plane
+    // where -gy is "down" and gz is "forward".
+    // The rig tilt is the average (common to both cameras on the same pole).
+    // z_rx captures the left camera's deviation from the rig average.
+    let left_tilt = lg[2].atan2(-lg[1]);
+    let right_tilt = rg[2].atan2(-rg[1]);
+    let rig_tilt_avg = (left_tilt + right_tilt) / 2.0;
+    let tilt_diff = left_tilt - rig_tilt_avg;
+
     log::info!(
         "differential orientation: roll={roll_diff:.4} rad ({:.1} deg), \
-         pitch={pitch_diff:.4} rad ({:.1} deg)",
+         pitch={pitch_diff:.4} rad ({:.1} deg), \
+         tilt_diff={tilt_diff:.4} rad ({:.1} deg)",
         roll_diff.to_degrees(),
-        pitch_diff.to_degrees()
+        pitch_diff.to_degrees(),
+        tilt_diff.to_degrees(),
     );
 
-    Some((roll_diff, pitch_diff))
+    Some((roll_diff, pitch_diff, tilt_diff))
 }
 
 /// Compute the rig tilt angle from the average gravity vector.

@@ -75,8 +75,9 @@ fn main() {
         y_max: 1.0,
     };
 
-    let (kp_left, desc_left) = features::detect(&left_rgba, lw, lh, Some(left_region), 2000);
-    let (kp_right, desc_right) = features::detect(&right_rgba, rw, rh, Some(right_region), 2000);
+    let (kp_left, desc_left) = features::detect(&left_rgba, lw, lh, Some(left_region), 2000, 0.001);
+    let (kp_right, desc_right) =
+        features::detect(&right_rgba, rw, rh, Some(right_region), 2000, 0.001);
     println!(
         "AKAZE: {} left keypoints (overlap zone), {} right keypoints (overlap zone)",
         kp_left.len(),

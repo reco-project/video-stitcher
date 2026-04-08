@@ -82,6 +82,7 @@ pub fn detect(
     height: u32,
     region: Option<DetectRegion>,
     max_keypoints: usize,
+    threshold: f64,
 ) -> (Vec<KeyPoint>, Vec<Descriptor>) {
     // Convert RGBA to RGB (AKAZE doesn't support RGBA directly)
     let rgb_data: Vec<u8> = rgba
@@ -110,7 +111,7 @@ pub fn detect(
         (dynamic, 1.0)
     };
 
-    let detector = akaze::Akaze::default();
+    let detector = akaze::Akaze::new(threshold);
     let (akaze_kps, akaze_descs) = detector.extract(&detect_img);
 
     let total_detected = akaze_kps.len();
@@ -142,6 +143,55 @@ pub fn detect(
         pairs.retain(|(kp, _)| kp.x >= x_lo && kp.x <= x_hi && kp.y >= y_lo && kp.y <= y_hi);
     }
 
+    // Reject keypoints near the undistortion border (black edges).
+    // Sample pixels in a margin around each keypoint; if any are black
+    // (RGB < threshold), the point is too close to the pincushion boundary.
+    // Only applies to real camera images (width >= 1000) to avoid
+    // rejecting features in small synthetic test images.
+    let border_margin: i32 = 30; // pixels
+    let black_thresh: u8 = 10;
+    let pre_border = pairs.len();
+    if width >= 1000 {
+        pairs.retain(|(kp, _)| {
+            let cx = kp.x as i32;
+            let cy = kp.y as i32;
+            let w = width as i32;
+            let h = height as i32;
+            for &(dx, dy) in &[
+                (-border_margin, 0),
+                (border_margin, 0),
+                (0, -border_margin),
+                (0, border_margin),
+                (-border_margin, -border_margin),
+                (border_margin, -border_margin),
+                (-border_margin, border_margin),
+                (border_margin, border_margin),
+            ] {
+                let sx = cx + dx;
+                let sy = cy + dy;
+                if sx < 0 || sx >= w || sy < 0 || sy >= h {
+                    return false;
+                }
+                let idx = (sy as usize * width as usize + sx as usize) * 4;
+                if rgba[idx] < black_thresh
+                    && rgba[idx + 1] < black_thresh
+                    && rgba[idx + 2] < black_thresh
+                {
+                    return false;
+                }
+            }
+            true
+        });
+        if pre_border != pairs.len() {
+            log::debug!(
+                "border filter: {} -> {} keypoints ({} near undistortion edge)",
+                pre_border,
+                pairs.len(),
+                pre_border - pairs.len()
+            );
+        }
+    }
+
     // Sort by response (strongest first) and cap
     pairs.sort_by(|a, b| {
         b.0.response
@@ -166,14 +216,18 @@ pub fn detect(
 }
 
 /// Find the best match for each descriptor in `query` against `train`,
-/// applying Lowe's ratio test.
+/// optionally applying Lowe's ratio test.
 ///
-/// Returns a map from query index to (train index, distance).
+/// When `ratio >= 1.0`, the ratio test is skipped and only the best
+/// match is returned (cross-check in the caller provides filtering).
+/// When `ratio < 1.0`, the best match must be significantly better
+/// than the second-best (lower = stricter).
 fn find_matches_one_way(
     query: &[Descriptor],
     train: &[Descriptor],
     ratio: f64,
 ) -> Vec<(usize, usize, u32)> {
+    let use_ratio_test = ratio < 1.0;
     let mut matches = Vec::new();
 
     for (q_idx, desc_q) in query.iter().enumerate() {
@@ -192,9 +246,16 @@ fn find_matches_one_way(
             }
         }
 
-        // Lowe's ratio test
-        if second_dist > 0 && (best_dist as f64) < ratio * (second_dist as f64) {
-            matches.push((q_idx, best_idx, best_dist));
+        if use_ratio_test {
+            // Lowe's ratio test: best must be significantly better than second
+            if second_dist > 0 && (best_dist as f64) < ratio * (second_dist as f64) {
+                matches.push((q_idx, best_idx, best_dist));
+            }
+        } else {
+            // Cross-check only mode: accept all best matches
+            if best_dist < u32::MAX {
+                matches.push((q_idx, best_idx, best_dist));
+            }
         }
     }
 
@@ -262,7 +323,7 @@ mod tests {
     #[test]
     fn detect_on_blank_image_returns_few_keypoints() {
         let rgba = gray_to_rgba(&vec![128; 200 * 200], 200, 200);
-        let (kps, descs) = detect(&rgba, 200, 200, None, 2000);
+        let (kps, descs) = detect(&rgba, 200, 200, None, 2000, 0.001);
         assert_eq!(kps.len(), descs.len());
     }
 
@@ -277,7 +338,7 @@ mod tests {
             }
         }
         let rgba = gray_to_rgba(&gray, w, h);
-        let (kps, descs) = detect(&rgba, w, h, None, 2000);
+        let (kps, descs) = detect(&rgba, w, h, None, 2000, 0.001);
         assert_eq!(kps.len(), descs.len());
         assert!(!kps.is_empty(), "should detect features in rectangle image");
     }

@@ -48,29 +48,63 @@ pub trait Optimizer {
 // Nelder-Mead implementation
 // ---------------------------------------------------------------------------
 
-/// Bounds for the 5-parameter optimization.
+/// Bounds for the base 5 parameters.
 ///
 /// Order: `[cam_d, intersect, x_ty, x_rz, z_rx]`
-const BOUNDS: [(f64, f64); 5] = [
-    (0.1, 0.35),   // cam_d: camera distance
-    (0.0, 1.0),    // intersect: overlap ratio
-    (-0.1, 0.1),   // x_ty: vertical translation
-    (-0.05, 0.05), // x_rz: right plane roll (~3 deg)
-    (-0.05, 0.05), // z_rx: left plane tilt (~3 deg)
+///
+/// Rotation bounds set to ±0.3 rad (~17 deg) to accommodate cameras
+/// with larger mounting misalignment (e.g. DJI Action 4 with rotation-
+/// corrected left video requires z_rx ≈ -0.14 rad).
+const BOUNDS_5: [(f64, f64); 5] = [
+    (0.1, 0.30), // cam_d: camera distance
+    (0.0, 1.0),  // intersect: overlap ratio
+    (-0.1, 0.1), // x_ty: vertical translation
+    (-0.3, 0.3), // x_rz: right plane roll (~17 deg)
+    (-0.3, 0.3), // z_rx: left plane tilt (~17 deg)
 ];
 
-/// Starting points for multi-start optimization.
+/// Bound for the optional 6th parameter (x_rx, right plane pitch).
+const X_RX_BOUND: (f64, f64) = (-0.3, 0.3); // ~17 deg
+
+/// Get bounds for the active parameter count.
+fn active_bounds(enable_x_rx: bool, lock_cam_d: bool) -> Vec<(f64, f64)> {
+    let mut b = if lock_cam_d {
+        // Locked: [intersect, x_ty, x_rz, z_rx]
+        BOUNDS_5[1..].to_vec()
+    } else {
+        BOUNDS_5.to_vec()
+    };
+    if enable_x_rx {
+        b.push(X_RX_BOUND);
+    }
+    b
+}
+
+/// Starting points for multi-start optimization (base 5 params).
 ///
 /// Explores diverse cam_d and intersect values. Rotations always
-/// start at zero since the reprojection error landscape is well-behaved
-/// near zero rotation.
-const STARTS: [[f64; 5]; 6] = [
+/// start at zero.
+const STARTS_5: [[f64; 5]; 8] = [
     [0.225, 0.5, 0.0, 0.0, 0.0], // center
     [0.15, 0.5, 0.0, 0.0, 0.0],  // low cam_d
     [0.30, 0.5, 0.0, 0.0, 0.0],  // high cam_d
     [0.225, 0.3, 0.0, 0.0, 0.0], // low intersect
     [0.225, 0.7, 0.0, 0.0, 0.0], // high intersect
     [0.20, 0.5, 0.0, 0.0, 0.0],  // alternative cam_d
+    [0.19, 0.65, 0.0, 0.0, 0.0], // DJI-like: low cam_d, high intersect
+    [0.15, 0.7, 0.0, 0.0, 0.0],  // wide-FOV: very low cam_d, high intersect
+];
+
+/// Starting points when cam_d is locked (4 params).
+///
+/// Order: `[intersect, x_ty, x_rz, z_rx]`.
+/// cam_d is derived as `0.5 * (1 - intersect)`.
+const STARTS_4: [[f64; 4]; 5] = [
+    [0.5, 0.0, 0.0, 0.0], // center
+    [0.3, 0.0, 0.0, 0.0], // low intersect (= high cam_d)
+    [0.7, 0.0, 0.0, 0.0], // high intersect (= low cam_d)
+    [0.4, 0.0, 0.0, 0.0], // below center
+    [0.6, 0.0, 0.0, 0.0], // above center
 ];
 
 /// Perturbation scale for building the initial simplex around each start.
@@ -78,10 +112,10 @@ const STARTS: [[f64; 5]; 6] = [
 /// For an n-dimensional problem, Nelder-Mead needs n+1 vertices. We
 /// generate them by perturbing each dimension of the start point by
 /// this fraction of the parameter range.
-const SIMPLEX_PERTURBATION: f64 = 0.05;
+const SIMPLEX_PERTURBATION: f64 = 0.10;
 
 /// Maximum iterations per Nelder-Mead run.
-const MAX_ITERS: u64 = 2000;
+const MAX_ITERS: u64 = 5000;
 
 /// Cost function for argmin's Nelder-Mead solver.
 ///
@@ -90,6 +124,12 @@ const MAX_ITERS: u64 = 2000;
 struct CalibrationCost<'a> {
     points: &'a [MatchedPoint],
     sigma: f64,
+    bounds: Vec<(f64, f64)>,
+    /// When true, cam_d is derived from intersect (cam_d = half_offset).
+    /// The parameter vector has 4 elements: `[intersect, x_ty, x_rz, z_rx]`.
+    lock_cam_d: bool,
+    /// Fraction of worst points to drop (0.0 = no trimming, 0.2 = drop 20%).
+    trim_fraction: f64,
 }
 
 impl CostFunction for CalibrationCost<'_> {
@@ -97,14 +137,24 @@ impl CostFunction for CalibrationCost<'_> {
     type Output = f64;
 
     fn cost(&self, p: &Self::Param) -> Result<Self::Output, Error> {
-        let params = params_from_vec(p);
-        let err = geometry::seam_weighted_reprojection_error(self.points, &params, self.sigma);
+        let params = if self.lock_cam_d {
+            params_from_vec_locked(p)
+        } else {
+            params_from_vec(p)
+        };
+        let err = if self.trim_fraction > 0.0 {
+            geometry::trimmed_seam_weighted_reprojection_error(
+                self.points,
+                &params,
+                self.sigma,
+                self.trim_fraction,
+            )
+        } else {
+            geometry::seam_weighted_reprojection_error(self.points, &params, self.sigma)
+        };
 
         // Quadratic penalty for out-of-bounds parameters.
-        // Nelder-Mead is unconstrained, so we guide it back with a
-        // smooth penalty rather than hard clamping (which creates
-        // flat regions that confuse the simplex).
-        let penalty = bounds_penalty(p);
+        let penalty = bounds_penalty(p, &self.bounds);
 
         Ok(err + penalty)
     }
@@ -112,7 +162,8 @@ impl CostFunction for CalibrationCost<'_> {
 
 /// Convert a parameter vector to [`OptParams`].
 ///
-/// Order: `[cam_d, intersect, x_ty, x_rz, z_rx]`
+/// Base order: `[cam_d, intersect, x_ty, x_rz, z_rx]`.
+/// If 6 elements, the 6th is `x_rx` (right plane pitch).
 fn params_from_vec(p: &[f64]) -> OptParams {
     OptParams {
         cam_d: p[0],
@@ -120,23 +171,36 @@ fn params_from_vec(p: &[f64]) -> OptParams {
         x_ty: p[2],
         x_rz: p[3],
         z_rx: p[4],
-        z_rz: None,
+        z_rz: if p.len() > 5 { Some(p[5]) } else { None },
+    }
+}
+
+/// Convert a locked parameter vector to [`OptParams`].
+///
+/// cam_d is derived from intersect: `cam_d = 0.5 * (1 - intersect)`.
+/// Order: `[intersect, x_ty, x_rz, z_rx]`.
+/// If 5 elements, the 5th is `x_rx` (right plane pitch).
+fn params_from_vec_locked(p: &[f64]) -> OptParams {
+    let intersect = p[0];
+    OptParams {
+        cam_d: 0.5 * (1.0 - intersect),
+        intersect,
+        x_ty: p[1],
+        x_rz: p[2],
+        z_rx: p[3],
+        z_rz: if p.len() > 4 { Some(p[4]) } else { None },
     }
 }
 
 /// Quadratic penalty for parameters outside bounds.
-///
-/// Returns 0 when all parameters are in bounds, otherwise a smooth
-/// increasing penalty proportional to the squared distance from the
-/// nearest bound.
-fn bounds_penalty(p: &[f64]) -> f64 {
-    let scale = 1e4; // strong enough to keep params in bounds
+fn bounds_penalty(p: &[f64], bounds: &[(f64, f64)]) -> f64 {
+    let scale = 1e4;
     let mut penalty = 0.0;
     for (i, &val) in p.iter().enumerate() {
-        if i >= BOUNDS.len() {
+        if i >= bounds.len() {
             break;
         }
-        let (lo, hi) = BOUNDS[i];
+        let (lo, hi) = bounds[i];
         if val < lo {
             let d = lo - val;
             penalty += scale * d * d;
@@ -149,20 +213,16 @@ fn bounds_penalty(p: &[f64]) -> f64 {
 }
 
 /// Build an initial simplex (n+1 vertices) around a start point.
-///
-/// Each vertex perturbs one dimension by a fraction of its bound range,
-/// alternating direction to explore both sides.
-fn build_simplex(start: &[f64; 5]) -> Vec<Vec<f64>> {
+fn build_simplex(start: &[f64], bounds: &[(f64, f64)]) -> Vec<Vec<f64>> {
     let n = start.len();
     let mut vertices: Vec<Vec<f64>> = Vec::with_capacity(n + 1);
     vertices.push(start.to_vec());
 
     for i in 0..n {
         let mut vertex = start.to_vec();
-        let range = BOUNDS[i].1 - BOUNDS[i].0;
+        let range = bounds[i].1 - bounds[i].0;
         let delta = SIMPLEX_PERTURBATION * range;
-        // Perturb upward, but clamp if it would exceed the bound
-        if vertex[i] + delta <= BOUNDS[i].1 {
+        if vertex[i] + delta <= bounds[i].1 {
             vertex[i] += delta;
         } else {
             vertex[i] -= delta;
@@ -173,10 +233,8 @@ fn build_simplex(start: &[f64; 5]) -> Vec<Vec<f64>> {
 }
 
 /// Run a single Nelder-Mead optimization from a start point.
-///
-/// Returns `Some((best_params, best_cost))` on success, `None` on failure.
-fn run_nelder_mead(cost: &CalibrationCost<'_>, start: &[f64; 5]) -> Option<(Vec<f64>, f64)> {
-    let simplex = build_simplex(start);
+fn run_nelder_mead(cost: &CalibrationCost<'_>, start: &[f64]) -> Option<(Vec<f64>, f64)> {
+    let simplex = build_simplex(start, &cost.bounds);
     let solver: NelderMead<Vec<f64>, f64> =
         NelderMead::new(simplex).with_sd_tolerance(1e-12).ok()?;
 
@@ -206,37 +264,82 @@ impl Optimizer for NelderMeadOptimizer {
         points: &[MatchedPoint],
         config: &CalibrationConfig,
     ) -> Result<(PlaneLayout, f64), CalibrateError> {
+        let lock = config.lock_cam_d;
+        let bounds = active_bounds(config.enable_x_rx, lock);
         let cost = CalibrationCost {
             points,
             sigma: config.seam_sigma,
+            bounds: bounds.clone(),
+            lock_cam_d: lock,
+            trim_fraction: config.trim_fraction,
         };
 
         let mut best: Option<(Vec<f64>, f64)> = None;
 
-        for start in &STARTS {
-            if let Some((p, f)) = run_nelder_mead(&cost, start) {
-                log::debug!(
-                    "NM start [{:.3}, {:.3}, {:.4}, {:.5}, {:.5}]: cost={f:.8}",
-                    start[0],
-                    start[1],
-                    start[2],
-                    start[3],
-                    start[4],
-                );
-                if best.as_ref().is_none_or(|(_, r)| f < *r) {
-                    best = Some((p, f));
+        // IMU seeds for rotation parameters
+        let xrx_default = config.imu_xrx_seed.unwrap_or(0.0);
+        let zrx_default = config.imu_zrx_seed.unwrap_or(0.0);
+
+        if lock {
+            // Locked mode: 4 params [intersect, x_ty, x_rz, z_rx]
+            for base_start in &STARTS_4 {
+                let mut start = base_start.to_vec();
+                start[3] = zrx_default;
+                if config.enable_x_rx {
+                    start.push(xrx_default);
+                }
+                if let Some((p, f)) = run_nelder_mead(&cost, &start) {
+                    log::debug!("NM locked: intersect={:.3}: cost={f:.8}", start[0]);
+                    if best.as_ref().is_none_or(|(_, r)| f < *r) {
+                        best = Some((p, f));
+                    }
                 }
             }
-        }
 
-        // If IMU provides an x_rz seed, add an extra start
-        if let Some(xrz_seed) = config.imu_xrz_seed {
-            let mut imu_start = STARTS[0]; // center cam_d/intersect
-            imu_start[3] = xrz_seed;
-            if let Some((p, f)) = run_nelder_mead(&cost, &imu_start) {
-                log::debug!("NM IMU-seeded start: cost={f:.8}");
-                if best.as_ref().is_none_or(|(_, r)| f < *r) {
-                    best = Some((p, f));
+            if let Some(xrz_seed) = config.imu_xrz_seed {
+                let mut imu_start = STARTS_4[0].to_vec();
+                imu_start[2] = xrz_seed;
+                if config.enable_x_rx {
+                    imu_start.push(xrx_default);
+                }
+                if let Some((p, f)) = run_nelder_mead(&cost, &imu_start) {
+                    log::debug!("NM locked IMU-seeded: cost={f:.8}");
+                    if best.as_ref().is_none_or(|(_, r)| f < *r) {
+                        best = Some((p, f));
+                    }
+                }
+            }
+        } else {
+            // Standard mode: 5 params [cam_d, intersect, x_ty, x_rz, z_rx]
+            for base_start in &STARTS_5 {
+                let mut start = base_start.to_vec();
+                start[4] = zrx_default;
+                if config.enable_x_rx {
+                    start.push(xrx_default);
+                }
+                if let Some((p, f)) = run_nelder_mead(&cost, &start) {
+                    log::debug!(
+                        "NM start: cam_d={:.3}, intersect={:.3}: cost={f:.8}",
+                        start[0],
+                        start[1]
+                    );
+                    if best.as_ref().is_none_or(|(_, r)| f < *r) {
+                        best = Some((p, f));
+                    }
+                }
+            }
+
+            if let Some(xrz_seed) = config.imu_xrz_seed {
+                let mut imu_start = STARTS_5[0].to_vec();
+                imu_start[3] = xrz_seed;
+                if config.enable_x_rx {
+                    imu_start.push(xrx_default);
+                }
+                if let Some((p, f)) = run_nelder_mead(&cost, &imu_start) {
+                    log::debug!("NM IMU-seeded start: cost={f:.8}");
+                    if best.as_ref().is_none_or(|(_, r)| f < *r) {
+                        best = Some((p, f));
+                    }
                 }
             }
         }
@@ -245,14 +348,22 @@ impl Optimizer for NelderMeadOptimizer {
             max_evals: config.max_optimizer_evals,
         })?;
 
-        let params = params_from_vec(&best_p);
+        let params = if lock {
+            params_from_vec_locked(&best_p)
+        } else {
+            params_from_vec(&best_p)
+        };
         let layout = PlaneLayout {
             camera_axis_offset: params.cam_d,
             intersect: params.intersect,
             x_ty: params.x_ty,
             x_rz: params.x_rz,
             z_rx: params.z_rx,
-            x_rx: 0.0,
+            x_rx: if config.enable_x_rx {
+                params.z_rz.unwrap_or(0.0)
+            } else {
+                0.0
+            },
             z_rz: 0.0,
         };
 
@@ -266,6 +377,9 @@ impl Clone for CalibrationCost<'_> {
         Self {
             points: self.points,
             sigma: self.sigma,
+            bounds: self.bounds.clone(),
+            lock_cam_d: self.lock_cam_d,
+            trim_fraction: self.trim_fraction,
         }
     }
 }
@@ -390,31 +504,42 @@ mod tests {
 
     #[test]
     fn bounds_penalty_zero_inside() {
+        let bounds = active_bounds(false, false);
         let inside = vec![0.225, 0.5, 0.0, 0.0, 0.0];
-        assert_abs_diff_eq!(bounds_penalty(&inside), 0.0, epsilon = 1e-15);
+        assert_abs_diff_eq!(bounds_penalty(&inside, &bounds), 0.0, epsilon = 1e-15);
     }
 
     #[test]
     fn bounds_penalty_nonzero_outside() {
+        let bounds = active_bounds(false, false);
         let outside = vec![0.05, 0.5, 0.0, 0.0, 0.0]; // cam_d below 0.1
-        assert!(bounds_penalty(&outside) > 0.0);
+        assert!(bounds_penalty(&outside, &bounds) > 0.0);
     }
 
     #[test]
     fn simplex_has_correct_size() {
-        let start = STARTS[0];
-        let simplex = build_simplex(&start);
+        let bounds = active_bounds(false, false);
+        let start = STARTS_5[0].to_vec();
+        let simplex = build_simplex(&start, &bounds);
         assert_eq!(simplex.len(), 6); // n+1 = 5+1
-        // All vertices should be within bounds (with tolerance)
         for v in &simplex {
             for (i, &val) in v.iter().enumerate() {
                 assert!(
-                    val >= BOUNDS[i].0 - 1e-10 && val <= BOUNDS[i].1 + 1e-10,
+                    val >= bounds[i].0 - 1e-10 && val <= bounds[i].1 + 1e-10,
                     "vertex dim {i} = {val} out of bounds [{}, {}]",
-                    BOUNDS[i].0,
-                    BOUNDS[i].1
+                    bounds[i].0,
+                    bounds[i].1
                 );
             }
         }
+    }
+
+    #[test]
+    fn simplex_6d_with_x_rx() {
+        let bounds = active_bounds(true, false);
+        let mut start = STARTS_5[0].to_vec();
+        start.push(0.0); // x_rx
+        let simplex = build_simplex(&start, &bounds);
+        assert_eq!(simplex.len(), 7); // n+1 = 6+1
     }
 }

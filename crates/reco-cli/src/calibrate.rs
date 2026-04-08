@@ -104,15 +104,26 @@ fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec
         let target_secs = target_idx as f64 / fps;
         decoder.seek_to_secs(target_secs)?;
 
-        // Take the first frame after seeking
-        if let Some(yuv) = decoder.next_frame()? {
-            frames.push(YuvFrame {
+        // Decode forward until we reach the exact target frame.
+        // seek_to_secs lands on the nearest keyframe which may be
+        // several frames before the target.
+        let mut last_frame = None;
+        while let Some(yuv) = decoder.next_frame()? {
+            let frame_time = yuv.timestamp_us as f64 / 1_000_000.0;
+            last_frame = Some(YuvFrame {
                 y: yuv.y,
                 u: yuv.u,
                 v: yuv.v,
                 width: yuv.width,
                 height: yuv.height,
             });
+            // Stop once we've reached or passed the target time
+            if frame_time >= target_secs - 0.5 / fps {
+                break;
+            }
+        }
+        if let Some(f) = last_frame {
+            frames.push(f);
         }
     }
 
@@ -132,6 +143,14 @@ pub fn run_calibrate(
     sync_offset: i64,
     skip_start: f64,
     skip_end: f64,
+    akaze_threshold: f64,
+    lowe_ratio: f64,
+    detect_x: f64,
+    detect_y_min: f64,
+    detect_y_max: f64,
+    lock_cam_d: bool,
+    trim: f64,
+    seam_sigma: f64,
     debug_dir: Option<&str>,
     output: &str,
 ) -> anyhow::Result<()> {
@@ -140,6 +159,8 @@ pub fn run_calibrate(
     // IMU telemetry extraction (if requested)
     let mut imu_sync_offset: Option<f64> = None;
     let mut imu_xrz_seed: Option<f64> = None;
+    let mut imu_xrx_seed: Option<f64> = None;
+    let mut imu_zrx_seed: Option<f64> = None;
     let mut enable_x_rx = false;
 
     if auto_imu {
@@ -160,19 +181,22 @@ pub fn run_calibrate(
                     imu_sync_offset = Some(offset);
                 }
 
-                // Differential orientation for xRz seed and xRx auto-enable
-                if let Some((roll, pitch)) =
+                // Differential orientation for xRz, xRx, zRx seeds
+                if let Some((roll, pitch, tilt)) =
                     reco_calibrate::telemetry::differential_orientation(&left_imu, &right_imu)
                 {
                     eprintln!(
-                        "  Differential roll: {:.2} deg, pitch: {:.2} deg",
+                        "  Differential roll: {:.2} deg, pitch: {:.2} deg, tilt: {:.2} deg",
                         roll.to_degrees(),
-                        pitch.to_degrees()
+                        pitch.to_degrees(),
+                        tilt.to_degrees(),
                     );
                     imu_xrz_seed = Some(roll);
+                    imu_zrx_seed = Some(tilt);
                     if pitch.abs() > 2.0_f64.to_radians() {
-                        eprintln!("  Pitch > 2 deg, enabling x_rx parameter");
+                        eprintln!("  Pitch > 2 deg, enabling x_rx seeded at {pitch:.4} rad");
                         enable_x_rx = true;
+                        imu_xrx_seed = Some(pitch);
                     }
                 }
 
@@ -224,9 +248,11 @@ pub fn run_calibrate(
         skip_end,
     );
 
-    // Refine IMU sync offset now that we know the actual fps
+    // Refine IMU sync offset now that we know the actual fps.
+    // Negate the IMU offset: negative gyro lag = positive sync offset
+    // (right camera started first, skip right frames).
     let effective_sync = if let Some(imu_offset) = imu_sync_offset {
-        let frames = (imu_offset * fps).round() as i64;
+        let frames = (-imu_offset * fps).round() as i64;
         eprintln!("  IMU sync: {imu_offset:.3}s = {frames} frames @ {fps:.1}fps");
         frames
     } else {
@@ -294,8 +320,18 @@ pub fn run_calibrate(
         iterations,
         skip_start_secs: skip_start,
         skip_end_secs: skip_end,
+        akaze_threshold,
+        lowe_ratio,
+        spatial_x_threshold: detect_x,
+        detect_y_min,
+        detect_y_max,
+        lock_cam_d,
+        trim_fraction: trim,
+        seam_sigma,
         imu_xrz_seed,
         enable_x_rx,
+        imu_xrx_seed,
+        imu_zrx_seed,
         ..Default::default()
     };
 

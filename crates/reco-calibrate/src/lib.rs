@@ -41,7 +41,6 @@ pub mod types;
 pub use error::CalibrateError;
 pub use types::{CalibrationConfig, CalibrationResult, GrayFrame, YuvFrame};
 
-use rayon::prelude::*;
 use reco_core::calibration::{CameraParams, MatchCalibration};
 use reco_core::gpu::GpuContext;
 use reco_core::undistort::GpuUndistort;
@@ -78,29 +77,37 @@ fn process_frame_pair(
     let (lw, lh) = (left.width, left.height);
     let (rw, rh) = (right.width, right.height);
 
-    let sky = config.sky_mask_ratio as f32;
     let inner = config.spatial_x_inner as f32;
+    let y_min = config.detect_y_min as f32;
+    let y_max = config.detect_y_max as f32;
     let left_region = features::DetectRegion {
         x_min: config.spatial_x_threshold as f32,
         x_max: 1.0 - inner,
-        y_min: sky,
-        y_max: 1.0,
+        y_min,
+        y_max,
     };
     let right_region = features::DetectRegion {
         x_min: inner,
         x_max: 1.0 - config.spatial_x_threshold as f32,
-        y_min: sky,
-        y_max: 1.0,
+        y_min,
+        y_max,
     };
 
-    let (kp_left, desc_left) =
-        features::detect(&left_rgba, lw, lh, Some(left_region), config.max_keypoints);
+    let (kp_left, desc_left) = features::detect(
+        &left_rgba,
+        lw,
+        lh,
+        Some(left_region),
+        config.max_keypoints,
+        config.akaze_threshold,
+    );
     let (kp_right, desc_right) = features::detect(
         &right_rgba,
         rw,
         rh,
         Some(right_region),
         config.max_keypoints,
+        config.akaze_threshold,
     );
 
     log::debug!(
@@ -293,50 +300,15 @@ pub fn calibrate(
         });
     }
 
-    // Random-subset optimization (parallelized with rayon)
-    let results: Vec<_> = (0..config.iterations)
-        .into_par_iter()
-        .filter_map(|_| {
-            let mut rng = rand::rng();
-            let subset = sampling::random_subset(&all_points, config, &mut rng);
-
-            match optimizer::optimize(&subset, config) {
-                Ok((layout, _subset_residual)) => {
-                    // Evaluate this solution on the FULL point set
-                    let opt_params = geometry::OptParams {
-                        x_ty: layout.x_ty,
-                        intersect: layout.intersect,
-                        cam_d: layout.camera_axis_offset,
-                        x_rz: layout.x_rz,
-                        z_rx: layout.z_rx,
-                        z_rz: None,
-                    };
-                    // Use trimmed error (drop worst 20%) for robust selection.
-                    // Prevents outlier points from steering toward large-rotation
-                    // solutions that accommodate noise at the expense of the majority.
-                    let full_residual =
-                        geometry::trimmed_reprojection_error(&all_points, &opt_params, 0.2);
-                    Some((layout, full_residual))
-                }
-                Err(e) => {
-                    log::trace!("optimization iteration failed: {e}");
-                    None
-                }
-            }
-        })
-        .collect();
-
-    if results.is_empty() {
-        return Err(CalibrateError::OptimizerFailed {
-            max_evals: config.max_optimizer_evals,
-        });
-    }
-
-    // Pick the result with the lowest full-set residual
-    let (best_layout, best_residual) = results
-        .into_iter()
-        .min_by(|(_, r1), (_, r2)| r1.partial_cmp(r2).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap();
+    // Single-pass optimization on all points with trimmed cost.
+    //
+    // The trimmed cost function (configured via trim_fraction) drops the
+    // worst N% of points at each evaluation, making the optimizer robust
+    // to outlier matches without needing random subsets.
+    let (best_layout, best_residual) = optimizer::optimize(&all_points, config).map_err(|e| {
+        log::error!("optimization failed: {e}");
+        e
+    })?;
 
     let confidence = (total_matches as f64 / 50.0).min(1.0);
 
@@ -351,9 +323,11 @@ pub fn calibrate(
     };
     let total_reproj = geometry::reprojection_error(&all_points, &best_params);
     let angular_err = geometry::angular_error(&all_points, &best_params);
+    let trimmed_err = geometry::trimmed_reprojection_error(&all_points, &best_params, 0.2);
     log::info!(
-        "calibration complete: trimmed_error={best_residual:.6}, total_reproj={total_reproj:.6}, \
-         angular_error={angular_err:.6}, confidence={confidence:.2}, z_rz={:.4}",
+        "calibration complete: median_error={best_residual:.6}, trimmed={trimmed_err:.6}, \
+         total_reproj={total_reproj:.6}, angular_error={angular_err:.6}, \
+         confidence={confidence:.2}, z_rz={:.4}",
         best_layout.z_rz
     );
 

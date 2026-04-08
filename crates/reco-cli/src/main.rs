@@ -269,6 +269,46 @@ enum Commands {
         #[arg(long, default_value_t = 0.0)]
         skip_end: f64,
 
+        /// AKAZE detector threshold. Lower = more features.
+        /// Default 0.0001 (sensitive). Try 0.001 for fewer but stronger features.
+        #[arg(long, default_value_t = 0.0001)]
+        akaze_threshold: f64,
+
+        /// Lowe's ratio test threshold. Higher = more matches pass.
+        /// Default 0.75. Try 0.6 for stricter matching.
+        #[arg(long, default_value_t = 0.75)]
+        lowe_ratio: f64,
+
+        /// Detection region x threshold (fraction). Left detects in [x, 1.0],
+        /// right in [0.0, 1-x]. Lower = wider detection. Default 0.5.
+        #[arg(long, default_value_t = 0.5)]
+        detect_x: f64,
+
+        /// Detection region y minimum (fraction). Skip top N% of image.
+        /// Default 0.25 (skip top 25% to avoid sky and undistortion edges).
+        #[arg(long, default_value_t = 0.25)]
+        detect_y_min: f64,
+
+        /// Detection region y maximum (fraction). Skip bottom N% of image.
+        /// Default 0.85 (skip bottom 15% to avoid ground and undistortion edges).
+        #[arg(long, default_value_t = 0.85)]
+        detect_y_max: f64,
+
+        /// Lock cam_d = half_offset (0.5 * (1 - intersect)).
+        /// Reduces optimization to 4 parameters.
+        #[arg(long, default_value_t = false)]
+        lock_cam_d: bool,
+
+        /// Drop the worst N% of points during optimization (0.0-1.0).
+        /// E.g. 0.3 = ignore worst 30%. Makes optimizer robust to outliers.
+        #[arg(long, default_value_t = 0.3)]
+        trim: f64,
+
+        /// Seam proximity weighting sigma. Lower = focus more on seam center.
+        /// Default 0.08. Try 0.12 for wider weighting.
+        #[arg(long, default_value_t = 0.08)]
+        seam_sigma: f64,
+
         /// Directory to write debug data (keypoints, matches as JSON + images).
         #[arg(long)]
         debug_dir: Option<String>,
@@ -454,6 +494,14 @@ fn main() -> anyhow::Result<()> {
             sync_offset,
             skip_start,
             skip_end,
+            akaze_threshold,
+            lowe_ratio,
+            detect_x,
+            detect_y_min,
+            detect_y_max,
+            lock_cam_d,
+            trim,
+            seam_sigma,
             debug_dir,
             output,
         } => calibrate::run_calibrate(
@@ -467,6 +515,14 @@ fn main() -> anyhow::Result<()> {
             sync_offset,
             skip_start,
             skip_end,
+            akaze_threshold,
+            lowe_ratio,
+            detect_x,
+            detect_y_min,
+            detect_y_max,
+            lock_cam_d,
+            trim,
+            seam_sigma,
             debug_dir.as_deref(),
             &output,
         ),

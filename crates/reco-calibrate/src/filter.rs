@@ -171,6 +171,7 @@ mod tests {
     fn spatial_filter_keeps_overlap_region() {
         let config = CalibrationConfig {
             min_matches: 1, // low threshold so filter doesn't fall back
+            spatial_x_threshold: 0.4,
             ..Default::default()
         };
 

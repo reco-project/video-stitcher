@@ -16,12 +16,11 @@ float-ord = "0.3"
 argmin = "0.11"
 argmin-math = { version = "0.5", features = ["vec"] }
 image = "0.25"
-telemetry-parser = "0.2"
+telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git", rev = "2f4218b" }
 inlier = "0.1"
 log = "0.4"
 nalgebra = "0.33"
 rand = "0.9"
-rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

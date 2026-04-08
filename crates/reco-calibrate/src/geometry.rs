@@ -293,6 +293,26 @@ pub fn trimmed_reprojection_error(
     errors[..keep].iter().sum()
 }
 
+/// Median per-point reprojection error.
+///
+/// Computes the per-point errors and returns the median value. More
+/// robust than the sum/mean for selecting the best random-subset result:
+/// a single outlier can inflate the sum but barely moves the median.
+/// This favors calibrations where *most* points are well-aligned.
+pub fn median_reprojection_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
+    let mut errors = per_point_reprojection_error(points, params);
+    if errors.is_empty() {
+        return f64::MAX;
+    }
+    errors.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = errors.len() / 2;
+    if errors.len().is_multiple_of(2) {
+        (errors[mid - 1] + errors[mid]) / 2.0
+    } else {
+        errors[mid]
+    }
+}
+
 /// Compute the total angular error between matched point pairs.
 ///
 /// Legacy objective from v1. Kept for diagnostic comparison.
@@ -312,77 +332,113 @@ pub fn angular_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
     total
 }
 
-/// Seam-weighted symmetric reprojection error.
+/// Per-point seam-weighted symmetric reprojection errors.
 ///
-/// Each point pair is weighted by a Gaussian centered on the stitch seam
-/// position. Points near the seam contribute more to the error, since
-/// that's where alignment matters most visually. The seam position
-/// updates dynamically with the current `intersect` value:
+/// Returns a vector of individual weighted errors for each point pair.
+/// Used by both the summed and trimmed variants.
+fn per_point_seam_weighted_errors(
+    points: &[MatchedPoint],
+    params: &OptParams,
+    sigma: f64,
+) -> Vec<f64> {
+    let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
+    let (x_pts, z_pts) = apply_transformations(points, params);
+
+    let left_cam_seam = 1.0 - params.intersect / 2.0;
+    let right_cam_seam = params.intersect / 2.0;
+    let inv_2sigma_sq = 1.0 / (2.0 * sigma * sigma);
+
+    let sigma_y = 0.08;
+    let inv_2sigma_y_sq = 1.0 / (2.0 * sigma_y * sigma_y);
+
+    x_pts
+        .iter()
+        .zip(z_pts.iter())
+        .enumerate()
+        .map(|(idx, (x_pt, z_pt))| {
+            let dl = points[idx].left_pixel_nx - right_cam_seam;
+            let dr = points[idx].right_pixel_nx - left_cam_seam;
+            let w_horiz =
+                0.5 * ((-dl * dl * inv_2sigma_sq).exp() + (-dr * dr * inv_2sigma_sq).exp());
+
+            let y_center = -0.05;
+            let yl = points[idx].left[1] - y_center;
+            let yr = points[idx].right[1] - y_center;
+            let w_vert =
+                0.5 * ((-yl * yl * inv_2sigma_y_sq).exp() + (-yr * yr * inv_2sigma_y_sq).exp());
+
+            let w = w_horiz * w_vert;
+            let mut err = 0.0;
+
+            let dir_x = x_pt - camera;
+            if dir_x.x.abs() > 1e-15 {
+                let t = -camera.x / dir_x.x;
+                if t > 0.0 {
+                    let hit = camera + t * dir_x;
+                    let dy = hit.y - z_pt.y;
+                    let dz = hit.z - z_pt.z;
+                    err += w * (dy * dy + dz * dz);
+                } else {
+                    err += w * 1e6;
+                }
+            }
+
+            let dir_z = z_pt - camera;
+            if dir_z.z.abs() > 1e-15 {
+                let t = -camera.z / dir_z.z;
+                if t > 0.0 {
+                    let hit = camera + t * dir_z;
+                    let dx = hit.x - x_pt.x;
+                    let dy = hit.y - x_pt.y;
+                    err += w * (dx * dx + dy * dy);
+                } else {
+                    err += w * 1e6;
+                }
+            }
+
+            err
+        })
+        .collect()
+}
+
+/// Seam-weighted symmetric reprojection error (sum over all points).
 ///
-/// - Left plane seam at `x_normalized = 1 - intersect/2`
-/// - Right plane seam at `x_normalized = intersect/2`
+/// Each point pair is weighted by a 2D Gaussian combining:
+/// 1. **Horizontal**: proximity to the stitch seam (where alignment
+///    matters most visually)
+/// 2. **Vertical**: proximity to the image center (sky and close-up
+///    ground features are less reliable)
 ///
-/// The `sigma` parameter controls the Gaussian width. Smaller sigma
-/// concentrates weight more tightly around the seam. A value of 0.08
-/// was confirmed to produce better stitches than unweighted error
-/// across all test footages.
+/// The seam position updates dynamically with the current `intersect`
+/// value. The `sigma` parameter controls the Gaussian width for both
+/// dimensions.
 pub fn seam_weighted_reprojection_error(
     points: &[MatchedPoint],
     params: &OptParams,
     sigma: f64,
 ) -> f64 {
-    let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
-    let (x_pts, z_pts) = apply_transformations(points, params);
+    per_point_seam_weighted_errors(points, params, sigma)
+        .iter()
+        .sum()
+}
 
-    // Seam position in normalized pixel space [0, 1].
-    // Left camera image: seam on the RIGHT side at (1 - intersect/2).
-    // Right camera image: seam on the LEFT side at (intersect/2).
-    //
-    // IMPORTANT: Due to the left/right swap (processing.py:693 convention),
-    // `left_pixel_nx` holds the RIGHT camera's pixel x, and
-    // `right_pixel_nx` holds the LEFT camera's pixel x. So we compare:
-    //   left_pixel_nx (right cam pixel) vs right_cam_seam
-    //   right_pixel_nx (left cam pixel) vs left_cam_seam
-    let left_cam_seam = 1.0 - params.intersect / 2.0;
-    let right_cam_seam = params.intersect / 2.0;
-    let inv_2sigma_sq = 1.0 / (2.0 * sigma * sigma);
+/// Trimmed seam-weighted reprojection error.
+///
+/// Computes per-point seam-weighted errors, sorts them, drops the worst
+/// `trim_fraction` (e.g., 0.2 = drop worst 20%), and sums the rest.
+/// This makes the optimizer robust to outlier matches that survive RANSAC.
+pub fn trimmed_seam_weighted_reprojection_error(
+    points: &[MatchedPoint],
+    params: &OptParams,
+    sigma: f64,
+    trim_fraction: f64,
+) -> f64 {
+    let mut errors = per_point_seam_weighted_errors(points, params, sigma);
+    errors.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    let mut total = 0.0;
-    for (idx, (x_pt, z_pt)) in x_pts.iter().zip(z_pts.iter()).enumerate() {
-        // Gaussian weight: each pixel compared to its own camera's seam
-        let dl = points[idx].left_pixel_nx - right_cam_seam;
-        let dr = points[idx].right_pixel_nx - left_cam_seam;
-        let w = 0.5 * ((-dl * dl * inv_2sigma_sq).exp() + (-dr * dr * inv_2sigma_sq).exp());
-
-        // Forward: ray from camera through x_pt, intersect z-plane (x=0)
-        let dir_x = x_pt - camera;
-        if dir_x.x.abs() > 1e-15 {
-            let t = -camera.x / dir_x.x;
-            if t > 0.0 {
-                let hit = camera + t * dir_x;
-                let dy = hit.y - z_pt.y;
-                let dz = hit.z - z_pt.z;
-                total += w * (dy * dy + dz * dz);
-            } else {
-                total += w * 1e6;
-            }
-        }
-
-        // Backward: ray from camera through z_pt, intersect x-plane (z=0)
-        let dir_z = z_pt - camera;
-        if dir_z.z.abs() > 1e-15 {
-            let t = -camera.z / dir_z.z;
-            if t > 0.0 {
-                let hit = camera + t * dir_z;
-                let dx = hit.x - x_pt.x;
-                let dy = hit.y - x_pt.y;
-                total += w * (dx * dx + dy * dy);
-            } else {
-                total += w * 1e6;
-            }
-        }
-    }
-    total
+    let keep = ((1.0 - trim_fraction) * errors.len() as f64).ceil() as usize;
+    let keep = keep.min(errors.len()).max(1);
+    errors[..keep].iter().sum()
 }
 
 /// Normalize a pixel coordinate to plane coordinates.

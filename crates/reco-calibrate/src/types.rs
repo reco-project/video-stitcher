@@ -126,7 +126,16 @@ pub struct CalibrationConfig {
     pub max_y_disparity: f64,
     /// Fraction of the image height to mask from the top (sky removal).
     /// 0.3 = ignore the top 30% of the image for feature detection.
+    /// Deprecated: use `detect_y_min` instead.
     pub sky_mask_ratio: f64,
+    /// Detection region vertical minimum (fraction of height, 0.0 = top).
+    /// Points above this line are excluded from feature detection.
+    /// 0.25 = skip top 25% (avoids sky and undistortion edge artifacts).
+    pub detect_y_min: f64,
+    /// Detection region vertical maximum (fraction of height, 1.0 = bottom).
+    /// Points below this line are excluded from feature detection.
+    /// 0.85 = skip bottom 15% (avoids close-to-camera ground and undistortion edges).
+    pub detect_y_max: f64,
     /// Maximum number of keypoints to keep per image after detection,
     /// sorted by response strength. Matches v1's SIFT nfeatures behavior.
     pub max_keypoints: usize,
@@ -140,6 +149,15 @@ pub struct CalibrationConfig {
     pub skip_end_secs: f64,
 
     // --- Optimizer settings ---
+    /// Lock cam_d to half_offset (cam_d = 0.5 * (1 - intersect)).
+    /// Reduces the optimization to 4 parameters. Based on the finding
+    /// that the virtual camera sits at the intersection of the plane normals.
+    pub lock_cam_d: bool,
+
+    /// AKAZE detector response threshold. Lower = more features detected.
+    /// Default 0.001. Try 0.0005 or 0.0001 for denser detection.
+    pub akaze_threshold: f64,
+
     /// Gaussian sigma for seam-proximity weighting in the objective function.
     ///
     /// Points near the stitch seam are weighted more heavily. A smaller
@@ -158,6 +176,23 @@ pub struct CalibrationConfig {
     /// Auto-enabled when IMU detects differential pitch > 2 degrees
     /// between cameras. When false, x_rx is fixed at 0.
     pub enable_x_rx: bool,
+    /// IMU-derived pitch seed for the x_rx initial guess (radians).
+    ///
+    /// When set (along with `enable_x_rx`), seeds the x_rx parameter
+    /// from the IMU differential pitch, improving convergence.
+    pub imu_xrx_seed: Option<f64>,
+    /// IMU-derived tilt seed for the z_rx initial guess (radians).
+    ///
+    /// The left camera's deviation from the rig average tilt, computed
+    /// by subtracting the common rig tilt from the left camera's
+    /// individual tilt measurement.
+    pub imu_zrx_seed: Option<f64>,
+
+    /// Fraction of worst-error points to drop during optimization.
+    ///
+    /// 0.0 = no trimming (use all points), 0.2 = drop worst 20%.
+    /// Makes the optimizer robust to outlier matches that survive RANSAC.
+    pub trim_fraction: f64,
 }
 
 impl Default for CalibrationConfig {
@@ -165,24 +200,31 @@ impl Default for CalibrationConfig {
         Self {
             num_frames: 15,
             iterations: 200,
-            lowe_ratio: 0.6,
-            min_matches: 8,
+            lowe_ratio: 0.75,
+            min_matches: 6,
             ransac_confidence: 0.995,
             ransac_threshold: 1.0,
-            spatial_x_threshold: 0.4,
+            spatial_x_threshold: 0.5,
             spatial_x_inner: 0.0,
             spatial_y_low: 0.2,
             spatial_y_high: 0.8,
-            max_y_disparity: 0.1,
-            sky_mask_ratio: 0.3,
+            max_y_disparity: 0.08,
+            sky_mask_ratio: 0.25,
+            detect_y_min: 0.25,
+            detect_y_max: 0.85,
             max_keypoints: 2000,
             subset_ratio: 0.6,
             max_optimizer_evals: 1000,
             skip_start_secs: 0.0,
             skip_end_secs: 0.0,
+            lock_cam_d: false,
+            akaze_threshold: 0.0001,
             seam_sigma: 0.08,
             imu_xrz_seed: None,
             enable_x_rx: false,
+            imu_xrx_seed: None,
+            imu_zrx_seed: None,
+            trim_fraction: 0.3,
         }
     }
 }
