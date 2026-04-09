@@ -1,110 +1,15 @@
 //! `reco calibrate` subcommand.
 //!
-//! Extracts frames from two video files, runs the calibration pipeline,
-//! and writes a match.json file compatible with `reco stitch`.
+//! Thin wrapper around [`reco_calibrate::pipeline::CalibrationPipeline`].
+//! Handles file I/O (video decode, audio extraction, debug output) while
+//! all calibration logic lives in the library.
 
 use std::path::Path;
 
+use reco_calibrate::pipeline::{CalibrationPipeline, VideoInfo};
 use reco_calibrate::types::YuvFrame;
-use reco_calibrate::{CalibrateError, CalibrationConfig};
-use reco_core::calibration::CameraParams;
+use reco_calibrate::CalibrationConfig;
 use reco_core::gpu::GpuContext;
-
-/// Load lens profiles from files or auto-detect from video metadata.
-///
-/// Delegates to reco_calibrate::lens_database for all profile logic.
-fn load_or_detect_profiles(
-    left_video: &str,
-    right_video: &str,
-    left_profile: Option<&str>,
-    right_profile: Option<&str>,
-) -> anyhow::Result<(CameraParams, CameraParams)> {
-    use reco_calibrate::lens_database;
-
-    if let Some(lp) = left_profile {
-        let left_p = lens_database::load_from_file(Path::new(lp))?;
-        let right_p = if let Some(rp) = right_profile {
-            lens_database::load_from_file(Path::new(rp))?
-        } else {
-            left_p.clone()
-        };
-        return Ok((left_p, right_p));
-    }
-
-    // Auto-detect from video metadata
-    eprintln!("Auto-detecting lens profiles...");
-    let db = lens_database::LensDatabase::load_embedded();
-
-    let left_path = Path::new(left_video);
-    let right_path = Path::new(right_video);
-
-    let ld = reco_io::ffmpeg::decoder::VideoDecoder::open(left_path)?;
-    let rd = reco_io::ffmpeg::decoder::VideoDecoder::open(right_path)?;
-    let (lw, lh) = (ld.width(), ld.height());
-    let (rw, rh) = (rd.width(), rd.height());
-    drop(ld);
-    drop(rd);
-
-    let left_p = lens_database::detect_profile(left_path, lw, lh, &db).ok_or_else(|| {
-        anyhow::anyhow!(
-            "no lens profile found for left camera ({}x{}). Use --left-profile.",
-            lw,
-            lh
-        )
-    })?;
-
-    let right_p = lens_database::detect_profile(right_path, rw, rh, &db).unwrap_or_else(|| {
-        eprintln!("  right camera: no profile found, using left camera profile");
-        left_p.clone()
-    });
-
-    eprintln!("  left:  {}x{}", left_p.width, left_p.height);
-    eprintln!("  right: {}x{}", right_p.width, right_p.height);
-    Ok((left_p, right_p))
-}
-
-/// Extract YUV420P frames from a video at the given frame indices.
-///
-/// Seeks to each target timestamp and grabs the first decoded frame.
-/// The exact frame may differ slightly from the target index (lands on
-/// the nearest keyframe), but both cameras use the same indices so the
-/// left/right pairing and sync offset are preserved.
-fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec<YuvFrame>> {
-    use reco_io::ffmpeg::decoder::VideoDecoder;
-
-    let mut decoder = VideoDecoder::open(Path::new(video_path))?;
-    let fps = decoder.fps();
-    let mut frames = Vec::with_capacity(frame_indices.len());
-
-    for &target_idx in frame_indices {
-        let target_secs = target_idx as f64 / fps;
-        decoder.seek_to_secs(target_secs)?;
-
-        // Decode forward until we reach the exact target frame.
-        // seek_to_secs lands on the nearest keyframe which may be
-        // several frames before the target.
-        let mut last_frame = None;
-        while let Some(yuv) = decoder.next_frame()? {
-            let frame_time = yuv.timestamp_us as f64 / 1_000_000.0;
-            last_frame = Some(YuvFrame {
-                y: yuv.y,
-                u: yuv.u,
-                v: yuv.v,
-                width: yuv.width,
-                height: yuv.height,
-            });
-            // Stop once we've reached or passed the target time
-            if frame_time >= target_secs - 0.5 / fps {
-                break;
-            }
-        }
-        if let Some(f) = last_frame {
-            frames.push(f);
-        }
-    }
-
-    Ok(frames)
-}
 
 /// Run the calibrate subcommand.
 #[allow(clippy::too_many_arguments)]
@@ -133,145 +38,94 @@ pub fn run_calibrate(
 ) -> anyhow::Result<()> {
     reco_io::init();
 
-    // IMU telemetry extraction (if requested)
-    let mut imu_sync_offset: Option<f64> = None;
-    let mut imu_xrz_seed: Option<f64> = None;
-    let mut imu_xrx_seed: Option<f64> = None;
-    let mut imu_zrx_seed: Option<f64> = None;
-    let mut enable_x_rx = false;
-
-    if auto_imu {
-        eprintln!("Extracting IMU telemetry...");
-        let left_path = std::path::Path::new(left);
-        let right_path = std::path::Path::new(right);
-
-        match (
-            reco_calibrate::telemetry::extract(left_path),
-            reco_calibrate::telemetry::extract(right_path),
-        ) {
-            (Ok(left_imu), Ok(right_imu)) => {
-                // Gyro cross-correlation for sync offset
-                if let Some(offset) =
-                    reco_calibrate::telemetry::estimate_sync_offset(&left_imu, &right_imu)
-                {
-                    eprintln!("  IMU sync offset: {offset:.3}s");
-                    imu_sync_offset = Some(offset);
-                }
-
-                // Differential orientation for xRz, xRx, zRx seeds
-                if let Some((roll, pitch, tilt)) =
-                    reco_calibrate::telemetry::differential_orientation(&left_imu, &right_imu)
-                {
-                    eprintln!(
-                        "  Differential roll: {:.2} deg, pitch: {:.2} deg, tilt: {:.2} deg",
-                        roll.to_degrees(),
-                        pitch.to_degrees(),
-                        tilt.to_degrees(),
-                    );
-                    imu_xrz_seed = Some(roll);
-                    imu_zrx_seed = Some(tilt);
-                    if pitch.abs() > 2.0_f64.to_radians() {
-                        eprintln!("  Pitch > 2 deg, enabling x_rx seeded at {pitch:.4} rad");
-                        enable_x_rx = true;
-                        imu_xrx_seed = Some(pitch);
-                    }
-                }
-
-                // Rig tilt from gravity
-                if let Some(tilt) = reco_calibrate::telemetry::rig_tilt(&left_imu) {
-                    eprintln!("  Rig tilt: {:.1} deg", tilt.to_degrees());
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => {
-                eprintln!("  IMU extraction failed: {e} (continuing without IMU)");
-            }
-        }
-    }
-
-    // Load lens profiles (manual or auto-detect)
-    log::info!("loading lens profiles...");
-    let (left_params, right_params) =
-        load_or_detect_profiles(left, right, left_profile, right_profile)?;
-    log::info!(
-        "left: {}x{}, right: {}x{}",
-        left_params.width,
-        left_params.height,
-        right_params.width,
-        right_params.height
-    );
-
-    // Determine frame count from both videos
+    // Get video metadata from decoder
     let left_decoder = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(left))?;
-    let fps = left_decoder.fps();
-    let total_frames = {
-        let right_decoder = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right))?;
-        let left_est = left_decoder
+    let right_decoder = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right))?;
+
+    let left_info = VideoInfo {
+        path: left.into(),
+        width: left_decoder.width(),
+        height: left_decoder.height(),
+        fps: left_decoder.fps(),
+        total_frames: left_decoder
             .duration_secs()
             .map(|d| (d * left_decoder.fps()) as u64)
-            .unwrap_or((left_decoder.fps() * 60.0) as u64);
-        let right_est = right_decoder
+            .unwrap_or((left_decoder.fps() * 60.0) as u64),
+    };
+    let right_info = VideoInfo {
+        path: right.into(),
+        width: right_decoder.width(),
+        height: right_decoder.height(),
+        fps: right_decoder.fps(),
+        total_frames: right_decoder
             .duration_secs()
             .map(|d| (d * right_decoder.fps()) as u64)
-            .unwrap_or((right_decoder.fps() * 60.0) as u64);
-        left_est.min(right_est).max(100)
+            .unwrap_or((right_decoder.fps() * 60.0) as u64),
     };
+    let fps = left_info.fps;
     drop(left_decoder);
+    drop(right_decoder);
 
-    let frame_indices = reco_calibrate::sampling::select_frame_indices(
-        total_frames,
-        fps,
+    let config = CalibrationConfig {
         num_frames,
-        skip_start,
-        skip_end,
-    );
+        skip_start_secs: skip_start,
+        skip_end_secs: skip_end,
+        akaze_threshold,
+        lowe_ratio,
+        spatial_x_threshold: detect_x,
+        detect_y_min,
+        detect_y_max,
+        lock_cam_d,
+        lock_z_rx,
+        trim_fraction: trim,
+        seam_sigma,
+        ..Default::default()
+    };
 
-    // Determine sync offset: IMU > audio > manual
-    let effective_sync = if let Some(imu_offset) = imu_sync_offset {
-        let frames = (-imu_offset * fps).round() as i64;
-        eprintln!("  IMU sync: {imu_offset:.3}s = {frames} frames @ {fps:.1}fps");
-        frames
-    } else if auto_sync {
-        eprintln!("Auto-detecting sync from audio...");
-        match extract_and_sync_audio(left, right, fps) {
-            Ok((frames, confidence)) => {
-                eprintln!("  Audio sync: {frames} frames (confidence={confidence:.0})");
-                frames
+    let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
+
+    // Step 1: Lens profiles
+    if let Some(lp) = left_profile {
+        let rp = right_profile.map(Path::new);
+        let (lp, rp) = pipeline.load_profiles(Path::new(lp), rp)?;
+        eprintln!("  left:  {}x{}", lp.width, lp.height);
+        eprintln!("  right: {}x{}", rp.width, rp.height);
+    } else {
+        eprintln!("Auto-detecting lens profiles...");
+        let (lp, rp) = pipeline.detect_profiles()?;
+        eprintln!("  left:  {}x{}", lp.width, lp.height);
+        eprintln!("  right: {}x{}", rp.width, rp.height);
+    }
+
+    // Step 2: Sync - priority: IMU > audio > manual
+    if auto_imu {
+        eprintln!("Extracting IMU telemetry...");
+        match pipeline.imu_sync() {
+            Ok(Some(frames)) => {
+                eprintln!("  IMU sync: {frames} frames @ {fps:.1}fps");
+            }
+            Ok(None) => {
+                eprintln!("  IMU telemetry available but sync failed, trying audio...");
+                try_audio_sync(&mut pipeline, left, right, fps, auto_sync, sync_offset)?;
             }
             Err(e) => {
-                eprintln!("  Audio sync failed: {e}, falling back to --sync-offset {sync_offset}");
-                sync_offset
+                eprintln!("  IMU extraction failed: {e}");
+                try_audio_sync(&mut pipeline, left, right, fps, auto_sync, sync_offset)?;
             }
         }
     } else {
-        sync_offset
-    };
+        try_audio_sync(&mut pipeline, left, right, fps, auto_sync, sync_offset)?;
+    }
 
-    // Apply sync offset
-    let (left_indices, right_indices) = if effective_sync >= 0 {
-        let offset = effective_sync as u64;
-        (
-            frame_indices.clone(),
-            frame_indices
-                .iter()
-                .map(|&i| i + offset)
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        let offset = (-effective_sync) as u64;
-        (
-            frame_indices
-                .iter()
-                .map(|&i| i + offset)
-                .collect::<Vec<_>>(),
-            frame_indices.clone(),
-        )
-    };
-
+    // Step 3: Frame indices (sync already applied by pipeline)
+    let (left_indices, right_indices) = pipeline.frame_indices();
     log::info!(
-        "extracting {} frames (fps: {fps:.1}, sync_offset: {effective_sync})",
+        "extracting {} frames (fps: {fps:.1}, sync_offset: {})",
         left_indices.len(),
+        pipeline.sync_offset(),
     );
 
+    // Step 4: Extract frames (app-level I/O)
     eprintln!("Extracting frames from left video...");
     let left_frames = extract_frames(left, &left_indices)?;
     eprintln!("Extracting frames from right video...");
@@ -287,179 +141,114 @@ pub fn run_calibrate(
 
     // Debug: save GPU-undistorted frames
     if let Some(dir) = debug_dir {
-        std::fs::create_dir_all(dir)?;
-        let (w, h) = (left_frames[0].width, left_frames[0].height);
-        let undistort = reco_core::undistort::GpuUndistort::new(&gpu, w, h);
-        for (i, (lf, rf)) in left_frames.iter().zip(right_frames.iter()).enumerate() {
-            let l_rgba = undistort.undistort(&gpu, &lf.y, &lf.u, &lf.v, &left_params);
-            let r_rgba = undistort.undistort(&gpu, &rf.y, &rf.u, &rf.v, &right_params);
-            save_rgba_png(&l_rgba, w, h, &format!("{dir}/frame_{i:02}_left.png"))?;
-            save_rgba_png(&r_rgba, w, h, &format!("{dir}/frame_{i:02}_right.png"))?;
-        }
-        eprintln!("Debug frames saved to {dir}/ (GPU-undistorted)");
+        save_debug_frames(
+            &gpu,
+            &left_frames,
+            &right_frames,
+            pipeline.left_params().unwrap(),
+            pipeline.right_params().unwrap(),
+            dir,
+        )?;
     }
 
     let frame_pairs: Vec<(YuvFrame, YuvFrame)> =
         left_frames.into_iter().zip(right_frames).collect();
 
-    let config = CalibrationConfig {
-        num_frames,
-        skip_start_secs: skip_start,
-        skip_end_secs: skip_end,
-        akaze_threshold,
-        lowe_ratio,
-        spatial_x_threshold: detect_x,
-        detect_y_min,
-        detect_y_max,
-        lock_cam_d,
-        lock_z_rx,
-        trim_fraction: trim,
-        seam_sigma,
-        imu_xrz_seed,
-        enable_x_rx,
-        imu_xrx_seed,
-        imu_zrx_seed,
-        ..Default::default()
-    };
-
+    // Step 5: Calibrate
     eprintln!("Calibrating with {} frame pairs...", frame_pairs.len());
-
-    let result =
-        reco_calibrate::calibrate(&gpu, &frame_pairs, &left_params, &right_params, &config)
-            .map_err(|e: CalibrateError| anyhow::anyhow!("{e}"))?;
+    let result = pipeline
+        .calibrate(&gpu, &frame_pairs)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // Write output
     let json = serde_json::to_string_pretty(&result.calibration)?;
     std::fs::write(output, &json)?;
 
     // Print diagnostics
-    eprintln!("\nCalibration results:");
-    eprintln!("  Output:          {output}");
-    eprintln!(
-        "  Frames used:     {}/{}",
-        result.frames_used,
-        frame_pairs.len()
-    );
-    eprintln!("  Total matches:   {}", result.total_matches);
-    eprintln!("  Confidence:      {:.1}%", result.confidence * 100.0);
-    eprintln!("  Residual error:  {:.6}", result.residual_error);
-    eprintln!("\nPlacement parameters:");
-    let l = &result.calibration.layout;
-    eprintln!("  cameraAxisOffset: {:.4}", l.camera_axis_offset);
-    eprintln!("  intersect:        {:.4}", l.intersect);
-    eprintln!("  xTy:              {:.6}", l.x_ty);
-    eprintln!("  xRz:              {:.6}", l.x_rz);
-    eprintln!("  zRx:              {:.6}", l.z_rx);
-    eprintln!("  zRz:              {:.6}", l.z_rz);
+    print_results(&result, output, frame_pairs.len());
 
-    if !result.per_frame.is_empty() {
-        eprintln!("\nPer-frame statistics:");
-        for (i, fm) in result.per_frame.iter().enumerate() {
-            eprintln!(
-                "  frame {i}: {} keypoints (L:{}/R:{}), {} -> {} -> {} -> {} matches",
-                fm.points.len(),
-                fm.keypoints_left,
-                fm.keypoints_right,
-                fm.raw_matches,
-                fm.post_ratio_test,
-                fm.post_spatial_filter,
-                fm.post_ransac,
-            );
-        }
-    }
-
-    // Debug: save per-frame match data as JSON + keypoint visualizations
+    // Debug: save match visualizations
     if let Some(dir) = debug_dir {
-        let matches_json = serde_json::to_string_pretty(&result.per_frame)?;
-        std::fs::write(format!("{dir}/matches.json"), &matches_json)?;
-
-        // Draw matched keypoints on the debug frames
-        let (w, h) = (frame_pairs[0].0.width, frame_pairs[0].0.height);
-        for (i, fm) in result.per_frame.iter().enumerate() {
-            let left_path = format!("{dir}/frame_{i:02}_left.png");
-            let right_path = format!("{dir}/frame_{i:02}_right.png");
-            if std::path::Path::new(&left_path).exists()
-                && std::path::Path::new(&right_path).exists()
-            {
-                // Load the saved debug frames and draw matches
-                let mut left_img = image::open(&left_path)?.to_rgba8();
-                let mut right_img = image::open(&right_path)?.to_rgba8();
-
-                // Convert plane coords back to pixel coords for visualization.
-                // Plane coords: x in [-0.5, 0.5], y in [-h/(2w), h/(2w)]
-                // Remember the swap: .left is right camera (x-plane), .right is left camera (z-plane)
-                for pt in &fm.points {
-                    // Right camera point on left image (before swap, .left = right cam)
-                    let rx = ((pt.left[0] + 0.5) * w as f64) as i32;
-                    let ry = ((pt.left[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
-                    let ry = ry as i32;
-                    draw_cross(&mut right_img, rx, ry, [0, 255, 0, 255]); // green
-
-                    // Left camera point on right image (before swap, .right = left cam)
-                    let lx = ((pt.right[0] + 0.5) * w as f64) as i32;
-                    let ly = ((pt.right[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
-                    let ly = ly as i32;
-                    draw_cross(&mut left_img, lx, ly, [255, 0, 0, 255]); // red
-                }
-
-                left_img.save(format!("{dir}/matches_{i:02}_left.png"))?;
-                right_img.save(format!("{dir}/matches_{i:02}_right.png"))?;
-            }
-        }
-
-        eprintln!("Match visualizations saved to {dir}/matches_*_{{left,right}}.png");
+        save_match_visualizations(&result, &frame_pairs, dir)?;
     }
 
     Ok(())
 }
 
-/// Draw a cross marker at (cx, cy) on an RGBA image.
-fn draw_cross(img: &mut image::RgbaImage, cx: i32, cy: i32, color: [u8; 4]) {
-    let (w, h) = (img.width() as i32, img.height() as i32);
-    let size = 8;
-    let thickness = 2;
-    for d in -size..=size {
-        for t in -thickness..=thickness {
-            // Horizontal arm
-            let x = cx + d;
-            let y = cy + t;
-            if x >= 0 && x < w && y >= 0 && y < h {
-                img.put_pixel(x as u32, y as u32, image::Rgba(color));
+/// Try audio sync, falling back to manual offset.
+fn try_audio_sync(
+    pipeline: &mut CalibrationPipeline,
+    left: &str,
+    right: &str,
+    fps: f64,
+    auto_sync: bool,
+    manual_offset: i64,
+) -> anyhow::Result<()> {
+    if auto_sync {
+        eprintln!("Auto-detecting sync from audio...");
+        match extract_and_sync_audio(pipeline, left, right) {
+            Ok(frames) => {
+                eprintln!("  Audio sync: {frames} frames @ {fps:.1}fps");
+                return Ok(());
             }
-            // Vertical arm
-            let x = cx + t;
-            let y = cy + d;
-            if x >= 0 && x < w && y >= 0 && y < h {
-                img.put_pixel(x as u32, y as u32, image::Rgba(color));
+            Err(e) => {
+                eprintln!("  Audio sync failed: {e}, using manual offset {manual_offset}");
             }
         }
     }
-}
-
-/// Save RGBA pixel data as a PNG.
-fn save_rgba_png(rgba: &[u8], width: u32, height: u32, path: &str) -> anyhow::Result<()> {
-    let img = image::RgbaImage::from_raw(width, height, rgba.to_vec())
-        .ok_or_else(|| anyhow::anyhow!("invalid frame dimensions"))?;
-    img.save(path)?;
+    pipeline.set_sync_offset(manual_offset);
     Ok(())
 }
 
-/// Extract audio from two video files and compute sync offset.
-///
-/// This is the CLI's responsibility: file I/O via ffmpeg CLI to extract
-/// raw PCM, then pass to reco_calibrate::audio_sync::correlate() for
-/// the actual math.
-fn extract_and_sync_audio(left: &str, right: &str, fps: f64) -> anyhow::Result<(i64, f64)> {
+/// Extract audio and run sync through the pipeline.
+fn extract_and_sync_audio(
+    pipeline: &mut CalibrationPipeline,
+    left: &str,
+    right: &str,
+) -> anyhow::Result<i64> {
     let sample_rate = 44100u32;
-
     let left_samples = extract_audio_pcm(left, sample_rate)?;
     let right_samples = extract_audio_pcm(right, sample_rate)?;
+    let frames = pipeline.audio_sync(&left_samples, &right_samples, sample_rate)?;
+    Ok(frames)
+}
 
-    let result =
-        reco_calibrate::audio_sync::correlate(&left_samples, &right_samples, sample_rate, 30.0)?;
+// ---------------------------------------------------------------------------
+// App-level I/O (stays in CLI)
+// ---------------------------------------------------------------------------
 
-    let frames = result.offset_frames_rounded(fps);
-    Ok((frames, result.confidence))
+/// Extract YUV420P frames from a video at the given frame indices.
+fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec<YuvFrame>> {
+    use reco_io::ffmpeg::decoder::VideoDecoder;
+
+    let mut decoder = VideoDecoder::open(Path::new(video_path))?;
+    let fps = decoder.fps();
+    let mut frames = Vec::with_capacity(frame_indices.len());
+
+    for &target_idx in frame_indices {
+        let target_secs = target_idx as f64 / fps;
+        decoder.seek_to_secs(target_secs)?;
+
+        let mut last_frame = None;
+        while let Some(yuv) = decoder.next_frame()? {
+            let frame_time = yuv.timestamp_us as f64 / 1_000_000.0;
+            last_frame = Some(YuvFrame {
+                y: yuv.y,
+                u: yuv.u,
+                v: yuv.v,
+                width: yuv.width,
+                height: yuv.height,
+            });
+            if frame_time >= target_secs - 0.5 / fps {
+                break;
+            }
+        }
+        if let Some(f) = last_frame {
+            frames.push(f);
+        }
+    }
+
+    Ok(frames)
 }
 
 /// Extract mono PCM audio from a video file using ffmpeg CLI.
@@ -496,4 +285,121 @@ fn extract_audio_pcm(video_path: &str, sample_rate: u32) -> anyhow::Result<Vec<i
     }
 
     Ok(samples)
+}
+
+// ---------------------------------------------------------------------------
+// Debug visualization (CLI only)
+// ---------------------------------------------------------------------------
+
+fn save_debug_frames(
+    gpu: &GpuContext,
+    left_frames: &[YuvFrame],
+    right_frames: &[YuvFrame],
+    left_params: &reco_core::calibration::CameraParams,
+    right_params: &reco_core::calibration::CameraParams,
+    dir: &str,
+) -> anyhow::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let (w, h) = (left_frames[0].width, left_frames[0].height);
+    let undistort = reco_core::undistort::GpuUndistort::new(gpu, w, h);
+    for (i, (lf, rf)) in left_frames.iter().zip(right_frames.iter()).enumerate() {
+        let l_rgba = undistort.undistort(gpu, &lf.y, &lf.u, &lf.v, left_params);
+        let r_rgba = undistort.undistort(gpu, &rf.y, &rf.u, &rf.v, right_params);
+        save_rgba_png(&l_rgba, w, h, &format!("{dir}/frame_{i:02}_left.png"))?;
+        save_rgba_png(&r_rgba, w, h, &format!("{dir}/frame_{i:02}_right.png"))?;
+    }
+    eprintln!("Debug frames saved to {dir}/ (GPU-undistorted)");
+    Ok(())
+}
+
+fn save_match_visualizations(
+    result: &reco_calibrate::CalibrationResult,
+    frame_pairs: &[(YuvFrame, YuvFrame)],
+    dir: &str,
+) -> anyhow::Result<()> {
+    let (w, h) = (frame_pairs[0].0.width, frame_pairs[0].0.height);
+    for (i, fm) in result.per_frame.iter().enumerate() {
+        let left_path = format!("{dir}/frame_{i:02}_left.png");
+        let right_path = format!("{dir}/frame_{i:02}_right.png");
+        if !Path::new(&left_path).exists() || !Path::new(&right_path).exists() {
+            continue;
+        }
+        let mut left_img = image::open(&left_path)?.to_rgba8();
+        let mut right_img = image::open(&right_path)?.to_rgba8();
+
+        for pt in &fm.points {
+            let rx = ((pt.left[0] + 0.5) * w as f64) as i32;
+            let ry = ((pt.left[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
+            draw_cross(&mut right_img, rx, ry as i32, [0, 255, 0, 255]);
+
+            let lx = ((pt.right[0] + 0.5) * w as f64) as i32;
+            let ly = ((pt.right[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
+            draw_cross(&mut left_img, lx, ly as i32, [255, 0, 0, 255]);
+        }
+
+        left_img.save(format!("{dir}/matches_{i:02}_left.png"))?;
+        right_img.save(format!("{dir}/matches_{i:02}_right.png"))?;
+    }
+    eprintln!("Match visualizations saved to {dir}/matches_*_{{left,right}}.png");
+    Ok(())
+}
+
+fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total_pairs: usize) {
+    eprintln!("\nCalibration results:");
+    eprintln!("  Output:          {output}");
+    eprintln!("  Frames used:     {}/{total_pairs}", result.frames_used);
+    eprintln!("  Total matches:   {}", result.total_matches);
+    eprintln!("  Confidence:      {:.1}%", result.confidence * 100.0);
+    eprintln!("  Residual error:  {:.6}", result.residual_error);
+    eprintln!("\nPlacement parameters:");
+    let l = &result.calibration.layout;
+    eprintln!("  cameraAxisOffset: {:.4}", l.camera_axis_offset);
+    eprintln!("  intersect:        {:.4}", l.intersect);
+    eprintln!("  xTy:              {:.6}", l.x_ty);
+    eprintln!("  xRz:              {:.6}", l.x_rz);
+    eprintln!("  zRx:              {:.6}", l.z_rx);
+    eprintln!("  zRz:              {:.6}", l.z_rz);
+
+    if !result.per_frame.is_empty() {
+        eprintln!("\nPer-frame statistics:");
+        for (i, fm) in result.per_frame.iter().enumerate() {
+            eprintln!(
+                "  frame {i}: {} keypoints (L:{}/R:{}), {} -> {} -> {} -> {} matches",
+                fm.points.len(),
+                fm.keypoints_left,
+                fm.keypoints_right,
+                fm.raw_matches,
+                fm.post_ratio_test,
+                fm.post_spatial_filter,
+                fm.post_ransac,
+            );
+        }
+    }
+}
+
+fn draw_cross(img: &mut image::RgbaImage, cx: i32, cy: i32, color: [u8; 4]) {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let size = 8;
+    let thickness = 2;
+    for d in -size..=size {
+        for t in -thickness..=thickness {
+            let x = cx + d;
+            let y = cy + t;
+            if x >= 0 && x < w && y >= 0 && y < h {
+                img.put_pixel(x as u32, y as u32, image::Rgba(color));
+            }
+            let x = cx + t;
+            let y = cy + d;
+            if x >= 0 && x < w && y >= 0 && y < h {
+                img.put_pixel(x as u32, y as u32, image::Rgba(color));
+            }
+        }
+    }
+}
+
+fn save_rgba_png(rgba: &[u8], width: u32, height: u32, path: &str) -> anyhow::Result<()> {
+    let img = image::RgbaImage::from_raw(width, height, rgba.to_vec())
+        .ok_or_else(|| anyhow::anyhow!("invalid frame dimensions"))?;
+    img.save(path)?;
+    Ok(())
 }

@@ -46,6 +46,7 @@ pub mod filter;
 pub mod geometry;
 pub mod lens_database;
 pub mod optimizer;
+pub mod pipeline;
 pub mod sampling;
 pub mod telemetry;
 pub mod traits;
