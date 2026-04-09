@@ -82,6 +82,9 @@ pub fn calculate_step_buffered(
 pub fn pm_g2(Lx: &GrayFloatImage, Ly: &GrayFloatImage, k: f64) -> GrayFloatImage {
     assert!(Lx.width() == Ly.width());
     assert!(Lx.height() == Ly.height());
+    // Clamp k to a minimum to prevent division by zero on uniform images
+    // (where the gradient histogram produces k=0, freezing all diffusion).
+    let k = k.max(1e-6);
     let inverse_k = (1.0f64 / (k * k)) as f32;
     let mut conductivities = Lx.zero_array();
     azip!((

@@ -13,12 +13,12 @@ pub fn compute_contrast_factor(
     let gaussian = gaussian_blur(image, gradient_histogram_scale as f32);
     let Lx = super::derivatives::scharr_horizontal(&gaussian, 1);
     let Ly = super::derivatives::scharr_vertical(&gaussian, 1);
-    let hmax = (1..gaussian.height() - 1)
-        .flat_map(|y| (1..gaussian.width() - 1).map(move |x| (x, y)))
+    let hmax = (1..gaussian.height().saturating_sub(1))
+        .flat_map(|y| (1..gaussian.width().saturating_sub(1)).map(move |x| (x, y)))
         .map(|(x, y)| Lx.get(x, y).powi(2) as f64 + Ly.get(x, y).powi(2) as f64)
         .map(float_ord::FloatOrd)
         .max()
-        .unwrap()
+        .unwrap_or(float_ord::FloatOrd(0.0))
         .0
         .sqrt();
     for y in 1..(gaussian.height() - 1) {

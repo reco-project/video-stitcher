@@ -13,9 +13,8 @@ use crate::akaze;
 /// Descriptor size in bytes (512 bits = 64 bytes, AKAZE M-LDB).
 const DESC_BYTES: usize = akaze::DESC_BYTES;
 
-/// A detected feature keypoint.
-#[derive(Debug, Clone, Copy)]
 /// A detected feature keypoint with pixel position and response strength.
+#[derive(Debug, Clone, Copy)]
 pub struct KeyPoint {
     /// X position in pixels.
     pub x: f32,
@@ -28,9 +27,8 @@ pub struct KeyPoint {
 /// A binary descriptor (512 bits, AKAZE M-LDB).
 pub type Descriptor = [u8; DESC_BYTES];
 
-/// A raw match between two keypoint indices.
-#[derive(Debug, Clone, Copy)]
 /// A raw descriptor match between two keypoint indices.
+#[derive(Debug, Clone, Copy)]
 pub struct RawMatch {
     /// Index into the left keypoint/descriptor list.
     pub left_idx: usize,
@@ -49,11 +47,8 @@ fn hamming_distance(a: &Descriptor, b: &Descriptor) -> u32 {
     dist
 }
 
-/// Region of interest for feature detection.
-///
-/// All values are fractions of image dimensions (0.0 - 1.0).
+/// Region of interest for feature detection (fractions of image dimensions, 0.0 - 1.0).
 #[derive(Debug, Clone, Copy)]
-/// Region of interest for feature detection (fractions of image dimensions).
 pub struct DetectRegion {
     /// Left edge of the ROI (fraction of width).
     pub x_min: f32,
@@ -95,6 +90,10 @@ pub fn detect(
 /// undistortion edges, and caps to `max_keypoints` by response.
 ///
 /// `border_margin`: pixel distance from black edges to reject. Set to 0 to disable.
+///
+/// # Panics
+///
+/// Panics if `rgba.len() < (width * height * 4)`.
 pub fn detect_with_border(
     rgba: &[u8],
     width: u32,
@@ -104,13 +103,23 @@ pub fn detect_with_border(
     threshold: f64,
     border_margin: i32,
 ) -> (Vec<KeyPoint>, Vec<Descriptor>) {
+    let expected = width as usize * height as usize * 4;
+    assert!(
+        rgba.len() >= expected,
+        "RGBA buffer too small: {} < {} ({}x{}x4)",
+        rgba.len(),
+        expected,
+        width,
+        height,
+    );
+
     // Convert RGBA to RGB (AKAZE doesn't support RGBA directly)
     let rgb_data: Vec<u8> = rgba
         .chunks_exact(4)
         .flat_map(|px| [px[0], px[1], px[2]])
         .collect();
     let img = image::RgbImage::from_raw(width, height, rgb_data)
-        .expect("RGBA dimensions must match data length");
+        .expect("BUG: rgb_data length verified above");
     let dynamic = image::DynamicImage::ImageRgb8(img);
 
     // Downscale if needed for performance
@@ -212,6 +221,7 @@ pub fn border_filter_pairs(
         return;
     }
 
+    let buf_len = rgba.len();
     let black_thresh: u8 = 10;
     let pre = pairs.len();
     pairs.retain(|(kp, _)| {
@@ -235,6 +245,9 @@ pub fn border_filter_pairs(
                 return false;
             }
             let idx = (sy as usize * width as usize + sx as usize) * 4;
+            if idx + 2 >= buf_len {
+                return false;
+            }
             if rgba[idx] < black_thresh
                 && rgba[idx + 1] < black_thresh
                 && rgba[idx + 2] < black_thresh

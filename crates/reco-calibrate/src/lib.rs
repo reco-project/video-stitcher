@@ -4,15 +4,15 @@
 //! features in overlapping footage and optimizing placement parameters
 //! to minimize reprojection error between matched points.
 //!
-//! ## Architecture
-//!
-//! Every pipeline stage is behind a trait ([`traits`]), making components
-//! swappable. Default implementations are in [`defaults`].
+//! ## Pipeline
 //!
 //! ```text
-//! Frame pairs → FeatureDetector → FeatureMatcher → PointFilter
-//!   → CostFunction + CalibrationOptimizer → PlaneLayout
+//! Frame pairs -> GPU Undistort -> AKAZE Detect -> Descriptor Match
+//!   -> Spatial + RANSAC Filter -> Nelder-Mead Optimizer -> PlaneLayout
 //! ```
+//!
+//! Each stage also has a trait interface ([`traits`]) with default
+//! implementations in [`defaults`] for standalone use.
 //!
 //! ## Full pipeline usage
 //!
@@ -22,18 +22,6 @@
 //!
 //! let result = calibrate(&gpu, &frames, &left_params, &right_params, &CalibrationConfig::default())?;
 //! println!("Confidence: {:.1}%", result.confidence * 100.0);
-//! ```
-//!
-//! ## Standalone component usage
-//!
-//! ```ignore
-//! use reco_calibrate::{AkazeDetector, FeatureDetector, HammingMatcher, FeatureMatcher};
-//!
-//! let detector = AkazeDetector::new(0.0001);
-//! let (kps, descs) = detector.detect(rgba, 3840, 2160, None, 2000);
-//!
-//! let matcher = HammingMatcher::new(0.75);
-//! let matches = matcher.match_features(&left_descs, &right_descs);
 //! ```
 
 /// Create a tracing span guard (no-op when `profiling` feature is disabled).
@@ -49,7 +37,7 @@ macro_rules! profile_scope {
     ($name:expr) => {};
 }
 
-pub mod akaze;
+pub(crate) mod akaze;
 pub mod audio_sync;
 pub mod defaults;
 pub mod error;

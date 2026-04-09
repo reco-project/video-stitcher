@@ -2,16 +2,15 @@
 //!
 //! Ports the v1 Python position optimization math to Rust. Two camera
 //! planes form an L-shape in 3D space with a virtual camera at the corner.
-//! The optimizer adjusts 5-6 parameters to minimize the total reprojection
-//! error between matched feature point pairs.
+//! The optimizer adjusts 3-6 parameters (controlled by `lock_cam_d`,
+//! `lock_z_rx`, and `enable_x_rx`) to minimize reprojection error.
 //!
 //! ## Reprojection Error
 //!
-//! Instead of measuring the angle between rays (v1 approach), we project
-//! both rays onto a virtual image plane perpendicular to the camera's
-//! viewing direction. The 2D distance on this plane directly corresponds
-//! to what the user sees in the stitched output. This gives proper
-//! weighting based on position in the rendered panorama.
+//! For each matched point pair, shoots a ray from the camera through one
+//! point on its plane and intersects with the other plane. The squared
+//! distance between the intersection and the actual matched point is the
+//! error. Both directions are computed for symmetry.
 //!
 //! ## Coordinate Convention
 //!
@@ -69,8 +68,8 @@ fn rotation_matrix(rx: f64, ry: f64, rz: f64) -> Matrix3<f64> {
 /// Parameters for the optimization objective function.
 ///
 /// The core model has 5 parameters: `cam_d`, `intersect`, `x_ty`, `x_rz`,
-/// `z_rx`. An optional 6th (`z_rz`) is available but deprecated in favor
-/// of the upcoming 4-param model (Phase 4).
+/// `z_rx`. An optional 6th (`z_rz`) is available. Use `lock_cam_d = true`
+/// to reduce to 4 parameters (derives `cam_d` from `intersect`).
 #[derive(Debug, Clone, Copy)]
 pub struct OptParams {
     /// Y-axis translation of the right plane (corrects vertical misalignment).
@@ -89,7 +88,7 @@ pub struct OptParams {
 }
 
 impl OptParams {
-    /// Unpack from a 5-element COBYLA parameter vector.
+    /// Unpack from a 5-element parameter vector.
     ///
     /// Order: `[x_ty, intersect, cam_d, x_rz, z_rx]`
     pub fn from_5param(x: &[f64]) -> Self {
@@ -103,7 +102,7 @@ impl OptParams {
         }
     }
 
-    /// Unpack from a 6-element COBYLA parameter vector.
+    /// Unpack from a 6-element parameter vector.
     ///
     /// Order: `[x_ty, intersect, cam_d, x_rz, z_rx, z_rz]`
     pub fn from_6param(x: &[f64]) -> Self {
@@ -285,6 +284,9 @@ pub fn trimmed_reprojection_error(
     params: &OptParams,
     trim_fraction: f64,
 ) -> f64 {
+    if points.is_empty() {
+        return 0.0;
+    }
     let mut errors = per_point_reprojection_error(points, params);
     errors.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -304,21 +306,22 @@ pub fn angular_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
 
     let mut total = 0.0;
     for (x_pt, z_pt) in x_pts.iter().zip(z_pts.iter()) {
-        let v_x = (x_pt - camera).normalize();
-        let v_z = (z_pt - camera).normalize();
+        let dx = x_pt - camera;
+        let dz = z_pt - camera;
+        // Skip degenerate points at the camera position
+        if dx.norm() < 1e-15 || dz.norm() < 1e-15 {
+            continue;
+        }
+        let v_x = dx.normalize();
+        let v_z = dz.normalize();
         let dot = v_x.dot(&v_z).clamp(-1.0, 1.0);
         total += dot.acos();
     }
     total
 }
 
-/// Per-point seam-weighted symmetric reprojection errors.
-///
-/// Returns a vector of individual weighted errors for each point pair.
-/// Used by both the summed and trimmed variants.
-/// Configuration for seam weighting.
-#[derive(Debug, Clone, Copy)]
 /// Configuration for seam-proximity weighting in the cost function.
+#[derive(Debug, Clone, Copy)]
 pub struct SeamWeightConfig {
     /// Horizontal Gaussian sigma (seam proximity weighting).
     pub sigma_x: f64,
@@ -367,8 +370,11 @@ fn per_point_seam_weighted_errors_full(
 
     let left_cam_seam = 1.0 - params.intersect / 2.0;
     let right_cam_seam = params.intersect / 2.0;
-    let inv_2sigma_sq = 1.0 / (2.0 * config.sigma_x * config.sigma_x);
-    let inv_2sigma_y_sq = 1.0 / (2.0 * config.sigma_y * config.sigma_y);
+    // Clamp sigma to a minimum to prevent NaN from division by zero
+    let sx = config.sigma_x.max(1e-6);
+    let sy = config.sigma_y.max(1e-6);
+    let inv_2sigma_sq = 1.0 / (2.0 * sx * sx);
+    let inv_2sigma_y_sq = 1.0 / (2.0 * sy * sy);
 
     x_pts
         .iter()
@@ -428,8 +434,8 @@ fn per_point_seam_weighted_errors_full(
 ///    ground features are less reliable)
 ///
 /// The seam position updates dynamically with the current `intersect`
-/// value. The `sigma` parameter controls the Gaussian width for both
-/// dimensions.
+/// value. The `sigma` parameter controls the horizontal Gaussian width
+/// (seam proximity). Vertical weighting uses a fixed sigma of 0.08.
 pub fn seam_weighted_reprojection_error(
     points: &[MatchedPoint],
     params: &OptParams,
@@ -451,6 +457,9 @@ pub fn trimmed_seam_weighted_reprojection_error(
     sigma: f64,
     trim_fraction: f64,
 ) -> f64 {
+    if points.is_empty() {
+        return 0.0;
+    }
     let mut errors = per_point_seam_weighted_errors(points, params, sigma);
     errors.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -464,8 +473,9 @@ pub fn trimmed_seam_weighted_reprojection_error(
 /// Matches v1's `_normalize_to_plane_coords`: x maps to `[-0.5, 0.5]`,
 /// y maps to `[-h/(2w), h/(2w)]` preserving the image aspect ratio.
 pub fn normalize_to_plane(px: f64, py: f64, img_w: u32, img_h: u32) -> [f64; 2] {
-    let w = img_w as f64;
-    let h = img_h as f64;
+    debug_assert!(img_w > 0 && img_h > 0, "image dimensions must be nonzero");
+    let w = img_w.max(1) as f64;
+    let h = img_h.max(1) as f64;
     [
         (px / w - 0.5) * PLANE_WIDTH,
         (py / h - 0.5) * PLANE_WIDTH * (h / w),

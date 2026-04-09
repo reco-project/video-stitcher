@@ -1,3 +1,4 @@
+#![allow(dead_code)] // Vendored code - not all paths are used
 //! Vendored AKAZE feature detector with bug fixes.
 //!
 //! Based on [Christopher22/akaze](https://github.com/Christopher22/akaze.git)

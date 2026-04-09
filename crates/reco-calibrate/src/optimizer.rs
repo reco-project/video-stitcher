@@ -8,8 +8,8 @@
 //! The optimizer is behind a trait ([`Optimizer`]) so the backend is
 //! swappable. The default implementation ([`NelderMeadOptimizer`]) uses
 //! multi-start Nelder-Mead via the `argmin` crate, which was proven to
-//! converge on all test footages (GoPro, DJI, XTU) where Powell and
-//! COBYLA diverged on wide-overlap rigs.
+//! converge reliably on all test footages (GoPro, DJI, XTU), including
+//! wide-overlap rigs.
 //!
 //! ## Seam weighting
 //!
@@ -33,8 +33,8 @@ use crate::types::{CalibrationConfig, MatchedPoint};
 ///
 /// Implementations take a set of matched points and configuration, and
 /// return the optimal [`PlaneLayout`] with its residual error. This
-/// abstraction allows swapping optimization backends (Nelder-Mead, Powell,
-/// L-BFGS-B, etc.) without changing the calibration pipeline.
+/// abstraction allows swapping optimization backends without changing
+/// the calibration pipeline.
 pub trait Optimizer {
     /// Find the placement parameters that minimize the calibration error.
     fn optimize(
@@ -169,8 +169,10 @@ impl CostFunction for CalibrationCost<'_> {
 /// Convert a parameter vector to [`OptParams`].
 ///
 /// Base order: `[cam_d, intersect, x_ty, x_rz, z_rx]`.
-/// If 6 elements, the 6th is `x_rx` (right plane pitch).
+/// If 6 elements, the 6th is stored in `z_rz` and later mapped to
+/// `PlaneLayout::x_rx` (right plane pitch) when `enable_x_rx` is set.
 fn params_from_vec(p: &[f64]) -> OptParams {
+    debug_assert!(p.len() >= 5, "need at least 5 params, got {}", p.len());
     OptParams {
         cam_d: p[0],
         intersect: p[1],
@@ -291,7 +293,7 @@ fn run_nelder_mead(cost: &CalibrationCost<'_>, start: &[f64]) -> Option<(Vec<f64
 /// with quadratic penalty for bound enforcement.
 ///
 /// This is the default [`Optimizer`] implementation, proven to converge
-/// on all test footages where Powell and COBYLA failed.
+/// reliably on all test footages.
 pub struct NelderMeadOptimizer;
 
 impl Optimizer for NelderMeadOptimizer {
@@ -383,7 +385,7 @@ impl Optimizer for NelderMeadOptimizer {
         }
 
         let (best_p, best_cost) = best.ok_or(CalibrateError::OptimizerFailed {
-            max_evals: config.max_optimizer_evals,
+            max_evals: config.max_optimizer_iters,
         })?;
 
         let params = match (lock, lock_zrx) {

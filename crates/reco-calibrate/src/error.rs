@@ -2,9 +2,8 @@
 
 use thiserror::Error;
 
-/// Errors produced during stitching calibration.
-#[derive(Debug, Error)]
 /// Errors from the calibration pipeline.
+#[derive(Debug, Error)]
 pub enum CalibrateError {
     /// No keypoints were detected in a frame.
     #[error("no keypoints detected in {camera} frame {frame_idx}")]
@@ -47,4 +46,30 @@ pub enum CalibrateError {
         /// Frame height.
         height: u32,
     },
+
+    /// An RGBA buffer doesn't match the expected dimensions.
+    #[error("invalid buffer size: expected {expected} bytes, got {got}")]
+    InvalidBuffer {
+        /// Expected buffer size in bytes.
+        expected: usize,
+        /// Actual buffer size in bytes.
+        got: usize,
+    },
+
+    /// Image is too small for feature detection.
+    #[error("image too small for AKAZE: {width}x{height} (minimum ~40px)")]
+    ImageTooSmall {
+        /// Image width.
+        width: u32,
+        /// Image height.
+        height: u32,
+    },
+
+    /// FFT computation failed during audio sync.
+    #[error("FFT error: {0}")]
+    FftError(String),
+
+    /// Configuration has invalid values.
+    #[error("invalid config: {0}")]
+    InvalidConfig(String),
 }

@@ -15,7 +15,7 @@ primal = "0.3"
 float-ord = "0.3"
 argmin = "0.11"
 argmin-math = { version = "0.5", features = ["vec"] }
-image = "0.25"
+image = { version = "0.25", default-features = false }
 telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git", rev = "2f4218b" }
 inlier = "0.1"
 log = "0.4"

@@ -99,7 +99,7 @@ pub fn correlate(
         sample_rate,
     );
 
-    let corr = fft_cross_correlate(&signal, &template);
+    let corr = fft_cross_correlate(&signal, &template)?;
 
     // Find peak
     let (peak_idx, peak_val) = corr
@@ -132,6 +132,9 @@ pub enum SyncError {
     /// One or both audio signals are empty.
     #[error("empty audio signal")]
     EmptyAudio,
+    /// FFT computation failed.
+    #[error("FFT error: {0}")]
+    FftError(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +151,7 @@ fn normalize(v: &mut [f64]) {
 }
 
 /// FFT-based cross-correlation (convolution with reversed template).
-fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Vec<f64> {
+fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Result<Vec<f64>, SyncError> {
     let n = signal.len() + template.len() - 1;
     let fft_len = n.next_power_of_two();
 
@@ -160,7 +163,8 @@ fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Vec<f64> {
     let mut sig_buf = vec![0.0f64; fft_len];
     sig_buf[..signal.len()].copy_from_slice(signal);
     let mut sig_spec = fft.make_output_vec();
-    fft.process(&mut sig_buf, &mut sig_spec).unwrap();
+    fft.process(&mut sig_buf, &mut sig_spec)
+        .map_err(|e| SyncError::FftError(e.to_string()))?;
 
     // Template REVERSED (time-reversal converts convolution to correlation)
     let mut tpl_buf = vec![0.0f64; fft_len];
@@ -168,7 +172,8 @@ fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Vec<f64> {
         tpl_buf[i] = v;
     }
     let mut tpl_spec = fft.make_output_vec();
-    fft.process(&mut tpl_buf, &mut tpl_spec).unwrap();
+    fft.process(&mut tpl_buf, &mut tpl_spec)
+        .map_err(|e| SyncError::FftError(e.to_string()))?;
 
     // Multiply spectra (convolution in frequency domain)
     for (s, t) in sig_spec.iter_mut().zip(tpl_spec.iter()) {
@@ -180,10 +185,11 @@ fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Vec<f64> {
 
     // Inverse FFT
     let mut result = ifft.make_output_vec();
-    ifft.process(&mut sig_spec, &mut result).unwrap();
+    ifft.process(&mut sig_spec, &mut result)
+        .map_err(|e| SyncError::FftError(e.to_string()))?;
 
     let scale = 1.0 / fft_len as f64;
     result.iter_mut().for_each(|v| *v *= scale);
     result.truncate(n);
-    result
+    Ok(result)
 }

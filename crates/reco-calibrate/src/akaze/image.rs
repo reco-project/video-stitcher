@@ -1,6 +1,6 @@
 use image::{DynamicImage, ImageBuffer, Luma, imageops};
 use log::*;
-use ndarray::{Array2, ArrayView2, ArrayViewMut2};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, azip, s};
 use nshare::{AsNdarray2, AsNdarray2Mut};
 use std::f32;
 use std::ops::{Deref, DerefMut};
@@ -25,21 +25,14 @@ impl DerefMut for GrayFloatImage {
 impl GrayFloatImage {
     /// Convert a `DynamicImage` to unit-float grayscale.
     pub fn from_dynamic(input_image: &DynamicImage) -> Self {
-        Self(match input_image.grayscale() {
-            DynamicImage::ImageLuma8(gray_image) => {
-                info!("Loaded an 8-bit image");
-                ImageBuffer::from_fn(gray_image.width(), gray_image.height(), |x, y| {
-                    Luma([f32::from(gray_image[(x, y)][0]) / 255f32])
-                })
-            }
-            DynamicImage::ImageLuma16(gray_image) => {
-                info!("Loaded a 16-bit image");
-                ImageBuffer::from_fn(gray_image.width(), gray_image.height(), |x, y| {
-                    Luma([f32::from(gray_image[(x, y)][0]) / 65535f32])
-                })
-            }
-            _ => unreachable!(),
-        })
+        // Always convert to Luma8 first to handle any input variant safely.
+        let gray_image = input_image.to_luma8();
+        info!("Loaded an 8-bit image");
+        Self(ImageBuffer::from_fn(
+            gray_image.width(),
+            gray_image.height(),
+            |x, y| Luma([f32::from(gray_image[(x, y)][0]) / 255f32]),
+        ))
     }
 
     pub fn from_array2(arr: Array2<f32>) -> Self {
@@ -129,23 +122,20 @@ pub fn fill_border(output: &mut GrayFloatImage, half_width: usize) {
 #[inline(always)]
 pub fn horizontal_filter(image: &GrayFloatImage, kernel: &[f32]) -> GrayFloatImage {
     debug_assert!(kernel.len() % 2 == 1);
-    let half_width = (kernel.len() / 2) as i32;
-    let w = image.width() as i32;
-    let h = image.height() as i32;
-    let mut output = GrayFloatImage::new(image.width(), image.height());
-    for k in -half_width..=half_width {
-        let mut out_itr = output.iter_mut();
-        let mut image_itr = image.iter();
-        let mut out_ptr = out_itr.nth(half_width as usize).unwrap();
-        let mut image_val = image_itr.nth((half_width + k) as usize).unwrap();
-        let kernel_value = kernel[(k + half_width) as usize];
-        for _ in half_width..(w * h - half_width - 1) {
-            *out_ptr += kernel_value * image_val;
-            out_ptr = out_itr.next().unwrap();
-            image_val = image_itr.next().unwrap();
-        }
+    let half = kernel.len() / 2;
+    let img = image.ref_array2(); // shape: (height, width)
+    let (h, w) = img.dim();
+    let mut out_arr = Array2::<f32>::zeros((h, w));
+    // Convolve along columns (axis 1) for the interior region.
+    for (ki, &kv) in kernel.iter().enumerate() {
+        let offset = ki; // source column starts at ki, output at half
+        let len = w - kernel.len() + 1; // number of valid output columns
+        let src = img.slice(s![.., offset..offset + len]);
+        let mut dst = out_arr.slice_mut(s![.., half..half + len]);
+        azip!((d in &mut dst, &s in src) { *d += kv * s; });
     }
-    fill_border(&mut output, half_width as usize);
+    let mut output = GrayFloatImage::from_array2(out_arr);
+    fill_border(&mut output, half);
     output
 }
 
@@ -153,25 +143,20 @@ pub fn horizontal_filter(image: &GrayFloatImage, kernel: &[f32]) -> GrayFloatIma
 #[inline(always)]
 pub fn vertical_filter(image: &GrayFloatImage, kernel: &[f32]) -> GrayFloatImage {
     debug_assert!(kernel.len() % 2 == 1);
-    let half_width = (kernel.len() / 2) as i32;
-    let w = image.width() as i32;
-    let h = image.height() as i32;
-    let mut output = GrayFloatImage::new(image.width(), image.height());
-    for k in -half_width..=half_width {
-        let mut out_itr = output.iter_mut();
-        let mut image_itr = image.iter();
-        let mut out_ptr = out_itr.nth((half_width * w) as usize).unwrap();
-        let mut image_val = image_itr
-            .nth(((half_width * w) + (k * w)) as usize)
-            .unwrap();
-        let kernel_value = kernel[(k + half_width) as usize];
-        for _ in (half_width * w)..(w * h - (half_width * w) - 1) {
-            *out_ptr += kernel_value * image_val;
-            out_ptr = out_itr.next().unwrap();
-            image_val = image_itr.next().unwrap();
-        }
+    let half = kernel.len() / 2;
+    let img = image.ref_array2(); // shape: (height, width)
+    let (h, _w) = img.dim();
+    let mut out_arr = Array2::<f32>::zeros(img.dim());
+    // Convolve along rows (axis 0) for the interior region.
+    for (ki, &kv) in kernel.iter().enumerate() {
+        let offset = ki; // source row starts at ki, output at half
+        let len = h - kernel.len() + 1; // number of valid output rows
+        let src = img.slice(s![offset..offset + len, ..]);
+        let mut dst = out_arr.slice_mut(s![half..half + len, ..]);
+        azip!((d in &mut dst, &s in src) { *d += kv * s; });
     }
-    fill_border(&mut output, half_width as usize);
+    let mut output = GrayFloatImage::from_array2(out_arr);
+    fill_border(&mut output, half);
     output
 }
 
@@ -195,8 +180,14 @@ fn gaussian_kernel(r: f32, kernel_size: usize) -> Vec<f32> {
 }
 
 /// Gaussian blur via separable filter.
+///
+/// Returns a clone of the input unchanged if the image is too small
+/// for the kernel (width or height <= kernel radius).
 pub fn gaussian_blur(image: &GrayFloatImage, r: f32) -> GrayFloatImage {
     let kernel_size = (f32::ceil(r) as usize) * 2 + 1usize;
+    if image.width() < kernel_size || image.height() < kernel_size {
+        return image.clone();
+    }
     let kernel = gaussian_kernel(r, kernel_size);
     let img_horizontal = horizontal_filter(image, &kernel);
     vertical_filter(&img_horizontal, &kernel)

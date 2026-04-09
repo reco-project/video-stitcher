@@ -27,9 +27,8 @@
 use reco_core::calibration::CameraParams;
 use std::path::Path;
 
-/// Extracted telemetry data from a video file.
-#[derive(Debug, Clone)]
 /// Extracted telemetry data (gyro, accel, lens profile) from a video file.
+#[derive(Debug, Clone)]
 pub struct TelemetryData {
     /// Camera brand (e.g. "GoPro", "DJI").
     pub camera_type: String,
@@ -45,7 +44,6 @@ pub struct TelemetryData {
 
 /// A single 3-axis IMU sample with timestamp.
 #[derive(Debug, Clone, Copy)]
-/// A single 3-axis IMU sample with timestamp.
 pub struct ImuSample {
     /// Timestamp in seconds from video start.
     pub t: f64,
@@ -209,8 +207,9 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
 ///
 /// Resamples both gyro signals to a common rate, correlates their
 /// magnitude signals, and returns the lag in seconds. A positive
-/// return value means the right camera's recording started that many
-/// seconds after the left camera.
+/// return value means the left camera's recording started that many
+/// seconds after the right camera (equivalently, the right camera
+/// started earlier).
 ///
 /// Returns `None` if either camera lacks gyro data.
 pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Option<f64> {
@@ -519,7 +518,6 @@ fn resample_signal(signal: &[(f64, f64)], t_start: f64, rate: f64, n: usize) -> 
 
 /// Errors from telemetry extraction.
 #[derive(Debug, thiserror::Error)]
-/// Errors from telemetry extraction.
 pub enum TelemetryError {
     /// File I/O error.
     #[error("telemetry I/O error: {0}")]

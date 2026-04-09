@@ -40,7 +40,7 @@ fn main() {
     );
 
     let config = CalibrationConfig {
-        max_optimizer_evals: 5000,
+        max_optimizer_iters: 5000,
         ..Default::default()
     };
 

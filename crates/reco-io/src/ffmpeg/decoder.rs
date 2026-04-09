@@ -254,8 +254,7 @@ impl VideoDecoder {
                 if !side.is_null() {
                     let angle = ffi::av_display_rotation_get(side as *const i32);
                     // av_display_rotation_get returns a double; round to nearest 90
-                    let rounded = ((-angle).round() as i32 % 360 + 360) % 360;
-                    rounded
+                    ((-angle).round() as i32 % 360 + 360) % 360
                 } else {
                     0
                 }

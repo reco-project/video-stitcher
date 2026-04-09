@@ -12,9 +12,6 @@ use inlier::types::DataMatrix;
 use crate::features::{KeyPoint, RawMatch};
 use crate::types::CalibrationConfig;
 
-/// Maximum fallback matches when spatial filter yields too few results.
-const FALLBACK_MATCH_COUNT: usize = 30;
-
 /// Apply spatial overlap filter to raw matches.
 ///
 /// Keeps matches where:
@@ -22,8 +19,8 @@ const FALLBACK_MATCH_COUNT: usize = 30;
 /// - Right keypoint x <= `spatial_x_threshold * width` (left portion of right image)
 /// - Both keypoints y in `[spatial_y_low * height, spatial_y_high * height]`
 ///
-/// If the filter yields fewer than `min_matches`, falls back to the top
-/// matches by distance (up to `FALLBACK_MATCH_COUNT`).
+/// Returns the filtered results as-is, even if fewer than `min_matches`.
+/// The caller is responsible for deciding how to handle insufficient matches.
 pub fn spatial_filter(
     matches: &[RawMatch],
     kp_left: &[KeyPoint],
@@ -77,17 +74,14 @@ pub fn spatial_filter(
         .copied()
         .collect();
 
-    if filtered.len() >= config.min_matches {
-        filtered
-    } else {
-        log::debug!(
-            "spatial filter yielded {} matches (< {}), falling back to top {}",
+    if filtered.len() < config.min_matches {
+        log::warn!(
+            "spatial filter yielded {} matches (< {} required)",
             filtered.len(),
             config.min_matches,
-            FALLBACK_MATCH_COUNT
         );
-        matches.iter().take(FALLBACK_MATCH_COUNT).copied().collect()
     }
+    filtered
 }
 
 /// Apply RANSAC outlier rejection using fundamental matrix estimation.
@@ -218,12 +212,16 @@ mod tests {
     }
 
     #[test]
-    fn spatial_filter_fallback_on_few_matches() {
+    fn spatial_filter_no_fallback_on_few_matches() {
         let config = CalibrationConfig {
             min_matches: 100,
             ..Default::default()
         };
 
+        // This keypoint is outside the spatial overlap region, so the
+        // filter should reject it. Previously there was a fallback that
+        // returned raw unfiltered matches; now the caller gets the
+        // filtered (empty) result and decides what to do.
         let kp_left = vec![make_keypoint(100.0, 540.0)];
         let kp_right = vec![make_keypoint(500.0, 540.0)];
         let matches = vec![RawMatch {
@@ -236,6 +234,7 @@ mod tests {
             &matches, &kp_left, &kp_right, 1920, 1080, 1920, 1080, &config,
         );
 
-        assert_eq!(result.len(), 1);
+        // No fallback: out-of-region match is rejected, result is empty
+        assert!(result.is_empty());
     }
 }

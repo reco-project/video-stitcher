@@ -6,9 +6,8 @@
 use reco_core::calibration::MatchCalibration;
 use serde::{Deserialize, Serialize};
 
-/// A grayscale image (8-bit, row-major, tightly packed).
+/// A grayscale image frame for feature detection (8-bit, row-major, tightly packed).
 #[derive(Clone)]
-/// A grayscale image frame for feature detection.
 pub struct GrayFrame {
     /// Pixel data, row-major, one byte per pixel.
     pub data: Vec<u8>,
@@ -18,12 +17,11 @@ pub struct GrayFrame {
     pub height: u32,
 }
 
-/// A YUV420P frame (native decoder output).
+/// A YUV420P frame for GPU undistortion.
 ///
-/// Y is full resolution, U and V are half width/height.
+/// Y is full resolution, U and V are half width/height. This is what
+/// the app provides from its video decoder (reco-io, GStreamer, or custom).
 #[derive(Clone)]
-/// A YUV420P frame for GPU undistortion. This is what the app provides
-/// from its video decoder (reco-io, GStreamer, or custom).
 pub struct YuvFrame {
     /// Luma plane (`width * height` bytes).
     pub y: Vec<u8>,
@@ -37,21 +35,18 @@ pub struct YuvFrame {
     pub height: u32,
 }
 
-/// A pair of corresponding points in normalized plane coordinates.
-///
-/// Coordinates are in the range `[-0.5, 0.5]` for X and
-/// `[-h/(2w), h/(2w)]` for Y, where the plane width is normalized to 1.0.
-///
-/// The `left_pixel_nx` / `right_pixel_nx` fields store the original
-/// pixel x-coordinate normalized to `[0, 1]`. These are used for
-/// seam-proximity weighting during optimization: points near the stitch
-/// seam are weighted more heavily than points far from it.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 /// A matched feature point pair in normalized plane coordinates.
 ///
 /// Each point represents the same physical feature seen by both cameras,
 /// mapped onto the two-plane geometric model. The `left`/`right` fields
 /// use the optimizer's swap convention (right camera -> left plane, etc.).
+///
+/// Coordinates are in the range `[-0.5, 0.5]` for X and
+/// `[-h/(2w), h/(2w)]` for Y, where the plane width is normalized to 1.0.
+/// The `left_pixel_nx` / `right_pixel_nx` fields store the original
+/// pixel x-coordinate normalized to `[0, 1]`, used for seam-proximity
+/// weighting during optimization.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MatchedPoint {
     /// Point on the left plane (x-plane in optimizer space).
     pub left: [f64; 2],
@@ -81,9 +76,8 @@ impl MatchedPoint {
     }
 }
 
-/// Feature matching statistics for a single frame pair.
-#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Per-frame feature matching statistics and matched points.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrameMatches {
     /// Matched point pairs surviving all filters.
     pub points: Vec<MatchedPoint>,
@@ -91,7 +85,7 @@ pub struct FrameMatches {
     pub keypoints_left: usize,
     /// Number of keypoints detected in the right image.
     pub keypoints_right: usize,
-    /// Number of raw descriptor matches before filtering.
+    /// Minimum descriptor count across both images (diagnostic baseline).
     pub raw_matches: usize,
     /// Matches surviving Lowe's ratio test.
     pub post_ratio_test: usize,
@@ -112,8 +106,6 @@ pub struct CalibrationConfig {
     pub lowe_ratio: f64,
     /// Minimum number of matches required per frame pair.
     pub min_matches: usize,
-    /// RANSAC confidence level.
-    pub ransac_confidence: f64,
     /// RANSAC inlier threshold (Sampson error).
     pub ransac_threshold: f64,
     /// Spatial filter: left image x threshold (keep x >= this fraction of width).
@@ -131,10 +123,6 @@ pub struct CalibrationConfig {
     /// as a fraction of image height. Rejects matches where features
     /// are at very different y-positions (e.g. field lines vs clouds).
     pub max_y_disparity: f64,
-    /// Fraction of the image height to mask from the top (sky removal).
-    /// 0.3 = ignore the top 30% of the image for feature detection.
-    /// Deprecated: use `detect_y_min` instead.
-    pub sky_mask_ratio: f64,
     /// Detection region vertical minimum (fraction of height, 0.0 = top).
     /// Points above this line are excluded from feature detection.
     /// 0.25 = skip top 25% (avoids sky and undistortion edge artifacts).
@@ -146,17 +134,16 @@ pub struct CalibrationConfig {
     /// Maximum number of keypoints to keep per image after detection,
     /// sorted by response strength. Matches v1's SIFT nfeatures behavior.
     pub max_keypoints: usize,
-    /// Maximum optimizer function evaluations.
-    pub max_optimizer_evals: usize,
+    /// Maximum optimizer iterations (passed to Nelder-Mead executor).
+    pub max_optimizer_iters: usize,
     /// Seconds to skip from the start of the video (setup time).
     pub skip_start_secs: f64,
     /// Seconds to skip from the end of the video (teardown time).
     pub skip_end_secs: f64,
 
     // --- Optimizer settings ---
-    /// Lock cam_d to half_offset (cam_d = 0.5 * (1 - intersect)).
-    /// Reduces the optimization to 4 parameters. Based on the finding
-    /// that the virtual camera sits at the intersection of the plane normals.
+    /// Remove cam_d from free parameters (derives it from intersect).
+    /// Based on the finding that cam_d = 0.5 * (1 - intersect) for most rigs.
     pub lock_cam_d: bool,
 
     /// Lock z_rx to 0 (left/z-plane stays static, only translates via intersect).
@@ -164,14 +151,15 @@ pub struct CalibrationConfig {
     pub lock_z_rx: bool,
 
     /// AKAZE detector response threshold. Lower = more features detected.
-    /// Default 0.001. Try 0.0005 or 0.0001 for denser detection.
+    /// Default 0.0001. Try 0.001 for faster detection with fewer features.
     pub akaze_threshold: f64,
 
-    /// Gaussian sigma for seam-proximity weighting in the objective function.
+    /// Horizontal Gaussian sigma for seam-proximity weighting.
     ///
     /// Points near the stitch seam are weighted more heavily. A smaller
-    /// sigma concentrates weight tighter around the seam. Confirmed
-    /// "much better" than unweighted at sigma=0.08 across all test footages.
+    /// sigma concentrates weight tighter around the seam. Vertical sigma
+    /// is fixed at 0.08. Confirmed "much better" than unweighted across
+    /// all test footages.
     pub seam_sigma: f64,
 
     // --- IMU-derived settings (populated by telemetry module) ---
@@ -210,18 +198,16 @@ impl Default for CalibrationConfig {
             num_frames: 2,
             lowe_ratio: 0.75,
             min_matches: 6,
-            ransac_confidence: 0.995,
             ransac_threshold: 1.0,
             spatial_x_threshold: 0.5,
             spatial_x_inner: 0.0,
             spatial_y_low: 0.2,
             spatial_y_high: 0.8,
             max_y_disparity: 0.08,
-            sky_mask_ratio: 0.25,
             detect_y_min: 0.25,
             detect_y_max: 0.85,
             max_keypoints: 2000,
-            max_optimizer_evals: 1000,
+            max_optimizer_iters: 5000,
             skip_start_secs: 0.0,
             skip_end_secs: 0.0,
             lock_cam_d: false,
@@ -239,7 +225,6 @@ impl Default for CalibrationConfig {
 
 /// Output of a successful calibration run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Output of a successful calibration run.
 pub struct CalibrationResult {
     /// The computed calibration (ready to serialize as match.json).
     pub calibration: MatchCalibration,
@@ -247,7 +232,7 @@ pub struct CalibrationResult {
     pub total_matches: usize,
     /// Number of frame pairs that produced usable matches.
     pub frames_used: usize,
-    /// Residual angular error at the optimum (radians).
+    /// Residual cost at the optimum (seam-weighted reprojection error).
     pub residual_error: f64,
     /// Calibration confidence score (0.0-1.0).
     pub confidence: f64,

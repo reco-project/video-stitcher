@@ -17,7 +17,7 @@ pub fn select_frame_indices(
     skip_start_secs: f64,
     skip_end_secs: f64,
 ) -> Vec<u64> {
-    if total_frames == 0 || num_samples == 0 {
+    if total_frames == 0 || num_samples == 0 || fps <= 0.0 {
         return Vec::new();
     }
 
@@ -64,17 +64,17 @@ pub fn downscale_if_needed(frame: &GrayFrame, target_width: u32) -> GrayFrame {
     let new_h = frame.height / factor;
 
     let mut data = vec![0u8; (new_w * new_h) as usize];
-    let factor_sq = factor * factor;
+    let factor_sq = factor as u64 * factor as u64;
 
     for out_y in 0..new_h {
         for out_x in 0..new_w {
-            let mut sum: u32 = 0;
+            let mut sum: u64 = 0;
             for dy in 0..factor {
                 for dx in 0..factor {
                     let src_x = out_x * factor + dx;
                     let src_y = out_y * factor + dy;
                     let idx = (src_y * frame.width + src_x) as usize;
-                    sum += frame.data[idx] as u32;
+                    sum += frame.data[idx] as u64;
                 }
             }
             let out_idx = (out_y * new_w + out_x) as usize;

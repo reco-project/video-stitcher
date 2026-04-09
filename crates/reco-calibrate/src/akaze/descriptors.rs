@@ -136,6 +136,9 @@ fn mldb_binary_comparisons(
         for i in 0..count {
             let ival = values[nr_channels * i + pos];
             for j in (i + 1)..count {
+                if (*dpos >> 3) >= descriptor.len() {
+                    return; // Prevent OOB write with non-default pattern sizes
+                }
                 let res = if ival > values[nr_channels * j + pos] {
                     1u8
                 } else {
