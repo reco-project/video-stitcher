@@ -203,6 +203,88 @@ impl LensDatabase {
     }
 }
 
+/// Load a camera profile from a JSON file.
+///
+/// Accepts multiple formats:
+/// - v1 uniforms: `{fx, fy, cx, cy, d: [k1..k4], width, height}`
+/// - Gyroflow: `{camera_matrix: {fx,fy,cx,cy}, distortion_coeffs: [...], resolution: {w,h}}`
+/// - Gyroflow with fisheye_params wrapper
+///
+/// This is the standard way to load a manually-specified lens profile.
+pub fn load_from_file(path: &Path) -> Result<CameraParams, LensLoadError> {
+    let json_str = std::fs::read_to_string(path).map_err(|e| LensLoadError::Io(e.to_string()))?;
+    load_from_json(&json_str, path.display().to_string().as_str())
+}
+
+/// Load a camera profile from a JSON string.
+pub fn load_from_json(json_str: &str, source: &str) -> Result<CameraParams, LensLoadError> {
+    let v: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| LensLoadError::Parse(e.to_string()))?;
+
+    // v1 uniforms format (flat with fx/fy/cx/cy/d)
+    if v.get("fx").is_some() && v.get("d").is_some() {
+        return serde_json::from_str::<CameraParams>(json_str)
+            .map_err(|e| LensLoadError::Parse(e.to_string()));
+    }
+
+    // Gyroflow/reco profile format
+    if let Some(entry) = parse_profile_value(&v, source) {
+        return Ok(entry.params);
+    }
+
+    Err(LensLoadError::UnrecognizedFormat(source.to_string()))
+}
+
+/// Auto-detect the camera profile from a video file.
+///
+/// Tries in order:
+/// 1. Embedded lens profile from video metadata (DJI cameras)
+/// 2. Camera identification + database lookup (GoPro, etc.)
+///
+/// Returns `None` if the camera can't be identified or no profile matches.
+pub fn detect_profile(
+    video_path: &Path,
+    video_width: u32,
+    video_height: u32,
+    db: &LensDatabase,
+) -> Option<CameraParams> {
+    let tel = crate::telemetry::extract(video_path).ok()?;
+
+    // 1. Embedded lens profile (DJI cameras embed in metadata)
+    if let Some(ref profile) = tel.lens_profile {
+        log::info!(
+            "lens auto-detect: embedded profile from {} {}",
+            tel.camera_type,
+            tel.camera_model.as_deref().unwrap_or("?")
+        );
+        return Some(profile.clone());
+    }
+
+    // 2. Database lookup by camera identification
+    db.find_from_telemetry(
+        &tel.camera_type,
+        tel.camera_model.as_deref(),
+        video_width,
+        video_height,
+    )
+}
+
+/// Errors from lens profile loading.
+#[derive(Debug, thiserror::Error)]
+pub enum LensLoadError {
+    /// File I/O error.
+    #[error("cannot read lens profile: {0}")]
+    Io(String),
+    /// JSON parsing error.
+    #[error("cannot parse lens profile: {0}")]
+    Parse(String),
+    /// Unrecognized format.
+    #[error(
+        "unrecognized lens profile format in '{0}'. Expected v1 uniforms (fx/fy/cx/cy/d) or Gyroflow (camera_matrix/distortion_coeffs/resolution)."
+    )]
+    UnrecognizedFormat(String),
+}
+
 /// Normalize brand/model for lookup key.
 fn normalize_camera_key(brand: &str, model: &str) -> String {
     let b = brand.to_lowercase().replace(' ', "-");

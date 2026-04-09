@@ -10,81 +10,57 @@ use reco_calibrate::{CalibrateError, CalibrationConfig};
 use reco_core::calibration::CameraParams;
 use reco_core::gpu::GpuContext;
 
-/// Load a lens profile JSON and extract CameraParams.
+/// Load lens profiles from files or auto-detect from video metadata.
 ///
-/// Accepts v1 match.json uniforms format (`fx/fy/cx/cy/d`) or
-/// Gyroflow/reco profile format (`camera_matrix/distortion_coeffs/resolution`).
-fn load_camera_params(path: &str) -> anyhow::Result<CameraParams> {
-    let json_str = std::fs::read_to_string(path)?;
-    let v: serde_json::Value = serde_json::from_str(&json_str)?;
+/// Delegates to reco_calibrate::lens_database for all profile logic.
+fn load_or_detect_profiles(
+    left_video: &str,
+    right_video: &str,
+    left_profile: Option<&str>,
+    right_profile: Option<&str>,
+) -> anyhow::Result<(CameraParams, CameraParams)> {
+    use reco_calibrate::lens_database;
 
-    // Try v1 uniforms format first (flat with "d" array)
-    if v.get("fx").is_some() && v.get("d").is_some() {
-        let params: CameraParams = serde_json::from_str(&json_str)?;
-        return Ok(params);
+    if let Some(lp) = left_profile {
+        let left_p = lens_database::load_from_file(Path::new(lp))?;
+        let right_p = if let Some(rp) = right_profile {
+            lens_database::load_from_file(Path::new(rp))?
+        } else {
+            left_p.clone()
+        };
+        return Ok((left_p, right_p));
     }
 
-    // Try Gyroflow/reco lens profile format
-    if let Some(cm) = v.get("camera_matrix") {
-        let res = v
-            .get("resolution")
-            .or_else(|| v.get("calib_dimension"))
-            .ok_or_else(|| anyhow::anyhow!("missing 'resolution' in lens profile"))?;
+    // Auto-detect from video metadata
+    eprintln!("Auto-detecting lens profiles...");
+    let db = lens_database::LensDatabase::load_embedded();
 
-        let width = res
-            .get("width")
-            .or_else(|| res.get("w"))
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("missing 'width' in resolution"))?
-            as u32;
-        let height = res
-            .get("height")
-            .or_else(|| res.get("h"))
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("missing 'height' in resolution"))?
-            as u32;
+    let left_path = Path::new(left_video);
+    let right_path = Path::new(right_video);
 
-        let fx = cm["fx"]
-            .as_f64()
-            .ok_or_else(|| anyhow::anyhow!("missing 'fx' in camera_matrix"))?;
-        let fy = cm["fy"]
-            .as_f64()
-            .ok_or_else(|| anyhow::anyhow!("missing 'fy' in camera_matrix"))?;
-        let cx = cm["cx"]
-            .as_f64()
-            .ok_or_else(|| anyhow::anyhow!("missing 'cx' in camera_matrix"))?;
-        let cy = cm["cy"]
-            .as_f64()
-            .ok_or_else(|| anyhow::anyhow!("missing 'cy' in camera_matrix"))?;
+    let ld = reco_io::ffmpeg::decoder::VideoDecoder::open(left_path)?;
+    let rd = reco_io::ffmpeg::decoder::VideoDecoder::open(right_path)?;
+    let (lw, lh) = (ld.width(), ld.height());
+    let (rw, rh) = (rd.width(), rd.height());
+    drop(ld);
+    drop(rd);
 
-        let dc = v
-            .get("distortion_coeffs")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| anyhow::anyhow!("missing 'distortion_coeffs' in lens profile"))?;
+    let left_p = lens_database::detect_profile(left_path, lw, lh, &db).ok_or_else(|| {
+        anyhow::anyhow!(
+            "no lens profile found for left camera ({}x{}). Use --left-profile.",
+            lw,
+            lh
+        )
+    })?;
 
-        anyhow::ensure!(dc.len() >= 4, "need at least 4 distortion coefficients");
-        let d = [
-            dc[0].as_f64().unwrap_or(0.0),
-            dc[1].as_f64().unwrap_or(0.0),
-            dc[2].as_f64().unwrap_or(0.0),
-            dc[3].as_f64().unwrap_or(0.0),
-        ];
+    let right_p = lens_database::detect_profile(right_path, rw, rh, &db).unwrap_or_else(|| {
+        eprintln!("  right camera: no profile found, using left camera profile");
+        left_p.clone()
+    });
 
-        return Ok(CameraParams {
-            width,
-            height,
-            fx,
-            fy,
-            cx,
-            cy,
-            d,
-        });
-    }
-
-    anyhow::bail!(
-        "unrecognized lens profile format in '{path}'. \
-         Expected v1 uniforms (fx/fy/cx/cy/d) or reco profile (camera_matrix/distortion_coeffs/resolution)."
-    );
+    eprintln!("  left:  {}x{}", left_p.width, left_p.height);
+    eprintln!("  right: {}x{}", right_p.width, right_p.height);
+    Ok((left_p, right_p))
 }
 
 /// Extract YUV420P frames from a video at the given frame indices.
@@ -215,88 +191,8 @@ pub fn run_calibrate(
 
     // Load lens profiles (manual or auto-detect)
     log::info!("loading lens profiles...");
-    let (left_params, right_params) = if let Some(lp) = left_profile {
-        let left_p = load_camera_params(lp)?;
-        let right_p = if let Some(rp) = right_profile {
-            load_camera_params(rp)?
-        } else {
-            left_p.clone() // same profile for both cameras
-        };
-        (left_p, right_p)
-    } else {
-        // Auto-detect from video metadata using telemetry-parser
-        eprintln!("Auto-detecting lens profiles...");
-        let lens_db = reco_calibrate::lens_database::LensDatabase::load_embedded();
-
-        let left_path = Path::new(left);
-        let right_path = Path::new(right);
-
-        // Open decoders to get resolution
-        let ld = reco_io::ffmpeg::decoder::VideoDecoder::open(left_path)?;
-        let rd = reco_io::ffmpeg::decoder::VideoDecoder::open(right_path)?;
-        let (lw, lh) = (ld.width(), ld.height());
-        let (rw, rh) = (rd.width(), rd.height());
-        drop(ld);
-        drop(rd);
-
-        // Use telemetry-parser camera identification
-        let left_tel = reco_calibrate::telemetry::extract(left_path).ok();
-        let right_tel = reco_calibrate::telemetry::extract(right_path).ok();
-
-        let left_p = if let Some(ref tel) = left_tel {
-            // Try embedded lens profile first (DJI cameras embed it in metadata)
-            tel.lens_profile.clone()
-                .or_else(|| lens_db.find_from_telemetry(&tel.camera_type, tel.camera_model.as_deref(), lw, lh))
-                .ok_or_else(|| anyhow::anyhow!(
-                    "no lens profile found for left camera: {} {} {}x{}. Use --left-profile to specify manually.",
-                    tel.camera_type, tel.camera_model.as_deref().unwrap_or("?"), lw, lh
-                ))?
-        } else {
-            anyhow::bail!(
-                "cannot detect left camera type. Use --left-profile to specify the lens profile."
-            )
-        };
-
-        let right_p = if let Some(ref tel) = right_tel {
-            tel.lens_profile
-                .clone()
-                .or_else(|| {
-                    lens_db.find_from_telemetry(
-                        &tel.camera_type,
-                        tel.camera_model.as_deref(),
-                        rw,
-                        rh,
-                    )
-                })
-                .unwrap_or_else(|| {
-                    eprintln!("  right camera: no profile found, using left camera profile");
-                    left_p.clone()
-                })
-        } else {
-            left_p.clone()
-        };
-
-        eprintln!(
-            "  left:  {} {}x{}",
-            left_tel
-                .as_ref()
-                .map(|t| t.camera_type.as_str())
-                .unwrap_or("?"),
-            left_p.width,
-            left_p.height
-        );
-        eprintln!(
-            "  right: {} {}x{}",
-            right_tel
-                .as_ref()
-                .map(|t| t.camera_type.as_str())
-                .unwrap_or("?"),
-            right_p.width,
-            right_p.height
-        );
-
-        (left_p, right_p)
-    };
+    let (left_params, right_params) =
+        load_or_detect_profiles(left, right, left_profile, right_profile)?;
     log::info!(
         "left: {}x{}, right: {}x{}",
         left_params.width,
