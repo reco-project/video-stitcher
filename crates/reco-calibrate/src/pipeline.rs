@@ -84,11 +84,7 @@ pub struct CalibrationPipeline {
 
 impl CalibrationPipeline {
     /// Create a new pipeline from video metadata and configuration.
-    pub fn new(
-        left_info: VideoInfo,
-        right_info: VideoInfo,
-        config: CalibrationConfig,
-    ) -> Self {
+    pub fn new(left_info: VideoInfo, right_info: VideoInfo, config: CalibrationConfig) -> Self {
         Self {
             left_info,
             right_info,
@@ -275,7 +271,10 @@ impl CalibrationPipeline {
     /// Returns `(left_indices, right_indices)` that the app should use
     /// to extract frame pairs from its video decoder.
     pub fn frame_indices(&self) -> (Vec<u64>, Vec<u64>) {
-        let total = self.left_info.total_frames.min(self.right_info.total_frames);
+        let total = self
+            .left_info
+            .total_frames
+            .min(self.right_info.total_frames);
         let base_indices = sampling::select_frame_indices(
             total,
             self.left_info.fps,
@@ -310,10 +309,14 @@ impl CalibrationPipeline {
         frames: &[(YuvFrame, YuvFrame)],
     ) -> Result<CalibrationResult, CalibrateError> {
         let left_params = self.left_params.as_ref().ok_or_else(|| {
-            CalibrateError::InvalidConfig("lens profiles not set - call detect_profiles() or set_profiles() first".into())
+            CalibrateError::InvalidConfig(
+                "lens profiles not set - call detect_profiles() or set_profiles() first".into(),
+            )
         })?;
         let right_params = self.right_params.as_ref().ok_or_else(|| {
-            CalibrateError::InvalidConfig("lens profiles not set - call detect_profiles() or set_profiles() first".into())
+            CalibrateError::InvalidConfig(
+                "lens profiles not set - call detect_profiles() or set_profiles() first".into(),
+            )
         })?;
 
         // Merge IMU seeds into config

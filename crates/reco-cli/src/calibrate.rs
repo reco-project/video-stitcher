@@ -6,9 +6,9 @@
 
 use std::path::Path;
 
+use reco_calibrate::CalibrationConfig;
 use reco_calibrate::pipeline::{CalibrationPipeline, VideoInfo};
 use reco_calibrate::types::YuvFrame;
-use reco_calibrate::CalibrationConfig;
 use reco_core::gpu::GpuContext;
 
 /// Run the calibrate subcommand.
