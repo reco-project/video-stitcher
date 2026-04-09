@@ -942,7 +942,7 @@ pub fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
     ]
 }
 
-/// OpenGL→wgpu clip space correction: Z from [-1,1] to [0,1].
+/// OpenGL to wgpu clip space correction: Z from \[-1,1\] to \[0,1\].
 ///
 /// nalgebra's `Perspective3` uses OpenGL conventions. wgpu expects
 /// clip space Z in [0, 1], so we apply this correction.
