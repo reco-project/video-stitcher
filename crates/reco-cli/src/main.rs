@@ -249,10 +249,6 @@ enum Commands {
         #[arg(long, default_value_t = 15)]
         frames: usize,
 
-        /// Number of random-subset optimization iterations.
-        #[arg(long, default_value_t = 200)]
-        iterations: usize,
-
         /// Extract IMU telemetry to auto-detect sync offset, rig tilt,
         /// and seed roll/pitch parameters. Overrides --sync-offset when
         /// gyro data is available.
@@ -503,7 +499,6 @@ fn main() -> anyhow::Result<()> {
             left_profile,
             right_profile,
             frames,
-            iterations,
             auto_imu,
             auto_sync,
             sync_offset,
@@ -526,7 +521,6 @@ fn main() -> anyhow::Result<()> {
             left_profile.as_deref(),
             right_profile.as_deref(),
             frames,
-            iterations,
             auto_imu,
             auto_sync,
             sync_offset,

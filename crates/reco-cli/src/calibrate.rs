@@ -114,7 +114,6 @@ pub fn run_calibrate(
     left_profile: Option<&str>,
     right_profile: Option<&str>,
     num_frames: usize,
-    iterations: usize,
     auto_imu: bool,
     auto_sync: bool,
     sync_offset: i64,
@@ -305,7 +304,6 @@ pub fn run_calibrate(
 
     let config = CalibrationConfig {
         num_frames,
-        iterations,
         skip_start_secs: skip_start,
         skip_end_secs: skip_end,
         akaze_threshold,
@@ -324,11 +322,7 @@ pub fn run_calibrate(
         ..Default::default()
     };
 
-    eprintln!(
-        "Calibrating with {} frame pairs, {} iterations...",
-        frame_pairs.len(),
-        config.iterations
-    );
+    eprintln!("Calibrating with {} frame pairs...", frame_pairs.len());
 
     let result =
         reco_calibrate::calibrate(&gpu, &frame_pairs, &left_params, &right_params, &config)

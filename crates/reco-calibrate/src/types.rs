@@ -99,8 +99,6 @@ pub struct FrameMatches {
 pub struct CalibrationConfig {
     /// Number of frame pairs to sample from the video.
     pub num_frames: usize,
-    /// Number of random-subset optimization iterations.
-    pub iterations: usize,
     /// Lowe's ratio test threshold (lower = stricter).
     pub lowe_ratio: f64,
     /// Minimum number of matches required per frame pair.
@@ -139,9 +137,7 @@ pub struct CalibrationConfig {
     /// Maximum number of keypoints to keep per image after detection,
     /// sorted by response strength. Matches v1's SIFT nfeatures behavior.
     pub max_keypoints: usize,
-    /// Fraction of total matches used per random subset (0.0-1.0).
-    pub subset_ratio: f64,
-    /// Maximum optimizer function evaluations per iteration.
+    /// Maximum optimizer function evaluations.
     pub max_optimizer_evals: usize,
     /// Seconds to skip from the start of the video (setup time).
     pub skip_start_secs: f64,
@@ -203,7 +199,6 @@ impl Default for CalibrationConfig {
     fn default() -> Self {
         Self {
             num_frames: 15,
-            iterations: 200,
             lowe_ratio: 0.75,
             min_matches: 6,
             ransac_confidence: 0.995,
@@ -217,7 +212,6 @@ impl Default for CalibrationConfig {
             detect_y_min: 0.25,
             detect_y_max: 0.85,
             max_keypoints: 2000,
-            subset_ratio: 0.6,
             max_optimizer_evals: 1000,
             skip_start_secs: 0.0,
             skip_end_secs: 0.0,

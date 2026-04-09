@@ -1,14 +1,6 @@
-//! Multi-frame sampling and random subset optimization strategy.
-//!
-//! Inspired by Gyroflow's calibration approach: instead of relying on a
-//! single frame pair, we sample multiple frame pairs spread across the
-//! video and run many random-subset optimizations to find the most
-//! robust calibration parameters.
+//! Frame sampling and image utilities for calibration.
 
-use rand::Rng;
-use rand::seq::SliceRandom;
-
-use crate::types::{CalibrationConfig, GrayFrame, MatchedPoint};
+use crate::types::GrayFrame;
 
 /// Compute frame indices to sample from a video.
 ///
@@ -97,25 +89,8 @@ pub fn downscale_if_needed(frame: &GrayFrame, target_width: u32) -> GrayFrame {
     }
 }
 
-/// Sample a random subset of matched points for one optimization iteration.
-///
-/// Selects `ratio` fraction of the total points uniformly at random.
-/// Ensures at least `min_matches` points are selected.
-pub fn random_subset(
-    points: &[MatchedPoint],
-    config: &CalibrationConfig,
-    rng: &mut impl Rng,
-) -> Vec<MatchedPoint> {
-    let target = ((points.len() as f64 * config.subset_ratio) as usize)
-        .max(config.min_matches)
-        .min(points.len());
-
-    let mut indices: Vec<usize> = (0..points.len()).collect();
-    indices.shuffle(rng);
-    indices.truncate(target);
-
-    indices.iter().map(|&i| points[i]).collect()
-}
+// random_subset removed: single-pass optimization with trimming
+// replaces the random-subset approach.
 
 #[cfg(test)]
 mod tests {
@@ -189,28 +164,5 @@ mod tests {
         assert_eq!(result.height, 1080);
         // All pixels were 200, so downscaled should still be 200
         assert!(result.data.iter().all(|&p| p == 200));
-    }
-
-    #[test]
-    fn random_subset_respects_ratio() {
-        let points: Vec<MatchedPoint> = (0..100)
-            .map(|i| MatchedPoint::from_planes([i as f64 * 0.01, 0.0], [i as f64 * 0.01, 0.0]))
-            .collect();
-
-        let config = CalibrationConfig {
-            subset_ratio: 0.6,
-            min_matches: 8,
-            ..Default::default()
-        };
-
-        let mut rng = rand::rng();
-        let subset = random_subset(&points, &config, &mut rng);
-
-        // Should be ~60 points (60% of 100)
-        assert!(
-            subset.len() >= 50 && subset.len() <= 70,
-            "subset size {} not near 60%",
-            subset.len()
-        );
     }
 }

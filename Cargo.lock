@@ -3422,7 +3422,6 @@ dependencies = [
  "nshare",
  "pollster",
  "primal",
- "rand",
  "realfft",
  "reco-core",
  "reco-io",
