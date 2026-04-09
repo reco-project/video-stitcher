@@ -255,6 +255,11 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         auto_imu: bool,
 
+        /// Auto-detect sync offset from audio cross-correlation.
+        /// Searches +-5 minutes. Overrides --sync-offset when successful.
+        #[arg(long, default_value_t = false)]
+        auto_sync: bool,
+
         /// Frame offset for temporal sync between cameras.
         /// Positive: right video is ahead by N frames.
         /// Negative: left video is ahead by N frames.
@@ -496,6 +501,7 @@ fn main() -> anyhow::Result<()> {
             frames,
             iterations,
             auto_imu,
+            auto_sync,
             sync_offset,
             skip_start,
             skip_end,
@@ -518,6 +524,7 @@ fn main() -> anyhow::Result<()> {
             frames,
             iterations,
             auto_imu,
+            auto_sync,
             sync_offset,
             skip_start,
             skip_end,

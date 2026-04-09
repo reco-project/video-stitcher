@@ -140,6 +140,7 @@ pub fn run_calibrate(
     num_frames: usize,
     iterations: usize,
     auto_imu: bool,
+    auto_sync: bool,
     sync_offset: i64,
     skip_start: f64,
     skip_end: f64,
@@ -249,13 +250,32 @@ pub fn run_calibrate(
         skip_end,
     );
 
-    // Refine IMU sync offset now that we know the actual fps.
-    // Negate the IMU offset: negative gyro lag = positive sync offset
-    // (right camera started first, skip right frames).
+    // Determine sync offset: IMU > audio > manual
     let effective_sync = if let Some(imu_offset) = imu_sync_offset {
         let frames = (-imu_offset * fps).round() as i64;
         eprintln!("  IMU sync: {imu_offset:.3}s = {frames} frames @ {fps:.1}fps");
         frames
+    } else if auto_sync {
+        eprintln!("Auto-detecting sync from audio...");
+        match reco_calibrate::audio_sync::estimate_sync_offset(
+            Path::new(left),
+            Path::new(right),
+            fps,
+            &reco_calibrate::audio_sync::AudioSyncConfig::default(),
+        ) {
+            Ok(result) => {
+                let frames = result.offset_frames.round() as i64;
+                eprintln!(
+                    "  Audio sync: {:.3}s = {} frames (confidence={:.2})",
+                    result.offset_secs, frames, result.confidence
+                );
+                frames
+            }
+            Err(e) => {
+                eprintln!("  Audio sync failed: {e}, falling back to --sync-offset {sync_offset}");
+                sync_offset
+            }
+        }
     } else {
         sync_offset
     };

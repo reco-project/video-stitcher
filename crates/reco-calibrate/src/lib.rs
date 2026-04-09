@@ -37,6 +37,7 @@
 //! ```
 
 pub mod akaze;
+pub mod audio_sync;
 pub mod defaults;
 pub mod error;
 pub mod features;
