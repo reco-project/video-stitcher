@@ -89,19 +89,6 @@ impl GrayFloatImage {
         self.put_pixel(x as u32, y as u32, Luma([pixel_value]));
     }
 
-    /// Get the raw f32 pixel data as a slice.
-    pub fn as_slice(&self) -> &[f32] {
-        self.0.as_raw()
-    }
-
-    /// Create from a raw f32 vector and dimensions.
-    pub fn from_f32_vec(data: Vec<f32>, width: usize, height: usize) -> Self {
-        Self(
-            ImageBuffer::from_raw(width as u32, height as u32, data)
-                .expect("f32 vec dimensions must match width * height"),
-        )
-    }
-
     pub fn half_size(&self) -> Self {
         let width = self.width() / 2;
         let height = self.height() / 2;

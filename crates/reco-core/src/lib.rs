@@ -102,7 +102,6 @@ pub mod detector;
 pub mod director;
 pub mod encoder;
 pub mod gpu;
-pub mod gpu_diffusion;
 pub mod lens;
 #[cfg(target_os = "macos")]
 pub mod metal_compute;
