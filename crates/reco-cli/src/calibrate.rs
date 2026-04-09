@@ -135,8 +135,8 @@ fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec
 pub fn run_calibrate(
     left: &str,
     right: &str,
-    left_profile: &str,
-    right_profile: &str,
+    left_profile: Option<&str>,
+    right_profile: Option<&str>,
     num_frames: usize,
     iterations: usize,
     auto_imu: bool,
@@ -213,10 +213,81 @@ pub fn run_calibrate(
         }
     }
 
-    // Load lens profiles
+    // Load lens profiles (manual or auto-detect)
     log::info!("loading lens profiles...");
-    let left_params = load_camera_params(left_profile)?;
-    let right_params = load_camera_params(right_profile)?;
+    let (left_params, right_params) = if let Some(lp) = left_profile {
+        let left_p = load_camera_params(lp)?;
+        let right_p = if let Some(rp) = right_profile {
+            load_camera_params(rp)?
+        } else {
+            left_p.clone() // same profile for both cameras
+        };
+        (left_p, right_p)
+    } else {
+        // Auto-detect from video metadata using telemetry-parser
+        eprintln!("Auto-detecting lens profiles...");
+        let lens_db = reco_calibrate::lens_database::LensDatabase::load_embedded();
+
+        let left_path = Path::new(left);
+        let right_path = Path::new(right);
+
+        // Open decoders to get resolution
+        let ld = reco_io::ffmpeg::decoder::VideoDecoder::open(left_path)?;
+        let rd = reco_io::ffmpeg::decoder::VideoDecoder::open(right_path)?;
+        let (lw, lh) = (ld.width(), ld.height());
+        let (rw, rh) = (rd.width(), rd.height());
+        drop(ld);
+        drop(rd);
+
+        // Use telemetry-parser camera identification
+        let left_tel = reco_calibrate::telemetry::extract(left_path).ok();
+        let right_tel = reco_calibrate::telemetry::extract(right_path).ok();
+
+        let left_p = if let Some(ref tel) = left_tel {
+            lens_db
+                .find_from_telemetry(&tel.camera_type, tel.camera_model.as_deref(), lw, lh)
+                .ok_or_else(|| anyhow::anyhow!(
+                    "no lens profile found for left camera: {} {} {}x{}. Use --left-profile to specify manually.",
+                    tel.camera_type, tel.camera_model.as_deref().unwrap_or("?"), lw, lh
+                ))?
+        } else {
+            anyhow::bail!(
+                "cannot detect left camera type. Use --left-profile to specify the lens profile."
+            )
+        };
+
+        let right_p = if let Some(ref tel) = right_tel {
+            lens_db
+                .find_from_telemetry(&tel.camera_type, tel.camera_model.as_deref(), rw, rh)
+                .unwrap_or_else(|| {
+                    eprintln!("  right camera: no profile found, using left camera profile");
+                    left_p.clone()
+                })
+        } else {
+            left_p.clone()
+        };
+
+        eprintln!(
+            "  left:  {} {}x{}",
+            left_tel
+                .as_ref()
+                .map(|t| t.camera_type.as_str())
+                .unwrap_or("?"),
+            left_p.width,
+            left_p.height
+        );
+        eprintln!(
+            "  right: {} {}x{}",
+            right_tel
+                .as_ref()
+                .map(|t| t.camera_type.as_str())
+                .unwrap_or("?"),
+            right_p.width,
+            right_p.height
+        );
+
+        (left_p, right_p)
+    };
     log::info!(
         "left: {}x{}, right: {}x{}",
         left_params.width,

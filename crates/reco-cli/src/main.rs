@@ -234,12 +234,16 @@ enum Commands {
         right: String,
 
         /// Path to the left camera lens profile JSON.
+        /// If omitted, auto-detects from video metadata using the
+        /// bundled Gyroflow lens profile database (4200+ profiles).
         #[arg(long)]
-        left_profile: String,
+        left_profile: Option<String>,
 
         /// Path to the right camera lens profile JSON.
+        /// If omitted, uses the same profile as --left-profile, or
+        /// auto-detects from video metadata.
         #[arg(long)]
-        right_profile: String,
+        right_profile: Option<String>,
 
         /// Number of frame pairs to sample from the video.
         #[arg(long, default_value_t = 15)]
@@ -519,8 +523,8 @@ fn main() -> anyhow::Result<()> {
         } => calibrate::run_calibrate(
             &left,
             &right,
-            &left_profile,
-            &right_profile,
+            left_profile.as_deref(),
+            right_profile.as_deref(),
             frames,
             iterations,
             auto_imu,

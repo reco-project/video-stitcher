@@ -128,11 +128,12 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
                 }
 
                 // Extract quaternions (DJI cameras provide fused orientation)
-                if let Some(map) = tag_map.get(&GroupId::Quaternion) {
-                    if let Some(arr) = map.get_t(TagId::Data) as Option<&Vec<TimeQuaternion<f64>>> {
-                        for v in arr {
-                            quaternions.push((v.t, [v.v.w, v.v.x, v.v.y, v.v.z]));
-                        }
+                if let Some(arr) = tag_map
+                    .get(&GroupId::Quaternion)
+                    .and_then(|map| map.get_t(TagId::Data) as Option<&Vec<TimeQuaternion<f64>>>)
+                {
+                    for v in arr {
+                        quaternions.push((v.t, [v.v.w, v.v.x, v.v.y, v.v.z]));
                     }
                 }
             }

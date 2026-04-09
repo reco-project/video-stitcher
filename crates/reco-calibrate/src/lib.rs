@@ -43,6 +43,7 @@ pub mod error;
 pub mod features;
 pub mod filter;
 pub mod geometry;
+pub mod lens_database;
 pub mod optimizer;
 pub mod sampling;
 pub mod telemetry;
