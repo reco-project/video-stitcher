@@ -2,33 +2,42 @@
 //!
 //! Computes the relative positioning of two camera planes by detecting
 //! features in overlapping footage and optimizing placement parameters
-//! to minimize angular error between matched points.
+//! to minimize reprojection error between matched points.
 //!
-//! ## Pipeline
+//! ## Architecture
+//!
+//! Every pipeline stage is behind a trait ([`traits`]), making components
+//! swappable. Default implementations are in [`defaults`].
 //!
 //! ```text
-//! Frame pairs → AKAZE detect → Hamming match → Lowe's ratio test
-//!   → Spatial overlap filter → RANSAC outlier rejection
-//!   → Normalize to plane coordinates → Accumulate across frames
-//!   → Random-subset COBYLA optimization (parallel)
-//!   → Optional 6-param refinement → MatchCalibration output
+//! Frame pairs → FeatureDetector → FeatureMatcher → PointFilter
+//!   → CostFunction + CalibrationOptimizer → PlaneLayout
 //! ```
 //!
-//! ## Usage
+//! ## Full pipeline usage
 //!
 //! ```ignore
-//! use reco_calibrate::{calibrate, CalibrationConfig, GrayFrame};
+//! use reco_calibrate::{calibrate, CalibrationConfig};
 //! use reco_core::calibration::CameraParams;
-//!
-//! let frames: Vec<(GrayFrame, GrayFrame)> = extract_from_video();
-//! let left_params: CameraParams = load_lens_profile("left.json");
-//! let right_params: CameraParams = load_lens_profile("right.json");
 //!
 //! let result = calibrate(&gpu, &frames, &left_params, &right_params, &CalibrationConfig::default())?;
 //! println!("Confidence: {:.1}%", result.confidence * 100.0);
 //! ```
+//!
+//! ## Standalone component usage
+//!
+//! ```ignore
+//! use reco_calibrate::{AkazeDetector, FeatureDetector, HammingMatcher, FeatureMatcher};
+//!
+//! let detector = AkazeDetector::new(0.0001);
+//! let (kps, descs) = detector.detect(rgba, 3840, 2160, None, 2000);
+//!
+//! let matcher = HammingMatcher::new(0.75);
+//! let matches = matcher.match_features(&left_descs, &right_descs);
+//! ```
 
 pub mod akaze;
+pub mod defaults;
 pub mod error;
 pub mod features;
 pub mod filter;
@@ -36,9 +45,16 @@ pub mod geometry;
 pub mod optimizer;
 pub mod sampling;
 pub mod telemetry;
+pub mod traits;
 pub mod types;
 
+pub use defaults::{
+    AkazeDetector, HammingMatcher, RawReprojectionCost, SeamWeightedCost, YDisparityFilter,
+};
 pub use error::CalibrateError;
+pub use traits::{
+    CalibrationOptimizer, CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
+};
 pub use types::{CalibrationConfig, CalibrationResult, GrayFrame, YuvFrame};
 
 use reco_core::calibration::{CameraParams, MatchCalibration};

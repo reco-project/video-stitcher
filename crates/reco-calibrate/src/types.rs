@@ -154,6 +154,10 @@ pub struct CalibrationConfig {
     /// that the virtual camera sits at the intersection of the plane normals.
     pub lock_cam_d: bool,
 
+    /// Lock z_rx to 0 (left/z-plane stays static, only translates via intersect).
+    /// Reduces the optimization by 1 parameter.
+    pub lock_z_rx: bool,
+
     /// AKAZE detector response threshold. Lower = more features detected.
     /// Default 0.001. Try 0.0005 or 0.0001 for denser detection.
     pub akaze_threshold: f64,
@@ -218,6 +222,7 @@ impl Default for CalibrationConfig {
             skip_start_secs: 0.0,
             skip_end_secs: 0.0,
             lock_cam_d: false,
+            lock_z_rx: false,
             akaze_threshold: 0.0001,
             seam_sigma: 0.08,
             imu_xrz_seed: None,

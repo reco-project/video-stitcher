@@ -299,6 +299,11 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         lock_cam_d: bool,
 
+        /// Lock z_rx = 0 (z-plane stays static, only translates).
+        /// Reduces optimization by 1 parameter.
+        #[arg(long, default_value_t = false)]
+        lock_z_rx: bool,
+
         /// Drop the worst N% of points during optimization (0.0-1.0).
         /// E.g. 0.3 = ignore worst 30%. Makes optimizer robust to outliers.
         #[arg(long, default_value_t = 0.3)]
@@ -500,6 +505,7 @@ fn main() -> anyhow::Result<()> {
             detect_y_min,
             detect_y_max,
             lock_cam_d,
+            lock_z_rx,
             trim,
             seam_sigma,
             debug_dir,
@@ -521,6 +527,7 @@ fn main() -> anyhow::Result<()> {
             detect_y_min,
             detect_y_max,
             lock_cam_d,
+            lock_z_rx,
             trim,
             seam_sigma,
             debug_dir.as_deref(),

@@ -71,11 +71,8 @@ const DETECT_MAX_WIDTH: u32 = 1920;
 
 /// Detect features and compute descriptors using AKAZE.
 ///
-/// Accepts RGBA pixel data (from GPU undistortion). Images wider than
-/// 1920px are downscaled before detection for performance; keypoint
-/// coordinates are mapped back to the original resolution. Detects on
-/// the full image, then filters to the region and caps to
-/// `max_keypoints` by response.
+/// Convenience wrapper that calls [`detect_with_border`] with the default
+/// 30px border margin.
 pub fn detect(
     rgba: &[u8],
     width: u32,
@@ -83,6 +80,27 @@ pub fn detect(
     region: Option<DetectRegion>,
     max_keypoints: usize,
     threshold: f64,
+) -> (Vec<KeyPoint>, Vec<Descriptor>) {
+    detect_with_border(rgba, width, height, region, max_keypoints, threshold, 30)
+}
+
+/// Detect features and compute descriptors using AKAZE with configurable border filter.
+///
+/// Accepts RGBA pixel data (from GPU undistortion). Images wider than
+/// 1920px are downscaled before detection for performance; keypoint
+/// coordinates are mapped back to the original resolution. Detects on
+/// the full image, then filters to the region, rejects keypoints near
+/// undistortion edges, and caps to `max_keypoints` by response.
+///
+/// `border_margin`: pixel distance from black edges to reject. Set to 0 to disable.
+pub fn detect_with_border(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    region: Option<DetectRegion>,
+    max_keypoints: usize,
+    threshold: f64,
+    border_margin: i32,
 ) -> (Vec<KeyPoint>, Vec<Descriptor>) {
     // Convert RGBA to RGB (AKAZE doesn't support RGBA directly)
     let rgb_data: Vec<u8> = rgba
@@ -143,54 +161,8 @@ pub fn detect(
         pairs.retain(|(kp, _)| kp.x >= x_lo && kp.x <= x_hi && kp.y >= y_lo && kp.y <= y_hi);
     }
 
-    // Reject keypoints near the undistortion border (black edges).
-    // Sample pixels in a margin around each keypoint; if any are black
-    // (RGB < threshold), the point is too close to the pincushion boundary.
-    // Only applies to real camera images (width >= 1000) to avoid
-    // rejecting features in small synthetic test images.
-    let border_margin: i32 = 30; // pixels
-    let black_thresh: u8 = 10;
-    let pre_border = pairs.len();
-    if width >= 1000 {
-        pairs.retain(|(kp, _)| {
-            let cx = kp.x as i32;
-            let cy = kp.y as i32;
-            let w = width as i32;
-            let h = height as i32;
-            for &(dx, dy) in &[
-                (-border_margin, 0),
-                (border_margin, 0),
-                (0, -border_margin),
-                (0, border_margin),
-                (-border_margin, -border_margin),
-                (border_margin, -border_margin),
-                (-border_margin, border_margin),
-                (border_margin, border_margin),
-            ] {
-                let sx = cx + dx;
-                let sy = cy + dy;
-                if sx < 0 || sx >= w || sy < 0 || sy >= h {
-                    return false;
-                }
-                let idx = (sy as usize * width as usize + sx as usize) * 4;
-                if rgba[idx] < black_thresh
-                    && rgba[idx + 1] < black_thresh
-                    && rgba[idx + 2] < black_thresh
-                {
-                    return false;
-                }
-            }
-            true
-        });
-        if pre_border != pairs.len() {
-            log::debug!(
-                "border filter: {} -> {} keypoints ({} near undistortion edge)",
-                pre_border,
-                pairs.len(),
-                pre_border - pairs.len()
-            );
-        }
-    }
+    // Apply border filter if margin > 0 and image is large enough
+    border_filter_pairs(&mut pairs, rgba, width, height, border_margin);
 
     // Sort by response (strongest first) and cap
     pairs.sort_by(|a, b| {
@@ -213,6 +185,71 @@ pub fn detect(
     );
 
     (keypoints, descriptors)
+}
+
+/// Reject keypoints near the undistortion border (black pincushion edges).
+///
+/// Samples 8 pixels at `margin` distance around each keypoint. If any
+/// sampled pixel is black (RGB < 10), the keypoint is too close to the
+/// undistortion boundary and is removed.
+///
+/// Only applies to images wider than 1000px to avoid rejecting features
+/// in small synthetic test images.
+///
+/// This is the key filter for wide-FOV cameras (DJI Action 4, XTU Max3)
+/// where the pincushion boundary produces unreliable features that
+/// corrupt calibration.
+pub fn border_filter_pairs(
+    pairs: &mut Vec<(KeyPoint, Descriptor)>,
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    margin: i32,
+) {
+    if margin <= 0 || width < 1000 {
+        return;
+    }
+
+    let black_thresh: u8 = 10;
+    let pre = pairs.len();
+    pairs.retain(|(kp, _)| {
+        let cx = kp.x as i32;
+        let cy = kp.y as i32;
+        let w = width as i32;
+        let h = height as i32;
+        for &(dx, dy) in &[
+            (-margin, 0),
+            (margin, 0),
+            (0, -margin),
+            (0, margin),
+            (-margin, -margin),
+            (margin, -margin),
+            (-margin, margin),
+            (margin, margin),
+        ] {
+            let sx = cx + dx;
+            let sy = cy + dy;
+            if sx < 0 || sx >= w || sy < 0 || sy >= h {
+                return false;
+            }
+            let idx = (sy as usize * width as usize + sx as usize) * 4;
+            if rgba[idx] < black_thresh
+                && rgba[idx + 1] < black_thresh
+                && rgba[idx + 2] < black_thresh
+            {
+                return false;
+            }
+        }
+        true
+    });
+    if pre != pairs.len() {
+        log::debug!(
+            "border filter: {} -> {} keypoints ({} near undistortion edge)",
+            pre,
+            pairs.len(),
+            pre - pairs.len()
+        );
+    }
 }
 
 /// Find the best match for each descriptor in `query` against `train`,

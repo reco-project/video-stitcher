@@ -67,13 +67,17 @@ const BOUNDS_5: [(f64, f64); 5] = [
 const X_RX_BOUND: (f64, f64) = (-0.3, 0.3); // ~17 deg
 
 /// Get bounds for the active parameter count.
-fn active_bounds(enable_x_rx: bool, lock_cam_d: bool) -> Vec<(f64, f64)> {
+fn active_bounds(enable_x_rx: bool, lock_cam_d: bool, lock_z_rx: bool) -> Vec<(f64, f64)> {
     let mut b = if lock_cam_d {
-        // Locked: [intersect, x_ty, x_rz, z_rx]
+        // Locked cam_d: [intersect, x_ty, x_rz, z_rx]
         BOUNDS_5[1..].to_vec()
     } else {
         BOUNDS_5.to_vec()
     };
+    // Remove z_rx (last element before x_rx) if locked
+    if lock_z_rx {
+        b.pop(); // remove z_rx
+    }
     if enable_x_rx {
         b.push(X_RX_BOUND);
     }
@@ -126,8 +130,9 @@ struct CalibrationCost<'a> {
     sigma: f64,
     bounds: Vec<(f64, f64)>,
     /// When true, cam_d is derived from intersect (cam_d = half_offset).
-    /// The parameter vector has 4 elements: `[intersect, x_ty, x_rz, z_rx]`.
     lock_cam_d: bool,
+    /// When true, z_rx is fixed at 0 (z-plane only translates, no rotation).
+    lock_z_rx: bool,
     /// Fraction of worst points to drop (0.0 = no trimming, 0.2 = drop 20%).
     trim_fraction: f64,
 }
@@ -137,10 +142,11 @@ impl CostFunction for CalibrationCost<'_> {
     type Output = f64;
 
     fn cost(&self, p: &Self::Param) -> Result<Self::Output, Error> {
-        let params = if self.lock_cam_d {
-            params_from_vec_locked(p)
-        } else {
-            params_from_vec(p)
+        let params = match (self.lock_cam_d, self.lock_z_rx) {
+            (true, true) => params_from_vec_locked_no_zrx(p),
+            (true, false) => params_from_vec_locked(p),
+            (false, true) => params_from_vec_no_zrx(p),
+            (false, false) => params_from_vec(p),
         };
         let err = if self.trim_fraction > 0.0 {
             geometry::trimmed_seam_weighted_reprojection_error(
@@ -175,6 +181,20 @@ fn params_from_vec(p: &[f64]) -> OptParams {
     }
 }
 
+/// Convert a parameter vector to [`OptParams`] with z_rx fixed at 0.
+///
+/// Order: `[cam_d, intersect, x_ty, x_rz]`.
+fn params_from_vec_no_zrx(p: &[f64]) -> OptParams {
+    OptParams {
+        cam_d: p[0],
+        intersect: p[1],
+        x_ty: p[2],
+        x_rz: p[3],
+        z_rx: 0.0,
+        z_rz: if p.len() > 4 { Some(p[4]) } else { None },
+    }
+}
+
 /// Convert a locked parameter vector to [`OptParams`].
 ///
 /// cam_d is derived from intersect: `cam_d = 0.5 * (1 - intersect)`.
@@ -189,6 +209,22 @@ fn params_from_vec_locked(p: &[f64]) -> OptParams {
         x_rz: p[2],
         z_rx: p[3],
         z_rz: if p.len() > 4 { Some(p[4]) } else { None },
+    }
+}
+
+/// Convert a locked parameter vector with z_rx fixed at 0.
+///
+/// cam_d derived from intersect, z_rx = 0.
+/// Order: `[intersect, x_ty, x_rz]`.
+fn params_from_vec_locked_no_zrx(p: &[f64]) -> OptParams {
+    let intersect = p[0];
+    OptParams {
+        cam_d: 0.5 * (1.0 - intersect),
+        intersect,
+        x_ty: p[1],
+        x_rz: p[2],
+        z_rx: 0.0,
+        z_rz: if p.len() > 3 { Some(p[3]) } else { None },
     }
 }
 
@@ -265,12 +301,14 @@ impl Optimizer for NelderMeadOptimizer {
         config: &CalibrationConfig,
     ) -> Result<(PlaneLayout, f64), CalibrateError> {
         let lock = config.lock_cam_d;
-        let bounds = active_bounds(config.enable_x_rx, lock);
+        let lock_zrx = config.lock_z_rx;
+        let bounds = active_bounds(config.enable_x_rx, lock, lock_zrx);
         let cost = CalibrationCost {
             points,
             sigma: config.seam_sigma,
             bounds: bounds.clone(),
             lock_cam_d: lock,
+            lock_z_rx: lock_zrx,
             trim_fraction: config.trim_fraction,
         };
 
@@ -280,58 +318,58 @@ impl Optimizer for NelderMeadOptimizer {
         let xrx_default = config.imu_xrx_seed.unwrap_or(0.0);
         let zrx_default = config.imu_zrx_seed.unwrap_or(0.0);
 
-        if lock {
-            // Locked mode: 4 params [intersect, x_ty, x_rz, z_rx]
-            for base_start in &STARTS_4 {
-                let mut start = base_start.to_vec();
-                start[3] = zrx_default;
-                if config.enable_x_rx {
-                    start.push(xrx_default);
-                }
-                if let Some((p, f)) = run_nelder_mead(&cost, &start) {
-                    log::debug!("NM locked: intersect={:.3}: cost={f:.8}", start[0]);
-                    if best.as_ref().is_none_or(|(_, r)| f < *r) {
-                        best = Some((p, f));
-                    }
-                }
-            }
-
-            if let Some(xrz_seed) = config.imu_xrz_seed {
-                let mut imu_start = STARTS_4[0].to_vec();
-                imu_start[2] = xrz_seed;
-                if config.enable_x_rx {
-                    imu_start.push(xrx_default);
-                }
-                if let Some((p, f)) = run_nelder_mead(&cost, &imu_start) {
-                    log::debug!("NM locked IMU-seeded: cost={f:.8}");
-                    if best.as_ref().is_none_or(|(_, r)| f < *r) {
-                        best = Some((p, f));
-                    }
-                }
-            }
+        // Build starting points based on which parameters are active
+        let raw_starts: Vec<Vec<f64>> = if lock {
+            STARTS_4.iter().map(|s| s.to_vec()).collect()
         } else {
-            // Standard mode: 5 params [cam_d, intersect, x_ty, x_rz, z_rx]
-            for base_start in &STARTS_5 {
-                let mut start = base_start.to_vec();
-                start[4] = zrx_default;
-                if config.enable_x_rx {
-                    start.push(xrx_default);
+            STARTS_5.iter().map(|s| s.to_vec()).collect()
+        };
+
+        for base_start in &raw_starts {
+            let mut start = base_start.clone();
+
+            // Set z_rx seed (last element before x_rx) if not locked
+            if !lock_zrx {
+                let zrx_idx = if lock { 3 } else { 4 };
+                if zrx_idx < start.len() {
+                    start[zrx_idx] = zrx_default;
                 }
-                if let Some((p, f)) = run_nelder_mead(&cost, &start) {
-                    log::debug!(
-                        "NM start: cam_d={:.3}, intersect={:.3}: cost={f:.8}",
-                        start[0],
-                        start[1]
-                    );
-                    if best.as_ref().is_none_or(|(_, r)| f < *r) {
-                        best = Some((p, f));
-                    }
+            } else {
+                // Remove z_rx from start vector
+                let zrx_idx = if lock { 3 } else { 4 };
+                if zrx_idx < start.len() {
+                    start.remove(zrx_idx);
                 }
             }
 
+            if config.enable_x_rx {
+                start.push(xrx_default);
+            }
+
+            if let Some((p, f)) = run_nelder_mead(&cost, &start) {
+                log::debug!("NM start: cost={f:.8}");
+                if best.as_ref().is_none_or(|(_, r)| f < *r) {
+                    best = Some((p, f));
+                }
+            }
+        }
+
+        {
+            // IMU-seeded extra start
             if let Some(xrz_seed) = config.imu_xrz_seed {
-                let mut imu_start = STARTS_5[0].to_vec();
-                imu_start[3] = xrz_seed;
+                let mut imu_start = if lock {
+                    STARTS_4[0].to_vec()
+                } else {
+                    STARTS_5[0].to_vec()
+                };
+                let xrz_idx = if lock { 2 } else { 3 };
+                imu_start[xrz_idx] = xrz_seed;
+                if lock_zrx {
+                    let zrx_idx = if lock { 3 } else { 4 };
+                    if zrx_idx < imu_start.len() {
+                        imu_start.remove(zrx_idx);
+                    }
+                }
                 if config.enable_x_rx {
                     imu_start.push(xrx_default);
                 }
@@ -348,10 +386,11 @@ impl Optimizer for NelderMeadOptimizer {
             max_evals: config.max_optimizer_evals,
         })?;
 
-        let params = if lock {
-            params_from_vec_locked(&best_p)
-        } else {
-            params_from_vec(&best_p)
+        let params = match (lock, lock_zrx) {
+            (true, true) => params_from_vec_locked_no_zrx(&best_p),
+            (true, false) => params_from_vec_locked(&best_p),
+            (false, true) => params_from_vec_no_zrx(&best_p),
+            (false, false) => params_from_vec(&best_p),
         };
         let layout = PlaneLayout {
             camera_axis_offset: params.cam_d,
@@ -379,6 +418,7 @@ impl Clone for CalibrationCost<'_> {
             sigma: self.sigma,
             bounds: self.bounds.clone(),
             lock_cam_d: self.lock_cam_d,
+            lock_z_rx: self.lock_z_rx,
             trim_fraction: self.trim_fraction,
         }
     }
@@ -504,21 +544,21 @@ mod tests {
 
     #[test]
     fn bounds_penalty_zero_inside() {
-        let bounds = active_bounds(false, false);
+        let bounds = active_bounds(false, false, false);
         let inside = vec![0.225, 0.5, 0.0, 0.0, 0.0];
         assert_abs_diff_eq!(bounds_penalty(&inside, &bounds), 0.0, epsilon = 1e-15);
     }
 
     #[test]
     fn bounds_penalty_nonzero_outside() {
-        let bounds = active_bounds(false, false);
+        let bounds = active_bounds(false, false, false);
         let outside = vec![0.05, 0.5, 0.0, 0.0, 0.0]; // cam_d below 0.1
         assert!(bounds_penalty(&outside, &bounds) > 0.0);
     }
 
     #[test]
     fn simplex_has_correct_size() {
-        let bounds = active_bounds(false, false);
+        let bounds = active_bounds(false, false, false);
         let start = STARTS_5[0].to_vec();
         let simplex = build_simplex(&start, &bounds);
         assert_eq!(simplex.len(), 6); // n+1 = 5+1
@@ -536,7 +576,7 @@ mod tests {
 
     #[test]
     fn simplex_6d_with_x_rx() {
-        let bounds = active_bounds(true, false);
+        let bounds = active_bounds(true, false, false);
         let mut start = STARTS_5[0].to_vec();
         start.push(0.0); // x_rx
         let simplex = build_simplex(&start, &bounds);
