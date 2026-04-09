@@ -86,6 +86,95 @@ pub fn detect(
     detect_with_border(rgba, width, height, region, max_keypoints, threshold, 30)
 }
 
+/// GPU-accelerated feature detection using AKAZE.
+///
+/// Uses GPU compute shaders for the nonlinear diffusion (99% of AKAZE time),
+/// then CPU for keypoint detection and descriptor computation.
+#[allow(clippy::too_many_arguments)]
+pub fn detect_gpu(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    region: Option<DetectRegion>,
+    max_keypoints: usize,
+    threshold: f64,
+    gpu: &reco_core::gpu::GpuContext,
+    gpu_diff: &reco_core::gpu_diffusion::GpuDiffusion,
+) -> (Vec<KeyPoint>, Vec<Descriptor>) {
+    // Convert RGBA to RGB for AKAZE
+    let rgb_data: Vec<u8> = rgba
+        .chunks_exact(4)
+        .flat_map(|px| [px[0], px[1], px[2]])
+        .collect();
+    let img = image::RgbImage::from_raw(width, height, rgb_data)
+        .expect("RGBA dimensions must match data length");
+    let dynamic = image::DynamicImage::ImageRgb8(img);
+
+    // Downscale if needed
+    let (detect_img, scale) = if width > DETECT_MAX_WIDTH {
+        let s = DETECT_MAX_WIDTH as f32 / width as f32;
+        let new_w = DETECT_MAX_WIDTH;
+        let new_h = (height as f32 * s) as u32;
+        let resized = dynamic.resize_exact(new_w, new_h, image::imageops::FilterType::Triangle);
+        (resized, s)
+    } else {
+        (dynamic, 1.0)
+    };
+
+    // GPU-accelerated AKAZE extraction
+    let detector = crate::akaze::Akaze::new(threshold);
+    let (akaze_kps, akaze_descs) = detector.extract_gpu(&detect_img, gpu, gpu_diff);
+
+    let total_detected = akaze_kps.len();
+    let inv_scale = 1.0 / scale;
+    let mut pairs: Vec<(KeyPoint, Descriptor)> = akaze_kps
+        .iter()
+        .zip(akaze_descs.iter())
+        .map(|(kp, d)| {
+            (
+                KeyPoint {
+                    x: kp.point.0 * inv_scale,
+                    y: kp.point.1 * inv_scale,
+                    response: kp.response,
+                },
+                *d,
+            )
+        })
+        .collect();
+
+    // Filter to ROI
+    if let Some(r) = region {
+        let x_lo = r.x_min * width as f32;
+        let x_hi = r.x_max * width as f32;
+        let y_lo = r.y_min * height as f32;
+        let y_hi = r.y_max * height as f32;
+        pairs.retain(|(kp, _)| kp.x >= x_lo && kp.x <= x_hi && kp.y >= y_lo && kp.y <= y_hi);
+    }
+
+    // Border filter
+    border_filter_pairs(&mut pairs, rgba, width, height, 30);
+
+    // Sort by response and cap
+    pairs.sort_by(|a, b| {
+        b.0.response
+            .partial_cmp(&a.0.response)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    pairs.truncate(max_keypoints);
+
+    let keypoints: Vec<KeyPoint> = pairs.iter().map(|(kp, _)| *kp).collect();
+    let descriptors: Vec<Descriptor> = pairs.iter().map(|(_, d)| *d).collect();
+
+    log::trace!(
+        "AKAZE (GPU): {} detected, {} in ROI (cap {})",
+        total_detected,
+        keypoints.len(),
+        max_keypoints,
+    );
+
+    (keypoints, descriptors)
+}
+
 /// Detect features and compute descriptors using AKAZE with configurable border filter.
 ///
 /// Accepts RGBA pixel data (from GPU undistortion). Images wider than
