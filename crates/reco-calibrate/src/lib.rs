@@ -36,6 +36,19 @@
 //! let matches = matcher.match_features(&left_descs, &right_descs);
 //! ```
 
+/// Create a tracing span guard (no-op when `profiling` feature is disabled).
+#[cfg(feature = "profiling")]
+macro_rules! profile_scope {
+    ($name:expr) => {
+        let _span = tracing::info_span!($name).entered();
+    };
+}
+
+#[cfg(not(feature = "profiling"))]
+macro_rules! profile_scope {
+    ($name:expr) => {};
+}
+
 pub mod akaze;
 pub mod audio_sync;
 pub mod defaults;
@@ -81,6 +94,7 @@ fn process_undistorted_pair(
     frame_idx: usize,
     config: &CalibrationConfig,
 ) -> Option<FrameMatches> {
+    profile_scope!("process_frame");
     let inner = config.spatial_x_inner as f32;
     let y_min = config.detect_y_min as f32;
     let y_max = config.detect_y_max as f32;
@@ -97,21 +111,30 @@ fn process_undistorted_pair(
         y_max,
     };
 
-    let (kp_left, desc_left) = features::detect(
-        &left_rgba,
-        lw,
-        lh,
-        Some(left_region),
-        config.max_keypoints,
-        config.akaze_threshold,
-    );
-    let (kp_right, desc_right) = features::detect(
-        &right_rgba,
-        rw,
-        rh,
-        Some(right_region),
-        config.max_keypoints,
-        config.akaze_threshold,
+    // Detect features on left and right concurrently (independent CPU work)
+    let ((kp_left, desc_left), (kp_right, desc_right)) = rayon::join(
+        || {
+            profile_scope!("akaze_detect_left");
+            features::detect(
+                left_rgba,
+                lw,
+                lh,
+                Some(left_region),
+                config.max_keypoints,
+                config.akaze_threshold,
+            )
+        },
+        || {
+            profile_scope!("akaze_detect_right");
+            features::detect(
+                right_rgba,
+                rw,
+                rh,
+                Some(right_region),
+                config.max_keypoints,
+                config.akaze_threshold,
+            )
+        },
     );
 
     log::debug!(
@@ -235,24 +258,31 @@ pub fn calibrate(
     let right_undistort = GpuUndistort::new(gpu, rw, rh);
 
     // Phase 1: GPU undistort all frames (sequential - shared GPU state)
-    let undistorted: Vec<(Vec<u8>, Vec<u8>)> = frames
-        .iter()
-        .map(|(left, right)| {
-            let l_rgba = left_undistort.undistort(gpu, &left.y, &left.u, &left.v, left_params);
-            let r_rgba = right_undistort.undistort(gpu, &right.y, &right.u, &right.v, right_params);
-            (l_rgba, r_rgba)
-        })
-        .collect();
+    let undistorted: Vec<(Vec<u8>, Vec<u8>)> = {
+        profile_scope!("gpu_undistort");
+        frames
+            .iter()
+            .map(|(left, right)| {
+                let l_rgba = left_undistort.undistort(gpu, &left.y, &left.u, &left.v, left_params);
+                let r_rgba =
+                    right_undistort.undistort(gpu, &right.y, &right.u, &right.v, right_params);
+                (l_rgba, r_rgba)
+            })
+            .collect()
+    };
 
     // Phase 2: AKAZE detect + match + filter (parallel - CPU bound)
-    use rayon::prelude::*;
-    let per_frame: Vec<Option<FrameMatches>> = undistorted
-        .par_iter()
-        .enumerate()
-        .map(|(i, (left_rgba, right_rgba))| {
-            process_undistorted_pair(left_rgba, right_rgba, lw, lh, rw, rh, i, config)
-        })
-        .collect();
+    let per_frame: Vec<Option<FrameMatches>> = {
+        profile_scope!("akaze_parallel");
+        use rayon::prelude::*;
+        undistorted
+            .par_iter()
+            .enumerate()
+            .map(|(i, (left_rgba, right_rgba))| {
+                process_undistorted_pair(left_rgba, right_rgba, lw, lh, rw, rh, i, config)
+            })
+            .collect()
+    };
 
     // Collect all successful frame matches
     let successful_frames: Vec<FrameMatches> = per_frame.into_iter().flatten().collect();
@@ -306,11 +336,11 @@ pub fn calibrate(
     }
 
     // Single-pass optimization on all points with trimmed cost.
-    //
-    // The trimmed cost function (configured via trim_fraction) drops the
-    // worst N% of points at each evaluation, making the optimizer robust
-    // to outlier matches without needing random subsets.
-    let (best_layout, best_residual) = optimizer::optimize(&all_points, config).map_err(|e| {
+    let (best_layout, best_residual) = {
+        profile_scope!("optimizer");
+        optimizer::optimize(&all_points, config)
+    }
+    .map_err(|e| {
         log::error!("optimization failed: {e}");
         e
     })?;

@@ -17,7 +17,7 @@ coreml = ["reco-autocam/coreml"]
 load-dynamic = ["reco-autocam/load-dynamic"]
 gstreamer = ["reco-io/gstreamer"]
 rpi = ["reco-io/rpi"]
-profiling = ["reco-core/profiling", "reco-io/profiling", "reco-autocam/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
+profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling", "reco-autocam/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }

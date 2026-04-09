@@ -67,9 +67,8 @@ pub struct DetectRegion {
 
 /// Maximum width for AKAZE detection. Images wider than this are
 /// downscaled before feature detection (keypoints are mapped back to
-/// original coordinates). AKAZE's scale-space is resolution-invariant,
-/// so 1920px is sufficient for robust features while being ~7x faster
-/// than 5K input.
+/// original coordinates). 1920px provides full-quality features while
+/// still being faster than raw 4K/5K input.
 const DETECT_MAX_WIDTH: u32 = 1920;
 
 /// Detect features and compute descriptors using AKAZE.

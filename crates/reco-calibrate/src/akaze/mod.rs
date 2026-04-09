@@ -137,6 +137,13 @@ impl Akaze {
             self.contrast_factor_num_bins,
         );
         trace!("Computing contrast factor finished.");
+        // Pre-allocate diffusion buffers (reused across all evolution steps)
+        let (init_h, init_w) = (
+            evolutions[0].lt.height() as usize,
+            evolutions[0].lt.width() as usize,
+        );
+        let mut diffusion_bufs = nonlinear_diffusion::DiffusionBuffers::new(init_h, init_w);
+
         for i in 1..evolutions.len() {
             trace!("Creating evolution {}.", i);
             if evolutions[i].octave > evolutions[i - 1].octave {
@@ -152,7 +159,11 @@ impl Akaze {
             evolutions[i].lflow = pm_g2(&evolutions[i].lx, &evolutions[i].ly, contrast_factor);
             for j in 0..evolutions[i].fed_tau_steps.len() {
                 let step_size = evolutions[i].fed_tau_steps[j];
-                nonlinear_diffusion::calculate_step(&mut evolutions[i], step_size as f32);
+                nonlinear_diffusion::calculate_step_buffered(
+                    &mut evolutions[i],
+                    step_size as f32,
+                    &mut diffusion_bufs,
+                );
             }
         }
     }
