@@ -114,25 +114,75 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
         }
     }
 
-    // Extract embedded lens profile from raw tag data (DJI, Insta360)
+    // Extract embedded lens profile and quaternions from raw tag data
     let mut lens_profile = None;
+    let mut quaternions: Vec<(f64, [f64; 4])> = Vec::new(); // (timestamp_s, [w, x, y, z])
+
     if let Some(ref samples) = input.samples {
+        use telemetry_parser::tags_impl::{GetWithType, GroupId, TagId, TimeQuaternion};
+
         for sample in samples {
-            if lens_profile.is_some() {
-                break;
-            }
             if let Some(ref tag_map) = sample.tag_map {
-                lens_profile = extract_lens_from_tags(tag_map);
+                if lens_profile.is_none() {
+                    lens_profile = extract_lens_from_tags(tag_map);
+                }
+
+                // Extract quaternions (DJI cameras provide fused orientation)
+                if let Some(map) = tag_map.get(&GroupId::Quaternion) {
+                    if let Some(arr) = map.get_t(TagId::Data) as Option<&Vec<TimeQuaternion<f64>>> {
+                        for v in arr {
+                            quaternions.push((v.t, [v.v.w, v.v.x, v.v.y, v.v.z]));
+                        }
+                    }
+                }
             }
         }
     }
 
+    // If no raw gyro but quaternions are available, derive angular velocity
+    // by finite-differencing the quaternion signal.
+    if gyro.is_empty() && quaternions.len() >= 2 {
+        quaternions.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        log::info!(
+            "no raw gyro, deriving from {} quaternions",
+            quaternions.len()
+        );
+
+        for i in 1..quaternions.len() {
+            let dt = quaternions[i].0 - quaternions[i - 1].0;
+            if dt <= 0.0 || dt > 1.0 {
+                continue; // skip bad timestamps
+            }
+
+            let [w0, x0, y0, z0] = quaternions[i - 1].1;
+            let [w1, x1, y1, z1] = quaternions[i].1;
+
+            // q_delta = q1 * q0^-1 (conjugate for unit quaternion)
+            let _dw = w1 * w0 + x1 * x0 + y1 * y0 + z1 * z0;
+            let dx = -w1 * x0 + x1 * w0 - y1 * z0 + z1 * y0;
+            let dy = -w1 * y0 + x1 * z0 + y1 * w0 - z1 * x0;
+            let dz = -w1 * z0 - x1 * y0 + y1 * x0 + z1 * w0;
+
+            // Convert to angular velocity: omega = 2 * vec(q_delta) / dt
+            // For small rotations, vec(q_delta) ≈ half the rotation vector
+            let scale = 2.0 / dt;
+            gyro.push(ImuSample {
+                t: (quaternions[i - 1].0 + quaternions[i].0) / 2.0,
+                x: dx * scale,
+                y: dy * scale,
+                z: dz * scale,
+            });
+        }
+        log::info!("derived {} gyro samples from quaternions", gyro.len());
+    }
+
     log::info!(
-        "telemetry: {} {} - {} gyro, {} accel samples, lens profile: {}",
+        "telemetry: {} {} - {} gyro, {} accel samples, {} quaternions, lens profile: {}",
         camera_type,
         camera_model.as_deref().unwrap_or("unknown"),
         gyro.len(),
         accel.len(),
+        quaternions.len(),
         if lens_profile.is_some() {
             "embedded"
         } else {
