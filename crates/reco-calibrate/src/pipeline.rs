@@ -303,7 +303,7 @@ impl CalibrationPipeline {
     /// Run the calibration pipeline on extracted frame pairs.
     ///
     /// The app must extract frames at the indices returned by
-    /// [`frame_indices`] and pass them here as `(left, right)` pairs.
+    /// [`CalibrationPipeline::frame_indices`] and pass them here as `(left, right)` pairs.
     pub fn calibrate(
         &self,
         gpu: &GpuContext,
