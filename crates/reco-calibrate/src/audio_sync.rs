@@ -48,7 +48,7 @@ pub struct AudioSyncConfig {
 impl Default for AudioSyncConfig {
     fn default() -> Self {
         Self {
-            sample_rate: 16000,
+            sample_rate: 44100,
             chunk_secs: 30.0,
             max_offset_secs: 300.0, // 5 minutes
         }
@@ -117,18 +117,19 @@ fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Vec<f64> {
     let mut sig_spec = fft.make_output_vec();
     fft.process(&mut sig_buf, &mut sig_spec).unwrap();
 
-    // Prepare template (reversed for correlation, zero-padded)
+    // Prepare template REVERSED (time-reversal converts convolution to correlation)
+    // This matches Python's fftconvolve(signal, template[::-1])
     let mut tpl_buf = vec![0.0f64; fft_len];
-    for (i, &v) in template.iter().enumerate() {
+    for (i, &v) in template.iter().rev().enumerate() {
         tpl_buf[i] = v;
     }
     let mut tpl_spec = fft.make_output_vec();
     fft.process(&mut tpl_buf, &mut tpl_spec).unwrap();
 
-    // Multiply sig_spec * conj(tpl_spec)
+    // Multiply spectra (convolution in frequency domain)
     for (s, t) in sig_spec.iter_mut().zip(tpl_spec.iter()) {
-        let re = s.re * t.re + s.im * t.im;
-        let im = s.im * t.re - s.re * t.im;
+        let re = s.re * t.re - s.im * t.im;
+        let im = s.re * t.im + s.im * t.re;
         s.re = re;
         s.im = im;
     }
@@ -178,47 +179,42 @@ pub fn estimate_sync_offset(
         right_audio.len()
     );
 
-    let chunk_samples = (config.chunk_secs * sr as f64) as usize;
-    let max_lag_samples = (config.max_offset_secs * sr as f64) as usize;
+    // For short clips (< 2x chunk), use full signal. For long clips,
+    // take a chunk from the middle of the shorter recording as template
+    // and search the full other recording.
+    let shorter_len = left_audio.len().min(right_audio.len());
+    let chunk_samples = ((config.chunk_secs * sr as f64) as usize).min(shorter_len);
 
-    // Take a chunk from the middle of the left recording
-    let mid_l = left_audio.len() / 2;
-    let chunk_start = mid_l.saturating_sub(chunk_samples / 2);
-    let chunk_end = (chunk_start + chunk_samples).min(left_audio.len());
-    let template: Vec<f64> = left_audio[chunk_start..chunk_end]
+    // Use left as template, right as signal (convention: positive offset = right ahead)
+    let mid = left_audio.len() / 2;
+    let tpl_start = mid.saturating_sub(chunk_samples / 2);
+    let tpl_end = (tpl_start + chunk_samples).min(left_audio.len());
+
+    let mut template: Vec<f64> = left_audio[tpl_start..tpl_end]
         .iter()
         .map(|&s| s as f64)
         .collect();
+    let mut signal: Vec<f64> = right_audio.iter().map(|&s| s as f64).collect();
 
-    // Search window in right recording
-    let search_start = mid_l.saturating_sub(chunk_samples / 2 + max_lag_samples);
-    let search_end = (mid_l + chunk_samples / 2 + max_lag_samples).min(right_audio.len());
-    let signal: Vec<f64> = right_audio[search_start..search_end]
-        .iter()
-        .map(|&s| s as f64)
-        .collect();
-
-    // Normalize
-    let normalize = |v: &mut Vec<f64>| {
-        let mean = v.iter().sum::<f64>() / v.len() as f64;
-        let std = (v.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / v.len() as f64).sqrt();
+    // Normalize both
+    let normalize = |v: &mut [f64]| {
+        let n = v.len() as f64;
+        let mean = v.iter().sum::<f64>() / n;
+        let std = (v.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n).sqrt();
         if std > 1e-10 {
             v.iter_mut().for_each(|x| *x = (*x - mean) / std);
         }
     };
-
-    let mut template_norm = template;
-    let mut signal_norm = signal;
-    normalize(&mut template_norm);
-    normalize(&mut signal_norm);
+    normalize(&mut template);
+    normalize(&mut signal);
 
     log::info!(
-        "cross-correlating {:.1}s template against {:.1}s window...",
-        template_norm.len() as f64 / sr as f64,
-        signal_norm.len() as f64 / sr as f64,
+        "cross-correlating {:.1}s template against {:.1}s signal...",
+        template.len() as f64 / sr as f64,
+        signal.len() as f64 / sr as f64,
     );
 
-    let corr = fft_cross_correlate(&signal_norm, &template_norm);
+    let corr = fft_cross_correlate(&signal, &template);
 
     // Find peak
     let (peak_idx, peak_val) = corr
@@ -227,11 +223,16 @@ pub fn estimate_sync_offset(
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap_or((0, &0.0));
 
-    // Convert peak index to time offset
-    // The correlation peak at index i means: template aligns with signal at position i
-    // signal starts at search_start in right audio, template starts at chunk_start in left audio
-    let right_match_pos = search_start + peak_idx;
-    let offset_samples = right_match_pos as i64 - chunk_start as i64;
+    // With reversed template convolution (matching Python fftconvolve(r, l[::-1])):
+    // Peak at index P means right[n] aligns with left[P - n].
+    // The offset between the start positions:
+    //   right starts at 0, left template starts at tpl_start
+    //   Peak P means: right[0] aligns with left[P - 0] in the convolution sense
+    //   But template was extracted from left[tpl_start..tpl_end], so
+    //   the match position in left-audio is: tpl_start + (P - (template_len - 1))
+    //   Offset = match_in_right - match_in_left
+    let match_in_right = peak_idx as i64 - (template.len() as i64 - 1);
+    let offset_samples = match_in_right - tpl_start as i64;
     let offset_secs = offset_samples as f64 / sr as f64;
     let offset_frames = offset_secs * fps;
 

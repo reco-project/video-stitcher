@@ -336,20 +336,58 @@ pub fn angular_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
 ///
 /// Returns a vector of individual weighted errors for each point pair.
 /// Used by both the summed and trimmed variants.
+/// Configuration for seam weighting.
+#[derive(Debug, Clone, Copy)]
+pub struct SeamWeightConfig {
+    /// Horizontal Gaussian sigma (seam proximity weighting).
+    pub sigma_x: f64,
+    /// Vertical Gaussian sigma (center-band weighting).
+    pub sigma_y: f64,
+    /// Vertical center in plane coordinates. -0.05 = slightly above
+    /// image center (horizon for pole-mounted cameras). 0.0 = image center.
+    pub y_center: f64,
+}
+
+impl Default for SeamWeightConfig {
+    fn default() -> Self {
+        Self {
+            sigma_x: 0.08,
+            sigma_y: 0.08,
+            y_center: -0.05,
+        }
+    }
+}
+
+impl SeamWeightConfig {
+    /// Create from a single sigma value (backward compatible).
+    pub fn from_sigma(sigma: f64) -> Self {
+        Self {
+            sigma_x: sigma,
+            ..Default::default()
+        }
+    }
+}
+
 fn per_point_seam_weighted_errors(
     points: &[MatchedPoint],
     params: &OptParams,
     sigma: f64,
+) -> Vec<f64> {
+    per_point_seam_weighted_errors_full(points, params, &SeamWeightConfig::from_sigma(sigma))
+}
+
+fn per_point_seam_weighted_errors_full(
+    points: &[MatchedPoint],
+    params: &OptParams,
+    config: &SeamWeightConfig,
 ) -> Vec<f64> {
     let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
     let (x_pts, z_pts) = apply_transformations(points, params);
 
     let left_cam_seam = 1.0 - params.intersect / 2.0;
     let right_cam_seam = params.intersect / 2.0;
-    let inv_2sigma_sq = 1.0 / (2.0 * sigma * sigma);
-
-    let sigma_y = 0.08;
-    let inv_2sigma_y_sq = 1.0 / (2.0 * sigma_y * sigma_y);
+    let inv_2sigma_sq = 1.0 / (2.0 * config.sigma_x * config.sigma_x);
+    let inv_2sigma_y_sq = 1.0 / (2.0 * config.sigma_y * config.sigma_y);
 
     x_pts
         .iter()
@@ -361,9 +399,8 @@ fn per_point_seam_weighted_errors(
             let w_horiz =
                 0.5 * ((-dl * dl * inv_2sigma_sq).exp() + (-dr * dr * inv_2sigma_sq).exp());
 
-            let y_center = -0.05;
-            let yl = points[idx].left[1] - y_center;
-            let yr = points[idx].right[1] - y_center;
+            let yl = points[idx].left[1] - config.y_center;
+            let yr = points[idx].right[1] - config.y_center;
             let w_vert =
                 0.5 * ((-yl * yl * inv_2sigma_y_sq).exp() + (-yr * yr * inv_2sigma_y_sq).exp());
 
