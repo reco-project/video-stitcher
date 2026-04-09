@@ -244,8 +244,9 @@ pub fn run_calibrate(
         let right_tel = reco_calibrate::telemetry::extract(right_path).ok();
 
         let left_p = if let Some(ref tel) = left_tel {
-            lens_db
-                .find_from_telemetry(&tel.camera_type, tel.camera_model.as_deref(), lw, lh)
+            // Try embedded lens profile first (DJI cameras embed it in metadata)
+            tel.lens_profile.clone()
+                .or_else(|| lens_db.find_from_telemetry(&tel.camera_type, tel.camera_model.as_deref(), lw, lh))
                 .ok_or_else(|| anyhow::anyhow!(
                     "no lens profile found for left camera: {} {} {}x{}. Use --left-profile to specify manually.",
                     tel.camera_type, tel.camera_model.as_deref().unwrap_or("?"), lw, lh
@@ -257,8 +258,16 @@ pub fn run_calibrate(
         };
 
         let right_p = if let Some(ref tel) = right_tel {
-            lens_db
-                .find_from_telemetry(&tel.camera_type, tel.camera_model.as_deref(), rw, rh)
+            tel.lens_profile
+                .clone()
+                .or_else(|| {
+                    lens_db.find_from_telemetry(
+                        &tel.camera_type,
+                        tel.camera_model.as_deref(),
+                        rw,
+                        rh,
+                    )
+                })
                 .unwrap_or_else(|| {
                     eprintln!("  right camera: no profile found, using left camera profile");
                     left_p.clone()

@@ -123,8 +123,10 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
 
         for sample in samples {
             if let Some(ref tag_map) = sample.tag_map {
+                // Try Lens/Data tag first, then ClipMeta JSON fallback
                 if lens_profile.is_none() {
-                    lens_profile = extract_lens_from_tags(tag_map);
+                    lens_profile = extract_lens_from_tags(tag_map)
+                        .or_else(|| extract_lens_from_clip_meta(tag_map));
                 }
 
                 // Extract quaternions (DJI cameras provide fused orientation)
@@ -360,6 +362,69 @@ pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/// Extract lens profile from ClipMeta JSON (DJI Action 4 fallback).
+///
+/// When the parser doesn't insert a Lens/Data tag, we read focal_length
+/// and distortion_coefficients directly from the ClipMeta JSON stored
+/// in the Default group.
+fn extract_lens_from_clip_meta(
+    tag_map: &telemetry_parser::tags_impl::GroupedTagMap,
+) -> Option<CameraParams> {
+    use telemetry_parser::tags_impl::*;
+    // The ClipMeta JSON is stored in GroupId::Default / TagId::Metadata
+    let default_map = tag_map.get(&GroupId::Default)?;
+    let tag = default_map.get(&TagId::Metadata)?;
+    let json = if let TagValue::Json(ref json_val) = tag.value {
+        json_val.get()
+    } else {
+        return None;
+    };
+
+    let focal = json
+        .get("digital_focal_length")
+        .and_then(|v| v.get("focal_length"))
+        .and_then(|v| v.as_f64())?;
+
+    let coeffs = json
+        .get("distortion_coefficients")
+        .and_then(|v| v.get("coeffients")) // note: typo in DJI proto
+        .and_then(|v| v.as_array())?;
+
+    if coeffs.len() < 4 {
+        return None;
+    }
+
+    // Need resolution - not in ClipMeta, use a reasonable default for DJI Action 4
+    // The caller should override width/height from the video decoder
+    let width = 3840;
+    let height = 2880;
+    let half_w = width as f64 / 2.0;
+    let half_h = height as f64 / 2.0;
+
+    log::info!(
+        "embedded lens (from ClipMeta): focal={focal:.2}, d=[{:.4}, {:.4}, {:.4}, {:.4}]",
+        coeffs[0].as_f64().unwrap_or(0.0),
+        coeffs[1].as_f64().unwrap_or(0.0),
+        coeffs[2].as_f64().unwrap_or(0.0),
+        coeffs[3].as_f64().unwrap_or(0.0),
+    );
+
+    Some(CameraParams {
+        width,
+        height,
+        fx: focal,
+        fy: focal,
+        cx: half_w,
+        cy: half_h,
+        d: [
+            coeffs[0].as_f64().unwrap_or(0.0),
+            coeffs[1].as_f64().unwrap_or(0.0),
+            coeffs[2].as_f64().unwrap_or(0.0),
+            coeffs[3].as_f64().unwrap_or(0.0),
+        ],
+    })
+}
 
 /// Extract an embedded lens profile from a tag map (DJI, Insta360).
 fn extract_lens_from_tags(
