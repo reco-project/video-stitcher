@@ -337,18 +337,9 @@ pub fn run_calibrate(
         frames
     } else if auto_sync {
         eprintln!("Auto-detecting sync from audio...");
-        match reco_calibrate::audio_sync::estimate_sync_offset(
-            Path::new(left),
-            Path::new(right),
-            fps,
-            &reco_calibrate::audio_sync::AudioSyncConfig::default(),
-        ) {
-            Ok(result) => {
-                let frames = result.offset_frames.round() as i64;
-                eprintln!(
-                    "  Audio sync: {:.3}s = {} frames (confidence={:.2})",
-                    result.offset_secs, frames, result.confidence
-                );
+        match extract_and_sync_audio(left, right, fps) {
+            Ok((frames, confidence)) => {
+                eprintln!("  Audio sync: {frames} frames (confidence={confidence:.0})");
                 frames
             }
             Err(e) => {
@@ -561,4 +552,58 @@ fn save_rgba_png(rgba: &[u8], width: u32, height: u32, path: &str) -> anyhow::Re
         .ok_or_else(|| anyhow::anyhow!("invalid frame dimensions"))?;
     img.save(path)?;
     Ok(())
+}
+
+/// Extract audio from two video files and compute sync offset.
+///
+/// This is the CLI's responsibility: file I/O via ffmpeg CLI to extract
+/// raw PCM, then pass to reco_calibrate::audio_sync::correlate() for
+/// the actual math.
+fn extract_and_sync_audio(left: &str, right: &str, fps: f64) -> anyhow::Result<(i64, f64)> {
+    let sample_rate = 44100u32;
+
+    let left_samples = extract_audio_pcm(left, sample_rate)?;
+    let right_samples = extract_audio_pcm(right, sample_rate)?;
+
+    let result =
+        reco_calibrate::audio_sync::correlate(&left_samples, &right_samples, sample_rate, 30.0)?;
+
+    let frames = result.offset_frames_rounded(fps);
+    Ok((frames, result.confidence))
+}
+
+/// Extract mono PCM audio from a video file using ffmpeg CLI.
+fn extract_audio_pcm(video_path: &str, sample_rate: u32) -> anyhow::Result<Vec<i16>> {
+    let output = std::process::Command::new("ffmpeg")
+        .args([
+            "-i",
+            video_path,
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            &sample_rate.to_string(),
+            "-f",
+            "s16le",
+            "-",
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()?;
+
+    if !output.status.success() {
+        anyhow::bail!("ffmpeg audio extraction failed (exit {})", output.status);
+    }
+
+    let samples: Vec<i16> = output
+        .stdout
+        .chunks_exact(2)
+        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .collect();
+
+    if samples.is_empty() {
+        anyhow::bail!("no audio in {video_path}");
+    }
+
+    Ok(samples)
 }
