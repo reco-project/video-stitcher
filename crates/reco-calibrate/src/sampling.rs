@@ -89,9 +89,6 @@ pub fn downscale_if_needed(frame: &GrayFrame, target_width: u32) -> GrayFrame {
     }
 }
 
-// random_subset removed: single-pass optimization with trimming
-// replaces the random-subset approach.
-
 #[cfg(test)]
 mod tests {
     use super::*;

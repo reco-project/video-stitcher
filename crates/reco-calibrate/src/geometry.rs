@@ -293,26 +293,6 @@ pub fn trimmed_reprojection_error(
     errors[..keep].iter().sum()
 }
 
-/// Median per-point reprojection error.
-///
-/// Computes the per-point errors and returns the median value. More
-/// robust than the sum/mean for selecting the best random-subset result:
-/// a single outlier can inflate the sum but barely moves the median.
-/// This favors calibrations where *most* points are well-aligned.
-pub fn median_reprojection_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
-    let mut errors = per_point_reprojection_error(points, params);
-    if errors.is_empty() {
-        return f64::MAX;
-    }
-    errors.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let mid = errors.len() / 2;
-    if errors.len().is_multiple_of(2) {
-        (errors[mid - 1] + errors[mid]) / 2.0
-    } else {
-        errors[mid]
-    }
-}
-
 /// Compute the total angular error between matched point pairs.
 ///
 /// Legacy objective from v1. Kept for diagnostic comparison.

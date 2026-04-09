@@ -349,22 +349,6 @@ pub fn calibrate(
         best_layout.z_rz
     );
 
-    // Evaluate v1 reference params for diagnostic comparison
-    let v1_params = geometry::OptParams {
-        x_ty: 0.0047,
-        intersect: 0.5447,
-        cam_d: 0.2407,
-        x_rz: 0.0071,
-        z_rx: -0.0035,
-        z_rz: None,
-    };
-    let v1_reproj = geometry::reprojection_error(&all_points, &v1_params);
-    let v1_trimmed = geometry::trimmed_reprojection_error(&all_points, &v1_params, 0.2);
-    let v1_angular = geometry::angular_error(&all_points, &v1_params);
-    log::info!(
-        "v1 reference eval: reproj={v1_reproj:.6}, trimmed={v1_trimmed:.6}, angular={v1_angular:.6}"
-    );
-
     let calibration = MatchCalibration {
         left: left_params.clone(),
         right: right_params.clone(),

@@ -15,6 +15,7 @@ use std::path::Path;
 
 /// Test dataset loaded from JSON.
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct TestDataset {
     camera: String,
     n_points: usize,
@@ -23,6 +24,7 @@ struct TestDataset {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ExpectedParams {
     cam_d: f64,
     intersect: f64,
