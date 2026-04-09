@@ -8,6 +8,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  APT_PACKAGES: >-
+    libavcodec-dev libavformat-dev libavutil-dev
+    libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+    pkg-config clang
 
 jobs:
   check:
@@ -19,13 +24,9 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev \
-            libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            pkg-config clang
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: ${{ env.APT_PACKAGES }}
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -42,13 +43,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev \
-            libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            pkg-config clang
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: ${{ env.APT_PACKAGES }}
       - name: Run tests
         run: cargo test --all
 
@@ -59,13 +56,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev \
-            libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            pkg-config clang
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: ${{ env.APT_PACKAGES }}
       - name: Build docs
         # Exclude `rpi` feature: requires patched FFmpeg with SAND pixel formats
         # that aren't available in Ubuntu's standard libavcodec.
@@ -84,3 +77,15 @@ jobs:
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  secrets:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

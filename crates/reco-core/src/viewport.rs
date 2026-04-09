@@ -24,6 +24,13 @@ pub struct ViewportConfig {
     /// left plane using a smoothstep alpha gradient. `0.0` = hard seam,
     /// `0.15` = blend over 15% of the plane width. Default: 0.15.
     pub blend_width: f32,
+    /// Rig tilt in radians.
+    ///
+    /// Rotates the entire scene (both planes) to compensate for a
+    /// physically tilted camera rig. When panning, this creates a
+    /// natural roll correction that straightens vertical lines at the
+    /// edges. `0.0` = no correction. Default: 0.0.
+    pub rig_tilt: f32,
 }
 
 impl Default for ViewportConfig {
@@ -33,6 +40,7 @@ impl Default for ViewportConfig {
             height: 1080,
             fov_degrees: 75.0,
             blend_width: 0.15,
+            rig_tilt: 0.0,
         }
     }
 }

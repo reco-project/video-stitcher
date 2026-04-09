@@ -36,6 +36,19 @@ const FOV_DEFAULT: f32 = 75.0;
 /// Number of frames to skip on P key press.
 const FRAME_SKIP_COUNT: usize = 30;
 
+/// Strip sRGB from a texture format, returning the equivalent non-sRGB format.
+///
+/// The shader outputs sRGB-encoded values directly (BT.709 YCbCr -> R'G'B').
+/// Rendering to an sRGB format would apply sRGB encoding again (double-gamma).
+fn strip_srgb(format: reco_core::wgpu::TextureFormat) -> reco_core::wgpu::TextureFormat {
+    use reco_core::wgpu::TextureFormat;
+    match format {
+        TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
+        TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
+        other => other,
+    }
+}
+
 /// Extract a [`YuvData`] pair from a [`StereoFrame`](reco_core::source::StereoFrame).
 ///
 /// Panics if the frame is not `Yuv420p` (preview always uses CPU decode).
@@ -53,14 +66,20 @@ pub fn run_preview(
     calibration_path: &str,
     width: u32,
     height: u32,
+    sync_offset: i64,
+    blend_width: f32,
+    rig_tilt_degrees: f32,
 ) -> anyhow::Result<()> {
     // Probe the right file to verify dimensions match
     let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
     let right_dims = (right_dec.width(), right_dec.height());
     drop(right_dec);
 
-    let mut source =
-        reco_io::adapters::FfmpegFileSource::open(Path::new(left_path), Path::new(right_path))?;
+    let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
+        Path::new(left_path),
+        Path::new(right_path),
+        sync_offset,
+    )?;
     let info = source.info();
 
     anyhow::ensure!(
@@ -116,6 +135,8 @@ pub fn run_preview(
         target_yaw: 0.0,
         target_pitch: 0.0,
         target_fov: FOV_DEFAULT,
+        blend_width,
+        rig_tilt: rig_tilt_degrees.to_radians(),
     };
 
     event_loop.run_app(&mut app)?;
@@ -150,6 +171,8 @@ struct App {
     target_yaw: f32,
     target_pitch: f32,
     target_fov: f32,
+    blend_width: f32,
+    rig_tilt: f32,
 }
 
 impl App {
@@ -251,6 +274,17 @@ impl ApplicationHandler for App {
         let surface_format = self.surface_format;
         log::info!("Surface format: {:?}", surface_format);
 
+        // The shader outputs sRGB-encoded values directly (BT.709 YCbCr -> R'G'B').
+        // If the surface format is sRGB (e.g. Bgra8UnormSrgb on AMD), the GPU would
+        // apply sRGB encoding again on write, causing double-gamma (faded colors).
+        // Fix: render to a non-sRGB view of the surface texture.
+        let render_format = strip_srgb(surface_format);
+        let view_formats = if render_format != surface_format {
+            vec![render_format]
+        } else {
+            vec![]
+        };
+
         surface.configure(
             gpu.device(),
             &reco_core::wgpu::SurfaceConfiguration {
@@ -261,13 +295,15 @@ impl ApplicationHandler for App {
                 present_mode: reco_core::wgpu::PresentMode::Fifo,
                 desired_maximum_frame_latency: 2,
                 alpha_mode: self.alpha_mode,
-                view_formats: vec![],
+                view_formats,
             },
         );
 
         let viewport = reco_core::viewport::ViewportConfig {
             width: self.width,
             height: self.height,
+            blend_width: self.blend_width,
+            rig_tilt: self.rig_tilt,
             ..Default::default()
         };
 
@@ -277,7 +313,7 @@ impl ApplicationHandler for App {
             viewport,
             self.input_width,
             self.input_height,
-            surface_format,
+            render_format,
             reco_core::renderer::InputFormat::Yuv420p,
         )
         .expect("create pipeline");
@@ -309,6 +345,12 @@ impl ApplicationHandler for App {
                     self.width = size.width;
                     self.height = size.height;
                     if let (Some(surface), Some(pipeline)) = (&self.surface, &mut self.pipeline) {
+                        let render_format = strip_srgb(self.surface_format);
+                        let view_formats = if render_format != self.surface_format {
+                            vec![render_format]
+                        } else {
+                            vec![]
+                        };
                         surface.configure(
                             pipeline.gpu().device(),
                             &reco_core::wgpu::SurfaceConfiguration {
@@ -319,7 +361,7 @@ impl ApplicationHandler for App {
                                 present_mode: reco_core::wgpu::PresentMode::Fifo,
                                 desired_maximum_frame_latency: 2,
                                 alpha_mode: self.alpha_mode,
-                                view_formats: vec![],
+                                view_formats,
                             },
                         );
                         pipeline.resize(self.width, self.height);
@@ -448,9 +490,13 @@ impl ApplicationHandler for App {
                         return;
                     }
                 };
+                let render_format = strip_srgb(self.surface_format);
                 let view = frame
                     .texture
-                    .create_view(&reco_core::wgpu::TextureViewDescriptor::default());
+                    .create_view(&reco_core::wgpu::TextureViewDescriptor {
+                        format: Some(render_format),
+                        ..Default::default()
+                    });
 
                 let left = reco_core::pipeline::YuvPlanes {
                     y: &self.current_left.y,

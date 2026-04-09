@@ -1,0 +1,528 @@
+//! IMU telemetry extraction for calibration.
+//!
+//! Uses the [`telemetry_parser`] crate (MIT, by AdrianEddy) to extract
+//! IMU data from video files. Supports 30+ camera brands including
+//! GoPro, DJI, Insta360, Sony, Canon, and Blackmagic.
+//!
+//! ## What's available per camera
+//!
+//! | Camera | Raw Gyro | Raw Accel | Quaternions | Embedded Lens |
+//! |--------|----------|-----------|-------------|---------------|
+//! | GoPro  | Yes      | Yes       | Yes (CORI)  | No            |
+//! | DJI    | No       | No        | Yes         | Yes           |
+//! | Insta360 | Yes    | Yes       | No          | Yes           |
+//! | Sony   | Yes      | Yes       | No          | Yes (mesh)    |
+//!
+//! ## Usage for calibration
+//!
+//! ```ignore
+//! use reco_calibrate::telemetry;
+//!
+//! let left = telemetry::extract("left.mp4")?;
+//! let right = telemetry::extract("right.mp4")?;
+//! let sync = telemetry::estimate_sync_offset(&left, &right);
+//! let (roll, pitch) = telemetry::differential_orientation(&left, &right);
+//! ```
+
+use reco_core::calibration::CameraParams;
+use std::path::Path;
+
+/// Extracted telemetry data (gyro, accel, lens profile) from a video file.
+#[derive(Debug, Clone)]
+pub struct TelemetryData {
+    /// Camera brand (e.g. "GoPro", "DJI").
+    pub camera_type: String,
+    /// Camera model if available.
+    pub camera_model: Option<String>,
+    /// Gyroscope samples (angular velocity in rad/s, timestamped).
+    pub gyro: Vec<ImuSample>,
+    /// Accelerometer samples (m/s^2, timestamped).
+    pub accel: Vec<ImuSample>,
+    /// Embedded lens profile if the camera provides one (DJI, Insta360).
+    pub lens_profile: Option<CameraParams>,
+}
+
+/// A single 3-axis IMU sample with timestamp.
+#[derive(Debug, Clone, Copy)]
+pub struct ImuSample {
+    /// Timestamp in seconds from video start.
+    pub t: f64,
+    /// X-axis value.
+    pub x: f64,
+    /// Y-axis value.
+    pub y: f64,
+    /// Z-axis value.
+    pub z: f64,
+}
+
+impl ImuSample {
+    /// Magnitude of the 3-axis vector.
+    pub fn magnitude(&self) -> f64 {
+        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+    }
+}
+
+/// Extract telemetry data from a video file.
+///
+/// Auto-detects the camera type and extracts all available IMU data
+/// using telemetry-parser's built-in normalization pipeline. This
+/// handles scaling (SCAL tags), unit conversion (rad/s to deg/s, g to
+/// m/s^2), orientation mapping (per-camera axis conventions), and
+/// timestamp interpolation for all supported cameras.
+///
+/// Returns an error if the file format is unsupported or contains no
+/// telemetry.
+pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let filesize = std::fs::metadata(path)
+        .map_err(|e| TelemetryError::Io(e.to_string()))?
+        .len() as usize;
+
+    let mut file = std::fs::File::open(path).map_err(|e| TelemetryError::Io(e.to_string()))?;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let input = telemetry_parser::Input::from_stream(&mut file, filesize, path, |_| {}, cancel)
+        .map_err(|e| TelemetryError::Parse(e.to_string()))?;
+
+    let camera_type = input.camera_type();
+    let camera_model = input.camera_model().cloned();
+
+    // Use telemetry-parser's built-in normalization: handles SCAL scaling,
+    // unit conversion, per-camera orientation mapping, and timestamp
+    // interpolation across all camera types.
+    let raw_imu = telemetry_parser::util::normalized_imu_interpolated(&input, Some("XYZ".into()))
+        .unwrap_or_default();
+
+    let mut gyro = Vec::with_capacity(raw_imu.len());
+    let mut accel = Vec::with_capacity(raw_imu.len());
+
+    for sample in &raw_imu {
+        let t = sample.timestamp_ms / 1000.0; // ms to seconds
+        if let Some([x, y, z]) = sample.gyro {
+            // telemetry-parser outputs deg/s; convert to rad/s
+            gyro.push(ImuSample {
+                t,
+                x: x.to_radians(),
+                y: y.to_radians(),
+                z: z.to_radians(),
+            });
+        }
+        if let Some([x, y, z]) = sample.accl {
+            accel.push(ImuSample { t, x, y, z });
+        }
+    }
+
+    // Extract embedded lens profile and quaternions from raw tag data
+    let mut lens_profile = None;
+    let mut quaternions: Vec<(f64, [f64; 4])> = Vec::new(); // (timestamp_s, [w, x, y, z])
+
+    if let Some(ref samples) = input.samples {
+        use telemetry_parser::tags_impl::{GetWithType, GroupId, TagId, TimeQuaternion};
+
+        for sample in samples {
+            if let Some(ref tag_map) = sample.tag_map {
+                // Try Lens/Data tag first, then ClipMeta JSON fallback
+                if lens_profile.is_none() {
+                    lens_profile = extract_lens_from_tags(tag_map)
+                        .or_else(|| extract_lens_from_clip_meta(tag_map));
+                }
+
+                // Extract quaternions (DJI cameras provide fused orientation)
+                if let Some(arr) = tag_map
+                    .get(&GroupId::Quaternion)
+                    .and_then(|map| map.get_t(TagId::Data) as Option<&Vec<TimeQuaternion<f64>>>)
+                {
+                    for v in arr {
+                        quaternions.push((v.t, [v.v.w, v.v.x, v.v.y, v.v.z]));
+                    }
+                }
+            }
+        }
+    }
+
+    // If no raw gyro but quaternions are available, derive angular velocity
+    // by finite-differencing the quaternion signal.
+    if gyro.is_empty() && quaternions.len() >= 2 {
+        quaternions.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        log::info!(
+            "no raw gyro, deriving from {} quaternions",
+            quaternions.len()
+        );
+
+        for i in 1..quaternions.len() {
+            let dt = quaternions[i].0 - quaternions[i - 1].0;
+            if dt <= 0.0 || dt > 1.0 {
+                continue; // skip bad timestamps
+            }
+
+            let [w0, x0, y0, z0] = quaternions[i - 1].1;
+            let [w1, x1, y1, z1] = quaternions[i].1;
+
+            // q_delta = q1 * q0^-1 (conjugate for unit quaternion)
+            let _dw = w1 * w0 + x1 * x0 + y1 * y0 + z1 * z0;
+            let dx = -w1 * x0 + x1 * w0 - y1 * z0 + z1 * y0;
+            let dy = -w1 * y0 + x1 * z0 + y1 * w0 - z1 * x0;
+            let dz = -w1 * z0 - x1 * y0 + y1 * x0 + z1 * w0;
+
+            // Convert to angular velocity: omega = 2 * vec(q_delta) / dt
+            // For small rotations, vec(q_delta) ≈ half the rotation vector
+            let scale = 2.0 / dt;
+            gyro.push(ImuSample {
+                t: (quaternions[i - 1].0 + quaternions[i].0) / 2.0,
+                x: dx * scale,
+                y: dy * scale,
+                z: dz * scale,
+            });
+        }
+        log::info!("derived {} gyro samples from quaternions", gyro.len());
+    }
+
+    log::info!(
+        "telemetry: {} {} - {} gyro, {} accel samples, {} quaternions, lens profile: {}",
+        camera_type,
+        camera_model.as_deref().unwrap_or("unknown"),
+        gyro.len(),
+        accel.len(),
+        quaternions.len(),
+        if lens_profile.is_some() {
+            "embedded"
+        } else {
+            "none"
+        }
+    );
+
+    Ok(TelemetryData {
+        camera_type,
+        camera_model,
+        gyro,
+        accel,
+        lens_profile,
+    })
+}
+
+/// Estimate temporal sync offset between two cameras using gyro
+/// cross-correlation.
+///
+/// Resamples both gyro signals to a common rate, correlates their
+/// magnitude signals, and returns the lag in seconds. A positive
+/// return value means the left camera's recording started that many
+/// seconds after the right camera (equivalently, the right camera
+/// started earlier).
+///
+/// Returns `None` if either camera lacks gyro data.
+pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Option<f64> {
+    if left.gyro.len() < 100 || right.gyro.len() < 100 {
+        log::warn!("insufficient gyro samples for sync estimation");
+        return None;
+    }
+
+    // Compute magnitude signal for each camera
+    let left_mag: Vec<(f64, f64)> = left.gyro.iter().map(|s| (s.t, s.magnitude())).collect();
+    let right_mag: Vec<(f64, f64)> = right.gyro.iter().map(|s| (s.t, s.magnitude())).collect();
+
+    // Resample both to 200 Hz on a common time range
+    let sample_rate = 200.0;
+    let left_duration = left_mag.last()?.0 - left_mag.first()?.0;
+    let right_duration = right_mag.last()?.0 - right_mag.first()?.0;
+    let duration = left_duration.min(right_duration).min(30.0); // cap at 30s for speed
+
+    let n = (duration * sample_rate) as usize;
+    if n < 100 {
+        return None;
+    }
+
+    let left_resampled = resample_signal(&left_mag, left_mag.first()?.0, sample_rate, n);
+    let right_resampled = resample_signal(&right_mag, right_mag.first()?.0, sample_rate, n);
+
+    // Cross-correlate with up to +/-5 second search window
+    let max_lag = (5.0 * sample_rate) as i64;
+    let max_lag = max_lag.min(n as i64 / 2);
+
+    let mut best_corr = f64::NEG_INFINITY;
+    let mut best_lag: i64 = 0;
+
+    for lag in -max_lag..=max_lag {
+        let mut sum = 0.0;
+        let mut count = 0;
+        for (i, &left_val) in left_resampled.iter().enumerate() {
+            let j = i as i64 + lag;
+            if j >= 0 && (j as usize) < n {
+                sum += left_val * right_resampled[j as usize];
+                count += 1;
+            }
+        }
+        if count > 0 {
+            let corr = sum / count as f64;
+            if corr > best_corr {
+                best_corr = corr;
+                best_lag = lag;
+            }
+        }
+    }
+
+    // Negative lag means right camera started earlier
+    let offset_secs = -(best_lag as f64 / sample_rate);
+    log::info!("gyro sync: lag={best_lag} samples ({offset_secs:.3}s), correlation={best_corr:.4}");
+    Some(offset_secs)
+}
+
+/// Compute the average gravity vector from accelerometer data.
+///
+/// Uses the mean of all accelerometer samples, assuming the camera is
+/// mostly stationary during recording. The gravity vector points
+/// "down" in the camera's coordinate frame.
+///
+/// Returns `None` if no accelerometer data is available.
+pub fn gravity_vector(data: &TelemetryData) -> Option<[f64; 3]> {
+    if data.accel.is_empty() {
+        return None;
+    }
+
+    let n = data.accel.len() as f64;
+    let mut gx = 0.0;
+    let mut gy = 0.0;
+    let mut gz = 0.0;
+    for s in &data.accel {
+        gx += s.x;
+        gy += s.y;
+        gz += s.z;
+    }
+
+    Some([gx / n, gy / n, gz / n])
+}
+
+/// Differential orientation between two cameras from gravity vectors.
+///
+/// Returns `(roll_diff, pitch_diff, tilt_diff)` in radians:
+/// - `roll_diff`: differential roll (seeds x_rz)
+/// - `pitch_diff`: differential pitch (seeds x_rx when > 2 deg)
+/// - `tilt_diff`: differential tilt with rig tilt removed (seeds z_rx).
+///   Computed by subtracting the average tilt (rig tilt) from each
+///   camera's individual tilt, then taking the left camera's residual.
+///
+/// Returns `None` if either camera lacks accelerometer data.
+pub fn differential_orientation(
+    left: &TelemetryData,
+    right: &TelemetryData,
+) -> Option<(f64, f64, f64)> {
+    let lg = gravity_vector(left)?;
+    let rg = gravity_vector(right)?;
+
+    // Roll = angle of gravity projected onto the YZ plane
+    let left_roll = lg[1].atan2(lg[2]);
+    let right_roll = rg[1].atan2(rg[2]);
+    let roll_diff = right_roll - left_roll;
+
+    // Pitch = angle of gravity projected onto the XZ plane
+    let left_pitch = lg[0].atan2(lg[2]);
+    let right_pitch = rg[0].atan2(rg[2]);
+    let pitch_diff = right_pitch - left_pitch;
+
+    // Tilt: each camera's forward-pitch angle from gravity.
+    // atan2(gz, -gy) gives the tilt in the camera's forward-looking plane
+    // where -gy is "down" and gz is "forward".
+    // The rig tilt is the average (common to both cameras on the same pole).
+    // z_rx captures the left camera's deviation from the rig average.
+    let left_tilt = lg[2].atan2(-lg[1]);
+    let right_tilt = rg[2].atan2(-rg[1]);
+    let rig_tilt_avg = (left_tilt + right_tilt) / 2.0;
+    let tilt_diff = left_tilt - rig_tilt_avg;
+
+    log::info!(
+        "differential orientation: roll={roll_diff:.4} rad ({:.1} deg), \
+         pitch={pitch_diff:.4} rad ({:.1} deg), \
+         tilt_diff={tilt_diff:.4} rad ({:.1} deg)",
+        roll_diff.to_degrees(),
+        pitch_diff.to_degrees(),
+        tilt_diff.to_degrees(),
+    );
+
+    Some((roll_diff, pitch_diff, tilt_diff))
+}
+
+/// Compute the rig tilt angle from the average gravity vector.
+///
+/// The rig tilt is the angle between the gravity vector and the
+/// camera's "down" axis, measured in the plane perpendicular to the
+/// camera's optical axis. This is used to tilt the virtual camera's
+/// reference frame in the renderer.
+///
+/// Returns the tilt angle in radians, or `None` if no accelerometer
+/// data is available.
+pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
+    let g = gravity_vector(data)?;
+    // Tilt = angle between gravity and the -Y axis (camera "down")
+    // atan2(x_component, y_component) gives the tilt in the XY plane
+    let tilt = g[0].atan2(-g[1]);
+    log::info!("rig tilt: {tilt:.4} rad ({:.1} deg)", tilt.to_degrees());
+    Some(tilt)
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Extract lens profile from ClipMeta JSON (DJI Action 4 fallback).
+///
+/// When the parser doesn't insert a Lens/Data tag, we read focal_length
+/// and distortion_coefficients directly from the ClipMeta JSON stored
+/// in the Default group.
+fn extract_lens_from_clip_meta(
+    tag_map: &telemetry_parser::tags_impl::GroupedTagMap,
+) -> Option<CameraParams> {
+    use telemetry_parser::tags_impl::*;
+    // The ClipMeta JSON is stored in GroupId::Default / TagId::Metadata
+    let default_map = tag_map.get(&GroupId::Default)?;
+    let tag = default_map.get(&TagId::Metadata)?;
+    let json = if let TagValue::Json(ref json_val) = tag.value {
+        json_val.get()
+    } else {
+        return None;
+    };
+
+    let focal = json
+        .get("digital_focal_length")
+        .and_then(|v| v.get("focal_length"))
+        .and_then(|v| v.as_f64())?;
+
+    let coeffs = json
+        .get("distortion_coefficients")
+        .and_then(|v| v.get("coeffients")) // note: typo in DJI proto
+        .and_then(|v| v.as_array())?;
+
+    if coeffs.len() < 4 {
+        return None;
+    }
+
+    // Need resolution - not in ClipMeta, use a reasonable default for DJI Action 4
+    // The caller should override width/height from the video decoder
+    let width = 3840;
+    let height = 2880;
+    let half_w = width as f64 / 2.0;
+    let half_h = height as f64 / 2.0;
+
+    log::info!(
+        "embedded lens (from ClipMeta): focal={focal:.2}, d=[{:.4}, {:.4}, {:.4}, {:.4}]",
+        coeffs[0].as_f64().unwrap_or(0.0),
+        coeffs[1].as_f64().unwrap_or(0.0),
+        coeffs[2].as_f64().unwrap_or(0.0),
+        coeffs[3].as_f64().unwrap_or(0.0),
+    );
+
+    Some(CameraParams {
+        width,
+        height,
+        fx: focal,
+        fy: focal,
+        cx: half_w,
+        cy: half_h,
+        d: [
+            coeffs[0].as_f64().unwrap_or(0.0),
+            coeffs[1].as_f64().unwrap_or(0.0),
+            coeffs[2].as_f64().unwrap_or(0.0),
+            coeffs[3].as_f64().unwrap_or(0.0),
+        ],
+    })
+}
+
+/// Extract an embedded lens profile from a tag map (DJI, Insta360).
+fn extract_lens_from_tags(
+    tag_map: &telemetry_parser::tags_impl::GroupedTagMap,
+) -> Option<CameraParams> {
+    use telemetry_parser::tags_impl::*;
+    let lens_map = tag_map.get(&GroupId::Lens)?;
+    let tag = lens_map.get(&TagId::Data)?;
+    if let TagValue::Json(ref json_val) = tag.value {
+        parse_embedded_lens_profile(json_val.get())
+    } else {
+        None
+    }
+}
+
+/// Parse an embedded lens profile JSON from telemetry-parser.
+///
+/// DJI cameras embed focal_length + distortion_coeffs as JSON in the
+/// `Lens/Data` tag. This function converts to our `CameraParams` format.
+fn parse_embedded_lens_profile(json: &serde_json::Value) -> Option<CameraParams> {
+    let cm = json.get("camera_matrix")?;
+    let fx = cm.get("fx")?.as_f64()?;
+    let fy = cm.get("fy")?.as_f64()?;
+    let cx = cm.get("cx")?.as_f64()?;
+    let cy = cm.get("cy")?.as_f64()?;
+
+    let dc = json.get("distortion_coeffs")?.as_array()?;
+    if dc.len() < 4 {
+        return None;
+    }
+    let d = [
+        dc[0].as_f64().unwrap_or(0.0),
+        dc[1].as_f64().unwrap_or(0.0),
+        dc[2].as_f64().unwrap_or(0.0),
+        dc[3].as_f64().unwrap_or(0.0),
+    ];
+
+    // Resolution from the lens profile
+    let res = json
+        .get("resolution")
+        .or_else(|| json.get("calib_dimension"))?;
+    let width = res.get("width").or_else(|| res.get("w"))?.as_u64()? as u32;
+    let height = res.get("height").or_else(|| res.get("h"))?.as_u64()? as u32;
+
+    log::info!("embedded lens profile: {width}x{height}, fx={fx:.2}, fy={fy:.2}");
+
+    Some(CameraParams {
+        width,
+        height,
+        fx,
+        fy,
+        cx,
+        cy,
+        d,
+    })
+}
+
+/// Linearly resample a timestamped signal to a uniform sample rate.
+fn resample_signal(signal: &[(f64, f64)], t_start: f64, rate: f64, n: usize) -> Vec<f64> {
+    let mut result = Vec::with_capacity(n);
+    let mut src_idx = 0;
+
+    for i in 0..n {
+        let t = t_start + i as f64 / rate;
+
+        // Advance source index to bracket the target time
+        while src_idx + 1 < signal.len() && signal[src_idx + 1].0 < t {
+            src_idx += 1;
+        }
+
+        if src_idx + 1 >= signal.len() {
+            result.push(signal.last().map_or(0.0, |s| s.1));
+            continue;
+        }
+
+        // Linear interpolation
+        let (t0, v0) = signal[src_idx];
+        let (t1, v1) = signal[src_idx + 1];
+        let dt = t1 - t0;
+        if dt > 0.0 {
+            let frac = (t - t0) / dt;
+            result.push(v0 + frac * (v1 - v0));
+        } else {
+            result.push(v0);
+        }
+    }
+
+    result
+}
+
+/// Errors from telemetry extraction.
+#[derive(Debug, thiserror::Error)]
+pub enum TelemetryError {
+    /// File I/O error.
+    #[error("telemetry I/O error: {0}")]
+    Io(String),
+    /// Unsupported or unparseable telemetry format.
+    #[error("telemetry parse error: {0}")]
+    Parse(String),
+}

@@ -60,9 +60,13 @@ impl SceneGeometry {
 
         Self {
             left_position: [0.0, 0.0, half_offset],
-            left_rotation: [layout.z_rx as f32, std::f32::consts::FRAC_PI_2, 0.0],
+            left_rotation: [
+                layout.z_rx as f32,
+                std::f32::consts::FRAC_PI_2,
+                layout.z_rz as f32,
+            ],
             right_position: [half_offset, layout.x_ty as f32, 0.0],
-            right_rotation: [0.0, 0.0, layout.x_rz as f32],
+            right_rotation: [layout.x_rx as f32, 0.0, layout.x_rz as f32],
             camera_position: [
                 layout.camera_axis_offset as f32,
                 0.0,
@@ -75,20 +79,29 @@ impl SceneGeometry {
 
     /// Model matrix for the left camera plane.
     ///
-    /// Combines translation and rotation matching the v1 Three.js setup.
-    /// Three.js uses XYZ Euler order, which maps to nalgebra's
-    /// `from_euler_angles(roll_x, pitch_y, yaw_z)`.
+    /// The z-plane base rotation is π/2 around Y (faces sideways).
+    /// `z_rx` is applied as a post-rotation around X so it acts as
+    /// a roll around the plane's final normal. `z_rz` is applied
+    /// as a pre-rotation (tilt correction).
     pub fn model_matrix_left(&self) -> Matrix4<f32> {
         let t = Translation3::new(
             self.left_position[0],
             self.left_position[1],
             self.left_position[2],
         );
-        let r = UnitQuaternion::from_euler_angles(
-            self.left_rotation[0],
-            self.left_rotation[1],
-            self.left_rotation[2],
+        // Base: π/2 Y rotation + z_rz tilt
+        let base = UnitQuaternion::from_euler_angles(
+            0.0,
+            self.left_rotation[1], // π/2
+            self.left_rotation[2], // z_rz
         );
+        // Post-rotate: z_rx as roll around X (the plane's final normal)
+        let roll = UnitQuaternion::from_euler_angles(
+            self.left_rotation[0], // z_rx
+            0.0,
+            0.0,
+        );
+        let r = roll * base;
         t.to_homogeneous() * r.to_homogeneous()
     }
 
@@ -121,6 +134,8 @@ mod tests {
             x_ty: 0.0,
             x_rz: 0.0,
             z_rx: 0.0,
+            x_rx: 0.0,
+            z_rz: 0.0,
         };
 
         let geom = SceneGeometry::from_layout(&layout);
@@ -140,6 +155,8 @@ mod tests {
             x_ty: 0.005,
             x_rz: 0.008,
             z_rx: -0.004,
+            x_rx: 0.0,
+            z_rz: 0.0,
         };
 
         let geom = SceneGeometry::from_layout(&layout);

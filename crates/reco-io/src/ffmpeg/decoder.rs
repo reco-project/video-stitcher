@@ -171,6 +171,9 @@ pub struct VideoDecoder {
     height: u32,
     eof_sent: bool,
     backend: DecodeBackend,
+    /// Rotation from stream metadata (0, 90, 180, 270).
+    /// Applied to decoded frames to match the intended display orientation.
+    rotation: i32,
     /// Reusable decode buffer.
     decoded_frame: VideoFrame,
     /// CPU-side frame for hardware decode transfer.
@@ -234,6 +237,36 @@ impl VideoDecoder {
         let width = decoder.width();
         let height = decoder.height();
 
+        // Read rotation from stream side data (display matrix).
+        // Common with DJI cameras that store upside-down video with rotation=-180.
+        let rotation = unsafe {
+            let stream_ptr = ictx
+                .streams()
+                .best(Type::Video)
+                .map(|s| s.as_ptr())
+                .unwrap_or(ptr::null());
+            if !stream_ptr.is_null() {
+                let side = ffi::av_stream_get_side_data(
+                    stream_ptr,
+                    ffi::AVPacketSideDataType::AV_PKT_DATA_DISPLAYMATRIX,
+                    ptr::null_mut(),
+                );
+                if !side.is_null() {
+                    let angle = ffi::av_display_rotation_get(side as *const i32);
+                    // av_display_rotation_get returns a double; round to nearest 90
+                    ((-angle).round() as i32 % 360 + 360) % 360
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        };
+
+        if rotation != 0 {
+            log::info!("Stream has rotation={rotation} degrees, will apply to decoded frames");
+        }
+
         log::info!(
             "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
             width,
@@ -255,6 +288,7 @@ impl VideoDecoder {
             height,
             eof_sent: false,
             backend,
+            rotation,
             decoded_frame: VideoFrame::empty(),
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
@@ -291,6 +325,31 @@ impl VideoDecoder {
     pub fn fps(&self) -> f64 {
         let r = self.frame_rate();
         r.0 as f64 / r.1 as f64
+    }
+
+    /// Video duration in seconds, or `None` if unknown.
+    pub fn duration_secs(&self) -> Option<f64> {
+        let dur = self.input.duration();
+        if dur > 0 {
+            // FFmpeg reports duration in AV_TIME_BASE units (microseconds).
+            Some(dur as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE))
+        } else {
+            None
+        }
+    }
+
+    /// Seek to approximately the given timestamp in seconds.
+    ///
+    /// Seeks to the nearest keyframe before the target time, then the
+    /// caller should call `next_frame()` to advance to the exact frame.
+    /// Flushes the decoder so that subsequent frames are decoded fresh.
+    pub fn seek_to_secs(&mut self, secs: f64) -> Result<(), DecodeError> {
+        // Convert seconds to AV_TIME_BASE (microseconds)
+        let ts = (secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)) as i64;
+        self.input.seek(ts, ..ts)?;
+        self.decoder.flush();
+        self.eof_sent = false;
+        Ok(())
     }
 
     /// Decode the next YUV420P frame, or `None` if the video is finished.
@@ -583,9 +642,18 @@ impl VideoDecoder {
         let uv_w = w / 2;
         let uv_h = h / 2;
 
-        let y = extract_plane(source.data(0), source.stride(0), w, h);
-        let u = extract_plane(source.data(1), source.stride(1), uv_w, uv_h);
-        let v = extract_plane(source.data(2), source.stride(2), uv_w, uv_h);
+        let mut y = extract_plane(source.data(0), source.stride(0), w, h);
+        let mut u = extract_plane(source.data(1), source.stride(1), uv_w, uv_h);
+        let mut v = extract_plane(source.data(2), source.stride(2), uv_w, uv_h);
+
+        // Apply rotation from stream metadata.
+        // 180 degrees: reverse each row and reverse row order (equivalent to
+        // reversing the entire buffer). Zero-copy, in-place.
+        if self.rotation == 180 {
+            y.reverse();
+            u.reverse();
+            v.reverse();
+        }
 
         Ok(YuvFrame {
             y,

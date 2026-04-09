@@ -4,6 +4,7 @@
 //! reco stitch left.mp4 right.mp4 --calibration match.json -o output.mp4
 //! ```
 
+mod calibrate;
 #[cfg(feature = "gstreamer")]
 mod camera;
 mod helpers;
@@ -135,6 +136,21 @@ enum Commands {
         /// Window height in pixels.
         #[arg(long, default_value_t = 720)]
         height: u32,
+
+        /// Frame offset to sync left/right videos.
+        /// Positive: skip N right frames (right started first).
+        /// Negative: skip N left frames (left started first).
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        sync_offset: i64,
+
+        /// Seam blend width (0.0 = hard cut, 0.15 = default smooth blend).
+        #[arg(long, default_value_t = 0.15)]
+        blend: f32,
+
+        /// Rig tilt in degrees. Rotates the entire scene to compensate for
+        /// a tilted camera rig, straightening vertical lines at the edges.
+        #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
+        rig_tilt: f32,
     },
 
     /// Stitch live camera feeds in real time.
@@ -207,6 +223,109 @@ enum Commands {
         /// Detection interval: run detection every N frames (default: 1).
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
+    },
+
+    /// Calibrate two cameras: detect features and compute placement parameters.
+    Calibrate {
+        /// Path to the left camera video file.
+        left: String,
+
+        /// Path to the right camera video file.
+        right: String,
+
+        /// Path to the left camera lens profile JSON.
+        /// If omitted, auto-detects from video metadata using the
+        /// bundled Gyroflow lens profile database (4200+ profiles).
+        #[arg(long)]
+        left_profile: Option<String>,
+
+        /// Path to the right camera lens profile JSON.
+        /// If omitted, uses the same profile as --left-profile, or
+        /// auto-detects from video metadata.
+        #[arg(long)]
+        right_profile: Option<String>,
+
+        /// Number of frame pairs to sample from the video.
+        #[arg(long, default_value_t = 2)]
+        frames: usize,
+
+        /// Extract IMU telemetry to auto-detect sync offset, rig tilt,
+        /// and seed roll/pitch parameters. Overrides --sync-offset when
+        /// gyro data is available.
+        #[arg(long, default_value_t = false)]
+        auto_imu: bool,
+
+        /// Auto-detect sync offset from audio cross-correlation.
+        /// Searches +-5 minutes. Overrides --sync-offset when successful.
+        #[arg(long, default_value_t = false)]
+        auto_sync: bool,
+
+        /// Frame offset for temporal sync between cameras.
+        /// Positive: right video is ahead by N frames.
+        /// Negative: left video is ahead by N frames.
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        sync_offset: i64,
+
+        /// Seconds to skip from the start of the video (e.g. camera setup).
+        #[arg(long, default_value_t = 0.0)]
+        skip_start: f64,
+
+        /// Seconds to skip from the end of the video (e.g. teardown).
+        #[arg(long, default_value_t = 0.0)]
+        skip_end: f64,
+
+        /// AKAZE detector threshold. Lower = more features.
+        /// Default 0.0001 (sensitive). Try 0.001 for fewer but stronger features.
+        #[arg(long, default_value_t = 0.0001)]
+        akaze_threshold: f64,
+
+        /// Lowe's ratio test threshold. Higher = more matches pass.
+        /// Default 0.75. Try 0.6 for stricter matching.
+        #[arg(long, default_value_t = 0.75)]
+        lowe_ratio: f64,
+
+        /// Detection region x threshold (fraction). Left detects in [x, 1.0],
+        /// right in [0.0, 1-x]. Lower = wider detection. Default 0.5.
+        #[arg(long, default_value_t = 0.5)]
+        detect_x: f64,
+
+        /// Detection region y minimum (fraction). Skip top N% of image.
+        /// Default 0.25 (skip top 25% to avoid sky and undistortion edges).
+        #[arg(long, default_value_t = 0.25)]
+        detect_y_min: f64,
+
+        /// Detection region y maximum (fraction). Skip bottom N% of image.
+        /// Default 0.85 (skip bottom 15% to avoid ground and undistortion edges).
+        #[arg(long, default_value_t = 0.85)]
+        detect_y_max: f64,
+
+        /// Lock cam_d = half_offset (0.5 * (1 - intersect)).
+        /// Reduces optimization to 4 parameters.
+        #[arg(long, default_value_t = false)]
+        lock_cam_d: bool,
+
+        /// Lock z_rx = 0 (z-plane stays static, only translates).
+        /// Reduces optimization by 1 parameter.
+        #[arg(long, default_value_t = false)]
+        lock_z_rx: bool,
+
+        /// Drop the worst N% of points during optimization (0.0-1.0).
+        /// E.g. 0.3 = ignore worst 30%. Makes optimizer robust to outliers.
+        #[arg(long, default_value_t = 0.3)]
+        trim: f64,
+
+        /// Seam proximity weighting sigma. Lower = focus more on seam center.
+        /// Default 0.08. Try 0.12 for wider weighting.
+        #[arg(long, default_value_t = 0.08)]
+        seam_sigma: f64,
+
+        /// Directory to write debug data (keypoints, matches as JSON + images).
+        #[arg(long)]
+        debug_dir: Option<String>,
+
+        /// Output calibration JSON file path.
+        #[arg(short, long, default_value = "match.json")]
+        output: String,
     },
 
     /// Display information about the GPU and system capabilities.
@@ -292,6 +411,9 @@ fn main() -> anyhow::Result<()> {
             calibration,
             width,
             height,
+            sync_offset,
+            blend,
+            rig_tilt,
         } => {
             const MAX_DIM: u32 = 8192;
             anyhow::ensure!(
@@ -300,7 +422,16 @@ fn main() -> anyhow::Result<()> {
                 width,
                 height,
             );
-            preview::run_preview(&left, &right, &calibration, width, height)
+            preview::run_preview(
+                &left,
+                &right,
+                &calibration,
+                width,
+                height,
+                sync_offset,
+                blend,
+                rig_tilt,
+            )
         }
 
         #[cfg(feature = "gstreamer")]
@@ -361,6 +492,52 @@ fn main() -> anyhow::Result<()> {
                 &interrupted,
             )
         }
+
+        Commands::Calibrate {
+            left,
+            right,
+            left_profile,
+            right_profile,
+            frames,
+            auto_imu,
+            auto_sync,
+            sync_offset,
+            skip_start,
+            skip_end,
+            akaze_threshold,
+            lowe_ratio,
+            detect_x,
+            detect_y_min,
+            detect_y_max,
+            lock_cam_d,
+            lock_z_rx,
+            trim,
+            seam_sigma,
+            debug_dir,
+            output,
+        } => calibrate::run_calibrate(
+            &left,
+            &right,
+            left_profile.as_deref(),
+            right_profile.as_deref(),
+            frames,
+            auto_imu,
+            auto_sync,
+            sync_offset,
+            skip_start,
+            skip_end,
+            akaze_threshold,
+            lowe_ratio,
+            detect_x,
+            detect_y_min,
+            detect_y_max,
+            lock_cam_d,
+            lock_z_rx,
+            trim,
+            seam_sigma,
+            debug_dir.as_deref(),
+            &output,
+        ),
 
         Commands::Info => {
             let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;

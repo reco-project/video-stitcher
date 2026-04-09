@@ -55,7 +55,7 @@ pub enum RenderError {
 /// Uniform buffer layout (must match `Uniforms` in fisheye.wgsl exactly).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct GpuUniforms {
+pub struct GpuUniforms {
     mvp: [[f32; 4]; 4],
     intrinsics: [f32; 4],
     dist: [f32; 4],
@@ -608,6 +608,7 @@ impl Renderer {
             &scene.camera_position,
             viewport.position.yaw,
             viewport.position.pitch,
+            viewport.config.rig_tilt,
         );
 
         let left_mvp = projection * view * scene.model_matrix_left();
@@ -861,17 +862,31 @@ fn upload_nv12(
 /// planes meet) by default. This matches v1 Three.js where the OrbitControls
 /// target is `[0, 0, 0]`. `yaw` rotates around Y (left/right from center),
 /// `pitch` rotates around X (up/down).
-fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32) -> Matrix4<f32> {
+fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32, rig_tilt: f32) -> Matrix4<f32> {
     let eye = Point3::new(position[0], position[1], position[2]);
     // Base direction: eye → origin (the L-shape corner)
-    let base_forward = -eye.coords.normalize();
-    let world_up = Vector3::new(0.0, 1.0, 0.0);
+    let mut base_forward = -eye.coords.normalize();
+    let mut world_up = Vector3::new(0.0, 1.0, 0.0);
+
     // Camera's base right axis — perpendicular to view in the horizontal plane.
     // This accounts for the camera being at 45° in the XZ plane.
     let base_right = base_forward.cross(&world_up).normalize();
-    // Yaw: rotate around world Y (horizontal pan)
-    let yaw_q = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw);
-    // Pitch: rotate around the yaw-rotated camera right axis (head nod)
+
+    // Rig tilt: rotate the entire reference frame around the base right axis.
+    // This tilts "up" and "forward" so that yaw/pitch operate in the tilted
+    // coordinate system. Panning in this tilted frame naturally introduces
+    // roll that compensates for edge distortion from a tilted camera rig.
+    if rig_tilt.abs() > 1e-6 {
+        let tilt_q =
+            UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(base_right), rig_tilt);
+        base_forward = tilt_q * base_forward;
+        world_up = tilt_q * world_up;
+    }
+
+    // Yaw: rotate around the (possibly tilted) up axis
+    let up_axis = nalgebra::Unit::new_normalize(world_up);
+    let yaw_q = UnitQuaternion::from_axis_angle(&up_axis, yaw);
+    // Pitch: rotate around the yaw-rotated right axis
     let right = yaw_q * base_right;
     let pitch_q = UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(right), pitch);
     let rotation = pitch_q * yaw_q;
@@ -882,7 +897,7 @@ fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32) -> Matrix4<f32> {
 }
 
 /// Build the GPU uniform struct for one plane.
-fn build_gpu_uniforms(
+pub fn build_gpu_uniforms(
     mvp: &Matrix4<f32>,
     camera: &CameraParams,
     is_right: bool,
@@ -917,7 +932,7 @@ fn build_gpu_uniforms(
 }
 
 /// Convert a nalgebra `Matrix4` to column-major `[[f32; 4]; 4]` for wgpu.
-fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
+pub fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
     let s = m.as_slice();
     [
         [s[0], s[1], s[2], s[3]],
@@ -927,12 +942,12 @@ fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
     ]
 }
 
-/// OpenGL→wgpu clip space correction: Z from [-1,1] to [0,1].
+/// OpenGL to wgpu clip space correction: Z from \[-1,1\] to \[0,1\].
 ///
 /// nalgebra's `Perspective3` uses OpenGL conventions. wgpu expects
 /// clip space Z in [0, 1], so we apply this correction.
 #[rustfmt::skip]
-fn opengl_to_wgpu_matrix() -> Matrix4<f32> {
+pub fn opengl_to_wgpu_matrix() -> Matrix4<f32> {
     Matrix4::new(
         1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.0,
