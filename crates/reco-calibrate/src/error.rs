@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Errors produced during stitching calibration.
 #[derive(Debug, Error)]
+/// Errors from the calibration pipeline.
 pub enum CalibrateError {
     /// No keypoints were detected in a frame.
     #[error("no keypoints detected in {camera} frame {frame_idx}")]

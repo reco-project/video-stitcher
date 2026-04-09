@@ -271,6 +271,7 @@ pub fn detect_profile(
 
 /// Errors from lens profile loading.
 #[derive(Debug, thiserror::Error)]
+/// Errors from lens profile loading.
 pub enum LensLoadError {
     /// File I/O error.
     #[error("cannot read lens profile: {0}")]

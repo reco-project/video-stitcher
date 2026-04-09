@@ -15,6 +15,7 @@ const DESC_BYTES: usize = akaze::DESC_BYTES;
 
 /// A detected feature keypoint.
 #[derive(Debug, Clone, Copy)]
+/// A detected feature keypoint with pixel position and response strength.
 pub struct KeyPoint {
     /// X position in pixels.
     pub x: f32,
@@ -29,6 +30,7 @@ pub type Descriptor = [u8; DESC_BYTES];
 
 /// A raw match between two keypoint indices.
 #[derive(Debug, Clone, Copy)]
+/// A raw descriptor match between two keypoint indices.
 pub struct RawMatch {
     /// Index into the left keypoint/descriptor list.
     pub left_idx: usize,
@@ -51,6 +53,7 @@ fn hamming_distance(a: &Descriptor, b: &Descriptor) -> u32 {
 ///
 /// All values are fractions of image dimensions (0.0 - 1.0).
 #[derive(Debug, Clone, Copy)]
+/// Region of interest for feature detection (fractions of image dimensions).
 pub struct DetectRegion {
     /// Left edge of the ROI (fraction of width).
     pub x_min: f32,

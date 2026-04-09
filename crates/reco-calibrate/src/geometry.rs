@@ -318,6 +318,7 @@ pub fn angular_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
 /// Used by both the summed and trimmed variants.
 /// Configuration for seam weighting.
 #[derive(Debug, Clone, Copy)]
+/// Configuration for seam-proximity weighting in the cost function.
 pub struct SeamWeightConfig {
     /// Horizontal Gaussian sigma (seam proximity weighting).
     pub sigma_x: f64,

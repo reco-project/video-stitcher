@@ -29,6 +29,7 @@ use std::path::Path;
 
 /// Extracted telemetry data from a video file.
 #[derive(Debug, Clone)]
+/// Extracted telemetry data (gyro, accel, lens profile) from a video file.
 pub struct TelemetryData {
     /// Camera brand (e.g. "GoPro", "DJI").
     pub camera_type: String,
@@ -44,6 +45,7 @@ pub struct TelemetryData {
 
 /// A single 3-axis IMU sample with timestamp.
 #[derive(Debug, Clone, Copy)]
+/// A single 3-axis IMU sample with timestamp.
 pub struct ImuSample {
     /// Timestamp in seconds from video start.
     pub t: f64,
@@ -517,6 +519,7 @@ fn resample_signal(signal: &[(f64, f64)], t_start: f64, rate: f64, n: usize) -> 
 
 /// Errors from telemetry extraction.
 #[derive(Debug, thiserror::Error)]
+/// Errors from telemetry extraction.
 pub enum TelemetryError {
     /// File I/O error.
     #[error("telemetry I/O error: {0}")]

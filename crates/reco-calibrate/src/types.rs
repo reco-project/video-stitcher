@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 /// A grayscale image (8-bit, row-major, tightly packed).
 #[derive(Clone)]
+/// A grayscale image frame for feature detection.
 pub struct GrayFrame {
     /// Pixel data, row-major, one byte per pixel.
     pub data: Vec<u8>,
@@ -21,6 +22,8 @@ pub struct GrayFrame {
 ///
 /// Y is full resolution, U and V are half width/height.
 #[derive(Clone)]
+/// A YUV420P frame for GPU undistortion. This is what the app provides
+/// from its video decoder (reco-io, GStreamer, or custom).
 pub struct YuvFrame {
     /// Luma plane (`width * height` bytes).
     pub y: Vec<u8>,
@@ -44,6 +47,11 @@ pub struct YuvFrame {
 /// seam-proximity weighting during optimization: points near the stitch
 /// seam are weighted more heavily than points far from it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// A matched feature point pair in normalized plane coordinates.
+///
+/// Each point represents the same physical feature seen by both cameras,
+/// mapped onto the two-plane geometric model. The `left`/`right` fields
+/// use the optimizer's swap convention (right camera -> left plane, etc.).
 pub struct MatchedPoint {
     /// Point on the left plane (x-plane in optimizer space).
     pub left: [f64; 2],
@@ -75,6 +83,7 @@ impl MatchedPoint {
 
 /// Feature matching statistics for a single frame pair.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Per-frame feature matching statistics and matched points.
 pub struct FrameMatches {
     /// Matched point pairs surviving all filters.
     pub points: Vec<MatchedPoint>,
@@ -230,6 +239,7 @@ impl Default for CalibrationConfig {
 
 /// Output of a successful calibration run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Output of a successful calibration run.
 pub struct CalibrationResult {
     /// The computed calibration (ready to serialize as match.json).
     pub calibration: MatchCalibration,
