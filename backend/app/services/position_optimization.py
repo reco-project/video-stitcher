@@ -189,8 +189,11 @@ def _minimize_sum_of_angles(x_plane_points: np.ndarray, z_plane_points: np.ndarr
             "cam_d_sweep": cam_d_sweep.tolist(),
             "costs": costs,
             "optimized_params": {
-                "x_ty": float(x_ty), "intersect": float(intersect),
-                "cam_d": float(cam_d), "x_rz": float(x_rz), "z_rx": float(z_rx),
+                "x_ty": float(x_ty),
+                "intersect": float(intersect),
+                "cam_d": float(cam_d),
+                "x_rz": float(x_rz),
+                "z_rx": float(z_rx),
             },
             "final_cost": float(result.fun),
         }
