@@ -65,36 +65,22 @@ use reco_core::undistort::GpuUndistort;
 
 use types::{FrameMatches, MatchedPoint};
 
-/// Process a single frame pair through the feature matching pipeline.
+/// Process an undistorted RGBA frame pair through the feature matching pipeline.
 ///
-/// GPU-undistorts both frames to rectilinear RGBA, then detects AKAZE
-/// features on the undistorted output. This gives AKAZE clean rectilinear
-/// images where feature detection is reliable, and the resulting plane
-/// coordinates map 1:1 to the stitching shader's UV space.
+/// Takes pre-undistorted RGBA data (from GPU phase) and runs AKAZE
+/// detection, matching, and filtering. This function is thread-safe
+/// and called in parallel via rayon.
 #[allow(clippy::too_many_arguments)]
-fn process_frame_pair(
-    gpu: &GpuContext,
-    left: &YuvFrame,
-    right: &YuvFrame,
-    left_undistort: &GpuUndistort,
-    right_undistort: &GpuUndistort,
-    left_params: &CameraParams,
-    right_params: &CameraParams,
+fn process_undistorted_pair(
+    left_rgba: &[u8],
+    right_rgba: &[u8],
+    lw: u32,
+    lh: u32,
+    rw: u32,
+    rh: u32,
     frame_idx: usize,
     config: &CalibrationConfig,
 ) -> Option<FrameMatches> {
-    // GPU-undistort both frames to rectilinear RGBA.
-    // AKAZE works much better on undistorted images than raw fisheye - the
-    // strong radial distortion in KB4 fisheye degrades feature detection.
-    // The undistorted output maps 1:1 to the stitching shader's plane UV,
-    // so linear normalization gives correct plane coordinates.
-    let left_rgba = left_undistort.undistort(gpu, &left.y, &left.u, &left.v, left_params);
-    let right_rgba = right_undistort.undistort(gpu, &right.y, &right.u, &right.v, right_params);
-
-    // Undistorted output dimensions match the input dimensions
-    let (lw, lh) = (left.width, left.height);
-    let (rw, rh) = (right.width, right.height);
-
     let inner = config.spatial_x_inner as f32;
     let y_min = config.detect_y_min as f32;
     let y_max = config.detect_y_max as f32;
@@ -248,22 +234,23 @@ pub fn calibrate(
     let left_undistort = GpuUndistort::new(gpu, lw, lh);
     let right_undistort = GpuUndistort::new(gpu, rw, rh);
 
-    // Process each frame pair through the matching pipeline
-    let per_frame: Vec<Option<FrameMatches>> = frames
+    // Phase 1: GPU undistort all frames (sequential - shared GPU state)
+    let undistorted: Vec<(Vec<u8>, Vec<u8>)> = frames
         .iter()
+        .map(|(left, right)| {
+            let l_rgba = left_undistort.undistort(gpu, &left.y, &left.u, &left.v, left_params);
+            let r_rgba = right_undistort.undistort(gpu, &right.y, &right.u, &right.v, right_params);
+            (l_rgba, r_rgba)
+        })
+        .collect();
+
+    // Phase 2: AKAZE detect + match + filter (parallel - CPU bound)
+    use rayon::prelude::*;
+    let per_frame: Vec<Option<FrameMatches>> = undistorted
+        .par_iter()
         .enumerate()
-        .map(|(i, (left, right))| {
-            process_frame_pair(
-                gpu,
-                left,
-                right,
-                &left_undistort,
-                &right_undistort,
-                left_params,
-                right_params,
-                i,
-                config,
-            )
+        .map(|(i, (left_rgba, right_rgba))| {
+            process_undistorted_pair(left_rgba, right_rgba, lw, lh, rw, rh, i, config)
         })
         .collect();
 
