@@ -207,7 +207,7 @@ pub struct CalibrationConfig {
 impl Default for CalibrationConfig {
     fn default() -> Self {
         Self {
-            num_frames: 15,
+            num_frames: 2,
             lowe_ratio: 0.75,
             min_matches: 6,
             ransac_confidence: 0.995,

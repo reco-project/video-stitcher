@@ -246,7 +246,7 @@ enum Commands {
         right_profile: Option<String>,
 
         /// Number of frame pairs to sample from the video.
-        #[arg(long, default_value_t = 15)]
+        #[arg(long, default_value_t = 2)]
         frames: usize,
 
         /// Extract IMU telemetry to auto-detect sync offset, rig tilt,

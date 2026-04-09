@@ -138,10 +138,7 @@ impl Akaze {
         );
         trace!("Computing contrast factor finished.");
         // Pre-allocate diffusion buffers (reused across all evolution steps)
-        let (init_h, init_w) = (
-            evolutions[0].lt.height() as usize,
-            evolutions[0].lt.width() as usize,
-        );
+        let (init_h, init_w) = (evolutions[0].lt.height(), evolutions[0].lt.width());
         let mut diffusion_bufs = nonlinear_diffusion::DiffusionBuffers::new(init_h, init_w);
 
         for i in 1..evolutions.len() {

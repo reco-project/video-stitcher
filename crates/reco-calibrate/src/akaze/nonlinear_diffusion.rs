@@ -29,46 +29,6 @@ impl DiffusionBuffers {
     }
 }
 
-#[allow(non_snake_case)]
-pub fn calculate_step(evolution_step: &mut EvolutionStep, step_size: f32) {
-    let mut input = evolution_step.lt.mut_array2();
-    let conductivities = evolution_step.lflow.ref_array2();
-    let dim = input.dim();
-    let mut horizontal_flow = Array2::<f32>::zeros((dim.0, dim.1 - 1));
-    azip!((
-        flow in &mut horizontal_flow,
-        &a in input.slice(s![.., ..-1]),
-        &b in input.slice(s![.., 1..]),
-        &ca in conductivities.slice(s![.., ..-1]),
-        &cb in conductivities.slice(s![.., 1..]),
-    ) {
-        *flow = step_size * ca * cb * (b - a);
-    });
-    let mut vertical_flow = Array2::<f32>::zeros((dim.0 - 1, dim.1));
-    azip!((
-        flow in &mut vertical_flow,
-        &a in input.slice(s![..-1, ..]),
-        &b in input.slice(s![1.., ..]),
-        &ca in conductivities.slice(s![..-1, ..]),
-        &cb in conductivities.slice(s![1.., ..]),
-    ) {
-        *flow = step_size * ca * cb * (b - a);
-    });
-
-    input
-        .slice_mut(s![.., ..-1])
-        .zip_mut_with(&horizontal_flow, |acc, &i| *acc += i);
-    input
-        .slice_mut(s![.., 1..])
-        .zip_mut_with(&horizontal_flow, |acc, &i| *acc -= i);
-    input
-        .slice_mut(s![..-1, ..])
-        .zip_mut_with(&vertical_flow, |acc, &i| *acc += i);
-    input
-        .slice_mut(s![1.., ..])
-        .zip_mut_with(&vertical_flow, |acc, &i| *acc -= i);
-}
-
 /// Calculate a diffusion step using pre-allocated buffers.
 #[allow(non_snake_case)]
 pub fn calculate_step_buffered(

@@ -2286,6 +2286,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
+ "rayon",
 ]
 
 [[package]]
@@ -3422,6 +3423,7 @@ dependencies = [
  "nshare",
  "pollster",
  "primal",
+ "rayon",
  "realfft",
  "reco-core",
  "reco-io",
@@ -3429,6 +3431,7 @@ dependencies = [
  "serde_json",
  "telemetry-parser",
  "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]
