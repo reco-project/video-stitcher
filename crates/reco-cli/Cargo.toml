@@ -23,7 +23,7 @@ profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profili
 reco-core = { path = "../reco-core" }
 reco-io = { path = "../reco-io", features = ["ffmpeg"] }
 reco-autocam = { path = "../reco-autocam" }
-reco-calibrate = { path = "../reco-calibrate" }
+reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 log = "0.4"

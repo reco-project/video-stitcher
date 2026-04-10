@@ -52,6 +52,8 @@ pub mod sampling;
 pub mod telemetry;
 pub mod traits;
 pub mod types;
+#[cfg(feature = "io")]
+pub mod video;
 
 pub use defaults::{
     AkazeDetector, HammingMatcher, RawReprojectionCost, SeamWeightedCost, YDisparityFilter,
