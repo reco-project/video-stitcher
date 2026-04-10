@@ -2,7 +2,7 @@
 //!
 //! Provides video probing, frame extraction, and audio extraction for
 //! the calibration workflow. These functions wrap the low-level
-//! [`VideoDecoder`](super::decoder::VideoDecoder) with the specific
+//! [`VideoDecoder`] with the specific
 //! access patterns that calibration needs (random-access frames at
 //! computed indices, short audio segments for sync detection).
 //!
