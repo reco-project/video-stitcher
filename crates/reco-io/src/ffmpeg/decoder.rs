@@ -221,29 +221,28 @@ impl VideoDecoder {
 
         // Read rotation from stream side data (display matrix).
         // Common with DJI cameras that store upside-down video with rotation=-180.
-        let rotation = unsafe {
-            let stream_ptr = ictx
-                .streams()
-                .best(Type::Video)
-                .map(|s| s.as_ptr())
-                .unwrap_or(ptr::null());
-            if !stream_ptr.is_null() {
-                let side = ffi::av_stream_get_side_data(
-                    stream_ptr,
-                    ffi::AVPacketSideDataType::AV_PKT_DATA_DISPLAYMATRIX,
-                    ptr::null_mut(),
-                );
-                if !side.is_null() {
-                    let angle = ffi::av_display_rotation_get(side as *const i32);
-                    // av_display_rotation_get returns a double; round to nearest 90
-                    ((-angle).round() as i32 % 360 + 360) % 360
-                } else {
-                    0
-                }
-            } else {
-                0
-            }
-        };
+        // Uses ffmpeg-next's safe side_data() iterator which handles both
+        // FFmpeg <7 (stream side data) and FFmpeg 8+ (codecpar coded_side_data).
+        let rotation = ictx
+            .streams()
+            .best(Type::Video)
+            .and_then(|stream| {
+                stream
+                    .side_data()
+                    .find(|sd| sd.kind() == ffmpeg::codec::packet::side_data::Type::DisplayMatrix)
+                    .map(|sd| {
+                        let data = sd.data();
+                        if data.len() >= 36 {
+                            // Display matrix is 9 x int32 = 36 bytes
+                            let matrix_ptr = data.as_ptr() as *const i32;
+                            let angle = unsafe { ffi::av_display_rotation_get(matrix_ptr) };
+                            ((-angle).round() as i32 % 360 + 360) % 360
+                        } else {
+                            0
+                        }
+                    })
+            })
+            .unwrap_or(0);
 
         if rotation != 0 {
             log::info!("Stream has rotation={rotation} degrees, will apply to decoded frames");
