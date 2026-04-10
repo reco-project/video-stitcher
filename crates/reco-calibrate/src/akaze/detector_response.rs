@@ -1,3 +1,4 @@
+use super::derivatives::ScharrScratch;
 use super::evolution::EvolutionStep;
 use super::image::GrayFloatImage;
 use super::{Akaze, derivatives};
@@ -5,10 +6,18 @@ use ndarray::azip;
 
 impl Akaze {
     fn compute_multiscale_derivatives(&self, evolutions: &mut [EvolutionStep]) {
+        if evolutions.is_empty() {
+            return;
+        }
+        // Pre-allocate a single scratch buffer, reused across all Scharr
+        // calls for every evolution step.
+        let (h, w) = (evolutions[0].lt.height(), evolutions[0].lt.width());
+        let mut scratch = ScharrScratch::new(h, w);
+
         for evolution in evolutions.iter_mut() {
             let ratio = 2.0f64.powi(evolution.octave as i32);
             let sigma_size = f64::round(evolution.esigma * self.derivative_factor / ratio) as u32;
-            compute_multiscale_derivatives_for_evolution(evolution, sigma_size);
+            compute_multiscale_derivatives_for_evolution(evolution, sigma_size, &mut scratch);
         }
     }
 
@@ -31,10 +40,14 @@ impl Akaze {
     }
 }
 
-fn compute_multiscale_derivatives_for_evolution(evolution: &mut EvolutionStep, sigma_size: u32) {
-    evolution.lx = derivatives::scharr_horizontal(&evolution.lsmooth, sigma_size);
-    evolution.ly = derivatives::scharr_vertical(&evolution.lsmooth, sigma_size);
-    evolution.lxx = derivatives::scharr_horizontal(&evolution.lx, sigma_size);
-    evolution.lyy = derivatives::scharr_vertical(&evolution.ly, sigma_size);
-    evolution.lxy = derivatives::scharr_vertical(&evolution.lx, sigma_size);
+fn compute_multiscale_derivatives_for_evolution(
+    evolution: &mut EvolutionStep,
+    sigma_size: u32,
+    scratch: &mut ScharrScratch,
+) {
+    evolution.lx = derivatives::scharr_horizontal_buffered(&evolution.lsmooth, sigma_size, scratch);
+    evolution.ly = derivatives::scharr_vertical_buffered(&evolution.lsmooth, sigma_size, scratch);
+    evolution.lxx = derivatives::scharr_horizontal_buffered(&evolution.lx, sigma_size, scratch);
+    evolution.lyy = derivatives::scharr_vertical_buffered(&evolution.ly, sigma_size, scratch);
+    evolution.lxy = derivatives::scharr_vertical_buffered(&evolution.lx, sigma_size, scratch);
 }

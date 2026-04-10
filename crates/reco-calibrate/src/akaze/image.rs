@@ -1,6 +1,6 @@
 use image::{DynamicImage, ImageBuffer, Luma, imageops};
 use log::*;
-use ndarray::{Array2, ArrayView2, ArrayViewMut2, azip, s};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2};
 use nshare::{AsNdarray2, AsNdarray2Mut};
 use std::f32;
 use std::ops::{Deref, DerefMut};
@@ -126,20 +126,31 @@ pub fn fill_border(output: &mut GrayFloatImage, half_width: usize) {
 }
 
 /// Horizontal separable filter.
+///
+/// Convolves each row with `kernel` using direct slice arithmetic.
+/// A single pass accumulates all kernel taps per output pixel,
+/// maximizing cache locality along the row.
 #[inline(always)]
 pub fn horizontal_filter(image: &GrayFloatImage, kernel: &[f32]) -> GrayFloatImage {
     debug_assert!(kernel.len() % 2 == 1);
     let half = kernel.len() / 2;
     let img = image.ref_array2(); // shape: (height, width)
     let (h, w) = img.dim();
+    let klen = kernel.len();
+    let interior = w.saturating_sub(klen - 1); // valid output columns
     let mut out_arr = Array2::<f32>::zeros((h, w));
-    // Convolve along columns (axis 1) for the interior region.
-    for (ki, &kv) in kernel.iter().enumerate() {
-        let offset = ki; // source column starts at ki, output at half
-        let len = w - kernel.len() + 1; // number of valid output columns
-        let src = img.slice(s![.., offset..offset + len]);
-        let mut dst = out_arr.slice_mut(s![.., half..half + len]);
-        azip!((d in &mut dst, &s in src) { *d += kv * s; });
+    for row in 0..h {
+        let src_row = img.row(row);
+        let src = src_row.as_slice().expect("contiguous row");
+        let mut dst_row = out_arr.row_mut(row);
+        let dst = dst_row.as_slice_mut().expect("contiguous row");
+        for col in 0..interior {
+            let mut acc = 0.0f32;
+            for (ki, &kv) in kernel.iter().enumerate() {
+                acc += kv * src[col + ki];
+            }
+            dst[col + half] = acc;
+        }
     }
     let mut output = GrayFloatImage::from_array2(out_arr);
     fill_border(&mut output, half);
@@ -147,20 +158,29 @@ pub fn horizontal_filter(image: &GrayFloatImage, kernel: &[f32]) -> GrayFloatIma
 }
 
 /// Vertical separable filter.
+///
+/// Convolves each column with `kernel`. Processes one output row at a
+/// time, reading `klen` source rows and accumulating into the output
+/// row. This keeps reads sequential in memory and writes contiguous.
 #[inline(always)]
 pub fn vertical_filter(image: &GrayFloatImage, kernel: &[f32]) -> GrayFloatImage {
     debug_assert!(kernel.len() % 2 == 1);
     let half = kernel.len() / 2;
     let img = image.ref_array2(); // shape: (height, width)
-    let (h, _w) = img.dim();
-    let mut out_arr = Array2::<f32>::zeros(img.dim());
-    // Convolve along rows (axis 0) for the interior region.
-    for (ki, &kv) in kernel.iter().enumerate() {
-        let offset = ki; // source row starts at ki, output at half
-        let len = h - kernel.len() + 1; // number of valid output rows
-        let src = img.slice(s![offset..offset + len, ..]);
-        let mut dst = out_arr.slice_mut(s![half..half + len, ..]);
-        azip!((d in &mut dst, &s in src) { *d += kv * s; });
+    let (h, w) = img.dim();
+    let klen = kernel.len();
+    let interior = h.saturating_sub(klen - 1); // valid output rows
+    let mut out_arr = Array2::<f32>::zeros((h, w));
+    for out_row in 0..interior {
+        let mut dst_row = out_arr.row_mut(out_row + half);
+        let dst = dst_row.as_slice_mut().expect("contiguous row");
+        for (ki, &kv) in kernel.iter().enumerate() {
+            let src_row = img.row(out_row + ki);
+            let src = src_row.as_slice().expect("contiguous row");
+            for col in 0..w {
+                dst[col] += kv * src[col];
+            }
+        }
     }
     let mut output = GrayFloatImage::from_array2(out_arr);
     fill_border(&mut output, half);

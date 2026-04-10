@@ -186,18 +186,61 @@ impl Akaze {
             "Convolving first evolution with sigma={} Gaussian.",
             self.base_scale_offset
         );
-        let mut contrast_factor = contrast_factor::compute_contrast_factor(
-            &evolutions[0].lsmooth,
-            self.contrast_percentile,
-            1.0f64,
-            self.contrast_factor_num_bins,
-        );
-        trace!("Computing contrast factor finished.");
+
         // Pre-allocate diffusion buffers (reused across all evolution steps)
         let (init_h, init_w) = (evolutions[0].lt.height(), evolutions[0].lt.width());
         let mut diffusion_bufs = nonlinear_diffusion::DiffusionBuffers::new(init_h, init_w);
 
-        for i in 1..evolutions.len() {
+        // Compute contrast factor. When the first evolution step stays in
+        // the same octave (the common case), we can compute evolution[1]'s
+        // lsmooth/lx/ly first and reuse those gradients for the contrast
+        // factor - avoiding the redundant gaussian+scharr that
+        // compute_contrast_factor would do internally.
+        let mut contrast_factor =
+            if evolutions.len() > 1 && evolutions[1].octave == evolutions[0].octave {
+                evolutions[1].lt = evolutions[0].lt.clone();
+                evolutions[1].lsmooth = gaussian_blur(&evolutions[1].lt, 1.0f32);
+                evolutions[1].lx = derivatives::scharr_horizontal(&evolutions[1].lsmooth, 1);
+                evolutions[1].ly = derivatives::scharr_vertical(&evolutions[1].lsmooth, 1);
+
+                let cf = contrast_factor::compute_contrast_factor_from_gradients(
+                    &evolutions[1].lx,
+                    &evolutions[1].ly,
+                    self.contrast_percentile,
+                    self.contrast_factor_num_bins,
+                );
+                trace!("Computing contrast factor (reused gradients) finished.");
+
+                // Complete evolution[1]'s diffusion using the contrast factor.
+                evolutions[1].lflow = pm_g2(&evolutions[1].lx, &evolutions[1].ly, cf);
+                for j in 0..evolutions[1].fed_tau_steps.len() {
+                    let step_size = evolutions[1].fed_tau_steps[j];
+                    nonlinear_diffusion::calculate_step_buffered(
+                        &mut evolutions[1],
+                        step_size as f32,
+                        &mut diffusion_bufs,
+                    );
+                }
+                cf
+            } else {
+                let cf = contrast_factor::compute_contrast_factor(
+                    &evolutions[0].lsmooth,
+                    self.contrast_percentile,
+                    1.0f64,
+                    self.contrast_factor_num_bins,
+                );
+                trace!("Computing contrast factor finished.");
+                cf
+            };
+
+        // Start from evolution 2 if we already processed 1, otherwise from 1.
+        let start = if evolutions.len() > 1 && evolutions[1].octave == evolutions[0].octave {
+            2
+        } else {
+            1
+        };
+
+        for i in start..evolutions.len() {
             trace!("Creating evolution {}.", i);
             if evolutions[i].octave > evolutions[i - 1].octave {
                 evolutions[i].lt = evolutions[i - 1].lt.half_size();

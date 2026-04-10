@@ -80,15 +80,17 @@ pub fn camera_to_panorama(
 /// tightest bounds that keep the viewport fully within the projected
 /// image area. Use this to clamp director output for "no-black" panning.
 ///
+/// `aspect` is the viewport width/height ratio (e.g. 16/9 for 1080p).
+///
 /// Returns `(min_yaw, max_yaw, min_pitch, max_pitch)` in radians.
 pub fn viewport_bounds(
     fov_degrees: f32,
     calibration: &MatchCalibration,
     scene: &SceneGeometry,
+    aspect: f32,
 ) -> ViewportBounds {
     // fov_degrees is the VERTICAL FOV (nalgebra Perspective3 convention).
     // Derive horizontal FOV from aspect ratio using rectilinear projection.
-    let aspect = 16.0_f32 / 9.0;
     let half_vfov = (fov_degrees * 0.5).to_radians();
     let half_hfov = (half_vfov.tan() * aspect).atan();
 
@@ -515,7 +517,7 @@ mod tests {
         let scene = SceneGeometry::from_layout(&cal.layout);
 
         // Use a narrower FOV to ensure bounds are valid
-        let bounds = viewport_bounds(40.0, &cal, &scene);
+        let bounds = viewport_bounds(40.0, &cal, &scene, 16.0 / 9.0);
         assert!(
             bounds.min_yaw < bounds.max_yaw,
             "yaw range should be valid: {:.4}..{:.4}",
@@ -542,8 +544,8 @@ mod tests {
         let cal = test_calibration();
         let scene = SceneGeometry::from_layout(&cal.layout);
 
-        let narrow = viewport_bounds(30.0, &cal, &scene);
-        let wide = viewport_bounds(60.0, &cal, &scene);
+        let narrow = viewport_bounds(30.0, &cal, &scene, 16.0 / 9.0);
+        let wide = viewport_bounds(60.0, &cal, &scene, 16.0 / 9.0);
 
         // Wider FOV should produce tighter (or equal) yaw bounds
         assert!(

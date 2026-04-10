@@ -38,11 +38,21 @@ pub struct RawMatch {
     pub distance: u32,
 }
 
+/// Number of u64 words in a descriptor (64 bytes / 8 = 8 words).
+const DESC_WORDS: usize = DESC_BYTES / 8;
+
 /// Compute Hamming distance between two binary descriptors.
+///
+/// Processes 8 bytes at a time as u64 words, reducing iteration count
+/// 8x versus byte-by-byte. This is the hot inner loop of brute-force
+/// matching.
 fn hamming_distance(a: &Descriptor, b: &Descriptor) -> u32 {
     let mut dist = 0u32;
-    for i in 0..DESC_BYTES {
-        dist += (a[i] ^ b[i]).count_ones();
+    for i in 0..DESC_WORDS {
+        let off = i * 8;
+        let wa = u64::from_ne_bytes(a[off..off + 8].try_into().unwrap());
+        let wb = u64::from_ne_bytes(b[off..off + 8].try_into().unwrap());
+        dist += (wa ^ wb).count_ones();
     }
     dist
 }

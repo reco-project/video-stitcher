@@ -339,6 +339,11 @@ pub struct StitchSession {
     /// When > 0, detection runs ahead of rendering so the director
     /// anticipates action before it reaches the encoder.
     lookahead_frames: usize,
+    /// Cached viewport bounds, recomputed only when FOV changes.
+    /// The bounds depend only on calibration + FOV + viewport aspect,
+    /// all of which are constant or rarely change. Caching avoids
+    /// 660 camera_to_panorama calls per frame.
+    cached_bounds: Option<(f32, projection::ViewportBounds)>,
 }
 
 impl StitchSession {
@@ -405,6 +410,7 @@ impl StitchSession {
             detection_callback: None,
             last_detections: Vec::new(),
             lookahead_frames: 0,
+            cached_bounds: None,
         })
     }
 
@@ -663,8 +669,27 @@ impl StitchSession {
                 .position()
                 .fov_degrees
                 .unwrap_or_else(|| self.pipeline.fov());
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
+
+            // Reuse cached bounds when FOV hasn't changed.
+            // Bounds depend on calibration + FOV + aspect, all of which are
+            // constant during a session (or change very rarely via set_fov).
+            let bounds = match self.cached_bounds {
+                Some((cached_fov, ref bounds)) if (cached_fov - fov).abs() < f32::EPSILON => {
+                    *bounds
+                }
+                _ => {
+                    let aspect = self.pipeline.viewport().aspect_ratio();
+                    let b = projection::viewport_bounds(
+                        fov,
+                        self.pipeline.calibration(),
+                        &self.pipeline.scene,
+                        aspect,
+                    );
+                    self.cached_bounds = Some((fov, b));
+                    b
+                }
+            };
+
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
