@@ -600,6 +600,11 @@ impl VideoDecoder {
             "negative linesize not supported for GPU decode"
         );
 
+        log::trace!(
+            "GPU frame: y_ptr={:#x}, uv_ptr={:#x}, y_pitch={y_ls}, uv_pitch={uv_ls}, 10bit={}, {}x{}",
+            raw.data[0] as u64, raw.data[1] as u64,
+            self.is_10bit, self.width, self.height
+        );
         GpuFrame {
             y_ptr: raw.data[0] as u64,
             uv_ptr: raw.data[1] as u64,
