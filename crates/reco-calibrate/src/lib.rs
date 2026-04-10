@@ -283,7 +283,7 @@ pub fn calibrate(
 /// * `detector` - Feature detection (e.g. [`AkazeDetector`])
 /// * `matcher` - Descriptor matching (e.g. [`HammingMatcher`])
 /// * `filter` - Point filter applied after normalization to plane coordinates
-///   (e.g. [`YDisparityFilter`], [`NoOpFilter`](defaults::NoOpFilter))
+///   (e.g. [`YDisparityFilter`], [`NoOpFilter`])
 ///
 /// # Errors
 ///
