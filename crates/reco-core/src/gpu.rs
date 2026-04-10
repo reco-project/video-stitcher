@@ -228,6 +228,42 @@ impl GpuContext {
         Ok((ctx, surface_info))
     }
 
+    /// Create a GPU context from an existing wgpu device, queue, and adapter info.
+    ///
+    /// Use this when another framework (egui, bevy, etc.) already owns the
+    /// GPU device and you want to share it with reco's stitching pipeline
+    /// instead of creating a second device.
+    ///
+    /// The `adapter_info` must come from the same adapter that created the
+    /// device, since pipeline features like zero-copy decode depend on the
+    /// reported backend.
+    ///
+    /// ```rust,ignore
+    /// // egui integration:
+    /// let render_state = cc.egui_ctx.render_state().unwrap();
+    /// let gpu = GpuContext::from_device_queue(
+    ///     render_state.device.clone(),
+    ///     render_state.queue.clone(),
+    ///     render_state.adapter.get_info(),
+    /// );
+    /// ```
+    pub fn from_device_queue(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        adapter_info: wgpu::AdapterInfo,
+    ) -> Self {
+        log::info!(
+            "GpuContext from external device: {} ({:?})",
+            adapter_info.name,
+            adapter_info.backend
+        );
+        Self {
+            device,
+            queue,
+            adapter_info,
+        }
+    }
+
     /// The name of the selected GPU adapter (e.g. "NVIDIA GeForce RTX 5070").
     pub fn gpu_name(&self) -> &str {
         &self.adapter_info.name
@@ -312,5 +348,31 @@ mod tests {
             }
             Err(e) => panic!("Unexpected GPU error: {e}"),
         }
+    }
+
+    #[test]
+    fn gpu_context_from_device_queue() {
+        // Create a normal context, then reconstruct from its parts.
+        let result = pollster::block_on(GpuContext::new());
+        let original = match result {
+            Ok(ctx) => ctx,
+            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
+                eprintln!("Skipping GPU test: no adapter available");
+                return;
+            }
+            Err(e) => panic!("Unexpected GPU error: {e}"),
+        };
+
+        let name = original.gpu_name().to_owned();
+        let backend = original.backend_name().to_owned();
+        let info = original.adapter_info;
+
+        let reconstructed = GpuContext::from_device_queue(original.device, original.queue, info);
+
+        assert_eq!(reconstructed.gpu_name(), name);
+        assert_eq!(reconstructed.backend_name(), backend);
+        // Device and queue are valid (moved, not cloned)
+        let _ = reconstructed.device();
+        let _ = reconstructed.queue();
     }
 }
