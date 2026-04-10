@@ -437,6 +437,7 @@ mod tests {
             },
             rig_tilt: 0.0,
             sync_offset: 0,
+            field_roi: None,
         }
     }
 

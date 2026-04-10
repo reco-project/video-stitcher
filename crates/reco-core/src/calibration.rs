@@ -187,6 +187,31 @@ pub struct PlaneLayout {
     pub z_rz: f64,
 }
 
+/// Playing field region of interest for per-camera detection filtering.
+///
+/// Each camera has an optional polygon (normalized `[0,1]` coordinates)
+/// defining the visible playing field boundary. Detections outside this
+/// polygon are filtered before reaching the director, eliminating false
+/// positives from stands, scoreboards, and other non-field areas.
+///
+/// # JSON Format
+///
+/// ```json
+/// "field_roi": {
+///     "left": [[0.49, 0.90], [0.33, 0.73], [0.42, 0.58]],
+///     "right": [[0.63, 0.85], [0.78, 0.68], [0.55, 0.60]]
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FieldRoi {
+    /// Polygon vertices for the left camera, in normalized `[0,1]` coordinates.
+    #[serde(default)]
+    pub left: Vec<[f64; 2]>,
+    /// Polygon vertices for the right camera, in normalized `[0,1]` coordinates.
+    #[serde(default)]
+    pub right: Vec<[f64; 2]>,
+}
+
 /// Complete calibration data for a stereo match.
 ///
 /// Combines per-camera intrinsics with the relative plane layout.
@@ -230,6 +255,14 @@ pub struct MatchCalibration {
     /// Defaults to 0 for backward compatibility with older calibrations.
     #[serde(default)]
     pub sync_offset: i64,
+
+    /// Optional playing field ROI polygons for per-camera detection filtering.
+    ///
+    /// When present, detections outside the polygon for their camera are
+    /// discarded before reaching the director. This eliminates false positives
+    /// from stands, scoreboards, and other non-field areas.
+    #[serde(default)]
+    pub field_roi: Option<FieldRoi>,
 }
 
 /// Maximum calibration file size (1 MB) to prevent loading unreasonably large files.
@@ -492,6 +525,44 @@ mod tests {
         assert_eq!(cal.left.d.len(), 4);
         assert!((cal.layout.camera_axis_offset - 0.2398).abs() < 1e-4);
         assert!((cal.layout.intersect - 0.5446).abs() < 1e-4);
+        // v1 JSON has no field_roi, so it should default to None.
+        assert!(cal.field_roi.is_none());
+    }
+
+    #[test]
+    fn parse_calibration_with_field_roi() {
+        let json = r#"{
+            "left_uniforms": {
+                "width": 3840, "height": 2160,
+                "fx": 1796.32, "fy": 1797.22,
+                "cx": 1919.37, "cy": 1063.17,
+                "d": [0.0342, 0.0677, -0.0741, 0.0299]
+            },
+            "right_uniforms": {
+                "width": 3840, "height": 2160,
+                "fx": 1796.32, "fy": 1797.22,
+                "cx": 1919.37, "cy": 1063.17,
+                "d": [0.0342, 0.0677, -0.0741, 0.0299]
+            },
+            "params": {
+                "cameraAxisOffset": 0.2398,
+                "intersect": 0.5446,
+                "xTy": 0.00476,
+                "xRz": 0.00753,
+                "zRx": -0.00431
+            },
+            "field_roi": {
+                "left": [[0.49, 0.90], [0.33, 0.73], [0.42, 0.58]],
+                "right": [[0.63, 0.85], [0.78, 0.68], [0.55, 0.60]]
+            }
+        }"#;
+
+        let cal: MatchCalibration = serde_json::from_str(json).unwrap();
+        let roi = cal.field_roi.as_ref().unwrap();
+        assert_eq!(roi.left.len(), 3);
+        assert_eq!(roi.right.len(), 3);
+        assert!((roi.left[0][0] - 0.49).abs() < 1e-6);
+        assert!((roi.right[1][1] - 0.68).abs() < 1e-6);
     }
 
     // --- validation tests ---
@@ -527,6 +598,7 @@ mod tests {
             },
             rig_tilt: 0.0,
             sync_offset: 0,
+            field_roi: None,
         }
     }
 
@@ -680,6 +752,7 @@ mod tests {
                 cy: 540.0,
                 d: [0.0, 0.0, 0.0, 0.0],
             },
+            field_roi: None,
             layout: PlaneLayout {
                 camera_axis_offset: 0.25,
                 intersect: 0.5,

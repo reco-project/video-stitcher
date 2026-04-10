@@ -733,16 +733,38 @@ impl StitchSession {
         }
     }
 
-    /// Map raw detections to panorama coordinates.
+    /// Map raw detections to panorama coordinates, filtering by field ROI.
     ///
     /// Each detection's camera-space center is projected to panorama
     /// yaw/pitch via [`camera_to_panorama`](projection::camera_to_panorama).
+    /// If a `field_roi` is present in the calibration, detections whose
+    /// camera-space center falls outside the corresponding camera's polygon
+    /// are discarded before reaching the director.
     fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
+        use crate::detector::point_in_polygon;
+
         let calibration = self.pipeline.calibration();
         let scene = &self.pipeline.scene;
+        let field_roi = calibration.field_roi.as_ref();
 
         detections
             .iter()
+            .filter(|d| {
+                // If field ROI is configured, discard detections outside
+                // the playing field polygon for their camera.
+                if let Some(roi) = field_roi {
+                    let polygon = match d.camera {
+                        CameraId::Left => &roi.left,
+                        CameraId::Right => &roi.right,
+                    };
+                    // Only filter if the polygon has enough vertices.
+                    if polygon.len() >= 3 {
+                        let point = [d.center_x as f64, d.center_y as f64];
+                        return point_in_polygon(point, polygon);
+                    }
+                }
+                true
+            })
             .map(|d| {
                 let position = projection::camera_to_panorama(
                     d.camera,
