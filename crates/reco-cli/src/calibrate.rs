@@ -247,10 +247,14 @@ fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec
 
 /// Extract mono PCM audio from a video file using ffmpeg CLI.
 fn extract_audio_pcm(video_path: &str, sample_rate: u32) -> anyhow::Result<Vec<i16>> {
+    // Cap at 60 seconds - more than enough for cross-correlation sync detection.
+    // Extracting full-length audio from long recordings wastes time on HDD reads.
     let output = std::process::Command::new("ffmpeg")
         .args([
             "-i",
             video_path,
+            "-t",
+            "60",
             "-vn",
             "-ac",
             "1",

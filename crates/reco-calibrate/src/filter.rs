@@ -6,9 +6,6 @@
 //! 2. **RANSAC**: Estimates fundamental matrix and rejects geometric outliers
 //!    using the `inlier` crate's MAGSAC implementation
 
-use inlier::estimate_fundamental_matrix;
-use inlier::types::DataMatrix;
-
 use crate::features::{KeyPoint, RawMatch};
 use crate::types::CalibrationConfig;
 
@@ -105,42 +102,25 @@ pub fn ransac_filter(
 
     let n = matches.len();
 
-    // Build point matrices for inlier crate
-    let mut pts1_data = vec![0.0f64; n * 2];
-    let mut pts2_data = vec![0.0f64; n * 2];
+    let pts1: Vec<[f64; 2]> = matches
+        .iter()
+        .map(|m| {
+            let p = &kp_left[m.left_idx];
+            [p.x as f64, p.y as f64]
+        })
+        .collect();
+    let pts2: Vec<[f64; 2]> = matches
+        .iter()
+        .map(|m| {
+            let p = &kp_right[m.right_idx];
+            [p.x as f64, p.y as f64]
+        })
+        .collect();
 
-    for (i, m) in matches.iter().enumerate() {
-        let lp = &kp_left[m.left_idx];
-        let rp = &kp_right[m.right_idx];
-        pts1_data[i * 2] = lp.x as f64;
-        pts1_data[i * 2 + 1] = lp.y as f64;
-        pts2_data[i * 2] = rp.x as f64;
-        pts2_data[i * 2 + 1] = rp.y as f64;
-    }
-
-    let pts1 = DataMatrix::from_row_slice(n, 2, &pts1_data);
-    let pts2 = DataMatrix::from_row_slice(n, 2, &pts2_data);
-
-    let result = estimate_fundamental_matrix(
-        &pts1,
-        &pts2,
-        config.ransac_threshold,
-        None, // default MAGSAC settings
-    );
-
-    match result {
-        Ok(estimation) => {
-            if estimation.inliers.is_empty() {
-                Err(crate::error::CalibrateError::RansacFailed)
-            } else {
-                log::debug!(
-                    "RANSAC: {}/{} inliers (score: {:.4})",
-                    estimation.inliers.len(),
-                    n,
-                    estimation.score.value
-                );
-                Ok(estimation.inliers)
-            }
+    match crate::ransac::ransac_fundamental(&pts1, &pts2, config.ransac_threshold, 2000) {
+        Ok(inliers) => {
+            log::debug!("RANSAC: {}/{} inliers", inliers.len(), n);
+            Ok(inliers)
         }
         Err(e) => {
             log::warn!("RANSAC failed: {e}");

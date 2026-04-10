@@ -114,11 +114,12 @@ pub struct CalibrationConfig {
     pub max_y_disparity: f64,
     /// Detection region vertical minimum (fraction of height, 0.0 = top).
     /// Points above this line are excluded from feature detection.
-    /// 0.25 = skip top 25% (avoids sky and undistortion edge artifacts).
+    /// Default 0.05 (skip top 5%). The border filter handles undistortion
+    /// edge artifacts, so this only needs to exclude the extreme edges.
     pub detect_y_min: f64,
     /// Detection region vertical maximum (fraction of height, 1.0 = bottom).
     /// Points below this line are excluded from feature detection.
-    /// 0.85 = skip bottom 15% (avoids close-to-camera ground and undistortion edges).
+    /// Default 0.95 (skip bottom 5%). The border filter handles edge artifacts.
     pub detect_y_max: f64,
     /// Maximum number of keypoints to keep per image after detection,
     /// sorted by response strength. Matches v1's SIFT nfeatures behavior.
@@ -193,8 +194,8 @@ impl Default for CalibrationConfig {
             spatial_y_low: 0.2,
             spatial_y_high: 0.8,
             max_y_disparity: 0.08,
-            detect_y_min: 0.25,
-            detect_y_max: 0.85,
+            detect_y_min: 0.05,
+            detect_y_max: 0.95,
             max_keypoints: 2000,
             max_optimizer_iters: 5000,
             skip_start_secs: 0.0,

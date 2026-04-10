@@ -229,7 +229,6 @@ dependencies = [
  "paste",
  "rand",
  "rand_xoshiro",
- "rayon",
  "thiserror 2.0.18",
  "web-time",
 ]
@@ -835,68 +834,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
-name = "cxx"
-version = "1.0.194"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "747d8437319e3a2f43d93b341c137927ca70c0f5dabeea7a005a73665e247c7e"
-dependencies = [
- "cc",
- "cxx-build",
- "cxxbridge-cmd",
- "cxxbridge-flags",
- "cxxbridge-macro",
- "foldhash 0.2.0",
- "link-cplusplus",
-]
-
-[[package]]
-name = "cxx-build"
-version = "1.0.194"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0f4697d190a142477b16aef7da8a99bfdc41e7e8b1687583c0d23a79c7afc1e"
-dependencies = [
- "cc",
- "codespan-reporting",
- "indexmap",
- "proc-macro2",
- "quote",
- "scratch",
- "syn",
-]
-
-[[package]]
-name = "cxxbridge-cmd"
-version = "1.0.194"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0956799fa8678d4c50eed028f2de1c0552ae183c76e976cf7ca8c4e36a7c328"
-dependencies = [
- "clap",
- "codespan-reporting",
- "indexmap",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "cxxbridge-flags"
-version = "1.0.194"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23384a836ab4f0ad98ace7e3955ad2de39de42378ab487dc28d3990392cb283a"
-
-[[package]]
-name = "cxxbridge-macro"
-version = "1.0.194"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6acc6b5822b9526adfb4fc377b67128fdd60aac757cc4a741a6278603f763cf"
-dependencies = [
- "indexmap",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "der"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1041,21 +978,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b3e85d14d419ba3e1db925519461c0d17a49bdd2d67ea6316fa965ca7acdf74"
 dependencies = [
  "hashbrown 0.14.5",
-]
-
-[[package]]
-name = "fast_image_resize"
-version = "5.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d372ab3252d8f162d858d675a3d88a8c33ba24a6238837c50c8851911c7e89cd"
-dependencies = [
- "bytemuck",
- "cfg-if",
- "document-features",
- "image",
- "num-traits",
- "rayon",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1325,12 +1247,6 @@ dependencies = [
  "log",
  "xml-rs",
 ]
-
-[[package]]
-name = "glam"
-version = "0.30.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
 
 [[package]]
 name = "glib"
@@ -1715,21 +1631,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inlier"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa5926062ab79f8768330f58449f5b815e46fc3fc25f34fe1c207e4ea0fa6ad4"
-dependencies = [
- "argmin",
- "float-ord",
- "kornia-pnp",
- "nalgebra 0.33.2",
- "ordered-float",
- "rand",
- "usearch",
-]
-
-[[package]]
 name = "integer-encoding"
 version = "3.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1905,78 +1806,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
-name = "kornia-image"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73e229ddebbe5a19c54ca8fb9a15760ee245068f8aa549725780804a1225efa5"
-dependencies = [
- "kornia-tensor",
- "num-traits",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "kornia-imgproc"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c34f46cdc7fd9b7c785525585c4b85fc0380b941e3482fd0329e258890b3c0bd"
-dependencies = [
- "fast_image_resize",
- "kornia-image",
- "kornia-tensor",
- "num-traits",
- "rayon",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "kornia-lie"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25bd836be9a1d51d479f8dcf36a1a0bd0887726c8025a7623f60f112c36b80d9"
-dependencies = [
- "glam",
- "rand",
-]
-
-[[package]]
-name = "kornia-linalg"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "736a404ee7a5104ef2f4402a876e0fa2bee19840fc8dcf055b60ff53ada5a4e2"
-dependencies = [
- "glam",
- "nalgebra 0.32.6",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "kornia-pnp"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcd679893412dda449e4fa11c56ba866ff880b2a8d11857b6822a9dbd5c34874"
-dependencies = [
- "glam",
- "kornia-imgproc",
- "kornia-lie",
- "kornia-linalg",
- "log",
- "nalgebra 0.32.6",
- "rand",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "kornia-tensor"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "594884b54f5701221397f82d163e4d58ab4f37de76bad1803228dd98697e20db"
-dependencies = [
- "num-traits",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "kstring"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2049,15 +1878,6 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.7.3",
-]
-
-[[package]]
-name = "link-cplusplus"
-version = "1.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f78c730aaa7d0b9336a299029ea49f9ee53b0ed06e9202e8cb7db9bae7b8c82"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -2215,22 +2035,6 @@ dependencies = [
 
 [[package]]
 name = "nalgebra"
-version = "0.32.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b5c17de023a86f59ed79891b2e5d5a94c705dbe904a5b5c9c952ea6221b03e4"
-dependencies = [
- "approx",
- "matrixmultiply",
- "nalgebra-macros",
- "num-complex",
- "num-rational",
- "num-traits",
- "simba 0.8.1",
- "typenum",
-]
-
-[[package]]
-name = "nalgebra"
 version = "0.33.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26aecdf64b707efd1310e3544d709c5c0ac61c13756046aaaba41be5c4f66a3b"
@@ -2241,7 +2045,7 @@ dependencies = [
  "num-complex",
  "num-rational",
  "num-traits",
- "simba 0.9.1",
+ "simba",
  "typenum",
 ]
 
@@ -2384,7 +2188,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60f2f3256fd1d647fdaac74abad0682766a6ffde01f8ccc138f9e1c641ac997c"
 dependencies = [
  "image",
- "nalgebra 0.33.2",
+ "nalgebra",
  "ndarray 0.16.1",
 ]
 
@@ -3416,13 +3220,13 @@ dependencies = [
  "flate2",
  "float-ord",
  "image",
- "inlier",
  "log",
- "nalgebra 0.33.2",
+ "nalgebra",
  "ndarray 0.16.1",
  "nshare",
  "pollster",
  "primal",
+ "rand",
  "rayon",
  "realfft",
  "reco-core",
@@ -3468,7 +3272,7 @@ dependencies = [
  "libc",
  "libloading 0.9.0",
  "log",
- "nalgebra 0.33.2",
+ "nalgebra",
  "objc2 0.6.4",
  "objc2-core-ml",
  "objc2-foundation 0.3.2",
@@ -3684,12 +3488,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "scratch"
-version = "1.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d68f2ec51b097e4c1a75b681a8bec621909b5e91f15bb7b840c4f2f7b01148b2"
-
-[[package]]
 name = "sctk-adwaita"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3811,19 +3609,6 @@ name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
-
-[[package]]
-name = "simba"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061507c94fc6ab4ba1c9a0305018408e312e17c041eb63bef8aa726fa33aceae"
-dependencies = [
- "approx",
- "num-complex",
- "num-traits",
- "paste",
- "wide",
-]
 
 [[package]]
 name = "simba"
@@ -4342,16 +4127,6 @@ dependencies = [
  "http",
  "httparse",
  "log",
-]
-
-[[package]]
-name = "usearch"
-version = "2.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09657b7d3d88992d7475be6f345d3cb3b388d13c152dbd4742e0b955e3a2b632"
-dependencies = [
- "cxx",
- "cxx-build",
 ]
 
 [[package]]
