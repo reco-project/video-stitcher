@@ -30,6 +30,11 @@ pub struct FfmpegFileSource {
     rx: std::sync::mpsc::Receiver<FramePair>,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
+    /// Whether the source is 10-bit (P010 on NVDEC).
+    is_10bit: bool,
+    /// Rotation from stream metadata (0, 90, 180, 270).
+    left_rotation: i32,
+    right_rotation: i32,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -64,7 +69,14 @@ impl FfmpegFileSource {
             fps: probe.fps(),
         };
         let decode_backend = probe.backend();
+        let is_10bit = probe.is_10bit();
+        let left_rotation = probe.rotation();
         drop(probe);
+
+        // Probe right video for its rotation (may differ from left).
+        let right_rotation = ffmpeg::decoder::VideoDecoder::open(right_path)
+            .map(|d| d.rotation())
+            .unwrap_or(0);
 
         let left = left_path.to_path_buf();
         let right = right_path.to_path_buf();
@@ -74,12 +86,30 @@ impl FfmpegFileSource {
             rx,
             info,
             decode_backend,
+            is_10bit,
+            left_rotation,
+            right_rotation,
         })
     }
 
     /// The decode backend selected during probe (CUDA, VAAPI, or software).
     pub fn decode_backend(&self) -> ffmpeg::decoder::DecodeBackend {
         self.decode_backend
+    }
+
+    /// Whether the source is 10-bit (P010 on NVDEC, e.g. DJI Action 4 HEVC).
+    pub fn is_10bit(&self) -> bool {
+        self.is_10bit
+    }
+
+    /// Left stream rotation from metadata (0, 90, 180, 270 degrees).
+    pub fn left_rotation(&self) -> i32 {
+        self.left_rotation
+    }
+
+    /// Right stream rotation from metadata.
+    pub fn right_rotation(&self) -> i32 {
+        self.right_rotation
     }
 
     /// Whether this source's decode backend supports zero-copy GPU transfer.

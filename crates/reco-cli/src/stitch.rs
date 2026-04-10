@@ -70,9 +70,12 @@ pub fn run_stitch(
         );
     }
 
-    // Detect zero-copy capability
+    // Detect zero-copy capability and source properties
     let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
     let use_zero_copy = reco_io::adapters::detect_zero_copy(source.as_ref().unwrap(), &gpu);
+    let is_10bit = source.as_ref().unwrap().is_10bit();
+    let left_rotation = source.as_ref().unwrap().left_rotation();
+    let right_rotation = source.as_ref().unwrap().right_rotation();
 
     let input_format = if use_zero_copy {
         reco_core::renderer::InputFormat::Nv12
@@ -154,6 +157,18 @@ pub fn run_stitch(
     #[cfg(target_os = "linux")]
     if use_zero_copy {
         source.take();
+        // Apply 180-degree rotation via shader UV flip for the zero-copy path.
+        // The CPU path handles this by reversing YUV buffers in the decoder.
+        if left_rotation == 180 || right_rotation == 180 {
+            session
+                .pipeline_mut()
+                .set_flip_180(left_rotation == 180, right_rotation == 180);
+            log::info!(
+                "Zero-copy: UV flip left={}, right={}",
+                left_rotation == 180,
+                right_rotation == 180
+            );
+        }
         frame_count = run_zero_copy_linux(
             &mut session,
             left,
@@ -162,6 +177,7 @@ pub fn run_stitch(
             input_height,
             frame_limit,
             effective_sync,
+            is_10bit,
             interrupted,
             &progress,
         )?;
@@ -178,6 +194,17 @@ pub fn run_stitch(
     #[cfg(target_os = "macos")]
     if use_zero_copy {
         source.take();
+        // Apply 180-degree rotation via shader UV flip for the zero-copy path.
+        if left_rotation == 180 || right_rotation == 180 {
+            session
+                .pipeline_mut()
+                .set_flip_180(left_rotation == 180, right_rotation == 180);
+            log::info!(
+                "Zero-copy: UV flip left={}, right={}",
+                left_rotation == 180,
+                right_rotation == 180
+            );
+        }
         frame_count = run_zero_copy_macos(
             &mut session,
             left,
@@ -264,10 +291,11 @@ fn run_zero_copy_linux(
     input_height: u32,
     frame_limit: u64,
     sync_offset: i64,
+    is_10bit: bool,
     interrupted: &Arc<AtomicBool>,
     progress: &crate::helpers::ProgressReporter,
 ) -> anyhow::Result<u64> {
-    let mut shared = session.create_shared_textures(input_width, input_height)?;
+    let mut shared = session.create_shared_textures(input_width, input_height, is_10bit)?;
 
     let decode_handles = reco_io::zero_copy::spawn_decode_threads_gpu(
         left.to_string(),

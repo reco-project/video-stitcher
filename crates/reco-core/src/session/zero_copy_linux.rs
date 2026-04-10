@@ -43,28 +43,35 @@ impl StitchSession {
     /// `GpuBufInfo` for each camera (CUDA pointers for decode threads),
     /// and slot-free channels for backpressure.
     ///
+    /// `is_10bit` selects 16-bit texture formats (R16Unorm/Rg16Unorm) for
+    /// P010 sources (10-bit HEVC from e.g. DJI Action 4).
+    ///
     /// Call this once during setup, then pass the results to
     /// [`Self::run_zero_copy_linux`].
     pub fn create_shared_textures(
         &mut self,
         input_width: u32,
         input_height: u32,
+        is_10bit: bool,
     ) -> Result<SharedTextureSet, SessionError> {
-        log::info!("Creating shared textures for zero-copy...");
+        log::info!("Creating shared textures for zero-copy (10-bit={is_10bit})...");
 
         let gpu = self.pipeline.gpu();
-        let create_pair =
-            |label: &str, slot: usize| -> Result<(SharedTexture, SharedTexture), SessionError> {
-                let y = create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Y)
+        let create_pair = |label: &str,
+                           slot: usize|
+         -> Result<(SharedTexture, SharedTexture), SessionError> {
+            let y =
+                create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Y, is_10bit)
                     .map_err(|e| {
                         SessionError::ZeroCopy(format!("{label} Y[{slot}] shared texture: {e}"))
                     })?;
-                let uv = create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Uv)
+            let uv =
+                create_nv12_shared_texture(gpu, input_width, input_height, Nv12Plane::Uv, is_10bit)
                     .map_err(|e| {
                         SessionError::ZeroCopy(format!("{label} UV[{slot}] shared texture: {e}"))
                     })?;
-                Ok((y, uv))
-            };
+            Ok((y, uv))
+        };
 
         let (left_y_0, left_uv_0) = create_pair("left", 0)?;
         let (left_y_1, left_uv_1) = create_pair("left", 1)?;
@@ -86,6 +93,7 @@ impl StitchSession {
             uv_pitch: [left_uv_0.pitch, left_uv_1.pitch],
             width: input_width,
             height: input_height,
+            is_10bit,
         };
         let right_buf = GpuBufInfo {
             y_ptr: [right_y_0.cuda_ptr, right_y_1.cuda_ptr],
@@ -94,6 +102,7 @@ impl StitchSession {
             uv_pitch: [right_uv_0.pitch, right_uv_1.pitch],
             width: input_width,
             height: input_height,
+            is_10bit,
         };
 
         // Slot-free channels: decode threads wait for a slot to be released

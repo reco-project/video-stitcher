@@ -130,7 +130,7 @@ impl GpuContext {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
-                required_features: wgpu::Features::empty(),
+                required_features: wgpu::Features::TEXTURE_FORMAT_16BIT_NORM,
                 required_limits: wgpu::Limits::downlevel_defaults()
                     .using_resolution(adapter.limits()),
                 ..Default::default()
@@ -213,7 +213,7 @@ impl GpuContext {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
-                required_features: wgpu::Features::empty(),
+                required_features: wgpu::Features::TEXTURE_FORMAT_16BIT_NORM,
                 required_limits: wgpu::Limits::downlevel_defaults()
                     .using_resolution(adapter.limits()),
                 ..Default::default()

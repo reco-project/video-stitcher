@@ -264,6 +264,8 @@ fn format_bytes_per_pixel(format: wgpu::TextureFormat) -> usize {
     match format {
         wgpu::TextureFormat::R8Unorm => 1,
         wgpu::TextureFormat::Rg8Unorm => 2,
+        wgpu::TextureFormat::R16Unorm => 2,
+        wgpu::TextureFormat::Rg16Unorm => 4,
         wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => 4,
         _ => panic!("unsupported format for CUDA interop: {format:?}"),
     }
@@ -274,6 +276,8 @@ fn wgpu_format_to_vk(format: wgpu::TextureFormat) -> ash::vk::Format {
     match format {
         wgpu::TextureFormat::R8Unorm => ash::vk::Format::R8_UNORM,
         wgpu::TextureFormat::Rg8Unorm => ash::vk::Format::R8G8_UNORM,
+        wgpu::TextureFormat::R16Unorm => ash::vk::Format::R16_UNORM,
+        wgpu::TextureFormat::Rg16Unorm => ash::vk::Format::R16G16_UNORM,
         wgpu::TextureFormat::Rgba8Unorm => ash::vk::Format::R8G8B8A8_UNORM,
         wgpu::TextureFormat::Rgba8UnormSrgb => ash::vk::Format::R8G8B8A8_SRGB,
         _ => panic!("unsupported format for Vulkan interop: {format:?}"),
@@ -283,9 +287,9 @@ fn wgpu_format_to_vk(format: wgpu::TextureFormat) -> ash::vk::Format {
 /// NV12 plane identifier for [`create_nv12_shared_texture`].
 #[derive(Debug, Clone, Copy)]
 pub enum Nv12Plane {
-    /// Luminance plane (full resolution, `R8Unorm`).
+    /// Luminance plane (full resolution, `R8Unorm` or `R16Unorm` for 10-bit).
     Y,
-    /// Chrominance plane (half resolution in each dimension, `Rg8Unorm`).
+    /// Chrominance plane (half resolution in each dimension, `Rg8Unorm` or `Rg16Unorm` for 10-bit).
     Uv,
 }
 
@@ -293,19 +297,33 @@ pub enum Nv12Plane {
 ///
 /// This is a convenience wrapper around [`create_shared_texture`] that
 /// infers the format and dimensions from the plane type:
-/// - `Y`: full `width` x `height`, `R8Unorm`
-/// - `UV`: `width/2` x `height/2`, `Rg8Unorm`
+/// - `Y`: full `width` x `height`, `R8Unorm` (8-bit) or `R16Unorm` (10-bit P010)
+/// - `UV`: `width/2` x `height/2`, `Rg8Unorm` (8-bit) or `Rg16Unorm` (10-bit P010)
+///
+/// When `is_10bit` is true, 16-bit-per-component formats are used to match
+/// NVDEC's P010 output where each sample is stored as a uint16 with the
+/// value in the upper 10 bits. `R16Unorm` / `Rg16Unorm` normalize to [0,1]
+/// in the shader just like 8-bit formats, so the shader works unchanged.
 #[cfg(target_os = "linux")]
 pub fn create_nv12_shared_texture(
     gpu: &GpuContext,
     width: u32,
     height: u32,
     plane: Nv12Plane,
+    is_10bit: bool,
 ) -> Result<SharedTexture, CudaInteropError> {
-    match plane {
-        Nv12Plane::Y => create_shared_texture(gpu, width, height, wgpu::TextureFormat::R8Unorm),
-        Nv12Plane::Uv => {
+    match (plane, is_10bit) {
+        (Nv12Plane::Y, false) => {
+            create_shared_texture(gpu, width, height, wgpu::TextureFormat::R8Unorm)
+        }
+        (Nv12Plane::Uv, false) => {
             create_shared_texture(gpu, width / 2, height / 2, wgpu::TextureFormat::Rg8Unorm)
+        }
+        (Nv12Plane::Y, true) => {
+            create_shared_texture(gpu, width, height, wgpu::TextureFormat::R16Unorm)
+        }
+        (Nv12Plane::Uv, true) => {
+            create_shared_texture(gpu, width / 2, height / 2, wgpu::TextureFormat::Rg16Unorm)
         }
     }
 }

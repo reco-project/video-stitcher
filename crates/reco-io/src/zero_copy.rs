@@ -78,13 +78,20 @@ pub fn spawn_single_decoder_gpu(
                             break;
                         }
 
+                        // Byte width for CUDA copy depends on bit depth:
+                        // - 8-bit NV12: Y = width bytes, UV = width bytes (2 bytes per pair)
+                        // - 10-bit P010: Y = width * 2 bytes (uint16), UV = width * 2 bytes
+                        let bpp = if buf.is_10bit { 2 } else { 1 };
+                        let y_width_bytes = buf.width as usize * bpp;
+                        let uv_width_bytes = buf.width as usize * bpp; // UV is half-width but 2 components
+
                         // Copy Y plane: NVDEC -> shared texture
                         if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
                             buf.y_ptr[s],
                             buf.y_pitch[s],
                             frame.y_ptr,
                             frame.y_pitch,
-                            buf.width as usize,
+                            y_width_bytes,
                             buf.height as usize,
                         ) {
                             log::error!("{label} cuMemcpy2D Y: {e}");
@@ -97,7 +104,7 @@ pub fn spawn_single_decoder_gpu(
                             buf.uv_pitch[s],
                             frame.uv_ptr,
                             frame.uv_pitch,
-                            buf.width as usize,
+                            uv_width_bytes,
                             buf.height as usize / 2,
                         ) {
                             log::error!("{label} cuMemcpy2D UV: {e}");

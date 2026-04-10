@@ -473,6 +473,15 @@ impl StitchPipeline {
         )
     }
 
+    /// Enable 180-degree UV flip for the GPU zero-copy path.
+    ///
+    /// When set, the shader flips texture coordinates before sampling,
+    /// equivalent to the CPU path's buffer reversal for rotated video
+    /// (e.g., DJI cameras with rotation=180 metadata).
+    pub fn set_flip_180(&mut self, left: bool, right: bool) {
+        self.renderer.set_flip_180(left, right);
+    }
+
     /// Access the rendered RGBA texture for NV12 conversion.
     pub fn render_target(&self) -> &wgpu::Texture {
         self.renderer.render_target()

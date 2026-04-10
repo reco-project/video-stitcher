@@ -25,6 +25,10 @@ pub struct GpuBufInfo {
     pub width: u32,
     /// Frame height in pixels.
     pub height: u32,
+    /// True for 10-bit sources (P010). Affects CUDA copy width_bytes:
+    /// 8-bit: width bytes for Y, width bytes for UV.
+    /// 10-bit: width * 2 bytes for Y, width * 2 bytes for UV (uint16 per component).
+    pub is_10bit: bool,
 }
 
 /// A pair of double-buffer slot indices from the decode threads.

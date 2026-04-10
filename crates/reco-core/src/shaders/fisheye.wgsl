@@ -20,7 +20,9 @@ struct Uniforms {
     color_offset_blend: vec4<f32>,
     // flags.x: is_right (0 or 1)
     // flags.y: use_nv12 (0 = YUV420P: separate U,V textures; 1 = NV12: interleaved UV in t_u)
-    // flags.zw: reserved
+    // flags.z: flip_180 (0 or 1) - flip UV coordinates for 180-degree rotation
+    //          Used by the GPU zero-copy path where buffer reversal is not possible.
+    // flags.w: reserved
     flags: vec4<u32>,
 };
 
@@ -97,20 +99,27 @@ fn apply_color_transfer(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> 
 /// we linearize with srgb_to_linear to match the Rgba8UnormSrgb
 /// auto-decode path (identical visual output to the old RGBA upload).
 fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
-    let y_raw = textureSample(t_y, s_video, uv).r;
+    // Apply 180-degree rotation for the GPU zero-copy path.
+    // The CPU path reverses buffers in software; the GPU path flips UV coords instead.
+    var sample_uv = uv;
+    if u.flags.z == 1u {
+        sample_uv = vec2<f32>(1.0 - uv.x, 1.0 - uv.y);
+    }
+
+    let y_raw = textureSample(t_y, s_video, sample_uv).r;
 
     var u_raw: f32;
     var v_raw: f32;
 
     if u.flags.y == 1u {
-        // NV12: t_u is Rg8Unorm with interleaved (U, V)
-        let uv_sample = textureSample(t_u, s_video, uv);
+        // NV12: t_u is Rg8Unorm (or Rg16Unorm for 10-bit) with interleaved (U, V)
+        let uv_sample = textureSample(t_u, s_video, sample_uv);
         u_raw = uv_sample.r;
         v_raw = uv_sample.g;
     } else {
         // YUV420P: separate R8 textures
-        u_raw = textureSample(t_u, s_video, uv).r;
-        v_raw = textureSample(t_v, s_video, uv).r;
+        u_raw = textureSample(t_u, s_video, sample_uv).r;
+        v_raw = textureSample(t_v, s_video, sample_uv).r;
     }
 
     // BT.709 limited-range YCbCr → full-range R'G'B'

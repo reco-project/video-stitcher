@@ -180,6 +180,10 @@ pub(crate) struct Renderer {
     sampler: wgpu::Sampler,
     /// Device handle for creating bind groups (Arc-based, cheap to clone).
     device: wgpu::Device,
+    /// Whether to flip UV coordinates for 180-degree rotation per camera [left, right].
+    /// Set by the zero-copy path when the source video has rotation metadata.
+    /// The CPU decode path handles rotation by reversing buffers instead.
+    flip_180: [bool; 2],
 }
 
 impl Renderer {
@@ -364,6 +368,7 @@ impl Renderer {
             texture_layout,
             sampler,
             device: device.clone(),
+            flip_180: [false, false],
         }
     }
 
@@ -589,6 +594,14 @@ impl Renderer {
         self.right.texture_bind_group = bind_group;
     }
 
+    /// Enable 180-degree UV flip for the GPU zero-copy path.
+    ///
+    /// When set, the shader flips texture coordinates before sampling,
+    /// equivalent to the CPU path's buffer reversal for rotated video.
+    pub fn set_flip_180(&mut self, left: bool, right: bool) {
+        self.flip_180 = [left, right];
+    }
+
     /// Encode the shared stitch render pass: projection, uniforms, and draw calls.
     ///
     /// Returns the command encoder with the render pass already recorded.
@@ -627,6 +640,7 @@ impl Renderer {
             false,
             blend_width,
             self.input_format,
+            self.flip_180[0],
         );
 
         let right_mvp = projection * view * scene.model_matrix_right();
@@ -636,6 +650,7 @@ impl Renderer {
             true,
             blend_width,
             self.input_format,
+            self.flip_180[1],
         );
 
         gpu.queue.write_buffer(
@@ -906,12 +921,17 @@ fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32, rig_tilt: f32) -> Matr
 }
 
 /// Build the GPU uniform struct for one plane.
+///
+/// `flip_180`: when true, the shader flips UV coordinates to apply
+/// 180-degree rotation. Used by the GPU zero-copy path where the CPU
+/// buffer-reversal trick from the software decode path is not possible.
 pub(crate) fn build_gpu_uniforms(
     mvp: &Matrix4<f32>,
     camera: &CameraParams,
     is_right: bool,
     blend_width: f32,
     input_format: InputFormat,
+    flip_180: bool,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -934,7 +954,7 @@ pub(crate) fn build_gpu_uniforms(
         flags: [
             is_right as u32,
             (input_format == InputFormat::Nv12) as u32,
-            0,
+            flip_180 as u32,
             0,
         ],
     }
@@ -981,7 +1001,7 @@ mod tests {
             d: [0.0342, 0.0677, -0.0741, 0.0299],
         };
         let mvp = Matrix4::identity();
-        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0, InputFormat::Yuv420p);
+        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0, InputFormat::Yuv420p, false);
 
         // fx/width ≈ 0.4678
         assert!((u.intrinsics[0] - 1796.32 / 3840.0).abs() < 1e-4);

@@ -74,6 +74,13 @@ pub struct GpuFrame {
     pub height: u32,
     /// Presentation timestamp in microseconds.
     pub timestamp_us: i64,
+    /// True when the source is 10-bit (P010 format: 16-bit per component NV12).
+    /// The shared textures must use R16Unorm/Rg16Unorm instead of R8Unorm/Rg8Unorm.
+    pub is_10bit: bool,
+    /// Rotation from stream metadata (0, 90, 180, 270).
+    /// The GPU zero-copy path must apply this in the shader since it cannot
+    /// flip buffers on the CPU like the software decode path does.
+    pub rotation: i32,
 }
 
 /// A decoded frame from VideoToolbox, holding a `CVPixelBufferRef`.
@@ -157,6 +164,9 @@ pub struct VideoDecoder {
     /// Rotation from stream metadata (0, 90, 180, 270).
     /// Applied to decoded frames to match the intended display orientation.
     rotation: i32,
+    /// True when the source is 10-bit (P010 format: 16-bit per component NV12).
+    /// Detected from the stream's codec pixel format (yuv420p10le/yuv420p10be).
+    is_10bit: bool,
     /// Reusable decode buffer.
     decoded_frame: VideoFrame,
     /// CPU-side frame for hardware decode transfer.
@@ -263,6 +273,26 @@ impl VideoDecoder {
             log::info!("Stream has rotation={rotation} degrees, will apply to decoded frames");
         }
 
+        // Detect 10-bit source from the codec parameters pixel format.
+        // NVDEC reports Pixel::CUDA as its format, but the underlying surface is
+        // P010 when the source is 10-bit HEVC (e.g. DJI Action 4). We check the
+        // original stream parameters before hwaccel overrides the format.
+        let is_10bit = {
+            let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
+            let pix_fmt = unsafe { std::mem::transmute::<i32, ffi::AVPixelFormat>(raw_codecpar.format) };
+            let pixel = Pixel::from(pix_fmt);
+            let is_10 = matches!(
+                pixel,
+                Pixel::YUV420P10LE | Pixel::YUV420P10BE | Pixel::P010LE | Pixel::P010BE
+            );
+            if is_10 {
+                log::info!(
+                    "Source is 10-bit ({pixel:?}), GPU textures will use R16Unorm/Rg16Unorm"
+                );
+            }
+            is_10
+        };
+
         log::info!(
             "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
             width,
@@ -288,6 +318,7 @@ impl VideoDecoder {
             eof_sent: false,
             backend,
             rotation,
+            is_10bit,
             decoded_frame: VideoFrame::empty(),
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
@@ -311,6 +342,23 @@ impl VideoDecoder {
     /// Frame height in pixels.
     pub fn height(&self) -> u32 {
         self.height
+    }
+
+    /// Whether the source is 10-bit (P010 format on NVDEC).
+    ///
+    /// When true, GPU shared textures must use `R16Unorm` / `Rg16Unorm`
+    /// instead of `R8Unorm` / `Rg8Unorm` to correctly read the 16-bit
+    /// per component samples.
+    pub fn is_10bit(&self) -> bool {
+        self.is_10bit
+    }
+
+    /// Rotation from stream metadata (0, 90, 180, 270 degrees).
+    ///
+    /// The CPU decode path applies this by reversing buffers in `extract_yuv`.
+    /// The GPU zero-copy path must apply it in the shader (UV flip).
+    pub fn rotation(&self) -> i32 {
+        self.rotation
     }
 
     /// Frame rate as an FFmpeg rational (numerator/denominator).
@@ -560,6 +608,8 @@ impl VideoDecoder {
             width: self.width,
             height: self.height,
             timestamp_us,
+            is_10bit: self.is_10bit,
+            rotation: self.rotation,
         }
     }
 
