@@ -240,6 +240,27 @@ impl LensDatabase {
         self.find(camera_type, model, width, height, lens_info)
     }
 
+    /// Find a profile by resolution only (no camera identification).
+    ///
+    /// Searches all profiles for an exact resolution match. If multiple
+    /// cameras share the same resolution, returns the first match.
+    /// This is the last-resort fallback when telemetry extraction fails.
+    pub fn find_by_resolution(&self, width: u32, height: u32) -> Option<CameraParams> {
+        for p in &self.profiles {
+            if p.width == width && p.height == height {
+                log::info!(
+                    "lens auto-detect: resolution-only match {}x{} from {} ({})",
+                    width,
+                    height,
+                    p.brand,
+                    p.source
+                );
+                return Some(p.params.clone());
+            }
+        }
+        None
+    }
+
     /// Number of loaded profiles.
     pub fn len(&self) -> usize {
         self.profiles.len()
@@ -297,31 +318,43 @@ pub fn detect_profile(
     db: &LensDatabase,
 ) -> Option<CameraParams> {
     let tel = match crate::telemetry::extract(video_path) {
-        Ok(t) => t,
+        Ok(t) => Some(t),
         Err(e) => {
             log::warn!("lens auto-detect: telemetry extraction failed: {e}");
-            return None;
+            None
         }
     };
 
-    // 1. Embedded lens profile (DJI cameras embed in metadata)
-    if let Some(ref profile) = tel.lens_profile {
-        log::info!(
-            "lens auto-detect: embedded profile from {} {}",
-            tel.camera_type,
-            tel.camera_model.as_deref().unwrap_or("?")
-        );
-        return Some(profile.clone());
+    if let Some(ref tel) = tel {
+        // 1. Embedded lens profile (DJI cameras embed in metadata)
+        if let Some(ref profile) = tel.lens_profile {
+            log::info!(
+                "lens auto-detect: embedded profile from {} {}",
+                tel.camera_type,
+                tel.camera_model.as_deref().unwrap_or("?")
+            );
+            return Some(profile.clone());
+        }
+
+        // 2. Database lookup by camera identification + FOV mode
+        if let Some(params) = db.find_from_telemetry(
+            &tel.camera_type,
+            tel.camera_model.as_deref(),
+            video_width,
+            video_height,
+            tel.lens_info.as_deref(),
+        ) {
+            return Some(params);
+        }
     }
 
-    // 2. Database lookup by camera identification + FOV mode
-    db.find_from_telemetry(
-        &tel.camera_type,
-        tel.camera_model.as_deref(),
+    // 3. Fallback: resolution-only database search (no telemetry available)
+    log::info!(
+        "lens auto-detect: trying resolution-only lookup for {}x{}",
         video_width,
-        video_height,
-        tel.lens_info.as_deref(),
-    )
+        video_height
+    );
+    db.find_by_resolution(video_width, video_height)
 }
 
 /// Errors from lens profile loading.
