@@ -177,25 +177,16 @@ impl StitchSession {
                 }
             };
 
-            // SYNC NOTE (#103): CUDA-Vulkan cross-API synchronization.
+            // CUDA-Vulkan sync (#103): the decode thread called
+            // cuCtxSynchronize() before sending this signal, draining
+            // all CUDA work. Correct but serializes decode and render
+            // on the CPU timeline (no decode/render overlap).
             //
-            // The decode thread called cuCtxSynchronize() before sending this
-            // signal, which drains all CUDA work (memcpy2D to shared texture).
-            // This is the same approach Gyroflow uses - full CPU-side pipeline
-            // drains rather than GPU-level semaphores. Their pattern:
-            //   Input:  cuCtxSynchronize() before + after CUDA writes
-            //   Output: device.poll(Wait) before CUDA reads
-            //
-            // Proper cross-API sync requires VK_KHR_external_semaphore with
-            // cuImportExternalSemaphore/cuSignalExternalSemaphore, but wgpu
-            // does not expose semaphore injection into queue submission.
-            // Implementing it would require either a wgpu fork or direct ash
-            // queue submission bypassing wgpu. Gyroflow faces the same
-            // limitation and uses the same brute-force approach.
-            //
-            // This is correct but serializes GPU work across APIs on the CPU
-            // timeline. A future optimization with timeline semaphores would
-            // allow CUDA decode and Vulkan render to overlap. See #103.
+            // The proper fix is VK_KHR_external_semaphore timeline
+            // semaphores so CUDA and Vulkan synchronize on the GPU.
+            // wgpu has signal support (gfx-rs/wgpu#6813) but wait
+            // support is pending (gfx-rs/wgpu#8996, blocked on the
+            // multi-queue RFC gfx-rs/wgpu#8844).
             self.detect_and_update_director_gpu(
                 &left_buf,
                 &right_buf,
