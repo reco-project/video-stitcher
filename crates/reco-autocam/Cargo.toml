@@ -2,6 +2,7 @@
 name = "reco-autocam"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Automatic camera control for reco: YOLO ball detector, EMA smoothing, ball-tracking director"

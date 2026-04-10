@@ -83,6 +83,15 @@ use reco_core::undistort::GpuUndistort;
 
 use types::{FrameMatches, MatchedPoint};
 
+/// Number of total matched points at which calibration confidence reaches 1.0.
+///
+/// Confidence is computed as `min(total_matches / FULL_CONFIDENCE_MATCHES, 1.0)`.
+/// With 50 matches, confidence saturates at 100%. Fewer matches reduce
+/// confidence linearly (e.g. 25 matches = 50% confidence). This threshold
+/// is empirically chosen: 50 well-distributed matches across multiple frames
+/// reliably produce sub-pixel calibration.
+const FULL_CONFIDENCE_MATCHES: f64 = 50.0;
+
 /// Process an undistorted RGBA frame pair through the feature matching pipeline.
 ///
 /// Takes pre-undistorted RGBA data (from GPU phase) and runs feature
@@ -430,7 +439,7 @@ pub fn calibrate_with(
         e
     })?;
 
-    let confidence = (total_matches as f64 / 50.0).min(1.0);
+    let confidence = (total_matches as f64 / FULL_CONFIDENCE_MATCHES).min(1.0);
 
     // Log both metrics for diagnostic comparison
     let best_params = geometry::OptParams {

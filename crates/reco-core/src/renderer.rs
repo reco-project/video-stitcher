@@ -40,6 +40,14 @@ const NEAR_PLANE: f32 = 0.01;
 /// Far clipping plane for the perspective projection.
 const FAR_PLANE: f32 = 5.0;
 /// Aspect ratio of scene planes (matches GoPro 16:9 capture).
+///
+/// Deprecated: derive the aspect ratio from camera parameters instead.
+/// Use [`SceneGeometry::from_layout_with_aspect`](crate::scene::SceneGeometry::from_layout_with_aspect)
+/// with `camera.width as f32 / camera.height as f32`.
+#[deprecated(
+    since = "0.1.0",
+    note = "derive aspect ratio from camera parameters (width/height) instead"
+)]
 pub const PLANE_ASPECT: f32 = 16.0 / 9.0;
 
 /// Errors from the renderer.
@@ -59,8 +67,8 @@ pub(crate) struct GpuUniforms {
     mvp: [[f32; 4]; 4],
     intrinsics: [f32; 4],
     dist: [f32; 4],
-    lab_scale: [f32; 4],
-    lab_offset_blend: [f32; 4],
+    color_scale: [f32; 4],
+    color_offset_blend: [f32; 4],
     flags: [u32; 4],
 }
 
@@ -200,6 +208,7 @@ impl Renderer {
         });
 
         // Vertex buffer (quad for both planes — same shape, different model matrices)
+        #[allow(deprecated)]
         let vertices = quad_vertices(PLANE_ASPECT);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad_vertices"),
@@ -920,8 +929,8 @@ pub(crate) fn build_gpu_uniforms(
             camera.d[2] as f32,
             camera.d[3] as f32,
         ],
-        lab_scale: [1.0, 1.0, 1.0, 0.0], // identity (no color correction yet)
-        lab_offset_blend: [0.0, 0.0, 0.0, blend_width],
+        color_scale: [1.0, 1.0, 1.0, 0.0], // identity (no color correction yet)
+        color_offset_blend: [0.0, 0.0, 0.0, blend_width],
         flags: [
             is_right as u32,
             (input_format == InputFormat::Nv12) as u32,

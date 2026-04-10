@@ -116,7 +116,8 @@ impl StitchPipeline {
         input_format: InputFormat,
     ) -> Result<Self, PipelineError> {
         let output_format = output_format.into();
-        let scene = SceneGeometry::from_layout(&calibration.layout);
+        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
+        let scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
         let renderer = Renderer::new(
             &gpu,
             viewport.width,

@@ -48,14 +48,31 @@ pub struct SceneGeometry {
 impl SceneGeometry {
     /// Compute the 3D scene geometry from a plane layout.
     ///
+    /// Uses the deprecated [`PLANE_ASPECT`](crate::renderer::PLANE_ASPECT)
+    /// constant (16:9). Prefer [`from_layout_with_aspect`](Self::from_layout_with_aspect)
+    /// for new code, passing the actual camera aspect ratio.
+    #[deprecated(
+        since = "0.1.0",
+        note = "use `from_layout_with_aspect` with the camera's actual aspect ratio instead"
+    )]
+    pub fn from_layout(layout: &PlaneLayout) -> Self {
+        #[allow(deprecated)]
+        Self::from_layout_with_aspect(layout, crate::renderer::PLANE_ASPECT)
+    }
+
+    /// Compute the 3D scene geometry from a plane layout with an explicit
+    /// aspect ratio.
+    ///
+    /// `aspect` is `width / height` of the camera frames (e.g. 16/9 for
+    /// 1920x1080, or the actual ratio from [`CameraParams`](crate::calibration::CameraParams)).
+    ///
     /// This mirrors the v1 `VideoPlane` component positioning:
     /// - Left plane: `position = [0, 0, (w/2) × (1 - intersect)]`,
     ///   `rotation = [zRx, π/2, zRz]`
     /// - Right plane: `position = [(w/2) × (1 - intersect), xTy, 0]`,
     ///   `rotation = [xRx, 0, xRz]`
-    pub fn from_layout(layout: &PlaneLayout) -> Self {
+    pub fn from_layout_with_aspect(layout: &PlaneLayout, aspect: f32) -> Self {
         let plane_width: f32 = 1.0;
-        let aspect: f32 = crate::renderer::PLANE_ASPECT;
         let half_offset = (plane_width / 2.0) * (1.0 - layout.intersect as f32);
 
         Self {
@@ -138,13 +155,14 @@ mod tests {
             z_rz: 0.0,
         };
 
-        let geom = SceneGeometry::from_layout(&layout);
+        let geom = SceneGeometry::from_layout_with_aspect(&layout, 16.0 / 9.0);
 
         // Half offset = 0.5 * (1 - 0.5) = 0.25
         assert!((geom.left_position[2] - 0.25).abs() < 1e-5);
         assert!((geom.right_position[0] - 0.25).abs() < 1e-5);
         assert!((geom.camera_position[0] - 0.25).abs() < 1e-5);
         assert!((geom.camera_position[2] - 0.25).abs() < 1e-5);
+        assert!((geom.plane_aspect - 16.0 / 9.0).abs() < 1e-5);
     }
 
     #[test]
@@ -159,12 +177,29 @@ mod tests {
             z_rz: 0.0,
         };
 
-        let geom = SceneGeometry::from_layout(&layout);
+        let geom = SceneGeometry::from_layout_with_aspect(&layout, 16.0 / 9.0);
 
         // Right plane should have the xTy correction
         assert!((geom.right_position[1] - 0.005).abs() < 1e-5);
         // Rotations should be applied
         assert!((geom.right_rotation[2] - 0.008).abs() < 1e-5);
         assert!((geom.left_rotation[0] - (-0.004)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn geometry_with_custom_aspect() {
+        let layout = PlaneLayout {
+            camera_axis_offset: 0.25,
+            intersect: 0.5,
+            x_ty: 0.0,
+            x_rz: 0.0,
+            z_rx: 0.0,
+            x_rx: 0.0,
+            z_rz: 0.0,
+        };
+
+        let aspect_4_3 = 4.0 / 3.0;
+        let geom = SceneGeometry::from_layout_with_aspect(&layout, aspect_4_3);
+        assert!((geom.plane_aspect - aspect_4_3).abs() < 1e-5);
     }
 }

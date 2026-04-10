@@ -1,7 +1,12 @@
-// Reco v2 -- Fisheye undistortion + Reinhard LAB color transfer
+// Reco v2 -- Fisheye undistortion + YUV-space color transfer
 //
 // Ported from v1 GLSL (frontend/src/features/viewer/shaders/fisheye.js).
 // Applies KB4 fisheye distortion correction on two 3D-positioned planes.
+//
+// Color transfer uses YUV space (BT.709): RGB->YUV is 3 mul + 3 add,
+// apply per-channel scale+offset (3 mul + 3 add), YUV->RGB (3 mul + 3 add).
+// ~18 arithmetic ops total, zero transcendentals. Replaces the previous
+// Reinhard LAB pipeline (~42 transcendental ops per pixel: pow, sqrt).
 
 struct Uniforms {
     mvp: mat4x4<f32>,
@@ -9,10 +14,10 @@ struct Uniforms {
     intrinsics: vec4<f32>,
     // KB4 distortion coefficients (k1, k2, k3, k4)
     dist: vec4<f32>,
-    // Reinhard LAB color transfer: scale.xyz, pad
-    lab_scale: vec4<f32>,
-    // Reinhard LAB color transfer: offset.xyz, blend_width
-    lab_offset_blend: vec4<f32>,
+    // YUV color transfer: scale.xyz (Y, U, V), pad
+    color_scale: vec4<f32>,
+    // YUV color transfer: offset.xyz (Y, U, V), blend_width
+    color_offset_blend: vec4<f32>,
     // flags.x: is_right (0 or 1)
     // flags.y: use_nv12 (0 = YUV420P: separate U,V textures; 1 = NV12: interleaved UV in t_u)
     // flags.zw: reserved
@@ -47,87 +52,36 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     return out;
 }
 
-// ---- Color space conversions (Reinhard LAB transfer) ----
+// ---- YUV-space color transfer ----
+//
+// BT.709 RGB<->YUV conversion uses only multiply-add operations (no pow/sqrt).
+// The CPU computes per-channel scale+offset from source/target statistics once;
+// the shader applies them every pixel with ~18 arithmetic ops total.
 
-fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
-    return select(
-        c / 12.92,
-        pow((c + 0.055) / 1.055, vec3<f32>(2.4)),
-        c >= vec3<f32>(0.04045)
-    );
+fn rgb_to_yuv(rgb: vec3<f32>) -> vec3<f32> {
+    // BT.709 full-range RGB [0,1] -> YUV (Y [0,1], U/V [-0.5, 0.5])
+    let y = 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+    let u = -0.1146 * rgb.r - 0.3854 * rgb.g + 0.5 * rgb.b;
+    let v = 0.5 * rgb.r - 0.4542 * rgb.g - 0.0458 * rgb.b;
+    return vec3<f32>(y, u, v);
 }
 
-fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
-    return select(
-        c * 12.92,
-        1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055,
-        c >= vec3<f32>(0.0031308)
-    );
+fn yuv_to_rgb(yuv: vec3<f32>) -> vec3<f32> {
+    // BT.709 YUV -> full-range RGB [0,1]
+    let r = yuv.x + 1.5748 * yuv.z;
+    let g = yuv.x - 0.1873 * yuv.y - 0.4681 * yuv.z;
+    let b = yuv.x + 1.8556 * yuv.y;
+    return vec3<f32>(r, g, b);
 }
 
-fn rgb_to_xyz(rgb: vec3<f32>) -> vec3<f32> {
-    let lin = srgb_to_linear(rgb);
-    // sRGB -> XYZ (D65 illuminant), column-major
-    let m = mat3x3<f32>(
-        vec3<f32>(0.4124564, 0.2126729, 0.0193339),
-        vec3<f32>(0.3575761, 0.7151522, 0.1191920),
-        vec3<f32>(0.1804375, 0.0721750, 0.9503041),
-    );
-    return m * lin * 100.0;
-}
-
-fn xyz_to_lab(xyz: vec3<f32>) -> vec3<f32> {
-    let ref_white = vec3<f32>(95.047, 100.0, 108.883);
-    let f = xyz / ref_white;
-    let ft = select(
-        (903.3 * f + 16.0) / 116.0,
-        pow(f, vec3<f32>(1.0 / 3.0)),
-        f >= vec3<f32>(0.008856)
-    );
-    let L = 116.0 * ft.y - 16.0;
-    let a = 500.0 * (ft.x - ft.y);
-    let b = 200.0 * (ft.y - ft.z);
-    // OpenCV LAB range: L: 0-255, a: 0-255, b: 0-255
-    return vec3<f32>(L * (255.0 / 100.0), a + 128.0, b + 128.0);
-}
-
-fn lab_to_xyz(lab_ocv: vec3<f32>) -> vec3<f32> {
-    let L = lab_ocv.x * (100.0 / 255.0);
-    let a = lab_ocv.y - 128.0;
-    let b = lab_ocv.z - 128.0;
-    let fy = (L + 16.0) / 116.0;
-    let fx = a / 500.0 + fy;
-    let fz = fy - b / 200.0;
-    let f = vec3<f32>(fx, fy, fz);
-    let f3 = f * f * f;
-    let xyz = select(
-        (116.0 * f - 16.0) / 903.3,
-        f3,
-        f3 >= vec3<f32>(0.008856)
-    );
-    return xyz * vec3<f32>(95.047, 100.0, 108.883);
-}
-
-fn xyz_to_rgb(xyz: vec3<f32>) -> vec3<f32> {
-    // XYZ -> linear sRGB (D65), column-major
-    let m = mat3x3<f32>(
-        vec3<f32>( 3.2404542, -0.9692660,  0.0556434),
-        vec3<f32>(-1.5371385,  1.8760108, -0.2040259),
-        vec3<f32>(-0.4985314,  0.0415560,  1.0572252),
-    );
-    let lin = m * (xyz / 100.0);
-    return linear_to_srgb(lin);
-}
-
-fn apply_reinhard_lab(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> vec3<f32> {
-    // Skip if identity transform
+fn apply_color_transfer(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> vec3<f32> {
+    // Skip if identity transform (scale=1, offset=0)
     if all(scale == vec3<f32>(1.0)) && all(offset == vec3<f32>(0.0)) {
         return rgb;
     }
-    var lab = xyz_to_lab(rgb_to_xyz(rgb));
-    lab = lab * scale + offset;
-    lab = clamp(lab, vec3<f32>(0.0), vec3<f32>(255.0));
-    return clamp(xyz_to_rgb(lab_to_xyz(lab)), vec3<f32>(0.0), vec3<f32>(1.0));
+    var yuv = rgb_to_yuv(rgb);
+    yuv = yuv * scale + offset;
+    return clamp(yuv_to_rgb(yuv), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 // ---- YUV → RGB conversion ----
@@ -214,12 +168,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let tex_color = sample_yuv(distorted_uv);
     var color = tex_color.rgb;
 
-    // Apply Reinhard LAB color transfer
-    color = apply_reinhard_lab(color, u.lab_scale.xyz, u.lab_offset_blend.xyz);
+    // Apply YUV-space color transfer
+    color = apply_color_transfer(color, u.color_scale.xyz, u.color_offset_blend.xyz);
 
     // Compute alpha for seam blending (right plane fades in at left edge)
     var alpha = 1.0;
-    let blend_width = u.lab_offset_blend.w;
+    let blend_width = u.color_offset_blend.w;
     if u.flags.x == 1u && blend_width > 0.0 {
         let edge_dist = in.uv.x;
         alpha = smoothstep(0.0, blend_width, edge_dist);

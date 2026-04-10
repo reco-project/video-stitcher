@@ -528,7 +528,7 @@ impl StitchSession {
         frame: &StereoFrame,
         elapsed: std::time::Duration,
     ) {
-        let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
+        let should_detect = self.frame_count % self.detection_interval == 0;
 
         if should_detect {
             let detections = self.run_detection(frame);
@@ -568,7 +568,7 @@ impl StitchSession {
         right_slot: u8,
         elapsed: std::time::Duration,
     ) {
-        let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
+        let should_detect = self.frame_count % self.detection_interval == 0;
 
         if should_detect && let Some(ref mut gpu_det) = self.gpu_detector {
             crate::profile_scope!("gpu_detect_total");

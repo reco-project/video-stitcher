@@ -16,6 +16,7 @@
 use crate::calibration::{CameraParams, MatchCalibration};
 use crate::detector::CameraId;
 use crate::director::ViewportPosition;
+#[allow(deprecated)]
 use crate::renderer::PLANE_ASPECT;
 use crate::scene::SceneGeometry;
 
@@ -44,7 +45,8 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 /// use reco_core::scene::SceneGeometry;
 ///
 /// # fn example(cal: &MatchCalibration) {
-/// let scene = SceneGeometry::from_layout(&cal.layout);
+/// let aspect = cal.left.width as f32 / cal.left.height as f32;
+/// let scene = SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
 /// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal, &scene) {
 ///     println!("Center of left camera maps to yaw={:.3}, pitch={:.3}", pos.yaw, pos.pitch);
 /// }
@@ -346,6 +348,7 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) ->
 
     // Texture UV → local quad position (matches quad_vertices)
     let local_x = tex_u - 0.5;
+    #[allow(deprecated)]
     let local_y = (0.5 - tex_v) / PLANE_ASPECT;
 
     let local_point = nalgebra::Vector4::new(local_x, local_y, 0.0, 1.0);
@@ -398,6 +401,11 @@ mod tests {
     use super::*;
     use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
 
+    fn test_scene(cal: &MatchCalibration) -> SceneGeometry {
+        let aspect = cal.left.width as f32 / cal.left.height as f32;
+        SceneGeometry::from_layout_with_aspect(&cal.layout, aspect)
+    }
+
     fn test_calibration() -> MatchCalibration {
         MatchCalibration {
             left: CameraParams {
@@ -435,7 +443,7 @@ mod tests {
     #[test]
     fn optical_center_maps_to_known_position() {
         let cal = test_calibration();
-        let scene = SceneGeometry::from_layout(&cal.layout);
+        let scene = test_scene(&cal);
 
         // Optical center of the left camera (cx/w, cy/h)
         let cx = cal.left.cx as f32 / cal.left.width as f32;
@@ -452,7 +460,7 @@ mod tests {
     #[test]
     fn left_camera_left_edge_has_more_negative_yaw() {
         let cal = test_calibration();
-        let scene = SceneGeometry::from_layout(&cal.layout);
+        let scene = test_scene(&cal);
 
         let center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal, &scene).unwrap();
         let left_edge = camera_to_panorama(CameraId::Left, 0.1, 0.5, &cal, &scene).unwrap();
@@ -470,7 +478,7 @@ mod tests {
     #[test]
     fn right_camera_produces_different_yaw_than_left() {
         let cal = test_calibration();
-        let scene = SceneGeometry::from_layout(&cal.layout);
+        let scene = test_scene(&cal);
 
         let left_center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal, &scene).unwrap();
         let right_center = camera_to_panorama(CameraId::Right, 0.5, 0.5, &cal, &scene).unwrap();
@@ -514,7 +522,7 @@ mod tests {
     #[test]
     fn viewport_bounds_are_valid() {
         let cal = test_calibration();
-        let scene = SceneGeometry::from_layout(&cal.layout);
+        let scene = test_scene(&cal);
 
         // Use a narrower FOV to ensure bounds are valid
         let bounds = viewport_bounds(40.0, &cal, &scene, 16.0 / 9.0);
@@ -542,7 +550,7 @@ mod tests {
     #[test]
     fn wider_fov_produces_tighter_bounds() {
         let cal = test_calibration();
-        let scene = SceneGeometry::from_layout(&cal.layout);
+        let scene = test_scene(&cal);
 
         let narrow = viewport_bounds(30.0, &cal, &scene, 16.0 / 9.0);
         let wide = viewport_bounds(60.0, &cal, &scene, 16.0 / 9.0);

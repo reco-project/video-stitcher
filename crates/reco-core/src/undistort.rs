@@ -7,6 +7,7 @@
 
 use crate::calibration::CameraParams;
 use crate::gpu::GpuContext;
+#[allow(deprecated)]
 use crate::renderer::{InputFormat, PLANE_ASPECT, build_gpu_uniforms, opengl_to_wgpu_matrix};
 
 use bytemuck::Pod;
@@ -41,6 +42,7 @@ impl Vertex {
 }
 
 /// Same quad as the stitching renderer.
+#[allow(deprecated)]
 fn quad_vertices() -> [Vertex; 6] {
     let hw = 0.5;
     let hh = 0.5 / PLANE_ASPECT;
@@ -303,6 +305,7 @@ impl GpuUndistort {
     ///
     /// Uses `build_gpu_uniforms` from the stitching renderer for identical
     /// intrinsic computation. Returns RGBA (`width * height * 4` bytes).
+    #[allow(deprecated)]
     pub fn undistort(
         &self,
         gpu: &GpuContext,
