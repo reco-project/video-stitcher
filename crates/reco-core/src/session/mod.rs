@@ -522,7 +522,6 @@ impl StitchSession {
         frame: &StereoFrame,
         elapsed: std::time::Duration,
     ) {
-        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
         let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
 
         if should_detect {
@@ -530,25 +529,7 @@ impl StitchSession {
             self.last_detections = self.map_detections(detections);
         }
 
-        // Fire callback for external consumers.
-        if let Some(ref mut cb) = self.detection_callback {
-            cb(&self.last_detections, self.frame_count, timestamp_ms);
-        }
-
-        // Update director with full context.
-        if let Some(ref mut director) = self.director {
-            let fov = self.pipeline.fov();
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
-            let ctx = DirectorContext {
-                frame_index: self.frame_count,
-                timestamp_ms,
-                detections: &self.last_detections,
-                viewport_bounds: bounds,
-                current_fov: fov,
-            };
-            director.update(&ctx);
-        }
+        self.fire_callback_and_update_director(elapsed);
     }
 
     /// Update the director without detection (zero-copy paths).
@@ -560,29 +541,7 @@ impl StitchSession {
         allow(dead_code, reason = "used by macOS zero-copy path")
     )]
     pub(crate) fn update_director(&mut self, elapsed: std::time::Duration) {
-        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
-
-        // Fire callback (empty objects).
-        if let Some(ref mut cb) = self.detection_callback {
-            cb(&[], self.frame_count, timestamp_ms);
-        }
-
-        if let Some(ref mut director) = self.director {
-            let fov = director
-                .position()
-                .fov_degrees
-                .unwrap_or_else(|| self.pipeline.fov());
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
-            let ctx = DirectorContext {
-                frame_index: self.frame_count,
-                timestamp_ms,
-                detections: &[],
-                viewport_bounds: bounds,
-                current_fov: fov,
-            };
-            director.update(&ctx);
-        }
+        self.fire_callback_and_update_director(elapsed);
     }
 
     /// Run GPU-resident detection and update the director.
@@ -603,7 +562,6 @@ impl StitchSession {
         right_slot: u8,
         elapsed: std::time::Duration,
     ) {
-        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
         let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
 
         if should_detect && let Some(ref mut gpu_det) = self.gpu_detector {
@@ -635,28 +593,7 @@ impl StitchSession {
             self.last_detections = self.map_detections(detections);
         }
 
-        // Fire callback for external consumers.
-        if let Some(ref mut cb) = self.detection_callback {
-            cb(&self.last_detections, self.frame_count, timestamp_ms);
-        }
-
-        // Update director with full context.
-        if let Some(ref mut director) = self.director {
-            let fov = director
-                .position()
-                .fov_degrees
-                .unwrap_or_else(|| self.pipeline.fov());
-            let bounds =
-                projection::viewport_bounds(fov, self.pipeline.calibration(), &self.pipeline.scene);
-            let ctx = DirectorContext {
-                frame_index: self.frame_count,
-                timestamp_ms,
-                detections: &self.last_detections,
-                viewport_bounds: bounds,
-                current_fov: fov,
-            };
-            director.update(&ctx);
-        }
+        self.fire_callback_and_update_director(elapsed);
     }
 
     /// Run Metal-resident detection and update the director.
@@ -677,7 +614,6 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) {
-        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
         let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
 
         if should_detect && let Some(ref mut metal_det) = self.metal_detector {
@@ -703,6 +639,18 @@ impl StitchSession {
 
             self.last_detections = self.map_detections(detections);
         }
+
+        self.fire_callback_and_update_director(elapsed);
+    }
+
+    /// Fire the detection callback and update the director with current state.
+    ///
+    /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
+    /// Fires the callback with `last_detections` (which may be empty if no
+    /// detector ran this frame), computes viewport bounds, and passes a
+    /// [`DirectorContext`] to the director.
+    fn fire_callback_and_update_director(&mut self, elapsed: std::time::Duration) {
+        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
         // Fire callback for external consumers.
         if let Some(ref mut cb) = self.detection_callback {

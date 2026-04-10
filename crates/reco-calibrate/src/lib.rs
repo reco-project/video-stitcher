@@ -40,18 +40,11 @@
 //! )?;
 //! ```
 
-/// Create a tracing span guard (no-op when `profiling` feature is disabled).
-#[cfg(feature = "profiling")]
-macro_rules! profile_scope {
-    ($name:expr) => {
-        let _span = tracing::info_span!($name).entered();
-    };
-}
-
-#[cfg(not(feature = "profiling"))]
-macro_rules! profile_scope {
-    ($name:expr) => {};
-}
+// `profile_scope!` is defined and exported by `reco_core`. Using it here
+// via `reco_core::profile_scope!` avoids maintaining a local copy. When
+// the `profiling` feature is enabled, `reco-core/profiling` is also
+// activated (see Cargo.toml).
+use reco_core::profile_scope;
 
 pub(crate) mod akaze;
 pub mod audio_sync;

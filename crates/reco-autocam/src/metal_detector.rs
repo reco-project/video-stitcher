@@ -75,7 +75,7 @@ impl MetalYoloDetector {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let path = model_path.as_ref();
 
-        let (backend, input_size) = if path.extension().is_some_and(|ext| ext == "mlmodelc")
+        let (backend, input_size, labels) = if path.extension().is_some_and(|ext| ext == "mlmodelc")
             || path.to_str().is_some_and(|s| s.ends_with(".mlmodelc"))
         {
             // Native CoreML: extract input size from directory name convention
@@ -92,30 +92,23 @@ impl MetalYoloDetector {
             log::info!(
                 "MetalYoloDetector: using native CoreML (ANE/GPU), input={input_size}x{input_size}"
             );
-            (InferenceBackend::CoreMlNative(coreml), input_size)
+            let labels = if labels.is_empty() {
+                vec!["ball".into()]
+            } else {
+                labels
+            };
+            (InferenceBackend::CoreMlNative(coreml), input_size, labels)
         } else {
-            // ORT with CoreML EP fallback.
-            let (session, input_size) = Self::create_ort_session(path)?;
+            // ORT with CoreML EP fallback (uses shared session builder).
+            let (session, input_size, labels) = crate::create_ort_session(path, labels)?;
             (
                 InferenceBackend::OrtSession {
                     session,
                     input_size,
                 },
                 input_size,
+                labels,
             )
-        };
-
-        // Auto-detect labels from model metadata if not provided.
-        let labels = if labels.is_empty() {
-            match &backend {
-                InferenceBackend::OrtSession { session, .. } => {
-                    crate::detector::parse_onnx_names(session)
-                        .unwrap_or_else(|| vec!["ball".into()])
-                }
-                InferenceBackend::CoreMlNative(_) => vec!["ball".into()],
-            }
-        } else {
-            labels
         };
 
         // Pre-compute letterbox parameters.
@@ -156,48 +149,6 @@ impl MetalYoloDetector {
             pad_y,
             frame_counter: 0,
         })
-    }
-
-    /// Create an ORT session with CoreML EP (or CPU fallback).
-    fn create_ort_session(
-        model_path: &Path,
-    ) -> Result<(ort::session::Session, u32), Box<dyn std::error::Error>> {
-        use ort::session::Session;
-
-        #[allow(unused_mut)]
-        let mut builder = Session::builder()?
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?;
-
-        #[cfg(feature = "coreml")]
-        let mut builder = {
-            match builder.with_execution_providers([ort::ep::CoreML::default()
-                .with_compute_units(ort::ep::coreml::ComputeUnits::All)
-                .with_model_cache_dir("/tmp/reco-coreml-cache")
-                .build()])
-            {
-                Ok(b) => {
-                    log::info!("MetalYoloDetector: ORT CoreML EP enabled");
-                    b
-                }
-                Err(e) => {
-                    log::warn!("MetalYoloDetector: CoreML EP failed ({e}), falling back to CPU");
-                    e.recover()
-                }
-            }
-        };
-
-        let session = builder.commit_from_file(model_path)?;
-
-        let input_size = match session.inputs()[0].dtype() {
-            ort::value::ValueType::Tensor { shape, .. } => {
-                let h = shape[2];
-                if h > 0 { h as u32 } else { 1280 }
-            }
-            _ => 1280,
-        };
-
-        Ok((session, input_size))
     }
 
     /// Run inference and return (n_detections, output_data).

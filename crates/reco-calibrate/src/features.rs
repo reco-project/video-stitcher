@@ -118,8 +118,15 @@ pub fn detect_with_border(
         .chunks_exact(4)
         .flat_map(|px| [px[0], px[1], px[2]])
         .collect();
-    let img = image::RgbImage::from_raw(width, height, rgb_data)
-        .expect("BUG: rgb_data length verified above");
+    let Some(img) = image::RgbImage::from_raw(width, height, rgb_data) else {
+        log::error!(
+            "failed to create RgbImage from {}x{} buffer ({} bytes)",
+            width,
+            height,
+            rgba.len(),
+        );
+        return (Vec::new(), Vec::new());
+    };
     let dynamic = image::DynamicImage::ImageRgb8(img);
 
     // Downscale if needed for performance

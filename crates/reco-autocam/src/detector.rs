@@ -45,68 +45,7 @@ impl YoloDetector {
         confidence_threshold: f32,
         labels: Vec<String>,
     ) -> Result<Self, ort::Error> {
-        #[allow(unused_mut)]
-        let mut builder = Session::builder()?
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?;
-
-        // Try TensorRT EP first (JIT-compiles for any GPU arch including Blackwell),
-        // then CUDA EP, then fall back to CPU.
-        #[cfg(feature = "tensorrt")]
-        let mut builder = {
-            match builder.with_execution_providers([ort::ep::TensorRT::default()
-                .with_fp16(true)
-                .with_engine_cache(true)
-                .with_engine_cache_path("/tmp/reco-trt-cache")
-                .with_timing_cache(true)
-                .with_timing_cache_path("/tmp/reco-trt-cache")
-                .with_builder_optimization_level(3)
-                .build()])
-            {
-                Ok(b) => {
-                    log::info!("YoloDetector: TensorRT execution provider enabled");
-                    b
-                }
-                Err(e) => {
-                    log::warn!("YoloDetector: TensorRT EP failed ({e}), falling back to CPU");
-                    e.recover()
-                }
-            }
-        };
-
-        // Try CUDA execution provider, fall back to CPU.
-        #[cfg(all(feature = "cuda", not(feature = "tensorrt")))]
-        let mut builder = {
-            match builder.with_execution_providers([ort::ep::CUDA::default().build()]) {
-                Ok(b) => {
-                    log::info!("YoloDetector: CUDA execution provider enabled");
-                    b
-                }
-                Err(e) => {
-                    log::warn!("YoloDetector: CUDA EP failed ({e}), falling back to CPU");
-                    e.recover()
-                }
-            }
-        };
-
-        let session = builder.commit_from_file(path.as_ref())?;
-
-        // Extract input size from model metadata.
-        let input_size = match session.inputs()[0].dtype() {
-            ort::value::ValueType::Tensor { shape, .. } => {
-                // shape[2] is height, shape[3] is width (BCHW).
-                let h = shape[2];
-                if h > 0 { h as u32 } else { 1280 }
-            }
-            _ => 1280,
-        };
-
-        // Auto-detect labels from model metadata if not provided.
-        let labels = if labels.is_empty() {
-            parse_onnx_names(&session).unwrap_or_else(|| vec!["ball".into()])
-        } else {
-            labels
-        };
+        let (session, input_size, labels) = crate::create_ort_session(path.as_ref(), labels)?;
 
         log::info!(
             "YoloDetector loaded: input={}x{}, {} classes, conf_thresh={}",

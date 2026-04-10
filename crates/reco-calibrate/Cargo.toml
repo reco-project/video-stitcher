@@ -32,7 +32,7 @@ reco-io = { path = "../reco-io", optional = true }
 pollster = { version = "0.4", optional = true }
 
 [features]
-profiling = ["dep:tracing"]
+profiling = ["dep:tracing", "reco-core/profiling"]
 io = ["dep:reco-io", "dep:pollster"]
 
 [dev-dependencies]

@@ -36,13 +36,20 @@ impl GrayFloatImage {
     }
 
     pub fn from_array2(arr: Array2<f32>) -> Self {
+        let (rows, cols) = arr.dim();
+        let raw = arr.into_raw_vec_and_offset().0;
+        // ImageBuffer::from_raw checks that raw.len() == width * height.
+        // For a contiguous Array2 this is always true, but handle it
+        // gracefully instead of panicking in case of future refactors.
         Self(
-            ImageBuffer::from_raw(
-                arr.dim().1 as u32,
-                arr.dim().0 as u32,
-                arr.into_raw_vec_and_offset().0,
-            )
-            .expect("raw vector didn't have enough pixels for the image"),
+            ImageBuffer::from_raw(cols as u32, rows as u32, raw).unwrap_or_else(|| {
+                log::error!(
+                    "BUG: Array2 raw vec size mismatch for {}x{} image, using empty image",
+                    cols,
+                    rows,
+                );
+                ImageBuffer::from_pixel(cols as u32, rows as u32, Luma([0.0]))
+            }),
         )
     }
 

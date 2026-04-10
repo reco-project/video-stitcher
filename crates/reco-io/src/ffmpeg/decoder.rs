@@ -21,18 +21,10 @@ use ffmpeg::util::frame::video::Video as VideoFrame;
 // Raw FFI for hardware acceleration (not exposed by ffmpeg-next's safe API).
 use ffmpeg::ffi;
 
-/// Create a tracing span guard (no-op when `profiling` feature is disabled).
-#[cfg(feature = "profiling")]
-macro_rules! profile_scope {
-    ($name:expr) => {
-        let _span = tracing::info_span!($name).entered();
-    };
-}
+// `profile_scope!` is defined and exported by `reco_core`. Using it here
+// avoids maintaining a local copy.
+use reco_core::profile_scope;
 
-#[cfg(not(feature = "profiling"))]
-macro_rules! profile_scope {
-    ($name:expr) => {};
-}
 use std::path::Path;
 use std::ptr;
 use thiserror::Error;
