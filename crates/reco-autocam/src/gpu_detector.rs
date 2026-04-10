@@ -67,6 +67,16 @@ impl GpuYoloDetector {
             return Ok(None);
         }
 
+        // GPU detection requires TensorRT EP to handle CUDA device pointers.
+        // Without it, ORT falls back to CPU EP which segfaults on GPU memory.
+        if !cfg!(feature = "tensorrt") {
+            log::warn!(
+                "GpuYoloDetector: TensorRT feature not enabled, GPU detection disabled. \
+                 Build with --features tensorrt for zero-copy GPU inference."
+            );
+            return Ok(None);
+        }
+
         cuda_ensure_context()?;
 
         let (session, input_size, labels) = crate::create_ort_session(model_path.as_ref(), labels)?;
