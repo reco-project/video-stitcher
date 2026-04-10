@@ -273,11 +273,23 @@ impl Director for BallDirector {
             // Tracking + ball visible: follow it.
             (State::Tracking, Some(obj)) => {
                 let pos = obj.position.unwrap();
+                let dy = (pos.yaw - self.target_yaw).abs();
+                let dp = (pos.pitch - self.target_pitch).abs();
+                let jump = dy.max(dp);
+
                 self.update_velocity(pos.yaw, pos.pitch);
                 self.target_yaw = pos.yaw;
                 self.target_pitch = pos.pitch;
-                self.smooth_toward(self.alpha_track, ctx.current_fov);
                 self.frames_without_ball = 0;
+
+                // Adaptive smoothing: large jumps get slower alpha to dampen
+                // jitter from false positives while still following real movement.
+                let alpha = if jump > 0.10 {
+                    self.alpha_track * 0.3 // slow down for big jumps
+                } else {
+                    self.alpha_track
+                };
+                self.smooth_toward(alpha, ctx.current_fov);
             }
 
             // Tracking + ball lost: coast on velocity, count frames.
