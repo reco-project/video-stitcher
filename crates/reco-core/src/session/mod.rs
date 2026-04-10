@@ -711,12 +711,18 @@ impl StitchSession {
                 }
                 _ => {
                     let aspect = self.pipeline.viewport().aspect_ratio();
-                    let b = projection::viewport_bounds(
+                    let mut b = projection::viewport_bounds(
                         fov,
                         self.pipeline.calibration(),
                         &self.pipeline.scene,
                         aspect,
                     );
+                    // Compensate for rig tilt: the renderer applies rig_tilt
+                    // as a pitch rotation after the director's yaw/pitch, so
+                    // the director must operate in a shifted pitch range.
+                    let tilt = self.pipeline.viewport().rig_tilt;
+                    b.min_pitch -= tilt;
+                    b.max_pitch -= tilt;
                     self.cached_bounds = Some((fov, b));
                     b
                 }
