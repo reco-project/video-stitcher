@@ -177,13 +177,25 @@ impl StitchSession {
                 }
             };
 
-            // SYNC NOTE (#103): The decode thread called cuCtxSynchronize before
-            // sending this signal, so CUDA writes to the shared texture are
-            // complete. Vulkan-side, wgpu's internal pipeline barriers on
-            // texture transitions provide sufficient synchronization on NVIDIA
-            // Linux (unified memory controller). A proper cross-API fix
-            // requires VK_KHR_external_semaphore, which wgpu does not yet
-            // expose. See issue #103.
+            // SYNC NOTE (#103): CUDA-Vulkan cross-API synchronization.
+            //
+            // The decode thread called cuCtxSynchronize() before sending this
+            // signal, which drains all CUDA work (memcpy2D to shared texture).
+            // This is the same approach Gyroflow uses - full CPU-side pipeline
+            // drains rather than GPU-level semaphores. Their pattern:
+            //   Input:  cuCtxSynchronize() before + after CUDA writes
+            //   Output: device.poll(Wait) before CUDA reads
+            //
+            // Proper cross-API sync requires VK_KHR_external_semaphore with
+            // cuImportExternalSemaphore/cuSignalExternalSemaphore, but wgpu
+            // does not expose semaphore injection into queue submission.
+            // Implementing it would require either a wgpu fork or direct ash
+            // queue submission bypassing wgpu. Gyroflow faces the same
+            // limitation and uses the same brute-force approach.
+            //
+            // This is correct but serializes GPU work across APIs on the CPU
+            // timeline. A future optimization with timeline semaphores would
+            // allow CUDA decode and Vulkan render to overlap. See #103.
             self.detect_and_update_director_gpu(
                 &left_buf,
                 &right_buf,
