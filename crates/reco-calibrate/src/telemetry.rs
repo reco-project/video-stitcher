@@ -40,6 +40,9 @@ pub struct TelemetryData {
     pub accel: Vec<ImuSample>,
     /// Embedded lens profile if the camera provides one (DJI, Insta360).
     pub lens_profile: Option<CameraParams>,
+    /// Orientation quaternions [w, x, y, z] (DJI, GoPro CORI).
+    /// Represents rotation from camera frame to gravity-aligned world frame.
+    pub quaternions: Vec<(f64, [f64; 4])>,
     /// FOV mode detected from GPMF metadata (e.g. "Wide", "Narrow", "Linear").
     ///
     /// Used to match the correct Gyroflow lens profile. GoPro cameras embed
@@ -247,6 +250,7 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
         camera_model,
         gyro,
         accel,
+        quaternions,
         lens_profile,
         lens_info,
     })
@@ -286,6 +290,17 @@ pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Opti
     let left_resampled = resample_signal(&left_mag, left_mag.first()?.0, sample_rate, n);
     let right_resampled = resample_signal(&right_mag, right_mag.first()?.0, sample_rate, n);
 
+    // Normalize signals (subtract mean, divide by std dev) for Pearson correlation.
+    // Without normalization, small-magnitude signals (e.g. derived from quaternion
+    // differentiation) produce near-zero correlation regardless of match quality.
+    let left_norm = normalize_signal(&left_resampled);
+    let right_norm = normalize_signal(&right_resampled);
+
+    if left_norm.is_empty() || right_norm.is_empty() {
+        log::warn!("gyro sync: constant signal, cannot correlate");
+        return None;
+    }
+
     // Cross-correlate with up to +/-5 second search window
     let max_lag = (5.0 * sample_rate) as i64;
     let max_lag = max_lag.min(n as i64 / 2);
@@ -296,10 +311,10 @@ pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Opti
     for lag in -max_lag..=max_lag {
         let mut sum = 0.0;
         let mut count = 0;
-        for (i, &left_val) in left_resampled.iter().enumerate() {
+        for (i, &left_val) in left_norm.iter().enumerate() {
             let j = i as i64 + lag;
-            if j >= 0 && (j as usize) < n {
-                sum += left_val * right_resampled[j as usize];
+            if j >= 0 && (j as usize) < right_norm.len() {
+                sum += left_val * right_norm[j as usize];
                 count += 1;
             }
         }
@@ -310,6 +325,13 @@ pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Opti
                 best_lag = lag;
             }
         }
+    }
+
+    // Pearson correlation: 1.0 = perfect match, 0.0 = no correlation.
+    // Reject if the best match is weak (cameras too still, or bad data).
+    if best_corr < 0.1 {
+        log::warn!("gyro sync: correlation too low ({best_corr:.4}), rejecting offset");
+        return None;
     }
 
     // Positive lag means right camera started earlier (negate to get seconds)
@@ -416,16 +438,81 @@ pub fn differential_orientation(
 /// camera's optical axis. This is used to tilt the virtual camera's
 /// reference frame in the renderer.
 ///
-/// Returns the tilt angle in radians, or `None` if no accelerometer
-/// data is available.
+/// Returns the tilt angle in radians, or `None` if neither accelerometer
+/// nor quaternion data is available.
 pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
-    let g = gravity_vector(data)?;
-    // In the normalized IMU frame: X=down, Y=forward (optical axis), Z=right.
-    // Rig tilt = forward lean of the camera from vertical.
-    // atan2(gy, gx) gives the angle gravity projects onto the optical axis.
-    // Zero when level, positive when tilted forward (looking down at field).
-    let tilt = g[1].atan2(g[0]);
-    log::info!("rig tilt: {tilt:.4} rad ({:.1} deg)", tilt.to_degrees());
+    // Try accelerometer first (direct gravity measurement)
+    if let Some(g) = gravity_vector(data) {
+        // In the normalized IMU frame: X=down, Y=forward (optical axis), Z=right.
+        // Rig tilt = forward lean of the camera from vertical.
+        let tilt = g[1].atan2(g[0]);
+        log::info!(
+            "rig tilt (accel): {tilt:.4} rad ({:.1} deg)",
+            tilt.to_degrees()
+        );
+        return Some(tilt);
+    }
+
+    // Fall back to quaternions (DJI cameras have orientation but no raw accel)
+    if let Some(tilt) = rig_tilt_from_quaternions(data) {
+        log::info!(
+            "rig tilt (quaternion): {tilt:.4} rad ({:.1} deg)",
+            tilt.to_degrees()
+        );
+        return Some(tilt);
+    }
+
+    None
+}
+
+/// Compute rig tilt from the average orientation quaternion.
+///
+/// Rotates the world gravity vector [0, -1, 0] into camera space using
+/// the average quaternion, then computes tilt the same way as the
+/// accelerometer path.
+fn rig_tilt_from_quaternions(data: &TelemetryData) -> Option<f64> {
+    if data.quaternions.len() < 10 {
+        return None;
+    }
+
+    // Average the first 100 quaternions (camera should be stationary at start)
+    let n = data.quaternions.len().min(100);
+    let mut aw = 0.0;
+    let mut ax = 0.0;
+    let mut ay = 0.0;
+    let mut az = 0.0;
+    for &(_, [w, x, y, z]) in &data.quaternions[..n] {
+        // Flip sign if dot product with first quat is negative (hemisphere consistency)
+        let [w0, x0, y0, z0] = data.quaternions[0].1;
+        let dot = w * w0 + x * x0 + y * y0 + z * z0;
+        let sign = if dot < 0.0 { -1.0 } else { 1.0 };
+        aw += w * sign;
+        ax += x * sign;
+        ay += y * sign;
+        az += z * sign;
+    }
+    let inv_n = 1.0 / n as f64;
+    aw *= inv_n;
+    ax *= inv_n;
+    ay *= inv_n;
+    az *= inv_n;
+
+    // Normalize
+    let len = (aw * aw + ax * ax + ay * ay + az * az).sqrt();
+    if len < 1e-10 {
+        return None;
+    }
+    let (w, x, y, z) = (aw / len, ax / len, ay / len, az / len);
+    log::debug!("quaternion-based tilt: avg quat=[{w:.4}, {x:.4}, {y:.4}, {z:.4}] (n={n})");
+
+    // Rotate world gravity [0, -1, 0] into camera frame: g_cam = q^-1 * [0,-1,0] * q
+    // For unit quaternion q^-1 = conjugate [w, -x, -y, -z]
+    let gx = -2.0 * (x * y - w * z);
+    let gy = -(1.0 - 2.0 * (x * x + z * z));
+    let gz = -2.0 * (y * z + w * x);
+    log::debug!("gravity in camera frame: [{gx:.4}, {gy:.4}, {gz:.4}]");
+
+    let tilt = gy.atan2(gx);
     Some(tilt)
 }
 
@@ -553,6 +640,22 @@ fn parse_embedded_lens_profile(json: &serde_json::Value) -> Option<CameraParams>
 }
 
 /// Linearly resample a timestamped signal to a uniform sample rate.
+/// Normalize a signal to zero mean, unit variance (for Pearson correlation).
+/// Returns empty vec if the signal has zero variance (constant).
+fn normalize_signal(signal: &[f64]) -> Vec<f64> {
+    let n = signal.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let mean = signal.iter().sum::<f64>() / n as f64;
+    let var = signal.iter().map(|&x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
+    let std = var.sqrt();
+    if std < 1e-15 {
+        return Vec::new(); // constant signal
+    }
+    signal.iter().map(|&x| (x - mean) / std).collect()
+}
+
 fn resample_signal(signal: &[(f64, f64)], t_start: f64, rate: f64, n: usize) -> Vec<f64> {
     let mut result = Vec::with_capacity(n);
     let mut src_idx = 0;
