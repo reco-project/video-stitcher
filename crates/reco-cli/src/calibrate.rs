@@ -232,13 +232,7 @@ fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec
         let mut last_frame = None;
         while let Some(yuv) = decoder.next_frame()? {
             let frame_time = yuv.timestamp_us as f64 / 1_000_000.0;
-            last_frame = Some(YuvFrame {
-                y: yuv.y,
-                u: yuv.u,
-                v: yuv.v,
-                width: yuv.width,
-                height: yuv.height,
-            });
+            last_frame = Some(yuv);
             if frame_time >= target_secs - 0.5 / fps {
                 break;
             }

@@ -40,6 +40,11 @@ pub struct TelemetryData {
     pub accel: Vec<ImuSample>,
     /// Embedded lens profile if the camera provides one (DJI, Insta360).
     pub lens_profile: Option<CameraParams>,
+    /// FOV mode detected from GPMF metadata (e.g. "Wide", "Narrow", "Linear").
+    ///
+    /// Used to match the correct Gyroflow lens profile. GoPro cameras embed
+    /// a VFOV tag in the GPMF stream indicating the FOV mode at recording time.
+    pub lens_info: Option<String>,
 }
 
 /// A single 3-axis IMU sample with timestamp.
@@ -92,8 +97,13 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
     // Use telemetry-parser's built-in normalization: handles SCAL scaling,
     // unit conversion, per-camera orientation mapping, and timestamp
     // interpolation across all camera types.
-    let raw_imu = telemetry_parser::util::normalized_imu_interpolated(&input, Some("XYZ".into()))
-        .unwrap_or_default();
+    // Use None to let telemetry-parser apply the camera's native IMU
+    // orientation mapping (MTRX/ORIN/ORIO for GoPro, per-camera for others).
+    // This normalizes to the standard camera frame: Y=down, Z=forward, X=right.
+    // Previously we passed Some("XYZ") which overrode the mapping with identity,
+    // giving raw sensor axes that don't match any standard convention.
+    let raw_imu =
+        telemetry_parser::util::normalized_imu_interpolated(&input, None).unwrap_or_default();
 
     let mut gyro = Vec::with_capacity(raw_imu.len());
     let mut accel = Vec::with_capacity(raw_imu.len());
@@ -114,8 +124,9 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
         }
     }
 
-    // Extract embedded lens profile and quaternions from raw tag data
+    // Extract embedded lens profile, FOV mode, and quaternions from raw tag data
     let mut lens_profile = None;
+    let mut lens_info: Option<String> = None;
     let mut quaternions: Vec<(f64, [f64; 4])> = Vec::new(); // (timestamp_s, [w, x, y, z])
 
     if let Some(ref samples) = input.samples {
@@ -127,6 +138,43 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
                 if lens_profile.is_none() {
                     lens_profile = extract_lens_from_tags(tag_map)
                         .or_else(|| extract_lens_from_clip_meta(tag_map));
+                }
+
+                // Extract GoPro FOV mode from GPMF tags (VFOV, ZFOV, PRJT)
+                if lens_info.is_none()
+                    && let Some(map) = tag_map.get(&GroupId::Default)
+                {
+                    // VFOV tag: primary FOV mode indicator
+                    if let Some(v) = map.get_t(TagId::Unknown(0x56464f56)) as Option<&String> {
+                        lens_info = Some(
+                            match v.as_str() {
+                                "X" => "Max",
+                                "W" => "Wide",
+                                "S" => "Super",
+                                "H" => "Hyper",
+                                "L" => "Linear",
+                                "N" => "Narrow",
+                                "M" => "Medium",
+                                other => other,
+                            }
+                            .to_string(),
+                        );
+                    }
+
+                    // ZFOV: actual FOV degrees - reclassify Linear < 80 as Narrow
+                    if let Some(&v) = map.get_t(TagId::Unknown(0x5a464f56)) as Option<&f32>
+                        && lens_info.as_deref() == Some("Linear")
+                        && v < 80.0
+                    {
+                        lens_info = Some("Narrow".to_string());
+                    }
+
+                    // PRJT: projection override (GPMW = Max Wide)
+                    if let Some(v) = map.get_t(TagId::Unknown(0x50524a54)) as Option<&String>
+                        && v.as_str() == "GPMW"
+                    {
+                        lens_info = Some("Max Wide".to_string());
+                    }
                 }
 
                 // Extract quaternions (DJI cameras provide fused orientation)
@@ -180,7 +228,7 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
     }
 
     log::info!(
-        "telemetry: {} {} - {} gyro, {} accel samples, {} quaternions, lens profile: {}",
+        "telemetry: {} {} - {} gyro, {} accel samples, {} quaternions, lens profile: {}, FOV: {}",
         camera_type,
         camera_model.as_deref().unwrap_or("unknown"),
         gyro.len(),
@@ -190,7 +238,8 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
             "embedded"
         } else {
             "none"
-        }
+        },
+        lens_info.as_deref().unwrap_or("unknown")
     );
 
     Ok(TelemetryData {
@@ -199,6 +248,7 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
         gyro,
         accel,
         lens_profile,
+        lens_info,
     })
 }
 
@@ -290,7 +340,16 @@ pub fn gravity_vector(data: &TelemetryData) -> Option<[f64; 3]> {
         gz += s.z;
     }
 
-    Some([gx / n, gy / n, gz / n])
+    let result = [gx / n, gy / n, gz / n];
+    log::debug!(
+        "gravity vector for {}: [{:.3}, {:.3}, {:.3}] (mag={:.3})",
+        data.camera_type,
+        result[0],
+        result[1],
+        result[2],
+        (result[0] * result[0] + result[1] * result[1] + result[2] * result[2]).sqrt()
+    );
+    Some(result)
 }
 
 /// Differential orientation between two cameras from gravity vectors.
@@ -310,23 +369,31 @@ pub fn differential_orientation(
     let lg = gravity_vector(left)?;
     let rg = gravity_vector(right)?;
 
-    // Roll = angle of gravity projected onto the YZ plane
-    let left_roll = lg[1].atan2(lg[2]);
-    let right_roll = rg[1].atan2(rg[2]);
+    // Normalized IMU convention (after telemetry-parser's MTRX mapping):
+    //   X = down (gravity), Y = forward (optical axis), Z = right
+    // This holds for GoPro (HERO5+) after ORIN/ORIO matrix application.
+    //
+    // Roll = rotation around Y (optical axis), measured as gravity's
+    //   lateral component: atan2(gz, gx). Zero when camera is upright.
+    //   Seeds x_rz (right camera roll relative to left).
+    let left_roll = lg[2].atan2(lg[0]);
+    let right_roll = rg[2].atan2(rg[0]);
     let roll_diff = right_roll - left_roll;
 
-    // Pitch = angle of gravity projected onto the XZ plane
-    let left_pitch = lg[0].atan2(lg[2]);
-    let right_pitch = rg[0].atan2(rg[2]);
+    // Pitch = rotation around Z (lateral axis), measured as gravity's
+    //   forward component: atan2(gy, gx). Zero when camera faces level.
+    //   Seeds x_rx (right camera pitch relative to left).
+    //   Note: stereo rigs have cameras facing opposite directions, so
+    //   the sign of gy is flipped between left and right cameras.
+    let left_pitch = lg[1].atan2(lg[0]);
+    let right_pitch = rg[1].atan2(rg[0]);
     let pitch_diff = right_pitch - left_pitch;
 
-    // Tilt: each camera's forward-pitch angle from gravity.
-    // atan2(gz, -gy) gives the tilt in the camera's forward-looking plane
-    // where -gy is "down" and gz is "forward".
-    // The rig tilt is the average (common to both cameras on the same pole).
+    // Tilt: each camera's roll from vertical (lateral lean).
+    // atan2(gz, gx) gives the roll from the gravity axis.
     // z_rx captures the left camera's deviation from the rig average.
-    let left_tilt = lg[2].atan2(-lg[1]);
-    let right_tilt = rg[2].atan2(-rg[1]);
+    let left_tilt = lg[2].atan2(lg[0]);
+    let right_tilt = rg[2].atan2(rg[0]);
     let rig_tilt_avg = (left_tilt + right_tilt) / 2.0;
     let tilt_diff = left_tilt - rig_tilt_avg;
 
@@ -353,9 +420,11 @@ pub fn differential_orientation(
 /// data is available.
 pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
     let g = gravity_vector(data)?;
-    // Tilt = angle between gravity and the -Y axis (camera "down")
-    // atan2(x_component, y_component) gives the tilt in the XY plane
-    let tilt = g[0].atan2(-g[1]);
+    // In the normalized IMU frame: X=down, Y=forward (optical axis), Z=right.
+    // Rig tilt = forward lean of the camera from vertical.
+    // atan2(gy, gx) gives the angle gravity projects onto the optical axis.
+    // Zero when level, positive when tilted forward (looking down at field).
+    let tilt = g[1].atan2(g[0]);
     log::info!("rig tilt: {tilt:.4} rad ({:.1} deg)", tilt.to_degrees());
     Some(tilt)
 }

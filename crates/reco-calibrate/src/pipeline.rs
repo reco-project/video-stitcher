@@ -80,6 +80,8 @@ pub struct CalibrationPipeline {
     imu_xrx_seed: Option<f64>,
     imu_zrx_seed: Option<f64>,
     enable_x_rx: bool,
+    /// Rig tilt in radians (forward lean from vertical).
+    rig_tilt: f64,
 }
 
 impl CalibrationPipeline {
@@ -96,6 +98,7 @@ impl CalibrationPipeline {
             imu_xrx_seed: None,
             imu_zrx_seed: None,
             enable_x_rx: false,
+            rig_tilt: 0.0,
         }
     }
 
@@ -230,9 +233,10 @@ impl CalibrationPipeline {
             }
         }
 
-        // Rig tilt (informational)
+        // Rig tilt (stored in result for renderer)
         if let Some(tilt) = telemetry::rig_tilt(&left_telem) {
             log::info!("rig tilt: {:.1} deg", tilt.to_degrees());
+            self.rig_tilt = tilt;
         }
 
         Ok(sync_frames)
@@ -334,7 +338,10 @@ impl CalibrationPipeline {
             config.enable_x_rx = true;
         }
 
-        crate::calibrate(gpu, frames, left_params, right_params, &config)
+        let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;
+        result.calibration.rig_tilt = self.rig_tilt;
+        result.calibration.sync_offset = self.sync_offset_frames;
+        Ok(result)
     }
 
     /// Get the left camera lens profile (if set).

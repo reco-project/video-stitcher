@@ -36,6 +36,10 @@ struct ProfileEntry {
     brand: String,
     /// Camera model (lowercase).
     model: String,
+    /// FOV mode from the profile (e.g. "Wide", "Narrow", "Linear").
+    lens_model: String,
+    /// Non-empty for third-party lens attachments (e.g. "neewer anamorphic wide").
+    camera_setting: String,
     /// Calibration width.
     width: u32,
     /// Calibration height.
@@ -123,16 +127,55 @@ impl LensDatabase {
     /// Find the best matching profile for a camera.
     ///
     /// Returns `None` if no profile matches the brand/model.
-    pub fn find(&self, brand: &str, model: &str, width: u32, height: u32) -> Option<CameraParams> {
+    pub fn find(
+        &self,
+        brand: &str,
+        model: &str,
+        width: u32,
+        height: u32,
+        lens_info: Option<&str>,
+    ) -> Option<CameraParams> {
         let key = normalize_camera_key(brand, model);
         let indices = self.by_camera.get(&key)?;
 
+        // Filter candidates by FOV mode when available.
+        // If lens_info is provided (e.g. "Wide"), only consider profiles
+        // whose lens_model matches (case-insensitive). If no FOV-filtered
+        // profiles match, fall back to all candidates.
+        let fov_filtered: Vec<usize> = if let Some(info) = lens_info {
+            let info_lower = info.to_ascii_lowercase();
+            indices
+                .iter()
+                .copied()
+                .filter(|&idx| {
+                    let p = &self.profiles[idx];
+                    // Match FOV mode exactly, exclude third-party lens attachments
+                    p.lens_model.to_ascii_lowercase() == info_lower && p.camera_setting.is_empty()
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let candidates = if fov_filtered.is_empty() {
+            if lens_info.is_some() {
+                log::debug!(
+                    "lens auto-detect: no profiles match FOV '{}' for {key}, trying all",
+                    lens_info.unwrap_or("?")
+                );
+            }
+            indices.as_slice()
+        } else {
+            fov_filtered.as_slice()
+        };
+
         // 1. Exact resolution match
-        for &idx in indices {
+        for &idx in candidates {
             let p = &self.profiles[idx];
             if p.width == width && p.height == height {
                 log::info!(
-                    "lens auto-detect: exact match {key} {width}x{height} ({})",
+                    "lens auto-detect: exact match {key} {width}x{height} FOV={} ({})",
+                    p.lens_model,
                     p.source
                 );
                 return Some(p.params.clone());
@@ -142,7 +185,7 @@ impl LensDatabase {
         // 2. Same aspect ratio, closest resolution - scale intrinsics
         let target_aspect = width as f64 / height as f64;
         let mut best: Option<(usize, f64)> = None;
-        for &idx in indices {
+        for &idx in candidates {
             let p = &self.profiles[idx];
             let aspect = p.width as f64 / p.height as f64;
             if (aspect - target_aspect).abs() < 0.05 {
@@ -157,9 +200,10 @@ impl LensDatabase {
             let p = &self.profiles[idx];
             let scale = width as f64 / p.width as f64;
             log::info!(
-                "lens auto-detect: scaling {key} {}x{} -> {width}x{height} (scale={scale:.3}, {})",
+                "lens auto-detect: scaling {key} {}x{} -> {width}x{height} FOV={} (scale={scale:.3}, {})",
                 p.width,
                 p.height,
+                p.lens_model,
                 p.source
             );
             return Some(CameraParams {
@@ -173,7 +217,10 @@ impl LensDatabase {
             });
         }
 
-        log::warn!("lens auto-detect: no match for {key} {width}x{height}");
+        log::warn!(
+            "lens auto-detect: no match for {key} {width}x{height} FOV={}",
+            lens_info.unwrap_or("?")
+        );
         None
     }
 
@@ -187,9 +234,10 @@ impl LensDatabase {
         camera_model: Option<&str>,
         width: u32,
         height: u32,
+        lens_info: Option<&str>,
     ) -> Option<CameraParams> {
         let model = camera_model.unwrap_or(camera_type);
-        self.find(camera_type, model, width, height)
+        self.find(camera_type, model, width, height, lens_info)
     }
 
     /// Number of loaded profiles.
@@ -248,7 +296,13 @@ pub fn detect_profile(
     video_height: u32,
     db: &LensDatabase,
 ) -> Option<CameraParams> {
-    let tel = crate::telemetry::extract(video_path).ok()?;
+    let tel = match crate::telemetry::extract(video_path) {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("lens auto-detect: telemetry extraction failed: {e}");
+            return None;
+        }
+    };
 
     // 1. Embedded lens profile (DJI cameras embed in metadata)
     if let Some(ref profile) = tel.lens_profile {
@@ -260,12 +314,13 @@ pub fn detect_profile(
         return Some(profile.clone());
     }
 
-    // 2. Database lookup by camera identification
+    // 2. Database lookup by camera identification + FOV mode
     db.find_from_telemetry(
         &tel.camera_type,
         tel.camera_model.as_deref(),
         video_width,
         video_height,
+        tel.lens_info.as_deref(),
     )
 }
 
@@ -343,10 +398,24 @@ fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEnt
         return None;
     }
 
+    let lens_model = v
+        .get("lens_model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let camera_setting = v
+        .get("camera_setting")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     Some(ProfileEntry {
         source: source.to_string(),
         brand,
         model,
+        lens_model,
+        camera_setting,
         width,
         height,
         params: CameraParams {

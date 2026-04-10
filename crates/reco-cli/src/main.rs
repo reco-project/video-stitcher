@@ -250,14 +250,16 @@ enum Commands {
         frames: usize,
 
         /// Extract IMU telemetry to auto-detect sync offset, rig tilt,
-        /// and seed roll/pitch parameters. Overrides --sync-offset when
+        /// and seed roll/pitch parameters. Enabled by default; use
+        /// --no-auto-imu to disable. Overrides --sync-offset when
         /// gyro data is available.
-        #[arg(long, default_value_t = false)]
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         auto_imu: bool,
 
         /// Auto-detect sync offset from audio cross-correlation.
-        /// Searches +-5 minutes. Overrides --sync-offset when successful.
-        #[arg(long, default_value_t = false)]
+        /// Used as fallback when IMU sync fails. Enabled by default;
+        /// use --no-auto-sync to disable.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         auto_sync: bool,
 
         /// Frame offset for temporal sync between cameras.

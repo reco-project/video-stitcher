@@ -70,6 +70,23 @@ pub fn run_preview(
     blend_width: f32,
     rig_tilt_degrees: f32,
 ) -> anyhow::Result<()> {
+    // Load calibration first so we can use its sync_offset and rig_tilt
+    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
+
+    // Use calibration's sync offset unless the user explicitly overrode it
+    let effective_sync = if sync_offset != 0 {
+        sync_offset
+    } else {
+        cal.sync_offset
+    };
+    // Use calibration's rig tilt unless the user explicitly overrode it.
+    // User provides degrees, calibration stores radians.
+    let rig_tilt_degrees = if rig_tilt_degrees.abs() > 1e-6 {
+        rig_tilt_degrees
+    } else {
+        (cal.rig_tilt as f32).to_degrees()
+    };
+
     // Probe the right file to verify dimensions match
     let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
     let right_dims = (right_dec.width(), right_dec.height());
@@ -78,7 +95,7 @@ pub fn run_preview(
     let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
         Path::new(left_path),
         Path::new(right_path),
-        sync_offset,
+        effective_sync,
     )?;
     let info = source.info();
 
@@ -90,8 +107,6 @@ pub fn run_preview(
         right_dims.0,
         right_dims.1
     );
-
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
 
     println!(
         "Preview: {}x{} input, {}x{} window",

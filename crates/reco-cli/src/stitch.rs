@@ -41,25 +41,42 @@ pub fn run_stitch(
 
     log::info!("Stitching: {left} + {right} -> {output}");
 
+    // Load calibration first so we can use its sync_offset and rig_tilt
+    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
+
+    // Use calibration's sync offset unless the user explicitly overrode it
+    let effective_sync = if sync_offset != 0 {
+        sync_offset
+    } else {
+        cal.sync_offset
+    };
+
     // Probe input and create source (kept for CPU path, dropped for zero-copy)
     let mut source = Some(reco_io::adapters::FfmpegFileSource::open_with_offset(
         Path::new(left),
         Path::new(right),
-        sync_offset,
+        effective_sync,
     )?);
     let fps_rational = reco_io::adapters::FfmpegFileSource::frame_rate(Path::new(left))?;
     let info = source.as_ref().unwrap().info();
     let (input_width, input_height, fps_val) = (info.width, info.height, info.fps);
     log::info!("Input: {input_width}x{input_height} @ {fps_val:.1} fps");
-    if sync_offset != 0 {
-        println!("Sync offset: {sync_offset} frames");
+    if effective_sync != 0 {
+        println!(
+            "Sync offset: {effective_sync} frames (from {})",
+            if sync_offset != 0 {
+                "CLI"
+            } else {
+                "calibration"
+            }
+        );
     }
 
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
     let viewport = reco_core::viewport::ViewportConfig {
         width,
         height,
         blend_width: blend,
+        rig_tilt: cal.rig_tilt as f32,
         ..Default::default()
     };
 
