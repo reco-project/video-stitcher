@@ -161,7 +161,7 @@ pub fn run_stitch(
             input_width,
             input_height,
             frame_limit,
-            sync_offset,
+            effective_sync,
             interrupted,
             &progress,
         )?;
@@ -183,7 +183,7 @@ pub fn run_stitch(
             left,
             right,
             frame_limit,
-            sync_offset,
+            effective_sync,
             interrupted,
             &progress,
         )?;
