@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use reco_calibrate::video::{calibrate_videos, CalibrateVideosOptions};
+use reco_calibrate::video::{CalibrateVideosOptions, calibrate_videos};
 
 const LEFT_4K: &str = "/media/guelzim/HDD/reco-test-footage/gopro-hero10/left_4k.mp4";
 const RIGHT_4K: &str = "/media/guelzim/HDD/reco-test-footage/gopro-hero10/right_4k.mp4";
@@ -81,9 +81,17 @@ fn calibrate_videos_matches_known_good() {
     );
 
     // Quality metrics
-    assert!(result.confidence > 0.5, "low confidence: {}", result.confidence);
+    assert!(
+        result.confidence > 0.5,
+        "low confidence: {}",
+        result.confidence
+    );
     assert!(result.frames_used > 0, "no frames used");
-    assert!(result.total_matches > 10, "too few matches: {}", result.total_matches);
+    assert!(
+        result.total_matches > 10,
+        "too few matches: {}",
+        result.total_matches
+    );
 
     println!("calibrate_videos passed:");
     println!("  sync_offset: {}", result.calibration.sync_offset);

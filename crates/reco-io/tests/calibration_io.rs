@@ -29,7 +29,11 @@ fn probe_video_returns_valid_metadata() {
     assert!(probe.width > 0);
     assert!(probe.height > 0);
     assert!(probe.fps > 29.0 && probe.fps < 31.0, "fps: {}", probe.fps);
-    assert!(probe.total_frames > 100, "total_frames: {}", probe.total_frames);
+    assert!(
+        probe.total_frames > 100,
+        "total_frames: {}",
+        probe.total_frames
+    );
 }
 
 #[test]
@@ -51,10 +55,7 @@ fn extract_frames_returns_correct_dimensions() {
         // Y plane: width * height bytes
         assert_eq!(frame.y.len(), (frame.width * frame.height) as usize);
         // U plane: (width/2) * (height/2) bytes
-        assert_eq!(
-            frame.u.len(),
-            (frame.width / 2 * frame.height / 2) as usize
-        );
+        assert_eq!(frame.u.len(), (frame.width / 2 * frame.height / 2) as usize);
     }
 }
 
