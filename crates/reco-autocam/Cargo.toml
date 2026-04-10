@@ -9,6 +9,7 @@ description = "Automatic camera control for reco: YOLO ball detector, EMA smooth
 [dependencies]
 reco-core = { path = "../reco-core" }
 ort = "2.0.0-rc.12"
+dirs = "6"
 log = "0.4"
 
 [features]

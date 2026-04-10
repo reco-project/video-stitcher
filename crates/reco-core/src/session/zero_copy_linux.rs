@@ -177,6 +177,13 @@ impl StitchSession {
                 }
             };
 
+            // SYNC NOTE (#103): The decode thread called cuCtxSynchronize before
+            // sending this signal, so CUDA writes to the shared texture are
+            // complete. Vulkan-side, wgpu's internal pipeline barriers on
+            // texture transitions provide sufficient synchronization on NVIDIA
+            // Linux (unified memory controller). A proper cross-API fix
+            // requires VK_KHR_external_semaphore, which wgpu does not yet
+            // expose. See issue #103.
             self.detect_and_update_director_gpu(
                 &left_buf,
                 &right_buf,

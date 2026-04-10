@@ -30,8 +30,46 @@ pub use gpu_detector::GpuYoloDetector;
 pub use metal_detector::MetalYoloDetector;
 
 use std::path::Path;
+#[cfg(any(feature = "tensorrt", feature = "coreml"))]
+use std::path::PathBuf;
 
 use ort::session::Session;
+
+/// Return a persistent cache directory for model engine/compilation caches.
+///
+/// Resolves to `{platform_cache_dir}/reco/{subdir}`:
+/// - Linux: `~/.cache/reco/{subdir}`
+/// - macOS: `~/Library/Caches/reco/{subdir}`
+/// - Windows: `{FOLDERID_LocalAppData}/reco/{subdir}`
+///
+/// Falls back to `{temp_dir}/reco/{subdir}` if the platform cache directory
+/// is unavailable. Creates the directory (with 0o700 permissions on Unix)
+/// if it does not already exist.
+#[cfg(any(feature = "tensorrt", feature = "coreml"))]
+fn reco_cache_dir(subdir: &str) -> PathBuf {
+    let base = dirs::cache_dir().unwrap_or_else(std::env::temp_dir);
+    let dir = base.join("reco").join(subdir);
+
+    if !dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            log::warn!("Failed to create cache dir {}: {e}", dir.display());
+            // Return it anyway — ORT will get a clear error if it can't write.
+            return dir;
+        }
+
+        // Restrict permissions on Unix (user-only).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o700);
+            if let Err(e) = std::fs::set_permissions(&dir, perms) {
+                log::warn!("Failed to set cache dir permissions: {e}");
+            }
+        }
+    }
+
+    dir
+}
 
 /// Create an ORT session with common settings and platform-specific EPs.
 ///
@@ -54,12 +92,14 @@ pub(crate) fn create_ort_session(
     // then CUDA EP, then fall back to CPU.
     #[cfg(feature = "tensorrt")]
     let mut builder = {
+        let trt_cache = reco_cache_dir("trt-cache");
+        let trt_cache_str = trt_cache.to_string_lossy().into_owned();
         match builder.with_execution_providers([ort::ep::TensorRT::default()
             .with_fp16(true)
             .with_engine_cache(true)
-            .with_engine_cache_path("/tmp/reco-trt-cache")
+            .with_engine_cache_path(&trt_cache_str)
             .with_timing_cache(true)
-            .with_timing_cache_path("/tmp/reco-trt-cache")
+            .with_timing_cache_path(&trt_cache_str)
             .with_builder_optimization_level(3)
             .build()])
         {
@@ -92,9 +132,11 @@ pub(crate) fn create_ort_session(
     // CoreML EP for macOS.
     #[cfg(feature = "coreml")]
     let mut builder = {
+        let coreml_cache = reco_cache_dir("coreml-cache");
+        let coreml_cache_str = coreml_cache.to_string_lossy().into_owned();
         match builder.with_execution_providers([ort::ep::CoreML::default()
             .with_compute_units(ort::ep::coreml::ComputeUnits::All)
-            .with_model_cache_dir("/tmp/reco-coreml-cache")
+            .with_model_cache_dir(&coreml_cache_str)
             .build()])
         {
             Ok(b) => {
@@ -127,4 +169,20 @@ pub(crate) fn create_ort_session(
     };
 
     Ok((session, input_size, labels))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn create_ort_session_nonexistent_model_returns_error() {
+        let path = PathBuf::from("/tmp/this_model_does_not_exist_12345.onnx");
+        let result = create_ort_session(&path, Vec::new());
+        assert!(
+            result.is_err(),
+            "loading a nonexistent model should return an error"
+        );
+    }
 }

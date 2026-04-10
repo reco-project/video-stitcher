@@ -326,3 +326,480 @@ impl Director for BallDirector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reco_core::director::{DirectorContext, MappedDetection, ViewportPosition};
+    use reco_core::projection::ViewportBounds;
+
+    /// Build a `DirectorContext` with the given detections and a generous
+    /// viewport so clamping doesn't interfere with state-machine logic.
+    fn ctx_with_detections(
+        frame_index: u64,
+        detections: &[MappedDetection],
+    ) -> DirectorContext<'_> {
+        DirectorContext {
+            frame_index,
+            timestamp_ms: frame_index as f64 * (1000.0 / 30.0),
+            detections,
+            viewport_bounds: ViewportBounds {
+                min_yaw: -2.0,
+                max_yaw: 2.0,
+                min_pitch: -1.0,
+                max_pitch: 1.0,
+            },
+            current_fov: 55.0,
+        }
+    }
+
+    /// Shorthand: one ball detection at the given panorama yaw/pitch.
+    fn ball_detection(yaw: f32, pitch: f32) -> MappedDetection {
+        MappedDetection {
+            camera: reco_core::detector::CameraId::Left,
+            label: "ball".into(),
+            confidence: 0.9,
+            camera_center: (0.5, 0.5),
+            camera_size: (0.02, 0.02),
+            position: Some(ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            }),
+        }
+    }
+
+    // ---- State machine tests ----
+
+    #[test]
+    fn initial_state_is_searching() {
+        let dir = BallDirector::new(30.0);
+        // The state field is private, but we can observe it via behavior:
+        // In Searching state with no ball, update should not panic and
+        // position should stay at origin.
+        assert_eq!(dir.state, State::Searching);
+    }
+
+    #[test]
+    fn searching_to_recovering_on_detection() {
+        let mut dir = BallDirector::new(30.0);
+        assert_eq!(dir.state, State::Searching);
+
+        let det = [ball_detection(0.5, 0.1)];
+        let ctx = ctx_with_detections(0, &det);
+        dir.update(&ctx);
+
+        // First ball detection in Searching triggers Recovering.
+        assert_eq!(dir.state, State::Recovering);
+    }
+
+    #[test]
+    fn recovering_to_tracking_after_confirmation() {
+        let mut dir = BallDirector::new(30.0);
+        let det = [ball_detection(0.5, 0.1)];
+
+        // First detection: Searching -> Recovering
+        dir.update(&ctx_with_detections(0, &det));
+        assert_eq!(dir.state, State::Recovering);
+
+        // Feed detections for recover_confirm frames (0.3s at 30fps = 9 frames).
+        // The first update already set recover_count to 0 and state to Recovering.
+        // Each subsequent update with a detection increments recover_count.
+        let confirm_frames = (30.0 * 0.3) as u64; // 9 frames
+        for i in 1..=confirm_frames {
+            dir.update(&ctx_with_detections(i, &det));
+        }
+
+        assert_eq!(dir.state, State::Tracking);
+    }
+
+    #[test]
+    fn tracking_to_searching_when_ball_lost() {
+        let mut dir = BallDirector::new(30.0);
+
+        // Get into Tracking state.
+        let det = [ball_detection(0.5, 0.1)];
+        dir.update(&ctx_with_detections(0, &det));
+        let confirm_frames = (30.0 * 0.3) as u64;
+        for i in 1..=confirm_frames {
+            dir.update(&ctx_with_detections(i, &det));
+        }
+        assert_eq!(dir.state, State::Tracking);
+
+        // Now stop sending detections. After search_delay frames (1.5s = 45
+        // frames at 30fps) we should transition to Searching.
+        let search_delay = (30.0_f32 * 1.5) as u64; // 45
+        let base = confirm_frames + 1;
+        for i in 0..search_delay {
+            let empty: &[MappedDetection] = &[];
+            dir.update(&ctx_with_detections(base + i, empty));
+        }
+
+        assert_eq!(dir.state, State::Searching);
+    }
+
+    #[test]
+    fn recovering_falls_back_to_searching_if_ball_lost_again() {
+        let mut dir = BallDirector::new(30.0);
+
+        // Searching -> Recovering
+        let det = [ball_detection(0.5, 0.1)];
+        dir.update(&ctx_with_detections(0, &det));
+        assert_eq!(dir.state, State::Recovering);
+
+        // Lose ball immediately. After search_delay frames: Recovering -> Searching.
+        let search_delay = (30.0_f32 * 1.5) as u64;
+        for i in 1..=search_delay {
+            let empty: &[MappedDetection] = &[];
+            dir.update(&ctx_with_detections(i, empty));
+        }
+
+        assert_eq!(dir.state, State::Searching);
+    }
+
+    // ---- Smoothing (EMA) tests ----
+
+    #[test]
+    fn ema_smoothing_moves_toward_target() {
+        let mut dir = BallDirector::new(30.0);
+
+        // Get into Tracking state.
+        let det = [ball_detection(0.5, 0.1)];
+        dir.update(&ctx_with_detections(0, &det));
+        let confirm_frames = (30.0 * 0.3) as u64;
+        for i in 1..=confirm_frames {
+            dir.update(&ctx_with_detections(i, &det));
+        }
+        assert_eq!(dir.state, State::Tracking);
+
+        // Now jump target to a distant position and track convergence.
+        let far_det = [ball_detection(1.0, 0.3)];
+        let base = confirm_frames + 1;
+        let yaw_before = dir.yaw;
+
+        // Run many frames to let EMA converge. With alpha=0.04,
+        // convergence is slow (each frame moves 4% of remaining error),
+        // so 500 frames gets us close but not exact.
+        for i in 0..500 {
+            dir.update(&ctx_with_detections(base + i, &far_det));
+        }
+
+        // After many frames, yaw should have moved significantly toward 1.0.
+        assert!(
+            dir.yaw > yaw_before,
+            "yaw should move toward the target: {} > {}",
+            dir.yaw,
+            yaw_before
+        );
+        assert!(
+            (dir.yaw - 1.0).abs() < 0.15,
+            "yaw should converge near 1.0, got {}",
+            dir.yaw
+        );
+    }
+
+    // ---- Dead zone tests ----
+
+    #[test]
+    fn dead_zone_suppresses_small_movements() {
+        // Use a large dead zone and fast alpha so we can converge fully
+        // before testing the dead zone behavior.
+        let mut dir = BallDirector::new(30.0).with_dead_zone(0.10).with_alpha(0.5); // fast convergence
+
+        // Get into Tracking at a known position.
+        let det = [ball_detection(0.5, 0.1)];
+        dir.update(&ctx_with_detections(0, &det));
+        let confirm = (30.0 * 0.3) as u64;
+        for i in 1..=confirm {
+            dir.update(&ctx_with_detections(i, &det));
+        }
+
+        // Run enough frames so the camera fully converges to target.
+        for i in 0..200 {
+            dir.update(&ctx_with_detections(confirm + 1 + i, &det));
+        }
+        let yaw_settled = dir.yaw;
+
+        // Dead zone = 0.10 * 55.0 degrees = 5.5 degrees = ~0.096 radians.
+        // The settled yaw is very close to 0.5 (alpha=0.5 converges fast).
+        // Move target by only 0.005 radians - well within the dead zone.
+        let tiny_det = [ball_detection(yaw_settled + 0.005, 0.1)];
+        for i in 0..10 {
+            dir.update(&ctx_with_detections(confirm + 201 + i, &tiny_det));
+        }
+
+        assert!(
+            (dir.yaw - yaw_settled).abs() < 0.001,
+            "yaw should not change for within-dead-zone movement: settled={}, \
+             now={}",
+            yaw_settled,
+            dir.yaw
+        );
+    }
+
+    #[test]
+    fn dead_zone_allows_large_movements() {
+        let mut dir = BallDirector::new(30.0).with_dead_zone(0.10);
+
+        // Get into Tracking at origin-ish position.
+        let det = [ball_detection(0.1, 0.0)];
+        dir.update(&ctx_with_detections(0, &det));
+        let confirm = (30.0 * 0.3) as u64;
+        for i in 1..=confirm {
+            dir.update(&ctx_with_detections(i, &det));
+        }
+        for i in 0..300 {
+            dir.update(&ctx_with_detections(confirm + 1 + i, &det));
+        }
+
+        let yaw_before = dir.yaw;
+
+        // Jump the detection far outside the dead zone.
+        let far_det = [ball_detection(0.8, 0.0)];
+        for i in 0..200 {
+            dir.update(&ctx_with_detections(confirm + 301 + i, &far_det));
+        }
+
+        assert!(
+            (dir.yaw - yaw_before).abs() > 0.1,
+            "yaw should move for beyond-dead-zone target: before={}, now={}",
+            yaw_before,
+            dir.yaw
+        );
+    }
+
+    // ---- FPS clamping tests ----
+
+    #[test]
+    fn fps_clamped_low() {
+        let dir = BallDirector::new(0.0);
+        // fps=0.0 clamped to 1.0 -> search_delay = (1.0 * 1.5) as u32 = 1
+        assert_eq!(dir.search_delay, 1);
+    }
+
+    #[test]
+    fn fps_clamped_high() {
+        let dir = BallDirector::new(100_000.0);
+        // fps clamped to 1000.0 -> search_delay = (1000 * 1.5) as u32 = 1500
+        assert_eq!(dir.search_delay, 1500);
+    }
+
+    #[test]
+    fn fps_negative_clamped_to_one() {
+        let dir = BallDirector::new(-10.0);
+        assert_eq!(dir.search_delay, 1); // (1.0 * 1.5) as u32
+        assert_eq!(dir.coast_frames, 2); // (1.0 * 2.0) as u32
+    }
+
+    // ---- Viewport bounds clamping ----
+
+    #[test]
+    fn position_clamped_to_viewport_bounds() {
+        let mut dir = BallDirector::new(30.0);
+
+        // Send a detection far outside the viewport bounds.
+        let det = [ball_detection(5.0, 3.0)];
+        dir.update(&ctx_with_detections(0, &det));
+        let confirm = (30.0 * 0.3) as u64;
+        for i in 1..=confirm {
+            dir.update(&ctx_with_detections(i, &det));
+        }
+        for i in 0..500 {
+            dir.update(&ctx_with_detections(confirm + 1 + i, &det));
+        }
+
+        // The internal yaw should be clamped to viewport max (2.0).
+        assert!(
+            dir.yaw <= 2.0,
+            "yaw should be clamped to max_yaw: {}",
+            dir.yaw
+        );
+        assert!(
+            dir.pitch <= 1.0,
+            "pitch should be clamped to max_pitch: {}",
+            dir.pitch
+        );
+    }
+
+    // ---- Position output ----
+
+    #[test]
+    fn position_negates_yaw() {
+        let mut dir = BallDirector::new(30.0);
+
+        // Get into Tracking with positive yaw.
+        let det = [ball_detection(0.5, 0.1)];
+        dir.update(&ctx_with_detections(0, &det));
+        let confirm = (30.0 * 0.3) as u64;
+        for i in 1..=confirm {
+            dir.update(&ctx_with_detections(i, &det));
+        }
+        for i in 0..300 {
+            dir.update(&ctx_with_detections(confirm + 1 + i, &det));
+        }
+
+        let pos = dir.position();
+        // Internal yaw is positive -> output yaw should be negative.
+        assert!(
+            dir.yaw > 0.0,
+            "internal yaw should be positive: {}",
+            dir.yaw
+        );
+        assert!(pos.yaw < 0.0, "output yaw should be negated: {}", pos.yaw);
+        assert!(
+            (pos.yaw + dir.yaw).abs() < 1e-6,
+            "pos.yaw should be -dir.yaw"
+        );
+    }
+
+    #[test]
+    fn position_includes_fov() {
+        let dir = BallDirector::new(30.0);
+        let pos = dir.position();
+        assert!(pos.fov_degrees.is_some());
+    }
+
+    // ---- find_ball filtering ----
+
+    #[test]
+    fn find_ball_ignores_non_ball_labels() {
+        let dir = BallDirector::new(30.0);
+
+        let detections = [
+            MappedDetection {
+                camera: reco_core::detector::CameraId::Left,
+                label: "player".into(),
+                confidence: 0.95,
+                camera_center: (0.5, 0.5),
+                camera_size: (0.1, 0.2),
+                position: Some(ViewportPosition {
+                    yaw: 0.3,
+                    pitch: 0.1,
+                    fov_degrees: None,
+                }),
+            },
+            ball_detection(0.5, 0.1),
+        ];
+
+        let ctx = ctx_with_detections(0, &detections);
+        let found = dir.find_ball(&ctx);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().label, "ball");
+    }
+
+    #[test]
+    fn find_ball_picks_highest_confidence() {
+        let dir = BallDirector::new(30.0);
+
+        let detections = [
+            MappedDetection {
+                camera: reco_core::detector::CameraId::Left,
+                label: "ball".into(),
+                confidence: 0.5,
+                camera_center: (0.3, 0.3),
+                camera_size: (0.02, 0.02),
+                position: Some(ViewportPosition {
+                    yaw: 0.1,
+                    pitch: 0.0,
+                    fov_degrees: None,
+                }),
+            },
+            MappedDetection {
+                camera: reco_core::detector::CameraId::Left,
+                label: "ball".into(),
+                confidence: 0.95,
+                camera_center: (0.7, 0.7),
+                camera_size: (0.02, 0.02),
+                position: Some(ViewportPosition {
+                    yaw: 0.8,
+                    pitch: 0.2,
+                    fov_degrees: None,
+                }),
+            },
+        ];
+
+        let ctx = ctx_with_detections(0, &detections);
+        let found = dir.find_ball(&ctx);
+        assert!(found.is_some());
+        assert!((found.unwrap().confidence - 0.95).abs() < 1e-6);
+    }
+
+    #[test]
+    fn find_ball_returns_none_for_no_position() {
+        let dir = BallDirector::new(30.0);
+
+        let detections = [MappedDetection {
+            camera: reco_core::detector::CameraId::Left,
+            label: "ball".into(),
+            confidence: 0.9,
+            camera_center: (0.5, 0.5),
+            camera_size: (0.02, 0.02),
+            position: None, // unmapped detection
+        }];
+
+        let ctx = ctx_with_detections(0, &detections);
+        let found = dir.find_ball(&ctx);
+        assert!(found.is_none());
+    }
+
+    // ---- Dynamic FOV tests ----
+
+    #[test]
+    fn fov_zooms_in_for_high_pitch() {
+        let mut dir = BallDirector::new(30.0);
+
+        // High pitch = ball far away -> should zoom in (lower FOV).
+        dir.target_pitch = 0.20;
+        let tight = dir.target_fov();
+
+        dir.target_pitch = -0.05;
+        let wide = dir.target_fov();
+
+        assert!(
+            tight < wide,
+            "high pitch should produce tighter FOV: tight={}, wide={}",
+            tight,
+            wide
+        );
+        assert!(
+            (tight - dir.fov_tight).abs() < 0.01,
+            "max pitch should give fov_tight: {}",
+            tight
+        );
+        assert!(
+            (wide - dir.fov_wide).abs() < 0.01,
+            "min pitch should give fov_wide: {}",
+            wide
+        );
+    }
+
+    // ---- Velocity prediction ----
+
+    #[test]
+    fn velocity_updated_on_reasonable_movement() {
+        let mut dir = BallDirector::new(30.0);
+        dir.prev_target_yaw = 0.0;
+        dir.prev_target_pitch = 0.0;
+
+        dir.update_velocity(0.01, 0.005);
+        assert!(dir.vel_yaw.abs() > 0.0, "velocity should be non-zero");
+        assert!(dir.vel_pitch.abs() > 0.0, "velocity should be non-zero");
+    }
+
+    #[test]
+    fn velocity_not_updated_on_teleport() {
+        let mut dir = BallDirector::new(30.0);
+        dir.prev_target_yaw = 0.0;
+        dir.prev_target_pitch = 0.0;
+        dir.vel_yaw = 0.0;
+        dir.vel_pitch = 0.0;
+
+        // Jump > 0.3 radians is considered a teleport.
+        dir.update_velocity(1.0, 0.0);
+        assert!(
+            dir.vel_yaw.abs() < 1e-9,
+            "velocity should not update on teleport: {}",
+            dir.vel_yaw
+        );
+    }
+}
