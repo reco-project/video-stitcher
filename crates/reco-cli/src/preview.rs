@@ -124,12 +124,12 @@ pub fn run_preview(
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
 
     let mut app = App {
+        source: Some(source),
         window: None,
         surface: None,
         surface_format: reco_core::wgpu::TextureFormat::Bgra8UnormSrgb, // overwritten in resumed()
         alpha_mode: reco_core::wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
         pipeline: None,
-        source,
         cal,
         input_width: info.width,
         input_height: info.height,
@@ -159,12 +159,14 @@ pub fn run_preview(
 }
 
 struct App {
+    // Drop order matters: source (NVDEC) must drop before pipeline (wgpu/Vulkan)
+    // to avoid CUDA context teardown race. Option lets us drop explicitly.
+    source: Option<reco_io::adapters::FfmpegFileSource>,
     surface: Option<reco_core::wgpu::Surface<'static>>,
     window: Option<Arc<Window>>,
     surface_format: reco_core::wgpu::TextureFormat,
     alpha_mode: reco_core::wgpu::CompositeAlphaMode,
     pipeline: Option<reco_core::pipeline::StitchPipeline>,
-    source: reco_io::adapters::FfmpegFileSource,
     cal: reco_core::calibration::MatchCalibration,
     input_width: u32,
     input_height: u32,
@@ -192,7 +194,10 @@ struct App {
 
 impl App {
     fn advance_frame(&mut self) {
-        match self.source.try_next_frame() {
+        let Some(ref mut source) = self.source else {
+            return;
+        };
+        match source.try_next_frame() {
             Ok(Some(frame)) => {
                 let (left, right) = unwrap_yuv_pair(frame);
                 self.current_left = left;
@@ -213,7 +218,10 @@ impl App {
 
     /// Blocking advance for step mode (N key, P key).
     fn step_frame(&mut self) {
-        match self.source.next_frame() {
+        let Some(ref mut source) = self.source else {
+            return;
+        };
+        match source.next_frame() {
             Ok(Some(frame)) => {
                 let (left, right) = unwrap_yuv_pair(frame);
                 self.current_left = left;
@@ -354,7 +362,12 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                // Drop decoder (NVDEC) before GPU pipeline to avoid
+                // CUDA context teardown race on exit.
+                self.source.take();
+                event_loop.exit();
+            }
             WindowEvent::Resized(size) => {
                 if size.width > 0 && size.height > 0 {
                     self.width = size.width;
@@ -389,6 +402,7 @@ impl ApplicationHandler for App {
                 if event.state == winit::event::ElementState::Pressed {
                     match event.physical_key {
                         PhysicalKey::Code(KeyCode::Escape | KeyCode::KeyQ) => {
+                            self.source.take();
                             event_loop.exit();
                         }
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
