@@ -204,7 +204,10 @@ impl VideoDecoder {
         let mut context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
         // Enable multithreaded decode (frame-level threading).
         // count(0) = auto-detect optimal thread count.
-        context.set_threading(ffmpeg::threading::Config::count(0));
+        // kind(Frame) = decode multiple frames in parallel.
+        let mut threading = ffmpeg::threading::Config::kind(ffmpeg::threading::Type::Frame);
+        threading.count = 0;
+        context.set_threading(threading);
 
         // Try hardware acceleration (unless disabled via env var)
         let (backend, hw_device_ref) = if std::env::var("RECO_NO_HWACCEL").is_ok() {
