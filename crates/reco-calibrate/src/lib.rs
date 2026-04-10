@@ -210,7 +210,7 @@ fn process_undistorted_pair(
         points,
         keypoints_left: kp_left.len(),
         keypoints_right: kp_right.len(),
-        raw_matches: desc_left.len().min(desc_right.len()),
+        min_descriptors: desc_left.len().min(desc_right.len()),
         post_ratio_test,
         post_spatial_filter,
         post_ransac,
@@ -248,6 +248,19 @@ pub fn calibrate(
     } else {
         return Err(CalibrateError::NoUsableFrames);
     };
+
+    // Validate that frame dimensions are nonzero to prevent division-by-zero
+    // downstream (e.g., in normalize_to_plane, seam weight calculations).
+    if lw == 0 || lh == 0 || rw == 0 || rh == 0 {
+        log::error!(
+            "invalid frame dimensions: left={}x{}, right={}x{}",
+            lw,
+            lh,
+            rw,
+            rh
+        );
+        return Err(CalibrateError::NoUsableFrames);
+    }
     let left_undistort = GpuUndistort::new(gpu, lw, lh);
     let right_undistort = GpuUndistort::new(gpu, rw, rh);
 

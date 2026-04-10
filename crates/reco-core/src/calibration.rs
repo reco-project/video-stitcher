@@ -138,7 +138,7 @@ pub struct CameraParams {
 ///        │  │           │
 ///        └──┼───────────┼──── X
 ///           │           │
-///           └──────────┘ Right plane (Y-Z)
+///           └──────────┘ Right plane (X-Y)
 ///
 ///   Camera at [camera_axis_offset, 0, camera_axis_offset]
 /// ```

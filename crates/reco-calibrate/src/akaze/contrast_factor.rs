@@ -45,9 +45,12 @@ pub fn compute_contrast_factor(
         "hmax: {}, threshold: {}, num_elements: {}",
         hmax, threshold, num_elements
     );
-    if num_elements >= threshold {
+    let result = if num_elements >= threshold {
         hmax * (k as f64) / (num_bins as f64)
     } else {
         0.03
-    }
+    };
+    // Clamp to a minimum to prevent zero contrast factor on blank/uniform
+    // images, which would cause division-by-zero (Infinity) in pm_g2.
+    result.max(1e-6)
 }

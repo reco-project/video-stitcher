@@ -16,7 +16,7 @@
 pub enum CameraId {
     /// Left camera (plane in X-Z space).
     Left,
-    /// Right camera (plane in Y-Z space).
+    /// Right camera (plane in X-Y space).
     Right,
 }
 

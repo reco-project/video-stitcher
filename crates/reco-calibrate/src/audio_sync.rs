@@ -152,7 +152,12 @@ fn normalize(v: &mut [f64]) {
 
 /// FFT-based cross-correlation (convolution with reversed template).
 fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Result<Vec<f64>, SyncError> {
-    let n = signal.len() + template.len() - 1;
+    // Checked addition to prevent overflow on 32-bit targets
+    let n = signal
+        .len()
+        .checked_add(template.len())
+        .and_then(|v| v.checked_sub(1))
+        .ok_or_else(|| SyncError::FftError("signal + template length overflow".to_string()))?;
     let fft_len = n.next_power_of_two();
 
     let mut planner = RealFftPlanner::<f64>::new();

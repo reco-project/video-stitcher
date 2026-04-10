@@ -75,7 +75,8 @@ pub struct FrameMatches {
     /// Number of keypoints detected in the right image.
     pub keypoints_right: usize,
     /// Minimum descriptor count across both images (diagnostic baseline).
-    pub raw_matches: usize,
+    #[serde(alias = "raw_matches")]
+    pub min_descriptors: usize,
     /// Matches surviving Lowe's ratio test.
     pub post_ratio_test: usize,
     /// Matches surviving the spatial overlap filter.
@@ -132,8 +133,7 @@ pub struct CalibrationConfig {
     pub skip_end_secs: f64,
 
     // --- Optimizer settings ---
-    /// Remove cam_d from free parameters (derives it from intersect).
-    /// Based on the finding that cam_d = 0.5 * (1 - intersect) for most rigs.
+    /// Removes `cam_d` from free parameters (derives from `intersect`).
     pub lock_cam_d: bool,
 
     /// Lock z_rx to 0 (left/z-plane stays static, only translates via intersect).
@@ -146,10 +146,11 @@ pub struct CalibrationConfig {
 
     /// Horizontal Gaussian sigma for seam-proximity weighting.
     ///
-    /// Points near the stitch seam are weighted more heavily. A smaller
-    /// sigma concentrates weight tighter around the seam. Vertical sigma
-    /// is fixed at 0.08. Confirmed "much better" than unweighted across
-    /// all test footages.
+    /// Controls horizontal (seam-proximity) width; vertical sigma is
+    /// fixed at 0.08. Points near the stitch seam are weighted more
+    /// heavily. A smaller sigma concentrates weight tighter around the
+    /// seam. Confirmed "much better" than unweighted across all test
+    /// footages.
     pub seam_sigma: f64,
 
     // --- IMU-derived settings (populated by telemetry module) ---
@@ -279,7 +280,7 @@ pub struct CalibrationResult {
     pub total_matches: usize,
     /// Number of frame pairs that produced usable matches.
     pub frames_used: usize,
-    /// Residual cost at the optimum (seam-weighted reprojection error).
+    /// Residual seam-weighted reprojection error at the optimum (dimensionless).
     pub residual_error: f64,
     /// Calibration confidence score (0.0-1.0).
     pub confidence: f64,

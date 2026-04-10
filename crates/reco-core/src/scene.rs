@@ -50,9 +50,9 @@ impl SceneGeometry {
     ///
     /// This mirrors the v1 `VideoPlane` component positioning:
     /// - Left plane: `position = [0, 0, (w/2) × (1 - intersect)]`,
-    ///   `rotation = [zRx, π/2, 0]`
+    ///   `rotation = [zRx, π/2, zRz]`
     /// - Right plane: `position = [(w/2) × (1 - intersect), xTy, 0]`,
-    ///   `rotation = [0, 0, xRz]`
+    ///   `rotation = [xRx, 0, xRz]`
     pub fn from_layout(layout: &PlaneLayout) -> Self {
         let plane_width: f32 = 1.0;
         let aspect: f32 = crate::renderer::PLANE_ASPECT;

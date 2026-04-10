@@ -352,7 +352,12 @@ impl SeamWeightConfig {
     }
 }
 
-fn per_point_seam_weighted_errors(
+/// Compute per-point seam-weighted reprojection errors.
+///
+/// Each point's error is weighted by proximity to the stitch seam
+/// (horizontal Gaussian) and image center (vertical Gaussian).
+/// Used by [`SeamWeightedCost::per_point_cost`](crate::defaults::SeamWeightedCost).
+pub fn per_point_seam_weighted_errors(
     points: &[MatchedPoint],
     params: &OptParams,
     sigma: f64,

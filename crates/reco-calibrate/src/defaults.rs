@@ -212,7 +212,7 @@ impl CostFunction for SeamWeightedCost {
     }
 
     fn per_point_cost(&self, points: &[MatchedPoint], params: &OptParams) -> Vec<f64> {
-        geometry::per_point_reprojection_error(points, params)
+        geometry::per_point_seam_weighted_errors(points, params, self.sigma)
     }
 }
 

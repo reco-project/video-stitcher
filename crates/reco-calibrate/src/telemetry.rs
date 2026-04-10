@@ -9,7 +9,7 @@
 //! | Camera | Raw Gyro | Raw Accel | Quaternions | Embedded Lens |
 //! |--------|----------|-----------|-------------|---------------|
 //! | GoPro  | Yes      | Yes       | Yes (CORI)  | No            |
-//! | DJI    | No       | No        | Yes         | Yes           |
+//! | DJI    | No (model-dependent) | No (model-dependent) | Yes | Yes |
 //! | Insta360 | Yes    | Yes       | No          | Yes           |
 //! | Sony   | Yes      | Yes       | No          | Yes (mesh)    |
 //!
@@ -257,8 +257,8 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
 ///
 /// Resamples both gyro signals to a common rate, correlates their
 /// magnitude signals, and returns the lag in seconds. A positive
-/// return value means the left camera's recording started that many
-/// seconds after the right camera (equivalently, the right camera
+/// return value means the right camera's recording started that many
+/// seconds after the left camera (equivalently, the left camera
 /// started earlier).
 ///
 /// Returns `None` if either camera lacks gyro data.
@@ -312,7 +312,7 @@ pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Opti
         }
     }
 
-    // Negative lag means right camera started earlier
+    // Positive lag means right camera started earlier (negate to get seconds)
     let offset_secs = -(best_lag as f64 / sample_rate);
     log::info!("gyro sync: lag={best_lag} samples ({offset_secs:.3}s), correlation={best_corr:.4}");
     Some(offset_secs)

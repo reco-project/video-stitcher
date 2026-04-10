@@ -106,13 +106,13 @@ impl BallDirector {
         }
     }
 
-    /// Set the EMA smoothing factor for normal tracking (default: 0.08).
+    /// Set the EMA smoothing factor for normal tracking (default: 0.04).
     pub fn with_alpha(mut self, alpha: f32) -> Self {
         self.alpha_track = alpha.clamp(0.01, 1.0);
         self
     }
 
-    /// Set the dead zone as a fraction of FOV (default: 0.05).
+    /// Set the dead zone as a fraction of FOV (default: 0.10).
     pub fn with_dead_zone(mut self, dead_zone: f32) -> Self {
         self.dead_zone = dead_zone.clamp(0.0, 0.5);
         self

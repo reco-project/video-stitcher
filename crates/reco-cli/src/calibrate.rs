@@ -287,7 +287,7 @@ fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total
                 fm.points.len(),
                 fm.keypoints_left,
                 fm.keypoints_right,
-                fm.raw_matches,
+                fm.min_descriptors,
                 fm.post_ratio_test,
                 fm.post_spatial_filter,
                 fm.post_ransac,

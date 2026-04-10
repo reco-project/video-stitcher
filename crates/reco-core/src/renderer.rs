@@ -721,7 +721,7 @@ impl Renderer {
 
     /// Render a stitched frame directly to a texture view (e.g., a window surface).
     ///
-    /// Unlike [`Self::render_frame`], this does NOT read back the result to CPU.
+    /// Unlike [`Self::render_to_target`], this does NOT read back the result to CPU.
     /// Used for interactive preview windows.
     pub fn render_to_view(
         &self,

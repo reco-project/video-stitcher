@@ -23,7 +23,7 @@
 //!
 //! Two camera planes are arranged in an L-shape in 3D space:
 //! - Left camera plane lies in the X-Z plane (faces right)
-//! - Right camera plane lies in the Y-Z plane (faces forward)
+//! - Right camera plane lies in the X-Y plane (faces forward)
 //! - A virtual camera sits at the corner, looking at both planes
 //! - Panning is achieved by rotating the virtual camera (yaw/pitch)
 //!

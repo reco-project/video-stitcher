@@ -187,6 +187,7 @@ fn params_from_vec(p: &[f64]) -> OptParams {
 ///
 /// Order: `[cam_d, intersect, x_ty, x_rz]`.
 fn params_from_vec_no_zrx(p: &[f64]) -> OptParams {
+    debug_assert!(p.len() >= 4, "need at least 4 params, got {}", p.len());
     OptParams {
         cam_d: p[0],
         intersect: p[1],
@@ -203,6 +204,7 @@ fn params_from_vec_no_zrx(p: &[f64]) -> OptParams {
 /// Order: `[intersect, x_ty, x_rz, z_rx]`.
 /// If 5 elements, the 5th is `x_rx` (right plane pitch).
 fn params_from_vec_locked(p: &[f64]) -> OptParams {
+    debug_assert!(p.len() >= 4, "need at least 4 params, got {}", p.len());
     let intersect = p[0];
     OptParams {
         cam_d: 0.5 * (1.0 - intersect),
@@ -219,6 +221,7 @@ fn params_from_vec_locked(p: &[f64]) -> OptParams {
 /// cam_d derived from intersect, z_rx = 0.
 /// Order: `[intersect, x_ty, x_rz]`.
 fn params_from_vec_locked_no_zrx(p: &[f64]) -> OptParams {
+    debug_assert!(p.len() >= 3, "need at least 3 params, got {}", p.len());
     let intersect = p[0];
     OptParams {
         cam_d: 0.5 * (1.0 - intersect),
