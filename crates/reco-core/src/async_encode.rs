@@ -88,6 +88,7 @@ impl AsyncEncodeThread {
     /// encode thread. Blocks if the channel is full (backpressure).
     /// `pts_us` is the presentation timestamp in microseconds.
     pub fn submit(&self, nv12_data: &[u8], pts_us: i64) -> Result<(), EncodeError> {
+        profile_scope!("async_encode_submit");
         let tx = self
             .tx
             .as_ref()
@@ -138,6 +139,7 @@ impl AsyncEncodeThread {
         height: u32,
     ) -> Result<(), EncodeError> {
         while let Ok(job) = rx.recv() {
+            profile_scope!("encode_submit");
             encoder.submit(OutputFrame {
                 data: &job.data,
                 width,
