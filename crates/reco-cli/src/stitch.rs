@@ -41,17 +41,15 @@ pub fn run_stitch(
 
     log::info!("Stitching: {left} + {right} -> {output}");
 
-    // Load calibration first so we can use its sync_offset and rig_tilt
+    // Load calibration
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
-
-    // Use calibration's sync offset unless the user explicitly overrode it
     let effective_sync = if sync_offset != 0 {
         sync_offset
     } else {
         cal.sync_offset
     };
 
-    // Probe input and create source (kept for CPU path, dropped for zero-copy)
+    // Probe input
     let mut source = Some(reco_io::adapters::FfmpegFileSource::open_with_offset(
         Path::new(left),
         Path::new(right),
@@ -72,19 +70,9 @@ pub fn run_stitch(
         );
     }
 
-    let viewport = reco_core::viewport::ViewportConfig {
-        width,
-        height,
-        blend_width: blend,
-        rig_tilt: cal.rig_tilt as f32,
-        ..Default::default()
-    };
-
     // Detect zero-copy capability
     let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
-    let use_zero_copy = std::env::var("RECO_NO_HWACCEL").is_err()
-        && source.as_ref().unwrap().supports_zero_copy()
-        && gpu.supports_zero_copy();
+    let use_zero_copy = reco_io::adapters::detect_zero_copy(source.as_ref().unwrap(), &gpu);
 
     let input_format = if use_zero_copy {
         reco_core::renderer::InputFormat::Nv12
@@ -92,6 +80,14 @@ pub fn run_stitch(
         reco_core::renderer::InputFormat::Yuv420p
     };
 
+    // Build session
+    let viewport = reco_core::viewport::ViewportConfig {
+        width,
+        height,
+        blend_width: blend,
+        rig_tilt: cal.rig_tilt as f32,
+        ..Default::default()
+    };
     let session_config = reco_core::session::SessionConfig {
         calibration: cal,
         viewport,
@@ -102,149 +98,62 @@ pub fn run_stitch(
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
-    let mode_str = if use_zero_copy {
-        #[cfg(target_os = "linux")]
-        {
-            "zero-copy (CUDA/Vulkan)"
-        }
-        #[cfg(target_os = "macos")]
-        {
-            "zero-copy (VideoToolbox/Metal)"
-        }
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        {
-            "zero-copy"
-        }
-    } else {
-        "CPU upload"
-    };
     println!(
-        "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {mode_str}",
+        "Pipeline ready: GPU = {}, output = {width}x{height}, mode = {}",
         session.gpu_name(),
+        zero_copy_mode_label(use_zero_copy),
     );
 
     // Set up encoder
-    let quality_enum = match quality {
-        "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
-        "high" => reco_io::ffmpeg::encoder::Quality::High,
-        _ => reco_io::ffmpeg::encoder::Quality::Balanced,
-    };
-    let video_codec =
-        reco_io::ffmpeg::encoder::VideoCodec::from_str_loose(codec).unwrap_or_else(|| {
-            eprintln!("Unknown codec '{codec}', defaulting to H.264");
-            reco_io::ffmpeg::encoder::VideoCodec::H264
-        });
-    let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
-        encoder_name,
-        codec: video_codec,
-        quality: quality_enum,
-    };
-    let encoder = reco_io::adapters::FfmpegFileEncoder::new(
+    let (encoder, enc_name) = reco_io::adapters::create_encoder(
         Path::new(output),
         width,
         height,
         fps_rational,
-        &enc_config,
+        codec,
+        quality,
+        encoder_name,
     )?;
-    println!("Encoder: {}", encoder.encoder_name());
+    println!("Encoder: {enc_name}");
     session.set_encoder(Box::new(encoder), 2);
 
-    // Set up autocam (detector + director) if model provided
+    // Set up autocam if model provided
     if let Some(model) = model_path {
-        let mut detection_active = false;
-
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        if use_zero_copy {
-            // Zero-copy path: use GPU detector (NPP + CUDA kernel + TensorRT).
-            match reco_autocam::GpuYoloDetector::try_new(
-                model,
-                input_width,
-                input_height,
-                0.10,
-                Vec::new(),
-            ) {
-                Ok(Some(gpu_det)) => {
-                    session.set_gpu_detector(Box::new(gpu_det));
-                    detection_active = true;
-                    println!("Autocam: GPU YOLO ball tracking enabled (model: {model})");
-                }
-                Ok(None) => {
-                    eprintln!(
-                        "Warning: NPP not available, ball tracking disabled in zero-copy mode"
-                    );
-                }
-                Err(e) => {
-                    eprintln!("Warning: GPU detector init failed ({e}), ball tracking disabled");
+        match reco_autocam::setup_autocam(
+            &mut session,
+            model,
+            input_width,
+            input_height,
+            fps_val as f32,
+            use_zero_copy,
+            detection_interval,
+            lead_time,
+        ) {
+            Ok(active) => {
+                if active {
+                    println!("Autocam: ball tracking enabled (model: {model})");
                 }
             }
-        }
-
-        #[cfg(target_os = "macos")]
-        if use_zero_copy {
-            // Zero-copy path: use Metal detector (compute shaders + CoreML).
-            match reco_autocam::MetalYoloDetector::try_new(
-                model,
-                session.gpu(),
-                input_width,
-                input_height,
-                0.10,
-                Vec::new(),
-            ) {
-                Ok(metal_det) => {
-                    session.set_metal_detector(Box::new(metal_det));
-                    detection_active = true;
-                    println!("Autocam: Metal YOLO ball tracking enabled (model: {model})");
-                }
-                Err(e) => {
-                    eprintln!("Warning: Metal detector init failed ({e}), ball tracking disabled");
-                }
-            }
-        }
-
-        if !use_zero_copy {
-            // CPU upload path: use CPU detector.
-            let detector = reco_autocam::YoloDetector::from_file(model)?;
-            session.set_detector(Box::new(detector));
-            detection_active = true;
-            println!("Autocam: YOLO ball tracking enabled (model: {model})");
-        }
-
-        if detection_active {
-            let director = reco_autocam::BallDirector::new(fps_val as f32);
-            session.set_director(Box::new(director));
-            if detection_interval > 1 {
-                session.set_detection_interval(detection_interval);
-                println!("Detection interval: every {detection_interval} frames");
-            }
-            if lead_time > 0.0 && !use_zero_copy {
-                let lookahead = (fps_val * lead_time).round() as usize;
-                if lookahead > 0 {
-                    session.set_lookahead(lookahead);
-                    println!("Director lead time: {lead_time:.1}s ({lookahead} frames)");
-                }
+            Err(e) => {
+                eprintln!("Warning: autocam setup failed ({e}), continuing without tracking");
             }
         }
     }
 
     // Compute frame limit
-    let frame_limit: u64 = match (duration, max_frames) {
-        (Some(dur), Some(mf)) => ((dur * fps_val) as u64).min(mf),
-        (Some(dur), None) => (dur * fps_val) as u64,
-        (None, Some(mf)) => mf,
-        (None, None) => u64::MAX,
-    };
+    let frame_limit = reco_core::session::compute_frame_limit(duration, max_frames, fps_val);
     if frame_limit < u64::MAX {
         println!("Processing up to {frame_limit} frames");
     }
 
+    // Run the appropriate pipeline
     let progress = crate::helpers::ProgressReporter::new(30);
     #[allow(clippy::needless_late_init)] // cfg-gated branches each assign independently
     let frame_count;
 
-    // Run the appropriate pipeline
     #[cfg(target_os = "linux")]
     if use_zero_copy {
-        source.take(); // Drop CPU source before zero-copy setup
+        source.take();
         frame_count = run_zero_copy_linux(
             &mut session,
             left,
@@ -302,6 +211,26 @@ pub fn run_stitch(
     session.finish()?;
     progress.finish(frame_count, output);
     Ok(())
+}
+
+/// Human-readable label for the active pipeline mode.
+fn zero_copy_mode_label(use_zero_copy: bool) -> &'static str {
+    if use_zero_copy {
+        #[cfg(target_os = "linux")]
+        {
+            "zero-copy (CUDA/Vulkan)"
+        }
+        #[cfg(target_os = "macos")]
+        {
+            "zero-copy (VideoToolbox/Metal)"
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            "zero-copy"
+        }
+    } else {
+        "CPU upload"
+    }
 }
 
 /// Run the CPU upload path using `session.run()`.

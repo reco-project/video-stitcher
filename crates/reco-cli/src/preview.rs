@@ -6,6 +6,13 @@
 //! - Arrows / mouse drag: pan (yaw/pitch)
 //! - +/- / scroll: zoom (FOV)
 //! - Q / Escape: quit
+//!
+//! This module is intentionally CLI-only. The rendering is already handled by
+//! `StitchPipeline::render_to_view()` in reco-core. What remains here is the
+//! winit event loop, surface management, input handling, and frame pacing -
+//! all tightly coupled to the desktop window environment and not useful to
+//! library consumers (GUI, OBS, cloud). A future GUI app would use its own
+//! event loop and call the same `render_to_view()` API directly.
 
 use std::path::Path;
 use std::sync::Arc;

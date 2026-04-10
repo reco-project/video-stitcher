@@ -34,6 +34,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use ort::session::Session;
+use reco_core::session::StitchSession;
 
 /// Return a persistent cache directory for model engine/compilation caches.
 ///
@@ -69,6 +70,101 @@ fn reco_cache_dir(subdir: &str) -> PathBuf {
     }
 
     dir
+}
+
+/// Set up automatic camera control on a [`StitchSession`].
+///
+/// Configures the appropriate detector (CPU, GPU/CUDA, or Metal) based on
+/// the current platform and zero-copy mode, then attaches a [`BallDirector`]
+/// for ball-following camera automation.
+///
+/// Returns `true` if detection was successfully activated, `false` if
+/// detection could not be initialized (the session remains usable without
+/// autocam in that case).
+///
+/// # Arguments
+///
+/// * `session` - The stitch session to attach detection and direction to.
+/// * `model_path` - Path to a YOLO ONNX model (or `.mlmodelc` on macOS).
+/// * `input_width`, `input_height` - Raw camera frame dimensions.
+/// * `fps` - Video frame rate (used for director timing).
+/// * `use_zero_copy` - Whether the pipeline is running in zero-copy mode.
+/// * `detection_interval` - Run detection every N frames (1 = every frame).
+/// * `lead_time` - Director lookahead in seconds (CPU path only).
+pub fn setup_autocam(
+    session: &mut StitchSession,
+    model_path: &str,
+    input_width: u32,
+    input_height: u32,
+    fps: f32,
+    use_zero_copy: bool,
+    detection_interval: u64,
+    lead_time: f64,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut detection_active = false;
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    if use_zero_copy {
+        match GpuYoloDetector::try_new(model_path, input_width, input_height, 0.10, Vec::new()) {
+            Ok(Some(gpu_det)) => {
+                session.set_gpu_detector(Box::new(gpu_det));
+                detection_active = true;
+                log::info!("Autocam: GPU YOLO ball tracking enabled (model: {model_path})");
+            }
+            Ok(None) => {
+                log::warn!("Autocam: NPP not available, ball tracking disabled in zero-copy mode");
+            }
+            Err(e) => {
+                log::warn!("Autocam: GPU detector init failed ({e}), ball tracking disabled");
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    if use_zero_copy {
+        match MetalYoloDetector::try_new(
+            model_path,
+            session.gpu(),
+            input_width,
+            input_height,
+            0.10,
+            Vec::new(),
+        ) {
+            Ok(metal_det) => {
+                session.set_metal_detector(Box::new(metal_det));
+                detection_active = true;
+                log::info!("Autocam: Metal YOLO ball tracking enabled (model: {model_path})");
+            }
+            Err(e) => {
+                log::warn!("Autocam: Metal detector init failed ({e}), ball tracking disabled");
+            }
+        }
+    }
+
+    if !use_zero_copy {
+        let detector = YoloDetector::from_file(model_path)?;
+        session.set_detector(Box::new(detector));
+        detection_active = true;
+        log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
+    }
+
+    if detection_active {
+        let director = BallDirector::new(fps);
+        session.set_director(Box::new(director));
+        if detection_interval > 1 {
+            session.set_detection_interval(detection_interval);
+            log::info!("Detection interval: every {detection_interval} frames");
+        }
+        if lead_time > 0.0 && !use_zero_copy {
+            let lookahead = (fps as f64 * lead_time).round() as usize;
+            if lookahead > 0 {
+                session.set_lookahead(lookahead);
+                log::info!("Director lead time: {lead_time:.1}s ({lookahead} frames)");
+            }
+        }
+    }
+
+    Ok(detection_active)
 }
 
 /// Create an ORT session with common settings and platform-specific EPs.

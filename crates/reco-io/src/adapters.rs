@@ -234,6 +234,71 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
     }
 }
 
+// -- Zero-copy detection helper --
+
+/// Detect whether the zero-copy GPU pipeline should be used.
+///
+/// Checks three conditions:
+/// 1. The `RECO_NO_HWACCEL` environment variable is **not** set
+/// 2. The source's decode backend supports zero-copy (CUDA on Linux, VideoToolbox on macOS)
+/// 3. The GPU context supports zero-copy interop (Vulkan+CUDA on Linux, Metal on macOS)
+///
+/// Returns `true` only if all three conditions are met.
+#[cfg(feature = "ffmpeg")]
+pub fn detect_zero_copy(source: &FfmpegFileSource, gpu: &reco_core::gpu::GpuContext) -> bool {
+    std::env::var("RECO_NO_HWACCEL").is_err()
+        && source.supports_zero_copy()
+        && gpu.supports_zero_copy()
+}
+
+// -- Encoder creation helper --
+
+/// Create an FFmpeg file encoder from high-level parameters.
+///
+/// Wraps codec parsing, quality mapping, and encoder creation into a single
+/// call. Returns the encoder and the name of the selected encoder backend
+/// (e.g. `"h264_nvenc"`, `"libx264"`).
+///
+/// This is the preferred way for consumers (CLI, GUI, cloud) to create an
+/// encoder without duplicating codec/quality parsing logic.
+///
+/// # Arguments
+///
+/// * `path` - Output file path.
+/// * `width`, `height` - Output frame dimensions.
+/// * `fps` - Frame rate as `(numerator, denominator)`.
+/// * `codec` - Codec name: `"h264"`, `"hevc"`, or `"av1"`.
+/// * `quality` - Quality preset: `"fast"`, `"balanced"`, or `"high"`.
+/// * `encoder_name` - Force a specific encoder by name, or `None` for auto-detection.
+#[cfg(feature = "ffmpeg")]
+pub fn create_encoder(
+    path: &std::path::Path,
+    width: u32,
+    height: u32,
+    fps: (i32, i32),
+    codec: &str,
+    quality: &str,
+    encoder_name: Option<String>,
+) -> Result<(FfmpegFileEncoder, String), reco_core::encoder::EncodeError> {
+    let quality_enum = match quality {
+        "fast" => ffmpeg::encoder::Quality::Fast,
+        "high" => ffmpeg::encoder::Quality::High,
+        _ => ffmpeg::encoder::Quality::Balanced,
+    };
+    let video_codec = ffmpeg::encoder::VideoCodec::from_str_loose(codec).unwrap_or_else(|| {
+        log::warn!("Unknown codec '{codec}', defaulting to H.264");
+        ffmpeg::encoder::VideoCodec::H264
+    });
+    let enc_config = ffmpeg::encoder::EncoderConfig {
+        encoder_name,
+        codec: video_codec,
+        quality: quality_enum,
+    };
+    let encoder = FfmpegFileEncoder::new(path, width, height, fps, &enc_config)?;
+    let name = encoder.encoder_name().to_string();
+    Ok((encoder, name))
+}
+
 // -- FFmpeg File Encoder --
 
 /// File encoder backed by FFmpeg.

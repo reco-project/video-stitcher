@@ -30,7 +30,7 @@ use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
 use crate::detector::{CameraId, Detection, Detector};
 use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
-use crate::encoder::{EncodeError, Encoder};
+use crate::encoder::{EncodeError, Encoder, GpuEncoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::{Nv12Converter, Nv12Error};
 use crate::pipeline::{PipelineError, StitchPipeline};
@@ -40,6 +40,20 @@ use crate::source::{FrameSource, SourceError, StereoFrame};
 use crate::viewport::ViewportConfig;
 
 use thiserror::Error;
+
+/// Compute the frame limit from optional duration and max-frames constraints.
+///
+/// Both `duration_secs` and `max_frames` are optional. When both are provided,
+/// the stricter (lower) limit wins. Returns [`u64::MAX`] when neither is set,
+/// meaning "process all available frames".
+pub fn compute_frame_limit(duration_secs: Option<f64>, max_frames: Option<u64>, fps: f64) -> u64 {
+    match (duration_secs, max_frames) {
+        (Some(dur), Some(mf)) => ((dur * fps) as u64).min(mf),
+        (Some(dur), None) => (dur * fps) as u64,
+        (None, Some(mf)) => mf,
+        (None, None) => u64::MAX,
+    }
+}
 
 /// Configuration for creating a [`StitchSession`].
 pub struct SessionConfig {
@@ -137,6 +151,7 @@ pub struct StitchSessionBuilder {
     input_format: InputFormat,
     gpu: Option<GpuContext>,
     encoder: Option<(Box<dyn Encoder + Send>, usize)>,
+    gpu_encoder: Option<Box<dyn GpuEncoder>>,
     detector: Option<Box<dyn Detector>>,
     director: Option<Box<dyn Director>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -196,6 +211,17 @@ impl StitchSessionBuilder {
     /// Attach an encoder with the given double-buffer count.
     pub fn encoder(mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) -> Self {
         self.encoder = Some((encoder, buffer_count));
+        self
+    }
+
+    /// Attach a GPU-resident encoder for zero-copy encode.
+    ///
+    /// A [`GpuEncoder`] receives `wgpu::Texture` references directly,
+    /// avoiding the GPU-to-CPU readback that the regular [`Encoder`] path
+    /// requires. No implementations exist yet - this reserves the API slot
+    /// for future NVENC/VideoToolbox GPU encode backends.
+    pub fn gpu_encoder(mut self, encoder: Box<dyn GpuEncoder>) -> Self {
+        self.gpu_encoder = Some(encoder);
         self
     }
 
@@ -289,6 +315,7 @@ impl StitchSessionBuilder {
         if let Some((enc, buf_count)) = self.encoder {
             session.set_encoder(enc, buf_count);
         }
+        session.gpu_encoder = self.gpu_encoder;
         if let Some(det) = self.detector {
             session.set_detector(det);
         }
@@ -321,6 +348,9 @@ pub struct StitchSession {
     pub(crate) pipeline: StitchPipeline,
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
+    /// GPU-resident encoder (zero-copy encode path, no implementations yet).
+    #[allow(dead_code)]
+    gpu_encoder: Option<Box<dyn GpuEncoder>>,
     pub(crate) detector: Option<Box<dyn Detector>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(crate) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
@@ -358,6 +388,7 @@ impl StitchSession {
             input_format: InputFormat::Yuv420p,
             gpu: None,
             encoder: None,
+            gpu_encoder: None,
             detector: None,
             director: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -399,6 +430,7 @@ impl StitchSession {
             pipeline,
             nv12_converter,
             encoder: None,
+            gpu_encoder: None,
             detector: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
