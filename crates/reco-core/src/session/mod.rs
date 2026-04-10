@@ -858,7 +858,7 @@ impl StitchSession {
         if let Some(data) = nv12_data
             && let Some(ref encoder) = self.encoder
         {
-            encoder.submit(data)?;
+            encoder.submit(data, self.frame_count as i64)?;
         }
 
         self.frame_count += 1;
@@ -1018,7 +1018,7 @@ impl StitchSession {
         // Flush the last frame from the NV12 double-buffer.
         if let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
             if let Some(ref encoder) = self.encoder {
-                encoder.submit(nv12_data)?;
+                encoder.submit(nv12_data, self.frame_count as i64)?;
             }
             self.frame_count += 1;
         }

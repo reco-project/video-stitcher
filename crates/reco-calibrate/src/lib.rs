@@ -232,6 +232,8 @@ pub fn calibrate(
     right_params: &CameraParams,
     config: &CalibrationConfig,
 ) -> Result<CalibrationResult, CalibrateError> {
+    config.validate()?;
+
     // Create GPU undistort pipelines for each camera's resolution
     let (lw, lh) = if let Some((left, _)) = frames.first() {
         (left.width, left.height)
@@ -359,6 +361,8 @@ pub fn calibrate(
         left: left_params.clone(),
         right: right_params.clone(),
         layout: best_layout,
+        rig_tilt: 0.0,  // set by CalibrationPipeline after calibrate()
+        sync_offset: 0, // set by CalibrationPipeline after calibrate()
     };
 
     Ok(CalibrationResult {

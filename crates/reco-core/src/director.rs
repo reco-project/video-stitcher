@@ -47,11 +47,12 @@ pub struct ViewportPosition {
     /// `0.0` = level. Positive = looking up.
     pub pitch: f32,
 
-    /// Horizontal field of view in degrees, or `None` to use the
+    /// Vertical field of view in degrees, or `None` to use the
     /// pipeline's default FOV.
     ///
     /// Typical range: 30.0 (zoomed in) to 120.0 (wide). The pipeline
-    /// default is 75.0.
+    /// default is 75.0. This is vertical FOV per nalgebra's
+    /// `Perspective3` convention.
     pub fov_degrees: Option<f32>,
 }
 
@@ -117,7 +118,7 @@ pub struct DirectorContext<'a> {
     /// Panning within these bounds guarantees no black edges in the output.
     pub viewport_bounds: ViewportBounds,
 
-    /// Current horizontal field of view in degrees.
+    /// Current vertical field of view in degrees.
     pub current_fov: f32,
 }
 

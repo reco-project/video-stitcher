@@ -17,23 +17,12 @@ pub struct GrayFrame {
     pub height: u32,
 }
 
-/// A YUV420P frame for GPU undistortion.
+/// Re-export the canonical YUV frame type from reco-core.
 ///
-/// Y is full resolution, U and V are half width/height. This is what
-/// the app provides from its video decoder (reco-io, GStreamer, or custom).
-#[derive(Clone)]
-pub struct YuvFrame {
-    /// Luma plane (`width * height` bytes).
-    pub y: Vec<u8>,
-    /// Cb chroma plane (`width/2 * height/2` bytes).
-    pub u: Vec<u8>,
-    /// Cr chroma plane (`width/2 * height/2` bytes).
-    pub v: Vec<u8>,
-    /// Width in pixels.
-    pub width: u32,
-    /// Height in pixels.
-    pub height: u32,
-}
+/// This is the standard YUV420P frame used across all reco crates.
+/// Previously reco-calibrate defined its own copy; now it uses the
+/// shared definition from [`reco_core::source::YuvFrame`].
+pub use reco_core::source::YuvFrame;
 
 /// A matched feature point pair in normalized plane coordinates.
 ///
@@ -220,6 +209,63 @@ impl Default for CalibrationConfig {
             imu_zrx_seed: None,
             trim_fraction: 0.3,
         }
+    }
+}
+
+impl CalibrationConfig {
+    /// Validate configuration values before starting calibration.
+    ///
+    /// Returns `Err` with a description of the first invalid field found.
+    pub fn validate(&self) -> Result<(), crate::error::CalibrateError> {
+        use crate::error::CalibrateError;
+
+        if self.num_frames == 0 {
+            return Err(CalibrateError::InvalidConfig(
+                "num_frames must be >= 1".into(),
+            ));
+        }
+        if self.lowe_ratio <= 0.0 || self.lowe_ratio > 1.0 {
+            return Err(CalibrateError::InvalidConfig(format!(
+                "lowe_ratio must be in (0, 1], got {}",
+                self.lowe_ratio
+            )));
+        }
+        if self.ransac_threshold <= 0.0 {
+            return Err(CalibrateError::InvalidConfig(format!(
+                "ransac_threshold must be > 0, got {}",
+                self.ransac_threshold
+            )));
+        }
+        if self.max_keypoints == 0 {
+            return Err(CalibrateError::InvalidConfig(
+                "max_keypoints must be >= 1".into(),
+            ));
+        }
+        if self.akaze_threshold <= 0.0 {
+            return Err(CalibrateError::InvalidConfig(format!(
+                "akaze_threshold must be > 0, got {}",
+                self.akaze_threshold
+            )));
+        }
+        if !(0.0..=1.0).contains(&self.trim_fraction) {
+            return Err(CalibrateError::InvalidConfig(format!(
+                "trim_fraction must be in [0, 1], got {}",
+                self.trim_fraction
+            )));
+        }
+        if self.spatial_x_threshold < 0.0 || self.spatial_x_threshold > 1.0 {
+            return Err(CalibrateError::InvalidConfig(format!(
+                "spatial_x_threshold must be in [0, 1], got {}",
+                self.spatial_x_threshold
+            )));
+        }
+        if self.seam_sigma <= 0.0 {
+            return Err(CalibrateError::InvalidConfig(format!(
+                "seam_sigma must be > 0, got {}",
+                self.seam_sigma
+            )));
+        }
+        Ok(())
     }
 }
 

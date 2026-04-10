@@ -13,10 +13,11 @@ pub struct ViewportConfig {
     pub width: u32,
     /// Output height in pixels.
     pub height: u32,
-    /// Horizontal field of view in degrees.
+    /// Vertical field of view in degrees.
     ///
     /// Controls how "zoomed in" the output is. Larger values show more
     /// of the panorama. Default: 75.0 (matches v1 Three.js camera FOV).
+    /// Note: this is vertical FOV per nalgebra's `Perspective3` convention.
     pub fov_degrees: f32,
     /// Seam blend width in UV space (0.0–1.0).
     ///
@@ -47,8 +48,38 @@ impl Default for ViewportConfig {
 
 impl ViewportConfig {
     /// Aspect ratio of the output (width / height).
+    ///
+    /// Returns 1.0 if height is zero (degenerate viewport).
     pub fn aspect_ratio(&self) -> f32 {
+        if self.height == 0 {
+            return 1.0;
+        }
         self.width as f32 / self.height as f32
+    }
+
+    /// Validate the viewport configuration.
+    ///
+    /// Returns an error description if any field is invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.width == 0 || self.height == 0 {
+            return Err(format!(
+                "viewport dimensions must be non-zero, got {}x{}",
+                self.width, self.height
+            ));
+        }
+        if !(1.0..179.0).contains(&self.fov_degrees) {
+            return Err(format!(
+                "fov_degrees must be in (1, 179), got {}",
+                self.fov_degrees
+            ));
+        }
+        if !(0.0..=1.0).contains(&self.blend_width) {
+            return Err(format!(
+                "blend_width must be in [0, 1], got {}",
+                self.blend_width
+            ));
+        }
+        Ok(())
     }
 }
 

@@ -415,6 +415,8 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
             },
+            rig_tilt: 0.0,
+            sync_offset: 0,
         }
     }
 

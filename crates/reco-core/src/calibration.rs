@@ -215,6 +215,21 @@ pub struct MatchCalibration {
     /// 3D plane layout parameters.
     #[serde(rename = "params")]
     pub layout: PlaneLayout,
+
+    /// Rig tilt in radians (forward lean from vertical).
+    ///
+    /// Computed from IMU accelerometer during calibration. Applied in the
+    /// renderer to straighten vertical lines at the panorama edges.
+    /// Defaults to 0.0 for backward compatibility with older calibrations.
+    #[serde(default)]
+    pub rig_tilt: f64,
+
+    /// Temporal sync offset in frames (positive = right video is ahead).
+    ///
+    /// Computed from IMU gyro or audio cross-correlation during calibration.
+    /// Defaults to 0 for backward compatibility with older calibrations.
+    #[serde(default)]
+    pub sync_offset: i64,
 }
 
 /// Maximum calibration file size (1 MB) to prevent loading unreasonably large files.
@@ -428,6 +443,7 @@ fn validate_layout(l: &PlaneLayout) -> Result<(), CalibrationError> {
     for (name, val) in [
         ("params.xTy", l.x_ty),
         ("params.xRz", l.x_rz),
+        ("params.xRx", l.x_rx),
         ("params.zRx", l.z_rx),
         ("params.zRz", l.z_rz),
     ] {
@@ -509,6 +525,8 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
             },
+            rig_tilt: 0.0,
+            sync_offset: 0,
         }
     }
 
@@ -671,6 +689,8 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
             },
+            rig_tilt: 0.3,
+            sync_offset: 67,
         };
 
         let json = serde_json::to_string(&cal).unwrap();

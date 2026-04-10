@@ -37,12 +37,33 @@ pub enum SourceError {
     Read(String),
 }
 
-/// Owned YUV420P plane data.
+/// Owned YUV420P frame data with dimensions and optional timestamp.
 ///
+/// The canonical YUV frame type used across all reco crates.
 /// Tightly packed (no stride padding):
 /// - Y: `width × height` bytes
 /// - U: `(width/2) × (height/2)` bytes
 /// - V: `(width/2) × (height/2)` bytes
+#[derive(Debug, Clone)]
+pub struct YuvFrame {
+    /// Y (luma) plane, full resolution.
+    pub y: Vec<u8>,
+    /// U (Cb) plane, half resolution.
+    pub u: Vec<u8>,
+    /// V (Cr) plane, half resolution.
+    pub v: Vec<u8>,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+    /// Presentation timestamp in microseconds (0 if unknown).
+    pub timestamp_us: i64,
+}
+
+/// Owned YUV420P plane data (without dimensions).
+///
+/// Used internally when dimensions are tracked separately
+/// (e.g. in [`FramePair`] where both frames share dimensions).
 #[derive(Debug, Clone)]
 pub struct YuvData {
     /// Y (luma) plane, full resolution.

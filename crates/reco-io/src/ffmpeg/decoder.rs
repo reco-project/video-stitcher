@@ -96,26 +96,8 @@ pub struct VtFrame {
     pub timestamp_us: i64,
 }
 
-/// A decoded YUV420P frame with timestamp.
-///
-/// Contains tightly-packed plane data (no stride padding):
-/// - Y: `width × height` bytes (luma, full resolution)
-/// - U: `(width/2) × (height/2)` bytes (chroma blue, half resolution)
-/// - V: `(width/2) × (height/2)` bytes (chroma red, half resolution)
-pub struct YuvFrame {
-    /// Y (luma) plane data, tightly packed.
-    pub y: Vec<u8>,
-    /// U (Cb) plane data, tightly packed.
-    pub u: Vec<u8>,
-    /// V (Cr) plane data, tightly packed.
-    pub v: Vec<u8>,
-    /// Frame width in pixels.
-    pub width: u32,
-    /// Frame height in pixels.
-    pub height: u32,
-    /// Presentation timestamp in microseconds.
-    pub timestamp_us: i64,
-}
+/// Re-export the canonical YUV frame type from reco-core.
+pub use reco_core::source::YuvFrame;
 
 /// Which decode backend is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -541,11 +523,20 @@ impl VideoDecoder {
             0
         };
 
+        // FFmpeg linesize can be negative for some pixel formats (bottom-to-top).
+        // Negative values would wrap to huge usize, causing GPU memory corruption.
+        let y_ls = raw.linesize[0];
+        let uv_ls = raw.linesize[1];
+        debug_assert!(
+            y_ls > 0 && uv_ls > 0,
+            "negative linesize not supported for GPU decode"
+        );
+
         GpuFrame {
             y_ptr: raw.data[0] as u64,
             uv_ptr: raw.data[1] as u64,
-            y_pitch: raw.linesize[0] as usize,
-            uv_pitch: raw.linesize[1] as usize,
+            y_pitch: y_ls.max(0) as usize,
+            uv_pitch: uv_ls.max(0) as usize,
             width: self.width,
             height: self.height,
             timestamp_us,

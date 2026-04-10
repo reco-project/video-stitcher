@@ -173,17 +173,27 @@ impl StitchPipeline {
         (self.input_width, self.input_height)
     }
 
-    /// Resize the output viewport.
+    /// Update the viewport metadata (aspect ratio, projection matrix).
     ///
-    /// Call this when the window or output dimensions change.
+    /// **Important:** this does NOT recreate GPU textures or the render
+    /// target. Use this for viewport-metadata changes (e.g. surface
+    /// reconfigure in a preview window). For actual output resolution
+    /// changes, rebuild the pipeline with [`Self::with_gpu`].
     pub fn resize(&mut self, width: u32, height: u32) {
+        debug_assert!(
+            width > 0 && height > 0,
+            "viewport dimensions must be non-zero"
+        );
         self.viewport.width = width;
         self.viewport.height = height;
     }
 
-    /// Set the horizontal field of view in degrees.
+    /// Set the vertical field of view in degrees.
+    ///
+    /// Values are clamped to `[1.0, 179.0]` to prevent degenerate
+    /// projection matrices (0 or 180 would produce NaN/Inf).
     pub fn set_fov(&mut self, fov_degrees: f32) {
-        self.viewport.fov_degrees = fov_degrees;
+        self.viewport.fov_degrees = fov_degrees.clamp(1.0, 179.0);
     }
 
     /// Get the current field of view in degrees.

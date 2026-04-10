@@ -22,6 +22,8 @@ use crate::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
 struct EncodeJob {
     /// NV12 pixel data (borrowed from the buffer pool).
     data: Vec<u8>,
+    /// Presentation timestamp in microseconds.
+    pts_us: i64,
 }
 
 /// Async encoder that runs on a dedicated thread.
@@ -84,7 +86,8 @@ impl AsyncEncodeThread {
     ///
     /// Copies `nv12_data` into a pooled buffer and sends it to the
     /// encode thread. Blocks if the channel is full (backpressure).
-    pub fn submit(&self, nv12_data: &[u8]) -> Result<(), EncodeError> {
+    /// `pts_us` is the presentation timestamp in microseconds.
+    pub fn submit(&self, nv12_data: &[u8], pts_us: i64) -> Result<(), EncodeError> {
         let tx = self
             .tx
             .as_ref()
@@ -102,7 +105,7 @@ impl AsyncEncodeThread {
         buf.resize(nv12_data.len(), 0);
         buf.copy_from_slice(nv12_data);
 
-        tx.send(EncodeJob { data: buf })
+        tx.send(EncodeJob { data: buf, pts_us })
             .map_err(|_| EncodeError::Frame("encode thread died".into()))
     }
 
@@ -140,7 +143,7 @@ impl AsyncEncodeThread {
                 width,
                 height,
                 format: PixelFormat::Nv12,
-                pts_us: 0,
+                pts_us: job.pts_us,
             })?;
 
             // Return the buffer to the pool for reuse.
