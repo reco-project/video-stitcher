@@ -28,22 +28,22 @@ pub fn spatial_filter(
     img_h_right: u32,
     config: &CalibrationConfig,
 ) -> Vec<RawMatch> {
-    let x_thresh_left = config.spatial_x_threshold * img_w_left as f64;
-    let x_thresh_right = config.spatial_x_threshold * img_w_right as f64;
+    let x_thresh_left = config.matching.spatial_x_threshold * img_w_left as f64;
+    let x_thresh_right = config.matching.spatial_x_threshold * img_w_right as f64;
     // Inner margin: exclude features at extreme fisheye edges
-    let x_inner_left = (1.0 - config.spatial_x_inner) * img_w_left as f64;
-    let x_inner_right = config.spatial_x_inner * img_w_right as f64;
-    let y_low_left = config.spatial_y_low * img_h_left as f64;
-    let y_high_left = config.spatial_y_high * img_h_left as f64;
-    let y_low_right = config.spatial_y_low * img_h_right as f64;
-    let y_high_right = config.spatial_y_high * img_h_right as f64;
+    let x_inner_left = (1.0 - config.matching.spatial_x_inner) * img_w_left as f64;
+    let x_inner_right = config.matching.spatial_x_inner * img_w_right as f64;
+    let y_low_left = config.matching.spatial_y_low * img_h_left as f64;
+    let y_high_left = config.matching.spatial_y_high * img_h_left as f64;
+    let y_low_right = config.matching.spatial_y_low * img_h_right as f64;
+    let y_high_right = config.matching.spatial_y_high * img_h_right as f64;
 
     // Max vertical disparity in pixels (average of both image heights).
     // In a side-by-side stereo rig, matched features should have nearly
     // the same y-coordinate. This catches cross-region mismatches like
     // field markings matched to clouds.
     let avg_h = (img_h_left as f64 + img_h_right as f64) / 2.0;
-    let max_y_disp = config.max_y_disparity * avg_h;
+    let max_y_disp = config.matching.max_y_disparity * avg_h;
 
     let filtered: Vec<RawMatch> = matches
         .iter()
@@ -71,11 +71,11 @@ pub fn spatial_filter(
         .copied()
         .collect();
 
-    if filtered.len() < config.min_matches {
+    if filtered.len() < config.matching.min_matches {
         log::warn!(
             "spatial filter yielded {} matches (< {} required)",
             filtered.len(),
-            config.min_matches,
+            config.matching.min_matches,
         );
     }
     filtered
@@ -93,10 +93,10 @@ pub fn ransac_filter(
     kp_right: &[KeyPoint],
     config: &CalibrationConfig,
 ) -> Result<Vec<usize>, crate::error::CalibrateError> {
-    if matches.len() < config.min_matches {
+    if matches.len() < config.matching.min_matches {
         return Err(crate::error::CalibrateError::InsufficientMatches {
             got: matches.len(),
-            min: config.min_matches,
+            min: config.matching.min_matches,
         });
     }
 
@@ -117,7 +117,7 @@ pub fn ransac_filter(
         })
         .collect();
 
-    match crate::ransac::ransac_fundamental(&pts1, &pts2, config.ransac_threshold, 2000) {
+    match crate::ransac::ransac_fundamental(&pts1, &pts2, config.matching.ransac_threshold, 2000) {
         Ok(inliers) => {
             log::debug!("RANSAC: {}/{} inliers", inliers.len(), n);
             Ok(inliers)
@@ -144,8 +144,11 @@ mod tests {
     #[test]
     fn spatial_filter_keeps_overlap_region() {
         let config = CalibrationConfig {
-            min_matches: 1, // low threshold so filter doesn't fall back
-            spatial_x_threshold: 0.4,
+            matching: crate::types::MatchConfig {
+                min_matches: 1, // low threshold so filter doesn't fall back
+                spatial_x_threshold: 0.4,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -194,7 +197,10 @@ mod tests {
     #[test]
     fn spatial_filter_no_fallback_on_few_matches() {
         let config = CalibrationConfig {
-            min_matches: 100,
+            matching: crate::types::MatchConfig {
+                min_matches: 100,
+                ..Default::default()
+            },
             ..Default::default()
         };
 

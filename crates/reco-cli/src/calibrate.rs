@@ -63,15 +63,24 @@ pub fn run_calibrate(
         num_frames,
         skip_start_secs: skip_start,
         skip_end_secs: skip_end,
-        akaze_threshold,
-        lowe_ratio,
-        spatial_x_threshold: detect_x,
-        detect_y_min,
-        detect_y_max,
-        lock_cam_d,
-        lock_z_rx,
-        trim_fraction: trim,
-        seam_sigma,
+        akaze: reco_calibrate::AkazeConfig {
+            threshold: akaze_threshold,
+            detect_y_min,
+            detect_y_max,
+            ..Default::default()
+        },
+        matching: reco_calibrate::MatchConfig {
+            lowe_ratio,
+            spatial_x_threshold: detect_x,
+            ..Default::default()
+        },
+        optimizer: reco_calibrate::OptimizerConfig {
+            lock_cam_d,
+            lock_z_rx,
+            trim_fraction: trim,
+            seam_sigma,
+            ..Default::default()
+        },
         ..Default::default()
     };
 

@@ -85,6 +85,9 @@ pub struct OptParams {
     /// Z-axis rotation of the left plane (radians) - the 6th parameter.
     /// `None` when running in 5-param mode.
     pub z_rz: Option<f64>,
+    /// X-axis rotation of the right plane (radians).
+    /// `None` unless `enable_x_rx` is set in the optimizer config.
+    pub x_rx: Option<f64>,
 }
 
 impl OptParams {
@@ -99,6 +102,7 @@ impl OptParams {
             x_rz: x[3],
             z_rx: x[4],
             z_rz: None,
+            x_rx: None,
         }
     }
 
@@ -113,6 +117,7 @@ impl OptParams {
             x_rz: x[3],
             z_rx: x[4],
             z_rz: Some(x[5]),
+            x_rx: None,
         }
     }
 
@@ -557,6 +562,7 @@ mod tests {
             x_rz: 0.0,
             z_rx: 0.0,
             z_rz: None,
+            x_rx: None,
         };
         let err = reprojection_error(&points, &params);
         assert_abs_diff_eq!(err, 0.0, epsilon = 1e-6);
@@ -580,6 +586,7 @@ mod tests {
             x_rz: 0.0,
             z_rx: 0.0,
             z_rz: None,
+            x_rx: None,
         };
 
         let bad_params = OptParams {
@@ -589,6 +596,7 @@ mod tests {
             x_rz: 0.0,
             z_rx: 0.0,
             z_rz: None,
+            x_rx: None,
         };
 
         let good_err = reprojection_error(&points, &good_params);
@@ -614,6 +622,7 @@ mod tests {
             x_rz: 0.0,
             z_rx: 0.0,
             z_rz: None,
+            x_rx: None,
         };
 
         let bad = OptParams {
@@ -623,6 +632,7 @@ mod tests {
             x_rz: 0.2,
             z_rx: 0.0,
             z_rz: None,
+            x_rx: None,
         };
 
         let reproj_good = reprojection_error(&points, &good);
@@ -643,6 +653,7 @@ mod tests {
             x_rz: 0.008,
             z_rx: -0.004,
             z_rz: None,
+            x_rx: None,
         };
         let packed = params.to_5param();
         let unpacked = OptParams::from_5param(&packed);
@@ -660,6 +671,7 @@ mod tests {
             x_rz: 0.008,
             z_rx: -0.004,
             z_rz: Some(0.003),
+            x_rx: None,
         };
         let packed = params.to_6param();
         let unpacked = OptParams::from_6param(&packed);
@@ -682,6 +694,7 @@ mod tests {
             x_rz: 0.0,
             z_rx: 0.0,
             z_rz: None,
+            x_rx: None,
         };
 
         // With intersect=0.5:

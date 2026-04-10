@@ -123,6 +123,24 @@ impl FeatureMatcher for HammingMatcher {
 }
 
 // ---------------------------------------------------------------------------
+// PointFilter: No-op (passthrough)
+// ---------------------------------------------------------------------------
+
+/// A point filter that passes all points through unchanged.
+///
+/// Used as the default in [`calibrate()`](crate::calibrate) where the
+/// spatial filter and RANSAC already handle outlier rejection. Plug in
+/// [`YDisparityFilter`] or a custom implementation when additional
+/// post-normalization filtering is needed.
+pub struct NoOpFilter;
+
+impl PointFilter for NoOpFilter {
+    fn filter(&self, points: &[MatchedPoint]) -> Vec<MatchedPoint> {
+        points.to_vec()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PointFilter: Y-disparity
 // ---------------------------------------------------------------------------
 

@@ -69,8 +69,11 @@ fn to_matched_points(dataset: &TestDataset) -> Vec<MatchedPoint> {
 /// Run the optimizer and return (cam_d, intersect, x_ty, x_rz_deg, z_rx_deg, ratio).
 fn run_calibration(points: &[MatchedPoint], trim: f64) -> (f64, f64, f64, f64, f64, f64) {
     let config = CalibrationConfig {
-        trim_fraction: trim,
-        seam_sigma: 0.08,
+        optimizer: reco_calibrate::types::OptimizerConfig {
+            trim_fraction: trim,
+            seam_sigma: 0.08,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -215,6 +218,7 @@ fn dji_basin_costs() {
         x_rz: 0.17_f64.to_radians(),
         z_rx: (-0.74_f64).to_radians(),
         z_rz: None,
+        x_rx: None,
     };
     // Basin B: the raw optimum (coherent but visually off)
     let params_b = reco_calibrate::geometry::OptParams {
@@ -224,6 +228,7 @@ fn dji_basin_costs() {
         x_rz: (-1.92_f64).to_radians(),
         z_rx: (-2.82_f64).to_radians(),
         z_rz: None,
+        x_rx: None,
     };
 
     let cost_a = reco_calibrate::geometry::trimmed_seam_weighted_reprojection_error(

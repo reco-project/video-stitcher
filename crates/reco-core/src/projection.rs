@@ -314,7 +314,17 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f
 
     // Recover undistorted coordinates
     let r = theta.tan(); // theta = atan(r) → r = tan(theta)
-    let scale = if theta_d > 1e-12 { theta_d / r } else { 1.0 };
+    let scale = if theta.abs() < 1e-12 {
+        1.0
+    } else {
+        theta_d / r
+    };
+
+    // Guard against Inf/NaN from degenerate theta (e.g. theta near pi/2
+    // where tan diverges, or numerical edge cases).
+    if !scale.is_finite() {
+        return None;
+    }
 
     let x = dx / scale;
     let y = dy / scale;

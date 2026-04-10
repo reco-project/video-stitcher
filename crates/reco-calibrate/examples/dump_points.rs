@@ -67,25 +67,25 @@ fn main() {
 
     // Detect features using pipeline defaults
     let left_region = DetectRegion {
-        x_min: config.spatial_x_threshold as f32,
+        x_min: config.matching.spatial_x_threshold as f32,
         x_max: 1.0,
-        y_min: config.detect_y_min as f32,
-        y_max: config.detect_y_max as f32,
+        y_min: config.akaze.detect_y_min as f32,
+        y_max: config.akaze.detect_y_max as f32,
     };
     let right_region = DetectRegion {
         x_min: 0.0,
-        x_max: 1.0 - config.spatial_x_threshold as f32,
-        y_min: config.detect_y_min as f32,
-        y_max: config.detect_y_max as f32,
+        x_max: 1.0 - config.matching.spatial_x_threshold as f32,
+        y_min: config.akaze.detect_y_min as f32,
+        y_max: config.akaze.detect_y_max as f32,
     };
 
     eprintln!(
         "Detect: x_thresh={}, y=[{}, {}], akaze={}, lowe={}",
-        config.spatial_x_threshold,
-        config.detect_y_min,
-        config.detect_y_max,
-        config.akaze_threshold,
-        config.lowe_ratio,
+        config.matching.spatial_x_threshold,
+        config.akaze.detect_y_min,
+        config.akaze.detect_y_max,
+        config.akaze.threshold,
+        config.matching.lowe_ratio,
     );
 
     let (kp_l, desc_l) = features::detect(
@@ -93,23 +93,23 @@ fn main() {
         lw,
         lh,
         Some(left_region),
-        config.max_keypoints,
-        config.akaze_threshold,
+        config.akaze.max_keypoints,
+        config.akaze.threshold,
     );
     let (kp_r, desc_r) = features::detect(
         &right_rgba,
         rw,
         rh,
         Some(right_region),
-        config.max_keypoints,
-        config.akaze_threshold,
+        config.akaze.max_keypoints,
+        config.akaze.threshold,
     );
-    let matches = features::match_descriptors(&desc_l, &desc_r, config.lowe_ratio);
+    let matches = features::match_descriptors(&desc_l, &desc_r, config.matching.lowe_ratio);
 
     eprintln!(
         "Frame {target_frame}: {} raw matches (max_y_disp={})",
         matches.len(),
-        config.max_y_disparity,
+        config.matching.max_y_disparity,
     );
 
     // Build matched points with y-disparity filter and swap convention
@@ -124,7 +124,7 @@ fn main() {
         // Y-disparity filter
         let ly_norm = lp.y as f64 / lh as f64;
         let ry_norm = rp.y as f64 / rh as f64;
-        if (ly_norm - ry_norm).abs() > config.max_y_disparity {
+        if (ly_norm - ry_norm).abs() > config.matching.max_y_disparity {
             rejected += 1;
             continue;
         }

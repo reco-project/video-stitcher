@@ -60,6 +60,47 @@ pub struct YuvFrame {
     pub timestamp_us: i64,
 }
 
+impl YuvFrame {
+    /// Validate that plane sizes match the declared dimensions.
+    ///
+    /// Y plane must be `width * height` bytes, U and V planes must each
+    /// be `(width / 2) * (height / 2)` bytes (YUV420P subsampling).
+    ///
+    /// Returns `Ok(())` if valid, or an `Err` describing the mismatch.
+    pub fn validate(&self) -> Result<(), String> {
+        let expected_y = self.width as usize * self.height as usize;
+        if self.y.len() != expected_y {
+            return Err(format!(
+                "Y plane size mismatch: expected {} ({}x{}), got {}",
+                expected_y,
+                self.width,
+                self.height,
+                self.y.len()
+            ));
+        }
+        let expected_uv = (self.width as usize / 2) * (self.height as usize / 2);
+        if self.u.len() != expected_uv {
+            return Err(format!(
+                "U plane size mismatch: expected {} ({}x{}), got {}",
+                expected_uv,
+                self.width / 2,
+                self.height / 2,
+                self.u.len()
+            ));
+        }
+        if self.v.len() != expected_uv {
+            return Err(format!(
+                "V plane size mismatch: expected {} ({}x{}), got {}",
+                expected_uv,
+                self.width / 2,
+                self.height / 2,
+                self.v.len()
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Owned YUV420P plane data (without dimensions).
 ///
 /// Used internally when dimensions are tracked separately

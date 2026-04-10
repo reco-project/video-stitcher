@@ -23,6 +23,22 @@
 //! let result = calibrate(&gpu, &frames, &left_params, &right_params, &CalibrationConfig::default())?;
 //! println!("Confidence: {:.1}%", result.confidence * 100.0);
 //! ```
+//!
+//! ## Custom pipeline stages
+//!
+//! Use [`calibrate_with`] to plug in custom detector, matcher, or filter
+//! implementations:
+//!
+//! ```ignore
+//! use reco_calibrate::{calibrate_with, AkazeDetector, HammingMatcher, YDisparityFilter};
+//!
+//! let result = calibrate_with(
+//!     &gpu, &frames, &left_params, &right_params, &config,
+//!     &AkazeDetector::new(0.001),
+//!     &HammingMatcher::new(0.6),
+//!     &YDisparityFilter::default(),
+//! )?;
+//! ```
 
 /// Create a tracing span guard (no-op when `profiling` feature is disabled).
 #[cfg(feature = "profiling")]
@@ -56,13 +72,17 @@ pub mod types;
 pub mod video;
 
 pub use defaults::{
-    AkazeDetector, HammingMatcher, RawReprojectionCost, SeamWeightedCost, YDisparityFilter,
+    AkazeDetector, HammingMatcher, NoOpFilter, RawReprojectionCost, SeamWeightedCost,
+    YDisparityFilter,
 };
 pub use error::CalibrateError;
 pub use traits::{
     CalibrationOptimizer, CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
 };
-pub use types::{CalibrationConfig, CalibrationResult, GrayFrame, YuvFrame};
+pub use types::{
+    AkazeConfig, CalibrationConfig, CalibrationResult, GrayFrame, MatchConfig, OptimizerConfig,
+    YuvFrame,
+};
 
 use reco_core::calibration::{CameraParams, MatchCalibration};
 use reco_core::gpu::GpuContext;
@@ -72,9 +92,9 @@ use types::{FrameMatches, MatchedPoint};
 
 /// Process an undistorted RGBA frame pair through the feature matching pipeline.
 ///
-/// Takes pre-undistorted RGBA data (from GPU phase) and runs AKAZE
-/// detection, matching, and filtering. This function is thread-safe
-/// and called in parallel via rayon.
+/// Takes pre-undistorted RGBA data (from GPU phase) and runs feature
+/// detection, matching, and filtering using the provided trait objects.
+/// This function is thread-safe and called in parallel via rayon.
 #[allow(clippy::too_many_arguments)]
 fn process_undistorted_pair(
     left_rgba: &[u8],
@@ -85,20 +105,23 @@ fn process_undistorted_pair(
     rh: u32,
     frame_idx: usize,
     config: &CalibrationConfig,
+    detector: &dyn traits::FeatureDetector,
+    matcher: &dyn traits::FeatureMatcher,
+    point_filter: &dyn traits::PointFilter,
 ) -> Option<FrameMatches> {
     profile_scope!("process_frame");
-    let inner = config.spatial_x_inner as f32;
-    let y_min = config.detect_y_min as f32;
-    let y_max = config.detect_y_max as f32;
+    let inner = config.matching.spatial_x_inner as f32;
+    let y_min = config.akaze.detect_y_min as f32;
+    let y_max = config.akaze.detect_y_max as f32;
     let left_region = features::DetectRegion {
-        x_min: config.spatial_x_threshold as f32,
+        x_min: config.matching.spatial_x_threshold as f32,
         x_max: 1.0 - inner,
         y_min,
         y_max,
     };
     let right_region = features::DetectRegion {
         x_min: inner,
-        x_max: 1.0 - config.spatial_x_threshold as f32,
+        x_max: 1.0 - config.matching.spatial_x_threshold as f32,
         y_min,
         y_max,
     };
@@ -107,24 +130,22 @@ fn process_undistorted_pair(
     let ((kp_left, desc_left), (kp_right, desc_right)) = rayon::join(
         || {
             profile_scope!("akaze_detect_left");
-            features::detect(
+            detector.detect(
                 left_rgba,
                 lw,
                 lh,
                 Some(left_region),
-                config.max_keypoints,
-                config.akaze_threshold,
+                config.akaze.max_keypoints,
             )
         },
         || {
             profile_scope!("akaze_detect_right");
-            features::detect(
+            detector.detect(
                 right_rgba,
                 rw,
                 rh,
                 Some(right_region),
-                config.max_keypoints,
-                config.akaze_threshold,
+                config.akaze.max_keypoints,
             )
         },
     );
@@ -140,15 +161,15 @@ fn process_undistorted_pair(
         return None;
     }
 
-    // Match descriptors with Lowe's ratio test
-    let raw_matches = features::match_descriptors(&desc_left, &desc_right, config.lowe_ratio);
+    // Match descriptors using the provided matcher
+    let raw_matches = matcher.match_features(&desc_left, &desc_right);
     let post_ratio_test = raw_matches.len();
 
-    if raw_matches.len() < config.min_matches {
+    if raw_matches.len() < config.matching.min_matches {
         log::debug!(
             "frame {frame_idx}: only {} matches after ratio test (need {})",
             raw_matches.len(),
-            config.min_matches
+            config.matching.min_matches
         );
         return None;
     }
@@ -169,11 +190,11 @@ fn process_undistorted_pair(
     };
     let post_ransac = inlier_indices.len();
 
-    if post_ransac < config.min_matches {
+    if post_ransac < config.matching.min_matches {
         log::debug!(
             "frame {frame_idx}: only {} inliers after RANSAC (need {})",
             post_ransac,
-            config.min_matches
+            config.matching.min_matches
         );
         return None;
     }
@@ -206,6 +227,9 @@ fn process_undistorted_pair(
         })
         .collect();
 
+    // Apply the user-provided point filter (e.g. y-disparity rejection)
+    let points = point_filter.filter(&points);
+
     Some(FrameMatches {
         points,
         keypoints_left: kp_left.len(),
@@ -217,11 +241,15 @@ fn process_undistorted_pair(
     })
 }
 
-/// Run the full calibration pipeline.
+/// Run the full calibration pipeline with default implementations.
+///
+/// Uses AKAZE detection, Hamming matching, and a no-op point filter
+/// (spatial + RANSAC filters are always applied internally). For custom
+/// pipeline stages, use [`calibrate_with`] instead.
 ///
 /// Takes pre-extracted YUV frame pairs (left, right) along with camera
 /// intrinsics from lens profiles. GPU-undistorts each frame to rectilinear
-/// RGBA before detecting AKAZE features.
+/// RGBA before detecting features.
 ///
 /// # Errors
 ///
@@ -234,6 +262,51 @@ pub fn calibrate(
     left_params: &CameraParams,
     right_params: &CameraParams,
     config: &CalibrationConfig,
+) -> Result<CalibrationResult, CalibrateError> {
+    let detector = defaults::AkazeDetector::new(config.akaze.threshold);
+    let matcher = defaults::HammingMatcher::new(config.matching.lowe_ratio);
+    let filter = defaults::NoOpFilter;
+    calibrate_with(
+        gpu,
+        frames,
+        left_params,
+        right_params,
+        config,
+        &detector,
+        &matcher,
+        &filter,
+    )
+}
+
+/// Run the full calibration pipeline with custom pipeline stages.
+///
+/// Like [`calibrate`], but accepts trait objects for the feature detector,
+/// matcher, and point filter stages. Spatial filtering and RANSAC are
+/// always applied internally (they depend on raw keypoint coordinates
+/// and image dimensions).
+///
+/// # Arguments
+///
+/// * `detector` - Feature detection (e.g. [`AkazeDetector`])
+/// * `matcher` - Descriptor matching (e.g. [`HammingMatcher`])
+/// * `filter` - Point filter applied after normalization to plane coordinates
+///   (e.g. [`YDisparityFilter`], [`NoOpFilter`](defaults::NoOpFilter))
+///
+/// # Errors
+///
+/// Returns [`CalibrateError::NoUsableFrames`] if no frame pairs produce
+/// enough matches, or [`CalibrateError::OptimizerFailed`] if all
+/// optimization iterations fail.
+#[allow(clippy::too_many_arguments)]
+pub fn calibrate_with(
+    gpu: &GpuContext,
+    frames: &[(YuvFrame, YuvFrame)],
+    left_params: &CameraParams,
+    right_params: &CameraParams,
+    config: &CalibrationConfig,
+    detector: &dyn traits::FeatureDetector,
+    matcher: &dyn traits::FeatureMatcher,
+    point_filter: &dyn traits::PointFilter,
 ) -> Result<CalibrationResult, CalibrateError> {
     config.validate()?;
 
@@ -278,7 +351,7 @@ pub fn calibrate(
             .collect()
     };
 
-    // Phase 2: AKAZE detect + match + filter (parallel - CPU bound)
+    // Phase 2: Detect + match + filter (parallel - CPU bound)
     let per_frame: Vec<Option<FrameMatches>> = {
         profile_scope!("akaze_parallel");
         use rayon::prelude::*;
@@ -286,7 +359,19 @@ pub fn calibrate(
             .par_iter()
             .enumerate()
             .map(|(i, (left_rgba, right_rgba))| {
-                process_undistorted_pair(left_rgba, right_rgba, lw, lh, rw, rh, i, config)
+                process_undistorted_pair(
+                    left_rgba,
+                    right_rgba,
+                    lw,
+                    lh,
+                    rw,
+                    rh,
+                    i,
+                    config,
+                    detector,
+                    matcher,
+                    point_filter,
+                )
             })
             .collect()
     };
@@ -335,10 +420,10 @@ pub fn calibrate(
         );
     }
 
-    if total_matches < config.min_matches {
+    if total_matches < config.matching.min_matches {
         return Err(CalibrateError::InsufficientMatches {
             got: total_matches,
-            min: config.min_matches,
+            min: config.matching.min_matches,
         });
     }
 
@@ -362,6 +447,7 @@ pub fn calibrate(
         x_rz: best_layout.x_rz,
         z_rx: best_layout.z_rx,
         z_rz: None,
+        x_rx: None,
     };
     let total_reproj = geometry::reprojection_error(&all_points, &best_params);
     let angular_err = geometry::angular_error(&all_points, &best_params);

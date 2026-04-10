@@ -39,10 +39,7 @@ fn main() {
         outlier_ids.len()
     );
 
-    let config = CalibrationConfig {
-        max_optimizer_iters: 5000,
-        ..Default::default()
-    };
+    let config = CalibrationConfig::default();
 
     match optimizer::optimize(&points, &config) {
         Ok((layout, residual)) => {
@@ -63,6 +60,7 @@ fn main() {
                 x_rz: 0.0071,
                 z_rx: -0.0035,
                 z_rz: None,
+                x_rx: None,
             };
             let v1_err = geometry::angular_error(&points, &v1);
             eprintln!("\n  v1 reference residual: {:.6}", v1_err);

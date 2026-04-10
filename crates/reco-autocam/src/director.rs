@@ -77,8 +77,10 @@ impl BallDirector {
     /// Create a new ball director with default parameters.
     ///
     /// `fps` is used to scale timing parameters (delay, recovery, coast)
-    /// to the video frame rate.
+    /// to the video frame rate. Clamped to `[1.0, 1000.0]` to prevent
+    /// degenerate timing from invalid input.
     pub fn new(fps: f32) -> Self {
+        let fps = fps.clamp(1.0, 1000.0);
         Self {
             state: State::Searching,
             yaw: 0.0,

@@ -118,9 +118,6 @@ const STARTS_4: [[f64; 4]; 5] = [
 /// this fraction of the parameter range.
 const SIMPLEX_PERTURBATION: f64 = 0.10;
 
-/// Maximum iterations per Nelder-Mead run.
-const MAX_ITERS: u64 = 5000;
-
 /// Cost function for argmin's Nelder-Mead solver.
 ///
 /// Wraps the seam-weighted reprojection error with a penalty term
@@ -169,8 +166,8 @@ impl CostFunction for CalibrationCost<'_> {
 /// Convert a parameter vector to [`OptParams`].
 ///
 /// Base order: `[cam_d, intersect, x_ty, x_rz, z_rx]`.
-/// If 6 elements, the 6th is stored in `z_rz` and later mapped to
-/// `PlaneLayout::x_rx` (right plane pitch) when `enable_x_rx` is set.
+/// If 6 elements, the 6th is stored in `x_rx` (right plane pitch)
+/// when `enable_x_rx` is set.
 fn params_from_vec(p: &[f64]) -> OptParams {
     debug_assert!(p.len() >= 5, "need at least 5 params, got {}", p.len());
     OptParams {
@@ -179,7 +176,8 @@ fn params_from_vec(p: &[f64]) -> OptParams {
         x_ty: p[2],
         x_rz: p[3],
         z_rx: p[4],
-        z_rz: if p.len() > 5 { Some(p[5]) } else { None },
+        z_rz: None,
+        x_rx: if p.len() > 5 { Some(p[5]) } else { None },
     }
 }
 
@@ -194,7 +192,8 @@ fn params_from_vec_no_zrx(p: &[f64]) -> OptParams {
         x_ty: p[2],
         x_rz: p[3],
         z_rx: 0.0,
-        z_rz: if p.len() > 4 { Some(p[4]) } else { None },
+        z_rz: None,
+        x_rx: if p.len() > 4 { Some(p[4]) } else { None },
     }
 }
 
@@ -212,7 +211,8 @@ fn params_from_vec_locked(p: &[f64]) -> OptParams {
         x_ty: p[1],
         x_rz: p[2],
         z_rx: p[3],
-        z_rz: if p.len() > 4 { Some(p[4]) } else { None },
+        z_rz: None,
+        x_rx: if p.len() > 4 { Some(p[4]) } else { None },
     }
 }
 
@@ -229,7 +229,8 @@ fn params_from_vec_locked_no_zrx(p: &[f64]) -> OptParams {
         x_ty: p[1],
         x_rz: p[2],
         z_rx: 0.0,
-        z_rz: if p.len() > 3 { Some(p[3]) } else { None },
+        z_rz: None,
+        x_rx: if p.len() > 3 { Some(p[3]) } else { None },
     }
 }
 
@@ -274,13 +275,17 @@ fn build_simplex(start: &[f64], bounds: &[(f64, f64)]) -> Vec<Vec<f64>> {
 }
 
 /// Run a single Nelder-Mead optimization from a start point.
-fn run_nelder_mead(cost: &CalibrationCost<'_>, start: &[f64]) -> Option<(Vec<f64>, f64)> {
+fn run_nelder_mead(
+    cost: &CalibrationCost<'_>,
+    start: &[f64],
+    max_iters: u64,
+) -> Option<(Vec<f64>, f64)> {
     let simplex = build_simplex(start, &cost.bounds);
     let solver: NelderMead<Vec<f64>, f64> =
         NelderMead::new(simplex).with_sd_tolerance(1e-12).ok()?;
 
     let res = Executor::new(cost.clone(), solver)
-        .configure(|state| state.max_iters(MAX_ITERS))
+        .configure(|state| state.max_iters(max_iters))
         .run()
         .ok()?;
 
@@ -305,16 +310,18 @@ impl Optimizer for NelderMeadOptimizer {
         points: &[MatchedPoint],
         config: &CalibrationConfig,
     ) -> Result<(PlaneLayout, f64), CalibrateError> {
-        let lock = config.lock_cam_d;
-        let lock_zrx = config.lock_z_rx;
-        let bounds = active_bounds(config.enable_x_rx, lock, lock_zrx);
+        let lock = config.optimizer.lock_cam_d;
+        let lock_zrx = config.optimizer.lock_z_rx;
+        let enable_xrx = config.optimizer.enable_x_rx;
+        let max_iters = config.optimizer.max_iters as u64;
+        let bounds = active_bounds(enable_xrx, lock, lock_zrx);
         let cost = CalibrationCost {
             points,
-            sigma: config.seam_sigma,
+            sigma: config.optimizer.seam_sigma,
             bounds: bounds.clone(),
             lock_cam_d: lock,
             lock_z_rx: lock_zrx,
-            trim_fraction: config.trim_fraction,
+            trim_fraction: config.optimizer.trim_fraction,
         };
 
         let mut best: Option<(Vec<f64>, f64)> = None;
@@ -347,11 +354,11 @@ impl Optimizer for NelderMeadOptimizer {
                 }
             }
 
-            if config.enable_x_rx {
+            if enable_xrx {
                 start.push(xrx_default);
             }
 
-            if let Some((p, f)) = run_nelder_mead(&cost, &start) {
+            if let Some((p, f)) = run_nelder_mead(&cost, &start, max_iters) {
                 log::debug!("NM start: cost={f:.8}");
                 if best.as_ref().is_none_or(|(_, r)| f < *r) {
                     best = Some((p, f));
@@ -375,10 +382,10 @@ impl Optimizer for NelderMeadOptimizer {
                         imu_start.remove(zrx_idx);
                     }
                 }
-                if config.enable_x_rx {
+                if enable_xrx {
                     imu_start.push(xrx_default);
                 }
-                if let Some((p, f)) = run_nelder_mead(&cost, &imu_start) {
+                if let Some((p, f)) = run_nelder_mead(&cost, &imu_start, max_iters) {
                     log::debug!("NM IMU-seeded start: cost={f:.8}");
                     if best.as_ref().is_none_or(|(_, r)| f < *r) {
                         best = Some((p, f));
@@ -388,7 +395,7 @@ impl Optimizer for NelderMeadOptimizer {
         }
 
         let (best_p, best_cost) = best.ok_or(CalibrateError::OptimizerFailed {
-            max_evals: config.max_optimizer_iters,
+            max_evals: config.optimizer.max_iters,
         })?;
 
         let params = match (lock, lock_zrx) {
@@ -403,8 +410,8 @@ impl Optimizer for NelderMeadOptimizer {
             x_ty: params.x_ty,
             x_rz: params.x_rz,
             z_rx: params.z_rx,
-            x_rx: if config.enable_x_rx {
-                params.z_rz.unwrap_or(0.0)
+            x_rx: if enable_xrx {
+                params.x_rx.unwrap_or(0.0)
             } else {
                 0.0
             },
@@ -505,6 +512,7 @@ mod tests {
             x_rz: 0.0,
             z_rx: 0.0,
             z_rz: None,
+            x_rx: None,
         };
 
         let points = synthetic_points(&true_params, 50);
@@ -538,6 +546,7 @@ mod tests {
             x_rz: 0.01,
             z_rx: -0.005,
             z_rz: None,
+            x_rx: None,
         };
         let points = synthetic_points(&true_params, 50);
 

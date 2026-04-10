@@ -51,32 +51,39 @@ pub struct KeyPoint {
     pub angle: f32,
 }
 
+/// Maximum allowed `descriptor_pattern_size` (OOB write if larger).
+const MAX_PATTERN_SIZE: usize = 10;
+
 /// AKAZE feature detector and descriptor extractor.
 ///
 /// The most important parameter is `detector_threshold`. Lower values
 /// detect more features but include weaker ones.
+///
+/// Construct via [`Akaze::new`], [`Akaze::sparse`], [`Akaze::dense`],
+/// or [`AkazeBuilder`].
 #[derive(Debug, Copy, Clone)]
 pub struct Akaze {
     /// Number of sublevels per scale level.
-    pub num_sublevels: u32,
+    num_sublevels: u32,
     /// Maximum octave evolution of the image.
-    pub max_octave_evolution: u32,
+    max_octave_evolution: u32,
     /// Base scale offset (sigma units).
-    pub base_scale_offset: f64,
+    base_scale_offset: f64,
     /// Initial contrast factor parameter.
-    pub initial_contrast: f64,
+    initial_contrast: f64,
     /// Percentile level for the contrast factor.
-    pub contrast_percentile: f64,
+    contrast_percentile: f64,
     /// Number of bins for the contrast factor histogram.
-    pub contrast_factor_num_bins: usize,
+    contrast_factor_num_bins: usize,
     /// Factor for the multiscale derivatives.
-    pub derivative_factor: f64,
+    derivative_factor: f64,
     /// Detector response threshold to accept a keypoint.
-    pub detector_threshold: f64,
+    detector_threshold: f64,
     /// Number of descriptor channels (1, 2, or 3).
-    pub descriptor_channels: usize,
+    descriptor_channels: usize,
     /// Actual patch size is `2 * pattern_size * point.scale`.
-    pub descriptor_pattern_size: usize,
+    /// Must be <= [`MAX_PATTERN_SIZE`] (10).
+    descriptor_pattern_size: usize,
 }
 
 impl Akaze {
@@ -97,6 +104,11 @@ impl Akaze {
     pub fn dense() -> Self {
         Self::new(0.0001)
     }
+
+    /// Return a builder for fine-grained configuration.
+    pub fn builder() -> AkazeBuilder {
+        AkazeBuilder(Akaze::default())
+    }
 }
 
 impl Default for Akaze {
@@ -113,6 +125,49 @@ impl Default for Akaze {
             descriptor_channels: 3usize,
             descriptor_pattern_size: 10usize,
         }
+    }
+}
+
+/// Builder for [`Akaze`] with validated parameters.
+///
+/// All setters clamp or validate inputs to prevent unsafe configurations
+/// (e.g. `descriptor_pattern_size > 10` causes an out-of-bounds write).
+pub struct AkazeBuilder(Akaze);
+
+impl AkazeBuilder {
+    /// Set the detector response threshold (must be > 0).
+    pub fn threshold(mut self, t: f64) -> Self {
+        self.0.detector_threshold = t.max(1e-12);
+        self
+    }
+
+    /// Set the descriptor pattern size (clamped to 1..=10).
+    pub fn pattern_size(mut self, size: usize) -> Self {
+        self.0.descriptor_pattern_size = size.clamp(1, MAX_PATTERN_SIZE);
+        self
+    }
+
+    /// Set the number of descriptor channels (clamped to 1..=3).
+    pub fn descriptor_channels(mut self, ch: usize) -> Self {
+        self.0.descriptor_channels = ch.clamp(1, 3);
+        self
+    }
+
+    /// Set the number of sublevels per octave (clamped to 1..=8).
+    pub fn num_sublevels(mut self, n: u32) -> Self {
+        self.0.num_sublevels = n.clamp(1, 8);
+        self
+    }
+
+    /// Set the max octave evolution (clamped to 1..=8).
+    pub fn max_octave_evolution(mut self, n: u32) -> Self {
+        self.0.max_octave_evolution = n.clamp(1, 8);
+        self
+    }
+
+    /// Build the validated [`Akaze`] instance.
+    pub fn build(self) -> Akaze {
+        self.0
     }
 }
 

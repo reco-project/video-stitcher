@@ -335,7 +335,7 @@ impl CalibrationPipeline {
             config.imu_zrx_seed = self.imu_zrx_seed;
         }
         if self.enable_x_rx {
-            config.enable_x_rx = true;
+            config.optimizer.enable_x_rx = true;
         }
 
         let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;

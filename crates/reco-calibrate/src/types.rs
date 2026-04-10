@@ -85,19 +85,51 @@ pub struct FrameMatches {
     pub post_ransac: usize,
 }
 
-/// Configuration for the calibration pipeline.
+/// AKAZE feature detection settings.
 ///
-/// All fields have sensible defaults via [`Default`].
+/// Controls the AKAZE detector's sensitivity, keypoint cap, and the
+/// vertical region of interest used during feature detection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CalibrationConfig {
-    /// Number of frame pairs to sample from the video.
-    pub num_frames: usize,
+pub struct AkazeConfig {
+    /// AKAZE detector response threshold. Lower = more features detected.
+    /// Default 0.0001. Try 0.001 for faster detection with fewer features.
+    #[serde(rename = "akaze_threshold")]
+    pub threshold: f64,
+    /// Maximum number of keypoints to keep per image after detection,
+    /// sorted by response strength. Matches v1's SIFT nfeatures behavior.
+    pub max_keypoints: usize,
+    /// Detection region vertical minimum (fraction of height, 0.0 = top).
+    /// Points above this line are excluded from feature detection.
+    /// Default 0.05 (skip top 5%). The border filter handles undistortion
+    /// edge artifacts, so this only needs to exclude the extreme edges.
+    pub detect_y_min: f64,
+    /// Detection region vertical maximum (fraction of height, 1.0 = bottom).
+    /// Points below this line are excluded from feature detection.
+    /// Default 0.95 (skip bottom 5%). The border filter handles edge artifacts.
+    pub detect_y_max: f64,
+}
+
+impl Default for AkazeConfig {
+    fn default() -> Self {
+        Self {
+            threshold: 0.0001,
+            max_keypoints: 2000,
+            detect_y_min: 0.05,
+            detect_y_max: 0.95,
+        }
+    }
+}
+
+/// Feature matching and spatial filtering settings.
+///
+/// Controls Lowe's ratio test, spatial overlap filtering, vertical
+/// disparity rejection, and RANSAC outlier removal.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatchConfig {
     /// Lowe's ratio test threshold (lower = stricter).
     pub lowe_ratio: f64,
     /// Minimum number of matches required per frame pair.
     pub min_matches: usize,
-    /// RANSAC inlier threshold (Sampson error).
-    pub ransac_threshold: f64,
     /// Spatial filter: left image x threshold (keep x >= this fraction of width).
     pub spatial_x_threshold: f64,
     /// Inner overlap margin: exclude features deeper than this fraction from
@@ -113,37 +145,41 @@ pub struct CalibrationConfig {
     /// as a fraction of image height. Rejects matches where features
     /// are at very different y-positions (e.g. field lines vs clouds).
     pub max_y_disparity: f64,
-    /// Detection region vertical minimum (fraction of height, 0.0 = top).
-    /// Points above this line are excluded from feature detection.
-    /// Default 0.05 (skip top 5%). The border filter handles undistortion
-    /// edge artifacts, so this only needs to exclude the extreme edges.
-    pub detect_y_min: f64,
-    /// Detection region vertical maximum (fraction of height, 1.0 = bottom).
-    /// Points below this line are excluded from feature detection.
-    /// Default 0.95 (skip bottom 5%). The border filter handles edge artifacts.
-    pub detect_y_max: f64,
-    /// Maximum number of keypoints to keep per image after detection,
-    /// sorted by response strength. Matches v1's SIFT nfeatures behavior.
-    pub max_keypoints: usize,
-    /// Maximum optimizer iterations (passed to Nelder-Mead executor).
-    pub max_optimizer_iters: usize,
-    /// Seconds to skip from the start of the video (setup time).
-    pub skip_start_secs: f64,
-    /// Seconds to skip from the end of the video (teardown time).
-    pub skip_end_secs: f64,
+    /// RANSAC inlier threshold (Sampson error).
+    pub ransac_threshold: f64,
+}
 
-    // --- Optimizer settings ---
+impl Default for MatchConfig {
+    fn default() -> Self {
+        Self {
+            lowe_ratio: 0.75,
+            min_matches: 6,
+            spatial_x_threshold: 0.5,
+            spatial_x_inner: 0.0,
+            spatial_y_low: 0.2,
+            spatial_y_high: 0.8,
+            max_y_disparity: 0.08,
+            ransac_threshold: 1.0,
+        }
+    }
+}
+
+/// Nelder-Mead optimizer settings.
+///
+/// Controls parameter locking, seam weighting, trimming, and
+/// iteration limits for the optimization pass.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizerConfig {
     /// Removes `cam_d` from free parameters (derives from `intersect`).
     pub lock_cam_d: bool,
-
     /// Lock z_rx to 0 (left/z-plane stays static, only translates via intersect).
     /// Reduces the optimization by 1 parameter.
     pub lock_z_rx: bool,
-
-    /// AKAZE detector response threshold. Lower = more features detected.
-    /// Default 0.0001. Try 0.001 for faster detection with fewer features.
-    pub akaze_threshold: f64,
-
+    /// Enable the x_rx parameter (right plane pitch).
+    ///
+    /// Auto-enabled when IMU detects differential pitch > 2 degrees
+    /// between cameras. When false, x_rx is fixed at 0.
+    pub enable_x_rx: bool,
     /// Horizontal Gaussian sigma for seam-proximity weighting.
     ///
     /// Controls horizontal (seam-proximity) width; vertical sigma is
@@ -152,6 +188,45 @@ pub struct CalibrationConfig {
     /// seam. Confirmed "much better" than unweighted across all test
     /// footages.
     pub seam_sigma: f64,
+    /// Fraction of worst-error points to drop during optimization.
+    ///
+    /// 0.0 = no trimming (use all points), 0.2 = drop worst 20%.
+    /// Makes the optimizer robust to outlier matches that survive RANSAC.
+    pub trim_fraction: f64,
+    /// Maximum optimizer iterations per Nelder-Mead run.
+    #[serde(rename = "max_optimizer_iters")]
+    pub max_iters: usize,
+}
+
+impl Default for OptimizerConfig {
+    fn default() -> Self {
+        Self {
+            lock_cam_d: false,
+            lock_z_rx: false,
+            enable_x_rx: false,
+            seam_sigma: 0.08,
+            trim_fraction: 0.3,
+            max_iters: 5000,
+        }
+    }
+}
+
+/// Configuration for the calibration pipeline.
+///
+/// Groups detection, matching, and optimizer settings into sub-structs
+/// ([`AkazeConfig`], [`MatchConfig`], [`OptimizerConfig`]) while keeping
+/// sampling and IMU fields at the top level.
+///
+/// Uses `#[serde(flatten)]` so the JSON representation stays flat -
+/// existing config files continue to work without changes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalibrationConfig {
+    /// Number of frame pairs to sample from the video.
+    pub num_frames: usize,
+    /// Seconds to skip from the start of the video (setup time).
+    pub skip_start_secs: f64,
+    /// Seconds to skip from the end of the video (teardown time).
+    pub skip_end_secs: f64,
 
     // --- IMU-derived settings (populated by telemetry module) ---
     /// IMU-derived roll seed for the x_rz initial guess (radians).
@@ -159,11 +234,6 @@ pub struct CalibrationConfig {
     /// When set, adds an extra optimizer start point seeded with this
     /// value, improving convergence for rigs with measurable roll offset.
     pub imu_xrz_seed: Option<f64>,
-    /// Enable the x_rx parameter (right plane pitch).
-    ///
-    /// Auto-enabled when IMU detects differential pitch > 2 degrees
-    /// between cameras. When false, x_rx is fixed at 0.
-    pub enable_x_rx: bool,
     /// IMU-derived pitch seed for the x_rx initial guess (radians).
     ///
     /// When set (along with `enable_x_rx`), seeds the x_rx parameter
@@ -176,40 +246,29 @@ pub struct CalibrationConfig {
     /// individual tilt measurement.
     pub imu_zrx_seed: Option<f64>,
 
-    /// Fraction of worst-error points to drop during optimization.
-    ///
-    /// 0.0 = no trimming (use all points), 0.2 = drop worst 20%.
-    /// Makes the optimizer robust to outlier matches that survive RANSAC.
-    pub trim_fraction: f64,
+    /// AKAZE feature detection settings.
+    #[serde(flatten)]
+    pub akaze: AkazeConfig,
+    /// Feature matching and filtering settings.
+    #[serde(flatten)]
+    pub matching: MatchConfig,
+    /// Optimizer settings.
+    #[serde(flatten)]
+    pub optimizer: OptimizerConfig,
 }
 
 impl Default for CalibrationConfig {
     fn default() -> Self {
         Self {
             num_frames: 2,
-            lowe_ratio: 0.75,
-            min_matches: 6,
-            ransac_threshold: 1.0,
-            spatial_x_threshold: 0.5,
-            spatial_x_inner: 0.0,
-            spatial_y_low: 0.2,
-            spatial_y_high: 0.8,
-            max_y_disparity: 0.08,
-            detect_y_min: 0.05,
-            detect_y_max: 0.95,
-            max_keypoints: 2000,
-            max_optimizer_iters: 5000,
             skip_start_secs: 0.0,
             skip_end_secs: 0.0,
-            lock_cam_d: false,
-            lock_z_rx: false,
-            akaze_threshold: 0.0001,
-            seam_sigma: 0.08,
             imu_xrz_seed: None,
-            enable_x_rx: false,
             imu_xrx_seed: None,
             imu_zrx_seed: None,
-            trim_fraction: 0.3,
+            akaze: AkazeConfig::default(),
+            matching: MatchConfig::default(),
+            optimizer: OptimizerConfig::default(),
         }
     }
 }
@@ -226,45 +285,45 @@ impl CalibrationConfig {
                 "num_frames must be >= 1".into(),
             ));
         }
-        if self.lowe_ratio <= 0.0 || self.lowe_ratio > 1.0 {
+        if self.matching.lowe_ratio <= 0.0 || self.matching.lowe_ratio > 1.0 {
             return Err(CalibrateError::InvalidConfig(format!(
                 "lowe_ratio must be in (0, 1], got {}",
-                self.lowe_ratio
+                self.matching.lowe_ratio
             )));
         }
-        if self.ransac_threshold <= 0.0 {
+        if self.matching.ransac_threshold <= 0.0 {
             return Err(CalibrateError::InvalidConfig(format!(
                 "ransac_threshold must be > 0, got {}",
-                self.ransac_threshold
+                self.matching.ransac_threshold
             )));
         }
-        if self.max_keypoints == 0 {
+        if self.akaze.max_keypoints == 0 {
             return Err(CalibrateError::InvalidConfig(
                 "max_keypoints must be >= 1".into(),
             ));
         }
-        if self.akaze_threshold <= 0.0 {
+        if self.akaze.threshold <= 0.0 {
             return Err(CalibrateError::InvalidConfig(format!(
                 "akaze_threshold must be > 0, got {}",
-                self.akaze_threshold
+                self.akaze.threshold
             )));
         }
-        if !(0.0..=1.0).contains(&self.trim_fraction) {
+        if !(0.0..=1.0).contains(&self.optimizer.trim_fraction) {
             return Err(CalibrateError::InvalidConfig(format!(
                 "trim_fraction must be in [0, 1], got {}",
-                self.trim_fraction
+                self.optimizer.trim_fraction
             )));
         }
-        if self.spatial_x_threshold < 0.0 || self.spatial_x_threshold > 1.0 {
+        if self.matching.spatial_x_threshold < 0.0 || self.matching.spatial_x_threshold > 1.0 {
             return Err(CalibrateError::InvalidConfig(format!(
                 "spatial_x_threshold must be in [0, 1], got {}",
-                self.spatial_x_threshold
+                self.matching.spatial_x_threshold
             )));
         }
-        if self.seam_sigma <= 0.0 {
+        if self.optimizer.seam_sigma <= 0.0 {
             return Err(CalibrateError::InvalidConfig(format!(
                 "seam_sigma must be > 0, got {}",
-                self.seam_sigma
+                self.optimizer.seam_sigma
             )));
         }
         Ok(())
