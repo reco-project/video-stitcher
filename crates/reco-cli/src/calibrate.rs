@@ -10,6 +10,7 @@ use reco_calibrate::CalibrationConfig;
 use reco_calibrate::pipeline::{CalibrationPipeline, VideoInfo};
 use reco_calibrate::types::YuvFrame;
 use reco_core::gpu::GpuContext;
+use reco_io::ffmpeg::calibration_io;
 
 /// Run the calibrate subcommand.
 #[allow(clippy::too_many_arguments)]
@@ -38,33 +39,25 @@ pub fn run_calibrate(
 ) -> anyhow::Result<()> {
     reco_io::init();
 
-    // Get video metadata from decoder
-    let left_decoder = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(left))?;
-    let right_decoder = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right))?;
+    // Probe video metadata
+    let left_probe = calibration_io::probe_video(Path::new(left))?;
+    let right_probe = calibration_io::probe_video(Path::new(right))?;
 
     let left_info = VideoInfo {
         path: left.into(),
-        width: left_decoder.width(),
-        height: left_decoder.height(),
-        fps: left_decoder.fps(),
-        total_frames: left_decoder
-            .duration_secs()
-            .map(|d| (d * left_decoder.fps()) as u64)
-            .unwrap_or((left_decoder.fps() * 60.0) as u64),
+        width: left_probe.width,
+        height: left_probe.height,
+        fps: left_probe.fps,
+        total_frames: left_probe.total_frames,
     };
     let right_info = VideoInfo {
         path: right.into(),
-        width: right_decoder.width(),
-        height: right_decoder.height(),
-        fps: right_decoder.fps(),
-        total_frames: right_decoder
-            .duration_secs()
-            .map(|d| (d * right_decoder.fps()) as u64)
-            .unwrap_or((right_decoder.fps() * 60.0) as u64),
+        width: right_probe.width,
+        height: right_probe.height,
+        fps: right_probe.fps,
+        total_frames: right_probe.total_frames,
     };
     let fps = left_info.fps;
-    drop(left_decoder);
-    drop(right_decoder);
 
     let config = CalibrationConfig {
         num_frames,
@@ -125,11 +118,11 @@ pub fn run_calibrate(
         pipeline.sync_offset(),
     );
 
-    // Step 4: Extract frames (app-level I/O)
+    // Step 4: Extract frames
     eprintln!("Extracting frames from left video...");
-    let left_frames = extract_frames(left, &left_indices)?;
+    let left_frames = calibration_io::extract_frames(Path::new(left), &left_indices)?;
     eprintln!("Extracting frames from right video...");
-    let right_frames = extract_frames(right, &right_indices)?;
+    let right_frames = calibration_io::extract_frames(Path::new(right), &right_indices)?;
 
     let pair_count = left_frames.len().min(right_frames.len());
     anyhow::ensure!(pair_count > 0, "no frames could be extracted from videos");
@@ -207,82 +200,10 @@ fn extract_and_sync_audio(
     right: &str,
 ) -> anyhow::Result<i64> {
     let sample_rate = 44100u32;
-    let left_samples = extract_audio_pcm(left, sample_rate)?;
-    let right_samples = extract_audio_pcm(right, sample_rate)?;
+    let left_samples = calibration_io::extract_audio_pcm(Path::new(left), sample_rate)?;
+    let right_samples = calibration_io::extract_audio_pcm(Path::new(right), sample_rate)?;
     let frames = pipeline.audio_sync(&left_samples, &right_samples, sample_rate)?;
     Ok(frames)
-}
-
-// ---------------------------------------------------------------------------
-// App-level I/O (stays in CLI)
-// ---------------------------------------------------------------------------
-
-/// Extract YUV420P frames from a video at the given frame indices.
-fn extract_frames(video_path: &str, frame_indices: &[u64]) -> anyhow::Result<Vec<YuvFrame>> {
-    use reco_io::ffmpeg::decoder::VideoDecoder;
-
-    let mut decoder = VideoDecoder::open(Path::new(video_path))?;
-    let fps = decoder.fps();
-    let mut frames = Vec::with_capacity(frame_indices.len());
-
-    for &target_idx in frame_indices {
-        let target_secs = target_idx as f64 / fps;
-        decoder.seek_to_secs(target_secs)?;
-
-        let mut last_frame = None;
-        while let Some(yuv) = decoder.next_frame()? {
-            let frame_time = yuv.timestamp_us as f64 / 1_000_000.0;
-            last_frame = Some(yuv);
-            if frame_time >= target_secs - 0.5 / fps {
-                break;
-            }
-        }
-        if let Some(f) = last_frame {
-            frames.push(f);
-        }
-    }
-
-    Ok(frames)
-}
-
-/// Extract mono PCM audio from a video file using ffmpeg CLI.
-fn extract_audio_pcm(video_path: &str, sample_rate: u32) -> anyhow::Result<Vec<i16>> {
-    // Cap at 60 seconds - more than enough for cross-correlation sync detection.
-    // Extracting full-length audio from long recordings wastes time on HDD reads.
-    let output = std::process::Command::new("ffmpeg")
-        .args([
-            "-i",
-            video_path,
-            "-t",
-            "60",
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            &sample_rate.to_string(),
-            "-f",
-            "s16le",
-            "-",
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()?;
-
-    if !output.status.success() {
-        anyhow::bail!("ffmpeg audio extraction failed (exit {})", output.status);
-    }
-
-    let samples: Vec<i16> = output
-        .stdout
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]))
-        .collect();
-
-    if samples.is_empty() {
-        anyhow::bail!("no audio in {video_path}");
-    }
-
-    Ok(samples)
 }
 
 // ---------------------------------------------------------------------------

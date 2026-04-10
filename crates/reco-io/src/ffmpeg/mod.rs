@@ -4,6 +4,7 @@
 //! Supports hardware-accelerated decode (NVDEC, VA-API) and
 //! encode (NVENC, VideoToolbox, QSV).
 
+pub mod calibration_io;
 pub mod decoder;
 pub mod encoder;
 
