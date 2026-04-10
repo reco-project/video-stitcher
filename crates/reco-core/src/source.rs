@@ -29,12 +29,20 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum SourceError {
     /// The source failed to open or initialize.
-    #[error("source init: {0}")]
-    Init(String),
+    #[error("source init ({path}): {reason}")]
+    Init {
+        /// Path or identifier of the source that failed.
+        path: String,
+        /// Human-readable explanation of the failure.
+        reason: String,
+    },
 
     /// A frame could not be read.
-    #[error("frame read: {0}")]
-    Read(String),
+    #[error("frame read: {reason}")]
+    Read {
+        /// Human-readable explanation of the failure.
+        reason: String,
+    },
 }
 
 /// Owned YUV420P frame data with dimensions and optional timestamp.

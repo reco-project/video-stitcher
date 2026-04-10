@@ -15,16 +15,27 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum EncodeError {
     /// The encoder failed to initialize.
-    #[error("encoder initialization failed: {0}")]
-    Init(String),
+    #[error("encoder initialization failed: {reason}")]
+    Init {
+        /// Human-readable explanation of the failure.
+        reason: String,
+    },
 
     /// Failed to encode a frame.
-    #[error("frame encoding failed: {0}")]
-    Frame(String),
+    #[error("frame encoding failed (frame {frame_index:?}): {reason}")]
+    Frame {
+        /// Index of the frame that failed, if known.
+        frame_index: Option<u64>,
+        /// Human-readable explanation of the failure.
+        reason: String,
+    },
 
     /// Failed to finalize the output.
-    #[error("finalization failed: {0}")]
-    Finalize(String),
+    #[error("finalization failed: {reason}")]
+    Finalize {
+        /// Human-readable explanation of the failure.
+        reason: String,
+    },
 }
 
 /// Pixel format of the frame data passed to the encoder.

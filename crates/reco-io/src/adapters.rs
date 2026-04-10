@@ -53,8 +53,11 @@ impl FfmpegFileSource {
         right_path: &std::path::Path,
         sync_offset: i64,
     ) -> Result<Self, SourceError> {
-        let probe = ffmpeg::decoder::VideoDecoder::open(left_path)
-            .map_err(|e| SourceError::Init(format!("left: {e}")))?;
+        let probe =
+            ffmpeg::decoder::VideoDecoder::open(left_path).map_err(|e| SourceError::Init {
+                path: left_path.display().to_string(),
+                reason: format!("{e}"),
+            })?;
         let info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
@@ -102,8 +105,11 @@ impl FfmpegFileSource {
     ///
     /// Re-probes the left file. Call once during setup, not per-frame.
     pub fn frame_rate(left_path: &std::path::Path) -> Result<(i32, i32), SourceError> {
-        let dec = ffmpeg::decoder::VideoDecoder::open(left_path)
-            .map_err(|e| SourceError::Init(format!("{e}")))?;
+        let dec =
+            ffmpeg::decoder::VideoDecoder::open(left_path).map_err(|e| SourceError::Init {
+                path: left_path.display().to_string(),
+                reason: format!("{e}"),
+            })?;
         let r = dec.frame_rate();
         Ok((r.0, r.1))
     }
@@ -251,7 +257,9 @@ impl FfmpegFileEncoder {
     ) -> Result<Self, EncodeError> {
         let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
         let inner = ffmpeg::encoder::VideoEncoder::new(path, width, height, fps_rational, config)
-            .map_err(|e| EncodeError::Init(e.to_string()))?;
+            .map_err(|e| EncodeError::Init {
+            reason: e.to_string(),
+        })?;
         Ok(Self { inner })
     }
 
@@ -265,20 +273,28 @@ impl FfmpegFileEncoder {
 impl Encoder for FfmpegFileEncoder {
     fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError> {
         match frame.format {
-            PixelFormat::Nv12 => self
-                .inner
-                .write_nv12_frame(frame.data)
-                .map_err(|e| EncodeError::Frame(e.to_string())),
-            PixelFormat::Rgba8 => self
-                .inner
-                .write_frame(frame.data)
-                .map_err(|e| EncodeError::Frame(e.to_string())),
+            PixelFormat::Nv12 => {
+                self.inner
+                    .write_nv12_frame(frame.data)
+                    .map_err(|e| EncodeError::Frame {
+                        frame_index: None,
+                        reason: e.to_string(),
+                    })
+            }
+            PixelFormat::Rgba8 => {
+                self.inner
+                    .write_frame(frame.data)
+                    .map_err(|e| EncodeError::Frame {
+                        frame_index: None,
+                        reason: e.to_string(),
+                    })
+            }
         }
     }
 
     fn finish(&mut self) -> Result<(), EncodeError> {
-        self.inner
-            .finish()
-            .map_err(|e| EncodeError::Finalize(e.to_string()))
+        self.inner.finish().map_err(|e| EncodeError::Finalize {
+            reason: e.to_string(),
+        })
     }
 }

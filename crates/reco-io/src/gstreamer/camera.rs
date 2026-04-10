@@ -158,11 +158,13 @@ fn extract_i420(data: &[u8], width: u32, height: u32) -> Result<YuvData, SourceE
     let uv_size = ((width / 2) * (height / 2)) as usize;
 
     if data.len() < y_size + 2 * uv_size {
-        return Err(SourceError::Read(format!(
-            "buffer too small: {} < {}",
-            data.len(),
-            y_size + 2 * uv_size
-        )));
+        return Err(SourceError::Read {
+            reason: format!(
+                "buffer too small: {} < {}",
+                data.len(),
+                y_size + 2 * uv_size
+            ),
+        });
     }
 
     Ok(YuvData {
@@ -180,11 +182,13 @@ fn extract_nv12(data: &[u8], width: u32, height: u32) -> Result<Nv12Data, Source
     let uv_size = (width * (height / 2)) as usize;
 
     if data.len() < y_size + uv_size {
-        return Err(SourceError::Read(format!(
-            "NV12 buffer too small: {} < {}",
-            data.len(),
-            y_size + uv_size
-        )));
+        return Err(SourceError::Read {
+            reason: format!(
+                "NV12 buffer too small: {} < {}",
+                data.len(),
+                y_size + uv_size
+            ),
+        });
     }
 
     Ok(Nv12Data {
@@ -385,7 +389,10 @@ pub struct GstreamerCameraSource {
 impl GstreamerCameraSource {
     /// Open a stereo camera source with threaded capture.
     pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
-        gst::init().map_err(|e| SourceError::Init(format!("GStreamer init: {e}")))?;
+        gst::init().map_err(|e| SourceError::Init {
+            path: format!("{} + {}", config.left_device, config.right_device),
+            reason: format!("GStreamer init: {e}"),
+        })?;
 
         let left_rx = spawn_capture_thread(
             config.left_device.clone(),
@@ -466,7 +473,10 @@ pub struct GstreamerNv12CameraSource {
 impl GstreamerNv12CameraSource {
     /// Open a stereo NV12 camera source with threaded capture.
     pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
-        gst::init().map_err(|e| SourceError::Init(format!("GStreamer init: {e}")))?;
+        gst::init().map_err(|e| SourceError::Init {
+            path: format!("{} + {}", config.left_device, config.right_device),
+            reason: format!("GStreamer init: {e}"),
+        })?;
 
         let stop = Arc::new(AtomicBool::new(false));
 

@@ -40,6 +40,15 @@ pub enum DecodeError {
     #[error("no video stream found")]
     NoVideoStream,
 
+    /// Video has odd width or height, incompatible with YUV420P.
+    #[error("odd dimensions {width}x{height}: YUV420P requires even width and height")]
+    OddDimensions {
+        /// Frame width in pixels.
+        width: u32,
+        /// Frame height in pixels.
+        height: u32,
+    },
+
     /// Pixel format conversion failed.
     #[error("format conversion: {0}")]
     ConversionError(String),
@@ -157,6 +166,12 @@ pub struct VideoDecoder {
     /// Hardware device context reference (must be kept alive).
     /// Stored as raw pointer; freed via av_buffer_unref on drop.
     _hw_device_ref: *mut ffi::AVBufferRef,
+    /// Pre-allocated Y plane buffer, reused across frames.
+    y_buf: Vec<u8>,
+    /// Pre-allocated U plane buffer, reused across frames.
+    u_buf: Vec<u8>,
+    /// Pre-allocated V plane buffer, reused across frames.
+    v_buf: Vec<u8>,
 }
 
 // SAFETY: The FFmpeg contexts are only accessed from a single thread
@@ -214,6 +229,11 @@ impl VideoDecoder {
         let width = decoder.width();
         let height = decoder.height();
 
+        // YUV420P chroma subsampling requires even dimensions.
+        if width % 2 != 0 || height % 2 != 0 {
+            return Err(DecodeError::OddDimensions { width, height });
+        }
+
         // Read rotation from stream side data (display matrix).
         // Common with DJI cameras that store upside-down video with rotation=-180.
         // Uses ffmpeg-next's safe side_data() iterator which handles both
@@ -253,6 +273,9 @@ impl VideoDecoder {
             backend,
         );
 
+        let y_size = width as usize * height as usize;
+        let uv_size = (width as usize / 2) * (height as usize / 2);
+
         Ok(Self {
             input: ictx,
             decoder,
@@ -269,6 +292,9 @@ impl VideoDecoder {
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
             _hw_device_ref: hw_device_ref,
+            y_buf: Vec::with_capacity(y_size),
+            u_buf: Vec::with_capacity(uv_size),
+            v_buf: Vec::with_capacity(uv_size),
         })
     }
 
@@ -627,23 +653,35 @@ impl VideoDecoder {
         let uv_w = w / 2;
         let uv_h = h / 2;
 
-        let mut y = extract_plane(source.data(0), source.stride(0), w, h);
-        let mut u = extract_plane(source.data(1), source.stride(1), uv_w, uv_h);
-        let mut v = extract_plane(source.data(2), source.stride(2), uv_w, uv_h);
+        extract_plane_into(&mut self.y_buf, source.data(0), source.stride(0), w, h);
+        extract_plane_into(
+            &mut self.u_buf,
+            source.data(1),
+            source.stride(1),
+            uv_w,
+            uv_h,
+        );
+        extract_plane_into(
+            &mut self.v_buf,
+            source.data(2),
+            source.stride(2),
+            uv_w,
+            uv_h,
+        );
 
         // Apply rotation from stream metadata.
         // 180 degrees: reverse each row and reverse row order (equivalent to
         // reversing the entire buffer). Zero-copy, in-place.
         if self.rotation == 180 {
-            y.reverse();
-            u.reverse();
-            v.reverse();
+            self.y_buf.reverse();
+            self.u_buf.reverse();
+            self.v_buf.reverse();
         }
 
         Ok(YuvFrame {
-            y,
-            u,
-            v,
+            y: self.y_buf.clone(),
+            u: self.u_buf.clone(),
+            v: self.v_buf.clone(),
             width: self.width,
             height: self.height,
             timestamp_us,
@@ -721,32 +759,35 @@ fn try_hwaccel(
     (DecodeBackend::Software, ptr::null_mut())
 }
 
-/// Copy one plane from an FFmpeg frame, removing stride padding.
+/// Copy one plane from an FFmpeg frame into a reusable buffer, removing stride padding.
 ///
+/// Clears `buf` and fills it with tightly-packed row data. The buffer's
+/// allocation is reused across frames, avoiding per-frame heap allocation.
 /// If stride == width (common for 1920-wide frames), this is a single memcpy.
+///
 /// Panics if the `data` slice is too small for the given dimensions.
-fn extract_plane(data: &[u8], stride: usize, width: usize, height: usize) -> Vec<u8> {
+fn extract_plane_into(buf: &mut Vec<u8>, data: &[u8], stride: usize, width: usize, height: usize) {
     assert!(
         stride >= width,
-        "extract_plane: stride ({stride}) < width ({width})"
+        "extract_plane_into: stride ({stride}) < width ({width})"
     );
     if height > 0 {
         let required = (height - 1) * stride + width;
         assert!(
             data.len() >= required,
-            "extract_plane: buffer too small: need {required} bytes for {width}x{height} (stride {stride}), got {}",
+            "extract_plane_into: buffer too small: need {required} bytes for {width}x{height} (stride {stride}), got {}",
             data.len()
         );
     }
 
+    buf.clear();
     if stride == width {
-        data[..width * height].to_vec()
+        buf.extend_from_slice(&data[..width * height]);
     } else {
-        let mut out = Vec::with_capacity(width * height);
+        buf.reserve(width * height);
         for row in 0..height {
             let start = row * stride;
-            out.extend_from_slice(&data[start..start + width]);
+            buf.extend_from_slice(&data[start..start + width]);
         }
-        out
     }
 }

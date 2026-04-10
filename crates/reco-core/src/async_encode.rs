@@ -89,10 +89,10 @@ impl AsyncEncodeThread {
     /// `pts_us` is the presentation timestamp in microseconds.
     pub fn submit(&self, nv12_data: &[u8], pts_us: i64) -> Result<(), EncodeError> {
         profile_scope!("async_encode_submit");
-        let tx = self
-            .tx
-            .as_ref()
-            .ok_or_else(|| EncodeError::Frame("encoder already finished".into()))?;
+        let tx = self.tx.as_ref().ok_or_else(|| EncodeError::Frame {
+            frame_index: None,
+            reason: "encoder already finished".into(),
+        })?;
         let pool_rx = self.pool_rx.as_ref();
 
         // Try to get a recycled buffer from the pool, or allocate if empty.
@@ -107,7 +107,10 @@ impl AsyncEncodeThread {
         buf.copy_from_slice(nv12_data);
 
         tx.send(EncodeJob { data: buf, pts_us })
-            .map_err(|_| EncodeError::Frame("encode thread died".into()))
+            .map_err(|_| EncodeError::Frame {
+                frame_index: None,
+                reason: "encode thread died".into(),
+            })
     }
 
     /// Flush all pending frames and shut down the encode thread.
@@ -122,9 +125,9 @@ impl AsyncEncodeThread {
         self.pool_rx.take();
 
         if let Some(handle) = self.handle.take() {
-            handle
-                .join()
-                .map_err(|_| EncodeError::Finalize("encode thread panicked".into()))?
+            handle.join().map_err(|_| EncodeError::Finalize {
+                reason: "encode thread panicked".into(),
+            })?
         } else {
             Ok(())
         }
