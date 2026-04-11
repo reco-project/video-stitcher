@@ -101,8 +101,8 @@ impl FfmpegFileSource {
 
     /// GPU pixel format for zero-copy shared textures.
     ///
-    /// Returns [`GpuPixelFormat::P010`] for 10-bit sources or
-    /// [`GpuPixelFormat::Nv12`] for 8-bit.
+    /// Returns `GpuPixelFormat::P010` for 10-bit sources or
+    /// `GpuPixelFormat::Nv12` for 8-bit.
     pub fn pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
         self.pixel_format
     }

@@ -104,7 +104,7 @@ impl Default for AudioMode {
 
 /// Complete output configuration for encoding.
 ///
-/// Passed to [`StitchJob`](crate::session::StitchSession) or the I/O backend's encoder
+/// Passed to `StitchJob`(crate::session::StitchSession) or the I/O backend's encoder
 /// factory. The I/O backend maps these to encoder-specific parameters.
 #[derive(Debug, Clone, Default)]
 pub struct OutputConfig {

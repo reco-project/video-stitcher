@@ -75,6 +75,8 @@ pub fn run_camera(
         input_height: capture_height,
         output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
         input_format,
+        left_rotation: 0,
+        right_rotation: 0,
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 

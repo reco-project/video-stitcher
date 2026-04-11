@@ -298,7 +298,7 @@ pub enum Nv12Plane {
 /// This is a convenience wrapper around [`create_shared_texture`] that
 /// infers the wgpu format and dimensions from the plane type and pixel
 /// format. The texture formats are determined by
-/// [`GpuPixelFormat::y_format`] and [`GpuPixelFormat::uv_format`].
+/// `GpuPixelFormat::y_format()` and `GpuPixelFormat::uv_format()`.
 ///
 /// Unorm normalization maps both 8-bit and 16-bit values to `[0.0, 1.0]`
 /// in the shader, so the fragment shader works unchanged across formats.

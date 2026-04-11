@@ -1,6 +1,6 @@
 //! Stitch subcommand: encode two video files into a panoramic output.
 //!
-//! Uses [`StitchJob`] (Layer 3 API) for simple cases, or falls back to
+//! Uses `StitchJob` (Layer 3 API) for simple cases, or falls back to
 //! Layer 2 (`SmartFileSource` + `session.run()`) when autocam is needed.
 
 use std::path::Path;

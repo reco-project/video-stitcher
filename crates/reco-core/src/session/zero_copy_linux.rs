@@ -34,7 +34,7 @@ pub struct SharedTextureSet {
     pub right_slot_free_rx: Option<std::sync::mpsc::Receiver<u8>>,
     /// Pre-built bind groups for the shared textures.
     /// `None` when the source creates textures without pipeline access
-    /// (e.g. [`SmartFileSource`]). The session creates them lazily at
+    /// (e.g. `SmartFileSource`). The session creates them lazily at
     /// the start of `run()`.
     pub bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
 }
@@ -46,8 +46,8 @@ impl StitchSession {
     /// `GpuBufInfo` for each camera (CUDA pointers for decode threads),
     /// and slot-free channels for backpressure.
     ///
-    /// The `pixel_format` selects texture formats: [`GpuPixelFormat::Nv12`]
-    /// uses R8Unorm/Rg8Unorm, [`GpuPixelFormat::P010`] uses R16Unorm/Rg16Unorm.
+    /// The `pixel_format` selects texture formats: [`GpuPixelFormat::Nv12`](crate::renderer::GpuPixelFormat::Nv12)
+    /// uses R8Unorm/Rg8Unorm, [`GpuPixelFormat::P010`](crate::renderer::GpuPixelFormat::P010) uses R16Unorm/Rg16Unorm.
     ///
     /// Call this once during setup, then pass the results to
     /// [`Self::run_zero_copy_linux`].

@@ -443,7 +443,7 @@ impl StitchSession {
         let output_width = config.viewport.width;
         let output_height = config.viewport.height;
 
-        let mut pipeline = StitchPipeline::with_gpu(
+        let pipeline = StitchPipeline::with_gpu(
             gpu,
             config.calibration,
             config.viewport,
@@ -453,17 +453,11 @@ impl StitchSession {
             config.input_format,
         )?;
 
-        // Apply 180-degree rotation via shader UV flip. The CPU decode path
-        // handles rotation by reversing buffers in the decoder; the GPU
-        // zero-copy path cannot reverse buffers, so it flips UV in the shader.
-        if config.left_rotation == 180 || config.right_rotation == 180 {
-            pipeline.set_flip_180(config.left_rotation == 180, config.right_rotation == 180);
-            log::info!(
-                "Rotation: UV flip left={}, right={}",
-                config.left_rotation == 180,
-                config.right_rotation == 180,
-            );
-        }
+        // Rotation is NOT applied here. It's handled by:
+        // - CPU path: decoder reverses buffers in extract_yuv()
+        // - GPU path: configure_from_source() sets shader UV flip in run()
+        // SessionConfig.left_rotation/right_rotation are kept for Layer 1
+        // consumers who call set_flip_180() manually.
 
         let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
 
@@ -502,8 +496,8 @@ impl StitchSession {
 
     /// The precomputed coverage boundary for "no-black" viewport constraining.
     ///
-    /// Use [`CoverageBoundary::safe_clamp`] to constrain viewport positions,
-    /// or [`CoverageBoundary::max_fov_degrees`] for the zoom-out ceiling.
+    /// Use [`CoverageBoundary::safe_clamp`](crate::projection::CoverageBoundary::safe_clamp) to constrain viewport positions,
+    /// or [`CoverageBoundary::max_fov_degrees`](crate::projection::CoverageBoundary::max_fov_degrees) for the zoom-out ceiling.
     pub fn coverage(&self) -> Option<&crate::projection::CoverageBoundary> {
         self.coverage.as_ref()
     }
@@ -1007,12 +1001,15 @@ impl StitchSession {
     /// Called at the start of [`run`](Self::run). Applies rotation from
     /// the source's metadata.
     fn configure_from_source(&mut self, source: &dyn FrameSource) {
-        // Apply rotation from source metadata (GPU zero-copy path uses
-        // shader UV flip; CPU path already handles it in the decoder).
-        let (lr, rr) = (source.left_rotation(), source.right_rotation());
-        if lr == 180 || rr == 180 {
-            self.pipeline.set_flip_180(lr == 180, rr == 180);
-            log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
+        // Apply rotation via shader UV flip ONLY for GPU-resident sources.
+        // CPU sources handle rotation via buffer reversal in the decoder,
+        // so applying the shader flip too would rotate 360 degrees (no-op but wrong).
+        if source.is_gpu_resident() {
+            let (lr, rr) = (source.left_rotation(), source.right_rotation());
+            if lr == 180 || rr == 180 {
+                self.pipeline.set_flip_180(lr == 180, rr == 180);
+                log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
+            }
         }
     }
 

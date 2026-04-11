@@ -343,8 +343,8 @@ impl VideoDecoder {
 
     /// GPU pixel format for zero-copy shared textures.
     ///
-    /// Returns [`GpuPixelFormat::P010`] for 10-bit sources (R16Unorm/Rg16Unorm)
-    /// or [`GpuPixelFormat::Nv12`] for 8-bit (R8Unorm/Rg8Unorm).
+    /// Returns `GpuPixelFormat::P010` for 10-bit sources (R16Unorm/Rg16Unorm)
+    /// or `GpuPixelFormat::Nv12` for 8-bit (R8Unorm/Rg8Unorm).
     pub fn pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
         if self.is_10bit {
             reco_core::renderer::GpuPixelFormat::P010
