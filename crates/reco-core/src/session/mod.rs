@@ -384,6 +384,21 @@ pub struct StitchSession {
     /// all of which are constant or rarely change. Caching avoids
     /// 660 camera_to_panorama calls per frame.
     cached_bounds: Option<(f32, projection::ViewportBounds)>,
+
+    // ── GPU-resident source state (populated by configure_from_source) ──
+    /// Bind groups for GPU-resident shared textures.
+    /// Created lazily from the source's textures at the start of run().
+    #[cfg(target_os = "linux")]
+    gpu_bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
+    /// Slot-free senders for decode backpressure (GPU zero-copy).
+    #[cfg(target_os = "linux")]
+    gpu_slot_free_tx: Option<(
+        std::sync::mpsc::SyncSender<u8>,
+        std::sync::mpsc::SyncSender<u8>,
+    )>,
+    /// CUDA buffer info for GPU detection (GPU zero-copy).
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
 }
 
 impl StitchSession {
@@ -465,6 +480,12 @@ impl StitchSession {
             last_detections: Vec::new(),
             lookahead_frames: 0,
             cached_bounds: None,
+            #[cfg(target_os = "linux")]
+            gpu_bind_groups: None,
+            #[cfg(target_os = "linux")]
+            gpu_slot_free_tx: None,
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            gpu_buf_info: None,
         })
     }
 
@@ -925,11 +946,93 @@ impl StitchSession {
         Ok(())
     }
 
+    /// Process one GPU-resident frame: detect, render, encode, release slots.
+    ///
+    /// Used by the unified `run_immediate` when it receives a
+    /// `StereoFrame::GpuResident` from a GPU-aware source.
+    #[cfg(target_os = "linux")]
+    fn step_gpu(
+        &mut self,
+        left_slot: u8,
+        right_slot: u8,
+        elapsed: std::time::Duration,
+    ) -> Result<(), SessionError> {
+        // Take references to avoid borrow conflicts with &mut self methods.
+        // gpu_buf_info is cloned cheaply (two small structs with arrays of u64/usize).
+        let (left_buf, right_buf) = self
+            .gpu_buf_info
+            .clone()
+            .expect("GPU buf info not configured - call setup_gpu_source() before run()");
+
+        self.detect_and_update_director_gpu(&left_buf, &right_buf, left_slot, right_slot, elapsed);
+        let pos = self.director_position();
+
+        let bind_groups = self
+            .gpu_bind_groups
+            .as_ref()
+            .expect("GPU bind groups not configured - call setup_gpu_source() before run()");
+        let render_buf =
+            self.pipeline
+                .render_gpu_frame(bind_groups, left_slot, right_slot, pos.yaw, pos.pitch);
+        self.submit_render_output(render_buf)?;
+
+        // Release slots for decode thread to reuse
+        if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
+            let _ = left_tx.send(left_slot);
+            let _ = right_tx.send(right_slot);
+        }
+
+        Ok(())
+    }
+
+    /// Auto-configure the session from source metadata.
+    ///
+    /// Called at the start of [`run`](Self::run). Applies rotation from
+    /// the source's metadata.
+    fn configure_from_source(&mut self, source: &dyn FrameSource) {
+        // Apply rotation from source metadata (GPU zero-copy path uses
+        // shader UV flip; CPU path already handles it in the decoder).
+        let (lr, rr) = (source.left_rotation(), source.right_rotation());
+        if lr == 180 || rr == 180 {
+            self.pipeline.set_flip_180(lr == 180, rr == 180);
+            log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
+        }
+    }
+
+    /// Configure the session for a GPU-resident source.
+    ///
+    /// Creates bind groups from the source's shared textures and stores
+    /// slot-free senders for decode backpressure. Call this before
+    /// [`run`](Self::run) when using a GPU-resident [`FrameSource`] like
+    /// `SmartFileSource`.
+    ///
+    /// For the Layer 1 API (`run_zero_copy_linux`), this is handled
+    /// internally and you don't need to call it.
+    #[cfg(target_os = "linux")]
+    pub fn setup_gpu_source(&mut self, shared: &SharedTextureSet) {
+        let t = &shared.textures;
+        let bind_groups = self.pipeline.configure_gpu_source(
+            [(&t[0], &t[1]), (&t[2], &t[3])],
+            [(&t[4], &t[5]), (&t[6], &t[7])],
+        );
+        self.gpu_bind_groups = Some(bind_groups);
+        self.gpu_slot_free_tx = Some((
+            shared.left_slot_free_tx.clone(),
+            shared.right_slot_free_tx.clone(),
+        ));
+        self.gpu_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
+        log::info!("Session configured for GPU-resident source");
+    }
+
     /// Batch-process frames from a source into the encoder.
     ///
     /// Runs the full decode-render-encode loop until the source is
     /// exhausted, the frame limit is reached, or the interrupt flag
     /// is set. Returns the number of frames processed.
+    ///
+    /// Automatically handles CPU-resident and GPU-resident frames:
+    /// - CPU frames (Yuv420p, Nv12): uploaded to GPU, rendered, encoded
+    /// - GPU frames (GpuResident): rendered directly from shared textures
     ///
     /// When [`lookahead_frames`](Self::set_lookahead) > 0, decodes and
     /// runs detection on frames ahead of rendering. The director "sees"
@@ -949,6 +1052,8 @@ impl StitchSession {
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<u64, SessionError> {
+        self.configure_from_source(source);
+
         if self.lookahead_frames > 0 {
             self.run_with_lookahead(source, frame_limit, interrupted, &mut on_progress)
         } else {
@@ -957,6 +1062,8 @@ impl StitchSession {
     }
 
     /// Standard frame loop without lookahead.
+    ///
+    /// Handles both CPU-resident and GPU-resident frames transparently.
     fn run_immediate(
         &mut self,
         source: &mut dyn FrameSource,
@@ -975,9 +1082,21 @@ impl StitchSession {
                 }
             };
 
-            self.detect_and_update_director(&frame, start.elapsed());
-            let pos = self.director_position();
-            self.process_frame(&frame, pos.yaw, pos.pitch)?;
+            match &frame {
+                #[cfg(target_os = "linux")]
+                StereoFrame::GpuResident {
+                    left_slot,
+                    right_slot,
+                } => {
+                    self.step_gpu(*left_slot, *right_slot, start.elapsed())?;
+                }
+                _ => {
+                    // CPU-resident frames (Yuv420p, Nv12)
+                    self.detect_and_update_director(&frame, start.elapsed());
+                    let pos = self.director_position();
+                    self.process_frame(&frame, pos.yaw, pos.pitch)?;
+                }
+            }
 
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
