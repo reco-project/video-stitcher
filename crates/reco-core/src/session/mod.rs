@@ -401,8 +401,12 @@ pub struct StitchSession {
     gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
 
     /// Precomputed coverage boundary for "no-black" viewport constraining.
-    /// Built from calibration at session creation.
+    /// Built from calibration at session creation. In world space.
     coverage: Option<crate::projection::CoverageBoundary>,
+    /// Tilt-adjusted coverage boundary for the director.
+    /// Pitch values are shifted by -rig_tilt so the director can clamp
+    /// in its own coordinate space without knowing about rig tilt.
+    director_coverage: Option<crate::projection::CoverageBoundary>,
 }
 
 impl StitchSession {
@@ -442,6 +446,7 @@ impl StitchSession {
     pub fn with_gpu(gpu: GpuContext, config: SessionConfig) -> Result<Self, SessionError> {
         let output_width = config.viewport.width;
         let output_height = config.viewport.height;
+        let rig_tilt = config.viewport.rig_tilt;
 
         let pipeline = StitchPipeline::with_gpu(
             gpu,
@@ -466,6 +471,9 @@ impl StitchSession {
             pipeline.calibration(),
             &pipeline.scene,
         );
+        // Director operates in pre-tilt space. Shift coverage by -rig_tilt
+        // so safe_clamp works in the director's coordinate system.
+        let director_coverage = coverage.with_pitch_offset(-rig_tilt);
 
         Ok(Self {
             pipeline,
@@ -491,6 +499,7 @@ impl StitchSession {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
             coverage: Some(coverage),
+            director_coverage: Some(director_coverage),
         })
     }
 
@@ -784,11 +793,14 @@ impl StitchSession {
                 }
             };
 
+            let aspect = self.pipeline.viewport().aspect_ratio();
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
                 viewport_bounds: bounds,
+                coverage: self.director_coverage.as_ref(),
+                aspect,
                 current_fov: fov,
             };
             director.update(&ctx);

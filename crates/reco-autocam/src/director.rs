@@ -98,8 +98,8 @@ impl BallDirector {
             vel_pitch: 0.0,
             prev_target_yaw: 0.0,
             prev_target_pitch: 0.0,
-            alpha_track: 0.04,
-            alpha_recover: 0.08,
+            alpha_track: 0.10,
+            alpha_recover: 0.20,
             alpha_velocity: 0.2,
             dead_zone: 0.10,
             frames_without_ball: 0,
@@ -247,20 +247,47 @@ impl BallDirector {
         self.fov_wide + t * (self.fov_tight - self.fov_wide)
     }
 
-    /// Clamp position to viewport bounds.
+    /// Clamp position to the valid coverage region.
+    ///
+    /// Uses CoverageBoundary::safe_clamp when available (precise, accounts
+    /// for viewport shape and seam gaps). Falls back to axis-aligned
+    /// ViewportBounds when coverage is not computed.
     fn clamp_to_bounds(&mut self, ctx: &DirectorContext<'_>) {
-        self.yaw = self
-            .yaw
-            .clamp(ctx.viewport_bounds.min_yaw, ctx.viewport_bounds.max_yaw);
-        self.pitch = self
-            .pitch
-            .clamp(ctx.viewport_bounds.min_pitch, ctx.viewport_bounds.max_pitch);
+        if let Some(coverage) = ctx.coverage {
+            // The session provides a tilt-adjusted coverage boundary,
+            // so the director clamps in its own coordinate space directly.
+            let clamped = coverage.safe_clamp(self.yaw, self.pitch, ctx.current_fov, ctx.aspect);
+            self.yaw = clamped.yaw;
+            self.pitch = clamped.pitch;
+        } else {
+            self.yaw = self
+                .yaw
+                .clamp(ctx.viewport_bounds.min_yaw, ctx.viewport_bounds.max_yaw);
+            self.pitch = self
+                .pitch
+                .clamp(ctx.viewport_bounds.min_pitch, ctx.viewport_bounds.max_pitch);
+        }
     }
 }
 
 impl Director for BallDirector {
     fn update(&mut self, ctx: &DirectorContext<'_>) {
         reco_core::profile_scope!("ball_director_update");
+
+        // First-frame initialization: snap FOV and position to valid coverage.
+        if ctx.frame_index == 0 {
+            if let Some(coverage) = ctx.coverage {
+                let max_fov = coverage.max_fov_degrees();
+                self.current_fov = self.current_fov.min(max_fov);
+                self.fov_wide = self.fov_wide.min(max_fov);
+                let clamped =
+                    coverage.safe_clamp(self.yaw, self.pitch, self.current_fov, ctx.aspect);
+                self.yaw = clamped.yaw;
+                self.pitch = clamped.pitch;
+                self.target_yaw = self.yaw;
+                self.target_pitch = self.pitch;
+            }
+        }
 
         let ball = self.find_ball(ctx);
 
@@ -284,8 +311,8 @@ impl Director for BallDirector {
 
                 // Adaptive smoothing: large jumps get slower alpha to dampen
                 // jitter from false positives while still following real movement.
-                let alpha = if jump > 0.10 {
-                    self.alpha_track * 0.3 // slow down for big jumps
+                let alpha = if jump > 0.15 {
+                    self.alpha_track * 0.5 // moderate slowdown for big jumps
                 } else {
                     self.alpha_track
                 };
@@ -370,8 +397,14 @@ impl Director for BallDirector {
         }
 
         // Dynamic FOV: smooth toward target based on ball position.
-        let target_fov = self.target_fov();
+        // Clamp to coverage max FOV to prevent black edges.
+        let max_fov = ctx.coverage.map_or(self.fov_wide, |c| c.max_fov_degrees());
+        let target_fov = self.target_fov().min(max_fov);
         self.current_fov += self.fov_alpha * (target_fov - self.current_fov);
+        self.current_fov = self.current_fov.min(max_fov);
+
+        // Also limit the wide FOV ceiling for future calculations.
+        self.fov_wide = self.fov_wide.min(max_fov);
 
         self.clamp_to_bounds(ctx);
 
@@ -426,6 +459,8 @@ mod tests {
                 min_pitch: -1.0,
                 max_pitch: 1.0,
             },
+            coverage: None,
+            aspect: 16.0 / 9.0,
             current_fov: 55.0,
         }
     }

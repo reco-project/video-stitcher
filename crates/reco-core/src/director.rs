@@ -118,6 +118,14 @@ pub struct DirectorContext<'a> {
     /// Panning within these bounds guarantees no black edges in the output.
     pub viewport_bounds: ViewportBounds,
 
+    /// Precomputed coverage boundary for precise viewport constraining.
+    /// When available, use this for clamping instead of `viewport_bounds`
+    /// (more accurate, accounts for seam gaps and viewport shape).
+    pub coverage: Option<&'a crate::projection::CoverageBoundary>,
+
+    /// Viewport aspect ratio (width / height) for coverage clamping.
+    pub aspect: f32,
+
     /// Current vertical field of view in degrees.
     pub current_fov: f32,
 }

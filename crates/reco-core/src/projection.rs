@@ -656,6 +656,24 @@ impl CoverageBoundary {
         }
         self.min_pitch_range.to_degrees()
     }
+
+    /// Create a copy with all pitch values shifted by an offset.
+    ///
+    /// Used to create a tilt-adjusted boundary for the director, which
+    /// operates in pre-tilt space while the boundary is in world space.
+    /// The director calls `safe_clamp` on the shifted boundary without
+    /// needing to know about rig tilt.
+    pub fn with_pitch_offset(&self, offset: f32) -> Self {
+        Self {
+            n_slices: self.n_slices,
+            pitch_min: self.pitch_min + offset,
+            pitch_max: self.pitch_max + offset,
+            slices: self.slices.clone(),
+            left_slices: self.left_slices.clone(),
+            right_slices: self.right_slices.clone(),
+            min_pitch_range: self.min_pitch_range,
+        }
+    }
 }
 
 // ---- Internal functions ----
