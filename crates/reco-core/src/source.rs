@@ -166,7 +166,9 @@ pub struct Nv12FramePair {
 /// Sources produce whichever format is most efficient for their backend:
 /// - File decode (CPU path): `Yuv420p`
 /// - Jetson ISP / NVDEC NV12: `Nv12`
-/// - NVDEC zero-copy (CUDA/Vulkan shared textures): `GpuResident`
+/// - CUDA/Vulkan zero-copy shared textures: `GpuResident`
+/// - VideoToolbox/Metal zero-copy: `MetalResident`
+#[non_exhaustive]
 pub enum StereoFrame {
     /// CPU-resident YUV420P planes (3 planes per camera).
     Yuv420p(FramePair),
@@ -175,10 +177,25 @@ pub enum StereoFrame {
     /// GPU-resident: data already written to shared textures by the source.
     /// The `u8` values are double-buffer slot indices that the pipeline
     /// uses to select the correct bind group.
-    GpuResident { left_slot: u8, right_slot: u8 },
+    GpuResident {
+        /// Left camera double-buffer slot index (0 or 1).
+        left_slot: u8,
+        /// Right camera double-buffer slot index (0 or 1).
+        right_slot: u8,
+    },
+    /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox decode.
+    /// The session imports these as Metal textures each frame.
+    #[cfg(target_os = "macos")]
+    MetalResident {
+        /// Left camera retained pixel buffer.
+        left: crate::metal_interop::RetainedCVPixelBuffer,
+        /// Right camera retained pixel buffer.
+        right: crate::metal_interop::RetainedCVPixelBuffer,
+    },
 }
 
 /// Metadata about the frame source.
+#[derive(Debug, Clone)]
 pub struct SourceInfo {
     /// Frame width in pixels.
     pub width: u32,
@@ -186,6 +203,10 @@ pub struct SourceInfo {
     pub height: u32,
     /// Frames per second (may be approximate for live sources).
     pub fps: f64,
+    /// Exact frame rate as a rational number (numerator, denominator).
+    /// For example, 29.97fps is `(30000, 1001)`. Used by encoders for
+    /// precise timing. `None` if the source cannot determine exact timing.
+    pub fps_rational: Option<(i32, i32)>,
 }
 
 /// Trait for stereo frame sources.
@@ -198,6 +219,14 @@ pub struct SourceInfo {
 /// threads with bounded channels). The pipeline calls [`Self::next_frame`]
 /// and expects it to block until data is ready or return `None` for
 /// end-of-stream.
+///
+/// ## GPU-resident sources
+///
+/// Sources that deliver GPU-resident frames (CUDA/Vulkan shared textures,
+/// Metal CVPixelBuffers) should override [`is_gpu_resident`](Self::is_gpu_resident)
+/// to return `true` and provide their pixel format via
+/// [`gpu_pixel_format`](Self::gpu_pixel_format). The session uses this metadata
+/// to auto-configure bind groups, texture formats, and rotation handling.
 pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).
     fn info(&self) -> SourceInfo;
@@ -217,5 +246,37 @@ pub trait FrameSource: Send {
     /// Default implementation delegates to [`Self::next_frame`] (blocking).
     fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
         self.next_frame()
+    }
+
+    /// Whether this source delivers GPU-resident frames.
+    ///
+    /// When `true`, [`next_frame`](Self::next_frame) may return
+    /// [`StereoFrame::GpuResident`] or [`StereoFrame::MetalResident`].
+    /// The session uses this to configure GPU bind groups and select
+    /// the optimal render path automatically.
+    fn is_gpu_resident(&self) -> bool {
+        false
+    }
+
+    /// GPU pixel format for GPU-resident sources.
+    ///
+    /// Only meaningful when [`is_gpu_resident`](Self::is_gpu_resident) returns `true`.
+    /// Determines shared texture formats (R8Unorm for NV12, R16Unorm for P010).
+    fn gpu_pixel_format(&self) -> crate::renderer::GpuPixelFormat {
+        crate::renderer::GpuPixelFormat::Nv12
+    }
+
+    /// Left camera rotation from stream metadata (degrees: 0, 90, 180, 270).
+    ///
+    /// The session applies rotation automatically: the CPU path handles it
+    /// via buffer reversal in the decoder, while the GPU zero-copy path
+    /// uses a shader UV flip.
+    fn left_rotation(&self) -> i32 {
+        0
+    }
+
+    /// Right camera rotation from stream metadata (degrees: 0, 90, 180, 270).
+    fn right_rotation(&self) -> i32 {
+        0
     }
 }

@@ -166,6 +166,7 @@ pub enum InputFormat {
 /// wgpu's Unorm normalization maps both 8-bit `[0, 255]` and 16-bit
 /// `[0, 65535]` values to `[0.0, 1.0]` in the fragment shader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GpuPixelFormat {
     /// 8-bit NV12 (standard H.264/HEVC decode output).
     /// Y plane: `R8Unorm`, UV plane: `Rg8Unorm`, 1 byte per sample.

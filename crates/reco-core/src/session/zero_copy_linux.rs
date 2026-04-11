@@ -33,7 +33,10 @@ pub struct SharedTextureSet {
     /// Slot-free receiver for right camera. Taken by decode thread spawner.
     pub right_slot_free_rx: Option<std::sync::mpsc::Receiver<u8>>,
     /// Pre-built bind groups for the shared textures.
-    pub bind_groups: crate::pipeline::GpuSourceBindGroups,
+    /// `None` when the source creates textures without pipeline access
+    /// (e.g. [`SmartFileSource`]). The session creates them lazily at
+    /// the start of `run()`.
+    pub bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
 }
 
 impl StitchSession {
@@ -159,7 +162,7 @@ impl StitchSession {
             right_slot_free_tx,
             left_slot_free_rx: Some(left_slot_free_rx),
             right_slot_free_rx: Some(right_slot_free_rx),
-            bind_groups,
+            bind_groups: Some(bind_groups),
         })
     }
 
@@ -190,11 +193,23 @@ impl StitchSession {
             textures,
             left_buf,
             right_buf,
-            bind_groups,
+            bind_groups: existing_bind_groups,
             left_slot_free_tx,
             right_slot_free_tx,
             ..
         } = shared;
+
+        // Create bind groups lazily if not provided (SmartFileSource path).
+        let bind_groups = match existing_bind_groups {
+            Some(bg) => bg,
+            None => {
+                let t = &textures;
+                self.pipeline.configure_gpu_source(
+                    [(&t[0], &t[1]), (&t[2], &t[3])],
+                    [(&t[4], &t[5]), (&t[6], &t[7])],
+                )
+            }
+        };
 
         let frame_rx = decode_handles.frame_rx;
 

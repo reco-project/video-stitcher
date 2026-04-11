@@ -17,7 +17,13 @@ pub mod gstreamer;
 pub mod adapters;
 
 #[cfg(feature = "ffmpeg")]
+pub mod smart_source;
+
+#[cfg(feature = "ffmpeg")]
 pub mod zero_copy;
+
+#[cfg(feature = "ffmpeg")]
+pub use smart_source::SmartFileSource;
 
 /// Initialize enabled backends. Call once at program start.
 ///

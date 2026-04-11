@@ -110,6 +110,7 @@ pub mod metal_interop;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod npp_interop;
 pub(crate) mod nv12_converter;
+pub mod output;
 pub mod pipeline;
 pub mod projection;
 pub mod renderer;

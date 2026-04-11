@@ -63,10 +63,12 @@ impl FfmpegFileSource {
                 path: left_path.display().to_string(),
                 reason: format!("{e}"),
             })?;
+        let fps_r = probe.frame_rate();
         let info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
             fps: probe.fps(),
+            fps_rational: Some((fps_r.0, fps_r.1)),
         };
         let decode_backend = probe.backend();
         let pixel_format = probe.pixel_format();
@@ -244,11 +246,19 @@ impl FfmpegFileSource {
 #[cfg(feature = "ffmpeg")]
 impl reco_core::source::FrameSource for FfmpegFileSource {
     fn info(&self) -> SourceInfo {
-        SourceInfo {
-            width: self.info.width,
-            height: self.info.height,
-            fps: self.info.fps,
-        }
+        self.info.clone()
+    }
+
+    fn left_rotation(&self) -> i32 {
+        self.left_rotation
+    }
+
+    fn right_rotation(&self) -> i32 {
+        self.right_rotation
+    }
+
+    fn gpu_pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+        self.pixel_format
     }
 
     fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {

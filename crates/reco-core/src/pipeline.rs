@@ -329,6 +329,8 @@ impl StitchPipeline {
             StereoFrame::GpuResident { .. } => {
                 panic!("GpuResident frames must use render_gpu_frame()")
             }
+            #[allow(unreachable_patterns)] // #[non_exhaustive] requires wildcard
+            _ => panic!("unsupported StereoFrame variant for render_stereo_frame()"),
         }
     }
 

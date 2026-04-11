@@ -426,6 +426,7 @@ impl GstreamerCameraSource {
             width: config.width,
             height: config.height,
             fps: config.fps as f64,
+            fps_rational: None,
         };
 
         log::info!(
@@ -441,11 +442,7 @@ impl GstreamerCameraSource {
 
 impl reco_core::source::FrameSource for GstreamerCameraSource {
     fn info(&self) -> SourceInfo {
-        SourceInfo {
-            width: self.info.width,
-            height: self.info.height,
-            fps: self.info.fps,
-        }
+        self.info.clone()
     }
 
     fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
@@ -514,6 +511,7 @@ impl GstreamerNv12CameraSource {
             width: config.width,
             height: config.height,
             fps: config.fps as f64,
+            fps_rational: None,
         };
 
         log::info!(
@@ -533,11 +531,7 @@ impl GstreamerNv12CameraSource {
 
     /// Source metadata.
     pub fn info(&self) -> SourceInfo {
-        SourceInfo {
-            width: self.info.width,
-            height: self.info.height,
-            fps: self.info.fps,
-        }
+        self.info.clone()
     }
 
     /// Get the next stereo NV12 frame pair, or `None` if the source is exhausted.

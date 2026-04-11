@@ -862,7 +862,12 @@ impl StitchSession {
                 detections.extend(detector.detect(CameraId::Right, &right));
             }
             StereoFrame::GpuResident { .. } => {
-                // GPU-resident frames have no CPU-accessible data for detection
+                // GPU-resident frames have no CPU-accessible data for CPU detection.
+                // Use gpu_detector or metal_detector instead.
+            }
+            #[allow(unreachable_patterns)]
+            _ => {
+                // Future frame variants (e.g. MetalResident) handled by platform-specific detectors
             }
         }
         detections
