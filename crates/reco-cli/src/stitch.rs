@@ -27,6 +27,7 @@ pub struct StitchArgs<'a> {
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
     pub lead_time: f64,
+    pub tracking_mode: reco_autocam::TrackingMode,
 }
 
 /// Run the stitch subcommand.
@@ -166,8 +167,9 @@ fn run_with_autocam(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> any
         source.is_gpu_resident(),
         args.detection_interval,
         args.lead_time,
+        args.tracking_mode,
     ) {
-        Ok(true) => println!("Autocam: ball tracking enabled (model: {model_path})"),
+        Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
         Ok(false) => {
             eprintln!(
                 "Warning: ball tracking unavailable in {} mode (build with --features tensorrt for GPU detection, \
