@@ -168,7 +168,13 @@ fn run_with_autocam(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> any
         args.lead_time,
     ) {
         Ok(true) => println!("Autocam: ball tracking enabled (model: {model_path})"),
-        Ok(false) => {}
+        Ok(false) => {
+            eprintln!(
+                "Warning: ball tracking unavailable in {} mode (build with --features tensorrt for GPU detection, \
+                 or use CPU decode)",
+                source.decode_mode(),
+            );
+        }
         Err(e) => eprintln!("Warning: autocam setup failed ({e}), continuing without tracking"),
     }
 

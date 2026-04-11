@@ -563,7 +563,39 @@ impl CoverageBoundary {
     /// Computes the exact angular extent of 8 viewport boundary points
     /// (4 corners + 4 edge midpoints) using perspective projection math,
     /// then ensures each point falls within the precomputed coverage.
-    pub fn safe_clamp(&self, yaw: f32, pitch: f32, fov_v_deg: f32, aspect: f32) -> ClampedPosition {
+    /// Clamp a viewport position to the safe panning region for a given FOV.
+    ///
+    /// `rig_tilt` (radians) accounts for the renderer's rig tilt rotation.
+    /// The caller passes user-space (yaw, pitch); this method transforms
+    /// to world space (+rig_tilt), clamps against coverage, then transforms
+    /// back. Pass 0.0 when there is no rig tilt.
+    ///
+    /// `self` must be the **world-space** coverage boundary.
+    pub fn safe_clamp(
+        &self,
+        yaw: f32,
+        pitch: f32,
+        fov_v_deg: f32,
+        aspect: f32,
+        rig_tilt: f32,
+    ) -> ClampedPosition {
+        // Transform to world space, clamp there, transform back.
+        let world_pitch = pitch + rig_tilt;
+        let clamped = self.safe_clamp_world(yaw, world_pitch, fov_v_deg, aspect);
+        ClampedPosition {
+            yaw: clamped.yaw,
+            pitch: clamped.pitch - rig_tilt,
+        }
+    }
+
+    /// Clamp in world space (no rig tilt). The core clamping logic.
+    fn safe_clamp_world(
+        &self,
+        yaw: f32,
+        pitch: f32,
+        fov_v_deg: f32,
+        aspect: f32,
+    ) -> ClampedPosition {
         let corners = ViewportOffsets::compute(fov_v_deg, aspect);
 
         // Pitch clamping: each boundary point constrains the center pitch

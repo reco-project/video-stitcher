@@ -379,12 +379,6 @@ pub struct StitchSession {
     /// When > 0, detection runs ahead of rendering so the director
     /// anticipates action before it reaches the encoder.
     lookahead_frames: usize,
-    /// Cached viewport bounds, recomputed only when FOV changes.
-    /// The bounds depend only on calibration + FOV + viewport aspect,
-    /// all of which are constant or rarely change. Caching avoids
-    /// 660 camera_to_panorama calls per frame.
-    cached_bounds: Option<(f32, projection::ViewportBounds)>,
-
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
@@ -402,11 +396,8 @@ pub struct StitchSession {
 
     /// Precomputed coverage boundary for "no-black" viewport constraining.
     /// Built from calibration at session creation. In world space.
+    /// Rig tilt correction is applied per-corner inside `safe_clamp`.
     coverage: Option<crate::projection::CoverageBoundary>,
-    /// Tilt-adjusted coverage boundary for the director.
-    /// Pitch values are shifted by -rig_tilt so the director can clamp
-    /// in its own coordinate space without knowing about rig tilt.
-    director_coverage: Option<crate::projection::CoverageBoundary>,
 }
 
 impl StitchSession {
@@ -446,7 +437,6 @@ impl StitchSession {
     pub fn with_gpu(gpu: GpuContext, config: SessionConfig) -> Result<Self, SessionError> {
         let output_width = config.viewport.width;
         let output_height = config.viewport.height;
-        let rig_tilt = config.viewport.rig_tilt;
 
         let pipeline = StitchPipeline::with_gpu(
             gpu,
@@ -466,14 +456,12 @@ impl StitchSession {
 
         let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
 
-        // Compute coverage boundary from calibration (cheap, <1ms).
+        // Compute world-space coverage boundary from calibration (cheap, <1ms).
+        // Rig tilt correction is applied per-corner inside safe_clamp.
         let coverage = crate::projection::CoverageBoundary::from_calibration(
             pipeline.calibration(),
             &pipeline.scene,
         );
-        // Director operates in pre-tilt space. Shift coverage by -rig_tilt
-        // so safe_clamp works in the director's coordinate system.
-        let director_coverage = coverage.with_pitch_offset(-rig_tilt);
 
         Ok(Self {
             pipeline,
@@ -491,7 +479,6 @@ impl StitchSession {
             detection_callback: None,
             last_detections: Vec::new(),
             lookahead_frames: 0,
-            cached_bounds: None,
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
             #[cfg(target_os = "linux")]
@@ -499,7 +486,6 @@ impl StitchSession {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
             coverage: Some(coverage),
-            director_coverage: Some(director_coverage),
         })
     }
 
@@ -603,12 +589,34 @@ impl StitchSession {
 
     /// Get the current viewport position from the director, or default.
     ///
-    /// If the director provides a FOV override, applies it to the pipeline.
+    /// Clamps the director's raw output to the coverage boundary (no-black
+    /// region) and applies FOV limits. This keeps all viewport constraining
+    /// in the session, so directors can output unconstrained positions.
     pub fn director_position(&mut self) -> ViewportPosition {
-        let pos = self
+        let mut pos = self
             .director
             .as_ref()
             .map_or(ViewportPosition::default(), |d| d.position());
+
+        // The director outputs world-space coordinates (from ball detections).
+        // Clamp in world space, then convert to user space for the renderer
+        // (which applies rig_tilt internally in its view matrix).
+        if let Some(ref coverage) = self.coverage {
+            if let Some(ref mut fov) = pos.fov_degrees {
+                *fov = fov.min(coverage.max_fov_degrees());
+            }
+            let fov = pos.fov_degrees.unwrap_or_else(|| self.pipeline.fov());
+            let aspect = self.pipeline.viewport().aspect_ratio();
+            // Clamp in world space (no rig_tilt transform needed).
+            let clamped = coverage.safe_clamp(pos.yaw, pos.pitch, fov, aspect, 0.0);
+            pos.yaw = clamped.yaw;
+            // Convert world -> user: the renderer applies rig_tilt as
+            // a rotation, so the effective world pitch at a given yaw is
+            // user_pitch + rig_tilt * cos(yaw). Invert to get user_pitch.
+            let rig_tilt = self.pipeline.viewport().rig_tilt;
+            pos.pitch = clamped.pitch - rig_tilt * clamped.yaw.cos();
+        }
+
         if let Some(fov) = pos.fov_degrees {
             self.pipeline.set_fov(fov);
         }
@@ -632,7 +640,7 @@ impl StitchSession {
             self.last_detections = self.map_detections(detections);
         }
 
-        self.fire_callback_and_update_director(elapsed);
+        self.fire_callback_and_update_director(elapsed, should_detect);
     }
 
     /// Update the director without detection (zero-copy paths).
@@ -644,7 +652,7 @@ impl StitchSession {
         allow(dead_code, reason = "used by macOS zero-copy path")
     )]
     pub(crate) fn update_director(&mut self, elapsed: std::time::Duration) {
-        self.fire_callback_and_update_director(elapsed);
+        self.fire_callback_and_update_director(elapsed, false);
     }
 
     /// Run GPU-resident detection and update the director.
@@ -696,7 +704,7 @@ impl StitchSession {
             self.last_detections = self.map_detections(detections);
         }
 
-        self.fire_callback_and_update_director(elapsed);
+        self.fire_callback_and_update_director(elapsed, should_detect);
     }
 
     /// Run Metal-resident detection and update the director.
@@ -743,16 +751,21 @@ impl StitchSession {
             self.last_detections = self.map_detections(detections);
         }
 
-        self.fire_callback_and_update_director(elapsed);
+        self.fire_callback_and_update_director(elapsed, should_detect);
     }
 
     /// Fire the detection callback and update the director with current state.
     ///
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
     /// Fires the callback with `last_detections` (which may be empty if no
-    /// detector ran this frame), computes viewport bounds, and passes a
-    /// [`DirectorContext`] to the director.
-    fn fire_callback_and_update_director(&mut self, elapsed: std::time::Duration) {
+    /// detector ran this frame) and passes a [`DirectorContext`] to the
+    /// director. Viewport constraining is handled separately by
+    /// [`director_position`](Self::director_position).
+    fn fire_callback_and_update_director(
+        &mut self,
+        elapsed: std::time::Duration,
+        fresh_detection: bool,
+    ) {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
         // Fire callback for external consumers.
@@ -760,48 +773,14 @@ impl StitchSession {
             cb(&self.last_detections, self.frame_count, timestamp_ms);
         }
 
-        // Update director with full context.
+        // Update director with detections and timing only.
+        // Coverage clamping is applied later in director_position().
         if let Some(ref mut director) = self.director {
-            let fov = director
-                .position()
-                .fov_degrees
-                .unwrap_or_else(|| self.pipeline.fov());
-
-            // Reuse cached bounds when FOV hasn't changed.
-            // Bounds depend on calibration + FOV + aspect, all of which are
-            // constant during a session (or change very rarely via set_fov).
-            let bounds = match self.cached_bounds {
-                Some((cached_fov, ref bounds)) if (cached_fov - fov).abs() < f32::EPSILON => {
-                    *bounds
-                }
-                _ => {
-                    let aspect = self.pipeline.viewport().aspect_ratio();
-                    let mut b = projection::viewport_bounds(
-                        fov,
-                        self.pipeline.calibration(),
-                        &self.pipeline.scene,
-                        aspect,
-                    );
-                    // Compensate for rig tilt: the renderer applies rig_tilt
-                    // as a pitch rotation after the director's yaw/pitch, so
-                    // the director must operate in a shifted pitch range.
-                    let tilt = self.pipeline.viewport().rig_tilt;
-                    b.min_pitch -= tilt;
-                    b.max_pitch -= tilt;
-                    self.cached_bounds = Some((fov, b));
-                    b
-                }
-            };
-
-            let aspect = self.pipeline.viewport().aspect_ratio();
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 detections: &self.last_detections,
-                viewport_bounds: bounds,
-                coverage: self.director_coverage.as_ref(),
-                aspect,
-                current_fov: fov,
+                fresh_detection,
             };
             director.update(&ctx);
         }

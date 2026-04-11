@@ -3,16 +3,18 @@
 //! This crate provides implementations of the [`reco_core`] detection and
 //! direction traits for sports camera automation:
 //!
-//! - [`YoloDetector`] — ONNX-based YOLO object detection on raw camera frames
-//! - [`BallDirector`] — Ball-following director with smoothing and state machine logic
+//! - [`YoloDetector`] - ONNX-based YOLO object detection on raw camera frames
+//! - [`BallDirector`] - Ball-following director with plausibility rejection
+//! - [`SmoothedDirector`] - Decorator that adds bidirectional One Euro trajectory smoothing
 //!
 //! # Usage
 //!
 //! ```rust,no_run
-//! use reco_autocam::{YoloDetector, BallDirector};
+//! use reco_autocam::{YoloDetector, BallDirector, SmoothedDirector};
 //!
 //! let detector = YoloDetector::from_file("ball_v0.onnx")?;
 //! let director = BallDirector::new(30.0); // fps
+//! let smoothed = SmoothedDirector::new(Box::new(director), 30.0, 15);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -22,12 +24,14 @@ mod director;
 mod gpu_detector;
 #[cfg(target_os = "macos")]
 mod metal_detector;
+mod smoother;
 pub use detector::YoloDetector;
 pub use director::BallDirector;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use gpu_detector::GpuYoloDetector;
 #[cfg(target_os = "macos")]
 pub use metal_detector::MetalYoloDetector;
+pub use smoother::{SmoothedDirector, TrajectorySmoother};
 
 use std::path::Path;
 #[cfg(any(feature = "tensorrt", feature = "coreml"))]
@@ -149,19 +153,26 @@ pub fn setup_autocam(
     }
 
     if detection_active {
-        let director = BallDirector::new(fps);
-        session.set_director(Box::new(director));
+        let mut director = BallDirector::new(fps);
         if detection_interval > 1 {
+            director.set_detection_interval(detection_interval as u32);
             session.set_detection_interval(detection_interval);
             log::info!("Detection interval: every {detection_interval} frames");
         }
-        if lead_time > 0.0 && !use_zero_copy {
-            let lookahead = (fps as f64 * lead_time).round() as usize;
-            if lookahead > 0 {
-                session.set_lookahead(lookahead);
-                log::info!("Director lead time: {lead_time:.1}s ({lookahead} frames)");
+
+        let lookahead = if lead_time > 0.0 && !use_zero_copy {
+            let frames = (fps as f64 * lead_time).round() as usize;
+            if frames > 0 {
+                session.set_lookahead(frames);
+                log::info!("Director lead time: {lead_time:.1}s ({frames} frames)");
             }
-        }
+            frames
+        } else {
+            0
+        };
+
+        let smoothed = SmoothedDirector::new(Box::new(director), fps, lookahead);
+        session.set_director(Box::new(smoothed));
     }
 
     Ok(detection_active)

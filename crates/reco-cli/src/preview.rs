@@ -130,7 +130,8 @@ pub fn run_preview(
 
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
 
-    // Compute coverage boundary before moving cal into App
+    // Compute world-space coverage boundary. Rig tilt correction is
+    // handled per-corner inside safe_clamp (yaw-dependent pitch shift).
     let coverage = {
         let aspect = info.width as f32 / info.height as f32;
         let scene = reco_core::scene::SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
@@ -297,12 +298,17 @@ impl App {
         if let Some(ref coverage) = self.coverage {
             let current_fov = self.pipeline.as_ref().map_or(self.target_fov, |p| p.fov());
             let aspect = self.width as f32 / self.height as f32;
-            let clamped = coverage.safe_clamp(self.yaw, self.pitch, current_fov, aspect);
+            let clamped =
+                coverage.safe_clamp(self.yaw, self.pitch, current_fov, aspect, self.rig_tilt);
             self.yaw = clamped.yaw;
             self.pitch = clamped.pitch;
-            // Also clamp targets so they don't keep pulling into invalid regions
-            let target_clamped =
-                coverage.safe_clamp(self.target_yaw, self.target_pitch, current_fov, aspect);
+            let target_clamped = coverage.safe_clamp(
+                self.target_yaw,
+                self.target_pitch,
+                current_fov,
+                aspect,
+                self.rig_tilt,
+            );
             self.target_yaw = target_clamped.yaw;
             self.target_pitch = target_clamped.pitch;
         }
@@ -575,7 +581,11 @@ impl ApplicationHandler for App {
                     u: &self.current_right.u,
                     v: &self.current_right.v,
                 };
-                if let Err(e) = pipeline.render_to_view(&left, &right, self.yaw, self.pitch, &view)
+                // Apply rig tilt yaw-pitch coupling: adjust pitch so the
+                // view stays level on the field as yaw changes.
+                let render_pitch = self.pitch + self.rig_tilt * (1.0 - self.yaw.cos());
+                if let Err(e) =
+                    pipeline.render_to_view(&left, &right, self.yaw, render_pitch, &view)
                 {
                     log::error!("Render failed: {e}");
                     return;
