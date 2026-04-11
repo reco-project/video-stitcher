@@ -130,6 +130,16 @@ pub fn run_preview(
 
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
 
+    // Compute coverage boundary before moving cal into App
+    let coverage = {
+        let aspect = info.width as f32 / info.height as f32;
+        let scene = reco_core::scene::SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
+        reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene)
+    };
+    let max_fov = coverage.max_fov_degrees().min(FOV_MAX);
+    let initial_fov = FOV_DEFAULT.min(max_fov);
+    log::info!("Preview: max FOV = {max_fov:.1} degrees (coverage-limited)");
+
     let mut app = App {
         source: Some(source),
         window: None,
@@ -156,9 +166,11 @@ pub fn run_preview(
         last_mouse_pos: None,
         target_yaw: 0.0,
         target_pitch: 0.0,
-        target_fov: FOV_DEFAULT,
+        target_fov: initial_fov,
         blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
+        coverage: Some(coverage),
+        max_fov,
     };
 
     event_loop.run_app(&mut app)?;
@@ -197,6 +209,10 @@ struct App {
     target_fov: f32,
     blend_width: f32,
     rig_tilt: f32,
+    /// Coverage boundary for no-black constraining.
+    coverage: Option<reco_core::projection::CoverageBoundary>,
+    /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
+    max_fov: f32,
 }
 
 impl App {
@@ -264,7 +280,7 @@ impl App {
 
         if let Some(p) = &mut self.pipeline {
             let new_fov = p.fov() + df * SMOOTHING;
-            p.set_fov(new_fov);
+            p.set_fov(new_fov.min(self.max_fov));
             if (self.target_fov - p.fov()).abs() < FOV_EPSILON {
                 p.set_fov(self.target_fov);
             }
@@ -276,6 +292,21 @@ impl App {
         if (self.target_pitch - self.pitch).abs() < EPSILON {
             self.pitch = self.target_pitch;
         }
+
+        // Clamp to coverage boundary so no black edges appear
+        if let Some(ref coverage) = self.coverage {
+            let current_fov = self.pipeline.as_ref().map_or(self.target_fov, |p| p.fov());
+            let aspect = self.width as f32 / self.height as f32;
+            let clamped = coverage.safe_clamp(self.yaw, self.pitch, current_fov, aspect);
+            self.yaw = clamped.yaw;
+            self.pitch = clamped.pitch;
+            // Also clamp targets so they don't keep pulling into invalid regions
+            let target_clamped =
+                coverage.safe_clamp(self.target_yaw, self.target_pitch, current_fov, aspect);
+            self.target_yaw = target_clamped.yaw;
+            self.target_pitch = target_clamped.pitch;
+        }
+
         true
     }
 }
@@ -454,7 +485,7 @@ impl ApplicationHandler for App {
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(FOV_MAX);
+                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(self.max_fov);
                             self.needs_redraw = true;
                         }
                         _ => {}
@@ -498,8 +529,8 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
                 };
-                self.target_fov =
-                    (self.target_fov - scroll as f32 * FOV_SCROLL_STEP).clamp(FOV_MIN, FOV_MAX);
+                self.target_fov = (self.target_fov - scroll as f32 * FOV_SCROLL_STEP)
+                    .clamp(FOV_MIN, self.max_fov);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {
