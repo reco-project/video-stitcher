@@ -3332,6 +3332,7 @@ dependencies = [
  "gstreamer",
  "gstreamer-app",
  "log",
+ "pollster",
  "reco-core",
  "thiserror 2.0.18",
  "tracing",

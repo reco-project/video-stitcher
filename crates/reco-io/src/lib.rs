@@ -20,10 +20,16 @@ pub mod adapters;
 pub mod smart_source;
 
 #[cfg(feature = "ffmpeg")]
+pub mod stitch_job;
+
+#[cfg(feature = "ffmpeg")]
 pub mod zero_copy;
 
 #[cfg(feature = "ffmpeg")]
 pub use smart_source::SmartFileSource;
+
+#[cfg(feature = "ffmpeg")]
+pub use stitch_job::{InputPath, StitchJob, StitchResult};
 
 /// Initialize enabled backends. Call once at program start.
 ///

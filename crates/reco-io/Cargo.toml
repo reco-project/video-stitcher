@@ -17,6 +17,7 @@ profiling = ["tracing", "reco-core/profiling"]
 [dependencies]
 reco-core = { path = "../reco-core" }
 log = "0.4"
+pollster = "0.4"
 thiserror = "2"
 tracing = { workspace = true, optional = true }
 
