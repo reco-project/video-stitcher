@@ -399,6 +399,10 @@ pub struct StitchSession {
     /// CUDA buffer info for GPU detection (GPU zero-copy).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
+
+    /// Precomputed coverage boundary for "no-black" viewport constraining.
+    /// Built from calibration at session creation.
+    coverage: Option<crate::projection::CoverageBoundary>,
 }
 
 impl StitchSession {
@@ -463,6 +467,12 @@ impl StitchSession {
 
         let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
 
+        // Compute coverage boundary from calibration (cheap, <1ms).
+        let coverage = crate::projection::CoverageBoundary::from_calibration(
+            pipeline.calibration(),
+            &pipeline.scene,
+        );
+
         Ok(Self {
             pipeline,
             nv12_converter,
@@ -486,7 +496,16 @@ impl StitchSession {
             gpu_slot_free_tx: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
+            coverage: Some(coverage),
         })
+    }
+
+    /// The precomputed coverage boundary for "no-black" viewport constraining.
+    ///
+    /// Use [`CoverageBoundary::safe_clamp`] to constrain viewport positions,
+    /// or [`CoverageBoundary::max_fov_degrees`] for the zoom-out ceiling.
+    pub fn coverage(&self) -> Option<&crate::projection::CoverageBoundary> {
+        self.coverage.as_ref()
     }
 
     /// Attach an encoder to this session.
