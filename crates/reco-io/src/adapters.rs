@@ -30,8 +30,8 @@ pub struct FfmpegFileSource {
     rx: std::sync::mpsc::Receiver<FramePair>,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
-    /// Whether the source is 10-bit (P010 on NVDEC).
-    is_10bit: bool,
+    /// GPU pixel format (NV12 8-bit or P010 10-bit).
+    pixel_format: reco_core::renderer::GpuPixelFormat,
     /// Rotation from stream metadata (0, 90, 180, 270).
     left_rotation: i32,
     right_rotation: i32,
@@ -69,7 +69,7 @@ impl FfmpegFileSource {
             fps: probe.fps(),
         };
         let decode_backend = probe.backend();
-        let is_10bit = probe.is_10bit();
+        let pixel_format = probe.pixel_format();
         let left_rotation = probe.rotation();
         drop(probe);
 
@@ -86,7 +86,7 @@ impl FfmpegFileSource {
             rx,
             info,
             decode_backend,
-            is_10bit,
+            pixel_format,
             left_rotation,
             right_rotation,
         })
@@ -97,9 +97,12 @@ impl FfmpegFileSource {
         self.decode_backend
     }
 
-    /// Whether the source is 10-bit (P010 on NVDEC, e.g. DJI Action 4 HEVC).
-    pub fn is_10bit(&self) -> bool {
-        self.is_10bit
+    /// GPU pixel format for zero-copy shared textures.
+    ///
+    /// Returns [`GpuPixelFormat::P010`] for 10-bit sources or
+    /// [`GpuPixelFormat::Nv12`] for 8-bit.
+    pub fn pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+        self.pixel_format
     }
 
     /// Left stream rotation from metadata (0, 90, 180, 270 degrees).

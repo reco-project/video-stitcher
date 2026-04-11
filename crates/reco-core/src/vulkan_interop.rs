@@ -296,34 +296,24 @@ pub enum Nv12Plane {
 /// Create a shared texture sized and formatted for an NV12 plane.
 ///
 /// This is a convenience wrapper around [`create_shared_texture`] that
-/// infers the format and dimensions from the plane type:
-/// - `Y`: full `width` x `height`, `R8Unorm` (8-bit) or `R16Unorm` (10-bit P010)
-/// - `UV`: `width/2` x `height/2`, `Rg8Unorm` (8-bit) or `Rg16Unorm` (10-bit P010)
+/// infers the wgpu format and dimensions from the plane type and pixel
+/// format. The texture formats are determined by
+/// [`GpuPixelFormat::y_format`] and [`GpuPixelFormat::uv_format`].
 ///
-/// When `is_10bit` is true, 16-bit-per-component formats are used to match
-/// NVDEC's P010 output where each sample is stored as a uint16 with the
-/// value in the upper 10 bits. `R16Unorm` / `Rg16Unorm` normalize to [0,1]
-/// in the shader just like 8-bit formats, so the shader works unchanged.
+/// Unorm normalization maps both 8-bit and 16-bit values to `[0.0, 1.0]`
+/// in the shader, so the fragment shader works unchanged across formats.
 #[cfg(target_os = "linux")]
 pub fn create_nv12_shared_texture(
     gpu: &GpuContext,
     width: u32,
     height: u32,
     plane: Nv12Plane,
-    is_10bit: bool,
+    pixel_format: crate::renderer::GpuPixelFormat,
 ) -> Result<SharedTexture, CudaInteropError> {
-    match (plane, is_10bit) {
-        (Nv12Plane::Y, false) => {
-            create_shared_texture(gpu, width, height, wgpu::TextureFormat::R8Unorm)
-        }
-        (Nv12Plane::Uv, false) => {
-            create_shared_texture(gpu, width / 2, height / 2, wgpu::TextureFormat::Rg8Unorm)
-        }
-        (Nv12Plane::Y, true) => {
-            create_shared_texture(gpu, width, height, wgpu::TextureFormat::R16Unorm)
-        }
-        (Nv12Plane::Uv, true) => {
-            create_shared_texture(gpu, width / 2, height / 2, wgpu::TextureFormat::Rg16Unorm)
+    match plane {
+        Nv12Plane::Y => create_shared_texture(gpu, width, height, pixel_format.y_format()),
+        Nv12Plane::Uv => {
+            create_shared_texture(gpu, width / 2, height / 2, pixel_format.uv_format())
         }
     }
 }

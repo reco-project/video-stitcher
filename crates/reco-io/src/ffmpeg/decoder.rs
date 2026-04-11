@@ -74,13 +74,9 @@ pub struct GpuFrame {
     pub height: u32,
     /// Presentation timestamp in microseconds.
     pub timestamp_us: i64,
-    /// True when the source is 10-bit (P010 format: 16-bit per component NV12).
-    /// The shared textures must use R16Unorm/Rg16Unorm instead of R8Unorm/Rg8Unorm.
-    pub is_10bit: bool,
-    /// Rotation from stream metadata (0, 90, 180, 270).
-    /// The GPU zero-copy path must apply this in the shader since it cannot
-    /// flip buffers on the CPU like the software decode path does.
-    pub rotation: i32,
+    /// GPU pixel format (NV12 or P010). Determines shared texture formats
+    /// and CUDA copy byte widths.
+    pub pixel_format: reco_core::renderer::GpuPixelFormat,
 }
 
 /// A decoded frame from VideoToolbox, holding a `CVPixelBufferRef`.
@@ -279,7 +275,8 @@ impl VideoDecoder {
         // original stream parameters before hwaccel overrides the format.
         let is_10bit = {
             let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
-            let pix_fmt = unsafe { std::mem::transmute::<i32, ffi::AVPixelFormat>(raw_codecpar.format) };
+            let pix_fmt =
+                unsafe { std::mem::transmute::<i32, ffi::AVPixelFormat>(raw_codecpar.format) };
             let pixel = Pixel::from(pix_fmt);
             let is_10 = matches!(
                 pixel,
@@ -344,13 +341,16 @@ impl VideoDecoder {
         self.height
     }
 
-    /// Whether the source is 10-bit (P010 format on NVDEC).
+    /// GPU pixel format for zero-copy shared textures.
     ///
-    /// When true, GPU shared textures must use `R16Unorm` / `Rg16Unorm`
-    /// instead of `R8Unorm` / `Rg8Unorm` to correctly read the 16-bit
-    /// per component samples.
-    pub fn is_10bit(&self) -> bool {
-        self.is_10bit
+    /// Returns [`GpuPixelFormat::P010`] for 10-bit sources (R16Unorm/Rg16Unorm)
+    /// or [`GpuPixelFormat::Nv12`] for 8-bit (R8Unorm/Rg8Unorm).
+    pub fn pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+        if self.is_10bit {
+            reco_core::renderer::GpuPixelFormat::P010
+        } else {
+            reco_core::renderer::GpuPixelFormat::Nv12
+        }
     }
 
     /// Rotation from stream metadata (0, 90, 180, 270 degrees).
@@ -600,10 +600,13 @@ impl VideoDecoder {
             "negative linesize not supported for GPU decode"
         );
 
+        let pixel_format = self.pixel_format();
         log::trace!(
-            "GPU frame: y_ptr={:#x}, uv_ptr={:#x}, y_pitch={y_ls}, uv_pitch={uv_ls}, 10bit={}, {}x{}",
-            raw.data[0] as u64, raw.data[1] as u64,
-            self.is_10bit, self.width, self.height
+            "GPU frame: y_ptr={:#x}, uv_ptr={:#x}, y_pitch={y_ls}, uv_pitch={uv_ls}, {pixel_format:?}, {}x{}",
+            raw.data[0] as u64,
+            raw.data[1] as u64,
+            self.width,
+            self.height
         );
         GpuFrame {
             y_ptr: raw.data[0] as u64,
@@ -613,8 +616,7 @@ impl VideoDecoder {
             width: self.width,
             height: self.height,
             timestamp_us,
-            is_10bit: self.is_10bit,
-            rotation: self.rotation,
+            pixel_format,
         }
     }
 

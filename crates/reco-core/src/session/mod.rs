@@ -69,6 +69,14 @@ pub struct SessionConfig {
     pub output_format: OutputFormat,
     /// Input pixel format (YUV420P or NV12).
     pub input_format: InputFormat,
+    /// Left camera rotation from stream metadata (0, 90, 180, 270 degrees).
+    ///
+    /// The session applies rotation automatically based on the active path:
+    /// the CPU decode path handles rotation via buffer reversal in the decoder,
+    /// while the GPU zero-copy path uses a shader UV flip.
+    pub left_rotation: i32,
+    /// Right camera rotation from stream metadata (0, 90, 180, 270 degrees).
+    pub right_rotation: i32,
 }
 
 /// Progress information passed to the progress callback.
@@ -306,6 +314,8 @@ impl StitchSessionBuilder {
             input_height,
             output_format: self.output_format,
             input_format: self.input_format,
+            left_rotation: 0,
+            right_rotation: 0,
         };
 
         let mut session = StitchSession::with_gpu(gpu, config)?;
@@ -414,7 +424,7 @@ impl StitchSession {
         let output_width = config.viewport.width;
         let output_height = config.viewport.height;
 
-        let pipeline = StitchPipeline::with_gpu(
+        let mut pipeline = StitchPipeline::with_gpu(
             gpu,
             config.calibration,
             config.viewport,
@@ -423,6 +433,18 @@ impl StitchSession {
             config.output_format,
             config.input_format,
         )?;
+
+        // Apply 180-degree rotation via shader UV flip. The CPU decode path
+        // handles rotation by reversing buffers in the decoder; the GPU
+        // zero-copy path cannot reverse buffers, so it flips UV in the shader.
+        if config.left_rotation == 180 || config.right_rotation == 180 {
+            pipeline.set_flip_180(config.left_rotation == 180, config.right_rotation == 180);
+            log::info!(
+                "Rotation: UV flip left={}, right={}",
+                config.left_rotation == 180,
+                config.right_rotation == 180,
+            );
+        }
 
         let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
 

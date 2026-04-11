@@ -159,6 +159,49 @@ pub enum InputFormat {
     Nv12,
 }
 
+/// GPU-side pixel format for NV12-family zero-copy decode output.
+///
+/// Determines texture formats and byte widths for CUDA/Vulkan shared
+/// texture creation. The shader works unchanged for all variants because
+/// wgpu's Unorm normalization maps both 8-bit `[0, 255]` and 16-bit
+/// `[0, 65535]` values to `[0.0, 1.0]` in the fragment shader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPixelFormat {
+    /// 8-bit NV12 (standard H.264/HEVC decode output).
+    /// Y plane: `R8Unorm`, UV plane: `Rg8Unorm`, 1 byte per sample.
+    Nv12,
+    /// 10-bit P010 (e.g. DJI Action 4 HEVC 10-bit).
+    /// Y plane: `R16Unorm`, UV plane: `Rg16Unorm`, 2 bytes per sample.
+    /// NVDEC stores 10-bit values in the upper bits of each `u16`.
+    P010,
+}
+
+impl GpuPixelFormat {
+    /// wgpu texture format for the Y (luma) plane.
+    pub fn y_format(self) -> wgpu::TextureFormat {
+        match self {
+            Self::Nv12 => wgpu::TextureFormat::R8Unorm,
+            Self::P010 => wgpu::TextureFormat::R16Unorm,
+        }
+    }
+
+    /// wgpu texture format for the UV (chroma) plane.
+    pub fn uv_format(self) -> wgpu::TextureFormat {
+        match self {
+            Self::Nv12 => wgpu::TextureFormat::Rg8Unorm,
+            Self::P010 => wgpu::TextureFormat::Rg16Unorm,
+        }
+    }
+
+    /// Bytes per luma/chroma sample (1 for 8-bit, 2 for 10-bit).
+    pub fn bytes_per_sample(self) -> usize {
+        match self {
+            Self::Nv12 => 1,
+            Self::P010 => 2,
+        }
+    }
+}
+
 /// The GPU renderer for panoramic stitching.
 ///
 /// Holds all wgpu resources: pipelines, textures, bind groups, and buffers.
