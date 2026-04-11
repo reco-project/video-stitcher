@@ -1054,11 +1054,21 @@ impl StitchSession {
     ) -> Result<u64, SessionError> {
         self.configure_from_source(source);
 
-        if self.lookahead_frames > 0 {
+        let result = if self.lookahead_frames > 0 {
             self.run_with_lookahead(source, frame_limit, interrupted, &mut on_progress)
         } else {
             self.run_immediate(source, frame_limit, interrupted, &mut on_progress)
+        };
+
+        // Drop GPU slot senders so decode threads can exit gracefully.
+        // Without this, SmartFileSource::drop() deadlocks because the
+        // session's cloned senders keep the decode threads' recv() alive.
+        #[cfg(target_os = "linux")]
+        {
+            self.gpu_slot_free_tx = None;
         }
+
+        result
     }
 
     /// Standard frame loop without lookahead.

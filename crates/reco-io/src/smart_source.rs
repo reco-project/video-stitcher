@@ -51,7 +51,9 @@ enum SourceMode {
 
 #[cfg(target_os = "linux")]
 struct LinuxZeroCopyState {
-    frame_rx: std::sync::mpsc::Receiver<reco_core::zero_copy::GpuFrameSignal>,
+    /// Paired frame signal receiver. Made `Option` so Drop can take it
+    /// early to unblock the pairing thread before joining decode threads.
+    frame_rx: Option<std::sync::mpsc::Receiver<reco_core::zero_copy::GpuFrameSignal>>,
     /// Shared textures (kept alive until Drop).
     shared: reco_core::session::SharedTextureSet,
     /// Decode thread join handles.
@@ -327,7 +329,7 @@ impl SmartFileSource {
 
         Ok(Self {
             mode: SourceMode::GpuZeroCopy(Box::new(LinuxZeroCopyState {
-                frame_rx: decode_handles.frame_rx,
+                frame_rx: Some(decode_handles.frame_rx),
                 shared,
                 join_handles: decode_handles.join_handles,
             })),
@@ -431,13 +433,19 @@ impl FrameSource for SmartFileSource {
         match &mut self.mode {
             SourceMode::Cpu(source) => source.next_frame(),
             #[cfg(target_os = "linux")]
-            SourceMode::GpuZeroCopy(state) => match state.frame_rx.recv() {
-                Ok(signal) => Ok(Some(StereoFrame::GpuResident {
-                    left_slot: signal.left_slot,
-                    right_slot: signal.right_slot,
-                })),
-                Err(_) => Ok(None),
-            },
+            SourceMode::GpuZeroCopy(state) => {
+                let rx = state
+                    .frame_rx
+                    .as_ref()
+                    .expect("frame_rx taken during shutdown");
+                match rx.recv() {
+                    Ok(signal) => Ok(Some(StereoFrame::GpuResident {
+                        left_slot: signal.left_slot,
+                        right_slot: signal.right_slot,
+                    })),
+                    Err(_) => Ok(None),
+                }
+            }
         }
     }
 
@@ -463,20 +471,23 @@ impl Drop for SmartFileSource {
         #[cfg(target_os = "linux")]
         if let SourceMode::GpuZeroCopy(state) = &mut self.mode {
             // Graceful shutdown ordering to prevent CUDA error 700:
-            // 1. Drop slot-free senders -> decode threads' recv() returns Err
-            // 2. frame_rx is dropped when state is dropped -> pairing thread exits
-            // 3. Join decode threads -> VideoDecoder::Drop completes CUDA cleanup
-            //    while shared CUDA VMM memory is still mapped
-            // 4. SharedTextureSet drops -> CUDA memory unmapped
             //
-            // We drop senders first by replacing them with channels that are
-            // immediately closed.
+            // 1. Drop frame_rx -> pairing thread's send() returns Err, exits
+            // 2. Drop slot-free senders -> decode threads' recv() returns Err
+            // 3. Join all threads -> VideoDecoder::Drop completes CUDA cleanup
+            //    while shared CUDA VMM memory is still mapped
+            // 4. SharedTextureSet drops naturally -> CUDA memory unmapped
+
+            // Step 1: Drop frame_rx to unblock pairing thread
+            state.frame_rx = None;
+
+            // Step 2: Replace slot senders with dead channels
             let (tx, _) = std::sync::mpsc::sync_channel(0);
             state.shared.left_slot_free_tx = tx;
             let (tx, _) = std::sync::mpsc::sync_channel(0);
             state.shared.right_slot_free_tx = tx;
 
-            // Join decode threads
+            // Step 3: Join decode + pairing threads
             for handle in state.join_handles.drain(..) {
                 let _ = handle.join();
             }
