@@ -946,25 +946,23 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Process one GPU-resident frame: detect, render, encode, release slots.
+    /// Process one GPU-resident frame with pre-extracted buffer info.
     ///
-    /// Used by the unified `run_immediate` when it receives a
-    /// `StereoFrame::GpuResident` from a GPU-aware source.
+    /// The `buf_info` is extracted once before the frame loop to avoid
+    /// per-frame clones and satisfy the borrow checker.
     #[cfg(target_os = "linux")]
-    fn step_gpu(
+    fn step_gpu_with_bufs(
         &mut self,
+        buf_info: &Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
         left_slot: u8,
         right_slot: u8,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        // Take references to avoid borrow conflicts with &mut self methods.
-        // gpu_buf_info is cloned cheaply (two small structs with arrays of u64/usize).
-        let (left_buf, right_buf) = self
-            .gpu_buf_info
-            .clone()
-            .expect("GPU buf info not configured - call setup_gpu_source() before run()");
-
-        self.detect_and_update_director_gpu(&left_buf, &right_buf, left_slot, right_slot, elapsed);
+        if let Some((left_buf, right_buf)) = buf_info {
+            self.detect_and_update_director_gpu(
+                left_buf, right_buf, left_slot, right_slot, elapsed,
+            );
+        }
         let pos = self.director_position();
 
         let bind_groups = self
@@ -1083,6 +1081,12 @@ impl StitchSession {
     ) -> Result<u64, SessionError> {
         let start = std::time::Instant::now();
 
+        // Extract GPU buf info once before the loop to avoid per-frame clones.
+        // Needed to satisfy the borrow checker (immutable borrow of buf_info
+        // vs mutable borrow for detect_and_update_director_gpu).
+        #[cfg(target_os = "linux")]
+        let gpu_buf_info = self.gpu_buf_info.clone();
+
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
             let frame = {
                 crate::profile_scope!("wait_decode");
@@ -1098,7 +1102,12 @@ impl StitchSession {
                     left_slot,
                     right_slot,
                 } => {
-                    self.step_gpu(*left_slot, *right_slot, start.elapsed())?;
+                    self.step_gpu_with_bufs(
+                        &gpu_buf_info,
+                        *left_slot,
+                        *right_slot,
+                        start.elapsed(),
+                    )?;
                 }
                 _ => {
                     // CPU-resident frames (Yuv420p, Nv12)
