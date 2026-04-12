@@ -72,7 +72,7 @@ pub struct FieldDirector {
     player_class_id: u16,
     /// Minimum players to form a valid cluster.
     min_players: usize,
-    /// Ball blend weight (0.0 = players only, 0.3 = 70/30 cluster/ball).
+    /// Ball blend weight (0.0 = players only, 0.1 = 90/10 cluster/ball).
     ball_weight: f32,
     /// FOV range (degrees).
     fov_wide: f32,
@@ -101,7 +101,7 @@ impl FieldDirector {
             ball_class_id: 32,  // COCO "sports ball"
             player_class_id: 0, // COCO "person"
             min_players: 3,
-            ball_weight: 0.3,
+            ball_weight: 0.0,
             fov_wide: 55.0,
             fov_tight: 38.0,
             last_camera: None,
@@ -130,7 +130,7 @@ impl FieldDirector {
         self
     }
 
-    /// Set the ball blend weight (0.0 = players only, default: 0.3).
+    /// Set the ball blend weight (0.0 = players only, default: 0.0).
     pub fn with_ball_weight(mut self, weight: f32) -> Self {
         self.ball_weight = weight.clamp(0.0, 1.0);
         self
