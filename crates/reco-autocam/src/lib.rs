@@ -124,6 +124,15 @@ pub fn setup_autocam(
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut detection_active = false;
 
+    // Load class names from the model to resolve label -> class_id for directors.
+    let class_names = match create_ort_session(std::path::Path::new(model_path), Vec::new()) {
+        Ok((_, _, names)) => names,
+        Err(e) => {
+            log::warn!("Could not read model labels: {e}, using COCO defaults");
+            Vec::new()
+        }
+    };
+
     // Check if ROI filtering should be applied.
     // A FieldRoi is only meaningful if at least one polygon has >= 3 vertices.
     let effective_roi = field_roi
@@ -201,9 +210,17 @@ pub fn setup_autocam(
             log::info!("Detection interval: every {detection_interval} frames");
         }
 
+        // Resolve label names to class IDs from the model's label list.
+        let ball_id = resolve_class_id(&class_names, &["ball", "sports ball"], 32);
+        let person_id = resolve_class_id(&class_names, &["person"], 0);
+        log::info!(
+            "Class IDs: ball={ball_id}, person={person_id} (from {} model labels)",
+            class_names.len()
+        );
+
         let director: Box<dyn reco_core::director::Director> = match tracking_mode {
             TrackingMode::Ball => {
-                let mut d = BallDirector::new(fps);
+                let mut d = BallDirector::new(fps).with_class_id(ball_id);
                 if detection_interval > 1 {
                     d.set_detection_interval(detection_interval as u32);
                 }
@@ -211,7 +228,9 @@ pub fn setup_autocam(
                 Box::new(d)
             }
             TrackingMode::Field => {
-                let d = FieldDirector::new(fps);
+                let d = FieldDirector::new(fps)
+                    .with_ball_class_id(ball_id)
+                    .with_player_class_id(person_id);
                 log::info!("Tracking mode: field (ball + players)");
                 Box::new(d)
             }
@@ -233,6 +252,22 @@ pub fn setup_autocam(
     }
 
     Ok(detection_active)
+}
+
+/// Resolve a class label to its ID from the model's label list.
+///
+/// Tries each candidate name in order, returning the first match.
+/// Falls back to `default_id` if no match is found (e.g. COCO defaults).
+fn resolve_class_id(class_names: &[String], candidates: &[&str], default_id: u16) -> u16 {
+    for candidate in candidates {
+        if let Some(idx) = class_names
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(candidate))
+        {
+            return idx as u16;
+        }
+    }
+    default_id
 }
 
 /// Create an ORT session with common settings and platform-specific EPs.
