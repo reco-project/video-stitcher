@@ -104,6 +104,7 @@ impl TrajectorySmoother {
     ///
     /// Defaults: `min_cutoff=0.5`, `beta=0.007`, `d_cutoff=1.0`.
     pub fn new(fps: f32) -> Self {
+        let fps = fps.clamp(1.0, 1000.0);
         Self {
             min_cutoff: 0.5,
             beta: 0.007,
@@ -236,6 +237,7 @@ impl SmoothedDirector {
     /// smooth, broadcast-like camera motion.
     /// Typical lookahead: `(fps * 0.5) as usize` for 0.5s lead time.
     pub fn new(inner: Box<dyn Director>, fps: f32, lookahead_frames: usize) -> Self {
+        let fps = fps.clamp(1.0, 1000.0);
         let capacity = lookahead_frames.max(1);
         let smoother = TrajectorySmoother::new(fps);
         Self {

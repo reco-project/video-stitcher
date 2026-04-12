@@ -63,6 +63,15 @@ impl YoloDetector {
         })
     }
 
+    /// Class names from the model (index = class_id, value = label string).
+    ///
+    /// Consumers (directors, setup code) use this to resolve a
+    /// [`Detection::class_id`] to a human-readable label, or to find the
+    /// class ID for a given label name.
+    pub fn class_names(&self) -> &[String] {
+        &self.labels
+    }
+
     /// Convert a raw YUV frame to a flat RGB float32 buffer in CHW layout,
     /// letterboxed to `input_size x input_size`, normalized to `[0, 1]`.
     ///
@@ -98,11 +107,11 @@ impl YoloDetector {
                 let y_val = frame.y[(sy * frame.width + sx) as usize] as f32;
                 let (u_val, v_val) = chroma_sample(frame, sx, sy);
 
-                // BT.601 YUV -> RGB
-                let r = (y_val + 1.402 * (v_val - 128.0)).clamp(0.0, 255.0);
-                let g = (y_val - 0.344136 * (u_val - 128.0) - 0.714136 * (v_val - 128.0))
-                    .clamp(0.0, 255.0);
-                let b = (y_val + 1.772 * (u_val - 128.0)).clamp(0.0, 255.0);
+                // BT.709 full-range YUV -> RGB (matches fisheye.wgsl)
+                let r = (y_val + 1.5748 * (v_val - 128.0)).clamp(0.0, 255.0);
+                let g =
+                    (y_val - 0.1873 * (u_val - 128.0) - 0.4681 * (v_val - 128.0)).clamp(0.0, 255.0);
+                let b = (y_val + 1.8556 * (u_val - 128.0)).clamp(0.0, 255.0);
 
                 let ox = (pad_x_i + dx) as usize;
                 let oy = (pad_y_i + dy) as usize;
@@ -135,7 +144,6 @@ impl YoloDetector {
             n,
             camera,
             self.confidence_threshold,
-            &self.labels,
             scale,
             pad_x,
             pad_y,
@@ -178,7 +186,6 @@ pub(crate) fn postprocess(
     n: usize,
     camera: CameraId,
     confidence_threshold: f32,
-    labels: &[String],
     scale: f32,
     pad_x: f32,
     pad_y: f32,
@@ -228,14 +235,9 @@ pub(crate) fn postprocess(
             continue;
         }
 
-        let label = labels
-            .get(class_id)
-            .cloned()
-            .unwrap_or_else(|| format!("class_{class_id}"));
-
         detections.push(Detection {
             camera,
-            label,
+            class_id: class_id as u16,
             confidence: conf,
             center_x: cx.clamp(0.0, 1.0),
             center_y: cy.clamp(0.0, 1.0),
@@ -300,13 +302,20 @@ impl Detector for YoloDetector {
                 detections.len(),
                 detections
                     .iter()
-                    .map(|d| format!(
-                        "{}({:.0}%@{:.2},{:.2})",
-                        d.label,
-                        d.confidence * 100.0,
-                        d.center_x,
-                        d.center_y
-                    ))
+                    .map(|d| {
+                        let name = self
+                            .labels
+                            .get(d.class_id as usize)
+                            .map(|s| s.as_str())
+                            .unwrap_or("?");
+                        format!(
+                            "{}({:.0}%@{:.2},{:.2})",
+                            name,
+                            d.confidence * 100.0,
+                            d.center_x,
+                            d.center_y
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -394,7 +403,6 @@ mod tests {
 
     #[test]
     fn postprocess_valid_detection() {
-        let labels = vec!["ball".into()];
         // Place a detection roughly in the center of the letterboxed image.
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.85, 0.0]]);
 
@@ -403,7 +411,6 @@ mod tests {
             1,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -413,7 +420,7 @@ mod tests {
 
         assert_eq!(dets.len(), 1);
         let d = &dets[0];
-        assert_eq!(d.label, "ball");
+        assert_eq!(d.class_id, 0);
         assert!((d.confidence - 0.85).abs() < 1e-6);
         // center_x and center_y should be in [0, 1].
         assert!(d.center_x >= 0.0 && d.center_x <= 1.0);
@@ -424,7 +431,6 @@ mod tests {
 
     #[test]
     fn postprocess_multiple_detections() {
-        let labels = vec!["ball".into(), "player".into()];
         let data = make_tensor(&[
             [100.0, 200.0, 120.0, 220.0, 0.80, 0.0],
             [400.0, 300.0, 500.0, 400.0, 0.70, 1.0],
@@ -435,7 +441,6 @@ mod tests {
             2,
             CameraId::Right,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -444,15 +449,14 @@ mod tests {
         );
 
         assert_eq!(dets.len(), 2);
-        assert_eq!(dets[0].label, "ball");
-        assert_eq!(dets[1].label, "player");
+        assert_eq!(dets[0].class_id, 0); // "ball"
+        assert_eq!(dets[1].class_id, 1); // "player"
     }
 
     // ---- Empty output ----
 
     #[test]
     fn postprocess_zero_detections() {
-        let labels = vec!["ball".into()];
         let data: Vec<f32> = vec![];
 
         let dets = postprocess(
@@ -460,7 +464,6 @@ mod tests {
             0,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -475,7 +478,6 @@ mod tests {
 
     #[test]
     fn postprocess_filters_low_confidence() {
-        let labels = vec!["ball".into()];
         let data = make_tensor(&[
             [300.0, 300.0, 340.0, 340.0, 0.05, 0.0], // below threshold
             [300.0, 300.0, 340.0, 340.0, 0.50, 0.0], // above threshold
@@ -486,7 +488,6 @@ mod tests {
             2,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -500,7 +501,6 @@ mod tests {
 
     #[test]
     fn postprocess_at_exact_threshold_passes() {
-        let labels = vec!["ball".into()];
         // Confidence exactly at the threshold: conf (0.10) is NOT < 0.10,
         // so the detection passes the filter.
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.10, 0.0]]);
@@ -510,7 +510,6 @@ mod tests {
             1,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -525,7 +524,6 @@ mod tests {
 
     #[test]
     fn postprocess_filters_out_of_bounds_detection() {
-        let labels = vec!["ball".into()];
         // Place detection far outside the frame (negative after un-letterbox).
         let data = make_tensor(&[[-500.0, -500.0, -400.0, -400.0, 0.90, 0.0]]);
 
@@ -534,7 +532,6 @@ mod tests {
             1,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -552,7 +549,6 @@ mod tests {
 
     #[test]
     fn postprocess_empty_n_with_short_buffer() {
-        let labels = vec!["ball".into()];
         // Buffer is too short for any full row, but n=0 so no iteration.
         let data = vec![1.0, 2.0, 3.0];
 
@@ -561,7 +557,6 @@ mod tests {
             0,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -571,12 +566,11 @@ mod tests {
         assert!(dets.is_empty());
     }
 
-    // ---- Unknown class ID ----
+    // ---- Class ID propagation ----
 
     #[test]
-    fn postprocess_unknown_class_id_uses_fallback() {
-        let labels = vec!["ball".into()]; // only class 0
-        // class_id = 5 is out of range, should produce "class_5".
+    fn postprocess_preserves_class_id() {
+        // class_id = 5 should be stored as-is in the Detection.
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.90, 5.0]]);
 
         let dets = postprocess(
@@ -584,7 +578,6 @@ mod tests {
             1,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -593,14 +586,13 @@ mod tests {
         );
 
         assert_eq!(dets.len(), 1);
-        assert_eq!(dets[0].label, "class_5");
+        assert_eq!(dets[0].class_id, 5);
     }
 
     // ---- Coordinate mapping accuracy ----
 
     #[test]
     fn postprocess_center_maps_to_half() {
-        let labels = vec!["ball".into()];
         // Place detection at the exact center of the content area.
         // Content center in letterboxed coords:
         //   x = pad_x + new_w/2 = 0 + 320 = 320
@@ -615,7 +607,6 @@ mod tests {
             1,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -640,7 +631,6 @@ mod tests {
 
     #[test]
     fn postprocess_preserves_camera_id() {
-        let labels = vec!["ball".into()];
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.90, 0.0]]);
 
         let dets_left = postprocess(
@@ -648,7 +638,6 @@ mod tests {
             1,
             CameraId::Left,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),
@@ -660,7 +649,6 @@ mod tests {
             1,
             CameraId::Right,
             0.10,
-            &labels,
             scale(),
             pad_x(),
             pad_y(),

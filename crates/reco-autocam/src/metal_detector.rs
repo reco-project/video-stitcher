@@ -243,7 +243,6 @@ impl MetalDetector for MetalYoloDetector {
             n,
             camera,
             self.confidence_threshold,
-            &self.labels,
             self.scale,
             self.pad_x,
             self.pad_y,
@@ -258,13 +257,20 @@ impl MetalDetector for MetalYoloDetector {
                 detections.len(),
                 detections
                     .iter()
-                    .map(|d| format!(
-                        "{}({:.0}%@{:.2},{:.2})",
-                        d.label,
-                        d.confidence * 100.0,
-                        d.center_x,
-                        d.center_y
-                    ))
+                    .map(|d| {
+                        let name = self
+                            .labels
+                            .get(d.class_id as usize)
+                            .map(|s| s.as_str())
+                            .unwrap_or("?");
+                        format!(
+                            "{}({:.0}%@{:.2},{:.2})",
+                            name,
+                            d.confidence * 100.0,
+                            d.center_x,
+                            d.center_y
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             );

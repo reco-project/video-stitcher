@@ -82,18 +82,22 @@ pub fn run_camera(
 
     // Set up autocam (detector + director) if model provided.
     if let Some(model) = model_path {
-        let detector = reco_autocam::YoloDetector::from_file(model)?;
-        session.set_detector(Box::new(detector));
-        let fps = capture_fps as f32;
-        let mut director = reco_autocam::BallDirector::new(fps);
-        if detection_interval > 1 {
-            director.set_detection_interval(detection_interval as u32);
-            session.set_detection_interval(detection_interval);
+        match reco_autocam::setup_autocam(
+            &mut session,
+            model,
+            capture_width,
+            capture_height,
+            capture_fps as f32,
+            use_nv12_capture, // NV12 on Jetson is not GPU-resident (no zero-copy)
+            detection_interval,
+            0.0, // no lookahead for live cameras (frames aren't bufferable)
+            reco_autocam::TrackingMode::Ball,
+            None, // no field ROI for live cameras yet
+        ) {
+            Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
+            Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),
+            Err(e) => eprintln!("Warning: autocam setup failed ({e}), continuing without tracking"),
         }
-        // No lookahead for live cameras (frames aren't bufferable).
-        let smoothed = reco_autocam::SmoothedDirector::new(Box::new(director), fps, 0);
-        session.set_director(Box::new(smoothed));
-        println!("Autocam: YOLO ball tracking enabled (model: {model})");
     }
 
     let mode_str = if use_nv12_capture { "NV12" } else { "I420" };
@@ -136,13 +140,8 @@ pub fn run_camera(
 
     session.set_encoder(Box::new(encoder), 2);
 
-    let capture_fps_f64 = capture_fps as f64;
-    let frame_limit: u64 = match (duration, max_frames) {
-        (Some(dur), Some(mf)) => ((dur * capture_fps_f64) as u64).min(mf),
-        (Some(dur), None) => (dur * capture_fps_f64) as u64,
-        (None, Some(mf)) => mf,
-        (None, None) => u64::MAX,
-    };
+    let frame_limit =
+        reco_core::session::compute_frame_limit(duration, max_frames, capture_fps as f64);
 
     if frame_limit < u64::MAX {
         println!("Capturing up to {frame_limit} frames");

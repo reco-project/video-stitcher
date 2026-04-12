@@ -1,11 +1,8 @@
-//! Output configuration for the stitching pipeline.
+//! Output configuration for the encoding pipeline.
 //!
-//! Defines codec, bitrate, format, and audio settings for encoded output.
-//! These types live in `reco-core` (not `reco-io`) so that the session API
-//! can accept output configuration without depending on FFmpeg.
-//!
-//! The I/O backend (e.g. `reco-io`'s FFmpeg encoder) maps these types to
-//! encoder-specific parameters internally.
+//! These types describe codec, quality, format, and audio choices for
+//! encoded video output. Encoder backends in this crate map these to
+//! their native parameters (NVENC CQ values, x264 CRF, etc.).
 
 /// Video codec for the output stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -90,7 +87,6 @@ pub enum Format {
 pub enum AudioMode {
     /// Copy audio from an input stream without re-encoding.
     /// The index refers to the input position (0 = first/left, 1 = second/right).
-    /// Generalizes to N-input scenarios.
     CopyFrom(usize),
     /// No audio track in the output.
     Disabled,
@@ -104,8 +100,8 @@ impl Default for AudioMode {
 
 /// Complete output configuration for encoding.
 ///
-/// Passed to `StitchJob`(crate::session::StitchSession) or the I/O backend's encoder
-/// factory. The I/O backend maps these to encoder-specific parameters.
+/// Passed to [`StitchJob`](crate::StitchJob) or the encoder factory.
+/// The encoder backend maps these to encoder-specific parameters.
 #[derive(Debug, Clone, Default)]
 pub struct OutputConfig {
     /// Video codec.

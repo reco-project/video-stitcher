@@ -255,7 +255,23 @@ impl StitchSession {
             );
             self.submit_render_output(render_buf)?;
 
-            // GPU is done reading these slots - release for decode to reuse.
+            // Release slots for decode thread reuse.
+            //
+            // SAFETY CAVEAT (#136): The render pass that reads these shared
+            // textures has been submitted to the GPU queue via queue.submit()
+            // (inside submit_render_output -> convert_and_readback), but may
+            // not have completed yet. The decode thread calls
+            // cuCtxSynchronize() before its next write, which drains the
+            // CUDA queue but does NOT wait for Vulkan/wgpu work.
+            //
+            // In practice this is safe because:
+            // (a) the decode thread blocks on slot_free_rx.recv() here,
+            // (b) then decodes a frame (takes >0.5ms), giving the GPU time,
+            // (c) then calls cuCtxSynchronize before the CUDA memcpy.
+            //
+            // A proper fix requires VK_KHR_external_semaphore wait support
+            // in wgpu (gfx-rs/wgpu#8996). Until then, if corrupted frames
+            // appear on very fast GPUs, add gpu.device.poll(Wait) here.
             let _ = left_slot_free_tx.send(signal.left_slot);
             let _ = right_slot_free_tx.send(signal.right_slot);
 

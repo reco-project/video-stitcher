@@ -19,7 +19,7 @@ impl ProgressReporter {
     /// Report progress if frame_count is at the interval boundary.
     pub fn report(&self, frame_count: u64) {
         use std::io::Write;
-        if frame_count > 0 && frame_count % self.interval == 0 {
+        if frame_count > 0 && frame_count.is_multiple_of(self.interval) {
             let elapsed = self.start.elapsed().as_secs_f64();
             let fps = frame_count as f64 / elapsed;
             print!("\rProcessed {frame_count} frames ({fps:.1} fps)");
@@ -28,6 +28,7 @@ impl ProgressReporter {
     }
 
     /// Print the final summary line.
+    #[cfg(feature = "gstreamer")]
     pub fn finish(&self, frame_count: u64, output_path: &str) {
         let elapsed = self.start.elapsed().as_secs_f64();
         let fps = frame_count as f64 / elapsed;

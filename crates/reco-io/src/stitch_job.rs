@@ -9,7 +9,7 @@
 //!
 //! ```rust,ignore
 //! use reco_io::StitchJob;
-//! use reco_core::output::{Codec, Quality};
+//! use reco_io::output::{Codec, Quality};
 //!
 //! StitchJob::new("left.mp4", "right.mp4", "match.json", "output.mp4")
 //!     .codec(Codec::HEVC)
@@ -22,8 +22,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use reco_core::output::{AudioMode, Bitrate, Codec, Format, Quality};
-use reco_core::session::FrameProgress;
+use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
+use reco_core::session::{FrameProgress, StitchSession};
 use reco_core::source::FrameSource;
 
 /// One-shot stitching job: video files in, encoded video out.
@@ -51,17 +51,16 @@ pub struct StitchJob {
     sync_offset: Option<i64>,
     blend_width: f32,
 
-    // Autocam settings
-    autocam_model: Option<PathBuf>,
-    detection_interval: u64,
-    lead_time: f64,
-
     // Callbacks
     on_progress: Option<ProgressCallback>,
+    on_session: Option<SessionCallback>,
 }
 
 /// Boxed progress callback type alias to satisfy clippy::type_complexity.
 type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
+
+/// Boxed session callback type alias to satisfy clippy::type_complexity.
+type SessionCallback = Box<dyn FnOnce(&mut StitchSession, &dyn FrameSource) + Send>;
 
 /// Where to load calibration from.
 enum CalibrationSource {
@@ -183,10 +182,8 @@ impl StitchJob {
             duration: None,
             sync_offset: None,
             blend_width: 0.15,
-            autocam_model: None,
-            detection_interval: 1,
-            lead_time: 0.0,
             on_progress: None,
+            on_session: None,
         }
     }
 
@@ -274,31 +271,38 @@ impl StitchJob {
         self
     }
 
-    // ── Autocam settings ──
-
-    /// Enable AI ball tracking with a YOLO model file.
-    pub fn autocam_model(mut self, path: impl AsRef<Path>) -> Self {
-        self.autocam_model = Some(path.as_ref().to_path_buf());
-        self
-    }
-
-    /// Set the detection interval (run detection every N frames). Default: 1.
-    pub fn detection_interval(mut self, n: u64) -> Self {
-        self.detection_interval = n;
-        self
-    }
-
-    /// Set the autocam lead time in seconds. Default: 0.0.
-    pub fn lead_time(mut self, secs: f64) -> Self {
-        self.lead_time = secs;
-        self
-    }
-
     // ── Callbacks ──
 
     /// Set a progress callback. Called periodically during processing.
     pub fn on_progress(mut self, cb: impl FnMut(&FrameProgress) + Send + 'static) -> Self {
         self.on_progress = Some(Box::new(cb));
+        self
+    }
+
+    /// Hook called after the session is created but before the frame loop.
+    ///
+    /// Use this to attach a detector, director, or other session configuration
+    /// that requires access to the session and source metadata (dimensions, fps).
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use reco_autocam::setup_autocam;
+    ///
+    /// StitchJob::new("left.mp4", "right.mp4", "match.json", "out.mp4")
+    ///     .on_session(|session, source| {
+    ///         let info = source.info();
+    ///         setup_autocam(session, "model.onnx", info.width, info.height,
+    ///             info.fps as f32, source.is_gpu_resident(), 3, 0.5,
+    ///             TrackingMode::Ball, None).ok();
+    ///     })
+    ///     .run(&interrupted)?;
+    /// ```
+    pub fn on_session(
+        mut self,
+        cb: impl FnOnce(&mut StitchSession, &dyn FrameSource) + Send + 'static,
+    ) -> Self {
+        self.on_session = Some(Box::new(cb));
         self
     }
 
@@ -370,6 +374,11 @@ impl StitchJob {
             session.setup_gpu_source(shared);
         }
 
+        // Call the session callback for consumer configuration (e.g. autocam)
+        if let Some(cb) = self.on_session.take() {
+            cb(&mut session, &source);
+        }
+
         // Create encoder
         let fps_rational = info.fps_rational.unwrap_or((30, 1));
         let (codec_str, quality_str) = map_output_config(&self.codec, &self.bitrate);
@@ -383,12 +392,6 @@ impl StitchJob {
             self.encoder_name.clone(),
         )?;
         session.set_encoder(Box::new(encoder), 2);
-
-        // Autocam setup is handled by the consumer (e.g. the CLI) via
-        // the session reference returned by session(). StitchJob does not
-        // depend on reco-autocam to keep reco-io free of that dependency.
-        // Consumers can call reco_autocam::setup_autocam(&mut session, ...)
-        // before running the job.
 
         // Compute frame limit
         let frame_limit =
@@ -423,7 +426,6 @@ fn map_output_config(codec: &Codec, bitrate: &Bitrate) -> (&'static str, &'stati
         Codec::H264 => "h264",
         Codec::HEVC => "hevc",
         Codec::AV1 => "av1",
-        _ => "h264",
     };
     let quality_str = match bitrate {
         Bitrate::Quality(Quality::Fast) => "fast",

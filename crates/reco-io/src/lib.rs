@@ -15,6 +15,7 @@ pub mod ffmpeg;
 pub mod gstreamer;
 
 pub mod adapters;
+pub mod output;
 
 #[cfg(feature = "ffmpeg")]
 pub mod smart_source;

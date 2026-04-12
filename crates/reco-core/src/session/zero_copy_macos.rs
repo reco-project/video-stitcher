@@ -48,7 +48,7 @@ impl StitchSession {
 
             // Run detection on GPU if a Metal detector is attached,
             // otherwise just update the director with empty state.
-            if self.metal_detector.is_some() {
+            if self.detection.has_metal_detector() {
                 let width = pair.left.width();
                 let height = pair.left.height();
                 self.detect_and_update_director_metal(

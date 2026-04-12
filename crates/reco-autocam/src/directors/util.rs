@@ -3,16 +3,16 @@
 use reco_core::detector::CameraId;
 use reco_core::director::MappedDetection;
 
-/// Default field of view in degrees, used as fallback across the crate.
+/// Default tracking field of view in degrees.
+///
+/// Used by directors and the smoother as a fallback when the inner director
+/// does not emit an explicit FOV. Note: the pipeline's `ViewportConfig`
+/// defaults to 75.0 degrees - the tracking FOV is intentionally narrower
+/// to provide a tighter view of the action.
 pub const DEFAULT_FOV: f32 = 55.0;
 
 /// Minimum detection confidence for player filtering.
-#[allow(dead_code)]
 pub const MIN_PLAYER_CONFIDENCE: f32 = 0.3;
-
-/// Log interval in frames for debug output.
-#[allow(dead_code)]
-pub const LOG_INTERVAL: u64 = 30;
 
 /// Score a detection for best-candidate selection.
 ///
@@ -24,10 +24,10 @@ pub fn detection_score(det: &MappedDetection, last_camera: Option<CameraId>) -> 
     let cy = det.camera_center.1;
     let center_dist = ((cx - 0.5) * (cx - 0.5) + (cy - 0.5) * (cy - 0.5)).sqrt();
     score -= center_dist * 0.2;
-    if let Some(last_cam) = last_camera {
-        if det.camera == last_cam {
-            score += 0.1;
-        }
+    if let Some(last_cam) = last_camera
+        && det.camera == last_cam
+    {
+        score += 0.1;
     }
     score
 }

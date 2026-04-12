@@ -16,8 +16,6 @@
 use crate::calibration::{CameraParams, MatchCalibration};
 use crate::detector::CameraId;
 use crate::director::ViewportPosition;
-#[allow(deprecated)]
-use crate::renderer::PLANE_ASPECT;
 use crate::scene::SceneGeometry;
 
 use nalgebra::{Point3, Vector3};
@@ -608,6 +606,15 @@ impl CoverageBoundary {
 
         // Require contiguous coverage (no seam gap) at all corner pitches
         let pitch_step = (self.pitch_max - self.pitch_min) / self.n_slices as f32;
+        if pitch_step <= f32::EPSILON {
+            // Degenerate coverage: clamp to midpoint to avoid infinite loop.
+            let mid_pitch = (self.pitch_min + self.pitch_max) * 0.5;
+            let (yaw_lo, yaw_hi) = self.yaw_range_at(mid_pitch);
+            return ClampedPosition {
+                yaw: yaw.clamp(yaw_lo, yaw_hi),
+                pitch: mid_pitch,
+            };
+        }
         let max_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MIN, f32::max);
         let min_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MAX, f32::min);
 
@@ -791,8 +798,7 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) ->
 
     // Texture UV → local quad position (matches quad_vertices)
     let local_x = tex_u - 0.5;
-    #[allow(deprecated)]
-    let local_y = (0.5 - tex_v) / PLANE_ASPECT;
+    let local_y = (0.5 - tex_v) / scene.plane_aspect;
 
     let local_point = nalgebra::Vector4::new(local_x, local_y, 0.0, 1.0);
     let model = match camera {
@@ -837,6 +843,40 @@ fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> Vie
         pitch,
         fov_degrees: None,
     }
+}
+
+/// Test whether a point lies inside a polygon using the ray-casting algorithm.
+///
+/// Casts a horizontal ray from the point to the right and counts how many
+/// polygon edges it crosses. An odd count means the point is inside.
+///
+/// Both `point` and `polygon` use `[x, y]` coordinates in any consistent
+/// space (typically normalized `[0,1]` camera coordinates).
+///
+/// Returns `false` for degenerate polygons with fewer than 3 vertices.
+pub fn point_in_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
+    let n = polygon.len();
+    if n < 3 {
+        return false;
+    }
+
+    let (px, py) = (point[0], point[1]);
+    let mut inside = false;
+
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = (polygon[i][0], polygon[i][1]);
+        let (xj, yj) = (polygon[j][0], polygon[j][1]);
+
+        // Check if the edge from j to i crosses the horizontal ray at py.
+        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+
+        j = i;
+    }
+
+    inside
 }
 
 #[cfg(test)]
@@ -1033,5 +1073,69 @@ mod tests {
             (result.0 - 0.5).abs() < 1e-6 && (result.1 - 0.5).abs() < 1e-6,
             "zero-distortion center should map to itself"
         );
+    }
+
+    // --- point_in_polygon tests ---
+
+    /// Unit square: [0,0] -> [1,0] -> [1,1] -> [0,1].
+    fn unit_square() -> Vec<[f64; 2]> {
+        vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+    }
+
+    #[test]
+    fn pip_center_of_square() {
+        assert!(point_in_polygon([0.5, 0.5], &unit_square()));
+    }
+
+    #[test]
+    fn pip_outside_square() {
+        assert!(!point_in_polygon([1.5, 0.5], &unit_square()));
+        assert!(!point_in_polygon([-0.1, 0.5], &unit_square()));
+        assert!(!point_in_polygon([0.5, -0.1], &unit_square()));
+        assert!(!point_in_polygon([0.5, 1.1], &unit_square()));
+    }
+
+    #[test]
+    fn pip_triangle() {
+        let triangle = vec![[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]];
+        // Inside
+        assert!(point_in_polygon([0.5, 0.3], &triangle));
+        // Outside (right of the triangle)
+        assert!(!point_in_polygon([0.9, 0.8], &triangle));
+    }
+
+    #[test]
+    fn pip_concave_l_shape() {
+        // L-shaped polygon (concave):
+        //   (0,0) -> (1,0) -> (1,0.5) -> (0.5,0.5) -> (0.5,1) -> (0,1)
+        let l_shape = vec![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 0.5],
+            [0.5, 0.5],
+            [0.5, 1.0],
+            [0.0, 1.0],
+        ];
+        // Inside the bottom-right arm
+        assert!(point_in_polygon([0.75, 0.25], &l_shape));
+        // Inside the top-left arm
+        assert!(point_in_polygon([0.25, 0.75], &l_shape));
+        // In the concave cutout (top-right) - should be outside
+        assert!(!point_in_polygon([0.75, 0.75], &l_shape));
+    }
+
+    #[test]
+    fn pip_degenerate_polygon() {
+        // Fewer than 3 vertices: always false.
+        assert!(!point_in_polygon([0.5, 0.5], &[]));
+        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0]]));
+        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0], [1.0, 1.0]]));
+    }
+
+    #[test]
+    fn pip_near_edge_of_square() {
+        // Just inside the edge
+        assert!(point_in_polygon([0.001, 0.5], &unit_square()));
+        assert!(point_in_polygon([0.999, 0.5], &unit_square()));
     }
 }

@@ -19,6 +19,9 @@ use std::path::Path;
 /// Uses `slot_free_rx` for backpressure: the decode thread waits for a slot
 /// to be released by the main thread before writing to it. This prevents
 /// NVDEC from overwriting a slot that the GPU render pass is still reading.
+///
+/// The `shutdown` flag is checked between frames. Setting it to `true`
+/// causes the thread to exit gracefully even if slot senders are still alive.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn spawn_single_decoder_gpu(
     path: String,
@@ -26,6 +29,7 @@ pub fn spawn_single_decoder_gpu(
     buf: reco_core::zero_copy::GpuBufInfo,
     slot_free_rx: std::sync::mpsc::Receiver<u8>,
     skip_frames: u64,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> (std::sync::mpsc::Receiver<u8>, std::thread::JoinHandle<()>) {
     use crate::ffmpeg::decoder::VideoDecoder;
 
@@ -68,7 +72,15 @@ pub fn spawn_single_decoder_gpu(
                 log::info!("{label}: skipped {skip_frames} frames for sync offset");
             }
 
-            while let Ok(slot) = slot_free_rx.recv() {
+            loop {
+                if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+                let slot = match slot_free_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    Ok(s) => s,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                };
                 match dec.next_frame_gpu() {
                     Ok(Some(frame)) => {
                         let s = slot as usize;
@@ -151,6 +163,7 @@ pub fn spawn_decode_threads_gpu(
     left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
     right_slot_free_rx: std::sync::mpsc::Receiver<u8>,
     sync_offset: i64,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> reco_core::zero_copy::GpuDecodeHandles {
     use reco_core::zero_copy::{GpuDecodeHandles, GpuFrameSignal};
 
@@ -161,14 +174,21 @@ pub fn spawn_decode_threads_gpu(
         (sync_offset.unsigned_abs(), 0)
     };
 
-    let (left_rx, left_handle) =
-        spawn_single_decoder_gpu(left_path, "left", left_buf, left_slot_free_rx, left_skip);
+    let (left_rx, left_handle) = spawn_single_decoder_gpu(
+        left_path,
+        "left",
+        left_buf,
+        left_slot_free_rx,
+        left_skip,
+        shutdown.clone(),
+    );
     let (right_rx, right_handle) = spawn_single_decoder_gpu(
         right_path,
         "right",
         right_buf,
         right_slot_free_rx,
         right_skip,
+        shutdown,
     );
 
     let (tx, rx) = std::sync::mpsc::sync_channel::<GpuFrameSignal>(1);

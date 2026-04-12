@@ -61,13 +61,14 @@ pub enum ChromaFormat<'a> {
 /// Coordinates are in normalized image space `[0.0, 1.0]` relative to
 /// the frame dimensions. Use [`crate::projection::camera_to_panorama`]
 /// to map these to panoramic yaw/pitch.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Detection {
     /// Which camera this detection came from.
     pub camera: CameraId,
 
-    /// Detection class label (e.g. "ball", "player").
-    pub label: String,
+    /// Detection class index from the model (e.g. 0 = "ball", 1 = "person").
+    /// Map to a human-readable label via the detector's `class_names()`.
+    pub class_id: u16,
 
     /// Confidence score in `[0.0, 1.0]`.
     pub confidence: f32,
@@ -104,6 +105,28 @@ pub trait Detector: Send {
     fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection>;
 }
 
+/// A GPU-resident NV12 frame described by CUDA device pointers.
+///
+/// Wraps the raw pointer/pitch/dimension parameters needed to locate the
+/// Y and UV planes of an NV12 frame in GPU memory. Passed by reference
+/// to [`GpuDetector::detect_gpu`] instead of many loose arguments.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[derive(Debug, Clone, Copy)]
+pub struct GpuNv12Frame {
+    /// CUDA device pointer to the Y (luma) plane.
+    pub y_ptr: u64,
+    /// CUDA device pointer to the UV (chroma) plane.
+    pub uv_ptr: u64,
+    /// Row pitch in bytes for the Y plane.
+    pub y_pitch: usize,
+    /// Row pitch in bytes for the UV plane.
+    pub uv_pitch: usize,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+}
+
 /// Trait for object detection on GPU-resident NV12 frames.
 ///
 /// Unlike [`Detector`] which operates on CPU-accessible [`RawFrame`] data,
@@ -117,53 +140,10 @@ pub trait Detector: Send {
 pub trait GpuDetector: Send {
     /// Run detection on a GPU-resident NV12 frame.
     ///
-    /// `y_ptr` and `uv_ptr` are CUDA device pointers to the Y and
-    /// interleaved UV planes of an NV12 frame. `y_pitch` and `uv_pitch`
-    /// are the row strides (may differ from width due to alignment).
-    fn detect_gpu(
-        &mut self,
-        camera: CameraId,
-        y_ptr: u64,
-        y_pitch: usize,
-        uv_ptr: u64,
-        uv_pitch: usize,
-        width: u32,
-        height: u32,
-    ) -> Vec<Detection>;
-}
-
-/// Test whether a point lies inside a polygon using the ray-casting algorithm.
-///
-/// Casts a horizontal ray from the point to the right and counts how many
-/// polygon edges it crosses. An odd count means the point is inside.
-///
-/// Both `point` and `polygon` use `[x, y]` coordinates in any consistent
-/// space (typically normalized `[0,1]` camera coordinates).
-///
-/// Returns `false` for degenerate polygons with fewer than 3 vertices.
-pub fn point_in_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
-    let n = polygon.len();
-    if n < 3 {
-        return false;
-    }
-
-    let (px, py) = (point[0], point[1]);
-    let mut inside = false;
-
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = (polygon[i][0], polygon[i][1]);
-        let (xj, yj) = (polygon[j][0], polygon[j][1]);
-
-        // Check if the edge from j to i crosses the horizontal ray at py.
-        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-
-        j = i;
-    }
-
-    inside
+    /// The [`GpuNv12Frame`] contains CUDA device pointers to the Y and
+    /// interleaved UV planes, their row pitches (may differ from width
+    /// due to alignment), and frame dimensions.
+    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection>;
 }
 
 /// Trait for object detection on Metal-resident NV12 frames (macOS).
@@ -194,73 +174,4 @@ pub trait MetalDetector: Send {
         height: u32,
         gpu: &crate::gpu::GpuContext,
     ) -> Vec<Detection>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // --- point_in_polygon tests ---
-
-    /// Unit square: [0,0] -> [1,0] -> [1,1] -> [0,1].
-    fn unit_square() -> Vec<[f64; 2]> {
-        vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-    }
-
-    #[test]
-    fn pip_center_of_square() {
-        assert!(point_in_polygon([0.5, 0.5], &unit_square()));
-    }
-
-    #[test]
-    fn pip_outside_square() {
-        assert!(!point_in_polygon([1.5, 0.5], &unit_square()));
-        assert!(!point_in_polygon([-0.1, 0.5], &unit_square()));
-        assert!(!point_in_polygon([0.5, -0.1], &unit_square()));
-        assert!(!point_in_polygon([0.5, 1.1], &unit_square()));
-    }
-
-    #[test]
-    fn pip_triangle() {
-        let triangle = vec![[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]];
-        // Inside
-        assert!(point_in_polygon([0.5, 0.3], &triangle));
-        // Outside (right of the triangle)
-        assert!(!point_in_polygon([0.9, 0.8], &triangle));
-    }
-
-    #[test]
-    fn pip_concave_l_shape() {
-        // L-shaped polygon (concave):
-        //   (0,0) -> (1,0) -> (1,0.5) -> (0.5,0.5) -> (0.5,1) -> (0,1)
-        let l_shape = vec![
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 0.5],
-            [0.5, 0.5],
-            [0.5, 1.0],
-            [0.0, 1.0],
-        ];
-        // Inside the bottom-right arm
-        assert!(point_in_polygon([0.75, 0.25], &l_shape));
-        // Inside the top-left arm
-        assert!(point_in_polygon([0.25, 0.75], &l_shape));
-        // In the concave cutout (top-right) - should be outside
-        assert!(!point_in_polygon([0.75, 0.75], &l_shape));
-    }
-
-    #[test]
-    fn pip_degenerate_polygon() {
-        // Fewer than 3 vertices: always false.
-        assert!(!point_in_polygon([0.5, 0.5], &[]));
-        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0]]));
-        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0], [1.0, 1.0]]));
-    }
-
-    #[test]
-    fn pip_near_edge_of_square() {
-        // Just inside the edge
-        assert!(point_in_polygon([0.001, 0.5], &unit_square()));
-        assert!(point_in_polygon([0.999, 0.5], &unit_square()));
-    }
 }

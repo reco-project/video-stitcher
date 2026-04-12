@@ -73,13 +73,14 @@ impl Default for ViewportPosition {
 ///
 /// External consumers (coaching, VAR, stats) receive these via the
 /// detection callback on [`StitchSession`](crate::session::StitchSession).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct MappedDetection {
     /// Which camera this detection came from.
     pub camera: CameraId,
 
-    /// Detection class label (e.g. "ball", "player").
-    pub label: String,
+    /// Detection class index from the model (e.g. 0 = "ball", 1 = "person").
+    /// Map to a human-readable label via the detector's `class_names()`.
+    pub class_id: u16,
 
     /// Confidence score in `[0.0, 1.0]`.
     pub confidence: f32,

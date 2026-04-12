@@ -15,7 +15,7 @@ use reco_core::cuda_interop::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
 };
 use reco_core::cuda_kernels::normalize_hwc_to_chw;
-use reco_core::detector::{CameraId, Detection, GpuDetector};
+use reco_core::detector::{CameraId, Detection, GpuDetector, GpuNv12Frame};
 use reco_core::npp_interop::{NppiRect, npp_nv12_to_rgb, npp_resize_c3};
 
 use crate::detector::postprocess;
@@ -90,10 +90,20 @@ impl GpuYoloDetector {
         let pad_x = (input_size - new_w) as f32 / 2.0;
         let pad_y = (input_size - new_h) as f32 / 2.0;
 
-        // Allocate GPU scratch buffers.
-        let rgb_size = (frame_width as usize) * (frame_height as usize) * 3;
-        let resized_size = (input_size as usize) * (input_size as usize) * 3;
-        let tensor_size = 3 * (input_size as usize) * (input_size as usize) * 4; // f32
+        // Allocate GPU scratch buffers (checked arithmetic to prevent overflow).
+        let rgb_size = (frame_width as usize)
+            .checked_mul(frame_height as usize)
+            .and_then(|v| v.checked_mul(3))
+            .ok_or_else(|| ort::Error::new("frame dimensions overflow for rgb_size"))?;
+        let resized_size = (input_size as usize)
+            .checked_mul(input_size as usize)
+            .and_then(|v| v.checked_mul(3))
+            .ok_or_else(|| ort::Error::new("input dimensions overflow for resized_size"))?;
+        let tensor_size = (input_size as usize)
+            .checked_mul(input_size as usize)
+            .and_then(|v| v.checked_mul(3))
+            .and_then(|v| v.checked_mul(4))
+            .ok_or_else(|| ort::Error::new("input dimensions overflow for tensor_size"))?;
 
         let rgb_u8 = cuda_mem_alloc(rgb_size)?;
         let resized_u8 = cuda_mem_alloc(resized_size)?;
@@ -146,16 +156,15 @@ impl GpuYoloDetector {
 }
 
 impl GpuDetector for GpuYoloDetector {
-    fn detect_gpu(
-        &mut self,
-        camera: CameraId,
-        y_ptr: u64,
-        y_pitch: usize,
-        uv_ptr: u64,
-        uv_pitch: usize,
-        width: u32,
-        height: u32,
-    ) -> Vec<Detection> {
+    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
+        let GpuNv12Frame {
+            y_ptr,
+            uv_ptr,
+            y_pitch,
+            uv_pitch,
+            width,
+            height,
+        } = *frame;
         reco_core::profile_scope!("gpu_yolo_detect");
 
         // Ensure a CUDA context is current on this thread. The zero-copy
@@ -277,7 +286,6 @@ impl GpuDetector for GpuYoloDetector {
             n,
             camera,
             self.confidence_threshold,
-            &self.labels,
             self.scale,
             self.pad_x,
             self.pad_y,
@@ -292,13 +300,20 @@ impl GpuDetector for GpuYoloDetector {
                 detections.len(),
                 detections
                     .iter()
-                    .map(|d| format!(
-                        "{}({:.0}%@{:.2},{:.2})",
-                        d.label,
-                        d.confidence * 100.0,
-                        d.center_x,
-                        d.center_y
-                    ))
+                    .map(|d| {
+                        let name = self
+                            .labels
+                            .get(d.class_id as usize)
+                            .map(|s| s.as_str())
+                            .unwrap_or("?");
+                        format!(
+                            "{}({:.0}%@{:.2},{:.2})",
+                            name,
+                            d.confidence * 100.0,
+                            d.center_x,
+                            d.center_y
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             );

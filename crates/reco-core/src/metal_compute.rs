@@ -155,10 +155,10 @@ kernel void nv12_to_chw_tensor(
         cr = (uv_val.y - 0.5) * 1.138393;     // (V - 128/255) * 255/224
     }
 
-    // BT.601 YCbCr -> RGB
-    float r = y + 1.402 * cr;
-    float g = y - 0.344136 * cb - 0.714136 * cr;
-    float b = y + 1.772 * cb;
+    // BT.709 YCbCr -> RGB (matches fisheye.wgsl)
+    float r = y + 1.5748 * cr;
+    float g = y - 0.1873 * cb - 0.4681 * cr;
+    float b = y + 1.8556 * cb;
 
     // Clamp to [0,1] (already normalized since Metal textures are [0,1]).
     r = clamp(r, 0.0f, 1.0f);

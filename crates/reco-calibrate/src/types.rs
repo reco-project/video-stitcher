@@ -330,6 +330,45 @@ impl CalibrationConfig {
     }
 }
 
+/// Progress information for calibration operations.
+#[derive(Debug, Clone)]
+pub struct CalibrationProgress {
+    /// Current calibration step.
+    pub step: CalibrationStep,
+    /// Human-readable detail about the current operation.
+    pub detail: String,
+}
+
+/// Steps in the calibration pipeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalibrationStep {
+    /// Probing video metadata.
+    Probing,
+    /// Extracting audio for temporal sync.
+    AudioSync,
+    /// Extracting video frames.
+    ExtractingFrames,
+    /// Running GPU undistortion.
+    Undistorting,
+    /// Matching features between cameras.
+    FeatureMatching,
+    /// Optimizing camera parameters.
+    Optimizing,
+}
+
+impl std::fmt::Display for CalibrationStep {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Probing => write!(f, "Probing"),
+            Self::AudioSync => write!(f, "AudioSync"),
+            Self::ExtractingFrames => write!(f, "ExtractingFrames"),
+            Self::Undistorting => write!(f, "Undistorting"),
+            Self::FeatureMatching => write!(f, "FeatureMatching"),
+            Self::Optimizing => write!(f, "Optimizing"),
+        }
+    }
+}
+
 /// Output of a successful calibration run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalibrationResult {

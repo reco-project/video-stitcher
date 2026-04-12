@@ -126,6 +126,7 @@ impl StitchPipeline {
             input_height,
             output_format,
             input_format,
+            &scene,
         );
 
         log::info!(
@@ -350,6 +351,43 @@ impl StitchPipeline {
             .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
+        };
+
+        self.renderer.render_to_view(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+            target_view,
+        );
+        Ok(())
+    }
+
+    /// Render NV12 frames directly to a texture view (for window display).
+    ///
+    /// Like [`Self::render_to_view`] but accepts NV12 input (Y + interleaved
+    /// UV) instead of YUV420P. Requires the pipeline to be initialized with
+    /// `InputFormat::Nv12`.
+    pub fn render_nv12_to_view(
+        &self,
+        left: &Nv12Planes<'_>,
+        right: &Nv12Planes<'_>,
+        yaw: f32,
+        pitch: f32,
+        target_view: &wgpu::TextureView,
+    ) -> Result<(), PipelineError> {
+        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
+        self.renderer
+            .upload_right_nv12(&self.gpu, right.y, right.uv)?;
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),

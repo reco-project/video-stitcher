@@ -73,8 +73,8 @@ pub use traits::{
     CalibrationOptimizer, CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
 };
 pub use types::{
-    AkazeConfig, CalibrationConfig, CalibrationResult, GrayFrame, MatchConfig, OptimizerConfig,
-    YuvFrame,
+    AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep,
+    GrayFrame, MatchConfig, OptimizerConfig, YuvFrame,
 };
 
 use reco_core::calibration::{CameraParams, MatchCalibration};
@@ -336,8 +336,10 @@ pub fn calibrate_with(
         );
         return Err(CalibrateError::NoUsableFrames);
     }
-    let left_undistort = GpuUndistort::new(gpu, lw, lh);
-    let right_undistort = GpuUndistort::new(gpu, rw, rh);
+    let left_aspect = lw as f32 / lh as f32;
+    let right_aspect = rw as f32 / rh as f32;
+    let left_undistort = GpuUndistort::new(gpu, lw, lh, left_aspect);
+    let right_undistort = GpuUndistort::new(gpu, rw, rh, right_aspect);
 
     // Phase 1: GPU undistort all frames (sequential - shared GPU state)
     let undistorted: Vec<(Vec<u8>, Vec<u8>)> = {

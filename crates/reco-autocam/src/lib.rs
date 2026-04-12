@@ -25,6 +25,7 @@ mod directors;
 mod gpu_detector;
 #[cfg(target_os = "macos")]
 mod metal_detector;
+mod roi_filter;
 mod smoother;
 pub use detector::YoloDetector;
 pub use directors::{BallDirector, FieldDirector, TrackingMode};
@@ -32,6 +33,11 @@ pub use directors::{BallDirector, FieldDirector, TrackingMode};
 pub use gpu_detector::GpuYoloDetector;
 #[cfg(target_os = "macos")]
 pub use metal_detector::MetalYoloDetector;
+pub use roi_filter::RoiFilteredDetector;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub use roi_filter::RoiFilteredGpuDetector;
+#[cfg(target_os = "macos")]
+pub use roi_filter::RoiFilteredMetalDetector;
 pub use smoother::{SmoothedDirector, TrajectorySmoother};
 
 use std::path::Path;
@@ -39,6 +45,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use ort::session::Session;
+use reco_core::calibration::FieldRoi;
 use reco_core::session::StitchSession;
 
 /// Return a persistent cache directory for model engine/compilation caches.
@@ -83,6 +90,10 @@ fn reco_cache_dir(subdir: &str) -> PathBuf {
 /// the current platform and zero-copy mode, then attaches a [`BallDirector`]
 /// for ball-following camera automation.
 ///
+/// When `field_roi` is provided, the detector is wrapped in an ROI filter
+/// that discards detections outside the playing field polygon before they
+/// reach the director.
+///
 /// Returns `true` if detection was successfully activated, `false` if
 /// detection could not be initialized (the session remains usable without
 /// autocam in that case).
@@ -97,6 +108,7 @@ fn reco_cache_dir(subdir: &str) -> PathBuf {
 /// * `detection_interval` - Run detection every N frames (1 = every frame).
 /// * `lead_time` - Director lookahead in seconds (CPU path only).
 /// * `tracking_mode` - Which director to use (Ball or Field).
+/// * `field_roi` - Optional playing field ROI polygons for filtering detections.
 #[allow(clippy::too_many_arguments)]
 pub fn setup_autocam(
     session: &mut StitchSession,
@@ -108,14 +120,39 @@ pub fn setup_autocam(
     detection_interval: u64,
     lead_time: f64,
     tracking_mode: TrackingMode,
+    field_roi: Option<&FieldRoi>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut detection_active = false;
+
+    // Load class names from the model to resolve label -> class_id for directors.
+    let class_names = match create_ort_session(std::path::Path::new(model_path), Vec::new()) {
+        Ok((_, _, names)) => names,
+        Err(e) => {
+            log::warn!("Could not read model labels: {e}, using COCO defaults");
+            Vec::new()
+        }
+    };
+
+    // Check if ROI filtering should be applied.
+    // A FieldRoi is only meaningful if at least one polygon has >= 3 vertices.
+    let effective_roi = field_roi
+        .filter(|roi| roi.left.len() >= 3 || roi.right.len() >= 3)
+        .cloned();
+    if effective_roi.is_some() {
+        log::info!("Autocam: field ROI filtering enabled");
+    }
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     if use_zero_copy {
         match GpuYoloDetector::try_new(model_path, input_width, input_height, 0.10, Vec::new()) {
             Ok(Some(gpu_det)) => {
-                session.set_gpu_detector(Box::new(gpu_det));
+                let detector: Box<dyn reco_core::detector::GpuDetector> =
+                    if let Some(roi) = effective_roi.clone() {
+                        Box::new(RoiFilteredGpuDetector::new(Box::new(gpu_det), roi))
+                    } else {
+                        Box::new(gpu_det)
+                    };
+                session.set_gpu_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: GPU YOLO ball tracking enabled (model: {model_path})");
             }
@@ -139,7 +176,13 @@ pub fn setup_autocam(
             Vec::new(),
         ) {
             Ok(metal_det) => {
-                session.set_metal_detector(Box::new(metal_det));
+                let detector: Box<dyn reco_core::detector::MetalDetector> =
+                    if let Some(roi) = effective_roi.clone() {
+                        Box::new(RoiFilteredMetalDetector::new(Box::new(metal_det), roi))
+                    } else {
+                        Box::new(metal_det)
+                    };
+                session.set_metal_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: Metal YOLO ball tracking enabled (model: {model_path})");
             }
@@ -150,8 +193,13 @@ pub fn setup_autocam(
     }
 
     if !use_zero_copy {
-        let detector = YoloDetector::from_file(model_path)?;
-        session.set_detector(Box::new(detector));
+        let yolo = YoloDetector::from_file(model_path)?;
+        let detector: Box<dyn reco_core::detector::Detector> = if let Some(roi) = effective_roi {
+            Box::new(RoiFilteredDetector::new(Box::new(yolo), roi))
+        } else {
+            Box::new(yolo)
+        };
+        session.set_detector(detector);
         detection_active = true;
         log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
     }
@@ -162,9 +210,17 @@ pub fn setup_autocam(
             log::info!("Detection interval: every {detection_interval} frames");
         }
 
+        // Resolve label names to class IDs from the model's label list.
+        let ball_id = resolve_class_id(&class_names, &["ball", "sports ball"], 32);
+        let person_id = resolve_class_id(&class_names, &["person"], 0);
+        log::info!(
+            "Class IDs: ball={ball_id}, person={person_id} (from {} model labels)",
+            class_names.len()
+        );
+
         let director: Box<dyn reco_core::director::Director> = match tracking_mode {
             TrackingMode::Ball => {
-                let mut d = BallDirector::new(fps);
+                let mut d = BallDirector::new(fps).with_class_id(ball_id);
                 if detection_interval > 1 {
                     d.set_detection_interval(detection_interval as u32);
                 }
@@ -172,7 +228,9 @@ pub fn setup_autocam(
                 Box::new(d)
             }
             TrackingMode::Field => {
-                let d = FieldDirector::new(fps);
+                let d = FieldDirector::new(fps)
+                    .with_ball_class_id(ball_id)
+                    .with_player_class_id(person_id);
                 log::info!("Tracking mode: field (ball + players)");
                 Box::new(d)
             }
@@ -194,6 +252,22 @@ pub fn setup_autocam(
     }
 
     Ok(detection_active)
+}
+
+/// Resolve a class label to its ID from the model's label list.
+///
+/// Tries each candidate name in order, returning the first match.
+/// Falls back to `default_id` if no match is found (e.g. COCO defaults).
+fn resolve_class_id(class_names: &[String], candidates: &[&str], default_id: u16) -> u16 {
+    for candidate in candidates {
+        if let Some(idx) = class_names
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(candidate))
+        {
+            return idx as u16;
+        }
+    }
+    default_id
 }
 
 /// Create an ORT session with common settings and platform-specific EPs.

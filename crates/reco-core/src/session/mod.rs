@@ -16,6 +16,9 @@
 //!   into an encoder, with optional progress reporting and interrupt
 //!   support. Use this for CLI batch encoding.
 
+mod detection;
+#[cfg(test)]
+mod tests;
 #[cfg(target_os = "linux")]
 mod zero_copy_linux;
 #[cfg(target_os = "macos")]
@@ -28,7 +31,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
-use crate::detector::{CameraId, Detection, Detector};
+use crate::detector::{Detection, Detector};
 use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, GpuEncoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
@@ -39,6 +42,8 @@ use crate::renderer::InputFormat;
 use crate::source::{FrameSource, SourceError, StereoFrame};
 use crate::viewport::ViewportConfig;
 
+use detection::DetectionPipeline;
+
 use thiserror::Error;
 
 /// Compute the frame limit from optional duration and max-frames constraints.
@@ -47,11 +52,12 @@ use thiserror::Error;
 /// the stricter (lower) limit wins. Returns [`u64::MAX`] when neither is set,
 /// meaning "process all available frames".
 pub fn compute_frame_limit(duration_secs: Option<f64>, max_frames: Option<u64>, fps: f64) -> u64 {
+    let fps = if fps > 0.0 { fps } else { 30.0 };
     match (duration_secs, max_frames) {
-        (Some(dur), Some(mf)) => ((dur * fps) as u64).min(mf),
-        (Some(dur), None) => (dur * fps) as u64,
-        (None, Some(mf)) => mf,
-        (None, None) => u64::MAX,
+        (Some(dur), Some(mf)) if dur > 0.0 => ((dur * fps) as u64).min(mf),
+        (Some(dur), None) if dur > 0.0 => (dur * fps) as u64,
+        (_, Some(mf)) => mf,
+        _ => u64::MAX,
     }
 }
 
@@ -319,7 +325,9 @@ impl StitchSessionBuilder {
         };
 
         let mut session = StitchSession::with_gpu(gpu, config)?;
-        session.detection_interval = self.detection_interval;
+        session
+            .detection
+            .set_detection_interval(self.detection_interval);
         session.lookahead_frames = self.lookahead_frames;
 
         if let Some((enc, buf_count)) = self.encoder {
@@ -361,20 +369,10 @@ pub struct StitchSession {
     /// GPU-resident encoder (zero-copy encode path, no implementations yet).
     #[allow(dead_code)]
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
-    pub(crate) detector: Option<Box<dyn Detector>>,
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
-    #[cfg(target_os = "macos")]
-    pub(crate) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
+    /// Detection backends, interval, callback, and cached detections.
+    pub(crate) detection: DetectionPipeline,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
-    /// Run detection every N frames (1 = every frame).
-    detection_interval: u64,
-    /// Callback for external consumers of detection data.
-    detection_callback: Option<DetectionCallback>,
-    /// Cached mapped detections from the last detection frame.
-    /// Reused on non-detection frames so the director still has context.
-    last_detections: Vec<MappedDetection>,
     /// Number of frames to buffer ahead for lookahead.
     /// When > 0, detection runs ahead of rendering so the director
     /// anticipates action before it reaches the encoder.
@@ -468,16 +466,9 @@ impl StitchSession {
             nv12_converter,
             encoder: None,
             gpu_encoder: None,
-            detector: None,
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
-            gpu_detector: None,
-            #[cfg(target_os = "macos")]
-            metal_detector: None,
+            detection: DetectionPipeline::new(),
             director: None,
             frame_count: 0,
-            detection_interval: 1,
-            detection_callback: None,
-            last_detections: Vec::new(),
             lookahead_frames: 0,
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
@@ -518,7 +509,7 @@ impl StitchSession {
     /// to the director. Zero-copy paths skip detection (no CPU-accessible
     /// frame data).
     pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
-        self.detector = Some(detector);
+        self.detection.set_detector(detector);
     }
 
     /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
@@ -528,7 +519,7 @@ impl StitchSession {
     /// detection output is read back to CPU.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
-        self.gpu_detector = Some(detector);
+        self.detection.set_gpu_detector(detector);
     }
 
     /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
@@ -537,7 +528,7 @@ impl StitchSession {
     /// Metal compute shaders for preprocessing and CoreML for inference.
     #[cfg(target_os = "macos")]
     pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
-        self.metal_detector = Some(detector);
+        self.detection.set_metal_detector(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
@@ -546,7 +537,7 @@ impl StitchSession {
     /// at the cost of tracking responsiveness. The director still receives
     /// the last known tracked objects on skipped frames.
     pub fn set_detection_interval(&mut self, interval: u64) {
-        self.detection_interval = interval.max(1);
+        self.detection.set_detection_interval(interval);
     }
 
     /// Set the number of frames to buffer ahead for lookahead.
@@ -584,7 +575,7 @@ impl StitchSession {
     /// The callback receives the same [`MappedDetection`] data as the director,
     /// including panorama-space coordinates.
     pub fn set_detection_callback(&mut self, cb: DetectionCallback) {
-        self.detection_callback = Some(cb);
+        self.detection.set_callback(cb);
     }
 
     /// Get the current viewport position from the director, or default.
@@ -633,11 +624,12 @@ impl StitchSession {
         frame: &StereoFrame,
         elapsed: std::time::Duration,
     ) {
-        let should_detect = self.frame_count % self.detection_interval == 0;
+        let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect {
-            let detections = self.run_detection(frame);
-            self.last_detections = self.map_detections(detections);
+            let (width, height) = self.pipeline.source_info();
+            let detections = self.detection.run_detection(frame, width, height);
+            self.detection.last_detections = self.map_detections(detections);
         }
 
         self.fire_callback_and_update_director(elapsed, should_detect);
@@ -673,35 +665,13 @@ impl StitchSession {
         right_slot: u8,
         elapsed: std::time::Duration,
     ) {
-        let should_detect = self.frame_count % self.detection_interval == 0;
+        let should_detect = self.detection.should_detect(self.frame_count);
 
-        if should_detect && let Some(ref mut gpu_det) = self.gpu_detector {
-            crate::profile_scope!("gpu_detect_total");
-
-            let ls = left_slot as usize;
-            let rs = right_slot as usize;
-            let mut detections = Vec::new();
-
-            detections.extend(gpu_det.detect_gpu(
-                CameraId::Left,
-                left_buf.y_ptr[ls],
-                left_buf.y_pitch[ls],
-                left_buf.uv_ptr[ls],
-                left_buf.uv_pitch[ls],
-                left_buf.width,
-                left_buf.height,
-            ));
-            detections.extend(gpu_det.detect_gpu(
-                CameraId::Right,
-                right_buf.y_ptr[rs],
-                right_buf.y_pitch[rs],
-                right_buf.uv_ptr[rs],
-                right_buf.uv_pitch[rs],
-                right_buf.width,
-                right_buf.height,
-            ));
-
-            self.last_detections = self.map_detections(detections);
+        if should_detect && self.detection.has_gpu_detector() {
+            let detections = self
+                .detection
+                .run_gpu_detection(left_buf, right_buf, left_slot, right_slot);
+            self.detection.last_detections = self.map_detections(detections);
         }
 
         self.fire_callback_and_update_director(elapsed, should_detect);
@@ -725,30 +695,14 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) {
-        let should_detect = self.frame_count.is_multiple_of(self.detection_interval);
+        let should_detect = self.detection.should_detect(self.frame_count);
 
-        if should_detect && let Some(ref mut metal_det) = self.metal_detector {
-            crate::profile_scope!("metal_detect_total");
-
+        if should_detect && self.detection.has_metal_detector() {
             let gpu = self.pipeline.gpu();
-            let mut detections = Vec::new();
-
-            detections.extend(metal_det.detect_metal(
-                CameraId::Left,
-                left_cvpb,
-                width,
-                height,
-                gpu,
-            ));
-            detections.extend(metal_det.detect_metal(
-                CameraId::Right,
-                right_cvpb,
-                width,
-                height,
-                gpu,
-            ));
-
-            self.last_detections = self.map_detections(detections);
+            let detections = self
+                .detection
+                .run_metal_detection(left_cvpb, right_cvpb, width, height, gpu);
+            self.detection.last_detections = self.map_detections(detections);
         }
 
         self.fire_callback_and_update_director(elapsed, should_detect);
@@ -769,9 +723,7 @@ impl StitchSession {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
         // Fire callback for external consumers.
-        if let Some(ref mut cb) = self.detection_callback {
-            cb(&self.last_detections, self.frame_count, timestamp_ms);
-        }
+        self.detection.fire_callback(self.frame_count, timestamp_ms);
 
         // Update director with detections and timing only.
         // Coverage clamping is applied later in director_position().
@@ -779,53 +731,27 @@ impl StitchSession {
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
-                detections: &self.last_detections,
+                detections: &self.detection.last_detections,
                 fresh_detection,
             };
             director.update(&ctx);
         }
     }
 
-    /// Map raw detections to panorama coordinates, filtering by field ROI.
+    /// Map raw detections to panorama coordinates.
     ///
     /// Each detection's camera-space center is projected to panorama
     /// yaw/pitch via [`camera_to_panorama`](projection::camera_to_panorama).
-    /// If a `field_roi` is present in the calibration, detections whose
-    /// camera-space center falls outside the corresponding camera's polygon
-    /// are discarded before reaching the director.
+    ///
+    /// ROI filtering (discarding detections outside the playing field) is
+    /// handled at the detector level by `reco-autocam`'s `RoiFilteredDetector`
+    /// decorators, so this method is pure coordinate mapping.
     fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
-        use crate::detector::point_in_polygon;
-
         let calibration = self.pipeline.calibration();
         let scene = &self.pipeline.scene;
-        let field_roi = calibration.field_roi.as_ref();
 
         detections
             .iter()
-            .filter(|d| {
-                // If field ROI is configured, discard detections outside
-                // the playing field polygon for their camera.
-                if let Some(roi) = field_roi {
-                    let polygon = match d.camera {
-                        CameraId::Left => &roi.left,
-                        CameraId::Right => &roi.right,
-                    };
-                    // Only filter if the polygon has enough vertices.
-                    if polygon.len() >= 3 {
-                        // Test at 75th percentile height of bbox (between
-                        // center and feet). Both this point AND the feet
-                        // must be inside the ROI. This rejects people whose
-                        // feet are just inside the boundary but body is mostly
-                        // outside (coaches leaning in, sideline spectators).
-                        let feet_x = d.center_x as f64;
-                        let feet_y = (d.center_y + d.height * 0.5) as f64;
-                        let p75_y = (d.center_y + d.height * 0.25) as f64;
-                        return point_in_polygon([feet_x, feet_y], polygon)
-                            && point_in_polygon([feet_x, p75_y], polygon);
-                    }
-                }
-                true
-            })
             .map(|d| {
                 let position = projection::camera_to_panorama(
                     d.camera,
@@ -836,7 +762,7 @@ impl StitchSession {
                 );
                 MappedDetection {
                     camera: d.camera,
-                    label: d.label.clone(),
+                    class_id: d.class_id,
                     confidence: d.confidence,
                     camera_center: (d.center_x, d.center_y),
                     camera_size: (d.width, d.height),
@@ -844,66 +770,6 @@ impl StitchSession {
                 }
             })
             .collect()
-    }
-
-    /// Run the detector on a stereo frame's raw data.
-    fn run_detection(&mut self, frame: &StereoFrame) -> Vec<Detection> {
-        use crate::detector::{ChromaFormat, RawFrame};
-
-        let Some(ref mut detector) = self.detector else {
-            return Vec::new();
-        };
-        let (width, height) = self.pipeline.source_info();
-        let mut detections = Vec::new();
-        match frame {
-            StereoFrame::Yuv420p(pair) => {
-                let left = RawFrame {
-                    y: &pair.left.y,
-                    chroma: ChromaFormat::Yuv420p {
-                        u: &pair.left.u,
-                        v: &pair.left.v,
-                    },
-                    width,
-                    height,
-                };
-                let right = RawFrame {
-                    y: &pair.right.y,
-                    chroma: ChromaFormat::Yuv420p {
-                        u: &pair.right.u,
-                        v: &pair.right.v,
-                    },
-                    width,
-                    height,
-                };
-                detections.extend(detector.detect(CameraId::Left, &left));
-                detections.extend(detector.detect(CameraId::Right, &right));
-            }
-            StereoFrame::Nv12(pair) => {
-                let left = RawFrame {
-                    y: &pair.left.y,
-                    chroma: ChromaFormat::Nv12 { uv: &pair.left.uv },
-                    width,
-                    height,
-                };
-                let right = RawFrame {
-                    y: &pair.right.y,
-                    chroma: ChromaFormat::Nv12 { uv: &pair.right.uv },
-                    width,
-                    height,
-                };
-                detections.extend(detector.detect(CameraId::Left, &left));
-                detections.extend(detector.detect(CameraId::Right, &right));
-            }
-            StereoFrame::GpuResident { .. } => {
-                // GPU-resident frames have no CPU-accessible data for CPU detection.
-                // Use gpu_detector or metal_detector instead.
-            }
-            #[allow(unreachable_patterns)]
-            _ => {
-                // Future frame variants (e.g. MetalResident) handled by platform-specific detectors
-            }
-        }
-        detections
     }
 
     /// Render a single CPU-resident stereo frame and submit it to the encoder.
@@ -977,10 +843,11 @@ impl StitchSession {
         }
         let pos = self.director_position();
 
-        let bind_groups = self
-            .gpu_bind_groups
-            .as_ref()
-            .expect("GPU bind groups not configured - call setup_gpu_source() before run()");
+        let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
+            SessionError::ZeroCopy(
+                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
+            )
+        })?;
         let render_buf =
             self.pipeline
                 .render_gpu_frame(bind_groups, left_slot, right_slot, pos.yaw, pos.pitch);
