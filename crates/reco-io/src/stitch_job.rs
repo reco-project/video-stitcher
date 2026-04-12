@@ -51,11 +51,6 @@ pub struct StitchJob {
     sync_offset: Option<i64>,
     blend_width: f32,
 
-    // Autocam settings
-    autocam_model: Option<PathBuf>,
-    detection_interval: u64,
-    lead_time: f64,
-
     // Callbacks
     on_progress: Option<ProgressCallback>,
 }
@@ -183,9 +178,6 @@ impl StitchJob {
             duration: None,
             sync_offset: None,
             blend_width: 0.15,
-            autocam_model: None,
-            detection_interval: 1,
-            lead_time: 0.0,
             on_progress: None,
         }
     }
@@ -271,26 +263,6 @@ impl StitchJob {
     /// Set the blend width for seam blending (0.0 - 1.0). Default: 0.15.
     pub fn blend_width(mut self, blend: f32) -> Self {
         self.blend_width = blend;
-        self
-    }
-
-    // ── Autocam settings ──
-
-    /// Enable AI ball tracking with a YOLO model file.
-    pub fn autocam_model(mut self, path: impl AsRef<Path>) -> Self {
-        self.autocam_model = Some(path.as_ref().to_path_buf());
-        self
-    }
-
-    /// Set the detection interval (run detection every N frames). Default: 1.
-    pub fn detection_interval(mut self, n: u64) -> Self {
-        self.detection_interval = n;
-        self
-    }
-
-    /// Set the autocam lead time in seconds. Default: 0.0.
-    pub fn lead_time(mut self, secs: f64) -> Self {
-        self.lead_time = secs;
         self
     }
 
