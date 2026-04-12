@@ -116,6 +116,7 @@ pub mod renderer;
 pub mod scene;
 pub mod session;
 pub mod source;
+pub mod stitch_renderer;
 pub mod undistort;
 pub mod viewport;
 #[cfg(target_os = "linux")]
