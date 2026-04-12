@@ -1,6 +1,6 @@
 //! Surface-oriented renderer for interactive panoramic preview.
 //!
-//! [`StitchRenderer`] wraps [`StitchPipeline`](crate::pipeline::StitchPipeline)
+//! [`StitchRenderer`] wraps [`StitchPipeline`]
 //! with precomputed coverage boundary and surface format handling. Created once
 //! per window/surface, then fed frames and viewport positions each tick.
 //!

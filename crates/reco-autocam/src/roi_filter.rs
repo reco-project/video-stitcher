@@ -67,7 +67,7 @@ impl Detector for RoiFilteredDetector {
     }
 }
 
-/// A [`GpuDetector`] decorator that filters detections by field ROI.
+/// A `GpuDetector` decorator that filters detections by field ROI.
 ///
 /// Same filtering logic as [`RoiFilteredDetector`], but for GPU-resident
 /// NV12 frames in the CUDA zero-copy pipeline.
