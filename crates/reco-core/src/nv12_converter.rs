@@ -255,20 +255,20 @@ impl Nv12Converter {
         let write_slot = self.current_slot;
         let read_slot = 1 - write_slot;
 
-        // --- Read back the previous frame BEFORE submitting new work ---
-        // This ordering matters: we map the previous staging buffer first,
-        // then submit new GPU work. The single poll(wait) below completes
-        // both the (already-finished) previous buffer's map and the new
-        // GPU submission, giving maximum overlap.
+        // --- Submit this frame's GPU work FIRST ---
+        // By submitting before readback, the GPU starts working on the
+        // current frame's render + NV12 compute while the CPU reads back
+        // the previous frame's data. The poll(wait) in readback_staging
+        // completes both the new submission and the previous map request.
+        self.submit_gpu_work(gpu, render_target, render_commands, write_slot)?;
+
+        // --- Then read back the previous frame ---
         let has_result = if self.has_pending {
             self.readback_staging(gpu, read_slot)?;
             true
         } else {
             false
         };
-
-        // --- Submit this frame's GPU work to staging[write_slot] ---
-        self.submit_gpu_work(gpu, render_target, render_commands, write_slot)?;
 
         self.has_pending = true;
         self.current_slot = 1 - write_slot;
