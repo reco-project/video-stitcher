@@ -73,8 +73,8 @@ pub use traits::{
     CalibrationOptimizer, CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
 };
 pub use types::{
-    AkazeConfig, CalibrationConfig, CalibrationResult, GrayFrame, MatchConfig, OptimizerConfig,
-    YuvFrame,
+    AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep,
+    GrayFrame, MatchConfig, OptimizerConfig, YuvFrame,
 };
 
 use reco_core::calibration::{CameraParams, MatchCalibration};

@@ -9,24 +9,29 @@
 //! frame pairs instead.
 //!
 //! ```ignore
+//! use std::sync::atomic::AtomicBool;
 //! use reco_calibrate::video::{calibrate_videos, CalibrateVideosOptions};
 //!
+//! let interrupted = AtomicBool::new(false);
 //! let result = calibrate_videos(
 //!     "left.mp4".as_ref(),
 //!     "right.mp4".as_ref(),
 //!     CalibrateVideosOptions::default(),
+//!     &mut |p| eprintln!("{}: {}", p.step, p.detail),
+//!     &interrupted,
 //! )?;
 //! println!("Confidence: {:.1}%", result.confidence * 100.0);
 //! ```
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::gpu::{GpuContext, GpuError};
 use reco_io::ffmpeg::calibration_io::{self, CalibrationIoError};
 
 use crate::error::CalibrateError;
 use crate::pipeline::{CalibrationPipeline, VideoInfo};
-use crate::types::{CalibrationConfig, CalibrationResult};
+use crate::types::{CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep};
 
 /// Options for [`calibrate_videos`].
 ///
@@ -61,6 +66,31 @@ pub enum CalibrateVideosError {
     /// No frames could be extracted from the videos.
     #[error("no frames extracted from videos")]
     NoFrames,
+
+    /// Operation was cancelled via the interrupted flag.
+    #[error("calibration cancelled")]
+    Cancelled,
+}
+
+/// Check the interrupted flag and return `Cancelled` if set.
+fn check_interrupted(interrupted: &AtomicBool) -> Result<(), CalibrateVideosError> {
+    if interrupted.load(Ordering::Relaxed) {
+        Err(CalibrateVideosError::Cancelled)
+    } else {
+        Ok(())
+    }
+}
+
+/// Emit a progress update for the given step.
+fn emit_progress(
+    on_progress: &mut dyn FnMut(&CalibrationProgress),
+    step: CalibrationStep,
+    detail: impl Into<String>,
+) {
+    on_progress(&CalibrationProgress {
+        step,
+        detail: detail.into(),
+    });
 }
 
 /// Calibrate two video files with a single function call.
@@ -69,20 +99,33 @@ pub enum CalibrateVideosError {
 /// sync estimation (IMU, then audio fallback), frame extraction, GPU
 /// initialization, and calibration.
 ///
-/// For advanced use cases (progress callbacks, custom sync, debug
-/// output), use [`CalibrationPipeline`] directly. For live/in-memory
-/// frames (Jetson cameras, mobile streams), use
+/// The `on_progress` callback is invoked before each major step so
+/// callers can display status. The `interrupted` flag is checked
+/// before each step and returns [`CalibrateVideosError::Cancelled`]
+/// if set.
+///
+/// For advanced use cases (custom sync, debug output), use
+/// [`CalibrationPipeline`] directly. For live/in-memory frames
+/// (Jetson cameras, mobile streams), use
 /// [`calibrate()`](crate::calibrate) directly.
 pub fn calibrate_videos(
     left_video: &Path,
     right_video: &Path,
     options: CalibrateVideosOptions,
+    on_progress: &mut dyn FnMut(&CalibrationProgress),
+    interrupted: &AtomicBool,
 ) -> Result<CalibrationResult, CalibrateVideosError> {
     reco_io::init();
 
     let config = options.config.unwrap_or_default();
 
     // Probe video metadata
+    check_interrupted(interrupted)?;
+    emit_progress(
+        on_progress,
+        CalibrationStep::Probing,
+        "Probing video metadata",
+    );
     let left_probe = calibration_io::probe_video(left_video)?;
     let right_probe = calibration_io::probe_video(right_video)?;
     let fps = left_probe.fps;
@@ -112,6 +155,12 @@ pub fn calibrate_videos(
     }
 
     // Sync: manual > IMU > audio > default (0)
+    check_interrupted(interrupted)?;
+    emit_progress(
+        on_progress,
+        CalibrationStep::AudioSync,
+        "Detecting sync offset",
+    );
     if let Some(offset) = options.sync_offset {
         pipeline.set_sync_offset(offset);
     } else {
@@ -128,7 +177,13 @@ pub fn calibrate_videos(
     }
 
     // Extract frames at computed indices
+    check_interrupted(interrupted)?;
     let (left_indices, right_indices) = pipeline.frame_indices();
+    emit_progress(
+        on_progress,
+        CalibrationStep::ExtractingFrames,
+        format!("Extracting {} frame pairs", left_indices.len()),
+    );
     log::info!(
         "extracting {} frames (fps: {fps:.1}, sync_offset: {})",
         left_indices.len(),
@@ -146,6 +201,12 @@ pub fn calibrate_videos(
     let frame_pairs: Vec<_> = left_frames.into_iter().zip(right_frames).collect();
 
     // GPU init + calibrate
+    check_interrupted(interrupted)?;
+    emit_progress(
+        on_progress,
+        CalibrationStep::FeatureMatching,
+        "GPU init and feature matching",
+    );
     let gpu = pollster::block_on(GpuContext::new())?;
     log::info!("GPU: {}", gpu.gpu_name());
 

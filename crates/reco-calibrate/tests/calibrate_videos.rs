@@ -7,6 +7,7 @@
 #![cfg(feature = "io")]
 
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 use reco_calibrate::video::{CalibrateVideosOptions, calibrate_videos};
 
@@ -26,10 +27,13 @@ fn calibrate_videos_matches_known_good() {
         return;
     }
 
+    let interrupted = AtomicBool::new(false);
     let result = calibrate_videos(
         Path::new(LEFT_4K),
         Path::new(RIGHT_4K),
         CalibrateVideosOptions::default(),
+        &mut |p| eprintln!("[test] {}: {}", p.step, p.detail),
+        &interrupted,
     )
     .expect("calibrate_videos failed");
 
