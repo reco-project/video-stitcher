@@ -9,7 +9,7 @@
 //!
 //! ```rust,ignore
 //! use reco_io::StitchJob;
-//! use reco_core::output::{Codec, Quality};
+//! use reco_io::output::{Codec, Quality};
 //!
 //! StitchJob::new("left.mp4", "right.mp4", "match.json", "output.mp4")
 //!     .codec(Codec::HEVC)
@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use reco_core::output::{AudioMode, Bitrate, Codec, Format, Quality};
+use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
 use reco_core::session::FrameProgress;
 use reco_core::source::FrameSource;
 
@@ -423,7 +423,6 @@ fn map_output_config(codec: &Codec, bitrate: &Bitrate) -> (&'static str, &'stati
         Codec::H264 => "h264",
         Codec::HEVC => "hevc",
         Codec::AV1 => "av1",
-        _ => "h264",
     };
     let quality_str = match bitrate {
         Bitrate::Quality(Quality::Fast) => "fast",

@@ -205,18 +205,18 @@ fn run_with_autocam(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> any
     Ok(())
 }
 
-fn parse_codec(s: &str) -> reco_core::output::Codec {
+fn parse_codec(s: &str) -> reco_io::output::Codec {
     match s {
-        "hevc" | "h265" => reco_core::output::Codec::HEVC,
-        "av1" => reco_core::output::Codec::AV1,
-        _ => reco_core::output::Codec::H264,
+        "hevc" | "h265" => reco_io::output::Codec::HEVC,
+        "av1" => reco_io::output::Codec::AV1,
+        _ => reco_io::output::Codec::H264,
     }
 }
 
-fn parse_quality(s: &str) -> reco_core::output::Quality {
+fn parse_quality(s: &str) -> reco_io::output::Quality {
     match s {
-        "fast" => reco_core::output::Quality::Fast,
-        "high" => reco_core::output::Quality::High,
-        _ => reco_core::output::Quality::Balanced,
+        "fast" => reco_io::output::Quality::Fast,
+        "high" => reco_io::output::Quality::High,
+        _ => reco_io::output::Quality::Balanced,
     }
 }
