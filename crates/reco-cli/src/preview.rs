@@ -8,17 +8,18 @@
 //! - Q / Escape: quit
 //!
 //! This module is intentionally CLI-only. The rendering is already handled by
-//! `StitchPipeline::render_to_view()` in reco-core. What remains here is the
-//! winit event loop, surface management, input handling, and frame pacing -
-//! all tightly coupled to the desktop window environment and not useful to
-//! library consumers (GUI, OBS, cloud). A future GUI app would use its own
-//! event loop and call the same `render_to_view()` API directly.
+//! `StitchRenderer` in reco-core. What remains here is the winit event loop,
+//! surface management, input handling, and frame pacing - all tightly coupled
+//! to the desktop window environment and not useful to library consumers
+//! (GUI, OBS, cloud). A future GUI app would use its own event loop and call
+//! the same `StitchRenderer` API directly.
 
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
 use reco_core::source::{FrameSource, YuvData};
+use reco_core::stitch_renderer::StitchRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -42,19 +43,6 @@ const FOV_MAX: f32 = 150.0;
 const FOV_DEFAULT: f32 = 75.0;
 /// Number of frames to skip on P key press.
 const FRAME_SKIP_COUNT: usize = 30;
-
-/// Strip sRGB from a texture format, returning the equivalent non-sRGB format.
-///
-/// The shader outputs sRGB-encoded values directly (BT.709 YCbCr -> R'G'B').
-/// Rendering to an sRGB format would apply sRGB encoding again (double-gamma).
-fn strip_srgb(format: reco_core::wgpu::TextureFormat) -> reco_core::wgpu::TextureFormat {
-    use reco_core::wgpu::TextureFormat;
-    match format {
-        TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
-        TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
-        other => other,
-    }
-}
 
 /// Extract a [`YuvData`] pair from a [`StereoFrame`](reco_core::source::StereoFrame).
 ///
@@ -130,14 +118,14 @@ pub fn run_preview(
 
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
 
-    // Compute world-space coverage boundary. Rig tilt correction is
-    // handled per-corner inside safe_clamp (yaw-dependent pitch shift).
-    let coverage = {
+    // Precompute max FOV from coverage boundary using calibration metadata.
+    // The actual CoverageBoundary is computed inside StitchRenderer::new().
+    let max_fov = {
         let aspect = info.width as f32 / info.height as f32;
         let scene = reco_core::scene::SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
-        reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene)
+        let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
+        coverage.max_fov_degrees().min(FOV_MAX)
     };
-    let max_fov = coverage.max_fov_degrees().min(FOV_MAX);
     let initial_fov = FOV_DEFAULT.min(max_fov);
     log::info!("Preview: max FOV = {max_fov:.1} degrees (coverage-limited)");
 
@@ -147,7 +135,7 @@ pub fn run_preview(
         surface: None,
         surface_format: reco_core::wgpu::TextureFormat::Bgra8UnormSrgb, // overwritten in resumed()
         alpha_mode: reco_core::wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
-        pipeline: None,
+        renderer: None,
         cal,
         input_width: info.width,
         input_height: info.height,
@@ -170,7 +158,6 @@ pub fn run_preview(
         target_fov: initial_fov,
         blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
-        coverage: Some(coverage),
         max_fov,
     };
 
@@ -179,14 +166,14 @@ pub fn run_preview(
 }
 
 struct App {
-    // Drop order matters: source (NVDEC) must drop before pipeline (wgpu/Vulkan)
+    // Drop order matters: source (NVDEC) must drop before renderer (wgpu/Vulkan)
     // to avoid CUDA context teardown race. Option lets us drop explicitly.
     source: Option<reco_io::adapters::FfmpegFileSource>,
     surface: Option<reco_core::wgpu::Surface<'static>>,
     window: Option<Arc<Window>>,
     surface_format: reco_core::wgpu::TextureFormat,
     alpha_mode: reco_core::wgpu::CompositeAlphaMode,
-    pipeline: Option<reco_core::pipeline::StitchPipeline>,
+    renderer: Option<StitchRenderer>,
     cal: reco_core::calibration::MatchCalibration,
     input_width: u32,
     input_height: u32,
@@ -210,8 +197,6 @@ struct App {
     target_fov: f32,
     blend_width: f32,
     rig_tilt: f32,
-    /// Coverage boundary for no-black constraining.
-    coverage: Option<reco_core::projection::CoverageBoundary>,
     /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
     max_fov: f32,
 }
@@ -269,7 +254,7 @@ impl App {
 
         let dy = self.target_yaw - self.yaw;
         let dp = self.target_pitch - self.pitch;
-        let current_fov = self.pipeline.as_ref().map_or(90.0, |p| p.fov());
+        let current_fov = self.renderer.as_ref().map_or(90.0, |r| r.pipeline().fov());
         let df = self.target_fov - current_fov;
 
         if dy.abs() < EPSILON && dp.abs() < EPSILON && df.abs() < FOV_EPSILON {
@@ -279,11 +264,11 @@ impl App {
         self.yaw += dy * SMOOTHING;
         self.pitch += dp * SMOOTHING;
 
-        if let Some(p) = &mut self.pipeline {
-            let new_fov = p.fov() + df * SMOOTHING;
-            p.set_fov(new_fov.min(self.max_fov));
-            if (self.target_fov - p.fov()).abs() < FOV_EPSILON {
-                p.set_fov(self.target_fov);
+        if let Some(r) = &mut self.renderer {
+            let new_fov = r.pipeline().fov() + df * SMOOTHING;
+            r.pipeline_mut().set_fov(new_fov.min(self.max_fov));
+            if (self.target_fov - r.pipeline().fov()).abs() < FOV_EPSILON {
+                r.pipeline_mut().set_fov(self.target_fov);
             }
         }
 
@@ -295,8 +280,9 @@ impl App {
         }
 
         // Clamp to coverage boundary so no black edges appear
-        if let Some(ref coverage) = self.coverage {
-            let current_fov = self.pipeline.as_ref().map_or(self.target_fov, |p| p.fov());
+        if let Some(ref renderer) = self.renderer {
+            let coverage = renderer.coverage();
+            let current_fov = renderer.pipeline().fov();
             let aspect = self.width as f32 / self.height as f32;
             let clamped =
                 coverage.safe_clamp(self.yaw, self.pitch, current_fov, aspect, self.rig_tilt);
@@ -341,11 +327,8 @@ impl ApplicationHandler for App {
         let surface_format = self.surface_format;
         log::info!("Surface format: {:?}", surface_format);
 
-        // The shader outputs sRGB-encoded values directly (BT.709 YCbCr -> R'G'B').
-        // If the surface format is sRGB (e.g. Bgra8UnormSrgb on AMD), the GPU would
-        // apply sRGB encoding again on write, causing double-gamma (faded colors).
-        // Fix: render to a non-sRGB view of the surface texture.
-        let render_format = strip_srgb(surface_format);
+        // Configure surface with stripped sRGB view format to avoid double-gamma.
+        let render_format = StitchRenderer::strip_srgb(surface_format);
         let view_formats = if render_format != surface_format {
             vec![render_format]
         } else {
@@ -374,27 +357,26 @@ impl ApplicationHandler for App {
             ..Default::default()
         };
 
-        let pipeline = reco_core::pipeline::StitchPipeline::with_gpu(
-            gpu,
+        let renderer = StitchRenderer::new(
             self.cal.clone(),
+            gpu,
             viewport,
             self.input_width,
             self.input_height,
-            render_format,
-            reco_core::renderer::InputFormat::Yuv420p,
+            surface_format,
         )
-        .expect("create pipeline");
+        .expect("create renderer");
 
         println!(
             "Preview ready: GPU = {}, format = {:?}",
-            pipeline.gpu_name(),
+            renderer.gpu().gpu_name(),
             surface_format
         );
         println!("Controls: Space = play/pause, N = next frame, P = skip 30 frames");
         println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
 
         self.surface = Some(surface);
-        self.pipeline = Some(pipeline);
+        self.renderer = Some(renderer);
         self.window = Some(window);
         self.needs_redraw = true;
     }
@@ -416,15 +398,15 @@ impl ApplicationHandler for App {
                 if size.width > 0 && size.height > 0 {
                     self.width = size.width;
                     self.height = size.height;
-                    if let (Some(surface), Some(pipeline)) = (&self.surface, &mut self.pipeline) {
-                        let render_format = strip_srgb(self.surface_format);
+                    if let (Some(surface), Some(renderer)) = (&self.surface, &mut self.renderer) {
+                        let render_format = StitchRenderer::strip_srgb(self.surface_format);
                         let view_formats = if render_format != self.surface_format {
                             vec![render_format]
                         } else {
                             vec![]
                         };
                         surface.configure(
-                            pipeline.gpu().device(),
+                            renderer.gpu().device(),
                             &reco_core::wgpu::SurfaceConfiguration {
                                 usage: reco_core::wgpu::TextureUsages::RENDER_ATTACHMENT,
                                 format: self.surface_format,
@@ -436,7 +418,7 @@ impl ApplicationHandler for App {
                                 view_formats,
                             },
                         );
-                        pipeline.resize(self.width, self.height);
+                        renderer.pipeline_mut().resize(self.width, self.height);
                         self.needs_redraw = true;
                     }
                 }
@@ -549,8 +531,8 @@ impl ApplicationHandler for App {
                 }
                 self.needs_redraw = false;
 
-                let (Some(surface), Some(pipeline)) =
-                    (self.surface.as_ref(), self.pipeline.as_ref())
+                let (Some(surface), Some(renderer)) =
+                    (self.surface.as_ref(), self.renderer.as_ref())
                 else {
                     return;
                 };
@@ -563,7 +545,7 @@ impl ApplicationHandler for App {
                         return;
                     }
                 };
-                let render_format = strip_srgb(self.surface_format);
+                let render_format = StitchRenderer::strip_srgb(self.surface_format);
                 let view = frame
                     .texture
                     .create_view(&reco_core::wgpu::TextureViewDescriptor {
@@ -584,9 +566,7 @@ impl ApplicationHandler for App {
                 // Apply rig tilt yaw-pitch coupling: adjust pitch so the
                 // view stays level on the field as yaw changes.
                 let render_pitch = self.pitch + self.rig_tilt * (1.0 - self.yaw.cos());
-                if let Err(e) =
-                    pipeline.render_to_view(&left, &right, self.yaw, render_pitch, &view)
-                {
+                if let Err(e) = renderer.render_yuv(&left, &right, self.yaw, render_pitch, &view) {
                     log::error!("Render failed: {e}");
                     return;
                 }
@@ -605,7 +585,10 @@ impl ApplicationHandler for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Keep animating while smoothing hasn't converged
-        let current_fov = self.pipeline.as_ref().map_or(self.target_fov, |p| p.fov());
+        let current_fov = self
+            .renderer
+            .as_ref()
+            .map_or(self.target_fov, |r| r.pipeline().fov());
         let smoothing_active = (self.target_yaw - self.yaw).abs() > 0.0001
             || (self.target_pitch - self.pitch).abs() > 0.0001
             || (self.target_fov - current_fov).abs() > 0.01;
