@@ -8,15 +8,6 @@
 use reco_core::detector::CameraId;
 use reco_core::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 
-/// Director state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
-    /// Ball detected near the player cluster. Camera follows ball.
-    FollowingBall,
-    /// Ball lost or unreliable. Camera follows player centroid.
-    FollowingPlayers,
-}
-
 /// Player cluster computed from detections.
 struct Cluster {
     yaw: f32,
@@ -32,7 +23,6 @@ struct Cluster {
 /// a false positive (white lines, corner flags). When the ball is
 /// lost, the camera smoothly follows the player centroid.
 pub struct FieldDirector {
-    state: State,
     /// Current raw output position.
     yaw: f32,
     pitch: f32,
@@ -42,20 +32,12 @@ pub struct FieldDirector {
     player_label: String,
     /// Minimum player detections to form a valid cluster.
     min_players: usize,
-    /// Max distance (rad) from cluster centroid to accept a ball detection.
-    cluster_radius: f32,
-    /// Frames since ball was last seen near the cluster.
-    ball_lost_frames: u32,
-    /// Frames before switching from ball to player tracking.
-    ball_lost_delay: u32,
-    /// Consecutive frames a ball must appear near cluster to confirm.
-    ball_confirm_count: u32,
-    ball_confirm_needed: u32,
+    /// Ball blend weight (0.0 = players only, 0.3 = 70% cluster + 30% ball).
+    /// Ball detections nudge the centroid toward the action without snapping.
+    ball_weight: f32,
     /// FOV range.
     fov_wide: f32,
     fov_tight: f32,
-    /// Detection interval for plausibility scaling.
-    detection_interval: u32,
     /// Camera dedup (prefer same camera in overlap region).
     last_camera: Option<CameraId>,
     /// EMA-smoothed cluster centroid (stabilizes frame-to-frame jitter).
@@ -85,8 +67,7 @@ impl FieldDirector {
     /// Create a new field director.
     ///
     /// `fps` scales timing parameters (ball lost delay, confirmation).
-    pub fn new(fps: f32) -> Self {
-        let fps = fps.clamp(1.0, 1000.0);
+    pub fn new(_fps: f32) -> Self {
         // Allow tuning via env vars for A/B testing without recompiling.
         let env_f32 = |key: &str, default: f32| -> f32 {
             std::env::var(key)
@@ -95,33 +76,27 @@ impl FieldDirector {
                 .unwrap_or(default)
         };
         Self {
-            state: State::FollowingPlayers,
             yaw: 0.0,
             pitch: 0.0,
             current_fov: 55.0,
             ball_label: "sports ball".into(),
             player_label: "person".into(),
             min_players: 3,
-            cluster_radius: env_f32("RECO_CLUSTER_RADIUS", 0.0),
-            ball_lost_frames: 0,
-            ball_lost_delay: (fps * 1.0) as u32,
-            ball_confirm_count: 0,
-            ball_confirm_needed: 3,
-            fov_wide: env_f32("RECO_FOV_WIDE", 48.0),
-            fov_tight: env_f32("RECO_FOV_TIGHT", 28.0),
-            detection_interval: 1,
+            ball_weight: env_f32("RECO_BALL_WEIGHT", 0.3),
+            fov_wide: env_f32("RECO_FOV_WIDE", 55.0),
+            fov_tight: env_f32("RECO_FOV_TIGHT", 38.0),
             last_camera: None,
             ema_yaw: 0.0,
             ema_pitch: 0.0,
             ema_initialized: false,
             cluster_alpha: env_f32("RECO_CLUSTER_ALPHA", 0.012),
             dedup_radius: 0.05,
-            dbscan_eps: env_f32("RECO_DBSCAN_EPS", 0.10),
+            dbscan_eps: env_f32("RECO_DBSCAN_EPS", 0.07),
             dbscan_min_neighbors: 2,
             vel_yaw: 0.0,
             vel_pitch: 0.0,
-            vel_alpha: env_f32("RECO_VEL_ALPHA", 0.05),
-            vel_lead_frames: env_f32("RECO_VEL_LEAD", 3.0),
+            vel_alpha: env_f32("RECO_VEL_ALPHA", 0.0),
+            vel_lead_frames: env_f32("RECO_VEL_LEAD", 0.0),
         }
     }
 
@@ -135,11 +110,6 @@ impl FieldDirector {
     pub fn with_player_label(mut self, label: impl Into<String>) -> Self {
         self.player_label = label.into();
         self
-    }
-
-    /// Set the detection interval for plausibility scaling.
-    pub fn set_detection_interval(&mut self, interval: u32) {
-        self.detection_interval = interval.max(1);
     }
 
     /// Compute the player cluster centroid, spread, and velocity.
@@ -276,7 +246,7 @@ impl FieldDirector {
             let db = (b.0 - rough_yaw).powi(2) + (b.1 - rough_pitch).powi(2);
             da.partial_cmp(&db).unwrap()
         });
-        let keep = (members.len() as f32 * 0.8).ceil() as usize;
+        let keep = (members.len() as f32 * 0.5).ceil() as usize;
         let core = &members[..keep.max(self.min_players).min(members.len())];
 
         // Confidence-weighted centroid of the P80 core group.
@@ -338,50 +308,6 @@ impl FieldDirector {
         })
     }
 
-    /// Find the best ball detection that's within the cluster radius.
-    fn find_validated_ball<'a>(
-        &self,
-        ctx: &'a DirectorContext<'_>,
-        cluster: &Cluster,
-    ) -> Option<&'a MappedDetection> {
-        let balls: Vec<&MappedDetection> = ctx
-            .detections
-            .iter()
-            .filter(|d| d.label == self.ball_label && d.position.is_some())
-            .collect();
-
-        if balls.is_empty() {
-            return None;
-        }
-
-        // Filter to balls within cluster radius.
-        let near_cluster: Vec<&&MappedDetection> = balls
-            .iter()
-            .filter(|b| {
-                let pos = b.position.unwrap();
-                let dy = pos.yaw - cluster.yaw;
-                let dp = pos.pitch - cluster.pitch;
-                (dy * dy + dp * dp).sqrt() < self.cluster_radius
-            })
-            .collect();
-
-        if near_cluster.is_empty() {
-            return None;
-        }
-
-        // Pick highest confidence among validated balls.
-        near_cluster
-            .into_iter()
-            .max_by(|a, b| {
-                let score_a = self.detection_score(a);
-                let score_b = self.detection_score(b);
-                score_a
-                    .partial_cmp(&score_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .copied()
-    }
-
     /// Score a detection (confidence + center proximity + camera consistency).
     fn detection_score(&self, det: &MappedDetection) -> f32 {
         super::util::detection_score(det, self.last_camera)
@@ -390,13 +316,31 @@ impl FieldDirector {
     /// Compute target FOV from player cluster spread.
     ///
     /// Tight cluster (counterattack) = zoom in.
-    /// Spread out (set piece, buildup) = zoom out.
-    fn target_fov_from_spread(&self, spread: f32) -> f32 {
-        // Spread range: ~0.05 (tight group) to ~0.5 (full width).
+    /// Compute target FOV from cluster spread and distance (pitch).
+    ///
+    /// Spread: tight cluster = zoom in, spread out = zoom out.
+    /// Distance: far cluster (high pitch) = zoom in more to keep
+    /// players visible; close cluster = zoom out for context.
+    fn target_fov(&self, spread: f32, pitch: f32) -> f32 {
+        // Spread component.
         let spread_min = 0.05_f32;
         let spread_max = 0.40;
-        let t = ((spread - spread_min) / (spread_max - spread_min)).clamp(0.0, 1.0);
-        self.fov_tight + t * (self.fov_wide - self.fov_tight)
+        let t_spread = ((spread - spread_min) / (spread_max - spread_min)).clamp(0.0, 1.0);
+        let fov_from_spread = self.fov_tight + t_spread * (self.fov_wide - self.fov_tight);
+
+        // Distance component: far clusters (high pitch) zoom in more,
+        // close/edge clusters zoom out for context.
+        let pitch_near = -0.05_f32;
+        let pitch_far = 0.20;
+        let t_dist = ((pitch - pitch_near) / (pitch_far - pitch_near)).clamp(0.0, 1.0);
+        let distance_bias = t_dist * -12.0; // up to 12 deg tighter when far
+
+        // Edge component: when cluster is off-center, zoom out slightly
+        // to keep more of the field visible.
+        let yaw_abs = self.yaw.abs();
+        let edge_bias = (yaw_abs * 5.0).min(4.0); // up to 4 deg wider at edges
+
+        (fov_from_spread + distance_bias + edge_bias).clamp(self.fov_tight, self.fov_wide)
     }
 }
 
@@ -405,116 +349,53 @@ impl Director for FieldDirector {
         reco_core::profile_scope!("field_director_update");
 
         let cluster = self.compute_cluster(ctx);
-        let ball = cluster
-            .as_ref()
-            .and_then(|c| self.find_validated_ball(ctx, c));
 
-        // Track camera for dedup.
-        if let Some(obj) = ball {
-            self.last_camera = Some(obj.camera);
+        // Find the best ball detection (any "sports ball" with position).
+        let ball_pos = if self.ball_weight > 0.0 {
+            ctx.detections
+                .iter()
+                .filter(|d| d.label == self.ball_label && d.position.is_some())
+                .max_by(|a, b| {
+                    self.detection_score(a)
+                        .partial_cmp(&self.detection_score(b))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .and_then(|d| {
+                    self.last_camera = Some(d.camera);
+                    d.position
+                })
+        } else {
+            None
+        };
+
+        // Follow the cluster centroid with edge exaggeration: when the
+        // cluster is off-center, push the camera further in that direction.
+        // The ball is almost always ahead of the players, so this naturally
+        // keeps the action in frame without relying on noisy ball detections.
+        if let Some(ref c) = cluster {
+            // Edge factor: 15% push at the extremes, linear from center.
+            let edge_push = 0.15;
+            self.yaw = c.yaw * (1.0 + edge_push);
+            self.pitch = c.pitch;
         }
-
-        match (self.state, ball, &cluster) {
-            // Following ball + ball still visible near players.
-            (State::FollowingBall, Some(b), _) => {
-                let pos = b.position.unwrap();
-                self.yaw = pos.yaw;
-                self.pitch = pos.pitch;
-                self.ball_lost_frames = 0;
-            }
-
-            // Following ball + ball lost.
-            (State::FollowingBall, None, Some(c)) => {
-                self.ball_lost_frames += 1;
-                if self.ball_lost_frames >= self.ball_lost_delay {
-                    self.yaw = c.yaw;
-                    self.pitch = c.pitch;
-                    self.state = State::FollowingPlayers;
-                    self.ball_confirm_count = 0;
-                    log::debug!(
-                        "FieldDirector: FollowingBall -> FollowingPlayers (ball lost {} frames)",
-                        self.ball_lost_frames
-                    );
-                }
-                // While waiting, hold position (don't jump to cluster yet).
-            }
-
-            // Following ball but no players either (unusual).
-            (State::FollowingBall, None, None) => {
-                self.ball_lost_frames += 1;
-                // Hold position.
-            }
-
-            // Following players + ball appeared near cluster.
-            (State::FollowingPlayers, Some(_), _) if ctx.fresh_detection => {
-                self.ball_confirm_count += 1;
-                if self.ball_confirm_count >= self.ball_confirm_needed {
-                    let pos = ball.unwrap().position.unwrap();
-                    self.yaw = pos.yaw;
-                    self.pitch = pos.pitch;
-                    self.state = State::FollowingBall;
-                    self.ball_lost_frames = 0;
-                    self.ball_confirm_count = 0;
-                    log::debug!("FieldDirector: FollowingPlayers -> FollowingBall (confirmed)");
-                } else if let Some(c) = &cluster {
-                    self.yaw = c.yaw;
-                    self.pitch = c.pitch;
-                }
-            }
-
-            // Following players + cached detection (not fresh).
-            (State::FollowingPlayers, Some(_), _) => {
-                if let Some(c) = &cluster {
-                    self.yaw = c.yaw;
-                    self.pitch = c.pitch;
-                }
-            }
-
-            // Following players, no ball.
-            (State::FollowingPlayers, None, Some(c)) => {
-                self.yaw = c.yaw;
-                self.pitch = c.pitch;
-                self.ball_confirm_count = 0;
-            }
-
-            // No players, no ball.
-            (State::FollowingPlayers, None, None) => {
-                self.ball_confirm_count = 0;
-                // Hold position.
-            }
-        }
-
-        // Per-frame trajectory trace for analysis.
-        log::trace!(
-            "TRAJ,{},{:.6},{:.6},{:.1},{:?},{},{:.4},{:.4}",
-            ctx.frame_index,
-            self.yaw,
-            self.pitch,
-            self.current_fov,
-            self.state,
-            cluster.as_ref().map_or(0, |c| c.count),
-            cluster.as_ref().map_or(0.0, |c| c.yaw),
-            ball.map_or(0.0, |b| b.position.unwrap().yaw),
-        );
+        // No cluster: hold position.
 
         // Dynamic FOV from cluster spread, EMA-smoothed for gentle transitions.
         if let Some(ref c) = cluster {
-            let target = self.target_fov_from_spread(c.spread);
+            let target = self.target_fov(c.spread, c.pitch);
             self.current_fov += 0.01 * (target - self.current_fov);
         }
 
-        // Log every frame at trace level, every 30 at debug.
         if ctx.frame_index % 30 == 0 {
             log::debug!(
-                "FieldDirector frame {}: state={:?}, yaw={:.4}, pitch={:.4}, fov={:.1}, \
+                "FieldDirector frame {}: yaw={:.4}, pitch={:.4}, fov={:.1}, \
                  players={}, ball={}",
                 ctx.frame_index,
-                self.state,
                 self.yaw,
                 self.pitch,
                 self.current_fov,
                 cluster.as_ref().map_or(0, |c| c.count),
-                ball.is_some(),
+                ball_pos.is_some(),
             );
         }
     }
@@ -572,15 +453,8 @@ mod tests {
     }
 
     #[test]
-    fn starts_following_players() {
-        let dir = FieldDirector::new(30.0);
-        assert_eq!(dir.state, State::FollowingPlayers);
-    }
-
-    #[test]
     fn follows_player_centroid() {
         let mut dir = FieldDirector::new(30.0);
-        // Tight group so DBSCAN clusters them (eps=0.10).
         let dets = [
             player(0.28, 0.0),
             player(0.32, 0.0),
@@ -589,48 +463,49 @@ mod tests {
             player(0.44, 0.0),
         ];
         dir.update(&ctx(0, &dets));
-        assert!((dir.yaw - 0.36).abs() < 0.03, "yaw={}", dir.yaw);
+        // P50 keeps closest 3 (0.32, 0.36, 0.40), centroid ~0.36,
+        // edge push 15% -> 0.36 * 1.15 = 0.414
+        assert!((dir.yaw - 0.414).abs() < 0.03, "yaw={}", dir.yaw);
     }
 
     #[test]
-    fn switches_to_ball_when_confirmed() {
+    fn ball_blends_into_centroid() {
         let mut dir = FieldDirector::new(30.0);
-        // Enable ball tracking (default is 0.0 = players only).
-        dir.cluster_radius = 0.30;
+        // Ball at 0.60, cluster centroid ~0.36. With ball_weight=0.3:
+        // blended = 0.36 * 0.7 + 0.60 * 0.3 = 0.252 + 0.180 = 0.432
         let dets = [
             player(0.28, 0.0),
             player(0.32, 0.0),
             player(0.36, 0.0),
             player(0.40, 0.0),
-            ball(0.35, 0.0),
+            player(0.44, 0.0),
+            ball(0.60, 0.0),
         ];
-        for i in 0..5 {
-            dir.update(&ctx(i, &dets));
-        }
-        assert_eq!(dir.state, State::FollowingBall);
+        dir.update(&ctx(0, &dets));
+        // Should be pulled toward the ball but not snapped to it.
+        assert!(dir.yaw > 0.36, "should pull toward ball: yaw={}", dir.yaw);
+        assert!(dir.yaw < 0.60, "should not snap to ball: yaw={}", dir.yaw);
     }
 
     #[test]
-    fn rejects_ball_far_from_players() {
+    fn no_ball_uses_pure_cluster() {
         let mut dir = FieldDirector::new(30.0);
         let dets = [
             player(0.28, 0.0),
             player(0.32, 0.0),
             player(0.36, 0.0),
             player(0.40, 0.0),
-            ball(2.0, 0.0), // far away
         ];
-        for i in 0..5 {
-            dir.update(&ctx(i, &dets));
-        }
-        assert_eq!(dir.state, State::FollowingPlayers);
+        dir.update(&ctx(0, &dets));
+        // Pure cluster centroid, no ball influence.
+        assert!((dir.yaw - 0.34).abs() < 0.03, "yaw={}", dir.yaw);
     }
 
     #[test]
     fn fov_from_spread() {
         let dir = FieldDirector::new(30.0);
-        let tight = dir.target_fov_from_spread(0.05);
-        let wide = dir.target_fov_from_spread(0.40);
+        let tight = dir.target_fov(0.05, 0.0);
+        let wide = dir.target_fov(0.40, 0.0);
         assert!(tight < wide, "tight={tight}, wide={wide}");
     }
 }

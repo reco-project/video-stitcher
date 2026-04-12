@@ -812,8 +812,16 @@ impl StitchSession {
                     };
                     // Only filter if the polygon has enough vertices.
                     if polygon.len() >= 3 {
-                        let point = [d.center_x as f64, d.center_y as f64];
-                        return point_in_polygon(point, polygon);
+                        // Test at 75th percentile height of bbox (between
+                        // center and feet). Both this point AND the feet
+                        // must be inside the ROI. This rejects people whose
+                        // feet are just inside the boundary but body is mostly
+                        // outside (coaches leaning in, sideline spectators).
+                        let feet_x = d.center_x as f64;
+                        let feet_y = (d.center_y + d.height * 0.5) as f64;
+                        let p75_y = (d.center_y + d.height * 0.25) as f64;
+                        return point_in_polygon([feet_x, feet_y], polygon)
+                            && point_in_polygon([feet_x, p75_y], polygon);
                     }
                 }
                 true

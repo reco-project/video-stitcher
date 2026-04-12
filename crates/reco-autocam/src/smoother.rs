@@ -251,8 +251,8 @@ impl SmoothedDirector {
             causal_pitch: OneEuroAxis::new(),
             causal_fov: OneEuroAxis::new(),
             smoothed_position: ViewportPosition::default(),
-            // 20 deg/s at the given fps. Comfortable broadcast pan speed.
-            max_slew: 20.0_f32.to_radians() / fps,
+            // 30 deg/s at the given fps.
+            max_slew: 30.0_f32.to_radians() / fps,
             initialized: false,
         }
     }

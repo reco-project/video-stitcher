@@ -172,10 +172,7 @@ pub fn setup_autocam(
                 Box::new(d)
             }
             TrackingMode::Field => {
-                let mut d = FieldDirector::new(fps);
-                if detection_interval > 1 {
-                    d.set_detection_interval(detection_interval as u32);
-                }
+                let d = FieldDirector::new(fps);
                 log::info!("Tracking mode: field (ball + players)");
                 Box::new(d)
             }
