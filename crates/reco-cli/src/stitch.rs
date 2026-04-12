@@ -88,7 +88,9 @@ fn run_with_stitch_job(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> 
 
 /// Layer 2 path: SmartFileSource + session.run() with autocam support.
 fn run_with_autocam(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow::Result<()> {
-    let model_path = args.model_path.expect("autocam model required");
+    let model_path = args
+        .model_path
+        .ok_or_else(|| anyhow::anyhow!("--model is required when --tracking is enabled"))?;
 
     // Load calibration
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(args.calibration))?;

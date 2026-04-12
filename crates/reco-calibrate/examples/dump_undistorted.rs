@@ -53,8 +53,8 @@ fn main() {
 
     // GPU undistort both frames
     let gpu = pollster::block_on(GpuContext::new()).expect("no GPU");
-    let left_undistort = GpuUndistort::new(&gpu, lw, lh);
-    let right_undistort = GpuUndistort::new(&gpu, rw, rh);
+    let left_undistort = GpuUndistort::new(&gpu, lw, lh, lw as f32 / lh as f32);
+    let right_undistort = GpuUndistort::new(&gpu, rw, rh, rw as f32 / rh as f32);
     let left_rgba =
         left_undistort.undistort(&gpu, &left_yuv.y, &left_yuv.u, &left_yuv.v, &cal.left);
     let right_rgba =

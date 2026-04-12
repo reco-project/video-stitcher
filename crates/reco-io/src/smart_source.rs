@@ -388,6 +388,12 @@ impl SmartFileSource {
     ///
     /// The session needs these to release slots back to the decode threads
     /// after rendering each frame. Returns `None` for CPU-mode sources.
+    ///
+    /// **Important:** The returned senders are clones. The caller MUST drop
+    /// them before this source is dropped, otherwise the `Drop` impl cannot
+    /// fully signal decode threads to shut down (the cloned senders keep the
+    /// channel alive). In practice, the session drops senders when `run()`
+    /// returns, which happens before the source is dropped.
     #[cfg(target_os = "linux")]
     pub fn take_slot_senders(
         &mut self,
@@ -477,11 +483,23 @@ impl Drop for SmartFileSource {
             // 3. Join all threads -> VideoDecoder::Drop completes CUDA cleanup
             //    while shared CUDA VMM memory is still mapped
             // 4. SharedTextureSet drops naturally -> CUDA memory unmapped
+            //
+            // KNOWN LIMITATION: If the session has called `take_slot_senders()`
+            // and still holds cloned senders, replacing our senders here does NOT
+            // close the original receivers in the decode threads - the cloned
+            // senders keep the channel alive. This is safe today because:
+            //   - The session drops its senders before SmartFileSource is dropped
+            //     (session.run() returns, then the source is dropped).
+            //   - If a caller held senders past source drop, decode threads would
+            //     block on slot_free_rx.recv() until those senders are also dropped.
+            // A proper fix would require the decode threads to use a cancellation
+            // token or select on both the slot channel and a shutdown signal.
 
             // Step 1: Drop frame_rx to unblock pairing thread
             state.frame_rx = None;
 
-            // Step 2: Replace slot senders with dead channels
+            // Step 2: Replace slot senders with dead channels.
+            // This only unblocks decode threads if no other clones exist (see above).
             let (tx, _) = std::sync::mpsc::sync_channel(0);
             state.shared.left_slot_free_tx = tx;
             let (tx, _) = std::sync::mpsc::sync_channel(0);

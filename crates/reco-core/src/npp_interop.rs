@@ -232,11 +232,22 @@ pub fn npp_nv12_to_rgb(
     src_y: CUdeviceptr,
     y_pitch: usize,
     src_uv: CUdeviceptr,
-    _uv_pitch: usize,
+    uv_pitch: usize,
     dst: CUdeviceptr,
     width: u32,
     height: u32,
 ) -> Result<(), NppError> {
+    // NPP's NV12ToRGB _Ctx variant takes a single nSrcStep for both planes.
+    // NVDEC and shared textures always produce matching pitches, but if they
+    // ever diverge the UV plane would be read with the wrong stride, producing
+    // color corruption that's hard to diagnose. Warn loudly if this happens.
+    if y_pitch != uv_pitch {
+        log::warn!(
+            "npp_nv12_to_rgb: Y pitch ({y_pitch}) != UV pitch ({uv_pitch}). \
+             NPP uses a single stride for both planes; UV data may be read incorrectly."
+        );
+    }
+
     let npp = npp()?;
     let roi = NppiSize {
         width: width as i32,

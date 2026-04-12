@@ -61,13 +61,14 @@ pub enum ChromaFormat<'a> {
 /// Coordinates are in normalized image space `[0.0, 1.0]` relative to
 /// the frame dimensions. Use [`crate::projection::camera_to_panorama`]
 /// to map these to panoramic yaw/pitch.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Detection {
     /// Which camera this detection came from.
     pub camera: CameraId,
 
-    /// Detection class label (e.g. "ball", "player").
-    pub label: String,
+    /// Detection class index from the model (e.g. 0 = "ball", 1 = "person").
+    /// Map to a human-readable label via the detector's `class_names()`.
+    pub class_id: u16,
 
     /// Confidence score in `[0.0, 1.0]`.
     pub confidence: f32,
@@ -132,38 +133,16 @@ pub trait GpuDetector: Send {
     ) -> Vec<Detection>;
 }
 
-/// Test whether a point lies inside a polygon using the ray-casting algorithm.
+/// Re-export of [`crate::projection::point_in_polygon`] for backward compatibility.
 ///
-/// Casts a horizontal ray from the point to the right and counts how many
-/// polygon edges it crosses. An odd count means the point is inside.
-///
-/// Both `point` and `polygon` use `[x, y]` coordinates in any consistent
-/// space (typically normalized `[0,1]` camera coordinates).
-///
-/// Returns `false` for degenerate polygons with fewer than 3 vertices.
+/// This function now lives in the `projection` module where geometric
+/// utilities belong. This re-export keeps existing imports working.
+#[deprecated(
+    since = "0.2.0",
+    note = "use `reco_core::projection::point_in_polygon` instead"
+)]
 pub fn point_in_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
-    let n = polygon.len();
-    if n < 3 {
-        return false;
-    }
-
-    let (px, py) = (point[0], point[1]);
-    let mut inside = false;
-
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = (polygon[i][0], polygon[i][1]);
-        let (xj, yj) = (polygon[j][0], polygon[j][1]);
-
-        // Check if the edge from j to i crosses the horizontal ray at py.
-        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-
-        j = i;
-    }
-
-    inside
+    crate::projection::point_in_polygon(point, polygon)
 }
 
 /// Trait for object detection on Metal-resident NV12 frames (macOS).
@@ -194,73 +173,4 @@ pub trait MetalDetector: Send {
         height: u32,
         gpu: &crate::gpu::GpuContext,
     ) -> Vec<Detection>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // --- point_in_polygon tests ---
-
-    /// Unit square: [0,0] -> [1,0] -> [1,1] -> [0,1].
-    fn unit_square() -> Vec<[f64; 2]> {
-        vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-    }
-
-    #[test]
-    fn pip_center_of_square() {
-        assert!(point_in_polygon([0.5, 0.5], &unit_square()));
-    }
-
-    #[test]
-    fn pip_outside_square() {
-        assert!(!point_in_polygon([1.5, 0.5], &unit_square()));
-        assert!(!point_in_polygon([-0.1, 0.5], &unit_square()));
-        assert!(!point_in_polygon([0.5, -0.1], &unit_square()));
-        assert!(!point_in_polygon([0.5, 1.1], &unit_square()));
-    }
-
-    #[test]
-    fn pip_triangle() {
-        let triangle = vec![[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]];
-        // Inside
-        assert!(point_in_polygon([0.5, 0.3], &triangle));
-        // Outside (right of the triangle)
-        assert!(!point_in_polygon([0.9, 0.8], &triangle));
-    }
-
-    #[test]
-    fn pip_concave_l_shape() {
-        // L-shaped polygon (concave):
-        //   (0,0) -> (1,0) -> (1,0.5) -> (0.5,0.5) -> (0.5,1) -> (0,1)
-        let l_shape = vec![
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 0.5],
-            [0.5, 0.5],
-            [0.5, 1.0],
-            [0.0, 1.0],
-        ];
-        // Inside the bottom-right arm
-        assert!(point_in_polygon([0.75, 0.25], &l_shape));
-        // Inside the top-left arm
-        assert!(point_in_polygon([0.25, 0.75], &l_shape));
-        // In the concave cutout (top-right) - should be outside
-        assert!(!point_in_polygon([0.75, 0.75], &l_shape));
-    }
-
-    #[test]
-    fn pip_degenerate_polygon() {
-        // Fewer than 3 vertices: always false.
-        assert!(!point_in_polygon([0.5, 0.5], &[]));
-        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0]]));
-        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0], [1.0, 1.0]]));
-    }
-
-    #[test]
-    fn pip_near_edge_of_square() {
-        // Just inside the edge
-        assert!(point_in_polygon([0.001, 0.5], &unit_square()));
-        assert!(point_in_polygon([0.999, 0.5], &unit_square()));
-    }
 }

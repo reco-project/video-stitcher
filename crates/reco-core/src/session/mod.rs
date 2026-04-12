@@ -47,11 +47,12 @@ use thiserror::Error;
 /// the stricter (lower) limit wins. Returns [`u64::MAX`] when neither is set,
 /// meaning "process all available frames".
 pub fn compute_frame_limit(duration_secs: Option<f64>, max_frames: Option<u64>, fps: f64) -> u64 {
+    let fps = if fps > 0.0 { fps } else { 30.0 };
     match (duration_secs, max_frames) {
-        (Some(dur), Some(mf)) => ((dur * fps) as u64).min(mf),
-        (Some(dur), None) => (dur * fps) as u64,
-        (None, Some(mf)) => mf,
-        (None, None) => u64::MAX,
+        (Some(dur), Some(mf)) if dur > 0.0 => ((dur * fps) as u64).min(mf),
+        (Some(dur), None) if dur > 0.0 => (dur * fps) as u64,
+        (_, Some(mf)) => mf,
+        _ => u64::MAX,
     }
 }
 
@@ -794,7 +795,7 @@ impl StitchSession {
     /// camera-space center falls outside the corresponding camera's polygon
     /// are discarded before reaching the director.
     fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
-        use crate::detector::point_in_polygon;
+        use crate::projection::point_in_polygon;
 
         let calibration = self.pipeline.calibration();
         let scene = &self.pipeline.scene;
@@ -836,7 +837,7 @@ impl StitchSession {
                 );
                 MappedDetection {
                     camera: d.camera,
-                    label: d.label.clone(),
+                    class_id: d.class_id,
                     confidence: d.confidence,
                     camera_center: (d.center_x, d.center_y),
                     camera_size: (d.width, d.height),
@@ -977,10 +978,11 @@ impl StitchSession {
         }
         let pos = self.director_position();
 
-        let bind_groups = self
-            .gpu_bind_groups
-            .as_ref()
-            .expect("GPU bind groups not configured - call setup_gpu_source() before run()");
+        let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
+            SessionError::ZeroCopy(
+                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
+            )
+        })?;
         let render_buf =
             self.pipeline
                 .render_gpu_frame(bind_groups, left_slot, right_slot, pos.yaw, pos.pitch);

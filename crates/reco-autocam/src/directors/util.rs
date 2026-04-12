@@ -3,16 +3,16 @@
 use reco_core::detector::CameraId;
 use reco_core::director::MappedDetection;
 
-/// Default field of view in degrees, used as fallback across the crate.
+/// Default tracking field of view in degrees.
+///
+/// Used by directors and the smoother as a fallback when the inner director
+/// does not emit an explicit FOV. Note: the pipeline's `ViewportConfig`
+/// defaults to 75.0 degrees - the tracking FOV is intentionally narrower
+/// to provide a tighter view of the action.
 pub const DEFAULT_FOV: f32 = 55.0;
 
 /// Minimum detection confidence for player filtering.
-#[allow(dead_code)]
 pub const MIN_PLAYER_CONFIDENCE: f32 = 0.3;
-
-/// Log interval in frames for debug output.
-#[allow(dead_code)]
-pub const LOG_INTERVAL: u64 = 30;
 
 /// Score a detection for best-candidate selection.
 ///

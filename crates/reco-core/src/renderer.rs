@@ -99,7 +99,7 @@ impl Vertex {
     };
 }
 
-/// Generate quad vertices for a plane (1.0 wide, 16:9 aspect).
+/// Generate quad vertices for a plane (1.0 wide, given aspect ratio).
 ///
 /// The quad lies in the XY plane, centered at origin. The model matrix
 /// positions and rotates it to match the v1 Three.js `PlaneGeometry`.
@@ -246,6 +246,7 @@ impl Renderer {
         input_height: u32,
         output_format: wgpu::TextureFormat,
         input_format: InputFormat,
+        scene: &SceneGeometry,
     ) -> Self {
         let device = &gpu.device;
 
@@ -256,8 +257,7 @@ impl Renderer {
         });
 
         // Vertex buffer (quad for both planes — same shape, different model matrices)
-        #[allow(deprecated)]
-        let vertices = quad_vertices(PLANE_ASPECT);
+        let vertices = quad_vertices(scene.plane_aspect);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad_vertices"),
             contents: bytemuck::cast_slice(&vertices),

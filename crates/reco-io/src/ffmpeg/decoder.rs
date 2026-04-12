@@ -275,19 +275,27 @@ impl VideoDecoder {
         // original stream parameters before hwaccel overrides the format.
         let is_10bit = {
             let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
-            let pix_fmt =
-                unsafe { std::mem::transmute::<i32, ffi::AVPixelFormat>(raw_codecpar.format) };
-            let pixel = Pixel::from(pix_fmt);
-            let is_10 = matches!(
-                pixel,
-                Pixel::YUV420P10LE | Pixel::YUV420P10BE | Pixel::P010LE | Pixel::P010BE
-            );
-            if is_10 {
-                log::info!(
-                    "Source is 10-bit ({pixel:?}), GPU textures will use R16Unorm/Rg16Unorm"
+            let format_i32 = raw_codecpar.format;
+            // Validate the pixel format via FFmpeg before converting to the
+            // Rust enum. av_pix_fmt_desc_get returns NULL for unknown/invalid
+            // format values, letting us avoid transmute on out-of-range i32.
+            let desc = unsafe { ffi::av_pix_fmt_desc_get(raw_i32_to_pix_fmt(format_i32)) };
+            if desc.is_null() {
+                log::warn!("Unknown pixel format {format_i32}, assuming 8-bit");
+                false
+            } else {
+                let pixel = Pixel::from(raw_i32_to_pix_fmt(format_i32));
+                let is_10 = matches!(
+                    pixel,
+                    Pixel::YUV420P10LE | Pixel::YUV420P10BE | Pixel::P010LE | Pixel::P010BE
                 );
+                if is_10 {
+                    log::info!(
+                        "Source is 10-bit ({pixel:?}), GPU textures will use R16Unorm/Rg16Unorm"
+                    );
+                }
+                is_10
             }
-            is_10
         };
 
         log::info!(
@@ -471,7 +479,7 @@ impl VideoDecoder {
                 profile_scope!("h264_decode");
                 if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
                     if is_hw_frame(&self.decoded_frame) {
-                        return Ok(Some(self.extract_gpu_frame()));
+                        return Ok(Some(self.extract_gpu_frame()?));
                     }
                     // Frame came back as CPU (unusual) — fallback
                     return Ok(None);
@@ -494,7 +502,7 @@ impl VideoDecoder {
                 if self.decoder.receive_frame(&mut self.decoded_frame).is_ok()
                     && is_hw_frame(&self.decoded_frame)
                 {
-                    return Ok(Some(self.extract_gpu_frame()));
+                    return Ok(Some(self.extract_gpu_frame()?));
                 }
                 return Ok(None);
             }
@@ -580,7 +588,7 @@ impl VideoDecoder {
     /// The frame's `data[0]` is the Y plane device pointer, `data[1]` is
     /// the UV plane device pointer. `linesize[0]` and `linesize[1]` are
     /// the respective pitches.
-    fn extract_gpu_frame(&self) -> GpuFrame {
+    fn extract_gpu_frame(&self) -> Result<GpuFrame, DecodeError> {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
 
         let pts = raw.pts;
@@ -595,10 +603,11 @@ impl VideoDecoder {
         // Negative values would wrap to huge usize, causing GPU memory corruption.
         let y_ls = raw.linesize[0];
         let uv_ls = raw.linesize[1];
-        debug_assert!(
-            y_ls > 0 && uv_ls > 0,
-            "negative linesize not supported for GPU decode"
-        );
+        if y_ls <= 0 || uv_ls <= 0 {
+            return Err(DecodeError::ConversionError(format!(
+                "negative or zero linesize: y={y_ls}, uv={uv_ls}"
+            )));
+        }
 
         let pixel_format = self.pixel_format();
         log::trace!(
@@ -608,16 +617,16 @@ impl VideoDecoder {
             self.width,
             self.height
         );
-        GpuFrame {
+        Ok(GpuFrame {
             y_ptr: raw.data[0] as u64,
             uv_ptr: raw.data[1] as u64,
-            y_pitch: y_ls.max(0) as usize,
-            uv_pitch: uv_ls.max(0) as usize,
+            y_pitch: y_ls as usize,
+            uv_pitch: uv_ls as usize,
             width: self.width,
             height: self.height,
             timestamp_us,
             pixel_format,
-        }
+        })
     }
 
     /// Extract YUV420P planes from the current decoded frame.
@@ -814,6 +823,24 @@ fn try_hwaccel(
 
     log::info!("No hardware decoder available — using software decode");
     (DecodeBackend::Software, ptr::null_mut())
+}
+
+/// Convert a raw `i32` codec format to `ffi::AVPixelFormat`.
+///
+/// `AVPixelFormat` is `#[repr(i32)]`, so this is a layout-safe reinterpret
+/// via `union` rather than `std::mem::transmute`. FFmpeg accepts any i32
+/// and returns NULL/error for unknown values, so no Rust-side validation
+/// of the enum discriminant is needed.
+fn raw_i32_to_pix_fmt(v: i32) -> ffi::AVPixelFormat {
+    #[repr(C)]
+    union Reinterpret {
+        i: i32,
+        fmt: ffi::AVPixelFormat,
+    }
+    // SAFETY: AVPixelFormat is #[repr(i32)], so i32 and AVPixelFormat have
+    // identical size and alignment. Reading fmt after writing i is defined
+    // because both are integer types with the same representation.
+    unsafe { Reinterpret { i: v }.fmt }
 }
 
 /// Copy one plane from an FFmpeg frame into a reusable buffer, removing stride padding.

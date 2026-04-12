@@ -67,9 +67,9 @@ pub struct FieldDirector {
     yaw: f32,
     pitch: f32,
     current_fov: f32,
-    /// Label filters.
-    ball_label: String,
-    player_label: String,
+    /// Class ID filters.
+    ball_class_id: u16,
+    player_class_id: u16,
     /// Minimum players to form a valid cluster.
     min_players: usize,
     /// Ball blend weight (0.0 = players only, 0.3 = 70/30 cluster/ball).
@@ -98,8 +98,8 @@ impl FieldDirector {
             yaw: 0.0,
             pitch: 0.0,
             current_fov: DEFAULT_FOV,
-            ball_label: "sports ball".into(),
-            player_label: "person".into(),
+            ball_class_id: 32,  // COCO "sports ball"
+            player_class_id: 0, // COCO "person"
             min_players: 3,
             ball_weight: 0.3,
             fov_wide: 55.0,
@@ -114,15 +114,19 @@ impl FieldDirector {
         }
     }
 
-    /// Set the ball label (default: "sports ball").
-    pub fn with_ball_label(mut self, label: impl Into<String>) -> Self {
-        self.ball_label = label.into();
+    /// Set the ball class ID (default: 32, COCO "sports ball").
+    ///
+    /// Resolve label names to class IDs via the detector's `class_names()`.
+    pub fn with_ball_class_id(mut self, class_id: u16) -> Self {
+        self.ball_class_id = class_id;
         self
     }
 
-    /// Set the player label (default: "person").
-    pub fn with_player_label(mut self, label: impl Into<String>) -> Self {
-        self.player_label = label.into();
+    /// Set the player class ID (default: 0, COCO "person").
+    ///
+    /// Resolve label names to class IDs via the detector's `class_names()`.
+    pub fn with_player_class_id(mut self, class_id: u16) -> Self {
+        self.player_class_id = class_id;
         self
     }
 
@@ -159,7 +163,7 @@ impl FieldDirector {
             .detections
             .iter()
             .filter(|d| {
-                d.label == self.player_label
+                d.class_id == self.player_class_id
                     && d.position.is_some()
                     && d.confidence >= MIN_PLAYER_CONFIDENCE
             })
@@ -194,7 +198,7 @@ impl FieldDirector {
         members.sort_by(|a, b| {
             let da = (a.0 - rough_yaw).powi(2) + (a.1 - rough_pitch).powi(2);
             let db = (b.0 - rough_yaw).powi(2) + (b.1 - rough_pitch).powi(2);
-            da.partial_cmp(&db).unwrap()
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
         });
         let keep = (members.len() as f32 * TRIM_FRACTION).ceil() as usize;
         members.truncate(keep.max(self.min_players).min(members.len()));
@@ -211,8 +215,14 @@ impl FieldDirector {
             sum_pitch += pitch * conf;
             total_weight += conf;
         }
+        if total_weight <= 0.0 {
+            return (self.ema_yaw, self.ema_pitch);
+        }
         let raw_yaw = sum_yaw / total_weight;
         let raw_pitch = sum_pitch / total_weight;
+        if !raw_yaw.is_finite() || !raw_pitch.is_finite() {
+            return (self.ema_yaw, self.ema_pitch);
+        }
 
         if !self.ema_initialized {
             self.ema_yaw = raw_yaw;
@@ -227,6 +237,9 @@ impl FieldDirector {
     }
 
     /// Full pipeline: filter -> cluster -> trim -> smooth -> build Cluster.
+    ///
+    /// EMA is only updated on frames with fresh detections to prevent
+    /// the alpha from compounding on stale data at high detection intervals.
     fn compute_cluster(&mut self, ctx: &DirectorContext<'_>) -> Option<Cluster> {
         let deduped = self.filter_and_dedup(ctx);
         let core = self.cluster_and_trim(&deduped);
@@ -235,7 +248,15 @@ impl FieldDirector {
             return None;
         }
 
-        let (centroid_yaw, centroid_pitch) = self.smooth_centroid(&core);
+        // Only update the EMA on fresh detection frames. Between detections,
+        // return the cached EMA position to avoid compounding alpha on stale data.
+        let (centroid_yaw, centroid_pitch) = if ctx.fresh_detection {
+            self.smooth_centroid(&core)
+        } else if self.ema_initialized {
+            (self.ema_yaw, self.ema_pitch)
+        } else {
+            self.smooth_centroid(&core)
+        };
 
         let spread = core
             .iter()
@@ -279,7 +300,7 @@ impl Director for FieldDirector {
         let ball_pos = if self.ball_weight > 0.0 {
             ctx.detections
                 .iter()
-                .filter(|d| d.label == self.ball_label && d.position.is_some())
+                .filter(|d| d.class_id == self.ball_class_id && d.position.is_some())
                 .max_by(|a, b| {
                     util::detection_score(a, self.last_camera)
                         .partial_cmp(&util::detection_score(b, self.last_camera))
@@ -357,7 +378,7 @@ mod tests {
     fn player(yaw: f32, pitch: f32) -> MappedDetection {
         MappedDetection {
             camera: CameraId::Left,
-            label: "person".into(),
+            class_id: 0, // "person"
             confidence: 0.9,
             camera_center: (0.5, 0.5),
             camera_size: (0.05, 0.15),
@@ -372,7 +393,7 @@ mod tests {
     fn player_right(yaw: f32, pitch: f32) -> MappedDetection {
         MappedDetection {
             camera: CameraId::Right,
-            label: "person".into(),
+            class_id: 0, // "person"
             confidence: 0.9,
             camera_center: (0.5, 0.5),
             camera_size: (0.05, 0.15),
@@ -387,7 +408,7 @@ mod tests {
     fn ball(yaw: f32, pitch: f32) -> MappedDetection {
         MappedDetection {
             camera: CameraId::Left,
-            label: "sports ball".into(),
+            class_id: 32, // "sports ball"
             confidence: 0.8,
             camera_center: (0.5, 0.5),
             camera_size: (0.02, 0.02),

@@ -126,6 +126,7 @@ impl StitchPipeline {
             input_height,
             output_format,
             input_format,
+            &scene,
         );
 
         log::info!(

@@ -1,11 +1,8 @@
 //! Output configuration for the stitching pipeline.
 //!
-//! Defines codec, bitrate, format, and audio settings for encoded output.
-//! These types live in `reco-core` (not `reco-io`) so that the session API
-//! can accept output configuration without depending on FFmpeg.
-//!
-//! The I/O backend (e.g. `reco-io`'s FFmpeg encoder) maps these types to
-//! encoder-specific parameters internally.
+//! These types describe codec/quality/format choices for encoded output.
+//! They live in reco-core so that `StitchSession` consumers can configure
+//! output without depending on a specific I/O backend.
 
 /// Video codec for the output stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

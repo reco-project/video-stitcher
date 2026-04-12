@@ -39,8 +39,8 @@ pub struct BallDirector {
     fov_wide: f32,
     /// Tight FOV (zoomed in) in degrees.
     fov_tight: f32,
-    /// Label to track (e.g. "ball").
-    target_label: String,
+    /// Class ID to track (e.g. 0 for "ball").
+    target_class_id: u16,
     /// Which camera produced the last accepted ball detection.
     /// Used for deduplication in the overlap region.
     last_camera: Option<CameraId>,
@@ -81,7 +81,7 @@ impl BallDirector {
             current_fov: 55.0,
             fov_wide: 65.0,
             fov_tight: 35.0,
-            target_label: "ball".into(),
+            target_class_id: 0,
             last_camera: None,
             frames_without_ball: 0,
             search_delay: (fps * 1.5) as u32,
@@ -95,9 +95,11 @@ impl BallDirector {
         }
     }
 
-    /// Set the target label to track (default: "ball").
-    pub fn with_label(mut self, label: impl Into<String>) -> Self {
-        self.target_label = label.into();
+    /// Set the target class ID to track (default: 0).
+    ///
+    /// Resolve label names to class IDs via the detector's `class_names()`.
+    pub fn with_class_id(mut self, class_id: u16) -> Self {
+        self.target_class_id = class_id;
         self
     }
 
@@ -118,7 +120,7 @@ impl BallDirector {
         let balls: Vec<_> = ctx
             .detections
             .iter()
-            .filter(|d| d.label == self.target_label && d.position.is_some())
+            .filter(|d| d.class_id == self.target_class_id && d.position.is_some())
             .collect();
 
         if balls.is_empty() {
@@ -326,7 +328,7 @@ mod tests {
     fn ball_detection(yaw: f32, pitch: f32) -> MappedDetection {
         MappedDetection {
             camera: CameraId::Left,
-            label: "ball".into(),
+            class_id: 0, // "ball"
             confidence: 0.9,
             camera_center: (0.5, 0.5),
             camera_size: (0.02, 0.02),
@@ -348,7 +350,7 @@ mod tests {
     ) -> MappedDetection {
         MappedDetection {
             camera,
-            label: "ball".into(),
+            class_id: 0, // "ball"
             confidence,
             camera_center,
             camera_size: (0.02, 0.02),
@@ -594,13 +596,13 @@ mod tests {
     // ---- find_ball ----
 
     #[test]
-    fn find_ball_ignores_non_ball_labels() {
+    fn find_ball_ignores_non_ball_class_ids() {
         let dir = BallDirector::new(30.0);
 
         let detections = [
             MappedDetection {
                 camera: CameraId::Left,
-                label: "player".into(),
+                class_id: 1, // "player" - not the target
                 confidence: 0.95,
                 camera_center: (0.5, 0.5),
                 camera_size: (0.1, 0.2),
@@ -616,7 +618,7 @@ mod tests {
         let c = ctx(0, &detections);
         let found = dir.find_ball(&c);
         assert!(found.is_some());
-        assert_eq!(found.unwrap().label, "ball");
+        assert_eq!(found.unwrap().class_id, 0); // "ball"
     }
 
     #[test]
@@ -624,7 +626,7 @@ mod tests {
         let dir = BallDirector::new(30.0);
         let detections = [MappedDetection {
             camera: CameraId::Left,
-            label: "ball".into(),
+            class_id: 0, // "ball"
             confidence: 0.9,
             camera_center: (0.5, 0.5),
             camera_size: (0.02, 0.02),

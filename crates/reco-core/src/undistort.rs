@@ -7,8 +7,7 @@
 
 use crate::calibration::CameraParams;
 use crate::gpu::GpuContext;
-#[allow(deprecated)]
-use crate::renderer::{InputFormat, PLANE_ASPECT, build_gpu_uniforms, opengl_to_wgpu_matrix};
+use crate::renderer::{InputFormat, build_gpu_uniforms, opengl_to_wgpu_matrix};
 
 use bytemuck::Pod;
 use nalgebra::Orthographic3;
@@ -42,10 +41,9 @@ impl Vertex {
 }
 
 /// Same quad as the stitching renderer.
-#[allow(deprecated)]
-fn quad_vertices() -> [Vertex; 6] {
+fn quad_vertices(plane_aspect: f32) -> [Vertex; 6] {
     let hw = 0.5;
-    let hh = 0.5 / PLANE_ASPECT;
+    let hh = 0.5 / plane_aspect;
     [
         Vertex {
             position: [-hw, -hh, 0.0],
@@ -92,11 +90,16 @@ pub struct GpuUndistort {
     readback_buffer: wgpu::Buffer,
     width: u32,
     height: u32,
+    /// Plane aspect ratio (width / height) for quad geometry and ortho projection.
+    plane_aspect: f32,
 }
 
 impl GpuUndistort {
     /// Create GPU resources for undistorting frames of the given dimensions.
-    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Self {
+    ///
+    /// `plane_aspect` is the camera aspect ratio (width / height), e.g.
+    /// `camera.width as f32 / camera.height as f32`.
+    pub fn new(gpu: &GpuContext, width: u32, height: u32, plane_aspect: f32) -> Self {
         let device = &gpu.device;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -104,7 +107,7 @@ impl GpuUndistort {
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/fisheye.wgsl").into()),
         });
 
-        let vertices = quad_vertices();
+        let vertices = quad_vertices(plane_aspect);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("undistort_quad"),
             contents: bytemuck::cast_slice(&vertices),
@@ -298,6 +301,7 @@ impl GpuUndistort {
             readback_buffer,
             width,
             height,
+            plane_aspect,
         }
     }
 
@@ -305,7 +309,6 @@ impl GpuUndistort {
     ///
     /// Uses `build_gpu_uniforms` from the stitching renderer for identical
     /// intrinsic computation. Returns RGBA (`width * height * 4` bytes).
-    #[allow(deprecated)]
     pub fn undistort(
         &self,
         gpu: &GpuContext,
@@ -322,7 +325,7 @@ impl GpuUndistort {
         upload_plane(&gpu.queue, &self.v_texture, v, w / 2, h / 2);
 
         // Ortho MVP fills the viewport with the quad
-        let hh = 0.5 / PLANE_ASPECT;
+        let hh = 0.5 / self.plane_aspect;
         let ortho = Orthographic3::new(-0.5, 0.5, -hh, hh, -1.0, 1.0);
         let mvp = opengl_to_wgpu_matrix() * ortho.to_homogeneous();
 

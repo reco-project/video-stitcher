@@ -147,8 +147,12 @@ pub fn run_calibrate(
             &gpu,
             &left_frames,
             &right_frames,
-            pipeline.left_params().unwrap(),
-            pipeline.right_params().unwrap(),
+            pipeline
+                .left_params()
+                .ok_or_else(|| anyhow::anyhow!("lens params not available for left camera"))?,
+            pipeline
+                .right_params()
+                .ok_or_else(|| anyhow::anyhow!("lens params not available for right camera"))?,
             dir,
         )?;
     }
@@ -229,7 +233,8 @@ fn save_debug_frames(
 ) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
     let (w, h) = (left_frames[0].width, left_frames[0].height);
-    let undistort = reco_core::undistort::GpuUndistort::new(gpu, w, h);
+    let aspect = w as f32 / h as f32;
+    let undistort = reco_core::undistort::GpuUndistort::new(gpu, w, h, aspect);
     for (i, (lf, rf)) in left_frames.iter().zip(right_frames.iter()).enumerate() {
         let l_rgba = undistort.undistort(gpu, &lf.y, &lf.u, &lf.v, left_params);
         let r_rgba = undistort.undistort(gpu, &rf.y, &rf.u, &rf.v, right_params);
