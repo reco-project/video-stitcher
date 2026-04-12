@@ -142,20 +142,7 @@ impl BallDirector {
     /// Higher = better. Factors: confidence, center proximity (less
     /// fisheye distortion), camera consistency (reduces oscillation).
     fn detection_score(&self, det: &MappedDetection) -> f32 {
-        let mut score = det.confidence;
-
-        let cx = det.camera_center.0;
-        let cy = det.camera_center.1;
-        let center_dist = ((cx - 0.5) * (cx - 0.5) + (cy - 0.5) * (cy - 0.5)).sqrt();
-        score -= center_dist * 0.2;
-
-        if let Some(last_camera) = self.last_camera {
-            if det.camera == last_camera {
-                score += 0.1;
-            }
-        }
-
-        score
+        super::util::detection_score(det, self.last_camera)
     }
 
     /// Compute target FOV based on ball's panorama-space pitch.

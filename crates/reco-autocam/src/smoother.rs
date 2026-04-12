@@ -17,6 +17,8 @@ use std::collections::VecDeque;
 
 use reco_core::director::{Director, DirectorContext, ViewportPosition};
 
+use crate::directors::util::DEFAULT_FOV;
+
 /// Smoothing factor from cutoff frequency and time step.
 fn smoothing_factor(dt: f32, cutoff: f32) -> f32 {
     let tau = 1.0 / (2.0 * std::f32::consts::PI * cutoff);
@@ -111,14 +113,12 @@ impl TrajectorySmoother {
     }
 
     /// Override the minimum cutoff frequency.
-    #[allow(dead_code)]
     pub fn with_min_cutoff(mut self, min_cutoff: f32) -> Self {
         self.min_cutoff = min_cutoff;
         self
     }
 
     /// Override the speed coefficient.
-    #[allow(dead_code)]
     pub fn with_beta(mut self, beta: f32) -> Self {
         self.beta = beta;
         self
@@ -150,7 +150,7 @@ impl TrajectorySmoother {
             let y = fwd_yaw.filter(pos.yaw, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let p = fwd_pitch.filter(pos.pitch, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let f = fwd_fov.filter(
-                pos.fov_degrees.unwrap_or(55.0),
+                pos.fov_degrees.unwrap_or(DEFAULT_FOV),
                 dt,
                 self.min_cutoff,
                 self.beta,
@@ -169,7 +169,7 @@ impl TrajectorySmoother {
             let y = bwd_yaw.filter(pos.yaw, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let p = bwd_pitch.filter(pos.pitch, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let f = bwd_fov.filter(
-                pos.fov_degrees.unwrap_or(55.0),
+                pos.fov_degrees.unwrap_or(DEFAULT_FOV),
                 dt,
                 self.min_cutoff,
                 self.beta,
@@ -220,8 +220,9 @@ pub struct SmoothedDirector {
     d_cutoff: f32,
     /// Pre-computed smoothed position (set in update, read in position).
     smoothed_position: ViewportPosition,
-    /// Maximum pan speed in radians per frame. Prevents teleporting
-    /// when the ball jumps across the field.
+    /// Maximum pan speed (radians per frame).
+    ///
+    /// Prevents teleporting when the ball jumps across the field.
     max_slew: f32,
     /// Whether the first frame has been processed (skip slew on first frame).
     initialized: bool,
@@ -287,7 +288,7 @@ impl Director for SmoothedDirector {
             self.d_cutoff,
         );
         let cf = self.causal_fov.filter(
-            raw.fov_degrees.unwrap_or(55.0),
+            raw.fov_degrees.unwrap_or(DEFAULT_FOV),
             self.dt,
             self.min_cutoff,
             self.beta,
@@ -314,9 +315,9 @@ impl Director for SmoothedDirector {
         let dy = (filtered.yaw - prev.yaw).clamp(-self.max_slew, self.max_slew);
         let dp = (filtered.pitch - prev.pitch).clamp(-self.max_slew, self.max_slew);
         // FOV slew: ~10 deg/s at 30fps = 0.33 deg/frame.
-        let max_fov_slew = 10.0 / (1.0 / self.dt);
-        let prev_fov = prev.fov_degrees.unwrap_or(55.0);
-        let target_fov = filtered.fov_degrees.unwrap_or(55.0);
+        let max_fov_slew = 10.0 * self.dt;
+        let prev_fov = prev.fov_degrees.unwrap_or(DEFAULT_FOV);
+        let target_fov = filtered.fov_degrees.unwrap_or(DEFAULT_FOV);
         let df = (target_fov - prev_fov).clamp(-max_fov_slew, max_fov_slew);
         self.smoothed_position = ViewportPosition {
             yaw: prev.yaw + dy,

@@ -67,6 +67,18 @@ pub struct FieldDirector {
     /// Merge distance for seam deduplication (rad). Detections from
     /// different cameras within this distance are the same person.
     dedup_radius: f32,
+    /// DBSCAN neighborhood radius (rad). Players within this distance
+    /// of each other are in the same cluster.
+    dbscan_eps: f32,
+    /// Minimum neighbors for a DBSCAN core point.
+    dbscan_min_neighbors: usize,
+    /// Smoothed cluster velocity (rad/frame) for predictive panning.
+    vel_yaw: f32,
+    vel_pitch: f32,
+    /// EMA alpha for velocity smoothing.
+    vel_alpha: f32,
+    /// How many frames ahead to predict (velocity * lead_frames).
+    vel_lead_frames: f32,
 }
 
 impl FieldDirector {
@@ -75,6 +87,13 @@ impl FieldDirector {
     /// `fps` scales timing parameters (ball lost delay, confirmation).
     pub fn new(fps: f32) -> Self {
         let fps = fps.clamp(1.0, 1000.0);
+        // Allow tuning via env vars for A/B testing without recompiling.
+        let env_f32 = |key: &str, default: f32| -> f32 {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        };
         Self {
             state: State::FollowingPlayers,
             yaw: 0.0,
@@ -83,20 +102,26 @@ impl FieldDirector {
             ball_label: "sports ball".into(),
             player_label: "person".into(),
             min_players: 3,
-            cluster_radius: 0.30,
+            cluster_radius: env_f32("RECO_CLUSTER_RADIUS", 0.0),
             ball_lost_frames: 0,
             ball_lost_delay: (fps * 1.0) as u32,
             ball_confirm_count: 0,
             ball_confirm_needed: 3,
-            fov_wide: 60.0,
-            fov_tight: 35.0,
+            fov_wide: env_f32("RECO_FOV_WIDE", 48.0),
+            fov_tight: env_f32("RECO_FOV_TIGHT", 28.0),
             detection_interval: 1,
             last_camera: None,
             ema_yaw: 0.0,
             ema_pitch: 0.0,
             ema_initialized: false,
-            cluster_alpha: 0.02,
-            dedup_radius: 0.05, // ~2.9 degrees - typical seam overlap width
+            cluster_alpha: env_f32("RECO_CLUSTER_ALPHA", 0.012),
+            dedup_radius: 0.05,
+            dbscan_eps: env_f32("RECO_DBSCAN_EPS", 0.10),
+            dbscan_min_neighbors: 2,
+            vel_yaw: 0.0,
+            vel_pitch: 0.0,
+            vel_alpha: env_f32("RECO_VEL_ALPHA", 0.05),
+            vel_lead_frames: env_f32("RECO_VEL_LEAD", 3.0),
         }
     }
 
@@ -117,11 +142,11 @@ impl FieldDirector {
         self.detection_interval = interval.max(1);
     }
 
-    /// Compute the player cluster centroid and spread.
+    /// Compute the player cluster centroid, spread, and velocity.
     ///
-    /// Deduplicates cross-camera detections at the seam (same player
-    /// seen by both cameras), uses confidence-weighted centroid, and
-    /// applies EMA smoothing to stabilize frame-to-frame jitter.
+    /// Pipeline: deduplicate seam overlaps -> DBSCAN to find the main
+    /// player group (ignoring GK/isolated defenders) -> confidence-weighted
+    /// centroid of the main cluster -> EMA smooth -> velocity prediction.
     fn compute_cluster(&mut self, ctx: &DirectorContext<'_>) -> Option<Cluster> {
         let min_confidence = 0.3;
         let players: Vec<&MappedDetection> = ctx
@@ -138,52 +163,145 @@ impl FieldDirector {
             return None;
         }
 
-        // Deduplicate: merge detections from different cameras at
-        // nearly the same panorama position (seam overlap).
-        let mut unique_players: Vec<(f32, f32, f32)> = Vec::new(); // (yaw, pitch, confidence)
+        // Step 1: Deduplicate seam overlaps. Only merge detections from
+        // DIFFERENT cameras at nearly the same position (same player seen
+        // by both cameras in the overlap region).
+        let mut unique: Vec<(f32, f32, f32, CameraId)> = Vec::new();
         for p in &players {
             let pos = p.position.unwrap();
-            let is_dup = unique_players.iter().any(|&(uy, up, _)| {
-                let dy = pos.yaw - uy;
-                let dp = pos.pitch - up;
-                (dy * dy + dp * dp).sqrt() < self.dedup_radius
-            });
-            if is_dup {
-                // Keep the higher-confidence version.
-                if let Some(existing) = unique_players.iter_mut().find(|(uy, up, _)| {
+            if let Some(existing) = unique.iter_mut().find(|(uy, up, _, cam)| {
+                *cam != p.camera && {
                     let dy = pos.yaw - *uy;
                     let dp = pos.pitch - *up;
                     (dy * dy + dp * dp).sqrt() < self.dedup_radius
-                }) {
-                    if p.confidence > existing.2 {
-                        *existing = (pos.yaw, pos.pitch, p.confidence);
-                    }
+                }
+            }) {
+                if p.confidence > existing.2 {
+                    *existing = (pos.yaw, pos.pitch, p.confidence, p.camera);
                 }
             } else {
-                unique_players.push((pos.yaw, pos.pitch, p.confidence));
+                unique.push((pos.yaw, pos.pitch, p.confidence, p.camera));
             }
         }
 
-        if unique_players.len() < self.min_players {
+        if unique.len() < self.min_players {
             return None;
         }
 
-        // Confidence-weighted centroid of deduplicated players.
+        // Step 2: DBSCAN - find the largest dense cluster.
+        // A point is "core" if it has >= min_neighbors within eps.
+        // Connected core points form a cluster. Pick the largest.
+        let n = unique.len();
+        let eps = self.dbscan_eps;
+        let min_nb = self.dbscan_min_neighbors;
+
+        // Build neighbor counts.
+        let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let dy = unique[i].0 - unique[j].0;
+                let dp = unique[i].1 - unique[j].1;
+                if (dy * dy + dp * dp).sqrt() < eps {
+                    neighbors[i].push(j);
+                    neighbors[j].push(i);
+                }
+            }
+        }
+
+        // Label core points and flood-fill clusters.
+        let mut cluster_id: Vec<i32> = vec![-1; n]; // -1 = unvisited
+        let mut current_cluster = 0_i32;
+
+        for i in 0..n {
+            if cluster_id[i] != -1 || neighbors[i].len() < min_nb {
+                continue; // not core or already visited
+            }
+            // BFS from this core point.
+            let mut queue = vec![i];
+            cluster_id[i] = current_cluster;
+            while let Some(pt) = queue.pop() {
+                for &nb in &neighbors[pt] {
+                    if cluster_id[nb] == -1 {
+                        cluster_id[nb] = current_cluster;
+                        // Expand if neighbor is also core.
+                        if neighbors[nb].len() >= min_nb {
+                            queue.push(nb);
+                        }
+                    }
+                }
+            }
+            current_cluster += 1;
+        }
+
+        // Find the largest cluster.
+        let num_clusters = current_cluster;
+        if num_clusters == 0 {
+            return None;
+        }
+        let mut cluster_sizes = vec![0_usize; num_clusters as usize];
+        for &cid in &cluster_id {
+            if cid >= 0 {
+                cluster_sizes[cid as usize] += 1;
+            }
+        }
+        let best_cluster = cluster_sizes
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, size)| *size)
+            .map(|(id, _)| id as i32)
+            .unwrap();
+
+        // Step 3: Collect cluster members, then take P80 closest to
+        // the initial centroid. This trims outliers from BOTH the centroid
+        // AND the spread - stragglers are fully ignored.
+        let mut members: Vec<(f32, f32, f32)> = unique
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| cluster_id[*i] == best_cluster)
+            .map(|(_, &(y, p, c, _))| (y, p, c))
+            .collect();
+
+        if members.len() < self.min_players {
+            return None;
+        }
+
+        // Rough centroid for distance ranking.
+        let n = members.len() as f32;
+        let rough_yaw: f32 = members.iter().map(|m| m.0).sum::<f32>() / n;
+        let rough_pitch: f32 = members.iter().map(|m| m.1).sum::<f32>() / n;
+
+        // Sort by distance to rough centroid, keep closest 80%.
+        members.sort_by(|a, b| {
+            let da = (a.0 - rough_yaw).powi(2) + (a.1 - rough_pitch).powi(2);
+            let db = (b.0 - rough_yaw).powi(2) + (b.1 - rough_pitch).powi(2);
+            da.partial_cmp(&db).unwrap()
+        });
+        let keep = (members.len() as f32 * 0.8).ceil() as usize;
+        let core = &members[..keep.max(self.min_players).min(members.len())];
+
+        // Confidence-weighted centroid of the P80 core group.
         let mut sum_yaw = 0.0_f32;
         let mut sum_pitch = 0.0_f32;
         let mut total_weight = 0.0_f32;
-
-        for &(yaw, pitch, conf) in &unique_players {
+        for &(yaw, pitch, conf) in core {
             sum_yaw += yaw * conf;
             sum_pitch += pitch * conf;
             total_weight += conf;
         }
-
         let raw_yaw = sum_yaw / total_weight;
         let raw_pitch = sum_pitch / total_weight;
 
-        // EMA smooth the centroid to reduce frame-to-frame jitter.
-        // Snap on first valid cluster (no smoothing from origin).
+        // Spread from the core group (max distance of core members).
+        let spread = core
+            .iter()
+            .map(|&(y, p, _)| {
+                let dy = y - raw_yaw;
+                let dp = p - raw_pitch;
+                (dy * dy + dp * dp).sqrt()
+            })
+            .fold(0.0_f32, f32::max);
+
+        // Step 4: EMA smooth the centroid ("heavy camera" feel).
         if !self.ema_initialized {
             self.ema_yaw = raw_yaw;
             self.ema_pitch = raw_pitch;
@@ -193,28 +311,30 @@ impl FieldDirector {
             self.ema_yaw += alpha * (raw_yaw - self.ema_yaw);
             self.ema_pitch += alpha * (raw_pitch - self.ema_pitch);
         }
-        let centroid_yaw = self.ema_yaw;
-        let centroid_pitch = self.ema_pitch;
 
-        // Spread: 80th percentile distance from centroid (ignores outliers
-        // like goalkeeper or isolated defenders far from the main group).
-        let mut distances: Vec<f32> = unique_players
-            .iter()
-            .map(|&(y, p, _)| {
-                let dy = y - centroid_yaw;
-                let dp = p - centroid_pitch;
-                (dy * dy + dp * dp).sqrt()
-            })
-            .collect();
-        distances.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let p80_idx = (distances.len() as f32 * 0.8) as usize;
-        let spread = distances[p80_idx.min(distances.len() - 1)];
+        // Step 5: Velocity - only apply during sustained fast movement
+        // (counterattack), not for small centroid drift.
+        let raw_vel_yaw = raw_yaw - self.ema_yaw;
+        let raw_vel_pitch = raw_pitch - self.ema_pitch;
+        self.vel_yaw += self.vel_alpha * (raw_vel_yaw - self.vel_yaw);
+        self.vel_pitch += self.vel_alpha * (raw_vel_pitch - self.vel_pitch);
+
+        // Only lead if velocity is sustained (above threshold).
+        let vel_mag = (self.vel_yaw.powi(2) + self.vel_pitch.powi(2)).sqrt();
+        let vel_threshold = 0.005; // ~0.3 deg/frame = ~9 deg/s
+        let lead = if vel_mag > vel_threshold {
+            self.vel_lead_frames
+        } else {
+            0.0
+        };
+        let centroid_yaw = self.ema_yaw + self.vel_yaw * lead;
+        let centroid_pitch = self.ema_pitch + self.vel_pitch * lead;
 
         Some(Cluster {
             yaw: centroid_yaw,
             pitch: centroid_pitch,
             spread,
-            count: unique_players.len(),
+            count: core.len(),
         })
     }
 
@@ -264,17 +384,7 @@ impl FieldDirector {
 
     /// Score a detection (confidence + center proximity + camera consistency).
     fn detection_score(&self, det: &MappedDetection) -> f32 {
-        let mut score = det.confidence;
-        let cx = det.camera_center.0;
-        let cy = det.camera_center.1;
-        let center_dist = ((cx - 0.5) * (cx - 0.5) + (cy - 0.5) * (cy - 0.5)).sqrt();
-        score -= center_dist * 0.2;
-        if let Some(last_camera) = self.last_camera {
-            if det.camera == last_camera {
-                score += 0.1;
-            }
-        }
-        score
+        super::util::detection_score(det, self.last_camera)
     }
 
     /// Compute target FOV from player cluster spread.
@@ -387,11 +497,11 @@ impl Director for FieldDirector {
             ball.map_or(0.0, |b| b.position.unwrap().yaw),
         );
 
-        // Dynamic FOV from cluster spread.
-        self.current_fov = cluster
-            .as_ref()
-            .map(|c| self.target_fov_from_spread(c.spread))
-            .unwrap_or(self.current_fov);
+        // Dynamic FOV from cluster spread, EMA-smoothed for gentle transitions.
+        if let Some(ref c) = cluster {
+            let target = self.target_fov_from_spread(c.spread);
+            self.current_fov += 0.01 * (target - self.current_fov);
+        }
 
         // Log every frame at trace level, every 30 at debug.
         if ctx.frame_index % 30 == 0 {
@@ -470,21 +580,31 @@ mod tests {
     #[test]
     fn follows_player_centroid() {
         let mut dir = FieldDirector::new(30.0);
-        let dets = [player(0.1, 0.0), player(0.3, 0.0), player(0.5, 0.0)];
+        // Tight group so DBSCAN clusters them (eps=0.10).
+        let dets = [
+            player(0.28, 0.0),
+            player(0.32, 0.0),
+            player(0.36, 0.0),
+            player(0.40, 0.0),
+            player(0.44, 0.0),
+        ];
         dir.update(&ctx(0, &dets));
-        assert!((dir.yaw - 0.3).abs() < 0.01, "yaw={}", dir.yaw);
+        assert!((dir.yaw - 0.36).abs() < 0.03, "yaw={}", dir.yaw);
     }
 
     #[test]
     fn switches_to_ball_when_confirmed() {
         let mut dir = FieldDirector::new(30.0);
+        // Enable ball tracking (default is 0.0 = players only).
+        dir.cluster_radius = 0.30;
         let dets = [
-            player(0.3, 0.0),
-            player(0.4, 0.0),
-            player(0.5, 0.0),
+            player(0.28, 0.0),
+            player(0.32, 0.0),
+            player(0.36, 0.0),
+            player(0.40, 0.0),
             ball(0.35, 0.0),
         ];
-        for i in 0..3 {
+        for i in 0..5 {
             dir.update(&ctx(i, &dets));
         }
         assert_eq!(dir.state, State::FollowingBall);
@@ -494,9 +614,10 @@ mod tests {
     fn rejects_ball_far_from_players() {
         let mut dir = FieldDirector::new(30.0);
         let dets = [
-            player(0.3, 0.0),
-            player(0.4, 0.0),
-            player(0.5, 0.0),
+            player(0.28, 0.0),
+            player(0.32, 0.0),
+            player(0.36, 0.0),
+            player(0.40, 0.0),
             ball(2.0, 0.0), // far away
         ];
         for i in 0..5 {
