@@ -5,24 +5,9 @@ target/
 *.mp4
 reco-trace.json
 
-node_modules/
-
-# Development user data (not packaged)
-devData/
-
-# Build outputs
-out/
-frontend/dist/
-.vite/
-frontend/.vite/
-
 # Python
 __pycache__/
 *.pyc
-backend/venv/
-backend/temp/
-backend/logs/
-backend/bin/
 
 # IDE
 .vscode/
@@ -34,15 +19,12 @@ Thumbs.db
 
 # Misc
 *.log
-# Build artifacts
-electron/resources/lens_profiles.sqlite
-backend/data/lens_profiles.sqlite
-.vscode-ctags
-docs/superpowers/
-docs/analysis/
 .claude/
 .cargo/
-yolo26s.pt
 
 # Calibration debug workspace
 calibrate_debug/
+
+# Deep review analysis (generated, not committed)
+docs/analysis/
+docs/superpowers/
