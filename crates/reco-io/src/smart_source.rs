@@ -58,6 +58,8 @@ struct LinuxZeroCopyState {
     shared: reco_core::session::SharedTextureSet,
     /// Decode thread join handles.
     join_handles: Vec<std::thread::JoinHandle<()>>,
+    /// Shutdown flag checked by decode threads for graceful exit.
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl SmartFileSource {
@@ -291,6 +293,9 @@ impl SmartFileSource {
         right_slot_free_tx.send(0).expect("seed slot");
         right_slot_free_tx.send(1).expect("seed slot");
 
+        // Shutdown flag for graceful decode thread exit
+        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
         // Spawn decode threads
         let decode_handles = crate::zero_copy::spawn_decode_threads_gpu(
             left.to_string_lossy().into_owned(),
@@ -300,6 +305,7 @@ impl SmartFileSource {
             left_slot_free_rx,
             right_slot_free_rx,
             sync_offset,
+            shutdown.clone(),
         );
 
         // Build bind groups placeholder - session will create them from texture refs
@@ -332,6 +338,7 @@ impl SmartFileSource {
                 frame_rx: Some(decode_handles.frame_rx),
                 shared,
                 join_handles: decode_handles.join_handles,
+                shutdown,
             })),
             info,
             pixel_format,
@@ -478,32 +485,21 @@ impl Drop for SmartFileSource {
         if let SourceMode::GpuZeroCopy(state) = &mut self.mode {
             // Graceful shutdown ordering to prevent CUDA error 700:
             //
-            // 1. Drop frame_rx -> pairing thread's send() returns Err, exits
-            // 2. Drop slot-free senders -> decode threads' recv() returns Err
+            // 1. Set shutdown flag -> decode threads exit via recv_timeout check
+            // 2. Drop frame_rx -> pairing thread's send() returns Err, exits
             // 3. Join all threads -> VideoDecoder::Drop completes CUDA cleanup
             //    while shared CUDA VMM memory is still mapped
             // 4. SharedTextureSet drops naturally -> CUDA memory unmapped
-            //
-            // KNOWN LIMITATION: If the session has called `take_slot_senders()`
-            // and still holds cloned senders, replacing our senders here does NOT
-            // close the original receivers in the decode threads - the cloned
-            // senders keep the channel alive. This is safe today because:
-            //   - The session drops its senders before SmartFileSource is dropped
-            //     (session.run() returns, then the source is dropped).
-            //   - If a caller held senders past source drop, decode threads would
-            //     block on slot_free_rx.recv() until those senders are also dropped.
-            // A proper fix would require the decode threads to use a cancellation
-            // token or select on both the slot channel and a shutdown signal.
 
-            // Step 1: Drop frame_rx to unblock pairing thread
+            // Step 1: Signal shutdown to decode threads (they check this
+            // flag via recv_timeout, so they exit even if slot senders
+            // are still alive from take_slot_senders).
+            state
+                .shutdown
+                .store(true, std::sync::atomic::Ordering::Release);
+
+            // Step 2: Drop frame_rx to unblock pairing thread
             state.frame_rx = None;
-
-            // Step 2: Replace slot senders with dead channels.
-            // This only unblocks decode threads if no other clones exist (see above).
-            let (tx, _) = std::sync::mpsc::sync_channel(0);
-            state.shared.left_slot_free_tx = tx;
-            let (tx, _) = std::sync::mpsc::sync_channel(0);
-            state.shared.right_slot_free_tx = tx;
 
             // Step 3: Join decode + pairing threads
             for handle in state.join_handles.drain(..) {
