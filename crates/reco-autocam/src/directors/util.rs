@@ -32,7 +32,6 @@ pub fn detection_score(det: &MappedDetection, last_camera: Option<CameraId>) -> 
     score
 }
 
-#[allow(dead_code)]
 /// Deduplicate detections from different cameras at the same panorama position.
 ///
 /// Players in the seam overlap region are detected by both cameras. This

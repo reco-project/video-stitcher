@@ -9,8 +9,7 @@
 //! Use [`TrackingMode`] to select which director to create in [`setup_autocam`](crate::setup_autocam).
 
 mod ball;
-#[allow(dead_code)]
-mod clustering;
+pub(crate) mod clustering;
 mod field;
 pub(crate) mod util;
 
