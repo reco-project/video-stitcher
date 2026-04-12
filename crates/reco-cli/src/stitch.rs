@@ -1,6 +1,6 @@
 //! Stitch subcommand: encode two video files into a panoramic output.
 //!
-//! Uses [`StitchJob`] (Layer 3 API) for simple cases, or falls back to
+//! Uses `StitchJob` (Layer 3 API) for simple cases, or falls back to
 //! Layer 2 (`SmartFileSource` + `session.run()`) when autocam is needed.
 
 use std::path::Path;
@@ -27,6 +27,7 @@ pub struct StitchArgs<'a> {
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
     pub lead_time: f64,
+    pub tracking_mode: reco_autocam::TrackingMode,
 }
 
 /// Run the stitch subcommand.
@@ -166,9 +167,16 @@ fn run_with_autocam(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> any
         source.is_gpu_resident(),
         args.detection_interval,
         args.lead_time,
+        args.tracking_mode,
     ) {
-        Ok(true) => println!("Autocam: ball tracking enabled (model: {model_path})"),
-        Ok(false) => {}
+        Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
+        Ok(false) => {
+            eprintln!(
+                "Warning: ball tracking unavailable in {} mode (build with --features tensorrt for GPU detection, \
+                 or use CPU decode)",
+                source.decode_mode(),
+            );
+        }
         Err(e) => eprintln!("Warning: autocam setup failed ({e}), continuing without tracking"),
     }
 

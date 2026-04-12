@@ -1,33 +1,38 @@
 //! Automatic camera control for reco.
 //!
-//! This crate provides implementations of the [`reco_core`] detection and
-//! direction traits for sports camera automation:
+//! This crate provides detection and direction for sports camera automation:
 //!
-//! - [`YoloDetector`] — ONNX-based YOLO object detection on raw camera frames
-//! - [`BallDirector`] — Ball-following director with smoothing and state machine logic
+//! - [`YoloDetector`] - ONNX-based YOLO object detection on raw camera frames
+//! - [`BallDirector`] - Ball-following director with plausibility rejection
+//! - [`FieldDirector`] - Ball + player tracking for robust football coverage
+//! - [`SmoothedDirector`] - Decorator that adds One Euro trajectory smoothing
+//! - [`TrackingMode`] - Selects which director to use
 //!
 //! # Usage
 //!
 //! ```rust,no_run
-//! use reco_autocam::{YoloDetector, BallDirector};
+//! use reco_autocam::{YoloDetector, BallDirector, SmoothedDirector};
 //!
 //! let detector = YoloDetector::from_file("ball_v0.onnx")?;
 //! let director = BallDirector::new(30.0); // fps
+//! let smoothed = SmoothedDirector::new(Box::new(director), 30.0, 15);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 mod detector;
-mod director;
+mod directors;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod gpu_detector;
 #[cfg(target_os = "macos")]
 mod metal_detector;
+mod smoother;
 pub use detector::YoloDetector;
-pub use director::BallDirector;
+pub use directors::{BallDirector, FieldDirector, TrackingMode};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use gpu_detector::GpuYoloDetector;
 #[cfg(target_os = "macos")]
 pub use metal_detector::MetalYoloDetector;
+pub use smoother::{SmoothedDirector, TrajectorySmoother};
 
 use std::path::Path;
 #[cfg(any(feature = "tensorrt", feature = "coreml"))]
@@ -91,6 +96,8 @@ fn reco_cache_dir(subdir: &str) -> PathBuf {
 /// * `use_zero_copy` - Whether the pipeline is running in zero-copy mode.
 /// * `detection_interval` - Run detection every N frames (1 = every frame).
 /// * `lead_time` - Director lookahead in seconds (CPU path only).
+/// * `tracking_mode` - Which director to use (Ball or Field).
+#[allow(clippy::too_many_arguments)]
 pub fn setup_autocam(
     session: &mut StitchSession,
     model_path: &str,
@@ -100,6 +107,7 @@ pub fn setup_autocam(
     use_zero_copy: bool,
     detection_interval: u64,
     lead_time: f64,
+    tracking_mode: TrackingMode,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut detection_active = false;
 
@@ -149,19 +157,40 @@ pub fn setup_autocam(
     }
 
     if detection_active {
-        let director = BallDirector::new(fps);
-        session.set_director(Box::new(director));
         if detection_interval > 1 {
             session.set_detection_interval(detection_interval);
             log::info!("Detection interval: every {detection_interval} frames");
         }
-        if lead_time > 0.0 && !use_zero_copy {
-            let lookahead = (fps as f64 * lead_time).round() as usize;
-            if lookahead > 0 {
-                session.set_lookahead(lookahead);
-                log::info!("Director lead time: {lead_time:.1}s ({lookahead} frames)");
+
+        let director: Box<dyn reco_core::director::Director> = match tracking_mode {
+            TrackingMode::Ball => {
+                let mut d = BallDirector::new(fps);
+                if detection_interval > 1 {
+                    d.set_detection_interval(detection_interval as u32);
+                }
+                log::info!("Tracking mode: ball");
+                Box::new(d)
             }
-        }
+            TrackingMode::Field => {
+                let d = FieldDirector::new(fps);
+                log::info!("Tracking mode: field (ball + players)");
+                Box::new(d)
+            }
+        };
+
+        let lookahead = if lead_time > 0.0 && !use_zero_copy {
+            let frames = (fps as f64 * lead_time).round() as usize;
+            if frames > 0 {
+                session.set_lookahead(frames);
+                log::info!("Director lead time: {lead_time:.1}s ({frames} frames)");
+            }
+            frames
+        } else {
+            0
+        };
+
+        let smoothed = SmoothedDirector::new(director, fps, lookahead);
+        session.set_director(Box::new(smoothed));
     }
 
     Ok(detection_active)

@@ -115,6 +115,11 @@ enum Commands {
         /// Typical value: 0.5 (half a second). Only works with CPU path.
         #[arg(long, default_value_t = 0.0)]
         lead_time: f64,
+
+        /// Tracking mode: "ball" (single ball), "field" (ball + players).
+        /// Use "field" with a COCO model for robust football tracking.
+        #[arg(long, default_value = "ball")]
+        tracking: String,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -387,6 +392,7 @@ fn main() -> anyhow::Result<()> {
             model,
             detection_interval,
             lead_time,
+            tracking,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -405,6 +411,10 @@ fn main() -> anyhow::Result<()> {
                 model_path: model.as_deref(),
                 detection_interval,
                 lead_time,
+                tracking_mode: match tracking.as_str() {
+                    "field" => reco_autocam::TrackingMode::Field,
+                    _ => reco_autocam::TrackingMode::Ball,
+                },
             },
             &interrupted,
         ),

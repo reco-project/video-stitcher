@@ -75,6 +75,8 @@ pub fn run_camera(
         input_height: capture_height,
         output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
         input_format,
+        left_rotation: 0,
+        right_rotation: 0,
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
@@ -82,12 +84,15 @@ pub fn run_camera(
     if let Some(model) = model_path {
         let detector = reco_autocam::YoloDetector::from_file(model)?;
         session.set_detector(Box::new(detector));
-        session.set_director(Box::new(reco_autocam::BallDirector::new(
-            capture_fps as f32,
-        )));
+        let fps = capture_fps as f32;
+        let mut director = reco_autocam::BallDirector::new(fps);
         if detection_interval > 1 {
+            director.set_detection_interval(detection_interval as u32);
             session.set_detection_interval(detection_interval);
         }
+        // No lookahead for live cameras (frames aren't bufferable).
+        let smoothed = reco_autocam::SmoothedDirector::new(Box::new(director), fps, 0);
+        session.set_director(Box::new(smoothed));
         println!("Autocam: YOLO ball tracking enabled (model: {model})");
     }
 

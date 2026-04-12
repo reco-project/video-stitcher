@@ -28,7 +28,6 @@
 //! pipelines on top of the detection data without modifying the director.
 
 use crate::detector::CameraId;
-use crate::projection::ViewportBounds;
 
 /// The viewport position output by a director.
 ///
@@ -47,12 +46,11 @@ pub struct ViewportPosition {
     /// `0.0` = level. Positive = looking up.
     pub pitch: f32,
 
-    /// Vertical field of view in degrees, or `None` to use the
-    /// pipeline's default FOV.
+    /// Field of view in degrees, or `None` to use the pipeline's
+    /// default FOV.
     ///
     /// Typical range: 30.0 (zoomed in) to 120.0 (wide). The pipeline
-    /// default is 75.0. This is vertical FOV per nalgebra's
-    /// `Perspective3` convention.
+    /// default is 75.0.
     pub fov_degrees: Option<f32>,
 }
 
@@ -100,8 +98,9 @@ pub struct MappedDetection {
 /// Context passed to [`Director::update`] each frame.
 ///
 /// Provides everything a director needs to make panning decisions:
-/// tracked objects with panorama coordinates, valid panning bounds,
-/// and timing information.
+/// tracked objects with panorama coordinates and timing information.
+/// Viewport constraining (coverage clamping) is handled by the session,
+/// not the director.
 #[derive(Debug)]
 pub struct DirectorContext<'a> {
     /// Current frame index (0-based).
@@ -114,12 +113,10 @@ pub struct DirectorContext<'a> {
     /// Empty if no detector is configured or detection was skipped.
     pub detections: &'a [MappedDetection],
 
-    /// Valid panning bounds for the current FOV ("no-black" region).
-    /// Panning within these bounds guarantees no black edges in the output.
-    pub viewport_bounds: ViewportBounds,
-
-    /// Current vertical field of view in degrees.
-    pub current_fov: f32,
+    /// Whether this frame ran fresh detection (true) or is reusing
+    /// cached detections from a previous frame (false). Directors
+    /// should only count detection confirmations on fresh frames.
+    pub fresh_detection: bool,
 }
 
 /// Trait for virtual camera direction control.
@@ -129,8 +126,8 @@ pub struct DirectorContext<'a> {
 /// - **Scripted**: keyframed pan/tilt over time (replays, highlights)
 /// - **AI**: follows tracked objects using smoothing, prediction, rules
 ///
-/// Directors receive rich context via [`DirectorContext`] including
-/// tracked objects with panorama coordinates and valid panning bounds.
+/// Directors receive context via [`DirectorContext`] including
+/// tracked objects with panorama coordinates and timing.
 ///
 /// # Example
 ///

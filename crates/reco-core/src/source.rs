@@ -251,7 +251,7 @@ pub trait FrameSource: Send {
     /// Whether this source delivers GPU-resident frames.
     ///
     /// When `true`, [`next_frame`](Self::next_frame) may return
-    /// [`StereoFrame::GpuResident`] or [`StereoFrame::MetalResident`].
+    /// [`StereoFrame::GpuResident`] or `StereoFrame::MetalResident`.
     /// The session uses this to configure GPU bind groups and select
     /// the optimal render path automatically.
     fn is_gpu_resident(&self) -> bool {

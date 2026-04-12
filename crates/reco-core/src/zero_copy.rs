@@ -26,7 +26,7 @@ pub struct GpuBufInfo {
     /// Frame height in pixels.
     pub height: u32,
     /// Pixel format (NV12 8-bit or P010 10-bit). Determines CUDA copy
-    /// width via [`GpuPixelFormat::bytes_per_sample`].
+    /// width via `GpuPixelFormat::bytes_per_sample()`.
     pub pixel_format: crate::renderer::GpuPixelFormat,
 }
 
