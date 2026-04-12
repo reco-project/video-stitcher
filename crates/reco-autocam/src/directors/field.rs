@@ -238,8 +238,10 @@ impl FieldDirector {
 
     /// Full pipeline: filter -> cluster -> trim -> smooth -> build Cluster.
     ///
-    /// EMA is only updated on frames with fresh detections to prevent
-    /// the alpha from compounding on stale data at high detection intervals.
+    /// The EMA runs on every frame (even with stale cached detections).
+    /// This is intentional: the repeated EMA updates between detection
+    /// frames act as extra low-pass smoothing, giving the camera a smooth
+    /// gliding motion instead of stepping between detection positions.
     fn compute_cluster(&mut self, ctx: &DirectorContext<'_>) -> Option<Cluster> {
         let deduped = self.filter_and_dedup(ctx);
         let core = self.cluster_and_trim(&deduped);
@@ -248,15 +250,7 @@ impl FieldDirector {
             return None;
         }
 
-        // Only update the EMA on fresh detection frames. Between detections,
-        // return the cached EMA position to avoid compounding alpha on stale data.
-        let (centroid_yaw, centroid_pitch) = if ctx.fresh_detection {
-            self.smooth_centroid(&core)
-        } else if self.ema_initialized {
-            (self.ema_yaw, self.ema_pitch)
-        } else {
-            self.smooth_centroid(&core)
-        };
+        let (centroid_yaw, centroid_pitch) = self.smooth_centroid(&core);
 
         let spread = core
             .iter()
