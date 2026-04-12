@@ -2,11 +2,13 @@
 
 Open-source GPU-accelerated panoramic sports camera software.
 
-## v2 Architecture (Rust + wgpu) — active development on `v2` branch
+## v2 Architecture (Rust + wgpu)
 
-- `crates/reco-core/` — GPU stitching engine (library crate)
-- `crates/reco-cli/` — CLI binary (`reco stitch`, `reco info`)
+- `crates/reco-core/` — GPU stitching engine (library crate, no I/O deps)
+- `crates/reco-cli/` — CLI binary (`reco stitch`, `reco info`, `reco calibrate`, `reco preview`)
 - `crates/reco-io/` — Pluggable I/O backends (FFmpeg decode/encode, GStreamer live cameras)
+- `crates/reco-autocam/` — AI camera control (YOLO detector, directors, trajectory smoothing)
+- `crates/reco-calibrate/` — Stereo camera calibration (AKAZE features, optimization)
 
 ## Key commands
 

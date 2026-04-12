@@ -35,6 +35,8 @@ jobs:
         run: cargo clippy --all-targets --features profiling -- -D warnings
       - name: Clippy (with gstreamer)
         run: cargo clippy --all-targets --features gstreamer -- -D warnings
+      - name: Clippy (with load-dynamic)
+        run: cargo clippy --all-targets --features load-dynamic -- -D warnings
 
   test:
     name: Test
@@ -48,6 +50,8 @@ jobs:
           packages: ${{ env.APT_PACKAGES }}
       - name: Run tests
         run: cargo test --all
+      - name: Run tests (with profiling)
+        run: cargo test --all --features profiling
 
   doc:
     name: Documentation
@@ -77,6 +81,45 @@ jobs:
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  msrv:
+    name: MSRV (1.85.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: ${{ env.APT_PACKAGES }}
+      - name: Check MSRV
+        run: cargo check --all
+
+  check-macos:
+    name: Check (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install dependencies
+        run: brew install ffmpeg gstreamer gst-plugins-base pkg-config
+      - name: Check reco-core
+        run: cargo check -p reco-core
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --features profiling
+
+  check-windows:
+    name: Check (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check reco-core
+        run: cargo check -p reco-core
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --features profiling
 
   secrets:
     name: Secret Scanning
