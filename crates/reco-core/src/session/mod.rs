@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
-use crate::detector::{CameraId, Detection, Detector};
+use crate::detector::{Detection, Detector};
 use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, GpuEncoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
@@ -736,46 +736,20 @@ impl StitchSession {
         }
     }
 
-    /// Map raw detections to panorama coordinates, filtering by field ROI.
+    /// Map raw detections to panorama coordinates.
     ///
     /// Each detection's camera-space center is projected to panorama
     /// yaw/pitch via [`camera_to_panorama`](projection::camera_to_panorama).
-    /// If a `field_roi` is present in the calibration, detections whose
-    /// camera-space center falls outside the corresponding camera's polygon
-    /// are discarded before reaching the director.
+    ///
+    /// ROI filtering (discarding detections outside the playing field) is
+    /// handled at the detector level by `reco-autocam`'s `RoiFilteredDetector`
+    /// decorators, so this method is pure coordinate mapping.
     fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
-        use crate::projection::point_in_polygon;
-
         let calibration = self.pipeline.calibration();
         let scene = &self.pipeline.scene;
-        let field_roi = calibration.field_roi.as_ref();
 
         detections
             .iter()
-            .filter(|d| {
-                // If field ROI is configured, discard detections outside
-                // the playing field polygon for their camera.
-                if let Some(roi) = field_roi {
-                    let polygon = match d.camera {
-                        CameraId::Left => &roi.left,
-                        CameraId::Right => &roi.right,
-                    };
-                    // Only filter if the polygon has enough vertices.
-                    if polygon.len() >= 3 {
-                        // Test at 75th percentile height of bbox (between
-                        // center and feet). Both this point AND the feet
-                        // must be inside the ROI. This rejects people whose
-                        // feet are just inside the boundary but body is mostly
-                        // outside (coaches leaning in, sideline spectators).
-                        let feet_x = d.center_x as f64;
-                        let feet_y = (d.center_y + d.height * 0.5) as f64;
-                        let p75_y = (d.center_y + d.height * 0.25) as f64;
-                        return point_in_polygon([feet_x, feet_y], polygon)
-                            && point_in_polygon([feet_x, p75_y], polygon);
-                    }
-                }
-                true
-            })
             .map(|d| {
                 let position = projection::camera_to_panorama(
                     d.camera,

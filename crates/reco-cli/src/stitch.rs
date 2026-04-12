@@ -112,6 +112,7 @@ fn run_with_autocam(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> any
     };
 
     // Build session
+    let field_roi = cal.field_roi.clone();
     let viewport = reco_core::viewport::ViewportConfig {
         width: args.width,
         height: args.height,
@@ -170,6 +171,7 @@ fn run_with_autocam(args: &StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> any
         args.detection_interval,
         args.lead_time,
         args.tracking_mode,
+        field_roi.as_ref(),
     ) {
         Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
         Ok(false) => {

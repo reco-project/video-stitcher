@@ -105,6 +105,28 @@ pub trait Detector: Send {
     fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection>;
 }
 
+/// A GPU-resident NV12 frame described by CUDA device pointers.
+///
+/// Wraps the raw pointer/pitch/dimension parameters needed to locate the
+/// Y and UV planes of an NV12 frame in GPU memory. Passed by reference
+/// to [`GpuDetector::detect_gpu`] instead of many loose arguments.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[derive(Debug, Clone, Copy)]
+pub struct GpuNv12Frame {
+    /// CUDA device pointer to the Y (luma) plane.
+    pub y_ptr: u64,
+    /// CUDA device pointer to the UV (chroma) plane.
+    pub uv_ptr: u64,
+    /// Row pitch in bytes for the Y plane.
+    pub y_pitch: usize,
+    /// Row pitch in bytes for the UV plane.
+    pub uv_pitch: usize,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+}
+
 /// Trait for object detection on GPU-resident NV12 frames.
 ///
 /// Unlike [`Detector`] which operates on CPU-accessible [`RawFrame`] data,
@@ -118,31 +140,10 @@ pub trait Detector: Send {
 pub trait GpuDetector: Send {
     /// Run detection on a GPU-resident NV12 frame.
     ///
-    /// `y_ptr` and `uv_ptr` are CUDA device pointers to the Y and
-    /// interleaved UV planes of an NV12 frame. `y_pitch` and `uv_pitch`
-    /// are the row strides (may differ from width due to alignment).
-    fn detect_gpu(
-        &mut self,
-        camera: CameraId,
-        y_ptr: u64,
-        y_pitch: usize,
-        uv_ptr: u64,
-        uv_pitch: usize,
-        width: u32,
-        height: u32,
-    ) -> Vec<Detection>;
-}
-
-/// Re-export of [`crate::projection::point_in_polygon`] for backward compatibility.
-///
-/// This function now lives in the `projection` module where geometric
-/// utilities belong. This re-export keeps existing imports working.
-#[deprecated(
-    since = "0.2.0",
-    note = "use `reco_core::projection::point_in_polygon` instead"
-)]
-pub fn point_in_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
-    crate::projection::point_in_polygon(point, polygon)
+    /// The [`GpuNv12Frame`] contains CUDA device pointers to the Y and
+    /// interleaved UV planes, their row pitches (may differ from width
+    /// due to alignment), and frame dimensions.
+    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection>;
 }
 
 /// Trait for object detection on Metal-resident NV12 frames (macOS).
