@@ -17,6 +17,8 @@
 //!   support. Use this for CLI batch encoding.
 
 mod detection;
+#[cfg(test)]
+mod tests;
 #[cfg(target_os = "linux")]
 mod zero_copy_linux;
 #[cfg(target_os = "macos")]
