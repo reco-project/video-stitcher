@@ -15,7 +15,7 @@ use reco_core::cuda_interop::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
 };
 use reco_core::cuda_kernels::normalize_hwc_to_chw;
-use reco_core::detector::{CameraId, Detection, GpuDetector};
+use reco_core::detector::{CameraId, Detection, GpuDetector, GpuNv12Frame};
 use reco_core::npp_interop::{NppiRect, npp_nv12_to_rgb, npp_resize_c3};
 
 use crate::detector::postprocess;
@@ -156,16 +156,15 @@ impl GpuYoloDetector {
 }
 
 impl GpuDetector for GpuYoloDetector {
-    fn detect_gpu(
-        &mut self,
-        camera: CameraId,
-        y_ptr: u64,
-        y_pitch: usize,
-        uv_ptr: u64,
-        uv_pitch: usize,
-        width: u32,
-        height: u32,
-    ) -> Vec<Detection> {
+    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
+        let GpuNv12Frame {
+            y_ptr,
+            uv_ptr,
+            y_pitch,
+            uv_pitch,
+            width,
+            height,
+        } = *frame;
         reco_core::profile_scope!("gpu_yolo_detect");
 
         // Ensure a CUDA context is current on this thread. The zero-copy

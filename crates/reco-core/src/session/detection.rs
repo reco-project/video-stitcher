@@ -182,24 +182,24 @@ impl DetectionPipeline {
         let rs = right_slot as usize;
         let mut detections = Vec::new();
 
-        detections.extend(gpu_det.detect_gpu(
-            CameraId::Left,
-            left_buf.y_ptr[ls],
-            left_buf.y_pitch[ls],
-            left_buf.uv_ptr[ls],
-            left_buf.uv_pitch[ls],
-            left_buf.width,
-            left_buf.height,
-        ));
-        detections.extend(gpu_det.detect_gpu(
-            CameraId::Right,
-            right_buf.y_ptr[rs],
-            right_buf.y_pitch[rs],
-            right_buf.uv_ptr[rs],
-            right_buf.uv_pitch[rs],
-            right_buf.width,
-            right_buf.height,
-        ));
+        let left_frame = crate::detector::GpuNv12Frame {
+            y_ptr: left_buf.y_ptr[ls],
+            uv_ptr: left_buf.uv_ptr[ls],
+            y_pitch: left_buf.y_pitch[ls],
+            uv_pitch: left_buf.uv_pitch[ls],
+            width: left_buf.width,
+            height: left_buf.height,
+        };
+        let right_frame = crate::detector::GpuNv12Frame {
+            y_ptr: right_buf.y_ptr[rs],
+            uv_ptr: right_buf.uv_ptr[rs],
+            y_pitch: right_buf.y_pitch[rs],
+            uv_pitch: right_buf.uv_pitch[rs],
+            width: right_buf.width,
+            height: right_buf.height,
+        };
+        detections.extend(gpu_det.detect_gpu(CameraId::Left, &left_frame));
+        detections.extend(gpu_det.detect_gpu(CameraId::Right, &right_frame));
 
         detections
     }
