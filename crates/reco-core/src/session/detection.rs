@@ -42,7 +42,7 @@ impl DetectionPipeline {
 
     /// Whether detection should run on the given frame.
     pub(crate) fn should_detect(&self, frame_count: u64) -> bool {
-        frame_count % self.detection_interval == 0
+        frame_count.is_multiple_of(self.detection_interval)
     }
 
     /// Whether a CPU detector is attached.

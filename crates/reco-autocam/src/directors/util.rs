@@ -24,10 +24,10 @@ pub fn detection_score(det: &MappedDetection, last_camera: Option<CameraId>) -> 
     let cy = det.camera_center.1;
     let center_dist = ((cx - 0.5) * (cx - 0.5) + (cy - 0.5) * (cy - 0.5)).sqrt();
     score -= center_dist * 0.2;
-    if let Some(last_cam) = last_camera {
-        if det.camera == last_cam {
-            score += 0.1;
-        }
+    if let Some(last_cam) = last_camera
+        && det.camera == last_cam
+    {
+        score += 0.1;
     }
     score
 }

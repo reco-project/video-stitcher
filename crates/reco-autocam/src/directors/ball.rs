@@ -272,7 +272,7 @@ impl Director for BallDirector {
         self.current_fov = self.target_fov();
 
         // Log state every 30 frames for debug visibility.
-        if ctx.frame_index % 30 == 0 {
+        if ctx.frame_index.is_multiple_of(30) {
             log::debug!(
                 "Director frame {}: state={:?}, yaw={:.4}, pitch={:.4}, fov={:.1}, tracks={}",
                 ctx.frame_index,

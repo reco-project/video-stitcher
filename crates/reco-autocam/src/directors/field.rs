@@ -329,7 +329,7 @@ impl Director for FieldDirector {
             self.current_fov += FOV_ALPHA * (target - self.current_fov);
         }
 
-        if ctx.frame_index % LOG_INTERVAL == 0 {
+        if ctx.frame_index.is_multiple_of(LOG_INTERVAL) {
             log::debug!(
                 "FieldDirector frame {}: yaw={:.4}, pitch={:.4}, fov={:.1}, \
                  players={}, ball={}",

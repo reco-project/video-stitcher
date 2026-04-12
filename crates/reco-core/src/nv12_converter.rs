@@ -78,12 +78,12 @@ impl Nv12Converter {
     ///
     /// Returns an error if `width` is not divisible by 4 or `height` is not even.
     pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, Nv12Error> {
-        if width % 4 != 0 {
+        if !width.is_multiple_of(4) {
             return Err(Nv12Error::InvalidDimensions(format!(
                 "width must be divisible by 4, got {width}"
             )));
         }
-        if height % 2 != 0 {
+        if !height.is_multiple_of(2) {
             return Err(Nv12Error::InvalidDimensions(format!(
                 "height must be even, got {height}"
             )));
