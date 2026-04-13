@@ -8,6 +8,8 @@ mod calibrate;
 #[cfg(feature = "gstreamer")]
 mod camera;
 mod helpers;
+#[cfg(feature = "libcamera")]
+mod libcamera_cmd;
 mod preview;
 mod stitch;
 
@@ -242,6 +244,86 @@ enum Commands {
         crf: Option<u8>,
 
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
+        #[arg(long)]
+        preset: Option<String>,
+    },
+
+    /// Stitch live RPi CSI camera feeds via libcamera (rpicam-vid).
+    #[cfg(feature = "libcamera")]
+    Libcamera {
+        /// Left camera index (e.g. 0).
+        #[arg(long, default_value_t = 0)]
+        left_camera: u32,
+
+        /// Right camera index (e.g. 1).
+        #[arg(long, default_value_t = 1)]
+        right_camera: u32,
+
+        /// Path to the calibration JSON file.
+        #[arg(short, long)]
+        calibration: String,
+
+        /// Output file path.
+        #[arg(short, long)]
+        output: String,
+
+        /// Capture width in pixels.
+        #[arg(long, default_value_t = 1920)]
+        capture_width: u32,
+
+        /// Capture height in pixels.
+        #[arg(long, default_value_t = 1080)]
+        capture_height: u32,
+
+        /// Capture frame rate.
+        #[arg(long, default_value_t = 30)]
+        capture_fps: u32,
+
+        /// Output width in pixels.
+        #[arg(long, default_value_t = 1920)]
+        width: u32,
+
+        /// Output height in pixels.
+        #[arg(long, default_value_t = 1080)]
+        height: u32,
+
+        /// Force a specific encoder (e.g. "libx264", "h264_v4l2m2m").
+        #[arg(long)]
+        encoder: Option<String>,
+
+        /// Output codec: h264, hevc, av1.
+        #[arg(long, default_value = "h264")]
+        codec: String,
+
+        /// Quality preset: fast, balanced, high.
+        #[arg(long, default_value = "fast")]
+        quality: String,
+
+        /// Seam blend width (0.0-1.0).
+        #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
+        blend: f32,
+
+        /// Maximum number of frames to capture.
+        #[arg(long)]
+        max_frames: Option<u64>,
+
+        /// Duration in seconds to capture.
+        #[arg(long)]
+        duration: Option<f64>,
+
+        /// Path to a YOLO model for ball detection and auto-tracking.
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Detection interval: run detection every N frames (default: 1).
+        #[arg(long, default_value_t = 1)]
+        detection_interval: u64,
+
+        /// Override encoder CRF/quality value (lower = better, typical 18-28).
+        #[arg(long)]
+        crf: Option<u8>,
+
+        /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264).
         #[arg(long)]
         preset: Option<String>,
     },
@@ -511,6 +593,69 @@ fn main() -> anyhow::Result<()> {
             };
 
             camera::run_camera(
+                cam_config,
+                &calibration,
+                &output,
+                width,
+                height,
+                blend,
+                encoder,
+                &codec,
+                &quality,
+                duration,
+                max_frames,
+                capture_fps,
+                model.as_deref(),
+                detection_interval,
+                crf,
+                preset,
+                &interrupted,
+            )
+        }
+
+        #[cfg(feature = "libcamera")]
+        Commands::Libcamera {
+            left_camera,
+            right_camera,
+            calibration,
+            output,
+            capture_width,
+            capture_height,
+            capture_fps,
+            width,
+            height,
+            encoder,
+            codec,
+            quality,
+            blend,
+            max_frames,
+            duration,
+            model,
+            detection_interval,
+            crf,
+            preset,
+        } => {
+            use reco_io::libcamera::LibcameraConfig;
+
+            const MAX_DIM: u32 = 8192;
+            anyhow::ensure!(
+                width > 0 && width <= MAX_DIM && height > 0 && height <= MAX_DIM,
+                "Output dimensions {}x{} out of range: width and height must be 1..={MAX_DIM}",
+                width,
+                height,
+            );
+
+            log::info!("libcamera capture: cam{left_camera} + cam{right_camera} -> {output}");
+
+            let cam_config = LibcameraConfig {
+                width: capture_width,
+                height: capture_height,
+                fps: capture_fps,
+                left_camera,
+                right_camera,
+            };
+
+            libcamera_cmd::run_libcamera(
                 cam_config,
                 &calibration,
                 &output,

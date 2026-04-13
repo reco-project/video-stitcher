@@ -19,6 +19,7 @@ load-dynamic = ["reco-autocam/load-dynamic"]
 tensorrt-native = ["reco-autocam/tensorrt-native"]
 ncnn = ["reco-autocam/ncnn"]
 gstreamer = ["reco-io/gstreamer"]
+libcamera = ["reco-io/libcamera"]
 rpi = ["reco-io/rpi"]
 profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling", "reco-autocam/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
 

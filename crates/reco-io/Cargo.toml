@@ -12,6 +12,7 @@ default = ["ffmpeg"]
 ffmpeg = ["dep:ffmpeg-next"]
 rpi = ["ffmpeg", "ffmpeg-next/rpi"]
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
+libcamera = []
 profiling = ["tracing", "reco-core/profiling"]
 
 [dependencies]

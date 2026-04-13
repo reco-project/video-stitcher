@@ -28,7 +28,7 @@ impl ProgressReporter {
     }
 
     /// Print the final summary line.
-    #[cfg(feature = "gstreamer")]
+    #[cfg(any(feature = "gstreamer", feature = "libcamera"))]
     pub fn finish(&self, frame_count: u64, output_path: &str) {
         let elapsed = self.start.elapsed().as_secs_f64();
         let fps = frame_count as f64 / elapsed;
