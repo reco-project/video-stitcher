@@ -127,10 +127,25 @@ impl GpuContext {
             adapter_info.backend
         );
 
+        // Request 16-bit texture formats for 10-bit video (P010) if the
+        // adapter supports it. Not all backends do (e.g. GL on RPi5).
+        let mut features = wgpu::Features::empty();
+        if adapter
+            .features()
+            .contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
+        {
+            features |= wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+        } else {
+            log::warn!(
+                "GPU does not support 16-bit texture formats (TEXTURE_FORMAT_16BIT_NORM). \
+                 10-bit video input (P010/HEVC) will not be available."
+            );
+        }
+
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
-                required_features: wgpu::Features::TEXTURE_FORMAT_16BIT_NORM,
+                required_features: features,
                 required_limits: wgpu::Limits::downlevel_defaults()
                     .using_resolution(adapter.limits()),
                 ..Default::default()
@@ -210,10 +225,23 @@ impl GpuContext {
             alpha_modes: caps.alpha_modes,
         };
 
+        let mut features = wgpu::Features::empty();
+        if adapter
+            .features()
+            .contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
+        {
+            features |= wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+        } else {
+            log::warn!(
+                "GPU does not support 16-bit texture formats. \
+                 10-bit video input (P010/HEVC) will not be available."
+            );
+        }
+
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
-                required_features: wgpu::Features::TEXTURE_FORMAT_16BIT_NORM,
+                required_features: features,
                 required_limits: wgpu::Limits::downlevel_defaults()
                     .using_resolution(adapter.limits()),
                 ..Default::default()
