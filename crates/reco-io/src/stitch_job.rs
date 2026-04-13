@@ -44,6 +44,8 @@ pub struct StitchJob {
     audio: AudioMode,
     resolution: Option<(u32, u32)>,
     encoder_name: Option<String>,
+    crf: Option<u8>,
+    preset: Option<String>,
 
     // Processing settings
     max_frames: Option<u64>,
@@ -178,6 +180,8 @@ impl StitchJob {
             audio: AudioMode::default(),
             resolution: None,
             encoder_name: None,
+            crf: None,
+            preset: None,
             max_frames: None,
             duration: None,
             sync_offset: None,
@@ -240,6 +244,18 @@ impl StitchJob {
     /// Force a specific encoder by name (e.g. `"h264_nvenc"`, `"libx264"`).
     pub fn encoder_name(mut self, name: impl Into<String>) -> Self {
         self.encoder_name = Some(name.into());
+        self
+    }
+
+    /// Override the CRF/quality value (passed through to the encoder).
+    pub fn crf(mut self, crf: u8) -> Self {
+        self.crf = Some(crf);
+        self
+    }
+
+    /// Override the encoder preset string (passed through to the encoder).
+    pub fn preset(mut self, preset: impl Into<String>) -> Self {
+        self.preset = Some(preset.into());
         self
     }
 
@@ -390,6 +406,8 @@ impl StitchJob {
             codec_str,
             quality_str,
             self.encoder_name.clone(),
+            self.crf,
+            self.preset.clone(),
         )?;
         session.set_encoder(Box::new(encoder), 2);
 

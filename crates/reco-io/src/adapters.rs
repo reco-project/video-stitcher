@@ -313,7 +313,10 @@ pub fn detect_zero_copy(source: &FfmpegFileSource, gpu: &reco_core::gpu::GpuCont
 /// * `codec` - Codec name: `"h264"`, `"hevc"`, or `"av1"`.
 /// * `quality` - Quality preset: `"fast"`, `"balanced"`, or `"high"`.
 /// * `encoder_name` - Force a specific encoder by name, or `None` for auto-detection.
+/// * `crf` - Override the CRF/quality value, or `None` to use the quality tier default.
+/// * `preset` - Override the encoder preset string, or `None` to use the quality tier default.
 #[cfg(feature = "ffmpeg")]
+#[allow(clippy::too_many_arguments)]
 pub fn create_encoder(
     path: &std::path::Path,
     width: u32,
@@ -322,6 +325,8 @@ pub fn create_encoder(
     codec: &str,
     quality: &str,
     encoder_name: Option<String>,
+    crf: Option<u8>,
+    preset: Option<String>,
 ) -> Result<(FfmpegFileEncoder, String), reco_core::encoder::EncodeError> {
     let quality_enum = match quality {
         "fast" => ffmpeg::encoder::Quality::Fast,
@@ -336,6 +341,8 @@ pub fn create_encoder(
         encoder_name,
         codec: video_codec,
         quality: quality_enum,
+        crf,
+        preset,
     };
     let encoder = FfmpegFileEncoder::new(path, width, height, fps, &enc_config)?;
     let name = encoder.encoder_name().to_string();

@@ -117,4 +117,8 @@ pub struct OutputConfig {
     /// Force a specific encoder by name (e.g. `"h264_nvenc"`, `"libx264"`).
     /// When `None`, the backend auto-selects the best available encoder.
     pub encoder_name: Option<String>,
+    /// Override the CRF/quality value (passed through to the encoder).
+    pub crf: Option<u8>,
+    /// Override the encoder preset string (passed through to the encoder).
+    pub preset: Option<String>,
 }

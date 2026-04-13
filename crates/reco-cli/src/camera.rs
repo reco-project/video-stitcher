@@ -37,6 +37,8 @@ pub fn run_camera(
     capture_fps: u32,
     model_path: Option<&str>,
     detection_interval: u64,
+    crf: Option<u8>,
+    preset: Option<String>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
@@ -127,6 +129,8 @@ pub fn run_camera(
         encoder_name,
         codec: video_codec,
         quality,
+        crf,
+        preset,
     };
 
     let encoder = reco_io::adapters::FfmpegFileEncoder::new(

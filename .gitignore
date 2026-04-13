@@ -21,6 +21,15 @@ Thumbs.db
 *.log
 .claude/
 .cargo/
+*.pt
+*.onnx
+
+# Legacy v1 build artifacts
+out/
+node_modules/
+devData/
+.vite/
+.vscode-ctags
 
 # Calibration debug workspace
 calibrate_debug/

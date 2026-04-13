@@ -120,6 +120,14 @@ enum Commands {
         /// Use "field" with a COCO model for robust football tracking.
         #[arg(long, default_value = "ball")]
         tracking: String,
+
+        /// Override encoder CRF/quality value (lower = better, typical 18-28).
+        #[arg(long)]
+        crf: Option<u8>,
+
+        /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
+        #[arg(long)]
+        preset: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -228,6 +236,14 @@ enum Commands {
         /// Detection interval: run detection every N frames (default: 1).
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
+
+        /// Override encoder CRF/quality value (lower = better, typical 18-28).
+        #[arg(long)]
+        crf: Option<u8>,
+
+        /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
+        #[arg(long)]
+        preset: Option<String>,
     },
 
     /// Calibrate two cameras: detect features and compute placement parameters.
@@ -393,6 +409,8 @@ fn main() -> anyhow::Result<()> {
             detection_interval,
             lead_time,
             tracking,
+            crf,
+            preset,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -415,6 +433,8 @@ fn main() -> anyhow::Result<()> {
                     "field" => reco_autocam::TrackingMode::Field,
                     _ => reco_autocam::TrackingMode::Ball,
                 },
+                crf,
+                preset,
             },
             &interrupted,
         ),
@@ -467,6 +487,8 @@ fn main() -> anyhow::Result<()> {
             duration,
             model,
             detection_interval,
+            crf,
+            preset,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -503,6 +525,8 @@ fn main() -> anyhow::Result<()> {
                 capture_fps,
                 model.as_deref(),
                 detection_interval,
+                crf,
+                preset,
                 &interrupted,
             )
         }

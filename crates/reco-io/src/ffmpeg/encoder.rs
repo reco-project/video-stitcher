@@ -266,6 +266,10 @@ pub struct EncoderConfig {
     pub codec: VideoCodec,
     /// Quality preset.
     pub quality: Quality,
+    /// Override the CRF/quality value (passed through to the encoder).
+    pub crf: Option<u8>,
+    /// Override the encoder preset string (passed through to the encoder).
+    pub preset: Option<String>,
 }
 
 /// Video encoder that writes RGBA frames to an MP4 file.
@@ -460,7 +464,7 @@ impl VideoEncoder {
             enc.set_threading(ffmpeg::threading::Config::count(0));
         }
 
-        let opts = build_encoder_opts(name, config.quality);
+        let opts = build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
         let encoder = enc.open_with(opts)?;
         ost.set_parameters(&encoder);
 
@@ -643,7 +647,12 @@ impl VideoEncoder {
 }
 
 /// Build encoder-specific FFmpeg options.
-fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'static> {
+fn build_encoder_opts(
+    name: &str,
+    quality: Quality,
+    crf_override: Option<u8>,
+    preset_override: Option<&str>,
+) -> ffmpeg::Dictionary<'static> {
     let mut opts = ffmpeg::Dictionary::new();
 
     match name {
@@ -804,6 +813,34 @@ fn build_encoder_opts(name: &str, quality: Quality) -> ffmpeg::Dictionary<'stati
         _ => {
             // Unknown encoders: don't set profile, let FFmpeg pick defaults.
         }
+    }
+
+    // Apply CRF override: detect which quality key the encoder uses and replace it.
+    if let Some(crf_val) = crf_override {
+        let val = crf_val.to_string();
+        // Check known quality keys in priority order.
+        let quality_keys: &[&str] = &["crf", "cq", "global_quality", "qp", "qp_i", "q:v"];
+        let mut found = false;
+        for &key in quality_keys {
+            if opts.get(key).is_some() {
+                opts.set(key, &val);
+                // Also override qp_p when qp_i is present (AMF uses paired keys).
+                if key == "qp_i" && opts.get("qp_p").is_some() {
+                    opts.set("qp_p", &val);
+                }
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            // Fallback: set "crf" for unknown encoders.
+            opts.set("crf", &val);
+        }
+    }
+
+    // Apply preset override.
+    if let Some(preset) = preset_override {
+        opts.set("preset", preset);
     }
 
     opts

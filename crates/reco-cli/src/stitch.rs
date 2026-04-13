@@ -27,6 +27,8 @@ pub struct StitchArgs<'a> {
     pub detection_interval: u64,
     pub lead_time: f64,
     pub tracking_mode: reco_autocam::TrackingMode,
+    pub crf: Option<u8>,
+    pub preset: Option<String>,
 }
 
 /// Run the stitch subcommand.
@@ -66,6 +68,12 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if let Some(ref enc) = args.encoder_name {
         job = job.encoder_name(enc);
+    }
+    if let Some(crf) = args.crf {
+        job = job.crf(crf);
+    }
+    if let Some(ref preset) = args.preset {
+        job = job.preset(preset);
     }
 
     // Wire up autocam via the on_session callback if a model is provided.
