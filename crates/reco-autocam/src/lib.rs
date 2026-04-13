@@ -86,10 +86,10 @@ pub fn setup_autocam(
     let mut detection_active = false;
 
     // Load class names from the model to resolve label -> class_id for directors.
-    // Skip ORT session creation for .engine files (TRT engines aren't ONNX).
-    let class_names = if model_path.ends_with(".engine") {
-        Vec::new() // Labels come from sidecar .labels file instead
-    } else {
+    // Skip ORT session creation for non-ONNX models (.engine files,
+    // NCNN model directories). ORT can only parse .onnx files.
+    let is_onnx = model_path.ends_with(".onnx");
+    let class_names = if is_onnx {
         match reco_detect::create_ort_session(Path::new(model_path), Vec::new()) {
             Ok((_, _, names)) => names,
             Err(e) => {
@@ -97,6 +97,8 @@ pub fn setup_autocam(
                 Vec::new()
             }
         }
+    } else {
+        Vec::new() // Labels from sidecar file or defaults
     };
 
     // Check if ROI filtering should be applied.
