@@ -31,13 +31,14 @@ use reco_core::cuda_kernels::normalize_hwc_to_chw;
 use reco_core::detector::{CameraId, Detection, GpuDetector, GpuNv12Frame};
 use reco_core::npp_interop::{NppiRect, npp_nv12_to_rgb, npp_resize_c3};
 
-use crate::cuda::{CudaBuffer, CudaStream};
-use crate::engine::{TrtContext, TrtEngine, TrtError};
+use self::cuda::{CudaBuffer, CudaStream};
+use self::engine::{TrtContext, TrtEngine, TrtError};
+use super::postprocess;
 
 /// YOLO detector using native TensorRT inference.
 ///
 /// Implements [`GpuDetector`] for the zero-copy pipeline. Reuses the
-/// same NPP preprocessing as `GpuYoloDetector` (from reco-autocam)
+/// same NPP preprocessing as [`OrtGpuDetector`](super::ort_gpu::OrtGpuDetector)
 /// but replaces ORT inference with direct TensorRT API calls.
 ///
 /// # Drop order
@@ -45,7 +46,7 @@ use crate::engine::{TrtContext, TrtEngine, TrtError};
 /// Fields are declared so that GPU resources drop before the TRT
 /// context, and the context drops before the engine (Rust drops
 /// fields in declaration order).
-pub struct TrtYoloDetector {
+pub struct TrtGpuDetector {
     // GPU scratch buffers (drop first).
     rgb_u8: CUdeviceptr,
     resized_u8: CUdeviceptr,
@@ -62,7 +63,7 @@ pub struct TrtYoloDetector {
     input_idx: usize,
     output_idx: usize,
     num_bindings: usize,
-    // Preprocessing parameters (identical to GpuYoloDetector).
+    // Preprocessing parameters (identical to OrtGpuDetector).
     input_size: u32,
     confidence_threshold: f32,
     labels: Vec<String>,
@@ -78,9 +79,9 @@ pub struct TrtYoloDetector {
 /// SAFETY: The detector's GPU resources are accessed only from one
 /// thread at a time via the GpuDetector trait (which takes &mut self).
 /// CUDA context management via cuda_ensure_context handles thread safety.
-unsafe impl Send for TrtYoloDetector {}
+unsafe impl Send for TrtGpuDetector {}
 
-impl TrtYoloDetector {
+impl TrtGpuDetector {
     /// Create a TensorRT YOLO detector from a pre-built `.engine` file.
     ///
     /// Returns `Ok(None)` if NPP is not available. Returns `Err` for
@@ -97,12 +98,12 @@ impl TrtYoloDetector {
         labels: Vec<String>,
     ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
         if !reco_core::npp_interop::is_npp_available() {
-            log::warn!("TrtYoloDetector: NPP not available, GPU detection disabled");
+            log::warn!("TrtGpuDetector: NPP not available, GPU detection disabled");
             return Ok(None);
         }
 
         cuda_ensure_context()?;
-        log::info!("TrtYoloDetector: CUDA context ready, loading engine...");
+        log::info!("TrtGpuDetector: CUDA context ready, loading engine...");
 
         // Load TRT engine.
         let engine_path = engine_path.as_ref();
@@ -167,7 +168,7 @@ impl TrtYoloDetector {
         let pad_x = (input_size - new_w) as f32 / 2.0;
         let pad_y = (input_size - new_h) as f32 / 2.0;
 
-        // Allocate GPU scratch buffers (same as GpuYoloDetector).
+        // Allocate GPU scratch buffers (same as OrtGpuDetector).
         let rgb_size = (frame_width as usize)
             .checked_mul(frame_height as usize)
             .and_then(|v| v.checked_mul(3))
@@ -196,7 +197,7 @@ impl TrtYoloDetector {
         let num_bindings = bindings.len();
 
         log::info!(
-            "TrtYoloDetector ready: input={}x{}, frame={}x{}, scale={:.3}, \
+            "TrtGpuDetector ready: input={}x{}, frame={}x{}, scale={:.3}, \
              pad=({:.1},{:.1}), GPU scratch={:.1}MB",
             input_size,
             input_size,
@@ -234,9 +235,9 @@ impl TrtYoloDetector {
         };
 
         // Warmup inference to trigger TRT engine optimization.
-        log::info!("TrtYoloDetector: starting warmup...");
+        log::info!("TrtGpuDetector: starting warmup...");
         detector.warmup()?;
-        log::info!("TrtYoloDetector: warmup done");
+        log::info!("TrtGpuDetector: warmup done");
 
         Ok(Some(detector))
     }
@@ -252,7 +253,7 @@ impl TrtYoloDetector {
         self.context.enqueue(&mut binding_ptrs, &self.stream)?;
         self.stream.synchronize()?;
 
-        log::info!("TrtYoloDetector: warmup inference complete");
+        log::info!("TrtGpuDetector: warmup inference complete");
         Ok(())
     }
 
@@ -272,7 +273,7 @@ impl TrtYoloDetector {
     }
 }
 
-impl GpuDetector for TrtYoloDetector {
+impl GpuDetector for TrtGpuDetector {
     fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
         let GpuNv12Frame {
             y_ptr,
@@ -290,7 +291,7 @@ impl GpuDetector for TrtYoloDetector {
             return Vec::new();
         }
 
-        // Step 1: NV12 -> packed RGB u8 via NPP (identical to GpuYoloDetector).
+        // Step 1: NV12 -> packed RGB u8 via NPP (identical to OrtGpuDetector).
         {
             reco_core::profile_scope!("npp_nv12_to_rgb");
             if let Err(e) =
@@ -301,7 +302,7 @@ impl GpuDetector for TrtYoloDetector {
             }
         }
 
-        // Step 2: Resize to letterboxed region (identical to GpuYoloDetector).
+        // Step 2: Resize to letterboxed region (identical to OrtGpuDetector).
         {
             reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
@@ -326,7 +327,7 @@ impl GpuDetector for TrtYoloDetector {
             }
         }
 
-        // Step 3: Normalize u8 HWC -> f32 CHW (identical to GpuYoloDetector).
+        // Step 3: Normalize u8 HWC -> f32 CHW (identical to OrtGpuDetector).
         {
             reco_core::profile_scope!("cuda_normalize");
             if let Err(e) = normalize_hwc_to_chw(
@@ -431,7 +432,7 @@ impl GpuDetector for TrtYoloDetector {
     }
 }
 
-impl Drop for TrtYoloDetector {
+impl Drop for TrtGpuDetector {
     fn drop(&mut self) {
         for (name, ptr) in [
             ("rgb_u8", self.rgb_u8),
@@ -444,87 +445,5 @@ impl Drop for TrtYoloDetector {
                 }
             }
         }
-    }
-}
-
-// ── Shared postprocessing (copied from reco-autocam::detector) ──
-
-/// Parse YOLO end-to-end NMS output `[1, N, 6]` into detections.
-///
-/// Each row is `[x1, y1, x2, y2, confidence, class_id]` in letterboxed
-/// pixel coordinates. Coordinates are un-letterboxed and normalized to [0, 1].
-#[allow(clippy::too_many_arguments)]
-fn postprocess(
-    data: &[f32],
-    n: usize,
-    camera: CameraId,
-    confidence_threshold: f32,
-    scale: f32,
-    pad_x: f32,
-    pad_y: f32,
-    frame_width: u32,
-    frame_height: u32,
-) -> Vec<Detection> {
-    if data.len() < n * 6 {
-        log::warn!("postprocess: expected {} floats, got {}", n * 6, data.len());
-        return Vec::new();
-    }
-
-    let mut detections = Vec::new();
-    let fw = frame_width as f32;
-    let fh = frame_height as f32;
-
-    for i in 0..n {
-        let row = &data[i * 6..(i + 1) * 6];
-        let conf = row[4];
-        if conf < confidence_threshold {
-            continue;
-        }
-
-        let class_id = row[5] as u16;
-
-        // Un-letterbox: map from padded input coords to original frame coords.
-        let orig_x1 = (row[0] - pad_x) / scale;
-        let orig_y1 = (row[1] - pad_y) / scale;
-        let orig_x2 = (row[2] - pad_x) / scale;
-        let orig_y2 = (row[3] - pad_y) / scale;
-
-        // Normalize to [0, 1] center + size.
-        let cx = ((orig_x1 + orig_x2) / 2.0) / fw;
-        let cy = ((orig_y1 + orig_y2) / 2.0) / fh;
-        let w = (orig_x2 - orig_x1).abs() / fw;
-        let h = (orig_y2 - orig_y1).abs() / fh;
-
-        // Skip if center is outside the frame.
-        if cx < 0.0 || cx > 1.0 || cy < 0.0 || cy > 1.0 {
-            continue;
-        }
-
-        detections.push(Detection {
-            camera,
-            class_id,
-            confidence: conf,
-            center_x: cx.clamp(0.0, 1.0),
-            center_y: cy.clamp(0.0, 1.0),
-            width: w.clamp(0.0, 1.0),
-            height: h.clamp(0.0, 1.0),
-        });
-    }
-
-    detections
-}
-
-/// Read class labels from a sidecar `.labels` file (one name per line).
-///
-/// If the file doesn't exist, returns an empty vec. Labels are used
-/// for log messages and class ID resolution in directors.
-pub fn read_labels_file(path: impl AsRef<Path>) -> Vec<String> {
-    match std::fs::read_to_string(path.as_ref()) {
-        Ok(contents) => contents
-            .lines()
-            .map(|l| l.trim().to_string())
-            .filter(|l| !l.is_empty())
-            .collect(),
-        Err(_) => Vec::new(),
     }
 }

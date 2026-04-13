@@ -6,8 +6,8 @@
 
 use std::ffi::c_void;
 
-use crate::engine::TrtError;
-use crate::sys;
+use super::engine::TrtError;
+use super::sys;
 
 /// A CUDA stream for asynchronous GPU operations.
 ///

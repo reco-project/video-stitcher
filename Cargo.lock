@@ -3241,11 +3241,9 @@ dependencies = [
 name = "reco-autocam"
 version = "0.1.0"
 dependencies = [
- "dirs",
  "log",
- "ort",
  "reco-core",
- "reco-tensorrt",
+ "reco-detect",
  "tracing",
 ]
 
@@ -3326,6 +3324,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reco-detect"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "dirs",
+ "log",
+ "ort",
+ "reco-core",
+ "tracing",
+]
+
+[[package]]
 name = "reco-io"
 version = "0.1.0"
 dependencies = [
@@ -3336,16 +3346,6 @@ dependencies = [
  "pollster",
  "reco-core",
  "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "reco-tensorrt"
-version = "0.1.0"
-dependencies = [
- "cc",
- "log",
- "reco-core",
  "tracing",
 ]
 

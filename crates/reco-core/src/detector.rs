@@ -88,8 +88,10 @@ pub struct Detection {
 
 /// Trait for object detection on raw camera frames.
 ///
-/// Implementations should be async-friendly - detection may run on a
-/// separate thread or even a different device (e.g. a Jetson's DLA).
+/// A frame-level analyzer that may maintain internal state across calls
+/// (e.g. tracking state, warmup flags). Implementations should be
+/// async-friendly - detection may run on a separate thread or even a
+/// different device (e.g. a Jetson's DLA).
 ///
 /// # Frame Data
 ///
@@ -129,6 +131,7 @@ pub struct GpuNv12Frame {
 
 /// Trait for object detection on GPU-resident NV12 frames.
 ///
+/// A frame-level analyzer that may maintain internal state across calls.
 /// Unlike [`Detector`] which operates on CPU-accessible [`RawFrame`] data,
 /// this trait takes CUDA device pointers directly. Used in the zero-copy
 /// pipeline where decoded frames never leave the GPU.
@@ -148,6 +151,7 @@ pub trait GpuDetector: Send {
 
 /// Trait for object detection on Metal-resident NV12 frames (macOS).
 ///
+/// A frame-level analyzer that may maintain internal state across calls.
 /// Unlike [`GpuDetector`] which operates on CUDA device pointers,
 /// this trait takes `CVPixelBufferRef` pointers from VideoToolbox.
 /// Used in the macOS zero-copy pipeline where decoded frames are

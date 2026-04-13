@@ -9,21 +9,16 @@ description = "Automatic camera control for reco: YOLO ball detector, EMA smooth
 
 [dependencies]
 reco-core = { path = "../reco-core" }
-ort = "2.0.0-rc.12"
-dirs = "6"
+reco-detect = { path = "../reco-detect" }
 log = "0.4"
 
 [features]
-cuda = ["ort/cuda"]
-tensorrt = ["ort/tensorrt"]
-coreml = ["ort/coreml"]
-load-dynamic = ["ort/load-dynamic"]
-tensorrt-native = ["dep:reco-tensorrt"]
-profiling = ["reco-core/profiling", "reco-tensorrt?/profiling", "dep:tracing"]
-
-[dependencies.reco-tensorrt]
-path = "../reco-tensorrt"
-optional = true
+cuda = ["reco-detect/cuda"]
+tensorrt = ["reco-detect/tensorrt"]
+coreml = ["reco-detect/coreml"]
+load-dynamic = ["reco-detect/load-dynamic"]
+tensorrt-native = ["reco-detect/tensorrt-native"]
+profiling = ["reco-core/profiling", "reco-detect/profiling", "dep:tracing"]
 
 [dependencies.tracing]
 workspace = true

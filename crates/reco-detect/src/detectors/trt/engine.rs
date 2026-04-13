@@ -6,7 +6,7 @@
 use std::ffi::{CStr, c_void};
 use std::path::Path;
 
-use crate::sys;
+use super::sys;
 
 /// TensorRT data type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

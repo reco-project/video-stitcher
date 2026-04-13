@@ -18,17 +18,17 @@ use reco_core::cuda_kernels::normalize_hwc_to_chw;
 use reco_core::detector::{CameraId, Detection, GpuDetector, GpuNv12Frame};
 use reco_core::npp_interop::{NppiRect, npp_nv12_to_rgb, npp_resize_c3};
 
-use crate::detector::postprocess;
+use super::postprocess;
 
-/// YOLO detector that operates on GPU-resident NV12 frames.
+/// YOLO detector that operates on GPU-resident NV12 frames via ORT.
 ///
 /// Pre-allocates GPU scratch buffers for the preprocessing pipeline and
 /// reuses them across frames. The ORT session runs with TensorRT or CUDA EP
 /// for GPU-side inference.
 ///
-/// Created via [`GpuYoloDetector::try_new`], which returns `None` if NPP
+/// Created via [`OrtGpuDetector::try_new`], which returns `None` if NPP
 /// is not available on the system.
-pub struct GpuYoloDetector {
+pub struct OrtGpuDetector {
     session: Session,
     input_size: u32,
     confidence_threshold: f32,
@@ -45,7 +45,7 @@ pub struct GpuYoloDetector {
     tensor_f32: CUdeviceptr,
 }
 
-impl GpuYoloDetector {
+impl OrtGpuDetector {
     /// Try to create a GPU YOLO detector.
     ///
     /// Returns `Ok(None)` if NPP libraries are not available (e.g. on systems
@@ -63,7 +63,7 @@ impl GpuYoloDetector {
         labels: Vec<String>,
     ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
         if !reco_core::npp_interop::is_npp_available() {
-            log::warn!("GpuYoloDetector: NPP not available, GPU detection disabled");
+            log::warn!("OrtGpuDetector: NPP not available, GPU detection disabled");
             return Ok(None);
         }
 
@@ -71,7 +71,7 @@ impl GpuYoloDetector {
         // Without it, ORT falls back to CPU EP which segfaults on GPU memory.
         if !cfg!(feature = "tensorrt") {
             log::warn!(
-                "GpuYoloDetector: TensorRT feature not enabled, GPU detection disabled. \
+                "OrtGpuDetector: TensorRT feature not enabled, GPU detection disabled. \
                  Build with --features tensorrt for zero-copy GPU inference."
             );
             return Ok(None);
@@ -79,7 +79,8 @@ impl GpuYoloDetector {
 
         cuda_ensure_context()?;
 
-        let (session, input_size, labels) = crate::create_ort_session(model_path.as_ref(), labels)?;
+        let (session, input_size, labels) =
+            crate::ort_session::create_ort_session(model_path.as_ref(), labels)?;
 
         // Pre-compute letterbox parameters.
         let (fw, fh) = (frame_width as f32, frame_height as f32);
@@ -113,7 +114,7 @@ impl GpuYoloDetector {
         cuda_memset_d8(resized_u8, 114, resized_size)?;
 
         log::info!(
-            "GpuYoloDetector ready: input={}x{}, frame={}x{}, scale={:.3}, pad=({:.1},{:.1}), \
+            "OrtGpuDetector ready: input={}x{}, frame={}x{}, scale={:.3}, pad=({:.1},{:.1}), \
              GPU scratch={:.1}MB",
             input_size,
             input_size,
@@ -148,14 +149,14 @@ impl GpuYoloDetector {
             let warmup_data = vec![0.0f32; 3 * sz * sz];
             let tensor = ort::value::Tensor::from_array(([1, 3, sz, sz], warmup_data))?;
             detector.session.run(ort::inputs![tensor])?;
-            log::info!("GpuYoloDetector: warmup inference complete");
+            log::info!("OrtGpuDetector: warmup inference complete");
         }
 
         Ok(Some(detector))
     }
 }
 
-impl GpuDetector for GpuYoloDetector {
+impl GpuDetector for OrtGpuDetector {
     fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
         let GpuNv12Frame {
             y_ptr,
@@ -323,7 +324,7 @@ impl GpuDetector for GpuYoloDetector {
     }
 }
 
-impl Drop for GpuYoloDetector {
+impl Drop for OrtGpuDetector {
     fn drop(&mut self) {
         // Free GPU scratch buffers. Log errors but don't panic in Drop.
         for (name, ptr) in [

@@ -20,7 +20,7 @@ use reco_core::gpu::GpuContext;
 use reco_core::metal_compute::MetalPreprocessPipeline;
 use reco_core::metal_interop::CVPixelBufferRef;
 
-use crate::detector::postprocess;
+use super::postprocess;
 
 /// Inference backend for the Metal YOLO detector.
 enum InferenceBackend {
@@ -100,7 +100,8 @@ impl MetalYoloDetector {
             (InferenceBackend::CoreMlNative(coreml), input_size, labels)
         } else {
             // ORT with CoreML EP fallback (uses shared session builder).
-            let (session, input_size, labels) = crate::create_ort_session(path, labels)?;
+            let (session, input_size, labels) =
+                crate::ort_session::create_ort_session(path, labels)?;
             (
                 InferenceBackend::OrtSession {
                     session,
