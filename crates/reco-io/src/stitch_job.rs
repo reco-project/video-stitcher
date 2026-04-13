@@ -81,6 +81,16 @@ pub enum InputPath {
     Chained(Vec<PathBuf>),
 }
 
+impl InputPath {
+    /// Get the first file path (for audio extraction, probing, etc.).
+    pub fn first_path(&self) -> &Path {
+        match self {
+            Self::Single(p) => p,
+            Self::Chained(v) => &v[0],
+        }
+    }
+}
+
 impl From<&str> for InputPath {
     fn from(s: &str) -> Self {
         Self::Single(PathBuf::from(s))
@@ -395,20 +405,42 @@ impl StitchJob {
             cb(&mut session, &source);
         }
 
-        // Create encoder
+        // Create encoder with optional audio passthrough.
         let fps_rational = info.fps_rational.unwrap_or((30, 1));
         let (codec_str, quality_str) = map_output_config(&self.codec, &self.bitrate);
-        let (encoder, enc_name) = crate::adapters::create_encoder(
+
+        // Resolve audio source path from AudioMode.
+        let audio_source = match &self.audio {
+            AudioMode::CopyFrom(0) => Some(self.left.first_path().to_path_buf()),
+            AudioMode::CopyFrom(1) => Some(self.right.first_path().to_path_buf()),
+            AudioMode::CopyFrom(n) => {
+                log::warn!("AudioMode::CopyFrom({n}) - only 0 (left) and 1 (right) are valid");
+                None
+            }
+            AudioMode::Disabled => None,
+        };
+
+        let enc_config = crate::ffmpeg::encoder::EncoderConfig {
+            encoder_name: self.encoder_name.clone(),
+            codec: crate::ffmpeg::encoder::VideoCodec::from_str_loose(codec_str)
+                .unwrap_or_default(),
+            quality: match quality_str {
+                "fast" => crate::ffmpeg::encoder::Quality::Fast,
+                "high" => crate::ffmpeg::encoder::Quality::High,
+                _ => crate::ffmpeg::encoder::Quality::Balanced,
+            },
+            crf: self.crf,
+            preset: self.preset.clone(),
+            audio_source,
+        };
+        let encoder = crate::adapters::FfmpegFileEncoder::new(
             &self.output,
             out_w,
             out_h,
             (fps_rational.0, fps_rational.1),
-            codec_str,
-            quality_str,
-            self.encoder_name.clone(),
-            self.crf,
-            self.preset.clone(),
+            &enc_config,
         )?;
+        let enc_name = encoder.encoder_name().to_string();
         session.set_encoder(Box::new(encoder), 2);
 
         // Compute frame limit
@@ -423,9 +455,6 @@ impl StitchJob {
             self.on_progress.take(),
         )?;
         session.finish()?;
-
-        // TODO: Audio passthrough (remux audio stream from input to output)
-        // This would use FFmpeg's stream copy after encoding is complete.
 
         Ok(StitchResult {
             frames_processed: frame_count,

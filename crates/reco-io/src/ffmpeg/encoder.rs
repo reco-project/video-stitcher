@@ -270,6 +270,9 @@ pub struct EncoderConfig {
     pub crf: Option<u8>,
     /// Override the encoder preset string (passed through to the encoder).
     pub preset: Option<String>,
+    /// Path to a source file to copy audio from (stream copy, no re-encoding).
+    /// The first audio stream found will be muxed into the output.
+    pub audio_source: Option<std::path::PathBuf>,
 }
 
 /// Video encoder that writes RGBA frames to an MP4 file.
@@ -301,6 +304,23 @@ pub struct VideoEncoder {
     /// Reusable frame buffers to avoid per-frame allocation.
     rgba_frame: VideoFrame,
     yuv_frame: VideoFrame,
+    /// Audio passthrough state (if enabled).
+    audio: Option<AudioPassthrough>,
+}
+
+/// State for copying an audio stream from an input file to the output.
+struct AudioPassthrough {
+    ictx: format::context::Input,
+    /// Audio stream index in the input file.
+    input_stream_index: usize,
+    /// Audio stream index in the output file.
+    output_stream_index: usize,
+    /// Input audio stream time base (for rescaling).
+    input_time_base: Rational,
+    /// Output audio stream time base.
+    output_time_base: Rational,
+    /// Whether all audio packets have been read.
+    exhausted: bool,
 }
 
 // SAFETY: VideoEncoder is only used from a single thread. The raw pointers
@@ -379,7 +399,7 @@ impl VideoEncoder {
             match Self::try_open(
                 &mut octx, codec, *pixel_fmt, *is_hw, width, height, fps, config, name,
             ) {
-                Ok((enc_opened, scaler, stream_index, encoder_time_base, output_time_base)) => {
+                Ok((enc_opened, scaler, stream_index, encoder_time_base, _)) => {
                     let hw_tag = if *is_hw { " (hardware)" } else { " (software)" };
                     log::info!(
                         "Encoder: {}x{} {}{} @ {}/{} fps",
@@ -390,6 +410,29 @@ impl VideoEncoder {
                         fps.0,
                         fps.1,
                     );
+
+                    // Set up audio passthrough before writing the header.
+                    let audio = if let Some(ref audio_path) = config.audio_source {
+                        Self::setup_audio_stream(&mut octx, audio_path)?
+                    } else {
+                        None
+                    };
+
+                    octx.write_header()?;
+
+                    let output_time_base = octx
+                        .stream(stream_index)
+                        .expect("video stream we just added")
+                        .time_base();
+
+                    // Update audio output time base after write_header
+                    // (the muxer may adjust it).
+                    let audio = audio.map(|mut a| {
+                        if let Some(s) = octx.stream(a.output_stream_index) {
+                            a.output_time_base = s.time_base();
+                        }
+                        a
+                    });
 
                     return Ok(Self {
                         octx,
@@ -405,6 +448,7 @@ impl VideoEncoder {
                         encoder_name: name.to_string(),
                         rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
                         yuv_frame: VideoFrame::new(*pixel_fmt, width, height),
+                        audio,
                     });
                 }
                 Err(e) => {
@@ -468,12 +512,10 @@ impl VideoEncoder {
         let encoder = enc.open_with(opts)?;
         ost.set_parameters(&encoder);
 
-        octx.write_header()?;
+        // Note: write_header is called by the caller (new()) after optional
+        // audio stream setup. output_time_base is read after write_header.
 
-        let output_time_base = octx
-            .stream(stream_index)
-            .expect("stream we just added")
-            .time_base();
+        let output_time_base = Rational(0, 0); // placeholder, updated after write_header
 
         let scaler = ScalingContext::get(
             Pixel::RGBA,
@@ -497,6 +539,98 @@ impl VideoEncoder {
     /// The name of the active encoder (e.g., `"h264_nvenc"`, `"libx264"`).
     pub fn encoder_name(&self) -> &str {
         &self.encoder_name
+    }
+
+    /// Set up audio passthrough by adding an audio stream to the output context.
+    ///
+    /// Called before `write_header`. Returns `None` if no audio stream found.
+    fn setup_audio_stream(
+        octx: &mut format::context::Output,
+        source_path: &Path,
+    ) -> Result<Option<AudioPassthrough>, EncodeError> {
+        let ictx = format::input(source_path)?;
+
+        let audio_stream = ictx.streams().best(ffmpeg::media::Type::Audio);
+
+        let Some(audio_stream) = audio_stream else {
+            log::info!("No audio stream found in {}", source_path.display());
+            return Ok(None);
+        };
+
+        let input_stream_index = audio_stream.index();
+        let input_time_base = audio_stream.time_base();
+        let codec_params = audio_stream.parameters();
+
+        // Add an audio stream to the output with copied codec parameters.
+        let mut ost = octx.add_stream(ffmpeg::encoder::find(codec::Id::None))?;
+        ost.set_parameters(codec_params);
+        // SAFETY: set codec_tag to 0 so the muxer picks the right tag
+        // for the container format. codec_par is valid for the stream's lifetime.
+        unsafe {
+            (*ost.parameters().as_mut_ptr()).codec_tag = 0;
+        }
+
+        let output_stream_index = ost.index();
+        let output_time_base = ost.time_base();
+
+        log::info!(
+            "Audio passthrough from {} (stream {}, codec: {:?})",
+            source_path.display(),
+            input_stream_index,
+            ictx.stream(input_stream_index)
+                .map(|s| s.parameters().id())
+                .unwrap_or(codec::Id::None),
+        );
+
+        Ok(Some(AudioPassthrough {
+            ictx,
+            input_stream_index,
+            output_stream_index,
+            input_time_base,
+            output_time_base,
+            exhausted: false,
+        }))
+    }
+
+    /// Forward audio packets up to the given video duration limit.
+    ///
+    /// Reads audio packets from the input and writes those whose timestamp
+    /// falls within `max_pts` (in the output time base). Stops when audio
+    /// is exhausted or exceeds the limit.
+    fn forward_audio_packets_until(&mut self, max_pts: i64) -> Result<(), EncodeError> {
+        let Some(ref mut audio) = self.audio else {
+            return Ok(());
+        };
+        if audio.exhausted {
+            return Ok(());
+        }
+
+        loop {
+            let mut packet = ffmpeg::Packet::empty();
+            match packet.read(&mut audio.ictx) {
+                Ok(()) => {
+                    if packet.stream() != audio.input_stream_index {
+                        continue; // skip video/subtitle packets
+                    }
+                    packet.set_stream(audio.output_stream_index);
+                    packet.rescale_ts(audio.input_time_base, audio.output_time_base);
+
+                    // Stop if this audio packet is beyond the video duration.
+                    if packet.pts().is_some_and(|pts| pts > max_pts) {
+                        audio.exhausted = true;
+                        break;
+                    }
+
+                    packet.write_interleaved(&mut self.octx)?;
+                }
+                Err(ffmpeg::Error::Eof) => {
+                    audio.exhausted = true;
+                    break;
+                }
+                Err(_) => break,
+            }
+        }
+        Ok(())
     }
 
     /// Write an RGBA frame to the output file.
@@ -631,6 +765,21 @@ impl VideoEncoder {
     fn flush_and_finalize(&mut self) -> Result<(), EncodeError> {
         self.encoder.send_eof()?;
         self.receive_and_write_packets()?;
+
+        // Forward audio packets trimmed to the video duration.
+        if self.audio.is_some() {
+            // Compute video duration in the audio output time base.
+            // frame_count / (fps_num / fps_den) = duration in seconds.
+            // Convert to audio PTS: duration_secs * audio_time_base_den / audio_time_base_num.
+            let audio_tb = self.audio.as_ref().unwrap().output_time_base;
+            let video_duration_pts = self.frame_count
+                * i64::from(self.encoder_time_base.numerator())
+                * i64::from(audio_tb.denominator())
+                / (i64::from(self.encoder_time_base.denominator())
+                    * i64::from(audio_tb.numerator()).max(1));
+            self.forward_audio_packets_until(video_duration_pts)?;
+        }
+
         self.octx.write_trailer()?;
         Ok(())
     }
@@ -642,6 +791,9 @@ impl VideoEncoder {
             packet.rescale_ts(self.encoder_time_base, self.output_time_base);
             packet.write_interleaved(&mut self.octx)?;
         }
+        // Audio packets are forwarded during flush (after all video is written)
+        // to avoid complex per-frame PTS synchronization. write_interleaved
+        // handles the interleaving.
         Ok(())
     }
 }

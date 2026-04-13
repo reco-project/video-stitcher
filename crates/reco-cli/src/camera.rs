@@ -131,6 +131,7 @@ pub fn run_camera(
         quality,
         crf,
         preset,
+        ..Default::default()
     };
 
     let encoder = reco_io::adapters::FfmpegFileEncoder::new(
