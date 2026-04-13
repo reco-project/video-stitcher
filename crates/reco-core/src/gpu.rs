@@ -182,10 +182,24 @@ impl GpuContext {
             wgpu::Backends::DX12
         } else if cfg!(target_os = "macos") || cfg!(target_os = "ios") {
             wgpu::Backends::METAL
+        } else if Self::is_v3d_gpu() {
+            // Broadcom V3D (Raspberry Pi 5): Vulkan driver renders black
+            // frames due to a V3DV driver bug. Use GL instead.
+            log::info!("Detected V3D GPU (RPi), using GL backend to avoid Vulkan driver bug");
+            wgpu::Backends::GL
         } else {
             // Linux, Android, etc.
             wgpu::Backends::VULKAN
         }
+    }
+
+    /// Detect Broadcom V3D GPU (Raspberry Pi 5) via sysfs.
+    ///
+    /// V3D's Vulkan driver has a rendering bug that produces black frames.
+    /// When detected, we auto-select the GL backend instead.
+    fn is_v3d_gpu() -> bool {
+        // V3D creates /sys/devices/platform/*.v3d on RPi5
+        std::path::Path::new("/sys/bus/platform/drivers/v3d").exists()
     }
 
     /// Initialize a GPU context for a windowed surface.
