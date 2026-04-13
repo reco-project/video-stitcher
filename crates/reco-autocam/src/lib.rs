@@ -201,7 +201,37 @@ pub fn setup_autocam(
         }
     }
 
-    if !use_zero_copy {
+    // NCNN backend: use for _ncnn_model directories (Ultralytics NCNN export).
+    // Fastest CPU inference on ARM (RPi5: ~67ms vs ORT ~130ms).
+    #[cfg(feature = "ncnn")]
+    if !detection_active && std::path::Path::new(model_path).is_dir() {
+        match reco_detect::NcnnYoloDetector::new(
+            model_path,
+            640, // default NCNN input size
+            input_width,
+            input_height,
+            0.25,
+            Vec::new(), // labels loaded from sidecar if needed
+        ) {
+            Ok(ncnn_det) => {
+                let detector: Box<dyn reco_core::detector::Detector> =
+                    if let Some(roi) = effective_roi.clone() {
+                        Box::new(RoiFilteredDetector::new(Box::new(ncnn_det), roi))
+                    } else {
+                        Box::new(ncnn_det)
+                    };
+                session.set_detector(detector);
+                detection_active = true;
+                log::info!("Autocam: NCNN YOLO tracking enabled (model: {model_path})");
+            }
+            Err(e) => {
+                log::warn!("Autocam: NCNN detector init failed ({e}), trying ORT fallback");
+            }
+        }
+    }
+
+    // ORT CPU fallback for .onnx files.
+    if !detection_active && !use_zero_copy {
         let yolo = CpuYoloDetector::from_file(model_path)?;
         let detector: Box<dyn reco_core::detector::Detector> = if let Some(roi) = effective_roi {
             Box::new(RoiFilteredDetector::new(Box::new(yolo), roi))

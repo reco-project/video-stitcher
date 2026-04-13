@@ -18,6 +18,7 @@ tensorrt = ["reco-detect/tensorrt"]
 coreml = ["reco-detect/coreml"]
 load-dynamic = ["reco-detect/load-dynamic"]
 tensorrt-native = ["reco-detect/tensorrt-native"]
+ncnn = ["reco-detect/ncnn"]
 profiling = ["reco-core/profiling", "reco-detect/profiling", "dep:tracing"]
 
 [dependencies.tracing]

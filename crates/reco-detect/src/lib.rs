@@ -6,9 +6,11 @@
 //! - [`OrtGpuDetector`] - ONNX Runtime + TensorRT/CUDA EP on GPU-resident NV12 frames
 //! - `MetalYoloDetector` - Metal compute + CoreML/ORT on macOS zero-copy frames (cfg macos)
 //! - `TrtGpuDetector` - Native TensorRT inference, no ORT dependency (feature `tensorrt-native`)
+//! - `NcnnYoloDetector` - NCNN inference optimized for ARM/RPi5 (feature `ncnn`)
 //!
 //! All ORT-based detectors are gated behind the `ort` feature (on by default).
 //! The native TensorRT backend is gated behind `tensorrt-native`.
+//! The NCNN backend is gated behind `ncnn`.
 
 pub mod detectors;
 #[cfg(feature = "ort")]
@@ -19,6 +21,8 @@ pub mod ort_session;
 pub use detectors::cpu::CpuYoloDetector;
 #[cfg(all(feature = "ort", target_os = "macos"))]
 pub use detectors::metal::MetalYoloDetector;
+#[cfg(feature = "ncnn")]
+pub use detectors::ncnn::NcnnYoloDetector;
 #[cfg(all(feature = "ort", any(target_os = "linux", target_os = "windows")))]
 pub use detectors::ort_gpu::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]

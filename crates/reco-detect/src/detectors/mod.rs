@@ -7,6 +7,8 @@
 pub mod cpu;
 #[cfg(all(feature = "ort", target_os = "macos"))]
 pub mod metal;
+#[cfg(feature = "ncnn")]
+pub mod ncnn;
 #[cfg(all(feature = "ort", any(target_os = "linux", target_os = "windows")))]
 pub mod ort_gpu;
 #[cfg(feature = "tensorrt-native")]
