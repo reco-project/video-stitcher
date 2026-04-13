@@ -1,9 +1,8 @@
 //! Shared ORT session creation and caching utilities.
 //!
-//! Used by [`CpuYoloDetector`](crate::detectors::cpu::CpuYoloDetector),
-//! [`OrtGpuDetector`](crate::detectors::ort_gpu::OrtGpuDetector), and
-//! [`MetalYoloDetector`](crate::detectors::metal::MetalYoloDetector)
-//! to avoid duplicating session builder setup and model metadata extraction.
+//! Used by `CpuYoloDetector`, `OrtGpuDetector`, and
+//! `MetalYoloDetector` (macOS) to avoid duplicating session builder
+//! setup and model metadata extraction.
 
 use std::path::Path;
 #[cfg(any(feature = "tensorrt", feature = "coreml"))]
