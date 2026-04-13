@@ -248,11 +248,7 @@ impl LibcameraCameraSource {
             config.fps,
         );
 
-        Ok(Self {
-            rx,
-            info,
-            children,
-        })
+        Ok(Self { rx, info, children })
     }
 }
 
