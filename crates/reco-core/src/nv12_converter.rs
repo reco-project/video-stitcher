@@ -3,13 +3,20 @@
 //! Converts the RGBA render target to NV12 on the GPU using a compute shader,
 //! then reads back the smaller NV12 buffer to the CPU. This eliminates
 //! CPU-side swscale (which was the main encode bottleneck) and reduces
-//! GPU→CPU readback bandwidth by 2.7× (NV12 is 1.5 bpp vs RGBA 4 bpp).
+//! GPU→CPU readback bandwidth by 2.7x (NV12 is 1.5 bpp vs RGBA 4 bpp).
 //!
 //! ## Why not convert in the fragment shader?
 //!
 //! The render target must remain RGBA for post-stitch plugins (overlays,
 //! color grading). The NV12 conversion happens *after* plugins, at the
-//! encode boundary — invisible to plugin authors.
+//! encode boundary - invisible to plugin authors.
+//!
+//! ## Triple-buffered readback
+//!
+//! Uses three staging buffers to eliminate blocking GPU polls. The CPU
+//! always reads back from 2 frames ago, which is guaranteed to have
+//! completed on the GPU. A non-blocking `PollType::Poll` is used instead
+//! of `wait_indefinitely()`, with a blocking fallback as a safety net.
 //!
 //! ## Performance
 //!
@@ -33,36 +40,39 @@ struct Nv12Params {
     height: u32,
 }
 
-/// GPU-accelerated RGBA → NV12 converter with double-buffered readback.
+/// GPU-accelerated RGBA → NV12 converter with triple-buffered readback.
 ///
 /// Created once per pipeline alongside the [`Renderer`](crate::renderer::Renderer).
 /// Call [`convert_and_readback`](Self::convert_and_readback) after rendering
 /// each frame to get NV12 data ready for the encoder.
 ///
-/// Uses two staging buffers to overlap GPU work with CPU readback:
-/// while frame N's staging buffer is mapped and read by the CPU,
-/// frame N+1's render and NV12 compute write to the other buffer.
-/// This hides the ~1.9ms readback stall on Apple M4 (and helps on all platforms).
+/// Uses three staging buffers so the CPU always reads from 2 frames ago,
+/// which is guaranteed complete on the GPU. This eliminates the blocking
+/// `device.poll(Wait)` stall (7-14ms) by using non-blocking `PollType::Poll`.
 ///
-/// Note: returns the *previous* frame's data (1-frame latency). Call
-/// [`flush_pending`](Self::flush_pending) after the frame loop to get the last frame.
+/// The write slot cycles 0 -> 1 -> 2 -> 0. The read slot is always
+/// `(write_slot + 1) % 3`, which was written 2 frames ago.
+///
+/// Note: returns `None` on the first two calls (2-frame latency). Call
+/// [`flush_pending`](Self::flush_pending) after the frame loop to get the
+/// last two frames.
 pub struct Nv12Converter {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     params_buffer: wgpu::Buffer,
     nv12_gpu_buffer: wgpu::Buffer,
-    /// Double-buffered staging buffers for pipelined readback.
-    nv12_staging_buffers: [wgpu::Buffer; 2],
-    /// Which staging buffer to write to next (0 or 1).
+    /// Triple-buffered staging buffers for pipelined readback.
+    nv12_staging_buffers: [wgpu::Buffer; 3],
+    /// Which staging buffer to write to next (0, 1, or 2).
     current_slot: usize,
-    /// Whether there is a pending readback from a previous frame.
-    has_pending: bool,
+    /// Number of frames pending readback (0, 1, or 2).
+    pending_count: u8,
     /// Cached bind group for the current render target. Avoids per-frame
     /// descriptor pool allocation which causes OOM on Vulkan (wgpu#7525).
     /// Stores a raw pointer to the texture for identity comparison (never dereferenced).
     cached_bind_group: Option<(*const wgpu::Texture, wgpu::BindGroup)>,
-    /// Double-buffered readback buffers (avoids 3 MB allocation per frame at 1080p).
-    readback_buffers: [Vec<u8>; 2],
+    /// Triple-buffered readback buffers (avoids 3 MB allocation per frame at 1080p).
+    readback_buffers: [Vec<u8>; 3],
     /// Reusable channel for map_async signaling (avoids per-frame channel alloc).
     map_tx: std::sync::mpsc::SyncSender<Result<(), wgpu::BufferAsyncError>>,
     map_rx: std::sync::mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
@@ -162,7 +172,9 @@ impl Nv12Converter {
             mapped_at_creation: false,
         });
 
-        // Double-buffered CPU-readable staging buffers for pipelined readback
+        // Triple-buffered CPU-readable staging buffers for pipelined readback.
+        // The third buffer ensures we always read from 2 frames ago (guaranteed
+        // complete), eliminating the blocking poll.
         let nv12_staging_buffers = [
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("nv12_staging_0"),
@@ -172,6 +184,12 @@ impl Nv12Converter {
             }),
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("nv12_staging_1"),
+                size: nv12_bytes,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }),
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("nv12_staging_2"),
                 size: nv12_bytes,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
@@ -210,9 +228,10 @@ impl Nv12Converter {
             nv12_gpu_buffer,
             nv12_staging_buffers,
             current_slot: 0,
-            has_pending: false,
+            pending_count: 0,
             cached_bind_group: None,
             readback_buffers: [
+                vec![0u8; nv12_bytes as usize],
                 vec![0u8; nv12_bytes as usize],
                 vec![0u8; nv12_bytes as usize],
             ],
@@ -227,21 +246,22 @@ impl Nv12Converter {
 
     /// Convert the RGBA render target to NV12 and read back to CPU.
     ///
-    /// Uses double-buffered staging: while this frame's GPU work writes to
-    /// staging buffer N, the previous frame's data is read from staging buffer N-1.
-    /// This hides the readback latency behind GPU work.
+    /// Uses triple-buffered staging: this frame's GPU work writes to the
+    /// current slot, while the CPU reads back from 2 frames ago (guaranteed
+    /// complete). A non-blocking `PollType::Poll` replaces the previous
+    /// blocking `wait_indefinitely()`.
     ///
     /// `render_commands` is the command buffer from the preceding render pass.
     /// It is submitted together with the compute shader in a single
     /// `queue.submit` call to guarantee correct GPU synchronization.
     ///
-    /// Returns `None` on the first call (GPU work is submitted but no
-    /// previous frame is available yet). From the second call onward,
-    /// returns the *previous* frame's NV12 data as a borrowed slice:
+    /// Returns `None` on the first two calls (GPU work is submitted but no
+    /// frame from 2 frames ago is available yet). From the third call onward,
+    /// returns NV12 data from 2 frames ago as a borrowed slice:
     /// `[Y plane: width*height bytes] [UV plane: width*height/2 bytes]`
     ///
     /// Call [`flush_pending`](Self::flush_pending) after the frame loop
-    /// to get the last frame's data.
+    /// to get the last frames' data.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "nv12_convert_readback")
@@ -253,51 +273,57 @@ impl Nv12Converter {
         render_commands: wgpu::CommandBuffer,
     ) -> Result<Option<&[u8]>, Nv12Error> {
         let write_slot = self.current_slot;
-        let read_slot = 1 - write_slot;
 
         // --- Submit this frame's GPU work FIRST ---
         // By submitting before readback, the GPU starts working on the
-        // current frame's render + NV12 compute while the CPU reads back
-        // the previous frame's data. The poll(wait) in readback_staging
-        // completes both the new submission and the previous map request.
+        // current frame while the CPU reads back data from 2 frames ago.
         self.submit_gpu_work(gpu, render_target, render_commands, write_slot)?;
 
-        // --- Then read back the previous frame ---
-        let has_result = if self.has_pending {
+        // --- Read back from 2 frames ago (if available) ---
+        // read_slot = (write_slot + 1) % 3 is the oldest pending slot.
+        // When write_slot cycles 0->1->2->0:
+        //   write 0, read 1 (was written 2 frames ago)
+        //   write 1, read 2 (was written 2 frames ago)
+        //   write 2, read 0 (was written 2 frames ago)
+        let has_result = if self.pending_count >= 2 {
+            let read_slot = (write_slot + 1) % 3;
             self.readback_staging(gpu, read_slot)?;
             true
         } else {
             false
         };
 
-        self.has_pending = true;
-        self.current_slot = 1 - write_slot;
+        self.pending_count = (self.pending_count + 1).min(2);
+        self.current_slot = (write_slot + 1) % 3;
 
         if has_result {
+            let read_slot = (write_slot + 1) % 3;
             Ok(Some(&self.readback_buffers[read_slot]))
         } else {
             Ok(None)
         }
     }
 
-    /// Flush the last pending frame from the double-buffer pipeline.
+    /// Flush one pending frame from the triple-buffer pipeline.
     ///
-    /// Call this after the frame loop ends to get the final frame's data.
-    /// Returns `None` if no frame is pending.
+    /// Call this in a loop after the frame loop ends to drain remaining
+    /// frames. Returns `None` when no frames are pending.
+    ///
+    /// Uses blocking poll since no new GPU work follows to overlap with.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "nv12_flush")
     )]
     pub fn flush_pending(&mut self, gpu: &GpuContext) -> Result<Option<&[u8]>, Nv12Error> {
-        if !self.has_pending {
+        if self.pending_count == 0 {
             return Ok(None);
         }
-        // The last submitted frame is in staging[1 - current_slot]
-        // (current_slot was already flipped after the last convert_and_readback)
-        let last_slot = 1 - self.current_slot;
-        self.readback_staging(gpu, last_slot)?;
-        self.has_pending = false;
-        Ok(Some(&self.readback_buffers[last_slot]))
+        // Oldest pending slot: current_slot was already advanced, so walk
+        // back by pending_count to find the oldest unread buffer.
+        let read_slot = (self.current_slot + 3 - self.pending_count as usize) % 3;
+        self.readback_staging_blocking(gpu, read_slot)?;
+        self.pending_count -= 1;
+        Ok(Some(&self.readback_buffers[read_slot]))
     }
 
     /// Submit GPU render + NV12 compute + copy to a specific staging slot.
@@ -381,9 +407,59 @@ impl Nv12Converter {
         Ok(())
     }
 
-    /// Read back data from a specific staging buffer slot.
+    /// Read back data from a staging buffer using non-blocking poll.
+    ///
+    /// The buffer was submitted 2 frames ago, so it should already be complete.
+    /// Falls back to blocking poll as a safety net if the GPU hasn't finished.
     fn readback_staging(&mut self, gpu: &GpuContext, slot: usize) -> Result<(), Nv12Error> {
         crate::profile_scope!("nv12_readback");
+        let buffer_slice = self.nv12_staging_buffers[slot].slice(..);
+        let tx = self.map_tx.clone();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+
+        // Non-blocking poll: the GPU work for this buffer was submitted 2
+        // frames ago, so it should be complete.
+        gpu.device
+            .poll(wgpu::PollType::Poll)
+            .map_err(|_| Nv12Error::BufferMapFailed)?;
+
+        // Check if map completed. Fall back to blocking if needed.
+        match self.map_rx.try_recv() {
+            Ok(result) => result.map_err(|_| Nv12Error::BufferMapFailed)?,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Safety net: block if the GPU somehow hasn't finished.
+                gpu.device
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .map_err(|_| Nv12Error::BufferMapFailed)?;
+                self.map_rx
+                    .recv()
+                    .map_err(|_| Nv12Error::BufferMapFailed)?
+                    .map_err(|_| Nv12Error::BufferMapFailed)?;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                return Err(Nv12Error::BufferMapFailed);
+            }
+        }
+
+        let mapped = buffer_slice.get_mapped_range();
+        self.readback_buffers[slot].copy_from_slice(&mapped);
+        drop(mapped);
+        self.nv12_staging_buffers[slot].unmap();
+        Ok(())
+    }
+
+    /// Read back data from a staging buffer using blocking poll.
+    ///
+    /// Used by [`flush_pending`](Self::flush_pending) where no new GPU work
+    /// follows to overlap with, so we must wait for completion.
+    fn readback_staging_blocking(
+        &mut self,
+        gpu: &GpuContext,
+        slot: usize,
+    ) -> Result<(), Nv12Error> {
+        crate::profile_scope!("nv12_readback_blocking");
         let buffer_slice = self.nv12_staging_buffers[slot].slice(..);
         let tx = self.map_tx.clone();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {

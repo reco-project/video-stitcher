@@ -812,8 +812,8 @@ impl StitchSession {
             render_commands,
         )?;
 
-        // First call returns None (GPU work submitted, no previous frame yet).
-        // From the second call onward, we get the previous frame's data.
+        // First two calls return None (triple-buffer warmup).
+        // From the third call onward, we get data from 2 frames ago.
         if let Some(data) = nv12_data
             && let Some(ref encoder) = self.encoder
         {
@@ -1089,14 +1089,14 @@ impl StitchSession {
         Ok(self.frame_count)
     }
 
-    /// Flush the NV12 double-buffer and finalize the encoder.
+    /// Flush the NV12 triple-buffer and finalize the encoder.
     ///
-    /// Submits the last pending frame from the double-buffer pipeline
-    /// to the encoder, then shuts down the encode thread and calls
-    /// [`Encoder::finish`]. Must be called after the frame loop ends.
+    /// Drains all pending frames from the triple-buffer pipeline and
+    /// submits them to the encoder, then shuts down the encode thread
+    /// and calls [`Encoder::finish`]. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
-        // Flush the last frame from the NV12 double-buffer.
-        if let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
+        // Flush remaining frames from the NV12 triple-buffer.
+        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
             if let Some(ref encoder) = self.encoder {
                 encoder.submit(nv12_data, self.frame_count as i64)?;
             }
@@ -1113,7 +1113,7 @@ impl StitchSession {
 
     /// Convert a pre-rendered frame to NV12 without encoding.
     ///
-    /// Returns the previous frame's NV12 data (or `None` on first call).
+    /// Returns NV12 data from 2 frames ago (or `None` on the first two calls).
     /// Used by the preview path where the caller displays frames directly
     /// instead of encoding them.
     #[cfg_attr(
