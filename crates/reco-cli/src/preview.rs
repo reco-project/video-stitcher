@@ -16,6 +16,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use reco_core::source::{FrameSource, YuvData};
@@ -55,6 +56,7 @@ fn unwrap_yuv_pair(frame: reco_core::source::StereoFrame) -> (YuvData, YuvData) 
 }
 
 /// Run the interactive preview window.
+#[allow(clippy::too_many_arguments)]
 pub fn run_preview(
     left_path: &str,
     right_path: &str,
@@ -64,6 +66,7 @@ pub fn run_preview(
     sync_offset: i64,
     blend_width: f32,
     rig_tilt_degrees: f32,
+    interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     // Load calibration first so we can use its sync_offset and rig_tilt
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
@@ -159,6 +162,7 @@ pub fn run_preview(
         blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
         max_fov,
+        interrupted: interrupted.clone(),
     };
 
     event_loop.run_app(&mut app)?;
@@ -199,6 +203,8 @@ struct App {
     rig_tilt: f32,
     /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
     max_fov: f32,
+    /// Ctrl-C signal from the main thread.
+    interrupted: Arc<AtomicBool>,
 }
 
 impl App {
@@ -584,6 +590,13 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Check Ctrl-C
+        if self.interrupted.load(Ordering::Relaxed) {
+            self.source.take();
+            event_loop.exit();
+            return;
+        }
+
         // Keep animating while smoothing hasn't converged
         let current_fov = self
             .renderer

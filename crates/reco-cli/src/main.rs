@@ -547,6 +547,7 @@ fn main() -> anyhow::Result<()> {
                 sync_offset,
                 blend,
                 rig_tilt,
+                &interrupted,
             )
         }
 

@@ -18,6 +18,7 @@ pub use field::FieldDirector;
 
 /// Which tracking strategy to use for automatic camera control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TrackingMode {
     /// Track a single ball (single-class model). Uses [`BallDirector`].
     Ball,

@@ -62,6 +62,7 @@ pub fn compute_frame_limit(duration_secs: Option<f64>, max_frames: Option<u64>, 
 }
 
 /// Configuration for creating a [`StitchSession`].
+#[derive(Debug)]
 pub struct SessionConfig {
     /// Camera calibration data.
     pub calibration: MatchCalibration,
