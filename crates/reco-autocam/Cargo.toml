@@ -18,7 +18,12 @@ cuda = ["ort/cuda"]
 tensorrt = ["ort/tensorrt"]
 coreml = ["ort/coreml"]
 load-dynamic = ["ort/load-dynamic"]
-profiling = ["reco-core/profiling", "dep:tracing"]
+tensorrt-native = ["dep:reco-tensorrt"]
+profiling = ["reco-core/profiling", "reco-tensorrt?/profiling", "dep:tracing"]
+
+[dependencies.reco-tensorrt]
+path = "../reco-tensorrt"
+optional = true
 
 [dependencies.tracing]
 workspace = true

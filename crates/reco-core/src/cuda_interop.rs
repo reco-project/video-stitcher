@@ -524,12 +524,15 @@ pub fn cuda_synchronize() -> Result<(), CudaInteropError> {
 pub fn cuda_ensure_context() -> Result<(), CudaInteropError> {
     let cuda = cuda()?;
     unsafe {
+        // cuInit must be called before any other driver API function.
+        // It is safe to call multiple times (idempotent).
+        check_cuda("cuInit", (cuda.cu_init)(0))?;
+
         let mut ctx: CUcontext = std::ptr::null_mut();
         check_cuda("cuCtxGetCurrent", (cuda.cu_ctx_get_current)(&mut ctx))?;
 
         if ctx.is_null() {
             // No context current — retain and set the primary context
-            check_cuda("cuInit", (cuda.cu_init)(0))?;
             let mut device: CUdevice = 0;
             check_cuda("cuDeviceGet", (cuda.cu_device_get)(&mut device, 0))?;
             let mut primary_ctx: CUcontext = std::ptr::null_mut();

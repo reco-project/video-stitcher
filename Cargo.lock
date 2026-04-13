@@ -3245,6 +3245,7 @@ dependencies = [
  "log",
  "ort",
  "reco-core",
+ "reco-tensorrt",
  "tracing",
 ]
 
@@ -3335,6 +3336,16 @@ dependencies = [
  "pollster",
  "reco-core",
  "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "reco-tensorrt"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "log",
+ "reco-core",
  "tracing",
 ]
 

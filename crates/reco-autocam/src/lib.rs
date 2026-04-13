@@ -125,11 +125,16 @@ pub fn setup_autocam(
     let mut detection_active = false;
 
     // Load class names from the model to resolve label -> class_id for directors.
-    let class_names = match create_ort_session(std::path::Path::new(model_path), Vec::new()) {
-        Ok((_, _, names)) => names,
-        Err(e) => {
-            log::warn!("Could not read model labels: {e}, using COCO defaults");
-            Vec::new()
+    // Skip ORT session creation for .engine files (TRT engines aren't ONNX).
+    let class_names = if model_path.ends_with(".engine") {
+        Vec::new() // Labels come from sidecar .labels file instead
+    } else {
+        match create_ort_session(std::path::Path::new(model_path), Vec::new()) {
+            Ok((_, _, names)) => names,
+            Err(e) => {
+                log::warn!("Could not read model labels: {e}, using COCO defaults");
+                Vec::new()
+            }
         }
     };
 
@@ -142,8 +147,51 @@ pub fn setup_autocam(
         log::info!("Autocam: field ROI filtering enabled");
     }
 
+    // Native TensorRT path: if the model is a .engine file and the feature
+    // is enabled, use TrtYoloDetector directly (no ORT dependency).
+    #[cfg(feature = "tensorrt-native")]
+    if use_zero_copy && model_path.ends_with(".engine") {
+        // Read labels from sidecar file (e.g. model.engine -> model.labels).
+        let labels_path = std::path::Path::new(model_path).with_extension("labels");
+        let trt_labels = reco_tensorrt::read_labels_file(&labels_path);
+        if !trt_labels.is_empty() {
+            log::info!(
+                "Autocam: loaded {} class labels from {}",
+                trt_labels.len(),
+                labels_path.display()
+            );
+        }
+
+        match reco_tensorrt::TrtYoloDetector::try_new(
+            model_path,
+            input_width,
+            input_height,
+            0.10,
+            trt_labels,
+        ) {
+            Ok(Some(trt_det)) => {
+                let detector: Box<dyn reco_core::detector::GpuDetector> =
+                    if let Some(roi) = effective_roi.clone() {
+                        Box::new(RoiFilteredGpuDetector::new(Box::new(trt_det), roi))
+                    } else {
+                        Box::new(trt_det)
+                    };
+                session.set_gpu_detector(detector);
+                detection_active = true;
+                log::info!("Autocam: native TensorRT tracking enabled (engine: {model_path})");
+            }
+            Ok(None) => {
+                log::warn!("Autocam: NPP not available, TRT detection disabled");
+            }
+            Err(e) => {
+                log::warn!("Autocam: TRT detector init failed ({e})");
+            }
+        }
+    }
+
+    // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    if use_zero_copy {
+    if !detection_active && use_zero_copy {
         match GpuYoloDetector::try_new(model_path, input_width, input_height, 0.10, Vec::new()) {
             Ok(Some(gpu_det)) => {
                 let detector: Box<dyn reco_core::detector::GpuDetector> =
