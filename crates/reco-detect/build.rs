@@ -53,9 +53,31 @@ fn main() {
         }
     }
 
+    // NCNN: link to a pre-built ncnn static library.
+    // Build ncnn from source with: cmake .. -DNCNN_ARM82=OFF && make
+    // Set NCNN_DIR to the install prefix (contains lib/ and include/).
+    if std::env::var("CARGO_FEATURE_NCNN").is_ok() {
+        if let Ok(ncnn_dir) = std::env::var("NCNN_DIR") {
+            println!("cargo:rustc-link-search={ncnn_dir}/lib");
+            println!("cargo:rustc-link-lib=static=ncnn");
+            // ncnn depends on C++ standard library
+            println!("cargo:rustc-link-lib=stdc++");
+            // ncnn uses OpenMP for threading on ARM
+            println!("cargo:rustc-link-lib=gomp");
+        } else {
+            // Try standard system paths
+            println!("cargo:rustc-link-lib=static=ncnn");
+            println!("cargo:rustc-link-lib=stdc++");
+            println!("cargo:rustc-link-lib=gomp");
+            println!("cargo:rustc-link-search=/usr/local/lib");
+            println!("cargo:rustc-link-search=/usr/lib");
+        }
+    }
+
     println!("cargo:rerun-if-changed=csrc/tensorrt_wrapper.cpp");
     println!("cargo:rerun-if-changed=csrc/tensorrt_wrapper.h");
     println!("cargo:rerun-if-env-changed=TENSORRT_LIB_DIR");
     println!("cargo:rerun-if-env-changed=CUDA_LIB_DIR");
     println!("cargo:rerun-if-env-changed=CUDA_HOME");
+    println!("cargo:rerun-if-env-changed=NCNN_DIR");
 }

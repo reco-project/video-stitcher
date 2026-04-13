@@ -1,32 +1,65 @@
 //! NCNN-based YOLO detector for ARM/embedded platforms.
 //!
 //! Uses the [NCNN](https://github.com/Tencent/ncnn) inference framework
-//! which is optimized for ARM NEON. Achieves ~67ms per frame on RPi5
-//! at 640px input (vs 130ms for ONNX Runtime).
+//! via its C API, optimized for ARM NEON. Achieves ~67ms per frame on
+//! RPi5 at 640px input.
 //!
-//! The model must be exported to NCNN format (`.param` + `.bin` files)
-//! via `yolo export format=ncnn`.
+//! Build ncnn from source on the target:
+//! ```bash
+//! git clone https://github.com/Tencent/ncnn.git && cd ncnn
+//! mkdir build && cd build
+//! cmake .. -DNCNN_ARM82=OFF -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF \
+//!   -DCMAKE_BUILD_TYPE=Release -DNCNN_SHARED_LIB=OFF
+//! make -j$(nproc) && make install DESTDIR=/opt/ncnn
+//! ```
 //!
-//! Unlike the end-to-end NMS models used by ORT/TRT, NCNN models
-//! output raw predictions that need NMS postprocessing.
+//! Then build reco with: `NCNN_DIR=/opt/ncnn/... cargo build --features ncnn`
 
+use std::ffi::{CString, c_void};
+use std::os::raw::c_char;
 use std::path::Path;
 
-use ncnn_rs::{Mat, Net, Option as NcnnOption};
 use reco_core::detector::{CameraId, ChromaFormat, Detection, Detector, RawFrame};
 
+// ── NCNN C API FFI ──────────────────────────────────────────────────
+
+unsafe extern "C" {
+    fn ncnn_net_create() -> *mut c_void;
+    fn ncnn_net_destroy(net: *mut c_void);
+    fn ncnn_net_set_option(net: *mut c_void, opt: *mut c_void);
+    fn ncnn_net_load_param(net: *mut c_void, path: *const c_char) -> i32;
+    fn ncnn_net_load_model(net: *mut c_void, path: *const c_char) -> i32;
+
+    fn ncnn_option_create() -> *mut c_void;
+    fn ncnn_option_destroy(opt: *mut c_void);
+    fn ncnn_option_set_num_threads(opt: *mut c_void, num_threads: i32);
+    fn ncnn_option_set_use_vulkan_compute(opt: *mut c_void, use_vulkan: i32);
+
+    fn ncnn_extractor_create(net: *mut c_void) -> *mut c_void;
+    fn ncnn_extractor_destroy(ex: *mut c_void);
+    fn ncnn_extractor_input(ex: *mut c_void, name: *const c_char, mat: *const c_void) -> i32;
+    fn ncnn_extractor_extract(ex: *mut c_void, name: *const c_char, mat: *mut *mut c_void) -> i32;
+
+    fn ncnn_mat_create_3d(w: i32, h: i32, c: i32, allocator: *mut c_void) -> *mut c_void;
+    fn ncnn_mat_destroy(mat: *mut c_void);
+    fn ncnn_mat_get_w(mat: *const c_void) -> i32;
+    fn ncnn_mat_get_h(mat: *const c_void) -> i32;
+    fn ncnn_mat_get_data(mat: *const c_void) -> *const f32;
+    fn ncnn_mat_fill_float(mat: *mut c_void, data: *const f32, data_size: i32);
+}
+
+// ── NcnnYoloDetector ────────────────────────────────────────────────
+
 /// YOLO detector using NCNN inference (optimized for ARM).
-///
-/// Loads an NCNN model (`.param` + `.bin`) and runs inference on CPU.
-/// Best suited for Raspberry Pi 5 and other ARM SBCs where ONNX Runtime
-/// is too slow.
 pub struct NcnnYoloDetector {
-    net: Net,
+    net: *mut c_void,
+    opt: *mut c_void,
+    input_name: CString,
+    output_name: CString,
     input_size: u32,
     confidence_threshold: f32,
     nms_threshold: f32,
     labels: Vec<String>,
-    // Pre-computed letterbox parameters.
     scale: f32,
     new_w: u32,
     new_h: u32,
@@ -36,14 +69,13 @@ pub struct NcnnYoloDetector {
     frame_height: u32,
 }
 
+// SAFETY: NCNN net is used from a single thread (Detector takes &mut self).
+unsafe impl Send for NcnnYoloDetector {}
+
 impl NcnnYoloDetector {
     /// Create a detector from an NCNN model directory.
     ///
-    /// The `model_dir` should contain `model.ncnn.param` and `model.ncnn.bin`
-    /// (as produced by `yolo export format=ncnn`).
-    ///
-    /// `input_size` is the model's input resolution (typically 640).
-    /// `labels` are class names; if empty, detections have numeric IDs only.
+    /// The directory should contain `model.ncnn.param` and `model.ncnn.bin`.
     pub fn new(
         model_dir: impl AsRef<Path>,
         input_size: u32,
@@ -57,55 +89,73 @@ impl NcnnYoloDetector {
         let bin_path = model_dir.join("model.ncnn.bin");
 
         if !param_path.exists() {
-            return Err(format!("NCNN param file not found: {}", param_path.display()).into());
+            return Err(format!("NCNN param not found: {}", param_path.display()).into());
         }
         if !bin_path.exists() {
-            return Err(format!("NCNN bin file not found: {}", bin_path.display()).into());
+            return Err(format!("NCNN bin not found: {}", bin_path.display()).into());
         }
 
-        let mut opt = NcnnOption::new();
-        opt.set_num_threads(4); // RPi5 has 4 cores
-        opt.set_use_vulkan_compute(false); // CPU only for now
+        let param_cstr = CString::new(param_path.to_str().ok_or("invalid path")?)?;
+        let bin_cstr = CString::new(bin_path.to_str().ok_or("invalid path")?)?;
 
-        let mut net = Net::new();
-        net.set_option(&opt);
-        net.load_param(param_path.to_str().ok_or("invalid path")?)?;
-        net.load_model(bin_path.to_str().ok_or("invalid path")?)?;
+        unsafe {
+            let opt = ncnn_option_create();
+            ncnn_option_set_num_threads(opt, 4);
+            ncnn_option_set_use_vulkan_compute(opt, 0);
 
-        // Pre-compute letterbox parameters.
-        let (fw, fh) = (frame_width as f32, frame_height as f32);
-        let is = input_size as f32;
-        let scale = (is / fw).min(is / fh);
-        let new_w = (fw * scale).round() as u32;
-        let new_h = (fh * scale).round() as u32;
-        let pad_x = (input_size - new_w) as f32 / 2.0;
-        let pad_y = (input_size - new_h) as f32 / 2.0;
+            let net = ncnn_net_create();
+            ncnn_net_set_option(net, opt);
 
-        log::info!(
-            "NcnnYoloDetector ready: input={}x{}, frame={}x{}, scale={:.3}, \
-             labels={}",
-            input_size,
-            input_size,
-            frame_width,
-            frame_height,
-            scale,
-            labels.len(),
-        );
+            let ret = ncnn_net_load_param(net, param_cstr.as_ptr());
+            if ret != 0 {
+                ncnn_net_destroy(net);
+                ncnn_option_destroy(opt);
+                return Err(format!("Failed to load NCNN param: error {ret}").into());
+            }
 
-        Ok(Self {
-            net,
-            input_size,
-            confidence_threshold,
-            nms_threshold: 0.45,
-            labels,
-            scale,
-            new_w,
-            new_h,
-            pad_x,
-            pad_y,
-            frame_width,
-            frame_height,
-        })
+            let ret = ncnn_net_load_model(net, bin_cstr.as_ptr());
+            if ret != 0 {
+                ncnn_net_destroy(net);
+                ncnn_option_destroy(opt);
+                return Err(format!("Failed to load NCNN model: error {ret}").into());
+            }
+
+            // Letterbox params.
+            let (fw, fh) = (frame_width as f32, frame_height as f32);
+            let is = input_size as f32;
+            let scale = (is / fw).min(is / fh);
+            let new_w = (fw * scale).round() as u32;
+            let new_h = (fh * scale).round() as u32;
+            let pad_x = (input_size - new_w) as f32 / 2.0;
+            let pad_y = (input_size - new_h) as f32 / 2.0;
+
+            log::info!(
+                "NcnnYoloDetector ready: input={}x{}, frame={}x{}, labels={}",
+                input_size,
+                input_size,
+                frame_width,
+                frame_height,
+                labels.len(),
+            );
+
+            Ok(Self {
+                net,
+                opt,
+                input_name: CString::new("in0")?,
+                output_name: CString::new("out0")?,
+                input_size,
+                confidence_threshold,
+                nms_threshold: 0.45,
+                labels,
+                scale,
+                new_w,
+                new_h,
+                pad_x,
+                pad_y,
+                frame_width,
+                frame_height,
+            })
+        }
     }
 
     /// Access class labels.
@@ -113,21 +163,18 @@ impl NcnnYoloDetector {
         &self.labels
     }
 
-    /// Preprocess a raw frame into an NCNN Mat (letterboxed, normalized RGB).
-    fn preprocess(&self, frame: &RawFrame<'_>) -> Mat {
+    /// Preprocess: YUV->RGB, letterbox, normalize, HWC->CHW.
+    fn preprocess(&self, frame: &RawFrame<'_>) -> Vec<f32> {
         let sz = self.input_size as usize;
+        let plane = sz * sz;
+        let mut chw = vec![114.0f32 / 255.0; 3 * plane];
 
-        // Create a grey-filled letterbox buffer (HWC, RGB, float32).
-        let mut rgb = vec![114.0f32 / 255.0; sz * sz * 3];
-
-        let fw = frame.width as usize;
-        let fh = frame.height as usize;
         let new_w = self.new_w as usize;
         let new_h = self.new_h as usize;
         let pad_x = self.pad_x as usize;
         let pad_y = self.pad_y as usize;
+        let fw = frame.width as usize;
 
-        // Simple nearest-neighbor resize + YUV->RGB + normalize.
         for dy in 0..new_h {
             for dx in 0..new_w {
                 let sx = ((dx as f32) / self.scale) as u32;
@@ -150,7 +197,7 @@ impl NcnnYoloDetector {
                     }
                 };
 
-                // BT.709 full-range YUV -> RGB, normalized to [0,1].
+                // BT.709 YUV -> RGB, normalized to [0,1].
                 let r = (y_val + 1.5748 * (v_val - 128.0)).clamp(0.0, 255.0) / 255.0;
                 let g = (y_val - 0.1873 * (u_val - 128.0) - 0.4681 * (v_val - 128.0))
                     .clamp(0.0, 255.0)
@@ -159,50 +206,33 @@ impl NcnnYoloDetector {
 
                 let ox = pad_x + dx;
                 let oy = pad_y + dy;
-                let idx = (oy * sz + ox) * 3;
-                rgb[idx] = r;
-                rgb[idx + 1] = g;
-                rgb[idx + 2] = b;
+                chw[oy * sz + ox] = r;
+                chw[plane + oy * sz + ox] = g;
+                chw[2 * plane + oy * sz + ox] = b;
             }
         }
 
-        // Convert HWC float to NCNN Mat (CHW format).
-        // NCNN's Mat::from_pixels_resize expects u8, so we'll use Mat::new_3d
-        // and fill it manually in CHW order.
-        let mut mat = Mat::new_3d(self.input_size as i32, self.input_size as i32, 3);
-        let data = mat.data_mut::<f32>();
-        let plane = sz * sz;
-        for y in 0..sz {
-            for x in 0..sz {
-                let src = (y * sz + x) * 3;
-                data[y * sz + x] = rgb[src]; // R
-                data[plane + y * sz + x] = rgb[src + 1]; // G
-                data[2 * plane + y * sz + x] = rgb[src + 2]; // B
-            }
-        }
-
-        mat
+        chw
     }
 
-    /// Parse YOLO output (non-NMS) and apply NMS.
-    fn postprocess(&self, output: &Mat, camera: CameraId) -> Vec<Detection> {
-        // YOLO26 NCNN output shape: [num_classes+4, num_proposals]
-        // Transposed from the ONNX [1, num_proposals, num_classes+4] format.
-        let num_proposals = output.w() as usize;
-        let num_features = output.h() as usize;
+    /// Parse YOLO output and apply NMS.
+    fn postprocess(&self, output: *const c_void, camera: CameraId) -> Vec<Detection> {
+        let w = unsafe { ncnn_mat_get_w(output) } as usize;
+        let h = unsafe { ncnn_mat_get_h(output) } as usize;
+        let data = unsafe { std::slice::from_raw_parts(ncnn_mat_get_data(output), w * h) };
+
+        // Output shape: [num_classes+4, num_proposals] (transposed)
+        let num_proposals = w;
+        let num_features = h;
         let num_classes = num_features.saturating_sub(4);
 
         if num_classes == 0 || num_proposals == 0 {
             return Vec::new();
         }
 
-        let data = output.data::<f32>();
-
-        // Collect candidates above confidence threshold.
         let mut candidates: Vec<(Detection, f32)> = Vec::new();
 
         for i in 0..num_proposals {
-            // Find best class.
             let mut best_class = 0u16;
             let mut best_score = 0.0f32;
             for c in 0..num_classes {
@@ -217,24 +247,21 @@ impl NcnnYoloDetector {
                 continue;
             }
 
-            // Extract bbox (cx, cy, w, h in letterboxed pixel coords).
-            let cx = data[0 * num_proposals + i];
-            let cy = data[1 * num_proposals + i];
-            let w = data[2 * num_proposals + i];
-            let h = data[3 * num_proposals + i];
+            let cx = data[i];
+            let cy = data[num_proposals + i];
+            let bw = data[2 * num_proposals + i];
+            let bh = data[3 * num_proposals + i];
 
-            let x1 = cx - w / 2.0;
-            let y1 = cy - h / 2.0;
-            let x2 = cx + w / 2.0;
-            let y2 = cy + h / 2.0;
+            let x1 = cx - bw / 2.0;
+            let y1 = cy - bh / 2.0;
+            let x2 = cx + bw / 2.0;
+            let y2 = cy + bh / 2.0;
 
-            // Un-letterbox.
             let orig_x1 = (x1 - self.pad_x) / self.scale;
             let orig_y1 = (y1 - self.pad_y) / self.scale;
             let orig_x2 = (x2 - self.pad_x) / self.scale;
             let orig_y2 = (y2 - self.pad_y) / self.scale;
 
-            // Normalize to [0,1].
             let fw = self.frame_width as f32;
             let fh = self.frame_height as f32;
             let ncx = ((orig_x1 + orig_x2) / 2.0) / fw;
@@ -260,13 +287,11 @@ impl NcnnYoloDetector {
             ));
         }
 
-        // Sort by confidence descending.
         candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Simple NMS.
+        // NMS
         let mut keep = Vec::new();
         let mut suppressed = vec![false; candidates.len()];
-
         for i in 0..candidates.len() {
             if suppressed[i] {
                 continue;
@@ -290,37 +315,60 @@ impl Detector for NcnnYoloDetector {
     fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
         reco_core::profile_scope!("ncnn_yolo_detect");
 
-        let input = self.preprocess(frame);
+        let chw = self.preprocess(frame);
+        let sz = self.input_size as i32;
 
-        let mut extractor = self.net.create_extractor();
-        if let Err(e) = extractor.input("in0", &input) {
-            log::error!("NCNN input failed: {e}");
-            return Vec::new();
-        }
+        unsafe {
+            // Create input mat (CHW, float32).
+            let input_mat = ncnn_mat_create_3d(sz, sz, 3, std::ptr::null_mut());
+            ncnn_mat_fill_float(input_mat, chw.as_ptr(), (3 * sz * sz) as i32);
 
-        let output = match extractor.extract("out0") {
-            Ok(mat) => mat,
-            Err(e) => {
-                log::error!("NCNN inference failed: {e}");
+            let ex = ncnn_extractor_create(self.net);
+            let ret = ncnn_extractor_input(ex, self.input_name.as_ptr(), input_mat);
+            if ret != 0 {
+                log::error!("NCNN input failed: {ret}");
+                ncnn_mat_destroy(input_mat);
+                ncnn_extractor_destroy(ex);
                 return Vec::new();
             }
-        };
 
-        let detections = self.postprocess(&output, camera);
+            let mut output_mat: *mut c_void = std::ptr::null_mut();
+            let ret = ncnn_extractor_extract(ex, self.output_name.as_ptr(), &mut output_mat);
+            if ret != 0 {
+                log::error!("NCNN inference failed: {ret}");
+                ncnn_mat_destroy(input_mat);
+                ncnn_extractor_destroy(ex);
+                return Vec::new();
+            }
 
-        if !detections.is_empty() {
-            log::debug!(
-                "NCNN camera {:?}: {} detection(s)",
-                camera,
-                detections.len(),
-            );
+            let detections = self.postprocess(output_mat, camera);
+
+            // Cleanup - output_mat is owned by the extractor.
+            ncnn_mat_destroy(input_mat);
+            ncnn_extractor_destroy(ex);
+
+            if !detections.is_empty() {
+                log::debug!(
+                    "NCNN camera {:?}: {} detection(s)",
+                    camera,
+                    detections.len()
+                );
+            }
+
+            detections
         }
-
-        detections
     }
 }
 
-/// Intersection over Union for NMS.
+impl Drop for NcnnYoloDetector {
+    fn drop(&mut self) {
+        unsafe {
+            ncnn_net_destroy(self.net);
+            ncnn_option_destroy(self.opt);
+        }
+    }
+}
+
 fn iou(a: &Detection, b: &Detection) -> f32 {
     let a_x1 = a.center_x - a.width / 2.0;
     let a_y1 = a.center_y - a.height / 2.0;
@@ -337,14 +385,7 @@ fn iou(a: &Detection, b: &Detection) -> f32 {
     let inter_x2 = a_x2.min(b_x2);
     let inter_y2 = a_y2.min(b_y2);
 
-    let inter_area = (inter_x2 - inter_x1).max(0.0) * (inter_y2 - inter_y1).max(0.0);
-    let a_area = a.width * a.height;
-    let b_area = b.width * b.height;
-    let union_area = a_area + b_area - inter_area;
-
-    if union_area > 0.0 {
-        inter_area / union_area
-    } else {
-        0.0
-    }
+    let inter = (inter_x2 - inter_x1).max(0.0) * (inter_y2 - inter_y1).max(0.0);
+    let union = a.width * a.height + b.width * b.height - inter;
+    if union > 0.0 { inter / union } else { 0.0 }
 }
