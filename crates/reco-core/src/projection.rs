@@ -73,6 +73,91 @@ pub fn camera_to_panorama(
     Some(direction_to_yaw_pitch(&dir, &scene.camera_position))
 }
 
+/// Map a panorama position (yaw/pitch) back to a camera pixel coordinate.
+///
+/// This is the inverse of [`camera_to_panorama`]. Given a position in the
+/// panoramic view, returns the corresponding normalized pixel coordinate
+/// in the specified camera's image (or `None` if the position is outside
+/// that camera's field of view).
+///
+/// Useful for:
+/// - Projecting panorama-space detections back to camera images
+/// - Computing panorama-to-pitch coordinate transforms (consumer territory)
+/// - Overlay placement at specific panorama positions
+pub fn panorama_to_camera(
+    yaw: f32,
+    pitch: f32,
+    camera: CameraId,
+    calibration: &MatchCalibration,
+    scene: &SceneGeometry,
+) -> Option<(f32, f32)> {
+    use nalgebra::{Point3, Vector3};
+
+    let params = match camera {
+        CameraId::Left => &calibration.left,
+        CameraId::Right => &calibration.right,
+    };
+
+    // Step 1: yaw/pitch -> world ray direction
+    let cam_pos = Point3::from(Vector3::from(scene.camera_position));
+    let cos_pitch = pitch.cos();
+    let dir = Vector3::new(cos_pitch * yaw.sin(), pitch.sin(), -cos_pitch * yaw.cos());
+
+    // Step 2: Ray-plane intersection -> plane UV
+    // Get the model matrix for this camera's plane
+    let model = match camera {
+        CameraId::Left => scene.model_matrix_left(),
+        CameraId::Right => scene.model_matrix_right(),
+    };
+
+    // The plane is at z=0 in model space, facing +Z. Transform to world space.
+    let plane_origin = model.transform_point(&Point3::new(0.0, 0.0, 0.0));
+    let plane_normal = model
+        .transform_vector(&Vector3::new(0.0, 0.0, 1.0))
+        .normalize();
+
+    // Ray: cam_pos + t * dir. Intersect with plane.
+    let denom = plane_normal.dot(&dir);
+    if denom.abs() < 1e-6 {
+        return None; // Ray parallel to plane
+    }
+    let t = (plane_origin - cam_pos).dot(&plane_normal) / denom;
+    if t <= 0.0 {
+        return None; // Behind camera
+    }
+
+    let hit = cam_pos + dir * t;
+
+    // Transform hit to model-local coordinates
+    let inv_model = model.try_inverse()?;
+    let local = inv_model.transform_point(&hit);
+
+    // Model-local plane spans [-w/2, w/2] x [-h/2, h/2] where w = plane_width, h = plane_width/aspect
+    let half_w = scene.plane_width * 0.5;
+    let half_h = half_w / scene.plane_aspect;
+
+    // UV in [0, 1]
+    let u = (local.x / half_w * 0.5 + 0.5) as f64;
+    let v = (0.5 - local.y / half_h * 0.5) as f64;
+
+    if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
+        return None; // Outside the camera plane
+    }
+
+    // Step 3: Plane UV -> camera pixel via fisheye projection (forward model)
+    let pixel = crate::lens::undistorted_to_distorted(u, v, params.width, params.height, params);
+
+    // Normalize to [0, 1]
+    let norm_x = pixel.0 / params.width as f64;
+    let norm_y = pixel.1 / params.height as f64;
+
+    if (0.0..=1.0).contains(&norm_x) && (0.0..=1.0).contains(&norm_y) {
+        Some((norm_x as f32, norm_y as f32))
+    } else {
+        None
+    }
+}
+
 /// Compute the valid yaw/pitch bounds for a given FOV where no black
 /// edges appear in the viewport.
 ///
