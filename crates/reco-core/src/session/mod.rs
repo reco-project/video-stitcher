@@ -109,6 +109,39 @@ pub struct StepResult {
     pub frame_index: u64,
 }
 
+/// Session performance metrics for health monitoring.
+///
+/// Read via [`StitchSession::metrics`]. Updated per-frame.
+#[derive(Debug, Clone, Default)]
+pub struct SessionMetrics {
+    /// Frames processed so far.
+    pub frames_processed: u64,
+    /// Frames where errors were skipped (via ErrorPolicy::Skip).
+    pub frames_dropped: u64,
+    /// Total elapsed time since first frame.
+    pub elapsed: std::time::Duration,
+    /// Average fps over the session lifetime.
+    pub fps_average: f32,
+    /// Total frames in the source (if known).
+    pub total_frames: Option<u64>,
+}
+
+/// Error handling policy for [`StitchSession::run`].
+///
+/// Controls what happens when a frame fails to decode or render.
+#[derive(Default)]
+pub enum ErrorPolicy {
+    /// Stop processing on the first error (default).
+    #[default]
+    Abort,
+    /// Skip bad frames, up to `max_consecutive` in a row.
+    /// If `max_consecutive` consecutive frames fail, abort.
+    Skip {
+        /// Maximum consecutive frame errors before aborting.
+        max_consecutive: u64,
+    },
+}
+
 /// Callback for receiving tracked detection data.
 ///
 /// Called each frame with the tracked objects (may be empty on non-detection
@@ -385,6 +418,12 @@ pub struct StitchSession {
     pub(crate) detection: DetectionPipeline,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
+    /// Session start time for metrics computation.
+    session_start: Option<std::time::Instant>,
+    /// Error policy for the run() batch loop.
+    error_policy: ErrorPolicy,
+    /// Dropped frame counter (for metrics).
+    frames_dropped: u64,
     /// Number of frames to buffer ahead for lookahead.
     /// When > 0, detection runs ahead of rendering so the director
     /// anticipates action before it reaches the encoder.
@@ -486,6 +525,9 @@ impl StitchSession {
             detection: DetectionPipeline::new(),
             director: None,
             frame_count: 0,
+            session_start: None,
+            error_policy: ErrorPolicy::default(),
+            frames_dropped: 0,
             lookahead_frames: 0,
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
@@ -1281,6 +1323,24 @@ impl StitchSession {
     /// The name of the GPU this session is running on.
     pub fn gpu_name(&self) -> &str {
         self.pipeline.gpu_name()
+    }
+
+    /// Get current session performance metrics.
+    pub fn metrics(&self) -> SessionMetrics {
+        let elapsed = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
+        let secs = elapsed.as_secs_f32().max(0.001);
+        SessionMetrics {
+            frames_processed: self.frame_count,
+            frames_dropped: self.frames_dropped,
+            elapsed,
+            fps_average: self.frame_count as f32 / secs,
+            total_frames: None, // set by consumer from SourceInfo
+        }
+    }
+
+    /// Set the error policy for the [`run()`](Self::run) batch loop.
+    pub fn set_error_policy(&mut self, policy: ErrorPolicy) {
+        self.error_policy = policy;
     }
 
     /// Update calibration parameters and recompute coverage boundary.
