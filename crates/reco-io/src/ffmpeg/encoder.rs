@@ -864,12 +864,14 @@ fn build_encoder_opts(
             opts.set("profile", "high");
         }
         "h264_videotoolbox" => {
+            // global_quality maps to VTCompressionPropertyKey_Quality (0-100).
+            // "q:v" doesn't work through the C API dictionary (colon is CLI syntax).
             let q = match quality {
                 Quality::Fast => "55",
                 Quality::Balanced => "65",
                 Quality::High => "80",
             };
-            opts.set("q:v", q);
+            opts.set("global_quality", q);
             opts.set("profile", "high");
         }
         "hevc_videotoolbox" => {
@@ -878,7 +880,7 @@ fn build_encoder_opts(
                 Quality::Balanced => "65",
                 Quality::High => "80",
             };
-            opts.set("q:v", q);
+            opts.set("global_quality", q);
             opts.set("profile", "main");
         }
         "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
