@@ -12,9 +12,10 @@ use super::DetectionCallback;
 /// Detection pipeline owning detector backends, interval, callback,
 /// and cached detections.
 ///
-/// Internal to the session module. [`StitchSession`](super::StitchSession)
-/// delegates its public detection setters here.
-pub(crate) struct DetectionPipeline {
+/// Used internally by [`StitchSession`](super::StitchSession) and also
+/// available as a standalone component for consumers who want detection
+/// without the full stitch+encode pipeline (e.g. Python SDKs, analytics).
+pub struct DetectionPipeline {
     pub(super) detector: Option<Box<dyn Detector>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(super) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
@@ -25,9 +26,15 @@ pub(crate) struct DetectionPipeline {
     pub(super) last_detections: Vec<MappedDetection>,
 }
 
+impl Default for DetectionPipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DetectionPipeline {
     /// Create a new detection pipeline with default settings (no detector, interval 1).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             detector: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -67,31 +74,31 @@ impl DetectionPipeline {
     }
 
     /// Attach a CPU detector for object detection on raw frames.
-    pub(crate) fn set_detector(&mut self, detector: Box<dyn Detector>) {
+    pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
         self.detector = Some(detector);
     }
 
     /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
+    pub fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
         self.gpu_detector = Some(detector);
     }
 
     /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
     #[cfg(target_os = "macos")]
-    pub(crate) fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
+    pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
         self.metal_detector = Some(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
     ///
     /// Clamped to a minimum of 1 (every frame).
-    pub(crate) fn set_detection_interval(&mut self, interval: u64) {
+    pub fn set_detection_interval(&mut self, interval: u64) {
         self.detection_interval = interval.max(1);
     }
 
     /// Set a callback for receiving tracked detection data.
-    pub(crate) fn set_callback(&mut self, cb: DetectionCallback) {
+    pub fn set_callback(&mut self, cb: DetectionCallback) {
         self.callback = Some(cb);
     }
 

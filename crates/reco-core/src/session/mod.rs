@@ -16,7 +16,8 @@
 //!   into an encoder, with optional progress reporting and interrupt
 //!   support. Use this for CLI batch encoding.
 
-mod detection;
+/// Detection pipeline - also usable standalone without StitchSession.
+pub mod detection;
 #[cfg(test)]
 mod tests;
 #[cfg(target_os = "linux")]
