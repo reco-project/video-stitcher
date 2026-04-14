@@ -22,7 +22,7 @@ pub mod detection;
 mod tests;
 #[cfg(target_os = "linux")]
 mod zero_copy_linux;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod zero_copy_macos;
 
 #[cfg(target_os = "linux")]
@@ -176,7 +176,7 @@ pub enum SessionError {
     Source(#[from] SourceError),
 
     /// Metal interop error (macOS zero-copy).
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     #[error("Metal interop: {0}")]
     MetalInterop(#[from] crate::metal_interop::MetalInteropError),
 
@@ -216,7 +216,7 @@ pub struct StitchSessionBuilder {
     director: Option<Box<dyn Director>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
     lookahead_frames: usize,
@@ -305,7 +305,7 @@ impl StitchSessionBuilder {
     }
 
     /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub fn metal_detector(mut self, detector: Box<dyn crate::detector::MetalDetector>) -> Self {
         self.metal_detector = Some(detector);
         self
@@ -390,7 +390,7 @@ impl StitchSessionBuilder {
         if let Some(gpu_det) = self.gpu_detector {
             session.set_gpu_detector(gpu_det);
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let Some(metal_det) = self.metal_detector {
             session.set_metal_detector(metal_det);
         }
@@ -448,7 +448,7 @@ pub struct StitchSession {
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
 
     /// Precomputed coverage boundary for "no-black" viewport constraining.
@@ -474,7 +474,7 @@ impl StitchSession {
             director: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_detector: None,
             detection_interval: 1,
             lookahead_frames: 0,
@@ -539,7 +539,7 @@ impl StitchSession {
             gpu_slot_free_tx: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
             coverage: Some(coverage),
         })
@@ -591,7 +591,7 @@ impl StitchSession {
     ///
     /// When set, the macOS zero-copy frame loop runs detection using
     /// Metal compute shaders for preprocessing and CoreML for inference.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
         self.detection.set_metal_detector(detector);
     }
@@ -751,7 +751,7 @@ impl StitchSession {
     ///
     /// Falls back to [`update_director`](Self::update_director) if no
     /// Metal detector is attached.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn detect_and_update_director_metal(
         &mut self,
         left_cvpb: crate::metal_interop::CVPixelBufferRef,
@@ -908,7 +908,7 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let StereoFrame::MetalResident { left, right } = frame {
             return self.process_metal_frame(left, right, yaw, pitch);
         }
@@ -918,7 +918,7 @@ impl StitchSession {
     }
 
     /// Process a MetalResident frame: import CVPixelBuffers as textures, render.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn process_metal_frame(
         &mut self,
         left: &crate::metal_interop::RetainedCVPixelBuffer,

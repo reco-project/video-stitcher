@@ -74,7 +74,7 @@ pub use wgpu;
 
 pub(crate) mod async_encode;
 pub mod calibration;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod coreml_inference;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
@@ -85,9 +85,9 @@ pub mod director;
 pub mod encoder;
 pub mod gpu;
 pub mod lens;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_compute;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod npp_interop;

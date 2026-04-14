@@ -160,7 +160,7 @@ pub trait GpuDetector: Send {
 /// Implementations must handle Metal-side preprocessing (NV12-to-RGB
 /// conversion, resize, normalization via compute shaders) and inference,
 /// reading back only the small detection output.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub trait MetalDetector: Send {
     /// Run detection on a Metal-resident NV12 frame.
     ///

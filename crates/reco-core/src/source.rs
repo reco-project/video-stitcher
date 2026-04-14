@@ -185,7 +185,7 @@ pub enum StereoFrame {
     },
     /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox decode.
     /// The session imports these as Metal textures each frame.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     MetalResident {
         /// Left camera retained pixel buffer.
         left: crate::metal_interop::RetainedCVPixelBuffer,

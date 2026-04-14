@@ -64,7 +64,7 @@ pub struct GpuDecodeHandles {
 ///
 /// Each buffer has been `CFRetain`-ed so it remains valid until dropped.
 /// The session imports these as Metal textures for zero-copy rendering.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub struct VtFramePair {
     /// Left camera retained pixel buffer.
     pub left: crate::metal_interop::RetainedCVPixelBuffer,

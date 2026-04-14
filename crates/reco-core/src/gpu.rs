@@ -351,11 +351,11 @@ impl GpuContext {
         {
             self.is_vulkan() && crate::cuda_interop::is_cuda_available()
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             self.is_metal()
         }
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "ios")))]
         {
             false
         }

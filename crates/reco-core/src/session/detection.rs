@@ -19,7 +19,7 @@ pub struct DetectionPipeline {
     pub(super) detector: Option<Box<dyn Detector>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(super) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(super) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
     callback: Option<DetectionCallback>,
@@ -39,7 +39,7 @@ impl DetectionPipeline {
             detector: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_detector: None,
             detection_interval: 1,
             callback: None,
@@ -68,7 +68,7 @@ impl DetectionPipeline {
     }
 
     /// Whether a Metal detector is attached.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn has_metal_detector(&self) -> bool {
         self.metal_detector.is_some()
     }
@@ -85,7 +85,7 @@ impl DetectionPipeline {
     }
 
     /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
         self.metal_detector = Some(detector);
     }
@@ -215,7 +215,7 @@ impl DetectionPipeline {
     ///
     /// Returns raw detections from both cameras. The caller maps them to
     /// panorama coordinates.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(super) fn run_metal_detection(
         &mut self,
         left_cvpb: crate::metal_interop::CVPixelBufferRef,

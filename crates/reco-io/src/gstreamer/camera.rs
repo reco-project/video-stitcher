@@ -545,6 +545,19 @@ impl GstreamerNv12CameraSource {
     }
 }
 
+impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
+    fn info(&self) -> reco_core::source::SourceInfo {
+        self.info.clone()
+    }
+
+    fn next_frame(
+        &mut self,
+    ) -> Result<Option<reco_core::source::StereoFrame>, reco_core::source::SourceError> {
+        self.next_pair()
+            .map(|opt| opt.map(reco_core::source::StereoFrame::Nv12))
+    }
+}
+
 impl Drop for GstreamerNv12CameraSource {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
