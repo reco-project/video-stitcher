@@ -134,7 +134,7 @@ pub fn run_preview(
         let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
-    let initial_fov = FOV_DEFAULT.min(max_fov);
+    let initial_fov = FOV_DEFAULT.min(max_fov).max(FOV_MIN);
     log::info!("Preview: max FOV = {max_fov:.1} degrees (coverage-limited)");
 
     let fps_rational = info.fps_rational.unwrap_or((30, 1));
@@ -788,7 +788,7 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
                 };
                 self.target_fov = (self.target_fov - scroll as f32 * FOV_SCROLL_STEP)
-                    .clamp(FOV_MIN, self.max_fov);
+                    .clamp(FOV_MIN.min(self.max_fov), self.max_fov);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {

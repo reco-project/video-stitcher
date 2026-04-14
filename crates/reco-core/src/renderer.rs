@@ -965,10 +965,15 @@ fn view_matrix(
     }
 
     // Rig roll: rotate around the forward axis to correct lateral lean.
-    // Applied after tilt so the rotation axes don't interact.
+    // Negated because roll describes the camera's lean direction, and we
+    // need to rotate the opposite way to straighten the horizon.
+    // (Tilt is not negated because it shifts the view center to match
+    // where the camera points, which is the same direction.)
     if rig_roll.abs() > 1e-6 {
-        let roll_q =
-            UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(base_forward), rig_roll);
+        let roll_q = UnitQuaternion::from_axis_angle(
+            &nalgebra::Unit::new_normalize(base_forward),
+            -rig_roll,
+        );
         world_up = roll_q * world_up;
     }
 

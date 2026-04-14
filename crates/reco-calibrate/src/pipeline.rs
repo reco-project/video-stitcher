@@ -236,10 +236,36 @@ impl CalibrationPipeline {
             }
         }
 
-        // Rig orientation (stored in result for renderer)
+        // Rig tilt from left camera (reliable for tilt since the forward
+        // axis is well-aligned with the optical axis across camera models).
         if let Some(ori) = telemetry::rig_orientation(&left_telem) {
             self.rig_tilt = ori.tilt;
-            self.rig_roll = ori.roll;
+        }
+
+        // Rig roll: (left_roll - right_roll) / 2. Each camera's IMU roll
+        // includes the rig's physical lean plus a systematic sensor offset.
+        // The right camera faces opposite, so its roll sign is flipped in
+        // rig coordinates. Subtracting and halving cancels the common IMU
+        // bias, leaving the true rig roll. Assumes matched camera models
+        // (same IMU bias). Mixed-model rigs would need per-camera calibration.
+        let left_ori = telemetry::rig_orientation(&left_telem);
+        let right_ori = telemetry::rig_orientation(&right_telem);
+        match (left_ori, right_ori) {
+            (Some(l), Some(r)) => {
+                // Right camera faces opposite: its roll appears with opposite
+                // sign relative to the rig. Average to cancel individual bias.
+                self.rig_roll = (l.roll - r.roll) / 2.0;
+                log::info!(
+                    "rig roll: left={:.1} deg, right={:.1} deg, avg={:.1} deg",
+                    l.roll.to_degrees(),
+                    r.roll.to_degrees(),
+                    self.rig_roll.to_degrees()
+                );
+            }
+            (Some(l), None) => {
+                self.rig_roll = l.roll;
+            }
+            _ => {}
         }
 
         Ok(sync_frames)
@@ -343,6 +369,11 @@ impl CalibrationPipeline {
 
         let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;
         result.calibration.rig_tilt = self.rig_tilt;
+        // Roll is extracted from IMU but NOT applied automatically yet.
+        // GoPro/DJI IMU Z-axis doesn't perfectly align with the camera's
+        // lateral axis, so raw roll values are inaccurate without
+        // per-camera IMU axis calibration (like Gyroflow's acc_rotation).
+        // Stored for future use when axis calibration is implemented.
         result.calibration.rig_roll = self.rig_roll;
         result.calibration.sync_offset = self.sync_offset_frames;
         Ok(result)
