@@ -416,8 +416,10 @@ pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Opti
     }
 
     // Pearson correlation: 1.0 = perfect match, 0.0 = no correlation.
-    // Reject if the best match is weak (cameras too still, or bad data).
-    if best_corr < 0.1 {
+    // Reject if the best match is weak. DJI OsmoAction4 with derived
+    // gyro from quaternions gave 0.35 correlation and wrong sync (132
+    // frames vs audio's correct -2). Threshold 0.7 catches this.
+    if best_corr < 0.7 {
         log::warn!("gyro sync: correlation too low ({best_corr:.4}), rejecting offset");
         return None;
     }
@@ -497,14 +499,14 @@ pub fn differential_orientation(
     let right_roll = rg[2].atan2((rg[0] * rg[0] + rg[1] * rg[1]).sqrt());
     let roll_diff = right_roll - left_roll;
 
-    // Pitch = rotation around Z (lateral axis), measured as gravity's
-    //   forward component: atan2(gy, gx). Zero when camera faces level.
-    //   Seeds x_rx (right camera pitch relative to left).
-    //   Note: stereo rigs have cameras facing opposite directions, so
-    //   the sign of gy is flipped between left and right cameras.
+    // Pitch = forward tilt, measured from gravity's Y component.
+    // The cameras face opposite directions in a stereo rig, so the
+    // right camera's forward tilt has the opposite sign. Negate it
+    // before differencing to get the small mounting pitch offset
+    // (x_rx), not the full ~28 degree viewing angle difference.
     let left_pitch = lg[1].atan2((lg[0] * lg[0] + lg[2] * lg[2]).sqrt());
     let right_pitch = rg[1].atan2((rg[0] * rg[0] + rg[2] * rg[2]).sqrt());
-    let pitch_diff = right_pitch - left_pitch;
+    let pitch_diff = (-right_pitch) - left_pitch;
 
     // Tilt: each camera's roll from vertical (lateral lean).
     // atan2(gz, gx) gives the roll from the gravity axis.
@@ -642,42 +644,44 @@ fn rig_orientation_from_quaternions(data: &TelemetryData) -> Option<RigOrientati
         return None;
     }
     let (w, x, y, z) = (aw / len, ax / len, ay / len, az / len);
-    log::debug!("quaternion-based tilt: avg quat=[{w:.4}, {x:.4}, {y:.4}, {z:.4}] (n={n})");
+    log::debug!("quaternion avg: [{w:.4}, {x:.4}, {y:.4}, {z:.4}] (n={n})");
 
-    // Rotate world gravity into camera frame: g_cam = q^-1 * g_world * q
-    // For unit quaternion q^-1 = conjugate [w, -x, -y, -z].
-    //
-    // Try both Z-down [0,0,-1] (ENU, typical for GoPro CORI) and Y-down
-    // [0,-1,0] conventions. Pick whichever produces a gravity vector whose
-    // largest component aligns with the accelerometer data (if available).
-    // Z-down: g_cam = q* [0,0,-1] q
-    let gx_z = 2.0 * (x * z + w * y);
-    let gy_z = 2.0 * (y * z - w * x);
-    let gz_z = 1.0 - 2.0 * (x * x + y * y);
-    // Negate because gravity = -Z in Z-up frame
-    let (gx_z, gy_z, gz_z) = (-gx_z, -gy_z, -gz_z);
+    // telemetry-parser transforms DJI/GoPro quaternions into Gyroflow's
+    // stabilization convention (see dji/mod.rs lines 122-130 in the parser).
+    // This is great for video stabilization but corrupts absolute orientation
+    // extraction. Undo the transforms to recover the raw body-frame quaternion:
+    //   Transform 1: q1 = q_raw * (0.5, -0.5, -0.5, 0.5)
+    //   Transform 2: q2 = (0.0, 0.0, 1.0, 0.0) * q1
+    //   Undo: q_raw = conj(T2) * q2 * conj(T1)
+    let q = nalgebra::UnitQuaternion::new_normalize(nalgebra::Quaternion::new(w, x, y, z));
+    let inv_t2 =
+        nalgebra::UnitQuaternion::new_normalize(nalgebra::Quaternion::new(0.0, 0.0, -1.0, 0.0));
+    let inv_t1 =
+        nalgebra::UnitQuaternion::new_normalize(nalgebra::Quaternion::new(0.5, 0.5, 0.5, -0.5));
+    let q_raw = inv_t2 * q * inv_t1;
 
-    // Y-down: g_cam = q* [0,-1,0] q
-    let gx_y = -2.0 * (x * y - w * z);
-    let gy_y = -(1.0 - 2.0 * (x * x + z * z));
-    let gz_y = -2.0 * (y * z + w * x);
+    // Rotate NED gravity [0, 0, 1] (Z-down) into camera frame.
+    // DJI quaternions represent body-to-NED rotation, so:
+    // g_cam = q^-1 * [0, 0, 1]
+    let ned_gravity = nalgebra::Vector3::new(0.0, 0.0, 1.0);
+    let g = q_raw.inverse() * ned_gravity;
+    log::debug!(
+        "quaternion gravity (NED): [{:.4}, {:.4}, {:.4}]",
+        g.x,
+        g.y,
+        g.z
+    );
 
-    // Heuristic: pick the convention where the result looks more like gravity
-    // (largest component should dominate, matching accelerometer behavior).
-    // For a camera tilted ~20 degrees, the "down" component should be > 0.9.
-    let max_z = gx_z.abs().max(gy_z.abs()).max(gz_z.abs());
-    let max_y = gx_y.abs().max(gy_y.abs()).max(gz_y.abs());
-    let (gx, gy, gz) = if max_z > max_y {
-        log::debug!("quaternion gravity convention: Z-down (ENU)");
-        (gx_z, gy_z, gz_z)
-    } else {
-        log::debug!("quaternion gravity convention: Y-down");
-        (gx_y, gy_y, gz_y)
-    };
-    log::debug!("gravity in camera frame: [{gx:.4}, {gy:.4}, {gz:.4}]");
+    // After undoing transforms: Y=down (gravity), X=forward, Z≈right.
+    // Tilt is negated relative to accel convention (NED frame inversion).
+    let tilt = (-g.x).atan2((g.y * g.y + g.z * g.z).sqrt());
+    let roll = (-g.z).atan2((g.x * g.x + g.y * g.y).sqrt());
+    log::debug!(
+        "quaternion decomp: tilt={:.1} deg, roll={:.1} deg",
+        tilt.to_degrees(),
+        roll.to_degrees()
+    );
 
-    let tilt = gy.atan2((gx * gx + gz * gz).sqrt());
-    let roll = gz.atan2((gx * gx + gy * gy).sqrt());
     Some(RigOrientation { tilt, roll })
 }
 

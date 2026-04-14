@@ -20,7 +20,7 @@ pub fn run_calibrate(
     left_profile: Option<&str>,
     right_profile: Option<&str>,
     num_frames: usize,
-    auto_imu: bool,
+    no_auto_imu: bool,
     auto_sync: bool,
     sync_offset: i64,
     skip_start: f64,
@@ -100,7 +100,7 @@ pub fn run_calibrate(
     }
 
     // Step 2: Sync - priority: IMU > audio > manual
-    if auto_imu {
+    if !no_auto_imu {
         eprintln!("Extracting IMU telemetry...");
         match pipeline.imu_sync() {
             Ok(Some(frames)) => {

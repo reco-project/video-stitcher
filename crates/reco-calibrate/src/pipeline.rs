@@ -77,9 +77,7 @@ pub struct CalibrationPipeline {
     sync_offset_frames: i64,
     /// IMU seeds extracted during imu_sync
     imu_xrz_seed: Option<f64>,
-    imu_xrx_seed: Option<f64>,
     imu_zrx_seed: Option<f64>,
-    enable_x_rx: bool,
     /// Rig tilt in radians (forward lean from vertical).
     rig_tilt: f64,
     /// Rig roll in radians (lateral lean).
@@ -97,9 +95,7 @@ impl CalibrationPipeline {
             right_params: None,
             sync_offset_frames: 0,
             imu_xrz_seed: None,
-            imu_xrx_seed: None,
             imu_zrx_seed: None,
-            enable_x_rx: false,
             rig_tilt: 0.0,
             rig_roll: 0.0,
         }
@@ -229,11 +225,12 @@ impl CalibrationPipeline {
             );
             self.imu_xrz_seed = Some(roll);
             self.imu_zrx_seed = Some(tilt);
-            if pitch.abs() > 2.0_f64.to_radians() {
-                log::info!("pitch > 2 deg, enabling x_rx seeded at {pitch:.4} rad");
-                self.enable_x_rx = true;
-                self.imu_xrx_seed = Some(pitch);
-            }
+            // x_rx (pitch offset) is NOT seeded from IMU. The pitch
+            // differential is unreliable for opposite-facing cameras because
+            // the forward axes are inverted, and IMU Z-axis bias contaminates
+            // the result. The optimizer finds x_rx from feature matches alone.
+            // IMU seeding is only used for x_rz (roll) and z_rx (tilt) where
+            // the relevant gravity components are shared between cameras.
         }
 
         // Rig tilt from left camera (reliable for tilt since the forward
@@ -254,15 +251,25 @@ impl CalibrationPipeline {
             (Some(l), Some(r)) => {
                 // Right camera faces opposite: its roll appears with opposite
                 // sign relative to the rig. Average to cancel individual bias.
-                self.rig_roll = (l.roll - r.roll) / 2.0;
+                let avg = (l.roll - r.roll) / 2.0;
                 log::info!(
                     "rig roll: left={:.1} deg, right={:.1} deg, avg={:.1} deg",
                     l.roll.to_degrees(),
                     r.roll.to_degrees(),
-                    self.rig_roll.to_degrees()
+                    avg.to_degrees()
                 );
+                // Sanity check: reject if > 20 degrees (likely wrong quaternion
+                // convention or upside-down camera not accounted for).
+                if avg.abs() < 20.0_f64.to_radians() {
+                    self.rig_roll = avg;
+                } else {
+                    log::warn!(
+                        "rig roll {:.1} deg exceeds sanity threshold, ignoring (quaternion convention issue?)",
+                        avg.to_degrees()
+                    );
+                }
             }
-            (Some(l), None) => {
+            (Some(l), None) if l.roll.abs() < 20.0_f64.to_radians() => {
                 self.rig_roll = l.roll;
             }
             _ => {}
@@ -357,14 +364,8 @@ impl CalibrationPipeline {
         if self.imu_xrz_seed.is_some() {
             config.imu_xrz_seed = self.imu_xrz_seed;
         }
-        if self.imu_xrx_seed.is_some() {
-            config.imu_xrx_seed = self.imu_xrx_seed;
-        }
         if self.imu_zrx_seed.is_some() {
             config.imu_zrx_seed = self.imu_zrx_seed;
-        }
-        if self.enable_x_rx {
-            config.optimizer.enable_x_rx = true;
         }
 
         let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;

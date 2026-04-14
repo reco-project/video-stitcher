@@ -352,12 +352,10 @@ enum Commands {
         #[arg(long, default_value_t = 2)]
         frames: usize,
 
-        /// Extract IMU telemetry to auto-detect sync offset, rig tilt,
-        /// and seed roll/pitch parameters. Enabled by default; use
-        /// --no-auto-imu to disable. Overrides --sync-offset when
-        /// gyro data is available.
-        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-        auto_imu: bool,
+        /// Disable IMU telemetry extraction (sync offset, rig tilt/roll,
+        /// rotation seeds). Use when IMU data is unavailable or unreliable.
+        #[arg(long, default_value_t = false)]
+        no_auto_imu: bool,
 
         /// Auto-detect sync offset from audio cross-correlation.
         /// Used as fallback when IMU sync fails. Enabled by default;
@@ -686,7 +684,7 @@ fn main() -> anyhow::Result<()> {
             left_profile,
             right_profile,
             frames,
-            auto_imu,
+            no_auto_imu,
             auto_sync,
             sync_offset,
             skip_start,
@@ -708,7 +706,7 @@ fn main() -> anyhow::Result<()> {
             left_profile.as_deref(),
             right_profile.as_deref(),
             frames,
-            auto_imu,
+            no_auto_imu,
             auto_sync,
             sync_offset,
             skip_start,
