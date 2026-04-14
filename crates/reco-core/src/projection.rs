@@ -434,7 +434,7 @@ impl CoverageBoundary {
     /// Densely samples both planes' edge loops and a sparse interior grid,
     /// projecting into (yaw, pitch) space and grouping into pitch slices.
     pub fn from_calibration(calibration: &MatchCalibration, scene: &SceneGeometry) -> Self {
-        let n_slices: usize = 200;
+        let n_slices: usize = 400;
         let margin = 0.02_f32;
 
         let mut left_points: Vec<(f32, f32)> = Vec::new();
@@ -447,8 +447,8 @@ impl CoverageBoundary {
                 &mut right_points
             };
 
-            // Dense edge sampling: 200 points per edge (4 edges = 800 per plane)
-            let edge_steps = 200_u32;
+            // Dense edge sampling: 400 points per edge (4 edges = 1600 per plane)
+            let edge_steps = 400_u32;
             for i in 0..=edge_steps {
                 let t = margin + (1.0 - 2.0 * margin) * (i as f32 / edge_steps as f32);
                 for &(nx, ny) in &[

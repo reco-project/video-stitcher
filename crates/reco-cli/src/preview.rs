@@ -222,6 +222,17 @@ struct App {
 }
 
 impl App {
+    /// Apply a calibration change: update renderer + refresh max_fov from new coverage.
+    fn apply_calibration_change(&mut self) {
+        if let Some(ref mut r) = self.renderer {
+            r.update_calibration(self.cal.clone());
+            self.max_fov = r.coverage().max_fov_degrees().min(FOV_MAX);
+            // Clamp current FOV target to new max
+            self.target_fov = self.target_fov.min(self.max_fov);
+        }
+        self.needs_redraw = true;
+    }
+
     fn advance_frame(&mut self) {
         let Some(ref mut source) = self.source else {
             return;
@@ -392,7 +403,10 @@ impl ApplicationHandler for App {
             renderer.gpu().gpu_name(),
             surface_format
         );
-        println!("Controls: Space = play/pause, N = next frame, P = skip 30 frames");
+        println!("Controls: Space = play/pause, N = next, P = skip 30, Q = quit");
+        println!("          Arrows/drag = pan, +/-/scroll = zoom");
+        println!("          1/2 = intersect, 3/4 = axis offset, 5/6 = vertical align");
+        println!("          B = cycle blend width, S = save calibration");
         println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
 
         self.surface = Some(surface);
@@ -495,6 +509,64 @@ impl ApplicationHandler for App {
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
                             self.target_fov = (self.target_fov + FOV_KEY_STEP).min(self.max_fov);
                             self.needs_redraw = true;
+                        }
+                        // Calibration adjustment keys
+                        PhysicalKey::Code(KeyCode::Digit1) => {
+                            self.cal.layout.intersect = (self.cal.layout.intersect + 0.01).min(1.0);
+                            self.apply_calibration_change();
+                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                        }
+                        PhysicalKey::Code(KeyCode::Digit2) => {
+                            self.cal.layout.intersect = (self.cal.layout.intersect - 0.01).max(0.0);
+                            self.apply_calibration_change();
+                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                        }
+                        PhysicalKey::Code(KeyCode::Digit3) => {
+                            self.cal.layout.camera_axis_offset += 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "camera_axis_offset: {:.4}",
+                                self.cal.layout.camera_axis_offset
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit4) => {
+                            self.cal.layout.camera_axis_offset -= 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "camera_axis_offset: {:.4}",
+                                self.cal.layout.camera_axis_offset
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit5) => {
+                            self.cal.layout.x_ty += 0.005;
+                            self.apply_calibration_change();
+                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                        }
+                        PhysicalKey::Code(KeyCode::Digit6) => {
+                            self.cal.layout.x_ty -= 0.005;
+                            self.apply_calibration_change();
+                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                        }
+                        PhysicalKey::Code(KeyCode::KeyB) => {
+                            // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0
+                            self.blend_width = if self.blend_width >= 0.19 {
+                                0.0
+                            } else {
+                                self.blend_width + 0.05
+                            };
+                            if let Some(ref mut r) = self.renderer {
+                                r.set_blend_width(self.blend_width);
+                            }
+                            println!("blend_width: {:.2}", self.blend_width);
+                            self.needs_redraw = true;
+                        }
+                        PhysicalKey::Code(KeyCode::KeyS) => {
+                            // Save calibration
+                            let path = std::path::Path::new("calibration_adjusted.json");
+                            match self.cal.to_file(path) {
+                                Ok(()) => println!("Calibration saved to {}", path.display()),
+                                Err(e) => eprintln!("Failed to save calibration: {e}"),
+                            }
                         }
                         _ => {}
                     }
