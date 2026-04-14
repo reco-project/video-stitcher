@@ -73,6 +73,10 @@ pub struct SurfaceInfo {
 ///
 /// Headless consumers create this with [`GpuContext::new`]. Windowed
 /// consumers that need surface compatibility use [`GpuContext::for_surface`].
+/// Cloning a `GpuContext` shares the same GPU device and queue (wgpu types
+/// are internally reference-counted). No GPU resources are duplicated.
+/// Multiple pipelines on a cloned context share the same command queue.
+#[derive(Clone)]
 pub struct GpuContext {
     /// The wgpu device handle.
     pub(crate) device: wgpu::Device,

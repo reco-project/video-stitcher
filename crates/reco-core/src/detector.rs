@@ -12,7 +12,7 @@
 //! The slight wide-angle distortion is negligible for detection accuracy.
 
 /// Which camera produced this frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CameraId {
     /// Left camera (plane in X-Z space).
     Left,
@@ -61,7 +61,7 @@ pub enum ChromaFormat<'a> {
 /// Coordinates are in normalized image space `[0.0, 1.0]` relative to
 /// the frame dimensions. Use [`crate::projection::camera_to_panorama`]
 /// to map these to panoramic yaw/pitch.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Detection {
     /// Which camera this detection came from.
     pub camera: CameraId,
