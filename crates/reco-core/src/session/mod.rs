@@ -393,6 +393,11 @@ pub struct StitchSession {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
 
+    /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
+    /// Created lazily on the first MetalResident frame.
+    #[cfg(target_os = "macos")]
+    metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
+
     /// Precomputed coverage boundary for "no-black" viewport constraining.
     /// Built from calibration at session creation. In world space.
     /// Rig tilt correction is applied per-corner inside `safe_clamp`.
@@ -477,6 +482,8 @@ impl StitchSession {
             gpu_slot_free_tx: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
+            #[cfg(target_os = "macos")]
+            metal_texture_cache: None,
             coverage: Some(coverage),
         })
     }
@@ -788,7 +795,45 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
+        #[cfg(target_os = "macos")]
+        if let StereoFrame::MetalResident { left, right } = frame {
+            return self.process_metal_frame(left, right, yaw, pitch);
+        }
+
         let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
+        self.submit_render_output(render_buf)
+    }
+
+    /// Process a MetalResident frame: import CVPixelBuffers as textures, render.
+    #[cfg(target_os = "macos")]
+    fn process_metal_frame(
+        &mut self,
+        left: &crate::metal_interop::RetainedCVPixelBuffer,
+        right: &crate::metal_interop::RetainedCVPixelBuffer,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        // Lazily create the texture cache on first MetalResident frame.
+        if self.metal_texture_cache.is_none() {
+            self.metal_texture_cache =
+                Some(crate::metal_interop::MetalTextureCache::new(self.pipeline.gpu())?);
+            log::info!("Metal zero-copy: texture cache initialized");
+        }
+        let cache = self.metal_texture_cache.as_ref().unwrap();
+
+        // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
+        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.pipeline.gpu())? };
+        let (right_y, right_uv) =
+            unsafe { cache.import_nv12(right.as_ptr(), self.pipeline.gpu())? };
+
+        let render_buf = self.pipeline.render_imported_textures(
+            &left_y.texture,
+            &left_uv.texture,
+            &right_y.texture,
+            &right_uv.texture,
+            yaw,
+            pitch,
+        );
         self.submit_render_output(render_buf)
     }
 

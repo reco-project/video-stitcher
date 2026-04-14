@@ -47,6 +47,8 @@ enum SourceMode {
     Cpu(crate::adapters::FfmpegFileSource),
     #[cfg(target_os = "linux")]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
+    #[cfg(target_os = "macos")]
+    MetalZeroCopy(std::sync::mpsc::Receiver<reco_core::zero_copy::VtFramePair>),
 }
 
 #[cfg(target_os = "linux")]
@@ -348,7 +350,7 @@ impl SmartFileSource {
         })
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
         left: &Path,
@@ -360,8 +362,40 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        // TODO: macOS zero-copy via VideoToolbox/Metal
-        // For now, fall back to CPU
+        let pair_rx = crate::zero_copy::spawn_vt_decode_pair(
+            &left.to_string_lossy(),
+            &right.to_string_lossy(),
+            sync_offset,
+        );
+
+        log::info!(
+            "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode)",
+            info.width,
+            info.height
+        );
+
+        Ok(Self {
+            mode: SourceMode::MetalZeroCopy(pair_rx),
+            info,
+            pixel_format,
+            left_rotation,
+            right_rotation,
+            decode_mode: "Metal zero-copy (VideoToolbox)",
+        })
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[allow(clippy::too_many_arguments)]
+    fn open_zero_copy(
+        left: &Path,
+        right: &Path,
+        _gpu: &reco_core::gpu::GpuContext,
+        sync_offset: i64,
+        info: SourceInfo,
+        pixel_format: GpuPixelFormat,
+        left_rotation: i32,
+        right_rotation: i32,
+    ) -> Result<Self, SourceError> {
         log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
         Self::open_cpu(
             left,
@@ -459,6 +493,14 @@ impl FrameSource for SmartFileSource {
                     Err(_) => Ok(None),
                 }
             }
+            #[cfg(target_os = "macos")]
+            SourceMode::MetalZeroCopy(rx) => match rx.recv() {
+                Ok(pair) => Ok(Some(StereoFrame::MetalResident {
+                    left: pair.left,
+                    right: pair.right,
+                })),
+                Err(_) => Ok(None),
+            },
         }
     }
 
