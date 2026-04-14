@@ -37,3 +37,4 @@ calibrate_debug/
 # Deep review analysis (generated, not committed)
 docs/analysis/
 docs/superpowers/
+calibration_adjusted.json
