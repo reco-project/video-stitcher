@@ -17,26 +17,48 @@ use crate::helpers;
 /// Captures frames from two RPi CSI cameras via `rpicam-vid`, stitches
 /// them into a panoramic view on the GPU, and encodes the result.
 /// Always uses YUV420P (I420) format from the RPi ISP.
-#[allow(clippy::too_many_arguments)]
+/// Configuration for libcamera live stitching.
+pub struct LibcameraRunConfig<'a> {
+    pub cam_config: reco_io::libcamera::LibcameraConfig,
+    pub calibration: &'a str,
+    pub output: &'a str,
+    pub width: u32,
+    pub height: u32,
+    pub blend: f32,
+    pub encoder_name: Option<String>,
+    pub codec: &'a str,
+    pub quality: &'a str,
+    pub duration: Option<f64>,
+    pub max_frames: Option<u64>,
+    pub capture_fps: u32,
+    pub model_path: Option<&'a str>,
+    pub detection_interval: u64,
+    pub crf: Option<u8>,
+    pub preset: Option<String>,
+}
+
 pub fn run_libcamera(
-    cam_config: reco_io::libcamera::LibcameraConfig,
-    calibration: &str,
-    output: &str,
-    width: u32,
-    height: u32,
-    blend: f32,
-    encoder_name: Option<String>,
-    codec: &str,
-    quality: &str,
-    duration: Option<f64>,
-    max_frames: Option<u64>,
-    capture_fps: u32,
-    model_path: Option<&str>,
-    detection_interval: u64,
-    crf: Option<u8>,
-    preset: Option<String>,
+    config: LibcameraRunConfig<'_>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    let LibcameraRunConfig {
+        cam_config,
+        calibration,
+        output,
+        width,
+        height,
+        blend,
+        encoder_name,
+        codec,
+        quality,
+        duration,
+        max_frames,
+        capture_fps,
+        model_path,
+        detection_interval,
+        crf,
+        preset,
+    } = config;
     anyhow::ensure!(
         !output.contains("://"),
         "Output path looks like a network URL ({output}). Only local file paths are supported.",

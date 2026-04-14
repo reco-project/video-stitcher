@@ -55,19 +55,33 @@ fn unwrap_yuv_pair(frame: reco_core::source::StereoFrame) -> (YuvData, YuvData) 
     }
 }
 
+/// Configuration for the interactive preview window.
+pub struct PreviewConfig<'a> {
+    pub left_path: &'a str,
+    pub right_path: &'a str,
+    pub calibration_path: &'a str,
+    pub width: u32,
+    pub height: u32,
+    pub sync_offset: i64,
+    pub blend_width: f32,
+    pub rig_tilt_degrees: f32,
+}
+
 /// Run the interactive preview window.
-#[allow(clippy::too_many_arguments)]
 pub fn run_preview(
-    left_path: &str,
-    right_path: &str,
-    calibration_path: &str,
-    width: u32,
-    height: u32,
-    sync_offset: i64,
-    blend_width: f32,
-    rig_tilt_degrees: f32,
+    config: &PreviewConfig<'_>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    let PreviewConfig {
+        left_path,
+        right_path,
+        calibration_path,
+        width,
+        height,
+        sync_offset,
+        blend_width,
+        rig_tilt_degrees,
+    } = *config;
     // Load calibration first so we can use its sync_offset and rig_tilt
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
 

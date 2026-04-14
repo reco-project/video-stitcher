@@ -21,26 +21,48 @@ use crate::helpers;
 ///
 /// When `model_path` is provided, sets up YOLO ball detection with
 /// EKF tracking and a ball-following director for automatic panning.
-#[allow(clippy::too_many_arguments)]
+/// Configuration for live camera stitching.
+pub struct CameraRunConfig<'a> {
+    pub cam_config: CameraConfig,
+    pub calibration: &'a str,
+    pub output: &'a str,
+    pub width: u32,
+    pub height: u32,
+    pub blend: f32,
+    pub encoder_name: Option<String>,
+    pub codec: &'a str,
+    pub quality: &'a str,
+    pub duration: Option<f64>,
+    pub max_frames: Option<u64>,
+    pub capture_fps: u32,
+    pub model_path: Option<&'a str>,
+    pub detection_interval: u64,
+    pub crf: Option<u8>,
+    pub preset: Option<String>,
+}
+
 pub fn run_camera(
-    cam_config: CameraConfig,
-    calibration: &str,
-    output: &str,
-    width: u32,
-    height: u32,
-    blend: f32,
-    encoder_name: Option<String>,
-    codec: &str,
-    quality: &str,
-    duration: Option<f64>,
-    max_frames: Option<u64>,
-    capture_fps: u32,
-    model_path: Option<&str>,
-    detection_interval: u64,
-    crf: Option<u8>,
-    preset: Option<String>,
+    config: CameraRunConfig<'_>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    let CameraRunConfig {
+        cam_config,
+        calibration,
+        output,
+        width,
+        height,
+        blend,
+        encoder_name,
+        codec,
+        quality,
+        duration,
+        max_frames,
+        capture_fps,
+        model_path,
+        detection_interval,
+        crf,
+        preset,
+    } = config;
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
         !output.contains("://"),
