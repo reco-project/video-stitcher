@@ -6,8 +6,9 @@ Open-source GPU-accelerated panoramic sports camera software.
 
 - `crates/reco-core/` — GPU stitching engine (library crate, no I/O deps)
 - `crates/reco-cli/` — CLI binary (`reco stitch`, `reco info`, `reco calibrate`, `reco preview`)
-- `crates/reco-io/` — Pluggable I/O backends (FFmpeg decode/encode, GStreamer live cameras)
-- `crates/reco-autocam/` — AI camera control (YOLO detector, directors, trajectory smoothing)
+- `crates/reco-io/` — Pluggable I/O backends (FFmpeg decode/encode, GStreamer, libcamera)
+- `crates/reco-detect/` — AI detection backends (ORT CPU/GPU, TensorRT, NCNN, CoreML/Metal)
+- `crates/reco-autocam/` — AI camera control (directors, trajectory smoothing, ROI filtering)
 - `crates/reco-calibrate/` — Stereo camera calibration (AKAZE features, optimization)
 
 ## Key commands

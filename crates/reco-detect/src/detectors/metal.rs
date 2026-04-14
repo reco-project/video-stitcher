@@ -227,8 +227,10 @@ impl MetalDetector for MetalYoloDetector {
         };
 
         // Step 2: Run inference (CoreML native or ORT).
-        // preprocess() now returns &mut [f32] directly, no unsafe cast needed.
-        let (n, data) = match self.run_inference(tensor_data) {
+        // Copy tensor data to release the mutable borrow on self.preprocess
+        // before calling self.run_inference (which borrows other parts of self).
+        let mut tensor_owned = tensor_data.to_vec();
+        let (n, data) = match self.run_inference(&mut tensor_owned) {
             Some(result) => result,
             None => return Vec::new(),
         };
