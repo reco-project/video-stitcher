@@ -69,6 +69,7 @@ impl FfmpegFileSource {
             height: probe.height(),
             fps: probe.fps(),
             fps_rational: Some((fps_r.0, fps_r.1)),
+            total_frames: None,
         };
         let decode_backend = probe.backend();
         let pixel_format = probe.pixel_format();

@@ -427,6 +427,7 @@ impl GstreamerCameraSource {
             height: config.height,
             fps: config.fps as f64,
             fps_rational: None,
+            total_frames: None,
         };
 
         log::info!(
@@ -512,6 +513,7 @@ impl GstreamerNv12CameraSource {
             height: config.height,
             fps: config.fps as f64,
             fps_rational: None,
+            total_frames: None,
         };
 
         log::info!(

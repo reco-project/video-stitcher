@@ -90,6 +90,7 @@ impl FrameSource for MockSource {
             height: H,
             fps: 30.0,
             fps_rational: Some((30, 1)),
+            total_frames: None,
         }
     }
 
