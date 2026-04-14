@@ -43,8 +43,8 @@ impl SweepDirector {
 
 impl Director for SweepDirector {
     fn update(&mut self, ctx: &DirectorContext<'_>) {
-        let t = ctx.timestamp_ms / 1000.0;
-        let phase = (t as f32 * std::f32::consts::TAU / self.cycle_secs).sin();
+        let video_time_secs = ctx.frame_index as f32 / 30.0;
+        let phase = (video_time_secs * std::f32::consts::TAU / self.cycle_secs).sin();
         self.yaw = phase * self.yaw_range;
     }
 
@@ -52,7 +52,10 @@ impl Director for SweepDirector {
         ViewportPosition {
             yaw: self.yaw,
             pitch: 0.0,
-            fov_degrees: None,
+            // Use a narrow FOV to ensure the viewport fits within coverage.
+            // The default 75 degrees often exceeds the coverage boundary,
+            // causing safe_clamp to pin the camera to one position.
+            fov_degrees: Some(50.0),
         }
     }
 }

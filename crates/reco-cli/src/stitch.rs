@@ -76,9 +76,21 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         job = job.preset(preset);
     }
 
+    // Sweep director needs no model - attach it directly.
+    #[cfg(feature = "autocam")]
+    if args.tracking_mode == "sweep" {
+        job = job.on_session(|session, _source| {
+            let director = Box::new(reco_autocam::SweepDirector::new(0.8, 10.0));
+            session.set_director(director);
+            log::info!("Tracking mode: sweep (debug, no AI)");
+        });
+    }
+
     // Wire up autocam via the on_session callback if a model is provided.
     #[cfg(feature = "autocam")]
-    if let Some(model_path) = args.model_path {
+    if args.tracking_mode != "sweep"
+        && let Some(model_path) = args.model_path
+    {
         let model_path = model_path.to_owned();
         let interval = args.detection_interval;
         let lead = args.lead_time;

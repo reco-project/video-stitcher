@@ -32,7 +32,7 @@ pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
-pub use directors::{BallDirector, FieldDirector, TrackingMode};
+pub use directors::{BallDirector, FieldDirector, SweepDirector, TrackingMode};
 pub use roi_filter::RoiFilteredDetector;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use roi_filter::RoiFilteredGpuDetector;
@@ -320,6 +320,14 @@ pub fn setup_autocam(
         log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
     }
 
+    // Sweep director doesn't need detection - attach it regardless.
+    if tracking_mode == TrackingMode::Sweep {
+        log::info!("Tracking mode: sweep (debug, no AI)");
+        let director = Box::new(directors::SweepDirector::new(0.8, 10.0));
+        session.set_director(director);
+        return Ok(true);
+    }
+
     if detection_active {
         if detection_interval > 1 {
             session.set_detection_interval(detection_interval);
@@ -350,10 +358,7 @@ pub fn setup_autocam(
                 log::info!("Tracking mode: field (ball + players)");
                 Box::new(d)
             }
-            TrackingMode::Sweep => {
-                log::info!("Tracking mode: sweep (debug, no AI)");
-                Box::new(directors::SweepDirector::new(0.8, 10.0))
-            }
+            TrackingMode::Sweep => unreachable!("handled above"),
         };
 
         let lookahead = if lead_time > 0.0 && !use_zero_copy {
