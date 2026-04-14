@@ -139,6 +139,7 @@ pub fn run_preview(
 
     let fps_rational = info.fps_rational.unwrap_or((30, 1));
     let total_frames = source.total_frames();
+    let rig_roll = cal.rig_roll as f32;
 
     let mut app = App {
         source: Some(source),
@@ -169,6 +170,7 @@ pub fn run_preview(
         target_fov: initial_fov,
         blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
+        rig_roll,
         max_fov,
         clamp_enabled: true,
         interrupted: interrupted.clone(),
@@ -217,6 +219,7 @@ struct App {
     target_fov: f32,
     blend_width: f32,
     rig_tilt: f32,
+    rig_roll: f32,
     /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
     max_fov: f32,
     /// Whether coverage boundary clamping is active.
@@ -479,6 +482,7 @@ impl ApplicationHandler for App {
             height: self.height,
             blend_width: self.blend_width,
             rig_tilt: self.rig_tilt,
+            rig_roll: self.rig_roll,
             ..Default::default()
         };
 

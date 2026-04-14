@@ -228,6 +228,7 @@ fn build_test_session(
             blend_width: 0.15,
             fov_degrees: 75.0,
             rig_tilt: 0.0,
+            rig_roll: 0.0,
         })
         .detection_interval(detection_interval);
 

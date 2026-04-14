@@ -82,6 +82,8 @@ pub struct CalibrationPipeline {
     enable_x_rx: bool,
     /// Rig tilt in radians (forward lean from vertical).
     rig_tilt: f64,
+    /// Rig roll in radians (lateral lean).
+    rig_roll: f64,
 }
 
 impl CalibrationPipeline {
@@ -99,6 +101,7 @@ impl CalibrationPipeline {
             imu_zrx_seed: None,
             enable_x_rx: false,
             rig_tilt: 0.0,
+            rig_roll: 0.0,
         }
     }
 
@@ -233,10 +236,10 @@ impl CalibrationPipeline {
             }
         }
 
-        // Rig tilt (stored in result for renderer)
-        if let Some(tilt) = telemetry::rig_tilt(&left_telem) {
-            log::info!("rig tilt: {:.1} deg", tilt.to_degrees());
-            self.rig_tilt = tilt;
+        // Rig orientation (stored in result for renderer)
+        if let Some(ori) = telemetry::rig_orientation(&left_telem) {
+            self.rig_tilt = ori.tilt;
+            self.rig_roll = ori.roll;
         }
 
         Ok(sync_frames)
@@ -340,6 +343,7 @@ impl CalibrationPipeline {
 
         let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;
         result.calibration.rig_tilt = self.rig_tilt;
+        result.calibration.rig_roll = self.rig_roll;
         result.calibration.sync_offset = self.sync_offset_frames;
         Ok(result)
     }

@@ -438,39 +438,61 @@ pub fn differential_orientation(
 /// camera's optical axis. This is used to tilt the virtual camera's
 /// reference frame in the renderer.
 ///
-/// Returns the tilt angle in radians, or `None` if neither accelerometer
-/// nor quaternion data is available.
-pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
+/// Rig tilt and roll extracted from IMU data.
+#[derive(Debug, Clone, Copy)]
+pub struct RigOrientation {
+    /// Forward lean from vertical in radians (rotation around right axis).
+    pub tilt: f64,
+    /// Lateral lean in radians (rotation around forward axis).
+    pub roll: f64,
+}
+
+/// Extract rig tilt and roll from IMU data.
+///
+/// Tries accelerometer data first (direct gravity measurement), then
+/// falls back to quaternions (DJI cameras provide orientation but
+/// no raw accelerometer). Returns `None` if neither is available.
+pub fn rig_orientation(data: &TelemetryData) -> Option<RigOrientation> {
     // Try accelerometer first (direct gravity measurement)
     if let Some(g) = gravity_vector(data) {
         // In the normalized IMU frame: X=down, Y=forward (optical axis), Z=right.
-        // Rig tilt = forward lean of the camera from vertical.
+        // Tilt = forward lean, Roll = lateral lean.
         let tilt = g[1].atan2(g[0]);
+        let roll = g[2].atan2(g[0]);
         log::info!(
-            "rig tilt (accel): {tilt:.4} rad ({:.1} deg)",
-            tilt.to_degrees()
+            "rig orientation (accel): tilt={tilt:.4} rad ({:.1} deg), roll={roll:.4} rad ({:.1} deg)",
+            tilt.to_degrees(),
+            roll.to_degrees()
         );
-        return Some(tilt);
+        return Some(RigOrientation { tilt, roll });
     }
 
     // Fall back to quaternions (DJI cameras have orientation but no raw accel)
-    if let Some(tilt) = rig_tilt_from_quaternions(data) {
+    if let Some(ori) = rig_orientation_from_quaternions(data) {
         log::info!(
-            "rig tilt (quaternion): {tilt:.4} rad ({:.1} deg)",
-            tilt.to_degrees()
+            "rig orientation (quaternion): tilt={:.4} rad ({:.1} deg), roll={:.4} rad ({:.1} deg)",
+            ori.tilt,
+            ori.tilt.to_degrees(),
+            ori.roll,
+            ori.roll.to_degrees()
         );
-        return Some(tilt);
+        return Some(ori);
     }
 
     None
 }
 
-/// Compute rig tilt from the average orientation quaternion.
+/// Backward-compatible wrapper that returns only the tilt angle.
+pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
+    rig_orientation(data).map(|o| o.tilt)
+}
+
+/// Compute rig orientation from the average orientation quaternion.
 ///
 /// Rotates the world gravity vector [0, -1, 0] into camera space using
-/// the average quaternion, then computes tilt the same way as the
-/// accelerometer path.
-fn rig_tilt_from_quaternions(data: &TelemetryData) -> Option<f64> {
+/// the average quaternion, then computes tilt and roll from the gravity
+/// components.
+fn rig_orientation_from_quaternions(data: &TelemetryData) -> Option<RigOrientation> {
     if data.quaternions.len() < 10 {
         return None;
     }
@@ -513,7 +535,8 @@ fn rig_tilt_from_quaternions(data: &TelemetryData) -> Option<f64> {
     log::debug!("gravity in camera frame: [{gx:.4}, {gy:.4}, {gz:.4}]");
 
     let tilt = gy.atan2(gx);
-    Some(tilt)
+    let roll = gz.atan2(gx);
+    Some(RigOrientation { tilt, roll })
 }
 
 // ---------------------------------------------------------------------------
