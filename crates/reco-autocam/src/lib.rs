@@ -55,21 +55,96 @@ use reco_core::session::StitchSession;
 /// that discards detections outside the playing field polygon before they
 /// reach the director.
 ///
+/// Configuration for the autocam pipeline.
+///
+/// All fields have sensible defaults. Only `model_path` is required.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reco_autocam::{AutocamConfig, TrackingMode};
+///
+/// let config = AutocamConfig::new("model.onnx")
+///     .with_tracking_mode(TrackingMode::Field)
+///     .with_detection_interval(3);
+///
+/// reco_autocam::setup_autocam_from_config(&mut session, &config)?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct AutocamConfig {
+    /// Path to a YOLO model file (.onnx, .engine, .mlmodelc, or NCNN dir).
+    pub model_path: std::path::PathBuf,
+    /// Tracking strategy (default: Ball).
+    pub tracking_mode: TrackingMode,
+    /// Run detection every N frames (default: 1).
+    pub detection_interval: u64,
+    /// Optional playing field ROI polygons for filtering.
+    pub field_roi: Option<reco_core::calibration::FieldRoi>,
+}
+
+impl AutocamConfig {
+    /// Create a new config with the given model path and sensible defaults.
+    pub fn new(model_path: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            model_path: model_path.into(),
+            tracking_mode: TrackingMode::Ball,
+            detection_interval: 1,
+            field_roi: None,
+        }
+    }
+
+    /// Set the tracking mode.
+    pub fn with_tracking_mode(mut self, mode: TrackingMode) -> Self {
+        self.tracking_mode = mode;
+        self
+    }
+
+    /// Set the detection interval.
+    pub fn with_detection_interval(mut self, interval: u64) -> Self {
+        self.detection_interval = interval;
+        self
+    }
+
+    /// Set the field ROI for detection filtering.
+    pub fn with_field_roi(mut self, roi: reco_core::calibration::FieldRoi) -> Self {
+        self.field_roi = Some(roi);
+        self
+    }
+}
+
+/// Set up the autocam pipeline from a config struct.
+///
+/// Infers input dimensions, fps, and zero-copy mode from the session.
+/// Returns `true` if detection was successfully activated.
+pub fn setup_autocam_from_config(
+    session: &mut StitchSession,
+    config: &AutocamConfig,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let (input_width, input_height) = session.pipeline().source_info();
+    let use_zero_copy = session.pipeline().gpu().supports_zero_copy();
+
+    setup_autocam(
+        session,
+        config.model_path.to_str().unwrap_or(""),
+        input_width,
+        input_height,
+        30.0, // default fps when not available from source
+        use_zero_copy,
+        config.detection_interval,
+        0.0, // no lookahead
+        config.tracking_mode,
+        config.field_roi.as_ref(),
+    )
+}
+
+/// Set up the autocam pipeline (detection + direction) on a stitch session.
+///
+/// For a simpler API with config struct and inferred parameters, use
+/// [`setup_autocam_from_config`] with [`AutocamConfig`] instead.
+///
 /// Returns `true` if detection was successfully activated, `false` if
 /// detection could not be initialized (the session remains usable without
 /// autocam in that case).
-///
-/// # Arguments
-///
-/// * `session` - The stitch session to attach detection and direction to.
-/// * `model_path` - Path to a YOLO ONNX model (or `.mlmodelc` on macOS).
-/// * `input_width`, `input_height` - Raw camera frame dimensions.
-/// * `fps` - Video frame rate (used for director timing).
-/// * `use_zero_copy` - Whether the pipeline is running in zero-copy mode.
-/// * `detection_interval` - Run detection every N frames (1 = every frame).
-/// * `lead_time` - Director lookahead in seconds (CPU path only).
-/// * `tracking_mode` - Which director to use (Ball or Field).
-/// * `field_roi` - Optional playing field ROI polygons for filtering detections.
 #[allow(clippy::too_many_arguments)]
 pub fn setup_autocam(
     session: &mut StitchSession,
