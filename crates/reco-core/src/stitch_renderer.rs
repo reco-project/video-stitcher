@@ -21,6 +21,7 @@
 
 use crate::calibration::MatchCalibration;
 use crate::gpu::GpuContext;
+use crate::nv12_converter::Nv12Converter;
 use crate::pipeline::{Nv12Planes, PipelineError, StitchPipeline, YuvPlanes};
 use crate::projection::CoverageBoundary;
 use crate::renderer::InputFormat;
@@ -37,6 +38,8 @@ pub struct StitchRenderer {
     pipeline: StitchPipeline,
     /// Precomputed coverage boundary for no-black-edge clamping.
     coverage: CoverageBoundary,
+    /// NV12 converter for readback (lazy-initialized on first readback call).
+    nv12: Option<Nv12Converter>,
 }
 
 impl StitchRenderer {
@@ -78,7 +81,11 @@ impl StitchRenderer {
             InputFormat::Yuv420p,
         )?;
 
-        Ok(Self { pipeline, coverage })
+        Ok(Self {
+            pipeline,
+            coverage,
+            nv12: None,
+        })
     }
 
     /// Render YUV420P frames to a texture view.
@@ -112,6 +119,78 @@ impl StitchRenderer {
     ) -> Result<(), PipelineError> {
         self.pipeline
             .render_nv12_to_view(left, right, yaw, pitch, view)
+    }
+
+    // ── Render + Readback API ──
+
+    /// Render a stereo frame and get NV12 data for encoding.
+    ///
+    /// Renders to the internal target, runs NV12 conversion, and returns
+    /// NV12 data. Uses triple-buffered readback (returns `None` on first
+    /// two calls, data from 2 frames ago afterward).
+    ///
+    /// Use alongside `render_yuv()`/`render_nv12()` for combined display + recording:
+    /// ```rust,ignore
+    /// renderer.render_yuv(&left, &right, yaw, pitch, &surface_view)?;
+    /// if recording {
+    ///     if let Some(nv12) = renderer.render_and_readback_nv12(&left, &right, yaw, pitch)? {
+    ///         encoder.submit(nv12_to_frame(nv12))?;
+    ///     }
+    /// }
+    /// ```
+    pub fn render_and_readback_nv12(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Option<&[u8]>, PipelineError> {
+        // Lazy-init NV12 converter.
+        if self.nv12.is_none() {
+            let w = self.pipeline.viewport().width;
+            let h = self.pipeline.viewport().height;
+            self.nv12 = Some(Nv12Converter::new(self.pipeline.gpu(), w, h).map_err(|e| {
+                PipelineError::InvalidConfig {
+                    reason: format!("NV12 converter init: {e}"),
+                }
+            })?);
+            log::info!("StitchRenderer: NV12 readback initialized ({w}x{h})");
+        }
+
+        // Render to internal target.
+        let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
+
+        // NV12 convert + readback.
+        let nv12 = self.nv12.as_mut().unwrap();
+        let data = nv12
+            .convert_and_readback(self.pipeline.gpu(), self.pipeline.render_target(), cmd)
+            .map_err(|e| PipelineError::InvalidConfig {
+                reason: format!("NV12 readback: {e}"),
+            })?;
+
+        Ok(data)
+    }
+
+    /// Flush remaining NV12 frames from the triple-buffer pipeline.
+    ///
+    /// Call after the last frame to get the remaining 1-2 frames.
+    pub fn flush_nv12(&mut self) -> Result<Option<&[u8]>, PipelineError> {
+        if let Some(ref mut nv12) = self.nv12 {
+            nv12.flush_pending(self.pipeline.gpu())
+                .map_err(|e| PipelineError::InvalidConfig {
+                    reason: format!("NV12 flush: {e}"),
+                })
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Access the GPU render target texture directly.
+    ///
+    /// Contains the rendered RGBA panorama (after any render call).
+    /// Useful for custom compositing, GPU texture sharing, or screenshots.
+    pub fn render_target(&self) -> &wgpu::Texture {
+        self.pipeline.render_target()
     }
 
     /// The precomputed coverage boundary.
