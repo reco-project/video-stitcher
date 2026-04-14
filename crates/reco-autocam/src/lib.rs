@@ -19,7 +19,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-mod directors;
+pub mod directors;
 mod roi_filter;
 mod smoother;
 

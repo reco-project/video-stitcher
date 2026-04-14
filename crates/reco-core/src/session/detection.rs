@@ -1,4 +1,4 @@
-//! Detection pipeline extracted from [`StitchSession`](super::StitchSession).
+//! Detection pipeline extracted from [`StitchSession`](crate::session::StitchSession).
 //!
 //! Owns the detector backends (CPU, GPU/CUDA, Metal), detection interval,
 //! callback, and cached detections. This keeps detection concerns separated
@@ -12,7 +12,7 @@ use super::DetectionCallback;
 /// Detection pipeline owning detector backends, interval, callback,
 /// and cached detections.
 ///
-/// Used internally by [`StitchSession`](super::StitchSession) and also
+/// Used internally by [`StitchSession`](crate::session::StitchSession) and also
 /// available as a standalone component for consumers who want detection
 /// without the full stitch+encode pipeline (e.g. Python SDKs, analytics).
 pub struct DetectionPipeline {

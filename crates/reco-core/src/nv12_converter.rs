@@ -42,7 +42,7 @@ struct Nv12Params {
 
 /// GPU-accelerated RGBA → NV12 converter with triple-buffered readback.
 ///
-/// Created once per pipeline alongside the [`Renderer`](crate::renderer::Renderer).
+/// Created once per pipeline alongside the internal renderer.
 /// Call [`convert_and_readback`](Self::convert_and_readback) after rendering
 /// each frame to get NV12 data ready for the encoder.
 ///
