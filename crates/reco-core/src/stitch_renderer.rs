@@ -145,10 +145,11 @@ impl StitchRenderer {
         yaw: f32,
         pitch: f32,
     ) -> Result<Option<&[u8]>, PipelineError> {
-        // Lazy-init NV12 converter.
+        // Lazy-init NV12 converter. Round to NV12-safe dimensions
+        // (width divisible by 4, height even) since window sizes can be odd.
         if self.nv12.is_none() {
-            let w = self.pipeline.viewport().width;
-            let h = self.pipeline.viewport().height;
+            let w = self.pipeline.viewport().width & !3;
+            let h = self.pipeline.viewport().height & !1;
             self.nv12 = Some(Nv12Converter::new(self.pipeline.gpu(), w, h).map_err(|e| {
                 PipelineError::InvalidConfig {
                     reason: format!("NV12 converter init: {e}"),

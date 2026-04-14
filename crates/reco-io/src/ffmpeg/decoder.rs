@@ -298,7 +298,7 @@ impl VideoDecoder {
             }
         };
 
-        log::info!(
+        log::debug!(
             "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
             width,
             height,
@@ -669,7 +669,7 @@ impl VideoDecoder {
                     .is_some_and(|_| self.converted_frame.format() != Pixel::YUV420P);
 
             if needs_new_scaler {
-                log::info!(
+                log::debug!(
                     "Creating scaler: {:?} → YUV420P ({}x{})",
                     frame_format,
                     self.width,
@@ -817,11 +817,11 @@ fn try_hwaccel(
             (*context.as_mut_ptr()).hw_device_ctx = ffi::av_buffer_ref(device_ref);
         }
 
-        log::info!("Hardware decode enabled: {backend} ({hw_type_name})");
+        log::debug!("Hardware decode enabled: {backend} ({hw_type_name})");
         return (backend, device_ref);
     }
 
-    log::info!("No hardware decoder available — using software decode");
+    log::info!("No hardware decoder available - using software decode");
     (DecodeBackend::Software, ptr::null_mut())
 }
 

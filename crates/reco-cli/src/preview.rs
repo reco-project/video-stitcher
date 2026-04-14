@@ -104,26 +104,12 @@ pub fn run_preview(
         (cal.rig_tilt as f32).to_degrees()
     };
 
-    // Probe the right file to verify dimensions match
-    let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
-    let right_dims = (right_dec.width(), right_dec.height());
-    drop(right_dec);
-
     let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
         Path::new(left_path),
         Path::new(right_path),
         effective_sync,
     )?;
     let info = source.info();
-
-    anyhow::ensure!(
-        info.width == right_dims.0 && info.height == right_dims.1,
-        "Video dimension mismatch: left={}x{}, right={}x{}",
-        info.width,
-        info.height,
-        right_dims.0,
-        right_dims.1
-    );
 
     println!(
         "Preview: {}x{} input, {}x{} window",
@@ -253,10 +239,13 @@ impl App {
             .unwrap_or_default()
             .as_secs();
         let path = format!("reco_recording_{epoch}.mp4");
+        // NV12 requires width divisible by 4 and height divisible by 2.
+        let rec_w = self.width & !3;
+        let rec_h = self.height & !1;
         let (encoder, enc_name) = match reco_io::adapters::create_encoder(
             Path::new(&path),
-            self.width,
-            self.height,
+            rec_w,
+            rec_h,
             self.fps_rational,
             "h264",
             "balanced",
@@ -285,8 +274,8 @@ impl App {
                 {
                     let _ = enc.submit(OutputFrame {
                         data: nv12,
-                        width: self.width,
-                        height: self.height,
+                        width: self.width & !3,
+                        height: self.height & !1,
                         format: PixelFormat::Nv12,
                         pts_us: (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64,
                     });
@@ -856,8 +845,8 @@ impl ApplicationHandler for App {
                             if let Some(ref mut enc) = self.recording
                                 && let Err(e) = enc.submit(OutputFrame {
                                     data: nv12,
-                                    width: self.width,
-                                    height: self.height,
+                                    width: self.width & !3,
+                                    height: self.height & !1,
                                     format: PixelFormat::Nv12,
                                     pts_us,
                                 })
