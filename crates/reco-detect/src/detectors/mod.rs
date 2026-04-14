@@ -107,7 +107,13 @@ pub fn read_labels_file(path: impl AsRef<Path>) -> Vec<String> {
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect(),
-        Err(_) => Vec::new(),
+        Err(_) => {
+            log::debug!(
+                "No labels file at {}, using defaults",
+                path.as_ref().display()
+            );
+            Vec::new()
+        }
     }
 }
 

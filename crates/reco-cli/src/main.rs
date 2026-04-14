@@ -513,7 +513,12 @@ fn main() -> anyhow::Result<()> {
                 lead_time,
                 tracking_mode: match tracking.as_str() {
                     "field" => reco_autocam::TrackingMode::Field,
-                    _ => reco_autocam::TrackingMode::Ball,
+                    "sweep" => reco_autocam::TrackingMode::Sweep,
+                    "ball" => reco_autocam::TrackingMode::Ball,
+                    other => {
+                        log::warn!("Unknown tracking mode '{other}', defaulting to ball");
+                        reco_autocam::TrackingMode::Ball
+                    }
                 },
                 crf,
                 preset,

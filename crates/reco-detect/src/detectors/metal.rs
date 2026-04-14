@@ -227,13 +227,8 @@ impl MetalDetector for MetalYoloDetector {
         };
 
         // Step 2: Run inference (CoreML native or ORT).
-        // SAFETY: preprocess returns a mutable slice to the shared MTLBuffer.
-        // We need a mutable pointer for CoreML's MLMultiArray wrapping.
-        let tensor_mut = unsafe {
-            std::slice::from_raw_parts_mut(tensor_data.as_ptr() as *mut f32, tensor_data.len())
-        };
-
-        let (n, data) = match self.run_inference(tensor_mut) {
+        // preprocess() now returns &mut [f32] directly, no unsafe cast needed.
+        let (n, data) = match self.run_inference(tensor_data) {
             Some(result) => result,
             None => return Vec::new(),
         };

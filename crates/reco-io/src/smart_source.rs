@@ -105,10 +105,17 @@ impl SmartFileSource {
         // Probe right video for rotation
         let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right)
             .map(|d| d.rotation())
-            .unwrap_or(0);
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
+                0
+            });
 
         // Detect zero-copy capability
-        let use_zero_copy = std::env::var("RECO_NO_HWACCEL").is_err()
+        let hwaccel_disabled = std::env::var("RECO_NO_HWACCEL").is_ok();
+        if hwaccel_disabled {
+            log::info!("RECO_NO_HWACCEL set, forcing CPU decode path");
+        }
+        let use_zero_copy = !hwaccel_disabled
             && is_backend_zero_copy_capable(decode_backend)
             && gpu.supports_zero_copy();
 
@@ -163,7 +170,10 @@ impl SmartFileSource {
 
         let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right)
             .map(|d| d.rotation())
-            .unwrap_or(0);
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
+                0
+            });
 
         Self::open_cpu(
             left,

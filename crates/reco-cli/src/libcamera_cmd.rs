@@ -101,8 +101,12 @@ pub fn run_libcamera(
     reco_io::init();
     let quality = match quality {
         "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
+        "balanced" => reco_io::ffmpeg::encoder::Quality::Balanced,
         "high" => reco_io::ffmpeg::encoder::Quality::High,
-        _ => reco_io::ffmpeg::encoder::Quality::Balanced,
+        other => {
+            log::warn!("Unknown quality '{other}', defaulting to balanced");
+            reco_io::ffmpeg::encoder::Quality::Balanced
+        }
     };
     let video_codec =
         reco_io::ffmpeg::encoder::VideoCodec::from_str_loose(codec).unwrap_or_else(|| {

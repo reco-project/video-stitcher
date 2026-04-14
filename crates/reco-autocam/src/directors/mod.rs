@@ -11,10 +11,12 @@
 mod ball;
 pub(crate) mod clustering;
 mod field;
+mod sweep;
 pub(crate) mod util;
 
 pub use ball::BallDirector;
 pub use field::FieldDirector;
+pub use sweep::SweepDirector;
 
 /// Which tracking strategy to use for automatic camera control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,4 +29,7 @@ pub enum TrackingMode {
     /// positioning within that zone. False ball detections far from players
     /// are automatically rejected.
     Field,
+    /// Debug mode: slowly pan left-right across the full coverage.
+    /// No AI, no tracking. Uses [`SweepDirector`].
+    Sweep,
 }

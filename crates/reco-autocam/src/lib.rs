@@ -275,6 +275,10 @@ pub fn setup_autocam(
                 log::info!("Tracking mode: field (ball + players)");
                 Box::new(d)
             }
+            TrackingMode::Sweep => {
+                log::info!("Tracking mode: sweep (debug, no AI)");
+                Box::new(directors::SweepDirector::new(0.8, 10.0))
+            }
         };
 
         let lookahead = if lead_time > 0.0 && !use_zero_copy {
@@ -308,5 +312,9 @@ fn resolve_class_id(class_names: &[String], candidates: &[&str], default_id: u16
             return idx as u16;
         }
     }
+    log::warn!(
+        "Class '{}' not found in model labels, using COCO default ID {default_id}",
+        candidates[0]
+    );
     default_id
 }

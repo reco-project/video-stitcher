@@ -902,8 +902,16 @@ impl StitchSession {
 
         // Release slots for decode thread to reuse
         if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
-            let _ = left_tx.send(left_slot);
-            let _ = right_tx.send(right_slot);
+            if left_tx.send(left_slot).is_err() {
+                log::error!(
+                    "Failed to release left GPU slot {left_slot} - decode thread may have died"
+                );
+            }
+            if right_tx.send(right_slot).is_err() {
+                log::error!(
+                    "Failed to release right GPU slot {right_slot} - decode thread may have died"
+                );
+            }
         }
 
         Ok(())

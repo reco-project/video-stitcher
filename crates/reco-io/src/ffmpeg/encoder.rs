@@ -961,11 +961,12 @@ fn build_encoder_opts(
                     .unwrap_or_default()
                     .contains("nvidia,tegra")
             {
+                log::info!("Tegra platform detected, limiting libx264 to 4 threads");
                 opts.set("threads", "4");
             }
         }
         _ => {
-            // Unknown encoders: don't set profile, let FFmpeg pick defaults.
+            log::info!("Encoder '{name}' has no quality presets configured, using FFmpeg defaults");
         }
     }
 

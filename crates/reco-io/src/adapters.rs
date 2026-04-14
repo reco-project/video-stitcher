@@ -78,7 +78,10 @@ impl FfmpegFileSource {
         // Probe right video for its rotation (may differ from left).
         let right_rotation = ffmpeg::decoder::VideoDecoder::open(right_path)
             .map(|d| d.rotation())
-            .unwrap_or(0);
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
+                0
+            });
 
         let left = left_path.to_path_buf();
         let right = right_path.to_path_buf();

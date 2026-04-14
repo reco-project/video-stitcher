@@ -123,16 +123,24 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
 
 fn parse_codec(s: &str) -> reco_io::output::Codec {
     match s {
+        "h264" | "avc" => reco_io::output::Codec::H264,
         "hevc" | "h265" => reco_io::output::Codec::HEVC,
         "av1" => reco_io::output::Codec::AV1,
-        _ => reco_io::output::Codec::H264,
+        other => {
+            log::warn!("Unknown codec '{other}', defaulting to H.264");
+            reco_io::output::Codec::H264
+        }
     }
 }
 
 fn parse_quality(s: &str) -> reco_io::output::Quality {
     match s {
         "fast" => reco_io::output::Quality::Fast,
+        "balanced" => reco_io::output::Quality::Balanced,
         "high" => reco_io::output::Quality::High,
-        _ => reco_io::output::Quality::Balanced,
+        other => {
+            log::warn!("Unknown quality '{other}', defaulting to balanced");
+            reco_io::output::Quality::Balanced
+        }
     }
 }

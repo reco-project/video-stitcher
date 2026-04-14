@@ -208,18 +208,28 @@ impl CoreMlModel {
             let count = output_array.count() as usize;
             let mut data = Vec::with_capacity(count);
             let data_ptr_out = data.as_mut_ptr();
+            // Use AtomicUsize to communicate actual byte count from the closure.
+            let actual_copied = std::sync::atomic::AtomicUsize::new(0);
+            let actual_copied_ref = &actual_copied;
             let block = RcBlock::new(
-                |bytes: NonNull<c_void>, _size: objc2_foundation::NSInteger| {
+                |bytes: NonNull<c_void>, size: objc2_foundation::NSInteger| {
+                    // SAFETY: Only copy as many f32s as the buffer actually contains,
+                    // capped to what we allocated. Prevents heap overread if the model
+                    // output is smaller than count (e.g. malformed model).
+                    let available = (size as usize) / std::mem::size_of::<f32>();
+                    let to_copy = available.min(count);
                     std::ptr::copy_nonoverlapping(
                         bytes.as_ptr() as *const f32,
                         data_ptr_out,
-                        count,
+                        to_copy,
                     );
+                    actual_copied_ref.store(to_copy, std::sync::atomic::Ordering::Release);
                 },
             );
             output_array.getBytesWithHandler(&block);
             drop(block);
-            data.set_len(count);
+            let copied = actual_copied.load(std::sync::atomic::Ordering::Acquire);
+            data.set_len(copied);
 
             Ok((n_detections, data))
         }

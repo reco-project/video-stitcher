@@ -351,6 +351,9 @@ impl StitchJob {
             CalibrationSource::Memory(cal) => *cal,
         };
         let effective_sync = self.sync_offset.unwrap_or(cal.sync_offset);
+        if self.sync_offset.is_none() && cal.sync_offset != 0 {
+            log::info!("Sync offset: {} frames (from calibration)", effective_sync);
+        }
 
         // Initialize GPU
         let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
@@ -365,6 +368,9 @@ impl StitchJob {
         )?;
         let info = source.info();
         let (out_w, out_h) = self.resolution.unwrap_or((1920, 1080));
+        if self.resolution.is_none() {
+            log::info!("Output resolution not specified, defaulting to {out_w}x{out_h}");
+        }
         let decode_mode = source.decode_mode().to_string();
 
         // Determine input format from source capabilities
@@ -406,7 +412,10 @@ impl StitchJob {
         }
 
         // Create encoder with optional audio passthrough.
-        let fps_rational = info.fps_rational.unwrap_or((30, 1));
+        let fps_rational = info.fps_rational.unwrap_or_else(|| {
+            log::warn!("FPS not available from source metadata, defaulting to 30fps");
+            (30, 1)
+        });
         let (codec_str, quality_str) = map_output_config(&self.codec, &self.bitrate);
 
         // Resolve audio source path from AudioMode.

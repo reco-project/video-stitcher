@@ -134,14 +134,25 @@ pub fn create_ort_session(
     let input_size = match session.inputs()[0].dtype() {
         ort::value::ValueType::Tensor { shape, .. } => {
             let h = shape[2];
-            if h > 0 { h as u32 } else { 1280 }
+            if h > 0 {
+                h as u32
+            } else {
+                log::warn!("Model input has dynamic height, defaulting to 1280");
+                1280
+            }
         }
-        _ => 1280,
+        _ => {
+            log::warn!("Could not determine model input size from metadata, defaulting to 1280");
+            1280
+        }
     };
 
     // Auto-detect labels from model metadata if not provided.
     let labels = if fallback_labels.is_empty() {
-        parse_onnx_names(&session).unwrap_or_else(|| vec!["ball".into()])
+        parse_onnx_names(&session).unwrap_or_else(|| {
+            log::warn!("No class names in model metadata, assuming single-class 'ball' model");
+            vec!["ball".into()]
+        })
     } else {
         fallback_labels
     };

@@ -290,7 +290,7 @@ impl MetalPreprocessPipeline {
         &mut self,
         cv_pixel_buffer: CVPixelBufferRef,
         gpu: &GpuContext,
-    ) -> Result<&[f32], MetalComputeError> {
+    ) -> Result<&mut [f32], MetalComputeError> {
         use wgpu::hal::api::Metal;
 
         crate::profile_scope!("metal_preprocess");
@@ -391,11 +391,13 @@ impl MetalPreprocessPipeline {
         cmd_buf.commit();
         cmd_buf.waitUntilCompleted();
 
-        // Read back from shared buffer (unified memory, no explicit copy).
+        // SAFETY: The output MTLBuffer has StorageModeShared (unified memory).
+        // We have exclusive access after waitUntilCompleted(). Returning &mut
+        // is correct since the caller needs mutation for CoreML's MLMultiArray.
         let float_count = 3 * sz * sz;
         let result = unsafe {
-            std::slice::from_raw_parts(
-                self.output_buffer.contents().as_ptr() as *const f32,
+            std::slice::from_raw_parts_mut(
+                self.output_buffer.contents().as_ptr() as *mut f32,
                 float_count,
             )
         };

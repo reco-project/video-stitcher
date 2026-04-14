@@ -72,24 +72,6 @@ macro_rules! profile_scope {
 /// use [`gpu::OutputFormat`] and the [`session`] API instead.
 pub use wgpu;
 
-/// Drain a channel receiver, keeping only the latest item.
-///
-/// After a blocking `recv()` returns the first item, this drains any
-/// additional buffered items via `try_recv()` and returns the last one.
-/// Useful for camera frame dropping: skip stale frames when the
-/// renderer is slower than the capture rate.
-///
-/// Returns the number of items that were dropped (0 means the first
-/// item was already the latest).
-pub fn drain_to_latest<T>(rx: &std::sync::mpsc::Receiver<T>, item: &mut T) -> u64 {
-    let mut dropped = 0;
-    while let Ok(newer) = rx.try_recv() {
-        *item = newer;
-        dropped += 1;
-    }
-    dropped
-}
-
 pub(crate) mod async_encode;
 pub mod calibration;
 #[cfg(target_os = "macos")]
