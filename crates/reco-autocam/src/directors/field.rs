@@ -8,7 +8,7 @@
 use reco_core::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 
 use super::clustering;
-use super::util::{self, DEFAULT_FOV, MIN_PLAYER_CONFIDENCE};
+use super::util::{self, DIRECTOR_DEFAULT_FOV, MIN_PLAYER_CONFIDENCE};
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -93,11 +93,11 @@ pub struct FieldDirector {
 
 impl FieldDirector {
     /// Create a new field director with default parameters.
-    pub fn new(_fps: f32) -> Self {
+    pub fn new() -> Self {
         Self {
             yaw: 0.0,
             pitch: 0.0,
-            current_fov: DEFAULT_FOV,
+            current_fov: DIRECTOR_DEFAULT_FOV,
             ball_class_id: 32,  // COCO "sports ball"
             player_class_id: 0, // COCO "person"
             min_players: 3,
@@ -284,6 +284,12 @@ impl FieldDirector {
     }
 }
 
+impl Default for FieldDirector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Director for FieldDirector {
     fn update(&mut self, ctx: &DirectorContext<'_>) {
         reco_core::profile_scope!("field_director_update");
@@ -427,7 +433,7 @@ mod tests {
 
     #[test]
     fn follows_player_centroid() {
-        let mut dir = FieldDirector::new(30.0);
+        let mut dir = FieldDirector::new();
         let dets = tight_group();
         dir.update(&ctx(0, &dets));
         // P50 keeps closest 3 (0.32, 0.36, 0.40), centroid ~0.36,
@@ -437,7 +443,7 @@ mod tests {
 
     #[test]
     fn ball_blends_into_centroid() {
-        let mut dir = FieldDirector::new(30.0);
+        let mut dir = FieldDirector::new();
         let mut dets = tight_group();
         dets.push(ball(0.60, 0.0));
         dir.update(&ctx(0, &dets));
@@ -448,7 +454,7 @@ mod tests {
 
     #[test]
     fn no_ball_uses_pure_cluster() {
-        let mut dir = FieldDirector::new(30.0).with_ball_weight(0.0);
+        let mut dir = FieldDirector::new().with_ball_weight(0.0);
         let dets = vec![
             player(0.28, 0.0),
             player(0.32, 0.0),
@@ -462,7 +468,7 @@ mod tests {
 
     #[test]
     fn holds_position_with_no_players() {
-        let mut dir = FieldDirector::new(30.0);
+        let mut dir = FieldDirector::new();
         dir.yaw = 0.5;
         dir.pitch = 0.1;
         dir.update(&ctx(0, &[]));
@@ -471,7 +477,7 @@ mod tests {
 
     #[test]
     fn outlier_excluded_by_dbscan() {
-        let mut dir = FieldDirector::new(30.0).with_ball_weight(0.0);
+        let mut dir = FieldDirector::new().with_ball_weight(0.0);
         let dets = vec![
             player(0.30, 0.0),
             player(0.34, 0.0),
@@ -486,7 +492,7 @@ mod tests {
 
     #[test]
     fn dedup_merges_cross_camera() {
-        let mut dir = FieldDirector::new(30.0).with_ball_weight(0.0);
+        let mut dir = FieldDirector::new().with_ball_weight(0.0);
         // Same player at ~0.36 seen by both cameras (seam overlap).
         let dets = vec![
             player(0.30, 0.0),
@@ -502,7 +508,7 @@ mod tests {
 
     #[test]
     fn dedup_keeps_same_camera_close() {
-        let mut dir = FieldDirector::new(30.0).with_ball_weight(0.0);
+        let mut dir = FieldDirector::new().with_ball_weight(0.0);
         // Two different players from the same camera, close together.
         let dets = vec![
             player(0.30, 0.0),
@@ -517,7 +523,7 @@ mod tests {
 
     #[test]
     fn fov_tight_for_tight_cluster() {
-        let dir = FieldDirector::new(30.0);
+        let dir = FieldDirector::new();
         let tight = dir.target_fov(0.05, 0.0);
         let wide = dir.target_fov(0.40, 0.0);
         assert!(tight < wide, "tight={tight}, wide={wide}");
@@ -525,7 +531,7 @@ mod tests {
 
     #[test]
     fn fov_tighter_when_far() {
-        let dir = FieldDirector::new(30.0);
+        let dir = FieldDirector::new();
         let near = dir.target_fov(0.20, PITCH_NEAR);
         let far = dir.target_fov(0.20, PITCH_FAR);
         assert!(far < near, "far={far}, near={near}");
@@ -533,7 +539,7 @@ mod tests {
 
     #[test]
     fn position_negates_yaw() {
-        let mut dir = FieldDirector::new(30.0);
+        let mut dir = FieldDirector::new();
         dir.yaw = 0.5;
         let pos = dir.position();
         assert!((pos.yaw + 0.5).abs() < 1e-6);
@@ -541,7 +547,7 @@ mod tests {
 
     #[test]
     fn position_includes_fov() {
-        let dir = FieldDirector::new(30.0);
+        let dir = FieldDirector::new();
         assert!(dir.position().fov_degrees.is_some());
     }
 }

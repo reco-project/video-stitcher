@@ -281,20 +281,31 @@ impl MatchCalibration {
     /// Checks file size (max 1 MB), parses JSON, and runs
     /// [`validate`](Self::validate). Returns a descriptive error on any failure.
     pub fn from_file(path: &std::path::Path) -> Result<Self, CalibrationLoadError> {
-        let meta = std::fs::metadata(path).map_err(|e| CalibrationLoadError::Io {
+        use std::io::Read;
+
+        let file = std::fs::File::open(path).map_err(|e| CalibrationLoadError::Io {
             path: path.display().to_string(),
             source: e,
         })?;
-        if meta.len() > MAX_CALIBRATION_FILE_SIZE {
+
+        // Read up to MAX+1 bytes atomically. If we get more than MAX bytes,
+        // the file is too large. This avoids a TOCTOU race between a separate
+        // metadata size check and the actual read.
+        let mut json = String::new();
+        file.take(MAX_CALIBRATION_FILE_SIZE + 1)
+            .read_to_string(&mut json)
+            .map_err(|e| CalibrationLoadError::Io {
+                path: path.display().to_string(),
+                source: e,
+            })?;
+
+        if json.len() as u64 > MAX_CALIBRATION_FILE_SIZE {
             return Err(CalibrationLoadError::TooLarge {
-                size: meta.len(),
+                size: json.len() as u64,
                 max: MAX_CALIBRATION_FILE_SIZE,
             });
         }
-        let json = std::fs::read_to_string(path).map_err(|e| CalibrationLoadError::Io {
-            path: path.display().to_string(),
-            source: e,
-        })?;
+
         let cal: Self = serde_json::from_str(&json).map_err(CalibrationLoadError::Parse)?;
         cal.validate()?;
         Ok(cal)

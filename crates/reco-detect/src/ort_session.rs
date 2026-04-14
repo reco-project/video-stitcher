@@ -27,21 +27,22 @@ pub fn reco_cache_dir(subdir: &str) -> PathBuf {
     let base = dirs::cache_dir().unwrap_or_else(std::env::temp_dir);
     let dir = base.join("reco").join(subdir);
 
-    if !dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            log::warn!("Failed to create cache dir {}: {e}", dir.display());
-            // Return it anyway - ORT will get a clear error if it can't write.
-            return dir;
-        }
+    // create_dir_all is a no-op if the directory already exists, avoiding
+    // the TOCTOU race of checking exists() then creating.
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        log::warn!("Failed to create cache dir {}: {e}", dir.display());
+        // Return it anyway - ORT will get a clear error if it can't write.
+        return dir;
+    }
 
-        // Restrict permissions on Unix (user-only).
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o700);
-            if let Err(e) = std::fs::set_permissions(&dir, perms) {
-                log::warn!("Failed to set cache dir permissions: {e}");
-            }
+    // Restrict permissions on Unix (user-only). Safe to call on an
+    // existing directory - it just updates the mode.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o700);
+        if let Err(e) = std::fs::set_permissions(&dir, perms) {
+            log::warn!("Failed to set cache dir permissions: {e}");
         }
     }
 

@@ -352,7 +352,7 @@ pub fn setup_autocam(
                 Box::new(d)
             }
             TrackingMode::Field => {
-                let d = FieldDirector::new(fps)
+                let d = FieldDirector::new()
                     .with_ball_class_id(ball_id)
                     .with_player_class_id(person_id);
                 log::info!("Tracking mode: field (ball + players)");

@@ -434,6 +434,12 @@ impl GpuDetector for TrtGpuDetector {
 
 impl Drop for TrtGpuDetector {
     fn drop(&mut self) {
+        // Ensure a CUDA context is current before freeing GPU memory.
+        // Drop may run on a different thread than the one that allocated.
+        if let Err(e) = cuda_ensure_context() {
+            log::warn!("TrtGpuDetector drop: failed to set CUDA context: {e}");
+            return;
+        }
         for (name, ptr) in [
             ("rgb_u8", self.rgb_u8),
             ("resized_u8", self.resized_u8),
@@ -441,7 +447,7 @@ impl Drop for TrtGpuDetector {
         ] {
             if ptr != 0 {
                 if let Err(e) = cuda_mem_free(ptr) {
-                    log::error!("Failed to free GPU buffer {name}: {e}");
+                    log::warn!("Failed to free GPU buffer {name}: {e}");
                 }
             }
         }

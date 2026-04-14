@@ -176,8 +176,6 @@ impl GpuDetector for OrtGpuDetector {
             return Vec::new();
         }
 
-        let _ = camera;
-
         // Step 1: NV12 -> packed RGB u8 via NPP.
         {
             reco_core::profile_scope!("npp_nv12_to_rgb");
@@ -326,6 +324,12 @@ impl GpuDetector for OrtGpuDetector {
 
 impl Drop for OrtGpuDetector {
     fn drop(&mut self) {
+        // Ensure a CUDA context is current before freeing GPU memory.
+        // Drop may run on a different thread than the one that allocated.
+        if let Err(e) = cuda_ensure_context() {
+            log::warn!("OrtGpuDetector drop: failed to set CUDA context: {e}");
+            return;
+        }
         // Free GPU scratch buffers. Log errors but don't panic in Drop.
         for (name, ptr) in [
             ("rgb_u8", self.rgb_u8),
@@ -335,7 +339,7 @@ impl Drop for OrtGpuDetector {
             if ptr != 0
                 && let Err(e) = cuda_mem_free(ptr)
             {
-                log::error!("Failed to free GPU buffer {name}: {e}");
+                log::warn!("Failed to free GPU buffer {name}: {e}");
             }
         }
     }

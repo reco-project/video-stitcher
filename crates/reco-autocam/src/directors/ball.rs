@@ -158,24 +158,21 @@ impl BallDirector {
         self.fov_wide + t * (self.fov_tight - self.fov_wide)
     }
 
-    /// Check if a detection is close enough to the current camera to be
-    /// plausible ball movement. Threshold scales with detection interval.
-    fn is_plausible(&self, det_yaw: f32, det_pitch: f32) -> bool {
-        let scale = (self.detection_interval as f32).sqrt();
-        let threshold = self.max_jump * scale;
-        let dy = det_yaw - self.yaw;
-        let dp = det_pitch - self.pitch;
-        (dy * dy + dp * dp).sqrt() < threshold
-    }
-
     /// Check if two positions are near each other (within the plausibility
-    /// threshold). Used for search candidate confirmation.
+    /// threshold, scaled by detection interval). Used for both tracking
+    /// plausibility checks and search candidate confirmation.
     fn is_near(&self, yaw_a: f32, pitch_a: f32, yaw_b: f32, pitch_b: f32) -> bool {
         let scale = (self.detection_interval as f32).sqrt();
         let threshold = self.max_jump * scale;
         let dy = yaw_a - yaw_b;
         let dp = pitch_a - pitch_b;
         (dy * dy + dp * dp).sqrt() < threshold
+    }
+
+    /// Check if a detection is close enough to the current camera position
+    /// to be plausible ball movement. Threshold scales with detection interval.
+    fn is_plausible(&self, det_yaw: f32, det_pitch: f32) -> bool {
+        self.is_near(det_yaw, det_pitch, self.yaw, self.pitch)
     }
 }
 

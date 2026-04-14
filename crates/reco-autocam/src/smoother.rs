@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 
 use reco_core::director::{Director, DirectorContext, ViewportPosition};
 
-use crate::directors::util::DEFAULT_FOV;
+use crate::directors::util::DIRECTOR_DEFAULT_FOV;
 
 /// Smoothing factor from cutoff frequency and time step.
 fn smoothing_factor(dt: f32, cutoff: f32) -> f32 {
@@ -151,7 +151,7 @@ impl TrajectorySmoother {
             let y = fwd_yaw.filter(pos.yaw, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let p = fwd_pitch.filter(pos.pitch, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let f = fwd_fov.filter(
-                pos.fov_degrees.unwrap_or(DEFAULT_FOV),
+                pos.fov_degrees.unwrap_or(DIRECTOR_DEFAULT_FOV),
                 dt,
                 self.min_cutoff,
                 self.beta,
@@ -170,7 +170,7 @@ impl TrajectorySmoother {
             let y = bwd_yaw.filter(pos.yaw, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let p = bwd_pitch.filter(pos.pitch, dt, self.min_cutoff, self.beta, self.d_cutoff);
             let f = bwd_fov.filter(
-                pos.fov_degrees.unwrap_or(DEFAULT_FOV),
+                pos.fov_degrees.unwrap_or(DIRECTOR_DEFAULT_FOV),
                 dt,
                 self.min_cutoff,
                 self.beta,
@@ -290,7 +290,7 @@ impl Director for SmoothedDirector {
             self.d_cutoff,
         );
         let cf = self.causal_fov.filter(
-            raw.fov_degrees.unwrap_or(DEFAULT_FOV),
+            raw.fov_degrees.unwrap_or(DIRECTOR_DEFAULT_FOV),
             self.dt,
             self.min_cutoff,
             self.beta,
@@ -318,8 +318,8 @@ impl Director for SmoothedDirector {
         let dp = (filtered.pitch - prev.pitch).clamp(-self.max_slew, self.max_slew);
         // FOV slew: ~10 deg/s at 30fps = 0.33 deg/frame.
         let max_fov_slew = 10.0 * self.dt;
-        let prev_fov = prev.fov_degrees.unwrap_or(DEFAULT_FOV);
-        let target_fov = filtered.fov_degrees.unwrap_or(DEFAULT_FOV);
+        let prev_fov = prev.fov_degrees.unwrap_or(DIRECTOR_DEFAULT_FOV);
+        let target_fov = filtered.fov_degrees.unwrap_or(DIRECTOR_DEFAULT_FOV);
         let df = (target_fov - prev_fov).clamp(-max_fov_slew, max_fov_slew);
         self.smoothed_position = ViewportPosition {
             yaw: prev.yaw + dy,
