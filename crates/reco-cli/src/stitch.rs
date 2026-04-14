@@ -26,7 +26,7 @@ pub struct StitchArgs<'a> {
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
     pub lead_time: f64,
-    pub tracking_mode: reco_autocam::TrackingMode,
+    pub tracking_mode: &'a str,
     pub crf: Option<u8>,
     pub preset: Option<String>,
 }
@@ -77,13 +77,19 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
 
     // Wire up autocam via the on_session callback if a model is provided.
+    #[cfg(feature = "autocam")]
     if let Some(model_path) = args.model_path {
         let model_path = model_path.to_owned();
         let interval = args.detection_interval;
         let lead = args.lead_time;
-        let mode = args.tracking_mode;
+        let mode_str = args.tracking_mode.to_owned();
         job = job.on_session(move |session, source| {
             let info = source.info();
+            let mode = match mode_str.as_str() {
+                "field" => reco_autocam::TrackingMode::Field,
+                "sweep" => reco_autocam::TrackingMode::Sweep,
+                _ => reco_autocam::TrackingMode::Ball,
+            };
             match reco_autocam::setup_autocam(
                 session,
                 &model_path,
@@ -108,6 +114,12 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 }
             }
         });
+    }
+    #[cfg(not(feature = "autocam"))]
+    if args.model_path.is_some() {
+        log::warn!(
+            "--model specified but autocam feature is disabled. Build with --features autocam to enable AI tracking."
+        );
     }
 
     let result = job.run(interrupted)?;

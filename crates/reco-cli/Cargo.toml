@@ -12,21 +12,23 @@ name = "reco"
 path = "src/main.rs"
 
 [features]
-cuda = ["reco-autocam/cuda"]
-tensorrt = ["reco-autocam/tensorrt"]
-coreml = ["reco-autocam/coreml"]
-load-dynamic = ["reco-autocam/load-dynamic"]
-tensorrt-native = ["reco-autocam/tensorrt-native"]
-ncnn = ["reco-autocam/ncnn"]
+default = ["autocam"]
+autocam = ["dep:reco-autocam"]
+cuda = ["autocam", "reco-autocam/cuda"]
+tensorrt = ["autocam", "reco-autocam/tensorrt"]
+coreml = ["autocam", "reco-autocam/coreml"]
+load-dynamic = ["autocam", "reco-autocam/load-dynamic"]
+tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
+ncnn = ["autocam", "reco-autocam/ncnn"]
 gstreamer = ["reco-io/gstreamer"]
 libcamera = ["reco-io/libcamera"]
 rpi = ["reco-io/rpi"]
-profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling", "reco-autocam/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
+profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling", "reco-autocam?/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
 reco-io = { path = "../reco-io", features = ["ffmpeg"] }
-reco-autocam = { path = "../reco-autocam" }
+reco-autocam = { path = "../reco-autocam", optional = true }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"

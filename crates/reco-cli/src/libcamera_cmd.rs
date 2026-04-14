@@ -91,6 +91,7 @@ pub fn run_libcamera(
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
     // Set up autocam (detector + director) if model provided.
+    #[cfg(feature = "autocam")]
     if let Some(model) = model_path {
         match reco_autocam::setup_autocam(
             &mut session,
@@ -98,16 +99,20 @@ pub fn run_libcamera(
             capture_width,
             capture_height,
             capture_fps as f32,
-            false, // not zero-copy, CPU YUV420P frames
+            false,
             detection_interval,
-            0.0, // no lookahead for live cameras
+            0.0,
             reco_autocam::TrackingMode::Ball,
-            None, // no field ROI for live cameras yet
+            None,
         ) {
             Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
             Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),
             Err(e) => eprintln!("Warning: autocam setup failed ({e}), continuing without tracking"),
         }
+    }
+    #[cfg(not(feature = "autocam"))]
+    if model_path.is_some() {
+        log::warn!("--model specified but autocam feature is disabled");
     }
 
     println!(

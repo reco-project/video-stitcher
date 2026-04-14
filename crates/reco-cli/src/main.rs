@@ -511,15 +511,7 @@ fn main() -> anyhow::Result<()> {
                 model_path: model.as_deref(),
                 detection_interval,
                 lead_time,
-                tracking_mode: match tracking.as_str() {
-                    "field" => reco_autocam::TrackingMode::Field,
-                    "sweep" => reco_autocam::TrackingMode::Sweep,
-                    "ball" => reco_autocam::TrackingMode::Ball,
-                    other => {
-                        log::warn!("Unknown tracking mode '{other}', defaulting to ball");
-                        reco_autocam::TrackingMode::Ball
-                    }
-                },
+                tracking_mode: &tracking,
                 crf,
                 preset,
             },
