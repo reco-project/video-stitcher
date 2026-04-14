@@ -235,6 +235,28 @@ impl StitchPipeline {
         self.viewport.fov_degrees
     }
 
+    /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
+    /// new layout. Takes effect on the next render call (uniforms are rebuilt
+    /// each frame from the stored calibration and scene).
+    ///
+    /// No GPU pipeline recreation needed - only the uniform data changes.
+    pub fn update_calibration(&mut self, calibration: MatchCalibration) {
+        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
+        self.scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
+        self.calibration = calibration;
+        log::debug!("Pipeline calibration updated");
+    }
+
+    /// Update only the plane layout (convenience for slider adjustments).
+    ///
+    /// Equivalent to cloning the current calibration, replacing its layout,
+    /// and calling [`update_calibration`](Self::update_calibration).
+    pub fn update_layout(&mut self, layout: crate::calibration::PlaneLayout) {
+        let mut cal = self.calibration.clone();
+        cal.layout = layout;
+        self.update_calibration(cal);
+    }
+
     /// Set up bind groups for GPU-resident zero-copy input.
     ///
     /// Creates bind groups for the provided shared textures (Y + UV per slot

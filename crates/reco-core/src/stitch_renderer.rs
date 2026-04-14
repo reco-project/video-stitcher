@@ -142,6 +142,38 @@ impl StitchRenderer {
         self.pipeline.gpu()
     }
 
+    /// Update calibration parameters and recompute the coverage boundary.
+    ///
+    /// Takes effect on the next render call. Useful for interactive
+    /// calibration preview where the user adjusts sliders.
+    pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
+        self.pipeline.update_calibration(calibration);
+        self.coverage =
+            CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
+    }
+
+    /// Update only the plane layout and recompute coverage.
+    pub fn update_layout(&mut self, layout: crate::calibration::PlaneLayout) {
+        self.pipeline.update_layout(layout);
+        self.coverage =
+            CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
+    }
+
+    /// Set the seam blend width (0.0 = hard edge, 0.15 = default smooth blend).
+    pub fn set_blend_width(&mut self, w: f32) {
+        self.pipeline.viewport.blend_width = w;
+    }
+
+    /// Set rig tilt correction in radians.
+    pub fn set_rig_tilt(&mut self, radians: f32) {
+        self.pipeline.viewport.rig_tilt = radians;
+    }
+
+    /// Access the current calibration (for saving after adjustments).
+    pub fn calibration(&self) -> &crate::calibration::MatchCalibration {
+        self.pipeline.calibration()
+    }
+
     /// Strip sRGB encoding from a texture format.
     ///
     /// The stitch shader outputs sRGB-encoded values directly (BT.709

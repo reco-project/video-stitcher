@@ -1215,4 +1215,16 @@ impl StitchSession {
     pub fn gpu_name(&self) -> &str {
         self.pipeline.gpu_name()
     }
+
+    /// Update calibration parameters and recompute coverage boundary.
+    ///
+    /// Takes effect on the next render call. For interactive calibration
+    /// tweaking during preview or live operation.
+    pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
+        self.pipeline.update_calibration(calibration);
+        self.coverage = Some(crate::projection::CoverageBoundary::from_calibration(
+            self.pipeline.calibration(),
+            &self.pipeline.scene,
+        ));
+    }
 }
