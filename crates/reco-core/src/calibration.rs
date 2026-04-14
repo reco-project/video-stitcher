@@ -300,6 +300,19 @@ impl MatchCalibration {
         Ok(cal)
     }
 
+    /// Save calibration to a JSON file.
+    ///
+    /// Uses pretty-printed JSON for human readability.
+    pub fn to_file(&self, path: &std::path::Path) -> Result<(), std::io::Error> {
+        let json = self.to_json_pretty();
+        std::fs::write(path, json)
+    }
+
+    /// Serialize to pretty-printed JSON string.
+    pub fn to_json_pretty(&self) -> String {
+        serde_json::to_string_pretty(self).expect("MatchCalibration is always serializable")
+    }
+
     /// Validates all calibration parameters before they are used by the GPU pipeline.
     ///
     /// Catches malformed values that would otherwise cause GPU hangs, shader
