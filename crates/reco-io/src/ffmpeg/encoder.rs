@@ -304,6 +304,11 @@ pub struct VideoEncoder {
     /// Reusable frame buffers to avoid per-frame allocation.
     rgba_frame: VideoFrame,
     yuv_frame: VideoFrame,
+    /// Hardware frame for hw_frames_ctx upload (VideoToolbox, NVENC, etc.).
+    /// When active, NV12 data is uploaded to the encoder's HW buffer pool
+    /// via `av_hwframe_transfer_data` before encoding.
+    hw_upload: bool,
+    hw_frame: VideoFrame,
     /// Audio passthrough state (if enabled).
     audio: Option<AudioPassthrough>,
 }
@@ -448,6 +453,8 @@ impl VideoEncoder {
                         encoder_name: name.to_string(),
                         rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
                         yuv_frame: VideoFrame::new(*pixel_fmt, width, height),
+                        hw_upload: *is_hw,
+                        hw_frame: VideoFrame::empty(),
                         audio,
                     });
                 }
@@ -506,6 +513,13 @@ impl VideoEncoder {
 
         if !is_hw {
             enc.set_threading(ffmpeg::threading::Config::count(0));
+        }
+
+        // For HW encoders, set up hw_frames_ctx so the encoder receives
+        // frames in its native buffer pool (e.g. VideoToolbox CVPixelBufferPool,
+        // NVENC CUDA surfaces). This avoids an internal CPU->GPU copy per frame.
+        if is_hw {
+            unsafe { setup_hw_frames_ctx(enc.as_mut_ptr(), pixel_fmt, width, height, name) };
         }
 
         let opts = build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
@@ -741,6 +755,42 @@ impl VideoEncoder {
         }
 
         self.yuv_frame.set_pts(Some(self.frame_count));
+
+        // HW upload path: transfer SW frame to the encoder's hardware buffer pool.
+        // This lets the hardware encoder read from its native memory (e.g.
+        // VideoToolbox CVPixelBufferPool, NVENC CUDA surface) instead of
+        // doing an internal CPU->GPU copy per frame.
+        if self.hw_upload {
+            unsafe {
+                let enc_ptr = self.encoder.as_mut_ptr();
+                if !(*enc_ptr).hw_frames_ctx.is_null() {
+                    let err = ffmpeg::ffi::av_hwframe_get_buffer(
+                        (*enc_ptr).hw_frames_ctx,
+                        self.hw_frame.as_mut_ptr(),
+                        0,
+                    );
+                    if err >= 0 && !(*self.hw_frame.as_mut_ptr()).hw_frames_ctx.is_null() {
+                        let err = ffmpeg::ffi::av_hwframe_transfer_data(
+                            self.hw_frame.as_mut_ptr(),
+                            self.yuv_frame.as_mut_ptr(),
+                            0,
+                        );
+                        if err >= 0 {
+                            // Copy frame properties (pts, etc.)
+                            (*self.hw_frame.as_mut_ptr()).pts = (*self.yuv_frame.as_ptr()).pts;
+                            self.encoder.send_frame(&self.hw_frame)?;
+                            self.receive_and_write_packets()?;
+                            self.frame_count += 1;
+                            return Ok(());
+                        }
+                        log::warn!("av_hwframe_transfer_data failed ({err}), falling back to SW");
+                    } else if err < 0 {
+                        log::warn!("av_hwframe_get_buffer failed ({err}), falling back to SW");
+                    }
+                }
+            }
+        }
+
         self.encoder.send_frame(&self.yuv_frame)?;
         self.receive_and_write_packets()?;
 
@@ -795,6 +845,109 @@ impl VideoEncoder {
         // to avoid complex per-frame PTS synchronization. write_interleaved
         // handles the interleaving.
         Ok(())
+    }
+}
+
+/// Set up hw_frames_ctx on the encoder for hardware-accelerated encoding.
+///
+/// This creates a hardware device context (VideoToolbox, CUDA, etc.) and
+/// attaches a hardware frames context to the encoder. When active, frames
+/// uploaded via `av_hwframe_transfer_data` go into the encoder's native
+/// buffer pool, avoiding an internal CPU->GPU copy.
+///
+/// # Safety
+///
+/// `enc_ctx` must be a valid, non-null AVCodecContext pointer that has been
+/// configured but not yet opened with `avcodec_open2`.
+unsafe fn setup_hw_frames_ctx(
+    enc_ctx: *mut ffmpeg::ffi::AVCodecContext,
+    sw_pixel_fmt: Pixel,
+    width: u32,
+    height: u32,
+    encoder_name: &str,
+) {
+    use ffmpeg::ffi;
+
+    // Determine the HW device type from the encoder name.
+    let hw_type = if encoder_name.contains("videotoolbox") {
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX
+    } else if encoder_name.contains("nvenc") {
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA
+    } else if encoder_name.contains("vaapi") {
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI
+    } else if encoder_name.contains("qsv") {
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_QSV
+    } else {
+        return; // Unknown HW encoder, skip
+    };
+
+    // Create HW device context.
+    let mut device_ref: *mut ffi::AVBufferRef = std::ptr::null_mut();
+    let err = unsafe {
+        ffi::av_hwdevice_ctx_create(
+            &mut device_ref,
+            hw_type,
+            std::ptr::null(), // default device
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if err < 0 || device_ref.is_null() {
+        log::debug!("hw_frames_ctx: device create failed for {encoder_name} ({err})");
+        return;
+    }
+
+    unsafe {
+        (*enc_ctx).hw_device_ctx = ffi::av_buffer_ref(device_ref);
+    }
+
+    // Create HW frames context.
+    let hw_frames_ref = unsafe { ffi::av_hwframe_ctx_alloc(device_ref) };
+    if hw_frames_ref.is_null() {
+        log::debug!("hw_frames_ctx: frames alloc failed for {encoder_name}");
+        unsafe { ffi::av_buffer_unref(&mut device_ref) };
+        return;
+    }
+
+    // Determine the HW pixel format.
+    let hw_pix_fmt = match hw_type {
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX => {
+            ffi::AVPixelFormat::AV_PIX_FMT_VIDEOTOOLBOX
+        }
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA => ffi::AVPixelFormat::AV_PIX_FMT_CUDA,
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI => ffi::AVPixelFormat::AV_PIX_FMT_VAAPI,
+        ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_QSV => ffi::AVPixelFormat::AV_PIX_FMT_QSV,
+        _ => {
+            unsafe { ffi::av_buffer_unref(&mut device_ref) };
+            return;
+        }
+    };
+
+    unsafe {
+        let frames_ctx = (*hw_frames_ref).data as *mut ffi::AVHWFramesContext;
+        (*frames_ctx).format = hw_pix_fmt;
+        (*frames_ctx).sw_format = sw_pixel_fmt.into();
+        (*frames_ctx).width = width as i32;
+        (*frames_ctx).height = height as i32;
+        (*frames_ctx).initial_pool_size = 8;
+
+        let err = ffi::av_hwframe_ctx_init(hw_frames_ref);
+        if err < 0 {
+            log::debug!("hw_frames_ctx: init failed for {encoder_name} ({err})");
+            ffi::av_buffer_unref(&mut (hw_frames_ref as *mut _));
+            ffi::av_buffer_unref(&mut device_ref);
+            return;
+        }
+
+        (*enc_ctx).hw_frames_ctx = ffi::av_buffer_ref(hw_frames_ref);
+        (*enc_ctx).pix_fmt = hw_pix_fmt;
+
+        log::info!("hw_frames_ctx: enabled for {encoder_name} (sw_format={sw_pixel_fmt:?})");
+    }
+
+    unsafe {
+        ffi::av_buffer_unref(&mut (hw_frames_ref as *mut _));
+        ffi::av_buffer_unref(&mut device_ref);
     }
 }
 
