@@ -3,6 +3,8 @@
 //! Opens a `winit` window with GPU-rendered preview. Controls:
 //! - Space: play/pause
 //! - N: step one frame, P: skip 30 frames
+//! - R: toggle recording to MP4
+//! - `[`/`]`: seek backward/forward 5 seconds, Home: restart
 //! - Arrows / mouse drag: pan (yaw/pitch)
 //! - +/- / scroll: zoom (FOV)
 //! - Q / Escape: quit
@@ -19,6 +21,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
 use reco_core::source::{FrameSource, YuvData};
 use reco_core::stitch_renderer::StitchRenderer;
 use winit::application::ApplicationHandler;
@@ -44,6 +47,8 @@ const FOV_MAX: f32 = 150.0;
 const FOV_DEFAULT: f32 = 75.0;
 /// Number of frames to skip on P key press.
 const FRAME_SKIP_COUNT: usize = 30;
+/// Number of seconds to seek on `[`/`]` key press.
+const SEEK_STEP_SECS: f64 = 5.0;
 
 /// Extract a [`YuvData`] pair from a [`StereoFrame`](reco_core::source::StereoFrame).
 ///
@@ -146,6 +151,9 @@ pub fn run_preview(
     let initial_fov = FOV_DEFAULT.min(max_fov);
     log::info!("Preview: max FOV = {max_fov:.1} degrees (coverage-limited)");
 
+    let fps_rational = info.fps_rational.unwrap_or((30, 1));
+    let total_frames = source.total_frames();
+
     let mut app = App {
         source: Some(source),
         window: None,
@@ -178,6 +186,12 @@ pub fn run_preview(
         max_fov,
         clamp_enabled: true,
         interrupted: interrupted.clone(),
+        recording: None,
+        recording_path: None,
+        recording_frames: 0,
+        fps: info.fps,
+        fps_rational,
+        total_frames,
     };
 
     event_loop.run_app(&mut app)?;
@@ -222,9 +236,92 @@ struct App {
     clamp_enabled: bool,
     /// Ctrl-C signal from the main thread.
     interrupted: Arc<AtomicBool>,
+    // -- Recording state --
+    recording: Option<Box<dyn Encoder>>,
+    recording_path: Option<String>,
+    recording_frames: u64,
+    fps: f64,
+    fps_rational: (i32, i32),
+    // -- Seek state --
+    total_frames: Option<u64>,
 }
 
 impl App {
+    fn start_recording(&mut self) {
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let path = format!("reco_recording_{epoch}.mp4");
+        let (encoder, enc_name) = match reco_io::adapters::create_encoder(
+            Path::new(&path),
+            self.width,
+            self.height,
+            self.fps_rational,
+            "h264",
+            "balanced",
+            None,
+            None,
+            None,
+        ) {
+            Ok(pair) => pair,
+            Err(e) => {
+                eprintln!("Failed to start recording: {e}");
+                return;
+            }
+        };
+        println!("[REC] Recording to {path} ({enc_name})");
+        self.recording = Some(Box::new(encoder));
+        self.recording_path = Some(path);
+        self.recording_frames = 0;
+    }
+
+    fn stop_recording(&mut self) {
+        // Flush remaining NV12 frames from triple-buffer.
+        if let Some(ref mut renderer) = self.renderer {
+            for _ in 0..2 {
+                if let Ok(Some(nv12)) = renderer.flush_nv12()
+                    && let Some(ref mut enc) = self.recording
+                {
+                    let _ = enc.submit(OutputFrame {
+                        data: nv12,
+                        width: self.width,
+                        height: self.height,
+                        format: PixelFormat::Nv12,
+                        pts_us: (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64,
+                    });
+                    self.recording_frames += 1;
+                }
+            }
+        }
+        if let Some(mut enc) = self.recording.take()
+            && let Err(e) = enc.finish()
+        {
+            eprintln!("Failed to finalize recording: {e}");
+        }
+        if let Some(path) = self.recording_path.take() {
+            println!(
+                "[STOP] Recorded {} frames to {path}",
+                self.recording_frames
+            );
+        }
+    }
+
+    fn seek_to(&mut self, frame: u64) {
+        let Some(ref mut source) = self.source else {
+            return;
+        };
+        if let Err(e) = source.seek(frame) {
+            eprintln!("Seek failed: {e}");
+            return;
+        }
+        self.frame_count = frame;
+        // Read the first frame at the new position.
+        self.step_frame();
+        let secs = frame as f64 / self.fps;
+        println!("Seeked to frame {frame} ({secs:.1}s)");
+    }
+
     /// Apply a calibration change: update renderer + refresh max_fov from new coverage.
     fn apply_calibration_change(&mut self) {
         if let Some(ref mut r) = self.renderer {
@@ -409,11 +506,11 @@ impl ApplicationHandler for App {
             surface_format
         );
         println!("Controls: Space = play/pause, N = next, P = skip 30, Q = quit");
+        println!("          R = toggle recording, [/] = seek -/+ 5s, Home = restart");
         println!("          Arrows/drag = pan, +/-/scroll = zoom");
         println!("          1/2 = intersect, 3/4 = axis offset, 5/6 = vertical align");
         println!("          7/8 = focal length, 9/0 = k1 distortion (barrel/pincushion)");
         println!("          B = cycle blend width, C = toggle clamping, S = save calibration");
-        println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
 
         self.surface = Some(surface);
         self.renderer = Some(renderer);
@@ -429,6 +526,9 @@ impl ApplicationHandler for App {
     ) {
         match event {
             WindowEvent::CloseRequested => {
+                if self.recording.is_some() {
+                    self.stop_recording();
+                }
                 // Drop decoder (NVDEC) before GPU pipeline to avoid
                 // CUDA context teardown race on exit.
                 self.source.take();
@@ -468,6 +568,9 @@ impl ApplicationHandler for App {
                 if event.state == winit::event::ElementState::Pressed {
                     match event.physical_key {
                         PhysicalKey::Code(KeyCode::Escape | KeyCode::KeyQ) => {
+                            if self.recording.is_some() {
+                                self.stop_recording();
+                            }
                             self.source.take();
                             event_loop.exit();
                         }
@@ -626,6 +729,29 @@ impl ApplicationHandler for App {
                                 Err(e) => eprintln!("Failed to save calibration: {e}"),
                             }
                         }
+                        PhysicalKey::Code(KeyCode::KeyR) => {
+                            if self.recording.is_some() {
+                                self.stop_recording();
+                            } else {
+                                self.start_recording();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::BracketLeft) => {
+                            // Seek backward 5 seconds
+                            let step = (SEEK_STEP_SECS * self.fps) as u64;
+                            let target = self.frame_count.saturating_sub(step);
+                            self.seek_to(target);
+                        }
+                        PhysicalKey::Code(KeyCode::BracketRight) => {
+                            // Seek forward 5 seconds
+                            let step = (SEEK_STEP_SECS * self.fps) as u64;
+                            let max = self.total_frames.unwrap_or(u64::MAX);
+                            let target = (self.frame_count + step).min(max);
+                            self.seek_to(target);
+                        }
+                        PhysicalKey::Code(KeyCode::Home) => {
+                            self.seek_to(0);
+                        }
                         _ => {}
                     }
                 }
@@ -682,7 +808,7 @@ impl ApplicationHandler for App {
                 self.needs_redraw = false;
 
                 let (Some(surface), Some(renderer)) =
-                    (self.surface.as_ref(), self.renderer.as_ref())
+                    (self.surface.as_ref(), self.renderer.as_mut())
                 else {
                     return;
                 };
@@ -721,6 +847,37 @@ impl ApplicationHandler for App {
                     return;
                 }
 
+                // Record: render to internal target + NV12 readback.
+                if self.recording.is_some() {
+                    match renderer.render_and_readback_nv12(&left, &right, self.yaw, render_pitch) {
+                        Ok(Some(nv12)) => {
+                            let pts_us =
+                                (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64;
+                            if let Some(ref mut enc) = self.recording
+                                && let Err(e) = enc.submit(OutputFrame {
+                                    data: nv12,
+                                    width: self.width,
+                                    height: self.height,
+                                    format: PixelFormat::Nv12,
+                                    pts_us,
+                                })
+                            {
+                                eprintln!("Recording encode error: {e}");
+                                self.stop_recording();
+                            }
+                            self.recording_frames += 1;
+                        }
+                        Ok(None) => {
+                            // First 2 frames: triple-buffer warming up.
+                            self.recording_frames += 1;
+                        }
+                        Err(e) => {
+                            eprintln!("Recording readback error: {e}");
+                            self.stop_recording();
+                        }
+                    }
+                }
+
                 frame.present();
             }
             _ => {}
@@ -736,6 +893,9 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Check Ctrl-C
         if self.interrupted.load(Ordering::Relaxed) {
+            if self.recording.is_some() {
+                self.stop_recording();
+            }
             self.source.take();
             event_loop.exit();
             return;

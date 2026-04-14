@@ -13,7 +13,7 @@ use reco_core::director::{Director, DirectorContext, ViewportPosition};
 /// # Example
 ///
 /// ```rust,ignore
-/// use reco_autocam::directors::SweepDirector;
+/// use reco_autocam::SweepDirector;
 ///
 /// // Sweep +/- 0.8 radians over 10 seconds
 /// let director = SweepDirector::new(0.8, 10.0);

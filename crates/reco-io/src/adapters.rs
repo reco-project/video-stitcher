@@ -35,6 +35,12 @@ pub struct FfmpegFileSource {
     /// Rotation from stream metadata (0, 90, 180, 270).
     left_rotation: i32,
     right_rotation: i32,
+    /// Stored for seek (need to respawn decode pipeline).
+    left_path: std::path::PathBuf,
+    right_path: std::path::PathBuf,
+    sync_offset: i64,
+    /// Total frame count (estimated from duration * fps).
+    total_frame_count: Option<u64>,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -64,12 +70,16 @@ impl FfmpegFileSource {
                 reason: format!("{e}"),
             })?;
         let fps_r = probe.frame_rate();
+        let fps = probe.fps();
+        let total_frame_count = probe
+            .duration_secs()
+            .map(|dur| (dur * fps) as u64);
         let info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
-            fps: probe.fps(),
+            fps,
             fps_rational: Some((fps_r.0, fps_r.1)),
-            total_frames: None,
+            total_frames: total_frame_count,
         };
         let decode_backend = probe.backend();
         let pixel_format = probe.pixel_format();
@@ -86,7 +96,7 @@ impl FfmpegFileSource {
 
         let left = left_path.to_path_buf();
         let right = right_path.to_path_buf();
-        let rx = Self::spawn_decode_pipeline(left, right, sync_offset);
+        let rx = Self::spawn_decode_pipeline_at(left.clone(), right.clone(), sync_offset, None);
 
         Ok(Self {
             rx,
@@ -95,6 +105,10 @@ impl FfmpegFileSource {
             pixel_format,
             left_rotation,
             right_rotation,
+            left_path: left,
+            right_path: right,
+            sync_offset,
+            total_frame_count,
         })
     }
 
@@ -153,9 +167,10 @@ impl FfmpegFileSource {
         Ok((r.0, r.1))
     }
 
-    fn spawn_single_decoder(
+    fn spawn_single_decoder_at(
         path: std::path::PathBuf,
         label: &'static str,
+        seek_secs: Option<f64>,
     ) -> std::sync::mpsc::Receiver<YuvData> {
         let (tx, rx) = std::sync::mpsc::sync_channel::<YuvData>(4);
 
@@ -177,6 +192,12 @@ impl FfmpegFileSource {
                         return;
                     }
                 };
+                if let Some(secs) = seek_secs
+                    && let Err(e) = dec.seek_to_secs(secs)
+                {
+                    log::error!("{label} seek to {secs:.1}s failed: {e}");
+                    return;
+                }
                 loop {
                     match dec.next_frame() {
                         Ok(Some(f)) => {
@@ -202,13 +223,14 @@ impl FfmpegFileSource {
         rx
     }
 
-    fn spawn_decode_pipeline(
+    fn spawn_decode_pipeline_at(
         left_path: std::path::PathBuf,
         right_path: std::path::PathBuf,
         sync_offset: i64,
+        seek_secs: Option<f64>,
     ) -> std::sync::mpsc::Receiver<FramePair> {
-        let left_rx = Self::spawn_single_decoder(left_path, "left");
-        let right_rx = Self::spawn_single_decoder(right_path, "right");
+        let left_rx = Self::spawn_single_decoder_at(left_path, "left", seek_secs);
+        let right_rx = Self::spawn_single_decoder_at(right_path, "right", seek_secs);
 
         let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
 
@@ -278,6 +300,24 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Ok(None),
         }
+    }
+
+    fn seek(&mut self, frame: u64) -> Result<(), SourceError> {
+        let secs = frame as f64 / self.info.fps;
+        log::info!("Seeking to frame {frame} ({secs:.1}s)");
+        // Drop old receiver to disconnect from current decode threads.
+        // Threads will exit when their send channel disconnects.
+        self.rx = Self::spawn_decode_pipeline_at(
+            self.left_path.clone(),
+            self.right_path.clone(),
+            self.sync_offset,
+            Some(secs),
+        );
+        Ok(())
+    }
+
+    fn total_frames(&self) -> Option<u64> {
+        self.total_frame_count
     }
 }
 

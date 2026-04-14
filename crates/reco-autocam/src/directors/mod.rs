@@ -30,6 +30,6 @@ pub enum TrackingMode {
     /// are automatically rejected.
     Field,
     /// Debug mode: slowly pan left-right across the full coverage.
-    /// No AI, no tracking. Uses [`SweepDirector`].
+    /// No AI, no tracking. Uses [`SweepDirector`](crate::SweepDirector).
     Sweep,
 }
