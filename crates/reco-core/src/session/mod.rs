@@ -98,6 +98,17 @@ pub struct FrameProgress {
 /// Callback for progress reporting during [`StitchSession::run`].
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
+/// Result from [`StitchSession::step`] - one frame with full session features.
+#[derive(Debug, Clone)]
+pub struct StepResult {
+    /// Where the virtual camera pointed for this frame.
+    pub viewport: ViewportPosition,
+    /// Detections mapped to panorama coordinates (empty if no detector or skipped frame).
+    pub detections: Vec<MappedDetection>,
+    /// Frame index (0-based).
+    pub frame_index: u64,
+}
+
 /// Callback for receiving tracked detection data.
 ///
 /// Called each frame with the tracked objects (may be empty on non-detection
@@ -785,6 +796,62 @@ impl StitchSession {
     /// Handles YUV420P and NV12 input formats. For GPU-resident frames
     /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
     /// instead.
+    /// Process one frame with full session features: detection, director,
+    /// coverage clamping, and encoding.
+    ///
+    /// This is the recommended API for interactive consumers (GUI apps, OBS
+    /// plugins) that control their own frame loop. It combines
+    /// `detect_and_update_director()`, `director_position()`, and
+    /// `process_frame()` into a single call and returns what happened.
+    ///
+    /// Pass `override_position` to bypass the director (e.g. when the user
+    /// grabs the viewport with their mouse). The director still updates
+    /// internally so it stays warm.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "session_step")
+    )]
+    pub fn step(
+        &mut self,
+        frame: &StereoFrame,
+        elapsed: std::time::Duration,
+        override_position: Option<ViewportPosition>,
+    ) -> Result<StepResult, SessionError> {
+        // Run detection and update director.
+        self.detect_and_update_director(frame, elapsed);
+
+        // Get viewport position (from director or override).
+        let pos = if let Some(ovr) = override_position {
+            if let Some(fov) = ovr.fov_degrees {
+                self.pipeline.set_fov(fov);
+            }
+            ovr
+        } else {
+            self.director_position()
+        };
+
+        // Capture detections before render (they'll be overwritten on next detect).
+        let detections = self.detection.last_detections.clone();
+        let frame_index = self.frame_count;
+
+        // Render + encode.
+        self.process_frame(frame, pos.yaw, pos.pitch)?;
+
+        Ok(StepResult {
+            viewport: pos,
+            detections,
+            frame_index,
+        })
+    }
+
+    /// Render a single CPU-resident stereo frame and submit it to the encoder.
+    ///
+    /// Handles YUV420P and NV12 input formats. For GPU-resident frames
+    /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
+    /// instead.
+    ///
+    /// For interactive consumers that want detection + director + encoding in
+    /// one call, use [`step()`](Self::step) instead.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_process_frame")
