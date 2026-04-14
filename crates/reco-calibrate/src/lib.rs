@@ -467,7 +467,8 @@ pub fn calibrate_with(
         left: left_params.clone(),
         right: right_params.clone(),
         layout: best_layout,
-        rig_tilt: 0.0,   // set by CalibrationPipeline after calibrate()
+        rig_tilt: 0.0, // set by CalibrationPipeline after calibrate()
+        rig_roll: 0.0,
         sync_offset: 0,  // set by CalibrationPipeline after calibrate()
         field_roi: None, // set manually or by a future field detection pipeline
     };

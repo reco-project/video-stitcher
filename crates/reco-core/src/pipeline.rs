@@ -68,6 +68,20 @@ pub enum PipelineError {
     /// Render error.
     #[error("render error: {0}")]
     Render(#[from] RenderError),
+
+    /// Wrong StereoFrame variant for this render method.
+    #[error("unsupported frame variant: {reason}")]
+    UnsupportedFrameVariant {
+        /// Description of the mismatch.
+        reason: &'static str,
+    },
+
+    /// Invalid configuration.
+    #[error("invalid config: {reason}")]
+    InvalidConfig {
+        /// What is wrong.
+        reason: String,
+    },
 }
 
 /// The main stitching pipeline.
@@ -115,6 +129,24 @@ impl StitchPipeline {
         output_format: impl Into<wgpu::TextureFormat>,
         input_format: InputFormat,
     ) -> Result<Self, PipelineError> {
+        // Validate inputs before GPU resource creation.
+        if let Err(e) = viewport.validate() {
+            return Err(PipelineError::InvalidConfig { reason: e });
+        }
+        if input_width == 0 || input_height == 0 {
+            return Err(PipelineError::InvalidConfig {
+                reason: format!("input dimensions must be > 0, got {input_width}x{input_height}"),
+            });
+        }
+        if input_width > crate::calibration::MAX_DIM || input_height > crate::calibration::MAX_DIM {
+            return Err(PipelineError::InvalidConfig {
+                reason: format!(
+                    "input dimensions {input_width}x{input_height} exceed MAX_DIM ({})",
+                    crate::calibration::MAX_DIM
+                ),
+            });
+        }
+
         let output_format = output_format.into();
         let aspect = calibration.left.width as f32 / calibration.left.height as f32;
         let scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
@@ -182,10 +214,10 @@ impl StitchPipeline {
     /// reconfigure in a preview window). For actual output resolution
     /// changes, rebuild the pipeline with [`Self::with_gpu`].
     pub fn resize(&mut self, width: u32, height: u32) {
-        debug_assert!(
-            width > 0 && height > 0,
-            "viewport dimensions must be non-zero"
-        );
+        if width == 0 || height == 0 {
+            log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
+            return;
+        }
         self.viewport.width = width;
         self.viewport.height = height;
     }
@@ -327,11 +359,13 @@ impl StitchPipeline {
                 };
                 self.render_to_target_nv12(&left, &right, yaw, pitch)
             }
-            StereoFrame::GpuResident { .. } => {
-                panic!("GpuResident frames must use render_gpu_frame()")
-            }
-            #[allow(unreachable_patterns)] // #[non_exhaustive] requires wildcard
-            _ => panic!("unsupported StereoFrame variant for render_stereo_frame()"),
+            StereoFrame::GpuResident { .. } => Err(PipelineError::UnsupportedFrameVariant {
+                reason: "GpuResident frames must use render_gpu_frame()",
+            }),
+            #[allow(unreachable_patterns)]
+            _ => Err(PipelineError::UnsupportedFrameVariant {
+                reason: "unsupported StereoFrame variant for CPU render path",
+            }),
         }
     }
 

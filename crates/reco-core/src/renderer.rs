@@ -865,6 +865,12 @@ fn upload_yuv(
             actual: u.len(),
         });
     }
+    if v.len() != (uv_w * uv_h) as usize {
+        return Err(RenderError::FrameSizeMismatch {
+            expected: (uv_w * uv_h) as usize,
+            actual: v.len(),
+        });
+    }
 
     upload_plane(gpu, &plane.y_texture, y, w, h);
     upload_plane(gpu, &plane.u_texture, u, uv_w, uv_h);

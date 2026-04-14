@@ -47,6 +47,7 @@ fn test_calibration() -> MatchCalibration {
             z_rz: 0.0,
         },
         rig_tilt: 0.0,
+        rig_roll: 0.0,
         sync_offset: 0,
         field_roi: None,
     }

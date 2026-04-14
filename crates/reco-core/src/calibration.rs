@@ -249,6 +249,13 @@ pub struct MatchCalibration {
     #[serde(default)]
     pub rig_tilt: f64,
 
+    /// Rig roll in radians (rotation around the camera axis).
+    ///
+    /// Corrects for a rig that is not level side-to-side.
+    /// Defaults to 0.0 for backward compatibility.
+    #[serde(default)]
+    pub rig_roll: f64,
+
     /// Temporal sync offset in frames (positive = right video is ahead).
     ///
     /// Computed from IMU gyro or audio cross-correlation during calibration.
@@ -305,6 +312,18 @@ impl MatchCalibration {
         validate_camera_params(&self.left, "left")?;
         validate_camera_params(&self.right, "right")?;
         validate_layout(&self.layout)?;
+        if !self.rig_tilt.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: "rig_tilt".to_string(),
+                value: self.rig_tilt.to_string(),
+            });
+        }
+        if !self.rig_roll.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: "rig_roll".to_string(),
+                value: self.rig_roll.to_string(),
+            });
+        }
         Ok(())
     }
 }
@@ -597,6 +616,7 @@ mod tests {
                 z_rz: 0.0,
             },
             rig_tilt: 0.0,
+            rig_roll: 0.0,
             sync_offset: 0,
             field_roi: None,
         }
@@ -763,6 +783,7 @@ mod tests {
                 z_rz: 0.0,
             },
             rig_tilt: 0.3,
+            rig_roll: 0.0,
             sync_offset: 67,
         };
 
