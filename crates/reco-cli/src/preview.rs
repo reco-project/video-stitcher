@@ -178,6 +178,7 @@ pub fn run_preview(
         fps: info.fps,
         fps_rational,
         total_frames,
+        pending_seek: None,
     };
 
     event_loop.run_app(&mut app)?;
@@ -230,6 +231,9 @@ struct App {
     fps_rational: (i32, i32),
     // -- Seek state --
     total_frames: Option<u64>,
+    /// Coalesced seek target. Multiple rapid key presses accumulate here;
+    /// only the final value is executed (in about_to_wait).
+    pending_seek: Option<u64>,
 }
 
 impl App {
@@ -289,13 +293,12 @@ impl App {
             eprintln!("Failed to finalize recording: {e}");
         }
         if let Some(path) = self.recording_path.take() {
-            println!(
-                "[STOP] Recorded {} frames to {path}",
-                self.recording_frames
-            );
+            println!("[STOP] Recorded {} frames to {path}", self.recording_frames);
         }
     }
 
+    /// Seek and display the first frame at the new position (blocking).
+    /// Only called from about_to_wait after coalescing rapid key presses.
     fn seek_to(&mut self, frame: u64) {
         let Some(ref mut source) = self.source else {
             return;
@@ -305,7 +308,7 @@ impl App {
             return;
         }
         self.frame_count = frame;
-        // Read the first frame at the new position.
+        // Blocking: wait for the first decoded frame at the new position.
         self.step_frame();
         let secs = frame as f64 / self.fps;
         println!("Seeked to frame {frame} ({secs:.1}s)");
@@ -726,20 +729,18 @@ impl ApplicationHandler for App {
                             }
                         }
                         PhysicalKey::Code(KeyCode::BracketLeft) => {
-                            // Seek backward 5 seconds
                             let step = (SEEK_STEP_SECS * self.fps) as u64;
-                            let target = self.frame_count.saturating_sub(step);
-                            self.seek_to(target);
+                            let base = self.pending_seek.unwrap_or(self.frame_count);
+                            self.pending_seek = Some(base.saturating_sub(step));
                         }
                         PhysicalKey::Code(KeyCode::BracketRight) => {
-                            // Seek forward 5 seconds
                             let step = (SEEK_STEP_SECS * self.fps) as u64;
                             let max = self.total_frames.unwrap_or(u64::MAX);
-                            let target = (self.frame_count + step).min(max);
-                            self.seek_to(target);
+                            let base = self.pending_seek.unwrap_or(self.frame_count);
+                            self.pending_seek = Some((base + step).min(max));
                         }
                         PhysicalKey::Code(KeyCode::Home) => {
-                            self.seek_to(0);
+                            self.pending_seek = Some(0);
                         }
                         _ => {}
                     }
@@ -898,6 +899,14 @@ impl ApplicationHandler for App {
         let smoothing_active = (self.target_yaw - self.yaw).abs() > 0.0001
             || (self.target_pitch - self.pitch).abs() > 0.0001
             || (self.target_fov - current_fov).abs() > 0.01;
+
+        // Execute coalesced seek: rapid key presses accumulate into
+        // pending_seek; only the final target runs here (one seek
+        // instead of many). Blocking: waits for first frame to render.
+        if let Some(target) = self.pending_seek.take() {
+            self.seek_to(target);
+            self.needs_redraw = true;
+        }
 
         if !self.playing && !smoothing_active {
             return;

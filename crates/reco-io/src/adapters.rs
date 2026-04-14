@@ -41,6 +41,8 @@ pub struct FfmpegFileSource {
     sync_offset: i64,
     /// Total frame count (estimated from duration * fps).
     total_frame_count: Option<u64>,
+    /// Current frame position (incremented on each next_frame).
+    current_frame: u64,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -71,9 +73,7 @@ impl FfmpegFileSource {
             })?;
         let fps_r = probe.frame_rate();
         let fps = probe.fps();
-        let total_frame_count = probe
-            .duration_secs()
-            .map(|dur| (dur * fps) as u64);
+        let total_frame_count = probe.duration_secs().map(|dur| (dur * fps) as u64);
         let info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
@@ -109,6 +109,7 @@ impl FfmpegFileSource {
             right_path: right,
             sync_offset,
             total_frame_count,
+            current_frame: 0,
         })
     }
 
@@ -192,11 +193,37 @@ impl FfmpegFileSource {
                         return;
                     }
                 };
-                if let Some(secs) = seek_secs
-                    && let Err(e) = dec.seek_to_secs(secs)
-                {
-                    log::error!("{label} seek to {secs:.1}s failed: {e}");
-                    return;
+                if let Some(secs) = seek_secs {
+                    if let Err(e) = dec.seek_to_secs(secs) {
+                        log::error!("{label} seek to {secs:.1}s failed: {e}");
+                        return;
+                    }
+                    // FFmpeg seeks to the nearest keyframe BEFORE the target.
+                    // Decode and discard frames until we reach the target PTS.
+                    let target_us = (secs * 1_000_000.0) as i64;
+                    let mut skipped = 0u32;
+                    loop {
+                        match dec.next_frame() {
+                            Ok(Some(f)) if f.timestamp_us < target_us => {
+                                skipped += 1;
+                            }
+                            Ok(Some(f)) => {
+                                log::debug!(
+                                    "{label} seek: skipped {skipped} frames to reach target"
+                                );
+                                let buf = YuvData {
+                                    y: f.y,
+                                    u: f.u,
+                                    v: f.v,
+                                };
+                                if tx.send(buf).is_err() {
+                                    return;
+                                }
+                                break;
+                            }
+                            _ => return,
+                        }
+                    }
                 }
                 loop {
                     match dec.next_frame() {
@@ -289,30 +316,69 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
 
     fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
         match self.rx.recv() {
-            Ok(pair) => Ok(Some(StereoFrame::Yuv420p(pair))),
+            Ok(pair) => {
+                self.current_frame += 1;
+                Ok(Some(StereoFrame::Yuv420p(pair)))
+            }
             Err(_) => Ok(None),
         }
     }
 
     fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
         match self.rx.try_recv() {
-            Ok(pair) => Ok(Some(StereoFrame::Yuv420p(pair))),
+            Ok(pair) => {
+                self.current_frame += 1;
+                Ok(Some(StereoFrame::Yuv420p(pair)))
+            }
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Ok(None),
         }
     }
 
     fn seek(&mut self, frame: u64) -> Result<(), SourceError> {
+        // Two strategies depending on seek direction and distance:
+        //
+        // 1. **Forward ≤ 10s**: drain frames from the existing decode
+        //    pipeline. The decode threads are already running and
+        //    buffering, so this is near-instant with no NVDEC re-init.
+        //
+        // 2. **Backward or > 10s forward**: respawn the entire decode
+        //    pipeline at the target position. Each decoder seeks to the
+        //    nearest keyframe before the target, then decodes and
+        //    discards frames until reaching the exact target PTS.
+        //
+        // Callers handling rapid input (scrub bars, key repeat) should
+        // coalesce seek requests on their side and call this once with
+        // the final target. This method is blocking for strategy 1 and
+        // semi-blocking for strategy 2 (spawns threads, returns before
+        // first frame is decoded).
+        if frame > self.current_frame {
+            let skip = frame - self.current_frame;
+            let max_forward = (self.info.fps * 10.0) as u64;
+            if skip <= max_forward {
+                log::debug!("Forward seek: skipping {skip} frames via decode");
+                for _ in 0..skip {
+                    match self.rx.recv() {
+                        Ok(_) => self.current_frame += 1,
+                        Err(_) => break,
+                    }
+                }
+                return Ok(());
+            }
+        }
+
         let secs = frame as f64 / self.info.fps;
         log::info!("Seeking to frame {frame} ({secs:.1}s)");
-        // Drop old receiver to disconnect from current decode threads.
-        // Threads will exit when their send channel disconnects.
+        // Drop old receiver - disconnects current decode threads which
+        // exit on the next send() failure. Spawns fresh decoders that
+        // seek to the target keyframe and skip to the exact PTS.
         self.rx = Self::spawn_decode_pipeline_at(
             self.left_path.clone(),
             self.right_path.clone(),
             self.sync_offset,
             Some(secs),
         );
+        self.current_frame = frame;
         Ok(())
     }
 
