@@ -176,6 +176,7 @@ pub fn run_preview(
         blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
         max_fov,
+        clamp_enabled: true,
         interrupted: interrupted.clone(),
     };
 
@@ -217,6 +218,8 @@ struct App {
     rig_tilt: f32,
     /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
     max_fov: f32,
+    /// Whether coverage boundary clamping is active.
+    clamp_enabled: bool,
     /// Ctrl-C signal from the main thread.
     interrupted: Arc<AtomicBool>,
 }
@@ -311,7 +314,9 @@ impl App {
         }
 
         // Clamp to coverage boundary so no black edges appear
-        if let Some(ref renderer) = self.renderer {
+        if self.clamp_enabled
+            && let Some(ref renderer) = self.renderer
+        {
             let coverage = renderer.coverage();
             let current_fov = renderer.pipeline().fov();
             let aspect = self.width as f32 / self.height as f32;
@@ -406,7 +411,8 @@ impl ApplicationHandler for App {
         println!("Controls: Space = play/pause, N = next, P = skip 30, Q = quit");
         println!("          Arrows/drag = pan, +/-/scroll = zoom");
         println!("          1/2 = intersect, 3/4 = axis offset, 5/6 = vertical align");
-        println!("          B = cycle blend width, S = save calibration");
+        println!("          7/8 = focal length, 9/0 = k1 distortion (barrel/pincushion)");
+        println!("          B = cycle blend width, C = toggle clamping, S = save calibration");
         println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
 
         self.surface = Some(surface);
@@ -558,6 +564,58 @@ impl ApplicationHandler for App {
                                 r.set_blend_width(self.blend_width);
                             }
                             println!("blend_width: {:.2}", self.blend_width);
+                            self.needs_redraw = true;
+                        }
+                        PhysicalKey::Code(KeyCode::Digit7) => {
+                            // Increase focal length (both cameras) - zoom in effect
+                            self.cal.left.fx *= 1.02;
+                            self.cal.left.fy *= 1.02;
+                            self.cal.right.fx *= 1.02;
+                            self.cal.right.fy *= 1.02;
+                            self.apply_calibration_change();
+                            println!(
+                                "focal length: {:.1} / {:.1}",
+                                self.cal.left.fx, self.cal.right.fx
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit8) => {
+                            // Decrease focal length - zoom out / wider
+                            self.cal.left.fx *= 0.98;
+                            self.cal.left.fy *= 0.98;
+                            self.cal.right.fx *= 0.98;
+                            self.cal.right.fy *= 0.98;
+                            self.apply_calibration_change();
+                            println!(
+                                "focal length: {:.1} / {:.1}",
+                                self.cal.left.fx, self.cal.right.fx
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit9) => {
+                            // Increase k1 distortion - more barrel
+                            self.cal.left.d[0] += 0.005;
+                            self.cal.right.d[0] += 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "k1 distortion: {:.4} / {:.4}",
+                                self.cal.left.d[0], self.cal.right.d[0]
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit0) => {
+                            // Decrease k1 distortion - less barrel / more pincushion
+                            self.cal.left.d[0] -= 0.005;
+                            self.cal.right.d[0] -= 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "k1 distortion: {:.4} / {:.4}",
+                                self.cal.left.d[0], self.cal.right.d[0]
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::KeyC) => {
+                            self.clamp_enabled = !self.clamp_enabled;
+                            println!(
+                                "Coverage clamping: {}",
+                                if self.clamp_enabled { "ON" } else { "OFF" }
+                            );
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::KeyS) => {
