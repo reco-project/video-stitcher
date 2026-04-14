@@ -412,6 +412,8 @@ pub struct StitchSession {
     pub(crate) pipeline: StitchPipeline,
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
+    /// Additional encoders for multi-output (stream + record).
+    extra_encoders: Vec<AsyncEncodeThread>,
     /// GPU-resident encoder (zero-copy encode path, no implementations yet).
     #[allow(dead_code)]
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
@@ -526,6 +528,7 @@ impl StitchSession {
             detection: DetectionPipeline::new(),
             director: None,
             frame_count: 0,
+            extra_encoders: Vec::new(),
             session_start: None,
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
@@ -971,10 +974,14 @@ impl StitchSession {
 
         // First two calls return None (triple-buffer warmup).
         // From the third call onward, we get data from 2 frames ago.
-        if let Some(data) = nv12_data
-            && let Some(ref encoder) = self.encoder
-        {
-            encoder.submit(data, self.frame_count as i64)?;
+        if let Some(data) = nv12_data {
+            if let Some(ref encoder) = self.encoder {
+                encoder.submit(data, self.frame_count as i64)?;
+            }
+            // Fan out to extra encoders (multi-output).
+            for enc in &self.extra_encoders {
+                enc.submit(data, self.frame_count as i64)?;
+            }
         }
 
         self.frame_count += 1;
@@ -1265,12 +1272,18 @@ impl StitchSession {
             if let Some(ref encoder) = self.encoder {
                 encoder.submit(nv12_data, self.frame_count as i64)?;
             }
+            for enc in &self.extra_encoders {
+                enc.submit(nv12_data, self.frame_count as i64)?;
+            }
             self.frame_count += 1;
         }
 
-        // Shut down the async encode thread.
+        // Shut down all encode threads.
         if let Some(mut encoder) = self.encoder.take() {
             encoder.finish()?;
+        }
+        for mut enc in self.extra_encoders.drain(..) {
+            enc.finish()?;
         }
 
         Ok(())
@@ -1337,6 +1350,20 @@ impl StitchSession {
             fps_average: self.frame_count as f32 / secs,
             total_frames: None, // set by consumer from SourceInfo
         }
+    }
+
+    /// Add an additional encoder for multi-output (e.g. record + stream).
+    ///
+    /// The NV12 data from each rendered frame is fanned out to all attached
+    /// encoders. Each encoder runs on its own background thread.
+    ///
+    /// Use [`set_encoder`](Self::set_encoder) for the primary encoder,
+    /// then `add_encoder` for additional outputs.
+    pub fn add_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
+        let width = self.nv12_converter.width();
+        let height = self.nv12_converter.height();
+        self.extra_encoders
+            .push(AsyncEncodeThread::new(encoder, width, height, buffer_count));
     }
 
     /// Set the error policy for the [`run()`](Self::run) batch loop.
