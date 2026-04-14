@@ -815,8 +815,9 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         // Lazily create the texture cache on first MetalResident frame.
         if self.metal_texture_cache.is_none() {
-            self.metal_texture_cache =
-                Some(crate::metal_interop::MetalTextureCache::new(self.pipeline.gpu())?);
+            self.metal_texture_cache = Some(crate::metal_interop::MetalTextureCache::new(
+                self.pipeline.gpu(),
+            )?);
             log::info!("Metal zero-copy: texture cache initialized");
         }
         let cache = self.metal_texture_cache.as_ref().unwrap();
