@@ -18,7 +18,7 @@ argmin = "0.11"
 argmin-math = { version = "0.5", features = ["vec"] }
 image = { version = "0.25", default-features = false }
 telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git", rev = "2f4218b" }
-rand = "0.9"
+rand = "0.10"
 log = "0.4"
 nalgebra = "0.33"
 rayon = "1.10"
