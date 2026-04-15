@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/reco-core",
+    "crates/reco-cli",
+    "crates/reco-io",
+    "crates/reco-autocam",
+    "crates/reco-calibrate",
+    "crates/reco-detect",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+license = "AGPL-3.0-only"
+repository = "https://github.com/reco-project/video-stitcher"
+
+[workspace.dependencies]
+tracing = "0.1"
+
+[patch.crates-io]
+wgpu-hal = { git = "https://github.com/mohamedtahaguelzim/wgpu.git", branch = "fix/shader-draw-parameters-v29.0.1" }
+wgpu-types = { git = "https://github.com/mohamedtahaguelzim/wgpu.git", branch = "fix/shader-draw-parameters-v29.0.1" }
+wgpu-core = { git = "https://github.com/mohamedtahaguelzim/wgpu.git", branch = "fix/shader-draw-parameters-v29.0.1" }
+naga = { git = "https://github.com/mohamedtahaguelzim/wgpu.git", branch = "fix/shader-draw-parameters-v29.0.1" }
+wgpu-naga-bridge = { git = "https://github.com/mohamedtahaguelzim/wgpu.git", branch = "fix/shader-draw-parameters-v29.0.1" }
+wgpu = { git = "https://github.com/mohamedtahaguelzim/wgpu.git", branch = "fix/shader-draw-parameters-v29.0.1" }

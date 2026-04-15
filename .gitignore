@@ -1,21 +1,13 @@
-node_modules/
+# Rust
+target/
 
-# Development user data (not packaged)
-devData/
-
-# Build outputs
-out/
-frontend/dist/
-.vite/
-frontend/.vite/
+# Video artifacts and profiling traces
+*.mp4
+reco-trace.json
 
 # Python
 __pycache__/
 *.pyc
-backend/venv/
-backend/temp/
-backend/logs/
-backend/bin/
 
 # IDE
 .vscode/
@@ -27,6 +19,22 @@ Thumbs.db
 
 # Misc
 *.log
-# Build artifacts
-electron/resources/lens_profiles.sqlite
-backend/data/lens_profiles.sqlite
+.claude/
+.cargo/
+*.pt
+*.onnx
+
+# Legacy v1 build artifacts
+out/
+node_modules/
+devData/
+.vite/
+.vscode-ctags
+
+# Calibration debug workspace
+calibrate_debug/
+
+# Deep review analysis (generated, not committed)
+docs/analysis/
+docs/superpowers/
+calibration_adjusted.json

@@ -1,0 +1,585 @@
+//! Stitch pipeline orchestration.
+//!
+//! The [`StitchPipeline`] coordinates all stages: GPU setup, frame ingestion,
+//! rendering, viewport cropping, and output encoding. It is the primary
+//! entry point for consumers of `reco-core`.
+//!
+//! ## Usage
+//!
+//! Most consumers should use [`StitchSession`](crate::session::StitchSession)
+//! instead of `StitchPipeline` directly. The pipeline is exposed for advanced
+//! use cases like preview windows that need direct surface rendering.
+//!
+//! ```rust,no_run,compile_fail
+//! use reco_core::pipeline::StitchPipeline;
+//! use reco_core::gpu::GpuContext;
+//!
+//! let gpu = pollster::block_on(GpuContext::new())?;
+//! let pipeline = StitchPipeline::with_gpu(
+//!     gpu, calibration, viewport, 1920, 1080,
+//!     wgpu::TextureFormat::Rgba8UnormSrgb,
+//!     reco_core::renderer::InputFormat::Yuv420p,
+//! )?;
+//! ```
+
+use crate::calibration::MatchCalibration;
+use crate::director::ViewportPosition;
+use crate::gpu::{GpuContext, GpuError};
+use crate::renderer::{InputFormat, RenderError, Renderer};
+use crate::scene::SceneGeometry;
+use crate::viewport::{ResolvedViewport, ViewportConfig};
+
+use thiserror::Error;
+
+/// Borrowed YUV420P plane references for pipeline input.
+///
+/// Tightly packed (no stride padding):
+/// - `y`: `width × height` bytes
+/// - `u`: `(width/2) × (height/2)` bytes
+/// - `v`: `(width/2) × (height/2)` bytes
+pub struct YuvPlanes<'a> {
+    /// Y (luma) plane, full resolution.
+    pub y: &'a [u8],
+    /// U (Cb) plane, half resolution.
+    pub u: &'a [u8],
+    /// V (Cr) plane, half resolution.
+    pub v: &'a [u8],
+}
+
+/// Borrowed NV12 plane references for pipeline input.
+///
+/// Tightly packed (no stride padding):
+/// - `y`: `width × height` bytes
+/// - `uv`: `width × (height/2)` bytes (interleaved U,V)
+pub struct Nv12Planes<'a> {
+    /// Y (luma) plane, full resolution.
+    pub y: &'a [u8],
+    /// Interleaved UV (CbCr) plane, half resolution in each dimension.
+    pub uv: &'a [u8],
+}
+
+/// Errors from the stitch pipeline.
+#[derive(Debug, Error)]
+pub enum PipelineError {
+    /// GPU initialization failed.
+    #[error("GPU error: {0}")]
+    Gpu(#[from] GpuError),
+
+    /// Render error.
+    #[error("render error: {0}")]
+    Render(#[from] RenderError),
+
+    /// Wrong StereoFrame variant for this render method.
+    #[error("unsupported frame variant: {reason}")]
+    UnsupportedFrameVariant {
+        /// Description of the mismatch.
+        reason: &'static str,
+    },
+
+    /// Invalid configuration.
+    #[error("invalid config: {reason}")]
+    InvalidConfig {
+        /// What is wrong.
+        reason: String,
+    },
+}
+
+/// The main stitching pipeline.
+///
+/// Owns the GPU context, scene geometry, and renderer. Consumers provide
+/// YUV420P or NV12 frames and receive stitched RGBA output via
+/// [`Self::render_to_target`] or [`Self::render_to_target_nv12`].
+pub struct StitchPipeline {
+    /// GPU device and queue.
+    pub(crate) gpu: GpuContext,
+    /// 3D scene layout computed from calibration.
+    pub(crate) scene: SceneGeometry,
+    /// Calibration data (camera intrinsics + layout).
+    pub(crate) calibration: MatchCalibration,
+    /// Output viewport configuration.
+    pub(crate) viewport: ViewportConfig,
+    /// GPU renderer (textures, pipelines, bind groups).
+    renderer: Renderer,
+    /// Input frame dimensions.
+    input_width: u32,
+    input_height: u32,
+}
+
+/// Pre-built bind groups for GPU-resident zero-copy sources.
+///
+/// Created by [`StitchPipeline::configure_gpu_source`]. Each slot
+/// corresponds to a double-buffer index used by the decode thread.
+#[cfg(target_os = "linux")]
+pub struct GpuSourceBindGroups {
+    left: [wgpu::BindGroup; 2],
+    right: [wgpu::BindGroup; 2],
+}
+
+impl StitchPipeline {
+    /// Create a pipeline with an existing GPU context and custom output format.
+    ///
+    /// Used by the preview window which needs a specific surface format
+    /// and provides its own GPU context (selected with surface compatibility).
+    pub fn with_gpu(
+        gpu: GpuContext,
+        calibration: MatchCalibration,
+        viewport: ViewportConfig,
+        input_width: u32,
+        input_height: u32,
+        output_format: impl Into<wgpu::TextureFormat>,
+        input_format: InputFormat,
+    ) -> Result<Self, PipelineError> {
+        // Validate inputs before GPU resource creation.
+        if let Err(e) = viewport.validate() {
+            return Err(PipelineError::InvalidConfig { reason: e });
+        }
+        if input_width == 0 || input_height == 0 {
+            return Err(PipelineError::InvalidConfig {
+                reason: format!("input dimensions must be > 0, got {input_width}x{input_height}"),
+            });
+        }
+        if input_width > crate::calibration::MAX_DIM || input_height > crate::calibration::MAX_DIM {
+            return Err(PipelineError::InvalidConfig {
+                reason: format!(
+                    "input dimensions {input_width}x{input_height} exceed MAX_DIM ({})",
+                    crate::calibration::MAX_DIM
+                ),
+            });
+        }
+
+        let output_format = output_format.into();
+        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
+        let scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
+        let renderer = Renderer::new(
+            &gpu,
+            viewport.width,
+            viewport.height,
+            input_width,
+            input_height,
+            output_format,
+            input_format,
+            &scene,
+        );
+
+        log::info!(
+            "Pipeline initialized: {}x{} output, GPU: {}",
+            viewport.width,
+            viewport.height,
+            gpu.adapter_info.name
+        );
+
+        Ok(Self {
+            gpu,
+            scene,
+            calibration,
+            viewport,
+            renderer,
+            input_width,
+            input_height,
+        })
+    }
+
+    /// The name of the GPU this pipeline is running on.
+    pub fn gpu_name(&self) -> &str {
+        self.gpu.gpu_name()
+    }
+
+    /// Shared reference to the GPU context.
+    ///
+    /// Needed by consumers that create their own wgpu resources
+    /// (e.g. surface configuration for a preview window).
+    pub fn gpu(&self) -> &GpuContext {
+        &self.gpu
+    }
+
+    /// The calibration data this pipeline was created with.
+    pub fn calibration(&self) -> &MatchCalibration {
+        &self.calibration
+    }
+
+    /// The current output viewport configuration.
+    pub fn viewport(&self) -> &ViewportConfig {
+        &self.viewport
+    }
+
+    /// Input frame dimensions as `(width, height)`.
+    pub fn source_info(&self) -> (u32, u32) {
+        (self.input_width, self.input_height)
+    }
+
+    /// Update the viewport metadata (aspect ratio, projection matrix).
+    ///
+    /// **Important:** this does NOT recreate GPU textures or the render
+    /// target. Use this for viewport-metadata changes (e.g. surface
+    /// reconfigure in a preview window). For actual output resolution
+    /// changes, rebuild the pipeline with [`Self::with_gpu`].
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
+            return;
+        }
+        self.viewport.width = width;
+        self.viewport.height = height;
+    }
+
+    /// Set the vertical field of view in degrees.
+    ///
+    /// Values are clamped to `[1.0, 179.0]` to prevent degenerate
+    /// projection matrices (0 or 180 would produce NaN/Inf).
+    pub fn set_fov(&mut self, fov_degrees: f32) {
+        self.viewport.fov_degrees = fov_degrees.clamp(1.0, 179.0);
+    }
+
+    /// Get the current field of view in degrees.
+    pub fn fov(&self) -> f32 {
+        self.viewport.fov_degrees
+    }
+
+    /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
+    /// new layout. Takes effect on the next render call (uniforms are rebuilt
+    /// each frame from the stored calibration and scene).
+    ///
+    /// No GPU pipeline recreation needed - only the uniform data changes.
+    pub fn update_calibration(&mut self, calibration: MatchCalibration) {
+        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
+        self.scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
+        self.calibration = calibration;
+        log::debug!("Pipeline calibration updated");
+    }
+
+    /// Update only the plane layout (convenience for slider adjustments).
+    ///
+    /// Equivalent to cloning the current calibration, replacing its layout,
+    /// and calling [`update_calibration`](Self::update_calibration).
+    pub fn update_layout(&mut self, layout: crate::calibration::PlaneLayout) {
+        let mut cal = self.calibration.clone();
+        cal.layout = layout;
+        self.update_calibration(cal);
+    }
+
+    /// Set up bind groups for GPU-resident zero-copy input.
+    ///
+    /// Creates bind groups for the provided shared textures (Y + UV per slot
+    /// per camera). Call once during setup, then pass the result to
+    /// [`Self::render_gpu_frame`] each frame.
+    #[cfg(target_os = "linux")]
+    pub fn configure_gpu_source(
+        &mut self,
+        left_textures: [(
+            &crate::vulkan_interop::SharedTexture,
+            &crate::vulkan_interop::SharedTexture,
+        ); 2],
+        right_textures: [(
+            &crate::vulkan_interop::SharedTexture,
+            &crate::vulkan_interop::SharedTexture,
+        ); 2],
+    ) -> GpuSourceBindGroups {
+        let left_bg_0 = self.renderer.create_texture_bind_group(
+            &left_textures[0].0.texture,
+            &left_textures[0].1.texture,
+            "left_slot0",
+        );
+        let left_bg_1 = self.renderer.create_texture_bind_group(
+            &left_textures[1].0.texture,
+            &left_textures[1].1.texture,
+            "left_slot1",
+        );
+        let right_bg_0 = self.renderer.create_texture_bind_group(
+            &right_textures[0].0.texture,
+            &right_textures[0].1.texture,
+            "right_slot0",
+        );
+        let right_bg_1 = self.renderer.create_texture_bind_group(
+            &right_textures[1].0.texture,
+            &right_textures[1].1.texture,
+            "right_slot1",
+        );
+        GpuSourceBindGroups {
+            left: [left_bg_0, left_bg_1],
+            right: [right_bg_0, right_bg_1],
+        }
+    }
+
+    /// Select bind groups for a GPU-resident frame and render.
+    ///
+    /// Call this instead of manually setting bind groups on the renderer.
+    #[cfg(target_os = "linux")]
+    pub fn render_gpu_frame(
+        &mut self,
+        bind_groups: &GpuSourceBindGroups,
+        left_slot: u8,
+        right_slot: u8,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.renderer
+            .set_left_bind_group(bind_groups.left[left_slot as usize].clone());
+        self.renderer
+            .set_right_bind_group(bind_groups.right[right_slot as usize].clone());
+        self.render_to_target_gpu(yaw, pitch)
+    }
+
+    /// Render from imported GPU textures (e.g. Metal/VideoToolbox zero-copy).
+    ///
+    /// Takes raw Y + UV texture references for each camera, creates bind groups,
+    /// and renders. Unlike [`Self::render_gpu_frame`] which uses pre-built
+    /// double-buffered bind groups, this creates them per-frame (the overhead
+    /// is negligible compared to decode time).
+    pub fn render_imported_textures(
+        &mut self,
+        left_y: &wgpu::Texture,
+        left_uv: &wgpu::Texture,
+        right_y: &wgpu::Texture,
+        right_uv: &wgpu::Texture,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        let left_bg = self
+            .renderer
+            .create_texture_bind_group(left_y, left_uv, "metal_left");
+        let right_bg = self
+            .renderer
+            .create_texture_bind_group(right_y, right_uv, "metal_right");
+        self.renderer.set_left_bind_group(left_bg);
+        self.renderer.set_right_bind_group(right_bg);
+        self.render_to_target_gpu(yaw, pitch)
+    }
+
+    /// Process a CPU-resident stereo frame and return the render command buffer.
+    ///
+    /// Handles YUV420P vs NV12 format differences internally.
+    /// For GPU-resident frames, use [`Self::render_gpu_frame`] instead.
+    pub fn render_stereo_frame(
+        &self,
+        frame: &crate::source::StereoFrame,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        use crate::source::StereoFrame;
+        match frame {
+            StereoFrame::Yuv420p(pair) => {
+                let left = YuvPlanes {
+                    y: &pair.left.y,
+                    u: &pair.left.u,
+                    v: &pair.left.v,
+                };
+                let right = YuvPlanes {
+                    y: &pair.right.y,
+                    u: &pair.right.u,
+                    v: &pair.right.v,
+                };
+                self.render_to_target(&left, &right, yaw, pitch)
+            }
+            StereoFrame::Nv12(pair) => {
+                let left = Nv12Planes {
+                    y: &pair.left.y,
+                    uv: &pair.left.uv,
+                };
+                let right = Nv12Planes {
+                    y: &pair.right.y,
+                    uv: &pair.right.uv,
+                };
+                self.render_to_target_nv12(&left, &right, yaw, pitch)
+            }
+            StereoFrame::GpuResident { .. } => Err(PipelineError::UnsupportedFrameVariant {
+                reason: "GpuResident frames must use render_gpu_frame()",
+            }),
+            #[allow(unreachable_patterns)]
+            _ => Err(PipelineError::UnsupportedFrameVariant {
+                reason: "unsupported StereoFrame variant for CPU render path",
+            }),
+        }
+    }
+
+    /// Render a frame directly to a texture view (for window display).
+    ///
+    /// Unlike the encode path, this does NOT read back to CPU — the result
+    /// stays on the GPU and is presented to the surface.
+    pub fn render_to_view(
+        &self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+        target_view: &wgpu::TextureView,
+    ) -> Result<(), PipelineError> {
+        self.renderer
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
+        self.renderer
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
+        };
+
+        self.renderer.render_to_view(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+            target_view,
+        );
+        Ok(())
+    }
+
+    /// Render NV12 frames directly to a texture view (for window display).
+    ///
+    /// Like [`Self::render_to_view`] but accepts NV12 input (Y + interleaved
+    /// UV) instead of YUV420P. Requires the pipeline to be initialized with
+    /// `InputFormat::Nv12`.
+    pub fn render_nv12_to_view(
+        &self,
+        left: &Nv12Planes<'_>,
+        right: &Nv12Planes<'_>,
+        yaw: f32,
+        pitch: f32,
+        target_view: &wgpu::TextureView,
+    ) -> Result<(), PipelineError> {
+        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
+        self.renderer
+            .upload_right_nv12(&self.gpu, right.y, right.uv)?;
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
+        };
+
+        self.renderer.render_to_view(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+            target_view,
+        );
+        Ok(())
+    }
+
+    /// Render a frame to the internal render target without CPU readback.
+    ///
+    /// Uploads YUV planes and returns the render `CommandBuffer` without
+    /// submitting. The caller must submit it (typically together with NV12
+    /// conversion commands via the NV12 converter).
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "render_to_target")
+    )]
+    pub fn render_to_target(
+        &self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        self.renderer
+            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
+        self.renderer
+            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
+        };
+
+        Ok(self.renderer.render_to_target(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        ))
+    }
+
+    /// Upload NV12 frames and render to the internal target.
+    ///
+    /// Like `render_to_target` but accepts NV12 input (Y + interleaved UV)
+    /// instead of YUV420P. Requires the pipeline to be initialized with
+    /// `InputFormat::Nv12`.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "render_to_target_nv12")
+    )]
+    pub fn render_to_target_nv12(
+        &self,
+        left: &Nv12Planes<'_>,
+        right: &Nv12Planes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
+        self.renderer
+            .upload_right_nv12(&self.gpu, right.y, right.uv)?;
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
+        };
+
+        Ok(self.renderer.render_to_target(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        ))
+    }
+
+    /// Render to the internal target without upload or readback (zero-copy path).
+    ///
+    /// Returns the render `CommandBuffer` without submitting. Assumes textures
+    /// are already populated via CUDA/Vulkan shared memory.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "render_to_target_gpu")
+    )]
+    pub(crate) fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
+        };
+
+        self.renderer.render_to_target(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        )
+    }
+
+    /// Enable 180-degree UV flip for the GPU zero-copy path.
+    ///
+    /// When set, the shader flips texture coordinates before sampling,
+    /// equivalent to the CPU path's buffer reversal for rotated video
+    /// (e.g., DJI cameras with rotation=180 metadata).
+    pub fn set_flip_180(&mut self, left: bool, right: bool) {
+        self.renderer.set_flip_180(left, right);
+    }
+
+    /// Access the rendered RGBA texture for NV12 conversion.
+    pub fn render_target(&self) -> &wgpu::Texture {
+        self.renderer.render_target()
+    }
+}

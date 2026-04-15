@@ -1,0 +1,30 @@
+[package]
+name = "reco-io"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Pluggable frame I/O backends for Reco (FFmpeg, GStreamer, ...)"
+license = "AGPL-3.0-only"
+repository = "https://github.com/reco-project/video-stitcher"
+
+[features]
+default = ["ffmpeg"]
+ffmpeg = ["dep:ffmpeg-next"]
+rpi = ["ffmpeg", "ffmpeg-next/rpi"]
+gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
+libcamera = []
+profiling = ["tracing", "reco-core/profiling"]
+
+[dependencies]
+reco-core = { path = "../reco-core" }
+log = "0.4"
+pollster = "0.4"
+thiserror = "2"
+tracing = { workspace = true, optional = true }
+
+# FFmpeg backend
+ffmpeg-next = { version = "8", default-features = false, features = ["codec", "format", "software-scaling"], optional = true }
+
+# GStreamer backend
+gstreamer = { version = "0.25", optional = true }
+gstreamer-app = { version = "0.25", optional = true }

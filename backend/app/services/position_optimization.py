@@ -5,6 +5,7 @@ Optimizes camera positions and rotations based on matched feature points
 from left and right camera views.
 """
 
+import json
 import numpy as np
 from scipy.optimize import minimize
 from typing import Dict, Any, List
@@ -176,6 +177,31 @@ def _minimize_sum_of_angles(x_plane_points: np.ndarray, z_plane_points: np.ndarr
 
     # Extract optimized parameters
     x_ty, intersect, cam_d, x_rz, z_rx = result.x
+
+    # DEBUG: Log cost vs cam_d sweep for analysis
+    try:
+        cam_d_sweep = np.linspace(0.01, 1.0, 200)
+        costs = []
+        for cd in cam_d_sweep:
+            p = [x_ty, intersect, cd, x_rz, z_rx]
+            costs.append(float(objective(p)))
+        debug_data = {
+            "cam_d_sweep": cam_d_sweep.tolist(),
+            "costs": costs,
+            "optimized_params": {
+                "x_ty": float(x_ty),
+                "intersect": float(intersect),
+                "cam_d": float(cam_d),
+                "x_rz": float(x_rz),
+                "z_rx": float(z_rx),
+            },
+            "final_cost": float(result.fun),
+        }
+        with open("/tmp/calibrate_debug/v1_cost_landscape.json", "w") as f:
+            json.dump(debug_data, f)
+        print(f"[DEBUG] Cost landscape saved. cam_d={cam_d:.4f}, cost={result.fun:.6f}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to save cost landscape: {e}")
 
     return {
         "cameraAxisOffset": float(cam_d),

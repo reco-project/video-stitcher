@@ -6,6 +6,7 @@ to generate corresponding point pairs for camera position optimization.
 """
 
 import cv2
+import json
 import numpy as np
 from typing import Dict, Any, Tuple, Optional
 
@@ -143,6 +144,25 @@ def match_features(
 
     # Calculate confidence based on number of matches and match quality
     confidence = min(1.0, len(filtered_matches) / 50.0)
+
+    # DEBUG: Export match points for v2 calibration comparison
+    debug_path = "/tmp/calibrate_debug/v1_matches.json"
+    try:
+        debug_data = {
+            "left_points": pts1_norm.tolist(),
+            "right_points": pts2_norm.tolist(),
+            "left_pixels": pts1.tolist(),
+            "right_pixels": pts2.tolist(),
+            "image_size": {"width": img_w, "height": img_h},
+            "num_matches": len(filtered_matches),
+            "plane_w": float(plane_w),
+            "plane_h": float(plane_h),
+        }
+        with open(debug_path, "w") as f:
+            json.dump(debug_data, f, indent=2)
+        print(f"[DEBUG] Exported {len(filtered_matches)} matches to {debug_path}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to export matches: {e}")
 
     return {
         "left_points": pts1_norm.tolist(),

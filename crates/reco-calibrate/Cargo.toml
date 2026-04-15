@@ -1,0 +1,42 @@
+[package]
+name = "reco-calibrate"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Stereo camera calibration for reco: feature matching and position optimization"
+
+[dependencies]
+reco-core = { path = "../reco-core" }
+# Vendored AKAZE dependencies (was: akaze git dep, vendored for bug fixes)
+ndarray = { version = "0.16", features = ["rayon"] }
+nshare = { version = "0.10", features = ["ndarray", "image"] }
+primal = "0.3"
+float-ord = "0.3"
+argmin = "0.11"
+argmin-math = { version = "0.5", features = ["vec"] }
+image = { version = "0.25", default-features = false }
+telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git", rev = "2f4218b" }
+rand = "0.9"
+log = "0.4"
+nalgebra = "0.33"
+rayon = "1.10"
+ciborium = "0.2"
+flate2 = "1"
+realfft = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = { version = "0.1", optional = true }
+reco-io = { path = "../reco-io", optional = true }
+pollster = { version = "0.4", optional = true }
+
+[features]
+profiling = ["dep:tracing", "reco-core/profiling"]
+io = ["dep:reco-io", "dep:pollster"]
+
+[dev-dependencies]
+approx = "0.5"
+pollster = "0.4"
+reco-io = { path = "../reco-io" }
