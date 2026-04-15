@@ -12,6 +12,8 @@ use ort::session::Session;
 
 use crate::detectors::cpu::parse_onnx_names;
 
+const DEFAULT_MODEL_INPUT_SIZE: u32 = 1280;
+
 /// Return a persistent cache directory for model engine/compilation caches.
 ///
 /// Resolves to `{platform_cache_dir}/reco/{subdir}`:
@@ -139,12 +141,12 @@ pub fn create_ort_session(
                 h as u32
             } else {
                 log::warn!("Model input has dynamic height, defaulting to 1280");
-                1280
+                DEFAULT_MODEL_INPUT_SIZE
             }
         }
         _ => {
             log::warn!("Could not determine model input size from metadata, defaulting to 1280");
-            1280
+            DEFAULT_MODEL_INPUT_SIZE
         }
     };
 
