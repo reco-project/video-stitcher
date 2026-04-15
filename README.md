@@ -92,6 +92,7 @@ AGPL-3.0-only. See [LICENSE](LICENSE).
 
 ## Community
 
-- [Forum](https://discourse.reco-project.org) - Questions, showcase, feature requests
+- [Website](https://www.reco-project.org) - Landing Page
+- [Forum](https://forum.reco-project.org) - Questions, showcase, feature requests
 - [Issues](https://github.com/reco-project/video-stitcher/issues) - Bug reports
 - [v1 archive](https://github.com/reco-project/video-stitcher-v1) - Legacy Electron/Python version
