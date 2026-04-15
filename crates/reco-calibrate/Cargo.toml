@@ -20,7 +20,7 @@ image = { version = "0.25", default-features = false }
 telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git", rev = "2f4218b" }
 rand = "0.9"
 log = "0.4"
-nalgebra = "0.33"
+nalgebra = "0.34"
 rayon = "1.10"
 ciborium = "0.2"
 flate2 = "1"
