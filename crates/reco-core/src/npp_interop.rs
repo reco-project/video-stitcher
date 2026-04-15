@@ -58,6 +58,9 @@ pub struct NppiRect {
 /// NPP interpolation mode: bilinear.
 const NPPI_INTER_LINEAR: i32 = 1;
 
+/// NPP mirror axis: flip both horizontally and vertically (180-degree rotation).
+const NPPI_AXIS_BOTH: i32 = 2;
+
 /// NPP stream context for `_Ctx` API variants.
 ///
 /// NPP 13 removed the non-Ctx functions; all calls require this struct.
@@ -130,6 +133,19 @@ struct NppFunctions {
         i32,              // eInterpolation
         NppStreamContext, // nppStreamCtx
     ) -> i32,
+
+    /// `nppiMirror_8u_C3R_Ctx(pSrc, nSrcStep, pDst, nDstStep, oROI, flip, nppStreamCtx)`
+    ///
+    /// In-place operation is supported (pSrc == pDst with matching step).
+    nppi_mirror_c3: unsafe extern "C" fn(
+        *const u8,        // pSrc
+        i32,              // nSrcStep
+        *mut u8,          // pDst
+        i32,              // nDstStep
+        NppiSize,         // oROI
+        i32,              // flip (NppiAxis)
+        NppStreamContext, // nppStreamCtx
+    ) -> i32,
 }
 
 // SAFETY: NppFunctions contains function pointers and library handles.
@@ -183,6 +199,7 @@ impl NppFunctions {
             Ok(NppFunctions {
                 nppi_nv12_to_rgb: load_sym!(lib_nppicc, "nppiNV12ToRGB_8u_P2C3R_Ctx"),
                 nppi_resize_c3: load_sym!(lib_nppig, "nppiResize_8u_C3R_Ctx"),
+                nppi_mirror_c3: load_sym!(lib_nppig, "nppiMirror_8u_C3R_Ctx"),
                 _lib_nppicc: lib_nppicc,
                 _lib_nppig: lib_nppig,
             })
@@ -319,6 +336,44 @@ pub fn npp_resize_c3(
                 dst_size,
                 dst_roi,
                 NPPI_INTER_LINEAR,
+                NppStreamContext::default(),
+            ),
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Mirror (flip) a 3-channel RGB u8 image on the GPU along both axes.
+///
+/// This performs a 180-degree rotation by flipping both horizontally and
+/// vertically. Used to correct upside-down frames from cameras with
+/// rotation=180 metadata (e.g. DJI) in the GPU zero-copy detection path.
+///
+/// Operates in-place: `src` and `dst` may be the same CUDA device pointer.
+pub fn npp_mirror_c3(
+    src: CUdeviceptr,
+    dst: CUdeviceptr,
+    width: u32,
+    height: u32,
+) -> Result<(), NppError> {
+    let npp = npp()?;
+    let roi = NppiSize {
+        width: width as i32,
+        height: height as i32,
+    };
+    let step = width as i32 * 3;
+
+    unsafe {
+        check_npp(
+            "nppiMirror_8u_C3R_Ctx",
+            (npp.nppi_mirror_c3)(
+                src as *const u8,
+                step,
+                dst as *mut u8,
+                step,
+                roi,
+                NPPI_AXIS_BOTH,
                 NppStreamContext::default(),
             ),
         )?;

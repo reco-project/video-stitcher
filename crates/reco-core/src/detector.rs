@@ -127,6 +127,14 @@ pub struct GpuNv12Frame {
     pub width: u32,
     /// Frame height in pixels.
     pub height: u32,
+    /// Camera rotation from stream metadata (0, 90, 180, 270 degrees).
+    ///
+    /// In the GPU zero-copy path, NVDEC decodes without applying rotation
+    /// metadata. The rendering shader flips UV coordinates so the display
+    /// is correct, but the detector receives raw upside-down frames. When
+    /// `rotation == 180`, the detector must flip the frame during
+    /// preprocessing so detection models see correctly oriented images.
+    pub rotation: i32,
 }
 
 /// Trait for object detection on GPU-resident NV12 frames.

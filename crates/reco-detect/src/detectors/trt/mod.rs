@@ -29,7 +29,7 @@ use reco_core::cuda_interop::{
 };
 use reco_core::cuda_kernels::normalize_hwc_to_chw;
 use reco_core::detector::{CameraId, Detection, GpuDetector, GpuNv12Frame};
-use reco_core::npp_interop::{NppiRect, npp_nv12_to_rgb, npp_resize_c3};
+use reco_core::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 
 use self::cuda::{CudaBuffer, CudaStream};
 use self::engine::{TrtContext, TrtEngine, TrtError};
@@ -282,6 +282,7 @@ impl GpuDetector for TrtGpuDetector {
             uv_pitch,
             width,
             height,
+            rotation,
         } = *frame;
         reco_core::profile_scope!("trt_yolo_detect");
 
@@ -298,6 +299,18 @@ impl GpuDetector for TrtGpuDetector {
                 npp_nv12_to_rgb(y_ptr, y_pitch, uv_ptr, uv_pitch, self.rgb_u8, width, height)
             {
                 log::error!("NPP NV12->RGB failed: {e}");
+                return Vec::new();
+            }
+        }
+
+        // Step 1b: Flip 180 degrees if the source has rotation metadata.
+        // NVDEC decodes without applying rotation; the render shader flips
+        // UV for display, but the detector sees raw upside-down frames.
+        // Mirror the RGB buffer in-place via NPP before resize.
+        if rotation == 180 {
+            reco_core::profile_scope!("npp_mirror_180");
+            if let Err(e) = npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height) {
+                log::error!("NPP mirror (rotation=180) failed: {e}");
                 return Vec::new();
             }
         }

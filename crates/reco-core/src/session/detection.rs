@@ -179,6 +179,8 @@ impl DetectionPipeline {
         right_buf: &crate::zero_copy::GpuBufInfo,
         left_slot: u8,
         right_slot: u8,
+        left_rotation: i32,
+        right_rotation: i32,
     ) -> Vec<Detection> {
         let Some(ref mut gpu_det) = self.gpu_detector else {
             return Vec::new();
@@ -196,6 +198,7 @@ impl DetectionPipeline {
             uv_pitch: left_buf.uv_pitch[ls],
             width: left_buf.width,
             height: left_buf.height,
+            rotation: left_rotation,
         };
         let right_frame = crate::detector::GpuNv12Frame {
             y_ptr: right_buf.y_ptr[rs],
@@ -204,6 +207,7 @@ impl DetectionPipeline {
             uv_pitch: right_buf.uv_pitch[rs],
             width: right_buf.width,
             height: right_buf.height,
+            rotation: right_rotation,
         };
         detections.extend(gpu_det.detect_gpu(CameraId::Left, &left_frame));
         detections.extend(gpu_det.detect_gpu(CameraId::Right, &right_frame));

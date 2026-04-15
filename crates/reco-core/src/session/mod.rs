@@ -455,6 +455,15 @@ pub struct StitchSession {
     /// Built from calibration at session creation. In world space.
     /// Rig tilt correction is applied per-corner inside `safe_clamp`.
     coverage: Option<crate::projection::CoverageBoundary>,
+
+    /// Camera rotation from stream metadata, populated by
+    /// [`configure_from_source`](Self::configure_from_source).
+    /// Used to tell the GPU detector to flip frames during preprocessing.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    left_rotation: i32,
+    /// Right camera rotation from stream metadata.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    right_rotation: i32,
 }
 
 impl StitchSession {
@@ -542,6 +551,10 @@ impl StitchSession {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
             coverage: Some(coverage),
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            left_rotation: 0,
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            right_rotation: 0,
         })
     }
 
@@ -733,9 +746,14 @@ impl StitchSession {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect && self.detection.has_gpu_detector() {
-            let detections = self
-                .detection
-                .run_gpu_detection(left_buf, right_buf, left_slot, right_slot);
+            let detections = self.detection.run_gpu_detection(
+                left_buf,
+                right_buf,
+                left_slot,
+                right_slot,
+                self.left_rotation,
+                self.right_rotation,
+            );
             self.detection.last_detections = self.map_detections(detections);
         }
 
@@ -1047,6 +1065,13 @@ impl StitchSession {
             if lr == 180 || rr == 180 {
                 self.pipeline.set_flip_180(lr == 180, rr == 180);
                 log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
+            }
+            // Store rotation for the GPU detector preprocessing path.
+            // The detector needs to flip frames independently of the render shader.
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                self.left_rotation = lr;
+                self.right_rotation = rr;
             }
         }
     }
