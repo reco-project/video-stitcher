@@ -48,10 +48,6 @@ pub struct TelemetryData {
     /// Used to match the correct Gyroflow lens profile. GoPro cameras embed
     /// a VFOV tag in the GPMF stream indicating the FOV mode at recording time.
     pub lens_info: Option<String>,
-    /// Pre-computed gravity vector from sensor fusion (GoPro GRAV tags).
-    /// More accurate than raw accelerometer for tilt/roll because GoPro's
-    /// internal fusion compensates for IMU chip misalignment.
-    pub fused_gravity: Option<[f64; 3]>,
 }
 
 /// A single 3-axis IMU sample with timestamp.
@@ -101,64 +97,23 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
     let camera_type = input.camera_type();
     let camera_model = input.camera_model().cloned();
 
-    // Get raw sensor data without orientation mapping. We pass Some("XYZ")
-    // to override telemetry-parser's MTRX/ORIN mapping (same as Gyroflow).
-    // The orientation is extracted separately and applied explicitly so we
-    // know the exact axis convention after mapping.
-    let raw_imu = telemetry_parser::util::normalized_imu_interpolated(&input, Some("XYZ".into()))
-        .unwrap_or_default();
-
-    // Extract the camera's IMU orientation string from metadata.
-    // GoPro embeds this as ORIN/ORIO in the Gyroscope group; the
-    // telemetry-parser normalizes it via MTRX. Result is a 3-char
-    // string like "YxZ" (uppercase = positive, lowercase = negated).
-    let imu_orientation = {
-        use telemetry_parser::tags_impl::{GetWithType, GroupId, TagId};
-        let mut io = String::from("XYZ"); // identity default
-        if let Some(ref samples) = input.samples {
-            for sample in samples {
-                if let Some(ref tag_map) = sample.tag_map
-                    && let Some(map) = tag_map.get(&GroupId::Gyroscope)
-                {
-                    if let Some(v) = map.get_t(TagId::Orientation) as Option<&String>
-                        && v.len() == 3
-                    {
-                        io = v.clone();
-                    }
-                    io = input.normalize_imu_orientation(io);
-                    break;
-                }
-            }
-        }
-        io
-    };
-    log::debug!("IMU orientation: {imu_orientation}");
-
-    /// Apply a 3-character orientation mapping (e.g., "YxZ") to a 3D vector.
-    /// Uppercase = positive axis, lowercase = negated.
-    fn orient(v: [f64; 3], io: &str) -> [f64; 3] {
-        let map = |c: u8| -> f64 {
-            match c as char {
-                'X' => v[0],
-                'x' => -v[0],
-                'Y' => v[1],
-                'y' => -v[1],
-                'Z' => v[2],
-                'z' => -v[2],
-                _ => 0.0,
-            }
-        };
-        let b = io.as_bytes();
-        [map(b[0]), map(b[1]), map(b[2])]
-    }
+    // Use telemetry-parser's built-in normalization: handles SCAL scaling,
+    // unit conversion, per-camera orientation mapping, and timestamp
+    // interpolation across all camera types.
+    // Use None to let telemetry-parser apply the camera's native IMU
+    // orientation mapping (MTRX/ORIN/ORIO for GoPro, per-camera for others).
+    // This normalizes to the standard camera frame: Y=down, Z=forward, X=right.
+    // Previously we passed Some("XYZ") which overrode the mapping with identity,
+    // giving raw sensor axes that don't match any standard convention.
+    let raw_imu =
+        telemetry_parser::util::normalized_imu_interpolated(&input, None).unwrap_or_default();
 
     let mut gyro = Vec::with_capacity(raw_imu.len());
     let mut accel = Vec::with_capacity(raw_imu.len());
 
     for sample in &raw_imu {
         let t = sample.timestamp_ms / 1000.0; // ms to seconds
-        if let Some(g) = sample.gyro {
-            let [x, y, z] = orient(g, &imu_orientation);
+        if let Some([x, y, z]) = sample.gyro {
             // telemetry-parser outputs deg/s; convert to rad/s
             gyro.push(ImuSample {
                 t,
@@ -167,17 +122,15 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
                 z: z.to_radians(),
             });
         }
-        if let Some(a) = sample.accl {
-            let [x, y, z] = orient(a, &imu_orientation);
+        if let Some([x, y, z]) = sample.accl {
             accel.push(ImuSample { t, x, y, z });
         }
     }
 
-    // Extract embedded lens profile, FOV mode, quaternions, and fused gravity
+    // Extract embedded lens profile, FOV mode, and quaternions from raw tag data
     let mut lens_profile = None;
     let mut lens_info: Option<String> = None;
     let mut quaternions: Vec<(f64, [f64; 4])> = Vec::new(); // (timestamp_s, [w, x, y, z])
-    let mut fused_gravity: Option<[f64; 3]> = None;
 
     if let Some(ref samples) = input.samples {
         use telemetry_parser::tags_impl::{GetWithType, GroupId, TagId, TimeQuaternion};
@@ -236,37 +189,6 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
                         quaternions.push((v.t, [v.v.w, v.v.x, v.v.y, v.v.z]));
                     }
                 }
-
-                // Extract GoPro fused gravity vectors (GRAV tags).
-                // These are sensor-fusion-corrected and account for IMU
-                // chip misalignment, unlike raw accelerometer data.
-                if fused_gravity.is_none()
-                    && let Some(map) = tag_map.get(&GroupId::GravityVector)
-                {
-                    use telemetry_parser::tags_impl::Vector3 as TpVec3;
-                    let scale = *(map.get_t(TagId::Scale) as Option<&i16>).unwrap_or(&32767) as f64;
-                    if scale > 0.0
-                        && let Some(arr) = map.get_t(TagId::Data) as Option<&Vec<TpVec3<i16>>>
-                    {
-                        let n = arr.len().min(200);
-                        let mut sx = 0.0f64;
-                        let mut sy = 0.0f64;
-                        let mut sz = 0.0f64;
-                        let mut count = 0;
-                        for v in &arr[..n] {
-                            if v.x != 0 || v.y != 0 || v.z != 0 {
-                                sx += v.x as f64 / scale;
-                                sy += v.y as f64 / scale;
-                                sz += v.z as f64 / scale;
-                                count += 1;
-                            }
-                        }
-                        if count > 0 {
-                            let inv = 1.0 / count as f64;
-                            fused_gravity = Some([sx * inv, sy * inv, sz * inv]);
-                        }
-                    }
-                }
             }
         }
     }
@@ -323,15 +245,6 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
         lens_info.as_deref().unwrap_or("unknown")
     );
 
-    if let Some(ref g) = fused_gravity {
-        log::info!(
-            "fused gravity (GRAV): [{:.4}, {:.4}, {:.4}]",
-            g[0],
-            g[1],
-            g[2]
-        );
-    }
-
     Ok(TelemetryData {
         camera_type,
         camera_model,
@@ -340,7 +253,6 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
         quaternions,
         lens_profile,
         lens_info,
-        fused_gravity,
     })
 }
 
@@ -416,9 +328,7 @@ pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Opti
     }
 
     // Pearson correlation: 1.0 = perfect match, 0.0 = no correlation.
-    // Reject if the best match is weak. DJI OsmoAction4 with derived
-    // gyro from quaternions gave 0.35 correlation and wrong sync (132
-    // frames vs audio's correct -2). Threshold 0.7 catches this.
+    // Reject if the best match is weak (cameras too still, or bad data).
     if best_corr < 0.7 {
         log::warn!("gyro sync: correlation too low ({best_corr:.4}), rejecting offset");
         return None;
@@ -442,18 +352,11 @@ pub fn gravity_vector(data: &TelemetryData) -> Option<[f64; 3]> {
         return None;
     }
 
-    // Only average the first ~1 second of samples. The camera should be
-    // stationary at the start of recording. Averaging the entire stream
-    // includes dynamic acceleration from camera sway during the match,
-    // which corrupts the roll estimate (106k samples over 9 minutes of
-    // GoPro footage gave 12 degrees of false roll).
-    let max_samples = 200; // ~1s at 200Hz (GoPro), ~2s at 100Hz (DJI)
-    let samples = &data.accel[..data.accel.len().min(max_samples)];
-    let n = samples.len() as f64;
+    let n = data.accel.len() as f64;
     let mut gx = 0.0;
     let mut gy = 0.0;
     let mut gz = 0.0;
-    for s in samples {
+    for s in &data.accel {
         gx += s.x;
         gy += s.y;
         gz += s.z;
@@ -495,24 +398,24 @@ pub fn differential_orientation(
     // Roll = rotation around Y (optical axis), measured as gravity's
     //   lateral component: atan2(gz, gx). Zero when camera is upright.
     //   Seeds x_rz (right camera roll relative to left).
-    let left_roll = lg[2].atan2((lg[0] * lg[0] + lg[1] * lg[1]).sqrt());
-    let right_roll = rg[2].atan2((rg[0] * rg[0] + rg[1] * rg[1]).sqrt());
+    let left_roll = lg[2].atan2(lg[0]);
+    let right_roll = rg[2].atan2(rg[0]);
     let roll_diff = right_roll - left_roll;
 
-    // Pitch = forward tilt, measured from gravity's Y component.
-    // The cameras face opposite directions in a stereo rig, so the
-    // right camera's forward tilt has the opposite sign. Negate it
-    // before differencing to get the small mounting pitch offset
-    // (x_rx), not the full ~28 degree viewing angle difference.
-    let left_pitch = lg[1].atan2((lg[0] * lg[0] + lg[2] * lg[2]).sqrt());
-    let right_pitch = rg[1].atan2((rg[0] * rg[0] + rg[2] * rg[2]).sqrt());
-    let pitch_diff = (-right_pitch) - left_pitch;
+    // Pitch = rotation around Z (lateral axis), measured as gravity's
+    //   forward component: atan2(gy, gx). Zero when camera faces level.
+    //   Seeds x_rx (right camera pitch relative to left).
+    //   Note: stereo rigs have cameras facing opposite directions, so
+    //   the sign of gy is flipped between left and right cameras.
+    let left_pitch = lg[1].atan2(lg[0]);
+    let right_pitch = rg[1].atan2(rg[0]);
+    let pitch_diff = right_pitch - left_pitch;
 
     // Tilt: each camera's roll from vertical (lateral lean).
     // atan2(gz, gx) gives the roll from the gravity axis.
     // z_rx captures the left camera's deviation from the rig average.
-    let left_tilt = lg[2].atan2((lg[0] * lg[0] + lg[1] * lg[1]).sqrt());
-    let right_tilt = rg[2].atan2((rg[0] * rg[0] + rg[1] * rg[1]).sqrt());
+    let left_tilt = lg[2].atan2(lg[0]);
+    let right_tilt = rg[2].atan2(rg[0]);
     let rig_tilt_avg = (left_tilt + right_tilt) / 2.0;
     let tilt_diff = left_tilt - rig_tilt_avg;
 
@@ -535,83 +438,39 @@ pub fn differential_orientation(
 /// camera's optical axis. This is used to tilt the virtual camera's
 /// reference frame in the renderer.
 ///
-/// Rig tilt and roll extracted from IMU data.
-#[derive(Debug, Clone, Copy)]
-pub struct RigOrientation {
-    /// Forward lean from vertical in radians (rotation around right axis).
-    pub tilt: f64,
-    /// Lateral lean in radians (rotation around forward axis).
-    pub roll: f64,
-}
-
-/// Extract rig tilt and roll from IMU data.
-///
-/// Tries accelerometer data first (direct gravity measurement), then
-/// falls back to quaternions (DJI cameras provide orientation but
-/// no raw accelerometer). Returns `None` if neither is available.
-pub fn rig_orientation(data: &TelemetryData) -> Option<RigOrientation> {
-    // Priority 1: fused gravity vectors (GoPro GRAV tags).
-    // Sensor-fusion-corrected with known axis convention.
-    // GRAV convention: Y=down (gravity), X=forward (optical axis), Z=right.
-    // Validated: tilt from GRAV[0]/GRAV[1] matches accelerometer tilt (17.3°≈17.4°).
-    if let Some(g) = data.fused_gravity {
-        // tilt = forward component / perpendicular plane
-        let tilt = g[0].atan2((g[1] * g[1] + g[2] * g[2]).sqrt());
-        // roll = right component / perpendicular plane
-        let roll = g[2].atan2((g[0] * g[0] + g[1] * g[1]).sqrt());
-        log::info!(
-            "rig orientation (fused GRAV): tilt={tilt:.4} rad ({:.1} deg), roll={roll:.4} rad ({:.1} deg)",
-            tilt.to_degrees(),
-            roll.to_degrees()
-        );
-        return Some(RigOrientation { tilt, roll });
-    }
-
-    // Priority 2: raw accelerometer (direct gravity measurement).
+/// Returns the tilt angle in radians, or `None` if neither accelerometer
+/// nor quaternion data is available.
+pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
+    // Try accelerometer first (direct gravity measurement)
     if let Some(g) = gravity_vector(data) {
         // In the normalized IMU frame: X=down, Y=forward (optical axis), Z=right.
-        // Decompose gravity into tilt (forward lean) and roll (lateral lean).
-        // Tilt: angle between gravity projection on XY plane and the X axis.
-        // Roll: angle between gravity projection on XZ plane and the X axis.
-        // Using sqrt(other^2) as the denominator isolates each angle from
-        // the other, unlike atan2(gz, gx) which underestimates the denominator
-        // when tilt is large (gx is reduced by both tilt and roll).
-        let tilt = g[1].atan2((g[0] * g[0] + g[2] * g[2]).sqrt());
-        let roll = g[2].atan2((g[0] * g[0] + g[1] * g[1]).sqrt());
+        // Rig tilt = forward lean of the camera from vertical.
+        let tilt = g[1].atan2(g[0]);
         log::info!(
-            "rig orientation (accel): tilt={tilt:.4} rad ({:.1} deg), roll={roll:.4} rad ({:.1} deg)",
-            tilt.to_degrees(),
-            roll.to_degrees()
+            "rig tilt (accel): {tilt:.4} rad ({:.1} deg)",
+            tilt.to_degrees()
         );
-        return Some(RigOrientation { tilt, roll });
+        return Some(tilt);
     }
 
-    // Priority 3: quaternion fallback (DJI cameras without accel/GRAV)
-    if let Some(ori) = rig_orientation_from_quaternions(data) {
+    // Fall back to quaternions (DJI cameras have orientation but no raw accel)
+    if let Some(tilt) = rig_tilt_from_quaternions(data) {
         log::info!(
-            "rig orientation (quaternion): tilt={:.4} rad ({:.1} deg), roll={:.4} rad ({:.1} deg)",
-            ori.tilt,
-            ori.tilt.to_degrees(),
-            ori.roll,
-            ori.roll.to_degrees()
+            "rig tilt (quaternion): {tilt:.4} rad ({:.1} deg)",
+            tilt.to_degrees()
         );
-        return Some(ori);
+        return Some(tilt);
     }
 
     None
 }
 
-/// Backward-compatible wrapper that returns only the tilt angle.
-pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
-    rig_orientation(data).map(|o| o.tilt)
-}
-
-/// Compute rig orientation from the average orientation quaternion.
+/// Compute rig tilt from the average orientation quaternion.
 ///
 /// Rotates the world gravity vector [0, -1, 0] into camera space using
-/// the average quaternion, then computes tilt and roll from the gravity
-/// components.
-fn rig_orientation_from_quaternions(data: &TelemetryData) -> Option<RigOrientation> {
+/// the average quaternion, then computes tilt the same way as the
+/// accelerometer path.
+fn rig_tilt_from_quaternions(data: &TelemetryData) -> Option<f64> {
     if data.quaternions.len() < 10 {
         return None;
     }
@@ -644,45 +503,17 @@ fn rig_orientation_from_quaternions(data: &TelemetryData) -> Option<RigOrientati
         return None;
     }
     let (w, x, y, z) = (aw / len, ax / len, ay / len, az / len);
-    log::debug!("quaternion avg: [{w:.4}, {x:.4}, {y:.4}, {z:.4}] (n={n})");
+    log::debug!("quaternion-based tilt: avg quat=[{w:.4}, {x:.4}, {y:.4}, {z:.4}] (n={n})");
 
-    // telemetry-parser transforms DJI/GoPro quaternions into Gyroflow's
-    // stabilization convention (see dji/mod.rs lines 122-130 in the parser).
-    // This is great for video stabilization but corrupts absolute orientation
-    // extraction. Undo the transforms to recover the raw body-frame quaternion:
-    //   Transform 1: q1 = q_raw * (0.5, -0.5, -0.5, 0.5)
-    //   Transform 2: q2 = (0.0, 0.0, 1.0, 0.0) * q1
-    //   Undo: q_raw = conj(T2) * q2 * conj(T1)
-    let q = nalgebra::UnitQuaternion::new_normalize(nalgebra::Quaternion::new(w, x, y, z));
-    let inv_t2 =
-        nalgebra::UnitQuaternion::new_normalize(nalgebra::Quaternion::new(0.0, 0.0, -1.0, 0.0));
-    let inv_t1 =
-        nalgebra::UnitQuaternion::new_normalize(nalgebra::Quaternion::new(0.5, 0.5, 0.5, -0.5));
-    let q_raw = inv_t2 * q * inv_t1;
+    // Rotate world gravity [0, -1, 0] into camera frame: g_cam = q^-1 * [0,-1,0] * q
+    // For unit quaternion q^-1 = conjugate [w, -x, -y, -z]
+    let gx = -2.0 * (x * y - w * z);
+    let gy = -(1.0 - 2.0 * (x * x + z * z));
+    let gz = -2.0 * (y * z + w * x);
+    log::debug!("gravity in camera frame: [{gx:.4}, {gy:.4}, {gz:.4}]");
 
-    // Rotate NED gravity [0, 0, 1] (Z-down) into camera frame.
-    // DJI quaternions represent body-to-NED rotation, so:
-    // g_cam = q^-1 * [0, 0, 1]
-    let ned_gravity = nalgebra::Vector3::new(0.0, 0.0, 1.0);
-    let g = q_raw.inverse() * ned_gravity;
-    log::debug!(
-        "quaternion gravity (NED): [{:.4}, {:.4}, {:.4}]",
-        g.x,
-        g.y,
-        g.z
-    );
-
-    // After undoing transforms: Y=down (gravity), X=forward, Z≈right.
-    // Tilt is negated relative to accel convention (NED frame inversion).
-    let tilt = (-g.x).atan2((g.y * g.y + g.z * g.z).sqrt());
-    let roll = (-g.z).atan2((g.x * g.x + g.y * g.y).sqrt());
-    log::debug!(
-        "quaternion decomp: tilt={:.1} deg, roll={:.1} deg",
-        tilt.to_degrees(),
-        roll.to_degrees()
-    );
-
-    Some(RigOrientation { tilt, roll })
+    let tilt = gy.atan2(gx);
+    Some(tilt)
 }
 
 // ---------------------------------------------------------------------------

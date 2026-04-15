@@ -134,7 +134,7 @@ pub fn run_preview(
         let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
-    let initial_fov = FOV_DEFAULT.min(max_fov).max(FOV_MIN);
+    let initial_fov = FOV_DEFAULT;
     log::info!("Preview: max FOV = {max_fov:.1} degrees (coverage-limited)");
 
     let fps_rational = info.fps_rational.unwrap_or((30, 1));
@@ -172,7 +172,7 @@ pub fn run_preview(
         rig_tilt: rig_tilt_degrees.to_radians(),
         rig_roll,
         max_fov,
-        clamp_enabled: true,
+        clamp_enabled: false,
         interrupted: interrupted.clone(),
         recording: None,
         recording_path: None,
@@ -322,8 +322,9 @@ impl App {
         if let Some(ref mut r) = self.renderer {
             r.update_calibration(self.cal.clone());
             self.max_fov = r.coverage().max_fov_degrees().min(FOV_MAX);
-            // Clamp current FOV target to new max
-            self.target_fov = self.target_fov.min(self.max_fov);
+            if self.clamp_enabled {
+                self.target_fov = self.target_fov.min(self.max_fov);
+            }
         }
         self.needs_redraw = true;
     }
@@ -392,7 +393,12 @@ impl App {
 
         if let Some(r) = &mut self.renderer {
             let new_fov = r.pipeline().fov() + df * SMOOTHING;
-            r.pipeline_mut().set_fov(new_fov.min(self.max_fov));
+            let capped = if self.clamp_enabled {
+                new_fov.min(self.max_fov)
+            } else {
+                new_fov
+            };
+            r.pipeline_mut().set_fov(capped.clamp(1.0, FOV_MAX));
             if (self.target_fov - r.pipeline().fov()).abs() < FOV_EPSILON {
                 r.pipeline_mut().set_fov(self.target_fov);
             }
@@ -612,7 +618,12 @@ impl ApplicationHandler for App {
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(self.max_fov);
+                            let limit = if self.clamp_enabled {
+                                self.max_fov
+                            } else {
+                                FOV_MAX
+                            };
+                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(limit);
                             self.needs_redraw = true;
                         }
                         // Calibration adjustment keys
@@ -787,8 +798,13 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
                 };
-                self.target_fov = (self.target_fov - scroll as f32 * FOV_SCROLL_STEP)
-                    .clamp(FOV_MIN.min(self.max_fov), self.max_fov);
+                let limit = if self.clamp_enabled {
+                    self.max_fov
+                } else {
+                    FOV_MAX
+                };
+                self.target_fov =
+                    (self.target_fov - scroll as f32 * FOV_SCROLL_STEP).clamp(FOV_MIN, limit);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {

@@ -80,9 +80,13 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     #[cfg(feature = "autocam")]
     if args.tracking_mode == "sweep" {
         job = job.on_session(|session, _source| {
-            let director = Box::new(reco_autocam::SweepDirector::new(0.8, 10.0));
+            // Use 80% of coverage max FOV so the viewport fits comfortably.
+            let max_fov = session.coverage().map_or(50.0, |c| c.max_fov_degrees());
+            let sweep_fov = (max_fov * 0.8).clamp(5.0, 50.0);
+            let director =
+                Box::new(reco_autocam::SweepDirector::new(0.8, 10.0).with_fov(sweep_fov));
             session.set_director(director);
-            log::info!("Tracking mode: sweep (debug, no AI)");
+            log::info!("Tracking mode: sweep (debug, FOV={sweep_fov:.1} deg)");
         });
     }
 

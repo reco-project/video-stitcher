@@ -136,7 +136,24 @@ impl LensDatabase {
         lens_info: Option<&str>,
     ) -> Option<CameraParams> {
         let key = normalize_camera_key(brand, model);
-        let indices = self.by_camera.get(&key)?;
+        // Try exact model first, then strip variant suffixes to find the
+        // parent model (e.g. "HERO11 Black Mini" -> "HERO11 Black").
+        // Gyroflow's profiles often cover the base model but not every variant.
+        let indices = if let Some(idx) = self.by_camera.get(&key) {
+            idx
+        } else {
+            // Try parent model by stripping common suffixes
+            let parent = strip_model_variant(&key);
+            if let Some(idx) = parent.as_ref().and_then(|p| self.by_camera.get(p)) {
+                log::info!(
+                    "lens auto-detect: no profiles for {key}, using parent {}",
+                    parent.unwrap()
+                );
+                idx
+            } else {
+                return None;
+            }
+        };
 
         // Filter candidates by FOV mode when available.
         // If lens_info is provided (e.g. "Wide"), only consider profiles
@@ -157,16 +174,48 @@ impl LensDatabase {
             Vec::new()
         };
 
-        let candidates = if fov_filtered.is_empty() {
+        // If no FOV match on the exact model, try the parent model's
+        // profiles for the same FOV before falling back to any profile.
+        // E.g. "HERO11 Black Mini" has no Wide profile, but "HERO11 Black" does.
+        let parent_fov_filtered: Vec<usize> = if fov_filtered.is_empty() && lens_info.is_some() {
+            strip_model_variant(&key)
+                .and_then(|parent| self.by_camera.get(&parent))
+                .map(|parent_indices| {
+                    let info_lower = lens_info.unwrap().to_ascii_lowercase();
+                    let matches: Vec<usize> = parent_indices
+                        .iter()
+                        .copied()
+                        .filter(|&idx| {
+                            let p = &self.profiles[idx];
+                            p.lens_model.to_ascii_lowercase() == info_lower
+                                && p.camera_setting.is_empty()
+                        })
+                        .collect();
+                    if !matches.is_empty() {
+                        log::info!(
+                            "lens auto-detect: using parent model for FOV '{}'",
+                            lens_info.unwrap()
+                        );
+                    }
+                    matches
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        let candidates = if !fov_filtered.is_empty() {
+            fov_filtered.as_slice()
+        } else if !parent_fov_filtered.is_empty() {
+            parent_fov_filtered.as_slice()
+        } else {
             if lens_info.is_some() {
                 log::debug!(
-                    "lens auto-detect: no profiles match FOV '{}' for {key}, trying all",
+                    "lens auto-detect: no FOV '{}' match for {key} or parent, using all",
                     lens_info.unwrap_or("?")
                 );
             }
             indices.as_slice()
-        } else {
-            fov_filtered.as_slice()
         };
 
         // 1. Exact resolution match
@@ -379,6 +428,18 @@ fn normalize_camera_key(brand: &str, model: &str) -> String {
     let b = brand.to_lowercase().replace(' ', "-");
     let m = model.to_lowercase().replace(' ', "-").replace("--", "-");
     format!("{b}/{m}")
+}
+
+/// Strip variant suffixes to find the parent model key.
+/// E.g. "gopro/hero11-black-mini" -> "gopro/hero11-black".
+fn strip_model_variant(key: &str) -> Option<String> {
+    // Common GoPro/DJI variant suffixes
+    for suffix in &["-mini", "-max", "-session", "-bones", "-creator-edition"] {
+        if let Some(parent) = key.strip_suffix(suffix) {
+            return Some(parent.to_string());
+        }
+    }
+    None
 }
 
 /// Parse a profile from a serde_json::Value (CBOR or JSON source).
