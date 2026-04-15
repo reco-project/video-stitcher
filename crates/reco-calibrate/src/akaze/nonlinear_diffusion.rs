@@ -2,6 +2,8 @@ use super::evolution::EvolutionStep;
 use super::image::GrayFloatImage;
 use ndarray::{Array2, azip, s};
 
+const MIN_CONTRAST_FACTOR: f64 = 1e-6;
+
 /// Pre-allocated buffers for nonlinear diffusion to avoid per-step allocations.
 pub struct DiffusionBuffers {
     pub horizontal_flow: Array2<f32>,
@@ -84,7 +86,7 @@ pub fn pm_g2(Lx: &GrayFloatImage, Ly: &GrayFloatImage, k: f64) -> GrayFloatImage
     assert!(Lx.height() == Ly.height());
     // Clamp k to a minimum to prevent division by zero on uniform images
     // (where the gradient histogram produces k=0, freezing all diffusion).
-    let k = k.max(1e-6);
+    let k = k.max(MIN_CONTRAST_FACTOR);
     let inverse_k = (1.0f64 / (k * k)) as f32;
     let mut conductivities = Lx.zero_array();
     azip!((
