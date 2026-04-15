@@ -217,9 +217,12 @@ impl CalibrationPipeline {
                 None
             };
 
+        // Use skip_start so gravity is measured after camera setup, not during.
+        let skip = self.config.skip_start_secs;
+
         // Differential orientation for rotation seeds
         if let Some((roll, pitch, tilt)) =
-            telemetry::differential_orientation(&left_telem, &right_telem)
+            telemetry::differential_orientation(&left_telem, &right_telem, skip)
         {
             log::info!(
                 "differential roll: {:.2} deg, pitch: {:.2} deg, tilt: {:.2} deg",
@@ -237,14 +240,14 @@ impl CalibrationPipeline {
         }
 
         // Rig tilt (stored in result for renderer)
-        if let Some(tilt) = telemetry::rig_tilt(&left_telem) {
+        if let Some(tilt) = telemetry::rig_tilt(&left_telem, skip) {
             log::info!("rig tilt: {:.1} deg", tilt.to_degrees());
             self.rig_tilt = tilt;
         }
 
         // Rig roll: (left_roll - right_roll) / 2 cancels common IMU bias.
-        let left_roll = telemetry::gravity_vector(&left_telem).map(|g| g[2].atan2(g[0]));
-        let right_roll = telemetry::gravity_vector(&right_telem).map(|g| g[2].atan2(g[0]));
+        let left_roll = telemetry::gravity_vector(&left_telem, skip).map(|g| g[2].atan2(g[0]));
+        let right_roll = telemetry::gravity_vector(&right_telem, skip).map(|g| g[2].atan2(g[0]));
         if let (Some(lr), Some(rr)) = (left_roll, right_roll) {
             let avg = (lr - rr) / 2.0;
             log::info!(

@@ -342,21 +342,36 @@ pub fn estimate_sync_offset(left: &TelemetryData, right: &TelemetryData) -> Opti
 
 /// Compute the average gravity vector from accelerometer data.
 ///
-/// Uses the mean of all accelerometer samples, assuming the camera is
-/// mostly stationary during recording. The gravity vector points
-/// "down" in the camera's coordinate frame.
+/// Averages ~1 second of samples starting at `skip_secs` into the
+/// recording. This allows skipping the camera setup period to measure
+/// gravity when the rig is in its final position.
 ///
 /// Returns `None` if no accelerometer data is available.
-pub fn gravity_vector(data: &TelemetryData) -> Option<[f64; 3]> {
+pub fn gravity_vector(data: &TelemetryData, skip_secs: f64) -> Option<[f64; 3]> {
     if data.accel.is_empty() {
         return None;
     }
 
-    let n = data.accel.len() as f64;
+    // Find the first sample at or after skip_secs, then average ~200 samples (~1s).
+    let start_idx = if skip_secs > 0.0 {
+        data.accel
+            .iter()
+            .position(|s| s.t >= skip_secs)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let end_idx = (start_idx + 200).min(data.accel.len());
+    let samples = &data.accel[start_idx..end_idx];
+    if samples.is_empty() {
+        return None;
+    }
+
+    let n = samples.len() as f64;
     let mut gx = 0.0;
     let mut gy = 0.0;
     let mut gz = 0.0;
-    for s in &data.accel {
+    for s in samples {
         gx += s.x;
         gy += s.y;
         gz += s.z;
@@ -387,9 +402,10 @@ pub fn gravity_vector(data: &TelemetryData) -> Option<[f64; 3]> {
 pub fn differential_orientation(
     left: &TelemetryData,
     right: &TelemetryData,
+    skip_secs: f64,
 ) -> Option<(f64, f64, f64)> {
-    let lg = gravity_vector(left)?;
-    let rg = gravity_vector(right)?;
+    let lg = gravity_vector(left, skip_secs)?;
+    let rg = gravity_vector(right, skip_secs)?;
 
     // Normalized IMU convention (after telemetry-parser's MTRX mapping):
     //   X = down (gravity), Y = forward (optical axis), Z = right
@@ -440,9 +456,9 @@ pub fn differential_orientation(
 ///
 /// Returns the tilt angle in radians, or `None` if neither accelerometer
 /// nor quaternion data is available.
-pub fn rig_tilt(data: &TelemetryData) -> Option<f64> {
+pub fn rig_tilt(data: &TelemetryData, skip_secs: f64) -> Option<f64> {
     // Try accelerometer first (direct gravity measurement)
-    if let Some(g) = gravity_vector(data) {
+    if let Some(g) = gravity_vector(data, skip_secs) {
         // In the normalized IMU frame: X=down, Y=forward (optical axis), Z=right.
         // Rig tilt = forward lean of the camera from vertical.
         let tilt = g[1].atan2(g[0]);
