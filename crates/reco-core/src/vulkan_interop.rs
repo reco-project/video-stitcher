@@ -10,7 +10,7 @@
 //! 4. Wraps the `VkImage` into `wgpu::Texture` via `create_texture_from_hal`
 //!
 //! ## References
-//! - Gyroflow `wgpu_interop_vulkan.rs` and `wgpu_interop_cuda.rs`
+//! - [Gyroflow](https://github.com/gyroflow/gyroflow) for the general CUDA/Vulkan interop approach
 //! - `VK_KHR_external_memory_fd` specification
 //! - wgpu HAL interop API (`texture_from_raw`, `create_texture_from_hal`)
 

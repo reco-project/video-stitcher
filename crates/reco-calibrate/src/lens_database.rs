@@ -6,9 +6,10 @@
 //!
 //! ## Data source
 //!
-//! The primary database is the Gyroflow lens_profiles bundle
-//! (`profiles.cbor.gz`), embedded at compile time. Additional profiles
-//! can be loaded from a directory at runtime.
+//! The primary database is the [Gyroflow lens_profiles](https://github.com/gyroflow/lens_profiles)
+//! bundle (CC0-1.0, public domain), converted to `profiles.cbor.gz` and
+//! embedded at compile time. The JSON format is defined by the Gyroflow
+//! project. Additional profiles can be loaded from a directory at runtime.
 //!
 //! ## Matching strategy
 //!

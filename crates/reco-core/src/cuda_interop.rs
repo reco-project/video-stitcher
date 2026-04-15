@@ -6,7 +6,7 @@
 //! descriptor (Linux) or Win32 handle (Windows), and imports it into
 //! Vulkan via external memory extensions.
 //!
-//! ## Architecture (inspired by [Gyroflow](https://github.com/gyroflow/gyroflow))
+//! ## Architecture (inspired by [Gyroflow](https://github.com/gyroflow/gyroflow)'s approach)
 //!
 //! ```text
 //! NVDEC decode → CUDA device memory (FFmpeg)
