@@ -1,7 +1,7 @@
 # Rust
 target/
 
-# Video artifacts and profiling traces
+# Video artifacts
 *.mp4
 reco-trace.json
 
@@ -21,20 +21,16 @@ Thumbs.db
 *.log
 .claude/
 .cargo/
+
+# AI models (large binaries)
 *.pt
 *.onnx
+*.engine
 
-# Legacy v1 build artifacts
+# Build artifacts
 out/
 node_modules/
-devData/
-.vite/
-.vscode-ctags
 
 # Calibration debug workspace
 calibrate_debug/
-
-# Deep review analysis (generated, not committed)
-docs/analysis/
-docs/superpowers/
 calibration_adjusted.json

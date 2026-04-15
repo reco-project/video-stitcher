@@ -1,6 +1,0 @@
-node_modules
-dist
-electron/resources
-venv
-*.pyc
-package-lock.json
