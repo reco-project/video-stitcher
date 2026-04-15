@@ -614,7 +614,8 @@ impl ApplicationHandler for App {
                             }
                         }
                         PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            self.target_fov = (self.target_fov - FOV_KEY_STEP).max(FOV_MIN);
+                            let min = FOV_MIN.min(self.max_fov);
+                            self.target_fov = (self.target_fov - FOV_KEY_STEP).max(min);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
@@ -803,8 +804,8 @@ impl ApplicationHandler for App {
                 } else {
                     FOV_MAX
                 };
-                self.target_fov =
-                    (self.target_fov - scroll as f32 * FOV_SCROLL_STEP).clamp(FOV_MIN, limit);
+                self.target_fov = (self.target_fov - scroll as f32 * FOV_SCROLL_STEP)
+                    .clamp(FOV_MIN.min(limit), limit);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {

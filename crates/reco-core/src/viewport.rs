@@ -45,7 +45,7 @@ impl Default for ViewportConfig {
             width: 1920,
             height: 1080,
             fov_degrees: 75.0,
-            blend_width: 0.15,
+            blend_width: 0.05,
             rig_tilt: 0.0,
             rig_roll: 0.0,
         }

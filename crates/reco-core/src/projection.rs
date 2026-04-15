@@ -541,8 +541,13 @@ impl CoverageBoundary {
             if yaw_lo >= yaw_hi {
                 pitch_range
             } else {
+                // Sample pitch range at multiple yaw positions and use the
+                // 10th percentile instead of absolute minimum. The absolute
+                // minimum is dominated by narrow seam edges which the director
+                // rarely visits. The 10th percentile gives a practical FOV
+                // that works across most of the useful yaw range.
                 let n_samples = 50;
-                let mut min_pr = pitch_range;
+                let mut ranges = Vec::with_capacity(n_samples + 1);
                 for j in 0..=n_samples {
                     let t = j as f32 / n_samples as f32;
                     let test_yaw = yaw_lo + t * (yaw_hi - yaw_lo);
@@ -561,10 +566,17 @@ impl CoverageBoundary {
                         }
                     }
                     if p_hi > p_lo {
-                        min_pr = min_pr.min(p_hi - p_lo);
+                        ranges.push(p_hi - p_lo);
                     }
                 }
-                min_pr
+                if ranges.is_empty() {
+                    pitch_range
+                } else {
+                    ranges.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    // 10th percentile: skip the narrowest 10%
+                    let idx = (ranges.len() / 10).min(ranges.len() - 1);
+                    ranges[idx]
+                }
             }
         };
 
