@@ -104,6 +104,7 @@ pub fn run_libcamera(
             0.0,
             reco_autocam::TrackingMode::Ball,
             None,
+            false, // libcamera captures are always 8-bit
         ) {
             Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
             Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),

@@ -191,6 +191,8 @@ impl DetectionPipeline {
         let rs = right_slot as usize;
         let mut detections = Vec::new();
 
+        let is_10bit = left_buf.pixel_format == crate::renderer::GpuPixelFormat::P010;
+
         let left_frame = crate::detector::GpuNv12Frame {
             y_ptr: left_buf.y_ptr[ls],
             uv_ptr: left_buf.uv_ptr[ls],
@@ -199,6 +201,7 @@ impl DetectionPipeline {
             width: left_buf.width,
             height: left_buf.height,
             rotation: left_rotation,
+            is_10bit,
         };
         let right_frame = crate::detector::GpuNv12Frame {
             y_ptr: right_buf.y_ptr[rs],
@@ -208,6 +211,7 @@ impl DetectionPipeline {
             width: right_buf.width,
             height: right_buf.height,
             rotation: right_rotation,
+            is_10bit,
         };
         detections.extend(gpu_det.detect_gpu(CameraId::Left, &left_frame));
         detections.extend(gpu_det.detect_gpu(CameraId::Right, &right_frame));

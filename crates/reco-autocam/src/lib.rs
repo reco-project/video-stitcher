@@ -80,6 +80,9 @@ pub struct AutocamConfig {
     pub detection_interval: u64,
     /// Optional playing field ROI polygons for filtering.
     pub field_roi: Option<reco_core::calibration::FieldRoi>,
+    /// Whether the source produces P010 (10-bit NV12) frames.
+    /// GPU detectors allocate conversion buffers when true.
+    pub is_10bit: bool,
 }
 
 impl AutocamConfig {
@@ -90,6 +93,7 @@ impl AutocamConfig {
             tracking_mode: TrackingMode::Ball,
             detection_interval: 1,
             field_roi: None,
+            is_10bit: false,
         }
     }
 
@@ -108,6 +112,15 @@ impl AutocamConfig {
     /// Set the field ROI for detection filtering.
     pub fn with_field_roi(mut self, roi: reco_core::calibration::FieldRoi) -> Self {
         self.field_roi = Some(roi);
+        self
+    }
+
+    /// Mark the source as P010 (10-bit NV12).
+    ///
+    /// When set, GPU detectors allocate scratch buffers to convert 10-bit
+    /// samples to 8-bit before NPP color conversion.
+    pub fn with_10bit(mut self, is_10bit: bool) -> Self {
+        self.is_10bit = is_10bit;
         self
     }
 }
@@ -134,6 +147,7 @@ pub fn setup_autocam_from_config(
         0.0, // no lookahead
         config.tracking_mode,
         config.field_roi.as_ref(),
+        config.is_10bit,
     )
 }
 
@@ -141,6 +155,9 @@ pub fn setup_autocam_from_config(
 ///
 /// For a simpler API with config struct and inferred parameters, use
 /// [`setup_autocam_from_config`] with [`AutocamConfig`] instead.
+///
+/// `is_10bit` should be true when the source produces P010 (10-bit NV12)
+/// frames, so GPU detectors allocate conversion buffers.
 ///
 /// Returns `true` if detection was successfully activated, `false` if
 /// detection could not be initialized (the session remains usable without
@@ -157,6 +174,7 @@ pub fn setup_autocam(
     lead_time: f64,
     tracking_mode: TrackingMode,
     field_roi: Option<&FieldRoi>,
+    is_10bit: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut detection_active = false;
 
@@ -206,6 +224,7 @@ pub fn setup_autocam(
             input_height,
             0.10,
             trt_labels,
+            is_10bit,
         ) {
             Ok(Some(trt_det)) => {
                 let detector: Box<dyn reco_core::detector::GpuDetector> =
@@ -230,7 +249,14 @@ pub fn setup_autocam(
     // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     if !detection_active && use_zero_copy {
-        match OrtGpuDetector::try_new(model_path, input_width, input_height, 0.10, Vec::new()) {
+        match OrtGpuDetector::try_new(
+            model_path,
+            input_width,
+            input_height,
+            0.10,
+            Vec::new(),
+            is_10bit,
+        ) {
             Ok(Some(gpu_det)) => {
                 let detector: Box<dyn reco_core::detector::GpuDetector> =
                     if let Some(roi) = effective_roi.clone() {

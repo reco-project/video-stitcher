@@ -118,6 +118,7 @@ pub fn run_camera(
             0.0,
             reco_autocam::TrackingMode::Ball,
             None,
+            false, // V4L2 captures are always 8-bit NV12
         ) {
             Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
             Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),

@@ -135,6 +135,13 @@ pub struct GpuNv12Frame {
     /// `rotation == 180`, the detector must flip the frame during
     /// preprocessing so detection models see correctly oriented images.
     pub rotation: i32,
+    /// Whether this frame uses P010 (10-bit NV12) pixel format.
+    ///
+    /// P010 stores 10-bit luma/chroma values in the upper 10 bits of each
+    /// `u16` sample. Detectors that expect 8-bit NV12 (e.g. NPP's
+    /// `nppiNV12ToRGB_8u_P2C3R`) must convert P010 to 8-bit first by
+    /// right-shifting each sample by 8 bits.
+    pub is_10bit: bool,
 }
 
 /// Trait for object detection on GPU-resident NV12 frames.

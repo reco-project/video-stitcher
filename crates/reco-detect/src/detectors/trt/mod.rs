@@ -51,6 +51,9 @@ pub struct TrtGpuDetector {
     rgb_u8: CUdeviceptr,
     resized_u8: CUdeviceptr,
     tensor_f32: CUdeviceptr,
+    // P010 (10-bit NV12) conversion scratch buffers.
+    nv12_8bit_y: CUdeviceptr,
+    nv12_8bit_uv: CUdeviceptr,
     // TRT output buffer (drop before context).
     output_buf: CudaBuffer,
     output_host: Vec<u8>,
@@ -90,12 +93,17 @@ impl TrtGpuDetector {
     /// `labels` are class names for the model. If empty, detections
     /// will have numeric class IDs only. Pass labels from a `.labels`
     /// sidecar file or from the original ONNX model metadata.
+    ///
+    /// When `is_10bit` is true, additional scratch buffers are allocated
+    /// for converting P010 (10-bit NV12) frames to 8-bit before NPP
+    /// color conversion.
     pub fn try_new(
         engine_path: impl AsRef<Path>,
         frame_width: u32,
         frame_height: u32,
         confidence_threshold: f32,
         labels: Vec<String>,
+        is_10bit: bool,
     ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
         if !reco_core::npp_interop::is_npp_available() {
             log::warn!("TrtGpuDetector: NPP not available, GPU detection disabled");
@@ -183,6 +191,21 @@ impl TrtGpuDetector {
         let resized_u8 = cuda_mem_alloc(resized_size)?;
         let tensor_f32 = cuda_mem_alloc(tensor_size)?;
 
+        // Allocate P010 conversion scratch buffers if needed.
+        let (nv12_8bit_y, nv12_8bit_uv) = if is_10bit {
+            let y_size = frame_width as usize * frame_height as usize;
+            let uv_size = frame_width as usize * (frame_height as usize / 2);
+            let y = cuda_mem_alloc(y_size)?;
+            let uv = cuda_mem_alloc(uv_size)?;
+            log::info!(
+                "TrtGpuDetector: allocated P010 conversion buffers ({:.1}MB)",
+                (y_size + uv_size) as f64 / 1024.0 / 1024.0,
+            );
+            (y, uv)
+        } else {
+            (0, 0)
+        };
+
         // Fill resized buffer with grey (114) for letterbox padding.
         cuda_memset_d8(resized_u8, 114, resized_size)?;
 
@@ -198,7 +221,7 @@ impl TrtGpuDetector {
 
         log::info!(
             "TrtGpuDetector ready: input={}x{}, frame={}x{}, scale={:.3}, \
-             pad=({:.1},{:.1}), GPU scratch={:.1}MB",
+             pad=({:.1},{:.1}), GPU scratch={:.1}MB, 10bit={}",
             input_size,
             input_size,
             frame_width,
@@ -207,12 +230,15 @@ impl TrtGpuDetector {
             pad_x,
             pad_y,
             (rgb_size + resized_size + tensor_size + output_byte_size) as f64 / 1024.0 / 1024.0,
+            is_10bit,
         );
 
         let mut detector = Self {
             rgb_u8,
             resized_u8,
             tensor_f32,
+            nv12_8bit_y,
+            nv12_8bit_uv,
             output_buf,
             output_host,
             output_floats,
@@ -283,6 +309,7 @@ impl GpuDetector for TrtGpuDetector {
             width,
             height,
             rotation,
+            is_10bit,
         } = *frame;
         reco_core::profile_scope!("trt_yolo_detect");
 
@@ -292,12 +319,55 @@ impl GpuDetector for TrtGpuDetector {
             return Vec::new();
         }
 
+        // Step 0: Convert P010 (10-bit) to 8-bit NV12 if needed.
+        let (nv12_y, nv12_y_pitch, nv12_uv, nv12_uv_pitch) = if is_10bit {
+            reco_core::profile_scope!("p010_to_nv12");
+            if self.nv12_8bit_y == 0 || self.nv12_8bit_uv == 0 {
+                log::error!("P010 frame received but no conversion buffers allocated");
+                return Vec::new();
+            }
+            if let Err(e) = reco_core::cuda_kernels::p010_plane_to_nv12(
+                y_ptr,
+                y_pitch,
+                self.nv12_8bit_y,
+                width,
+                height,
+            ) {
+                log::error!("P010->NV12 Y conversion failed: {e}");
+                return Vec::new();
+            }
+            if let Err(e) = reco_core::cuda_kernels::p010_plane_to_nv12(
+                uv_ptr,
+                uv_pitch,
+                self.nv12_8bit_uv,
+                width,
+                height / 2,
+            ) {
+                log::error!("P010->NV12 UV conversion failed: {e}");
+                return Vec::new();
+            }
+            (
+                self.nv12_8bit_y,
+                width as usize,
+                self.nv12_8bit_uv,
+                width as usize,
+            )
+        } else {
+            (y_ptr, y_pitch, uv_ptr, uv_pitch)
+        };
+
         // Step 1: NV12 -> packed RGB u8 via NPP (identical to OrtGpuDetector).
         {
             reco_core::profile_scope!("npp_nv12_to_rgb");
-            if let Err(e) =
-                npp_nv12_to_rgb(y_ptr, y_pitch, uv_ptr, uv_pitch, self.rgb_u8, width, height)
-            {
+            if let Err(e) = npp_nv12_to_rgb(
+                nv12_y,
+                nv12_y_pitch,
+                nv12_uv,
+                nv12_uv_pitch,
+                self.rgb_u8,
+                width,
+                height,
+            ) {
                 log::error!("NPP NV12->RGB failed: {e}");
                 return Vec::new();
             }
@@ -457,6 +527,8 @@ impl Drop for TrtGpuDetector {
             ("rgb_u8", self.rgb_u8),
             ("resized_u8", self.resized_u8),
             ("tensor_f32", self.tensor_f32),
+            ("nv12_8bit_y", self.nv12_8bit_y),
+            ("nv12_8bit_uv", self.nv12_8bit_uv),
         ] {
             if ptr != 0 {
                 if let Err(e) = cuda_mem_free(ptr) {

@@ -10,6 +10,163 @@ use std::sync::OnceLock;
 
 use crate::cuda_interop::{CUdeviceptr, CudaInteropError, CudaKernel};
 
+/// PTX source for the P010-to-NV12 conversion kernel.
+///
+/// P010 stores 10-bit values in the upper 10 bits of each u16 sample.
+/// This kernel right-shifts each u16 by 8, producing the high byte as a
+/// u8 output. This gives 8-bit precision from the 10-bit source, which
+/// is sufficient for object detection.
+///
+/// Parameters: src (u16*), dst (u8*), n (u32) - total element count
+///
+/// Grid: (ceil(n/256), 1, 1)
+/// Block: (256, 1, 1)
+const P010_TO_NV12_PTX: &[u8] = b"
+.version 7.0
+.target sm_50
+.address_size 64
+
+.visible .entry p010_to_nv12(
+    .param .u64 src,
+    .param .u64 dst,
+    .param .u32 n
+)
+{
+    .reg .u32 %i, %n_val, %tmp, %tmp2;
+    .reg .u64 %src_ptr, %dst_ptr, %addr;
+    .reg .u16 %val16;
+    .reg .u32 %val32;
+    .reg .pred %p;
+
+    // i = blockIdx.x * blockDim.x + threadIdx.x
+    mov.u32 %tmp, %ctaid.x;
+    mov.u32 %tmp2, %ntid.x;
+    mul.lo.u32 %i, %tmp, %tmp2;
+    mov.u32 %tmp, %tid.x;
+    add.u32 %i, %i, %tmp;
+
+    // bounds check
+    ld.param.u32 %n_val, [n];
+    setp.ge.u32 %p, %i, %n_val;
+    @%p bra done;
+
+    // Load u16 from src[i]
+    ld.param.u64 %src_ptr, [src];
+    cvt.u64.u32 %addr, %i;
+    shl.b64 %addr, %addr, 1;  // * sizeof(u16)
+    add.u64 %addr, %src_ptr, %addr;
+    ld.global.u16 %val16, [%addr];
+
+    // Right-shift by 8 to get high byte
+    cvt.u32.u16 %val32, %val16;
+    shr.u32 %val32, %val32, 8;
+
+    // Store u8 to dst[i]
+    ld.param.u64 %dst_ptr, [dst];
+    cvt.u64.u32 %addr, %i;
+    add.u64 %addr, %dst_ptr, %addr;
+    // Truncate u32 to u8 and store
+    cvt.u16.u32 %val16, %val32;
+    st.global.u8 [%addr], %val16;
+
+done:
+    ret;
+}
+\0";
+
+/// Lazily loaded P010-to-NV12 kernel.
+static P010_KERNEL: OnceLock<Result<CudaKernel, CudaInteropError>> = OnceLock::new();
+
+fn get_p010_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
+    P010_KERNEL
+        .get_or_init(|| CudaKernel::from_ptx(P010_TO_NV12_PTX, "p010_to_nv12"))
+        .as_ref()
+        .map_err(|e| CudaInteropError::CudaError {
+            function: "p010_to_nv12_load",
+            code: match e {
+                CudaInteropError::CudaError { code, .. } => *code,
+                _ => -1,
+            },
+        })
+}
+
+/// Convert a P010 (10-bit NV12) plane to 8-bit NV12 on the GPU.
+///
+/// Reads `n` u16 samples from `src`, right-shifts each by 8 to extract
+/// the high byte, and writes `n` u8 samples to `dst`. Works for both
+/// the Y plane (width * height samples) and the UV plane (width * height/2
+/// samples, but counted as individual u16 values).
+///
+/// Both `src` and `dst` are CUDA device pointers. `n` is the number of
+/// samples (not bytes). `src` must have at least `n * 2` bytes, `dst`
+/// must have at least `n` bytes.
+///
+/// Note: this performs a 2D-pitched to linear conversion. If the source
+/// has padding (pitch > width), use [`p010_plane_to_nv12`] instead, which
+/// handles pitched layouts via [`cuda_2d_copy`](crate::cuda_interop::cuda_2d_copy)
+/// style semantics. For contiguous data (pitch == width * 2), this function
+/// is simpler.
+pub fn p010_to_nv12(src: CUdeviceptr, dst: CUdeviceptr, n: u32) -> Result<(), CudaInteropError> {
+    crate::cuda_interop::cuda_ensure_context()?;
+    let kernel = get_p010_kernel()?;
+
+    let block = 256u32;
+    let grid = n.div_ceil(block);
+
+    let mut src_val = src;
+    let mut dst_val = dst;
+    let mut n_val = n;
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        (&mut src_val as *mut u64).cast(),
+        (&mut dst_val as *mut u64).cast(),
+        (&mut n_val as *mut u32).cast(),
+    ];
+
+    unsafe {
+        kernel.launch((grid, 1, 1), (block, 1, 1), 0, &mut args)?;
+    }
+
+    // Synchronize to ensure kernel completion before using the output.
+    crate::cuda_interop::cuda_synchronize()?;
+
+    Ok(())
+}
+
+/// Convert a pitched P010 plane to a contiguous 8-bit plane on the GPU.
+///
+/// Handles the common case where the source P010 plane has row padding
+/// (pitch > width * 2). Reads `width` u16 samples per row from `src`
+/// with `src_pitch` byte stride, converts each to u8 by right-shifting
+/// by 8, and writes to `dst` with `width` byte stride (tightly packed).
+///
+/// `width` is in samples (pixels for Y, pixel pairs for UV).
+/// `height` is the number of rows.
+///
+/// Both `src` and `dst` are CUDA device pointers.
+pub fn p010_plane_to_nv12(
+    src: CUdeviceptr,
+    src_pitch: usize,
+    dst: CUdeviceptr,
+    width: u32,
+    height: u32,
+) -> Result<(), CudaInteropError> {
+    if src_pitch == width as usize * 2 {
+        // Contiguous layout - use the simple kernel directly.
+        return p010_to_nv12(src, dst, width * height);
+    }
+
+    // Pitched layout: process row by row through the kernel.
+    // Each row has `width` u16 samples starting at src + row * src_pitch.
+    for row in 0..height {
+        let row_src = src + (row as usize * src_pitch) as u64;
+        let row_dst = dst + (row as usize * width as usize) as u64;
+        p010_to_nv12(row_src, row_dst, width)?;
+    }
+
+    Ok(())
+}
+
 /// PTX source for the normalize + HWC-to-CHW transpose kernel.
 ///
 /// This kernel reads packed RGB u8 pixels (HWC layout) and writes

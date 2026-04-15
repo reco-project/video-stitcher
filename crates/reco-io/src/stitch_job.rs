@@ -320,7 +320,7 @@ impl StitchJob {
     ///         let info = source.info();
     ///         setup_autocam(session, "model.onnx", info.width, info.height,
     ///             info.fps as f32, source.is_gpu_resident(), 3, 0.5,
-    ///             TrackingMode::Ball, None).ok();
+    ///             TrackingMode::Ball, None, false).ok();
     ///     })
     ///     .run(&interrupted)?;
     /// ```

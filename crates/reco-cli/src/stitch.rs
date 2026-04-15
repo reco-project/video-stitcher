@@ -106,6 +106,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 "sweep" => reco_autocam::TrackingMode::Sweep,
                 _ => reco_autocam::TrackingMode::Ball,
             };
+            let is_10bit = source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
             match reco_autocam::setup_autocam(
                 session,
                 &model_path,
@@ -117,6 +118,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 lead,
                 mode,
                 field_roi.as_ref(),
+                is_10bit,
             ) {
                 Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
                 Ok(false) => {
