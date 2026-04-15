@@ -9,18 +9,19 @@ reco-trace.json
 __pycache__/
 *.pyc
 
-# IDE
+# IDE & editor
 .vscode/
 .idea/
+
+# Claude Code
+.claude/
+
+# Cargo local config
+.cargo/
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Misc
-*.log
-.claude/
-.cargo/
 
 # AI models (large binaries)
 *.pt
@@ -29,8 +30,10 @@ Thumbs.db
 
 # Build artifacts
 out/
-node_modules/
 
-# Calibration debug workspace
+# Calibration artifacts
 calibrate_debug/
 calibration_adjusted.json
+
+# Logs
+*.log
