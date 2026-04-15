@@ -3,6 +3,8 @@
 //! Opens a `winit` window with GPU-rendered preview. Controls:
 //! - Space: play/pause
 //! - N: step one frame, P: skip 30 frames
+//! - R: toggle recording to MP4
+//! - `[`/`]`: seek backward/forward 5 seconds, Home: restart
 //! - Arrows / mouse drag: pan (yaw/pitch)
 //! - +/- / scroll: zoom (FOV)
 //! - Q / Escape: quit
@@ -19,6 +21,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
 use reco_core::source::{FrameSource, YuvData};
 use reco_core::stitch_renderer::StitchRenderer;
 use winit::application::ApplicationHandler;
@@ -44,6 +47,8 @@ const FOV_MAX: f32 = 150.0;
 const FOV_DEFAULT: f32 = 75.0;
 /// Number of frames to skip on P key press.
 const FRAME_SKIP_COUNT: usize = 30;
+/// Number of seconds to seek on `[`/`]` key press.
+const SEEK_STEP_SECS: f64 = 5.0;
 
 /// Extract a [`YuvData`] pair from a [`StereoFrame`](reco_core::source::StereoFrame).
 ///
@@ -55,19 +60,33 @@ fn unwrap_yuv_pair(frame: reco_core::source::StereoFrame) -> (YuvData, YuvData) 
     }
 }
 
+/// Configuration for the interactive preview window.
+pub struct PreviewConfig<'a> {
+    pub left_path: &'a str,
+    pub right_path: &'a str,
+    pub calibration_path: &'a str,
+    pub width: u32,
+    pub height: u32,
+    pub sync_offset: i64,
+    pub blend_width: f32,
+    pub rig_tilt_degrees: f32,
+}
+
 /// Run the interactive preview window.
-#[allow(clippy::too_many_arguments)]
 pub fn run_preview(
-    left_path: &str,
-    right_path: &str,
-    calibration_path: &str,
-    width: u32,
-    height: u32,
-    sync_offset: i64,
-    blend_width: f32,
-    rig_tilt_degrees: f32,
+    config: &PreviewConfig<'_>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    let PreviewConfig {
+        left_path,
+        right_path,
+        calibration_path,
+        width,
+        height,
+        sync_offset,
+        blend_width,
+        rig_tilt_degrees,
+    } = *config;
     // Load calibration first so we can use its sync_offset and rig_tilt
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
 
@@ -85,26 +104,12 @@ pub fn run_preview(
         (cal.rig_tilt as f32).to_degrees()
     };
 
-    // Probe the right file to verify dimensions match
-    let right_dec = reco_io::ffmpeg::decoder::VideoDecoder::open(Path::new(right_path))?;
-    let right_dims = (right_dec.width(), right_dec.height());
-    drop(right_dec);
-
     let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
         Path::new(left_path),
         Path::new(right_path),
         effective_sync,
     )?;
     let info = source.info();
-
-    anyhow::ensure!(
-        info.width == right_dims.0 && info.height == right_dims.1,
-        "Video dimension mismatch: left={}x{}, right={}x{}",
-        info.width,
-        info.height,
-        right_dims.0,
-        right_dims.1
-    );
 
     println!(
         "Preview: {}x{} input, {}x{} window",
@@ -129,8 +134,12 @@ pub fn run_preview(
         let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
-    let initial_fov = FOV_DEFAULT.min(max_fov);
+    let initial_fov = FOV_DEFAULT;
     log::info!("Preview: max FOV = {max_fov:.1} degrees (coverage-limited)");
+
+    let fps_rational = info.fps_rational.unwrap_or((30, 1));
+    let total_frames = source.total_frames();
+    let rig_roll = cal.rig_roll as f32;
 
     let mut app = App {
         source: Some(source),
@@ -161,8 +170,17 @@ pub fn run_preview(
         target_fov: initial_fov,
         blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
+        rig_roll,
         max_fov,
+        clamp_enabled: false,
         interrupted: interrupted.clone(),
+        recording: None,
+        recording_path: None,
+        recording_frames: 0,
+        fps: info.fps,
+        fps_rational,
+        total_frames,
+        pending_seek: None,
     };
 
     event_loop.run_app(&mut app)?;
@@ -201,13 +219,116 @@ struct App {
     target_fov: f32,
     blend_width: f32,
     rig_tilt: f32,
+    rig_roll: f32,
     /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
     max_fov: f32,
+    /// Whether coverage boundary clamping is active.
+    clamp_enabled: bool,
     /// Ctrl-C signal from the main thread.
     interrupted: Arc<AtomicBool>,
+    // -- Recording state --
+    recording: Option<Box<dyn Encoder>>,
+    recording_path: Option<String>,
+    recording_frames: u64,
+    fps: f64,
+    fps_rational: (i32, i32),
+    // -- Seek state --
+    total_frames: Option<u64>,
+    /// Coalesced seek target. Multiple rapid key presses accumulate here;
+    /// only the final value is executed (in about_to_wait).
+    pending_seek: Option<u64>,
 }
 
 impl App {
+    fn start_recording(&mut self) {
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let path = format!("reco_recording_{epoch}.mp4");
+        // NV12 requires width divisible by 4 and height divisible by 2.
+        let rec_w = self.width & !3;
+        let rec_h = self.height & !1;
+        let (encoder, enc_name) = match reco_io::adapters::create_encoder(
+            Path::new(&path),
+            rec_w,
+            rec_h,
+            self.fps_rational,
+            "h264",
+            "balanced",
+            None,
+            None,
+            None,
+        ) {
+            Ok(pair) => pair,
+            Err(e) => {
+                eprintln!("Failed to start recording: {e}");
+                return;
+            }
+        };
+        println!("[REC] Recording to {path} ({enc_name})");
+        self.recording = Some(Box::new(encoder));
+        self.recording_path = Some(path);
+        self.recording_frames = 0;
+    }
+
+    fn stop_recording(&mut self) {
+        // Flush remaining NV12 frames from triple-buffer.
+        if let Some(ref mut renderer) = self.renderer {
+            for _ in 0..2 {
+                if let Ok(Some(nv12)) = renderer.flush_nv12()
+                    && let Some(ref mut enc) = self.recording
+                {
+                    let _ = enc.submit(OutputFrame {
+                        data: nv12,
+                        width: self.width & !3,
+                        height: self.height & !1,
+                        format: PixelFormat::Nv12,
+                        pts_us: (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64,
+                    });
+                    self.recording_frames += 1;
+                }
+            }
+        }
+        if let Some(mut enc) = self.recording.take()
+            && let Err(e) = enc.finish()
+        {
+            eprintln!("Failed to finalize recording: {e}");
+        }
+        if let Some(path) = self.recording_path.take() {
+            println!("[STOP] Recorded {} frames to {path}", self.recording_frames);
+        }
+    }
+
+    /// Seek and display the first frame at the new position (blocking).
+    /// Only called from about_to_wait after coalescing rapid key presses.
+    fn seek_to(&mut self, frame: u64) {
+        let Some(ref mut source) = self.source else {
+            return;
+        };
+        if let Err(e) = source.seek(frame) {
+            eprintln!("Seek failed: {e}");
+            return;
+        }
+        self.frame_count = frame;
+        // Blocking: wait for the first decoded frame at the new position.
+        self.step_frame();
+        let secs = frame as f64 / self.fps;
+        println!("Seeked to frame {frame} ({secs:.1}s)");
+    }
+
+    /// Apply a calibration change: update renderer + refresh max_fov from new coverage.
+    fn apply_calibration_change(&mut self) {
+        if let Some(ref mut r) = self.renderer {
+            r.update_calibration(self.cal.clone());
+            self.max_fov = r.coverage().max_fov_degrees().min(FOV_MAX);
+            if self.clamp_enabled {
+                self.target_fov = self.target_fov.min(self.max_fov);
+            }
+        }
+        self.needs_redraw = true;
+    }
+
     fn advance_frame(&mut self) {
         let Some(ref mut source) = self.source else {
             return;
@@ -272,7 +393,12 @@ impl App {
 
         if let Some(r) = &mut self.renderer {
             let new_fov = r.pipeline().fov() + df * SMOOTHING;
-            r.pipeline_mut().set_fov(new_fov.min(self.max_fov));
+            let capped = if self.clamp_enabled {
+                new_fov.min(self.max_fov)
+            } else {
+                new_fov
+            };
+            r.pipeline_mut().set_fov(capped.clamp(1.0, FOV_MAX));
             if (self.target_fov - r.pipeline().fov()).abs() < FOV_EPSILON {
                 r.pipeline_mut().set_fov(self.target_fov);
             }
@@ -286,7 +412,9 @@ impl App {
         }
 
         // Clamp to coverage boundary so no black edges appear
-        if let Some(ref renderer) = self.renderer {
+        if self.clamp_enabled
+            && let Some(ref renderer) = self.renderer
+        {
             let coverage = renderer.coverage();
             let current_fov = renderer.pipeline().fov();
             let aspect = self.width as f32 / self.height as f32;
@@ -360,6 +488,7 @@ impl ApplicationHandler for App {
             height: self.height,
             blend_width: self.blend_width,
             rig_tilt: self.rig_tilt,
+            rig_roll: self.rig_roll,
             ..Default::default()
         };
 
@@ -378,8 +507,12 @@ impl ApplicationHandler for App {
             renderer.gpu().gpu_name(),
             surface_format
         );
-        println!("Controls: Space = play/pause, N = next frame, P = skip 30 frames");
-        println!("          Arrows/drag = pan, +/-/scroll = zoom, Q/Escape = quit");
+        println!("Controls: Space = play/pause, N = next, P = skip 30, Q = quit");
+        println!("          R = toggle recording, [/] = seek -/+ 5s, Home = restart");
+        println!("          Arrows/drag = pan, +/-/scroll = zoom");
+        println!("          1/2 = intersect, 3/4 = axis offset, 5/6 = vertical align");
+        println!("          7/8 = focal length, 9/0 = k1 distortion (barrel/pincushion)");
+        println!("          B = cycle blend width, C = toggle clamping, S = save calibration");
 
         self.surface = Some(surface);
         self.renderer = Some(renderer);
@@ -395,6 +528,9 @@ impl ApplicationHandler for App {
     ) {
         match event {
             WindowEvent::CloseRequested => {
+                if self.recording.is_some() {
+                    self.stop_recording();
+                }
                 // Drop decoder (NVDEC) before GPU pipeline to avoid
                 // CUDA context teardown race on exit.
                 self.source.take();
@@ -434,6 +570,9 @@ impl ApplicationHandler for App {
                 if event.state == winit::event::ElementState::Pressed {
                     match event.physical_key {
                         PhysicalKey::Code(KeyCode::Escape | KeyCode::KeyQ) => {
+                            if self.recording.is_some() {
+                                self.stop_recording();
+                            }
                             self.source.take();
                             event_loop.exit();
                         }
@@ -475,12 +614,149 @@ impl ApplicationHandler for App {
                             }
                         }
                         PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            self.target_fov = (self.target_fov - FOV_KEY_STEP).max(FOV_MIN);
+                            let min = FOV_MIN.min(self.max_fov);
+                            self.target_fov = (self.target_fov - FOV_KEY_STEP).max(min);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(self.max_fov);
+                            let limit = if self.clamp_enabled {
+                                self.max_fov
+                            } else {
+                                FOV_MAX
+                            };
+                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(limit);
                             self.needs_redraw = true;
+                        }
+                        // Calibration adjustment keys
+                        PhysicalKey::Code(KeyCode::Digit1) => {
+                            self.cal.layout.intersect = (self.cal.layout.intersect + 0.01).min(1.0);
+                            self.apply_calibration_change();
+                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                        }
+                        PhysicalKey::Code(KeyCode::Digit2) => {
+                            self.cal.layout.intersect = (self.cal.layout.intersect - 0.01).max(0.0);
+                            self.apply_calibration_change();
+                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                        }
+                        PhysicalKey::Code(KeyCode::Digit3) => {
+                            self.cal.layout.camera_axis_offset += 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "camera_axis_offset: {:.4}",
+                                self.cal.layout.camera_axis_offset
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit4) => {
+                            self.cal.layout.camera_axis_offset -= 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "camera_axis_offset: {:.4}",
+                                self.cal.layout.camera_axis_offset
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit5) => {
+                            self.cal.layout.x_ty += 0.005;
+                            self.apply_calibration_change();
+                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                        }
+                        PhysicalKey::Code(KeyCode::Digit6) => {
+                            self.cal.layout.x_ty -= 0.005;
+                            self.apply_calibration_change();
+                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                        }
+                        PhysicalKey::Code(KeyCode::KeyB) => {
+                            // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0
+                            self.blend_width = if self.blend_width >= 0.19 {
+                                0.0
+                            } else {
+                                self.blend_width + 0.05
+                            };
+                            if let Some(ref mut r) = self.renderer {
+                                r.set_blend_width(self.blend_width);
+                            }
+                            println!("blend_width: {:.2}", self.blend_width);
+                            self.needs_redraw = true;
+                        }
+                        PhysicalKey::Code(KeyCode::Digit7) => {
+                            // Increase focal length (both cameras) - zoom in effect
+                            self.cal.left.fx *= 1.02;
+                            self.cal.left.fy *= 1.02;
+                            self.cal.right.fx *= 1.02;
+                            self.cal.right.fy *= 1.02;
+                            self.apply_calibration_change();
+                            println!(
+                                "focal length: {:.1} / {:.1}",
+                                self.cal.left.fx, self.cal.right.fx
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit8) => {
+                            // Decrease focal length - zoom out / wider
+                            self.cal.left.fx *= 0.98;
+                            self.cal.left.fy *= 0.98;
+                            self.cal.right.fx *= 0.98;
+                            self.cal.right.fy *= 0.98;
+                            self.apply_calibration_change();
+                            println!(
+                                "focal length: {:.1} / {:.1}",
+                                self.cal.left.fx, self.cal.right.fx
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit9) => {
+                            // Increase k1 distortion - more barrel
+                            self.cal.left.d[0] += 0.005;
+                            self.cal.right.d[0] += 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "k1 distortion: {:.4} / {:.4}",
+                                self.cal.left.d[0], self.cal.right.d[0]
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::Digit0) => {
+                            // Decrease k1 distortion - less barrel / more pincushion
+                            self.cal.left.d[0] -= 0.005;
+                            self.cal.right.d[0] -= 0.005;
+                            self.apply_calibration_change();
+                            println!(
+                                "k1 distortion: {:.4} / {:.4}",
+                                self.cal.left.d[0], self.cal.right.d[0]
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::KeyC) => {
+                            self.clamp_enabled = !self.clamp_enabled;
+                            println!(
+                                "Coverage clamping: {}",
+                                if self.clamp_enabled { "ON" } else { "OFF" }
+                            );
+                            self.needs_redraw = true;
+                        }
+                        PhysicalKey::Code(KeyCode::KeyS) => {
+                            // Save calibration
+                            let path = std::path::Path::new("calibration_adjusted.json");
+                            match self.cal.to_file(path) {
+                                Ok(()) => println!("Calibration saved to {}", path.display()),
+                                Err(e) => eprintln!("Failed to save calibration: {e}"),
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::KeyR) => {
+                            if self.recording.is_some() {
+                                self.stop_recording();
+                            } else {
+                                self.start_recording();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::BracketLeft) => {
+                            let step = (SEEK_STEP_SECS * self.fps) as u64;
+                            let base = self.pending_seek.unwrap_or(self.frame_count);
+                            self.pending_seek = Some(base.saturating_sub(step));
+                        }
+                        PhysicalKey::Code(KeyCode::BracketRight) => {
+                            let step = (SEEK_STEP_SECS * self.fps) as u64;
+                            let max = self.total_frames.unwrap_or(u64::MAX);
+                            let base = self.pending_seek.unwrap_or(self.frame_count);
+                            self.pending_seek = Some((base + step).min(max));
+                        }
+                        PhysicalKey::Code(KeyCode::Home) => {
+                            self.pending_seek = Some(0);
                         }
                         _ => {}
                     }
@@ -523,8 +799,13 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
                 };
+                let limit = if self.clamp_enabled {
+                    self.max_fov
+                } else {
+                    FOV_MAX
+                };
                 self.target_fov = (self.target_fov - scroll as f32 * FOV_SCROLL_STEP)
-                    .clamp(FOV_MIN, self.max_fov);
+                    .clamp(FOV_MIN.min(limit), limit);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {
@@ -538,7 +819,7 @@ impl ApplicationHandler for App {
                 self.needs_redraw = false;
 
                 let (Some(surface), Some(renderer)) =
-                    (self.surface.as_ref(), self.renderer.as_ref())
+                    (self.surface.as_ref(), self.renderer.as_mut())
                 else {
                     return;
                 };
@@ -577,6 +858,37 @@ impl ApplicationHandler for App {
                     return;
                 }
 
+                // Record: render to internal target + NV12 readback.
+                if self.recording.is_some() {
+                    match renderer.render_and_readback_nv12(&left, &right, self.yaw, render_pitch) {
+                        Ok(Some(nv12)) => {
+                            let pts_us =
+                                (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64;
+                            if let Some(ref mut enc) = self.recording
+                                && let Err(e) = enc.submit(OutputFrame {
+                                    data: nv12,
+                                    width: self.width & !3,
+                                    height: self.height & !1,
+                                    format: PixelFormat::Nv12,
+                                    pts_us,
+                                })
+                            {
+                                eprintln!("Recording encode error: {e}");
+                                self.stop_recording();
+                            }
+                            self.recording_frames += 1;
+                        }
+                        Ok(None) => {
+                            // First 2 frames: triple-buffer warming up.
+                            self.recording_frames += 1;
+                        }
+                        Err(e) => {
+                            eprintln!("Recording readback error: {e}");
+                            self.stop_recording();
+                        }
+                    }
+                }
+
                 frame.present();
             }
             _ => {}
@@ -592,6 +904,9 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Check Ctrl-C
         if self.interrupted.load(Ordering::Relaxed) {
+            if self.recording.is_some() {
+                self.stop_recording();
+            }
             self.source.take();
             event_loop.exit();
             return;
@@ -605,6 +920,14 @@ impl ApplicationHandler for App {
         let smoothing_active = (self.target_yaw - self.yaw).abs() > 0.0001
             || (self.target_pitch - self.pitch).abs() > 0.0001
             || (self.target_fov - current_fov).abs() > 0.01;
+
+        // Execute coalesced seek: rapid key presses accumulate into
+        // pending_seek; only the final target runs here (one seek
+        // instead of many). Blocking: waits for first frame to render.
+        if let Some(target) = self.pending_seek.take() {
+            self.seek_to(target);
+            self.needs_redraw = true;
+        }
 
         if !self.playing && !smoothing_active {
             return;

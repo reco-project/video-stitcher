@@ -107,6 +107,10 @@ pub fn extract_frames(
     Ok(frames)
 }
 
+/// FFmpeg protocol prefixes that must be rejected when passing paths to the
+/// CLI. These could trigger network requests or read from arbitrary sources.
+const FORBIDDEN_PATH_PREFIXES: &[&str] = &["http://", "https://", "concat:", "pipe:", "data:"];
+
 /// Extract mono PCM audio samples from a video file.
 ///
 /// Uses the `ffmpeg` CLI to extract up to 60 seconds of mono audio
@@ -125,6 +129,16 @@ pub fn extract_audio_pcm(
     let path_str = video_path
         .to_str()
         .ok_or_else(|| CalibrationIoError::AudioExtraction("non-UTF8 path".into()))?;
+
+    // Reject paths that would be interpreted as ffmpeg protocols/URLs.
+    let lower = path_str.to_ascii_lowercase();
+    for prefix in FORBIDDEN_PATH_PREFIXES {
+        if lower.starts_with(prefix) {
+            return Err(CalibrationIoError::AudioExtraction(format!(
+                "path must be a local file, got forbidden prefix '{prefix}'"
+            )));
+        }
+    }
 
     let output = std::process::Command::new("ffmpeg")
         .args([

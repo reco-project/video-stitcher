@@ -82,6 +82,8 @@ pub struct CalibrationPipeline {
     enable_x_rx: bool,
     /// Rig tilt in radians (forward lean from vertical).
     rig_tilt: f64,
+    /// Rig roll in radians (lateral lean).
+    rig_roll: f64,
 }
 
 impl CalibrationPipeline {
@@ -99,6 +101,7 @@ impl CalibrationPipeline {
             imu_zrx_seed: None,
             enable_x_rx: false,
             rig_tilt: 0.0,
+            rig_roll: 0.0,
         }
     }
 
@@ -214,9 +217,12 @@ impl CalibrationPipeline {
                 None
             };
 
+        // Use skip_start so gravity is measured after camera setup, not during.
+        let skip = self.config.skip_start_secs;
+
         // Differential orientation for rotation seeds
         if let Some((roll, pitch, tilt)) =
-            telemetry::differential_orientation(&left_telem, &right_telem)
+            telemetry::differential_orientation(&left_telem, &right_telem, skip)
         {
             log::info!(
                 "differential roll: {:.2} deg, pitch: {:.2} deg, tilt: {:.2} deg",
@@ -234,9 +240,30 @@ impl CalibrationPipeline {
         }
 
         // Rig tilt (stored in result for renderer)
-        if let Some(tilt) = telemetry::rig_tilt(&left_telem) {
+        if let Some(tilt) = telemetry::rig_tilt(&left_telem, skip) {
             log::info!("rig tilt: {:.1} deg", tilt.to_degrees());
             self.rig_tilt = tilt;
+        }
+
+        // Rig roll: (left_roll - right_roll) / 2 cancels common IMU bias.
+        let left_roll = telemetry::gravity_vector(&left_telem, skip).map(|g| g[2].atan2(g[0]));
+        let right_roll = telemetry::gravity_vector(&right_telem, skip).map(|g| g[2].atan2(g[0]));
+        if let (Some(lr), Some(rr)) = (left_roll, right_roll) {
+            let avg = (lr - rr) / 2.0;
+            log::info!(
+                "rig roll: left={:.1} deg, right={:.1} deg, avg={:.1} deg",
+                lr.to_degrees(),
+                rr.to_degrees(),
+                avg.to_degrees()
+            );
+            if avg.abs() < 20.0_f64.to_radians() {
+                self.rig_roll = avg;
+            } else {
+                log::warn!(
+                    "rig roll {:.1} deg exceeds threshold, ignoring",
+                    avg.to_degrees()
+                );
+            }
         }
 
         Ok(sync_frames)
@@ -340,6 +367,7 @@ impl CalibrationPipeline {
 
         let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;
         result.calibration.rig_tilt = self.rig_tilt;
+        result.calibration.rig_roll = self.rig_roll;
         result.calibration.sync_offset = self.sync_offset_frames;
         Ok(result)
     }

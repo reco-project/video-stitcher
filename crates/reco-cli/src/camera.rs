@@ -21,26 +21,48 @@ use crate::helpers;
 ///
 /// When `model_path` is provided, sets up YOLO ball detection with
 /// EKF tracking and a ball-following director for automatic panning.
-#[allow(clippy::too_many_arguments)]
+/// Configuration for live camera stitching.
+pub struct CameraRunConfig<'a> {
+    pub cam_config: CameraConfig,
+    pub calibration: &'a str,
+    pub output: &'a str,
+    pub width: u32,
+    pub height: u32,
+    pub blend: f32,
+    pub encoder_name: Option<String>,
+    pub codec: &'a str,
+    pub quality: &'a str,
+    pub duration: Option<f64>,
+    pub max_frames: Option<u64>,
+    pub capture_fps: u32,
+    pub model_path: Option<&'a str>,
+    pub detection_interval: u64,
+    pub crf: Option<u8>,
+    pub preset: Option<String>,
+}
+
 pub fn run_camera(
-    cam_config: CameraConfig,
-    calibration: &str,
-    output: &str,
-    width: u32,
-    height: u32,
-    blend: f32,
-    encoder_name: Option<String>,
-    codec: &str,
-    quality: &str,
-    duration: Option<f64>,
-    max_frames: Option<u64>,
-    capture_fps: u32,
-    model_path: Option<&str>,
-    detection_interval: u64,
-    crf: Option<u8>,
-    preset: Option<String>,
+    config: CameraRunConfig<'_>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    let CameraRunConfig {
+        cam_config,
+        calibration,
+        output,
+        width,
+        height,
+        blend,
+        encoder_name,
+        codec,
+        quality,
+        duration,
+        max_frames,
+        capture_fps,
+        model_path,
+        detection_interval,
+        crf,
+        preset,
+    } = config;
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
         !output.contains("://"),
@@ -83,6 +105,7 @@ pub fn run_camera(
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
     // Set up autocam (detector + director) if model provided.
+    #[cfg(feature = "autocam")]
     if let Some(model) = model_path {
         match reco_autocam::setup_autocam(
             &mut session,
@@ -90,16 +113,21 @@ pub fn run_camera(
             capture_width,
             capture_height,
             capture_fps as f32,
-            use_nv12_capture, // NV12 on Jetson is not GPU-resident (no zero-copy)
+            use_nv12_capture,
             detection_interval,
-            0.0, // no lookahead for live cameras (frames aren't bufferable)
+            0.0,
             reco_autocam::TrackingMode::Ball,
-            None, // no field ROI for live cameras yet
+            None,
+            false, // V4L2 captures are always 8-bit NV12
         ) {
             Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
             Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),
             Err(e) => eprintln!("Warning: autocam setup failed ({e}), continuing without tracking"),
         }
+    }
+    #[cfg(not(feature = "autocam"))]
+    if model_path.is_some() {
+        log::warn!("--model specified but autocam feature is disabled");
     }
 
     let mode_str = if use_nv12_capture { "NV12" } else { "I420" };

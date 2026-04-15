@@ -427,6 +427,7 @@ impl GstreamerCameraSource {
             height: config.height,
             fps: config.fps as f64,
             fps_rational: None,
+            total_frames: None,
         };
 
         log::info!(
@@ -512,6 +513,7 @@ impl GstreamerNv12CameraSource {
             height: config.height,
             fps: config.fps as f64,
             fps_rational: None,
+            total_frames: None,
         };
 
         log::info!(
@@ -540,6 +542,19 @@ impl GstreamerNv12CameraSource {
             Ok(pair) => Ok(Some(pair)),
             Err(_) => Ok(None),
         }
+    }
+}
+
+impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
+    fn info(&self) -> reco_core::source::SourceInfo {
+        self.info.clone()
+    }
+
+    fn next_frame(
+        &mut self,
+    ) -> Result<Option<reco_core::source::StereoFrame>, reco_core::source::SourceError> {
+        self.next_pair()
+            .map(|opt| opt.map(reco_core::source::StereoFrame::Nv12))
     }
 }
 

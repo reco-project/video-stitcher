@@ -34,7 +34,7 @@ use crate::detector::CameraId;
 /// Specifies the yaw, pitch, and field of view of the virtual camera.
 /// The FOV allows directors to express zoom: narrow FOV = zoomed in on
 /// action, wide FOV = zoomed out for context.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct ViewportPosition {
     /// Horizontal pan angle in radians.
     ///
@@ -73,7 +73,7 @@ impl Default for ViewportPosition {
 ///
 /// External consumers (coaching, VAR, stats) receive these via the
 /// detection callback on [`StitchSession`](crate::session::StitchSession).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MappedDetection {
     /// Which camera this detection came from.
     pub camera: CameraId,

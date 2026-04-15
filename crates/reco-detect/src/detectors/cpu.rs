@@ -242,14 +242,16 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
         return None;
     }
 
-    let mut labels: Vec<(usize, String)> = Vec::new();
-    for entry in inner.split(',') {
-        let entry = entry.trim();
-        let (idx_str, name) = entry.split_once(':')?;
-        let idx: usize = idx_str.trim().parse().ok()?;
-        let name = name.trim().trim_matches('\'').trim_matches('"').to_string();
-        labels.push((idx, name));
-    }
+    let mut labels: Vec<(usize, String)> = inner
+        .split(',')
+        .filter_map(|entry| {
+            let entry = entry.trim();
+            let (idx_str, name) = entry.split_once(':')?;
+            let idx: usize = idx_str.trim().parse().ok()?;
+            let name = name.trim().trim_matches('\'').trim_matches('"').to_string();
+            Some((idx, name))
+        })
+        .collect();
 
     labels.sort_by_key(|(idx, _)| *idx);
 

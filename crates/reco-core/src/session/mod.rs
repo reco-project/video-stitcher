@@ -16,12 +16,13 @@
 //!   into an encoder, with optional progress reporting and interrupt
 //!   support. Use this for CLI batch encoding.
 
-mod detection;
+/// Detection pipeline - also usable standalone without StitchSession.
+pub mod detection;
 #[cfg(test)]
 mod tests;
 #[cfg(target_os = "linux")]
 mod zero_copy_linux;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod zero_copy_macos;
 
 #[cfg(target_os = "linux")]
@@ -98,6 +99,50 @@ pub struct FrameProgress {
 /// Callback for progress reporting during [`StitchSession::run`].
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
+/// Result from [`StitchSession::step`] - one frame with full session features.
+#[derive(Debug, Clone)]
+pub struct StepResult {
+    /// Where the virtual camera pointed for this frame.
+    pub viewport: ViewportPosition,
+    /// Detections mapped to panorama coordinates (empty if no detector or skipped frame).
+    pub detections: Vec<MappedDetection>,
+    /// Frame index (0-based).
+    pub frame_index: u64,
+}
+
+/// Session performance metrics for health monitoring.
+///
+/// Read via [`StitchSession::metrics`]. Updated per-frame.
+#[derive(Debug, Clone, Default)]
+pub struct SessionMetrics {
+    /// Frames processed so far.
+    pub frames_processed: u64,
+    /// Frames where errors were skipped (via ErrorPolicy::Skip).
+    pub frames_dropped: u64,
+    /// Total elapsed time since first frame.
+    pub elapsed: std::time::Duration,
+    /// Average fps over the session lifetime.
+    pub fps_average: f32,
+    /// Total frames in the source (if known).
+    pub total_frames: Option<u64>,
+}
+
+/// Error handling policy for [`StitchSession::run`].
+///
+/// Controls what happens when a frame fails to decode or render.
+#[derive(Default)]
+pub enum ErrorPolicy {
+    /// Stop processing on the first error (default).
+    #[default]
+    Abort,
+    /// Skip bad frames, up to `max_consecutive` in a row.
+    /// If `max_consecutive` consecutive frames fail, abort.
+    Skip {
+        /// Maximum consecutive frame errors before aborting.
+        max_consecutive: u64,
+    },
+}
+
 /// Callback for receiving tracked detection data.
 ///
 /// Called each frame with the tracked objects (may be empty on non-detection
@@ -131,7 +176,7 @@ pub enum SessionError {
     Source(#[from] SourceError),
 
     /// Metal interop error (macOS zero-copy).
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     #[error("Metal interop: {0}")]
     MetalInterop(#[from] crate::metal_interop::MetalInteropError),
 
@@ -171,7 +216,7 @@ pub struct StitchSessionBuilder {
     director: Option<Box<dyn Director>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
     lookahead_frames: usize,
@@ -260,7 +305,7 @@ impl StitchSessionBuilder {
     }
 
     /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub fn metal_detector(mut self, detector: Box<dyn crate::detector::MetalDetector>) -> Self {
         self.metal_detector = Some(detector);
         self
@@ -345,7 +390,7 @@ impl StitchSessionBuilder {
         if let Some(gpu_det) = self.gpu_detector {
             session.set_gpu_detector(gpu_det);
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let Some(metal_det) = self.metal_detector {
             session.set_metal_detector(metal_det);
         }
@@ -367,6 +412,8 @@ pub struct StitchSession {
     pub(crate) pipeline: StitchPipeline,
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
+    /// Additional encoders for multi-output (stream + record).
+    extra_encoders: Vec<AsyncEncodeThread>,
     /// GPU-resident encoder (zero-copy encode path, no implementations yet).
     #[allow(dead_code)]
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
@@ -374,6 +421,12 @@ pub struct StitchSession {
     pub(crate) detection: DetectionPipeline,
     pub(crate) director: Option<Box<dyn Director>>,
     pub(crate) frame_count: u64,
+    /// Session start time for metrics computation.
+    session_start: Option<std::time::Instant>,
+    /// Error policy for the run() batch loop.
+    error_policy: ErrorPolicy,
+    /// Dropped frame counter (for metrics).
+    frames_dropped: u64,
     /// Number of frames to buffer ahead for lookahead.
     /// When > 0, detection runs ahead of rendering so the director
     /// anticipates action before it reaches the encoder.
@@ -395,13 +448,22 @@ pub struct StitchSession {
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
 
     /// Precomputed coverage boundary for "no-black" viewport constraining.
     /// Built from calibration at session creation. In world space.
     /// Rig tilt correction is applied per-corner inside `safe_clamp`.
     coverage: Option<crate::projection::CoverageBoundary>,
+
+    /// Camera rotation from stream metadata, populated by
+    /// [`configure_from_source`](Self::configure_from_source).
+    /// Used to tell the GPU detector to flip frames during preprocessing.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    left_rotation: i32,
+    /// Right camera rotation from stream metadata.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    right_rotation: i32,
 }
 
 impl StitchSession {
@@ -421,7 +483,7 @@ impl StitchSession {
             director: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_detector: None,
             detection_interval: 1,
             lookahead_frames: 0,
@@ -475,6 +537,10 @@ impl StitchSession {
             detection: DetectionPipeline::new(),
             director: None,
             frame_count: 0,
+            extra_encoders: Vec::new(),
+            session_start: None,
+            error_policy: ErrorPolicy::default(),
+            frames_dropped: 0,
             lookahead_frames: 0,
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
@@ -482,9 +548,13 @@ impl StitchSession {
             gpu_slot_free_tx: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
             coverage: Some(coverage),
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            left_rotation: 0,
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            right_rotation: 0,
         })
     }
 
@@ -534,7 +604,7 @@ impl StitchSession {
     ///
     /// When set, the macOS zero-copy frame loop runs detection using
     /// Metal compute shaders for preprocessing and CoreML for inference.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
         self.detection.set_metal_detector(detector);
     }
@@ -676,9 +746,14 @@ impl StitchSession {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect && self.detection.has_gpu_detector() {
-            let detections = self
-                .detection
-                .run_gpu_detection(left_buf, right_buf, left_slot, right_slot);
+            let detections = self.detection.run_gpu_detection(
+                left_buf,
+                right_buf,
+                left_slot,
+                right_slot,
+                self.left_rotation,
+                self.right_rotation,
+            );
             self.detection.last_detections = self.map_detections(detections);
         }
 
@@ -694,7 +769,7 @@ impl StitchSession {
     ///
     /// Falls back to [`update_director`](Self::update_director) if no
     /// Metal detector is attached.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn detect_and_update_director_metal(
         &mut self,
         left_cvpb: crate::metal_interop::CVPixelBufferRef,
@@ -785,6 +860,62 @@ impl StitchSession {
     /// Handles YUV420P and NV12 input formats. For GPU-resident frames
     /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
     /// instead.
+    /// Process one frame with full session features: detection, director,
+    /// coverage clamping, and encoding.
+    ///
+    /// This is the recommended API for interactive consumers (GUI apps, OBS
+    /// plugins) that control their own frame loop. It combines
+    /// `detect_and_update_director()`, `director_position()`, and
+    /// `process_frame()` into a single call and returns what happened.
+    ///
+    /// Pass `override_position` to bypass the director (e.g. when the user
+    /// grabs the viewport with their mouse). The director still updates
+    /// internally so it stays warm.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "session_step")
+    )]
+    pub fn step(
+        &mut self,
+        frame: &StereoFrame,
+        elapsed: std::time::Duration,
+        override_position: Option<ViewportPosition>,
+    ) -> Result<StepResult, SessionError> {
+        // Run detection and update director.
+        self.detect_and_update_director(frame, elapsed);
+
+        // Get viewport position (from director or override).
+        let pos = if let Some(ovr) = override_position {
+            if let Some(fov) = ovr.fov_degrees {
+                self.pipeline.set_fov(fov);
+            }
+            ovr
+        } else {
+            self.director_position()
+        };
+
+        // Capture detections before render (they'll be overwritten on next detect).
+        let detections = self.detection.last_detections.clone();
+        let frame_index = self.frame_count;
+
+        // Render + encode.
+        self.process_frame(frame, pos.yaw, pos.pitch)?;
+
+        Ok(StepResult {
+            viewport: pos,
+            detections,
+            frame_index,
+        })
+    }
+
+    /// Render a single CPU-resident stereo frame and submit it to the encoder.
+    ///
+    /// Handles YUV420P and NV12 input formats. For GPU-resident frames
+    /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
+    /// instead.
+    ///
+    /// For interactive consumers that want detection + director + encoding in
+    /// one call, use [`step()`](Self::step) instead.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_process_frame")
@@ -795,7 +926,7 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let StereoFrame::MetalResident { left, right } = frame {
             return self.process_metal_frame(left, right, yaw, pitch);
         }
@@ -805,7 +936,7 @@ impl StitchSession {
     }
 
     /// Process a MetalResident frame: import CVPixelBuffers as textures, render.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn process_metal_frame(
         &mut self,
         left: &crate::metal_interop::RetainedCVPixelBuffer,
@@ -861,10 +992,14 @@ impl StitchSession {
 
         // First two calls return None (triple-buffer warmup).
         // From the third call onward, we get data from 2 frames ago.
-        if let Some(data) = nv12_data
-            && let Some(ref encoder) = self.encoder
-        {
-            encoder.submit(data, self.frame_count as i64)?;
+        if let Some(data) = nv12_data {
+            if let Some(ref encoder) = self.encoder {
+                encoder.submit(data, self.frame_count as i64)?;
+            }
+            // Fan out to extra encoders (multi-output).
+            for enc in &self.extra_encoders {
+                enc.submit(data, self.frame_count as i64)?;
+            }
         }
 
         self.frame_count += 1;
@@ -930,6 +1065,13 @@ impl StitchSession {
             if lr == 180 || rr == 180 {
                 self.pipeline.set_flip_180(lr == 180, rr == 180);
                 log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
+            }
+            // Store rotation for the GPU detector preprocessing path.
+            // The detector needs to flip frames independently of the render shader.
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                self.left_rotation = lr;
+                self.right_rotation = rr;
             }
         }
     }
@@ -1155,12 +1297,18 @@ impl StitchSession {
             if let Some(ref encoder) = self.encoder {
                 encoder.submit(nv12_data, self.frame_count as i64)?;
             }
+            for enc in &self.extra_encoders {
+                enc.submit(nv12_data, self.frame_count as i64)?;
+            }
             self.frame_count += 1;
         }
 
-        // Shut down the async encode thread.
+        // Shut down all encode threads.
         if let Some(mut encoder) = self.encoder.take() {
             encoder.finish()?;
+        }
+        for mut enc in self.extra_encoders.drain(..) {
+            enc.finish()?;
         }
 
         Ok(())
@@ -1214,5 +1362,49 @@ impl StitchSession {
     /// The name of the GPU this session is running on.
     pub fn gpu_name(&self) -> &str {
         self.pipeline.gpu_name()
+    }
+
+    /// Get current session performance metrics.
+    pub fn metrics(&self) -> SessionMetrics {
+        let elapsed = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
+        let secs = elapsed.as_secs_f32().max(0.001);
+        SessionMetrics {
+            frames_processed: self.frame_count,
+            frames_dropped: self.frames_dropped,
+            elapsed,
+            fps_average: self.frame_count as f32 / secs,
+            total_frames: None, // set by consumer from SourceInfo
+        }
+    }
+
+    /// Add an additional encoder for multi-output (e.g. record + stream).
+    ///
+    /// The NV12 data from each rendered frame is fanned out to all attached
+    /// encoders. Each encoder runs on its own background thread.
+    ///
+    /// Use [`set_encoder`](Self::set_encoder) for the primary encoder,
+    /// then `add_encoder` for additional outputs.
+    pub fn add_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
+        let width = self.nv12_converter.width();
+        let height = self.nv12_converter.height();
+        self.extra_encoders
+            .push(AsyncEncodeThread::new(encoder, width, height, buffer_count));
+    }
+
+    /// Set the error policy for the [`run()`](Self::run) batch loop.
+    pub fn set_error_policy(&mut self, policy: ErrorPolicy) {
+        self.error_policy = policy;
+    }
+
+    /// Update calibration parameters and recompute coverage boundary.
+    ///
+    /// Takes effect on the next render call. For interactive calibration
+    /// tweaking during preview or live operation.
+    pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
+        self.pipeline.update_calibration(calibration);
+        self.coverage = Some(crate::projection::CoverageBoundary::from_calibration(
+            self.pipeline.calibration(),
+            &self.pipeline.scene,
+        ));
     }
 }

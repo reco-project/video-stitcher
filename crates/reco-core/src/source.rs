@@ -185,7 +185,7 @@ pub enum StereoFrame {
     },
     /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox decode.
     /// The session imports these as Metal textures each frame.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     MetalResident {
         /// Left camera retained pixel buffer.
         left: crate::metal_interop::RetainedCVPixelBuffer,
@@ -207,6 +207,9 @@ pub struct SourceInfo {
     /// For example, 29.97fps is `(30000, 1001)`. Used by encoders for
     /// precise timing. `None` if the source cannot determine exact timing.
     pub fps_rational: Option<(i32, i32)>,
+    /// Total number of frames in the source (from container metadata).
+    /// `None` for live sources or when the count is unknown.
+    pub total_frames: Option<u64>,
 }
 
 /// Trait for stereo frame sources.
@@ -278,5 +281,23 @@ pub trait FrameSource: Send {
     /// Right camera rotation from stream metadata (degrees: 0, 90, 180, 270).
     fn right_rotation(&self) -> i32 {
         0
+    }
+
+    /// Seek to a specific frame number.
+    ///
+    /// File-based sources should implement this for interactive scrubbing.
+    /// Live sources (cameras) return `Err` from the default implementation.
+    fn seek(&mut self, _frame: u64) -> Result<(), SourceError> {
+        Err(SourceError::Read {
+            reason: "seek not supported by this source".into(),
+        })
+    }
+
+    /// Total number of frames in the source, if known.
+    ///
+    /// File-based sources should return the frame count from container metadata.
+    /// Live sources return `None`.
+    fn total_frames(&self) -> Option<u64> {
+        None
     }
 }

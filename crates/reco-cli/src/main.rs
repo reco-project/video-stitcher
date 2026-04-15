@@ -352,12 +352,10 @@ enum Commands {
         #[arg(long, default_value_t = 2)]
         frames: usize,
 
-        /// Extract IMU telemetry to auto-detect sync offset, rig tilt,
-        /// and seed roll/pitch parameters. Enabled by default; use
-        /// --no-auto-imu to disable. Overrides --sync-offset when
-        /// gyro data is available.
-        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-        auto_imu: bool,
+        /// Disable IMU telemetry extraction (sync offset, rig tilt/roll,
+        /// rotation seeds). Use when IMU data is unavailable or unreliable.
+        #[arg(long, default_value_t = false)]
+        no_auto_imu: bool,
 
         /// Auto-detect sync offset from audio cross-correlation.
         /// Used as fallback when IMU sync fails. Enabled by default;
@@ -511,15 +509,7 @@ fn main() -> anyhow::Result<()> {
                 model_path: model.as_deref(),
                 detection_interval,
                 lead_time,
-                tracking_mode: match tracking.as_str() {
-                    "field" => reco_autocam::TrackingMode::Field,
-                    "sweep" => reco_autocam::TrackingMode::Sweep,
-                    "ball" => reco_autocam::TrackingMode::Ball,
-                    other => {
-                        log::warn!("Unknown tracking mode '{other}', defaulting to ball");
-                        reco_autocam::TrackingMode::Ball
-                    }
-                },
+                tracking_mode: &tracking,
                 crf,
                 preset,
             },
@@ -544,14 +534,16 @@ fn main() -> anyhow::Result<()> {
                 height,
             );
             preview::run_preview(
-                &left,
-                &right,
-                &calibration,
-                width,
-                height,
-                sync_offset,
-                blend,
-                rig_tilt,
+                &preview::PreviewConfig {
+                    left_path: &left,
+                    right_path: &right,
+                    calibration_path: &calibration,
+                    width,
+                    height,
+                    sync_offset,
+                    blend_width: blend,
+                    rig_tilt_degrees: rig_tilt,
+                },
                 &interrupted,
             )
         }
@@ -599,22 +591,24 @@ fn main() -> anyhow::Result<()> {
             };
 
             camera::run_camera(
-                cam_config,
-                &calibration,
-                &output,
-                width,
-                height,
-                blend,
-                encoder,
-                &codec,
-                &quality,
-                duration,
-                max_frames,
-                capture_fps,
-                model.as_deref(),
-                detection_interval,
-                crf,
-                preset,
+                camera::CameraRunConfig {
+                    cam_config,
+                    calibration: &calibration,
+                    output: &output,
+                    width,
+                    height,
+                    blend,
+                    encoder_name: encoder,
+                    codec: &codec,
+                    quality: &quality,
+                    duration,
+                    max_frames,
+                    capture_fps,
+                    model_path: model.as_deref(),
+                    detection_interval,
+                    crf,
+                    preset,
+                },
                 &interrupted,
             )
         }
@@ -662,22 +656,24 @@ fn main() -> anyhow::Result<()> {
             };
 
             libcamera_cmd::run_libcamera(
-                cam_config,
-                &calibration,
-                &output,
-                width,
-                height,
-                blend,
-                encoder,
-                &codec,
-                &quality,
-                duration,
-                max_frames,
-                capture_fps,
-                model.as_deref(),
-                detection_interval,
-                crf,
-                preset,
+                libcamera_cmd::LibcameraRunConfig {
+                    cam_config,
+                    calibration: &calibration,
+                    output: &output,
+                    width,
+                    height,
+                    blend,
+                    encoder_name: encoder,
+                    codec: &codec,
+                    quality: &quality,
+                    duration,
+                    max_frames,
+                    capture_fps,
+                    model_path: model.as_deref(),
+                    detection_interval,
+                    crf,
+                    preset,
+                },
                 &interrupted,
             )
         }
@@ -688,7 +684,7 @@ fn main() -> anyhow::Result<()> {
             left_profile,
             right_profile,
             frames,
-            auto_imu,
+            no_auto_imu,
             auto_sync,
             sync_offset,
             skip_start,
@@ -710,7 +706,7 @@ fn main() -> anyhow::Result<()> {
             left_profile.as_deref(),
             right_profile.as_deref(),
             frames,
-            auto_imu,
+            no_auto_imu,
             auto_sync,
             sync_offset,
             skip_start,

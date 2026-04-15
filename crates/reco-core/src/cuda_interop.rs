@@ -355,8 +355,24 @@ impl Drop for CudaSharedMemory {
     fn drop(&mut self) {
         if let Ok(cuda) = cuda() {
             unsafe {
-                (cuda.cu_mem_unmap)(self.device_ptr, self.alloc_size);
-                (cuda.cu_mem_address_free)(self.device_ptr, self.alloc_size);
+                let unmap_rc = (cuda.cu_mem_unmap)(self.device_ptr, self.alloc_size);
+                if unmap_rc != CUDA_SUCCESS {
+                    log::warn!(
+                        "cuMemUnmap(0x{:x}, {}) failed with error {}",
+                        self.device_ptr,
+                        self.alloc_size,
+                        unmap_rc,
+                    );
+                }
+                let free_rc = (cuda.cu_mem_address_free)(self.device_ptr, self.alloc_size);
+                if free_rc != CUDA_SUCCESS {
+                    log::warn!(
+                        "cuMemAddressFree(0x{:x}, {}) failed with error {}",
+                        self.device_ptr,
+                        self.alloc_size,
+                        free_rc,
+                    );
+                }
             }
         }
         // Note: shared_handle (fd) is NOT closed here. Vulkan's vkAllocateMemory
@@ -759,6 +775,14 @@ impl CudaKernel {
 impl Drop for CudaKernel {
     fn drop(&mut self) {
         if let Ok(cuda) = cuda() {
+            // Ensure a CUDA context is current on this thread before
+            // calling cuModuleUnload. Drop may run on a different thread
+            // than the one that created the module (e.g., after the decode
+            // thread's context was popped).
+            if let Err(e) = cuda_ensure_context() {
+                log::warn!("CudaKernel drop: failed to set CUDA context: {e}");
+                return;
+            }
             unsafe {
                 let _ = (cuda.cu_module_unload)(self.module);
             }

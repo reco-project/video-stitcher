@@ -47,6 +47,7 @@ fn test_calibration() -> MatchCalibration {
             z_rz: 0.0,
         },
         rig_tilt: 0.0,
+        rig_roll: 0.0,
         sync_offset: 0,
         field_roi: None,
     }
@@ -89,6 +90,7 @@ impl FrameSource for MockSource {
             height: H,
             fps: 30.0,
             fps_rational: Some((30, 1)),
+            total_frames: None,
         }
     }
 
@@ -226,6 +228,7 @@ fn build_test_session(
             blend_width: 0.15,
             fov_degrees: 75.0,
             rig_tilt: 0.0,
+            rig_roll: 0.0,
         })
         .detection_interval(detection_interval);
 

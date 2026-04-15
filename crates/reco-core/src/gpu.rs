@@ -73,6 +73,10 @@ pub struct SurfaceInfo {
 ///
 /// Headless consumers create this with [`GpuContext::new`]. Windowed
 /// consumers that need surface compatibility use [`GpuContext::for_surface`].
+/// Cloning a `GpuContext` shares the same GPU device and queue (wgpu types
+/// are internally reference-counted). No GPU resources are duplicated.
+/// Multiple pipelines on a cloned context share the same command queue.
+#[derive(Clone)]
 pub struct GpuContext {
     /// The wgpu device handle.
     pub(crate) device: wgpu::Device,
@@ -347,11 +351,11 @@ impl GpuContext {
         {
             self.is_vulkan() && crate::cuda_interop::is_cuda_available()
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             self.is_metal()
         }
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "ios")))]
         {
             false
         }

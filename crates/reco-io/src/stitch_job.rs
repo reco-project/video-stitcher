@@ -320,7 +320,7 @@ impl StitchJob {
     ///         let info = source.info();
     ///         setup_autocam(session, "model.onnx", info.width, info.height,
     ///             info.fps as f32, source.is_gpu_resident(), 3, 0.5,
-    ///             TrackingMode::Ball, None).ok();
+    ///             TrackingMode::Ball, None, false).ok();
     ///     })
     ///     .run(&interrupted)?;
     /// ```
@@ -386,6 +386,7 @@ impl StitchJob {
             height: out_h,
             blend_width: self.blend_width,
             rig_tilt: cal.rig_tilt as f32,
+            rig_roll: cal.rig_roll as f32,
             ..Default::default()
         };
         let session_config = reco_core::session::SessionConfig {

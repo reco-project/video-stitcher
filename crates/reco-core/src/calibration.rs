@@ -249,6 +249,13 @@ pub struct MatchCalibration {
     #[serde(default)]
     pub rig_tilt: f64,
 
+    /// Rig roll in radians (rotation around the camera axis).
+    ///
+    /// Corrects for a rig that is not level side-to-side.
+    /// Defaults to 0.0 for backward compatibility.
+    #[serde(default)]
+    pub rig_roll: f64,
+
     /// Temporal sync offset in frames (positive = right video is ahead).
     ///
     /// Computed from IMU gyro or audio cross-correlation during calibration.
@@ -274,23 +281,47 @@ impl MatchCalibration {
     /// Checks file size (max 1 MB), parses JSON, and runs
     /// [`validate`](Self::validate). Returns a descriptive error on any failure.
     pub fn from_file(path: &std::path::Path) -> Result<Self, CalibrationLoadError> {
-        let meta = std::fs::metadata(path).map_err(|e| CalibrationLoadError::Io {
+        use std::io::Read;
+
+        let file = std::fs::File::open(path).map_err(|e| CalibrationLoadError::Io {
             path: path.display().to_string(),
             source: e,
         })?;
-        if meta.len() > MAX_CALIBRATION_FILE_SIZE {
+
+        // Read up to MAX+1 bytes atomically. If we get more than MAX bytes,
+        // the file is too large. This avoids a TOCTOU race between a separate
+        // metadata size check and the actual read.
+        let mut json = String::new();
+        file.take(MAX_CALIBRATION_FILE_SIZE + 1)
+            .read_to_string(&mut json)
+            .map_err(|e| CalibrationLoadError::Io {
+                path: path.display().to_string(),
+                source: e,
+            })?;
+
+        if json.len() as u64 > MAX_CALIBRATION_FILE_SIZE {
             return Err(CalibrationLoadError::TooLarge {
-                size: meta.len(),
+                size: json.len() as u64,
                 max: MAX_CALIBRATION_FILE_SIZE,
             });
         }
-        let json = std::fs::read_to_string(path).map_err(|e| CalibrationLoadError::Io {
-            path: path.display().to_string(),
-            source: e,
-        })?;
+
         let cal: Self = serde_json::from_str(&json).map_err(CalibrationLoadError::Parse)?;
         cal.validate()?;
         Ok(cal)
+    }
+
+    /// Save calibration to a JSON file.
+    ///
+    /// Uses pretty-printed JSON for human readability.
+    pub fn to_file(&self, path: &std::path::Path) -> Result<(), std::io::Error> {
+        let json = self.to_json_pretty();
+        std::fs::write(path, json)
+    }
+
+    /// Serialize to pretty-printed JSON string.
+    pub fn to_json_pretty(&self) -> String {
+        serde_json::to_string_pretty(self).expect("MatchCalibration is always serializable")
     }
 
     /// Validates all calibration parameters before they are used by the GPU pipeline.
@@ -305,6 +336,18 @@ impl MatchCalibration {
         validate_camera_params(&self.left, "left")?;
         validate_camera_params(&self.right, "right")?;
         validate_layout(&self.layout)?;
+        if !self.rig_tilt.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: "rig_tilt".to_string(),
+                value: self.rig_tilt.to_string(),
+            });
+        }
+        if !self.rig_roll.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: "rig_roll".to_string(),
+                value: self.rig_roll.to_string(),
+            });
+        }
         Ok(())
     }
 }
@@ -597,6 +640,7 @@ mod tests {
                 z_rz: 0.0,
             },
             rig_tilt: 0.0,
+            rig_roll: 0.0,
             sync_offset: 0,
             field_roi: None,
         }
@@ -763,6 +807,7 @@ mod tests {
                 z_rz: 0.0,
             },
             rig_tilt: 0.3,
+            rig_roll: 0.0,
             sync_offset: 67,
         };
 

@@ -96,6 +96,7 @@ impl SmartFileSource {
             height: probe.height(),
             fps: probe.fps(),
             fps_rational: Some((fps_r.0, fps_r.1)),
+            total_frames: None,
         };
         let pixel_format = probe.pixel_format();
         let left_rotation = probe.rotation();
@@ -163,6 +164,7 @@ impl SmartFileSource {
             height: probe.height(),
             fps: probe.fps(),
             fps_rational: Some((fps_r.0, fps_r.1)),
+            total_frames: None,
         };
         let pixel_format = probe.pixel_format();
         let left_rotation = probe.rotation();

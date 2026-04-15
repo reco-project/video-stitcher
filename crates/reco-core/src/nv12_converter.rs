@@ -42,7 +42,7 @@ struct Nv12Params {
 
 /// GPU-accelerated RGBA → NV12 converter with triple-buffered readback.
 ///
-/// Created once per pipeline alongside the [`Renderer`](crate::renderer::Renderer).
+/// Created once per pipeline alongside the internal renderer.
 /// Call [`convert_and_readback`](Self::convert_and_readback) after rendering
 /// each frame to get NV12 data ready for the encoder.
 ///
@@ -69,7 +69,13 @@ pub struct Nv12Converter {
     pending_count: u8,
     /// Cached bind group for the current render target. Avoids per-frame
     /// descriptor pool allocation which causes OOM on Vulkan (wgpu#7525).
-    /// Stores a raw pointer to the texture for identity comparison (never dereferenced).
+    ///
+    /// Stores a raw pointer to the texture for identity comparison (never
+    /// dereferenced). Stale addresses are not a risk here because wgpu
+    /// textures are `Arc`-wrapped internally - the pointer remains stable
+    /// for the texture's lifetime. The caller always passes the same
+    /// render target reference, and if a new texture is created (e.g.,
+    /// on resize), its address will differ, correctly invalidating the cache.
     cached_bind_group: Option<(*const wgpu::Texture, wgpu::BindGroup)>,
     /// Triple-buffered readback buffers (avoids 3 MB allocation per frame at 1080p).
     readback_buffers: [Vec<u8>; 3],

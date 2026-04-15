@@ -12,7 +12,7 @@
 //! The slight wide-angle distortion is negligible for detection accuracy.
 
 /// Which camera produced this frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CameraId {
     /// Left camera (plane in X-Z space).
     Left,
@@ -61,7 +61,7 @@ pub enum ChromaFormat<'a> {
 /// Coordinates are in normalized image space `[0.0, 1.0]` relative to
 /// the frame dimensions. Use [`crate::projection::camera_to_panorama`]
 /// to map these to panoramic yaw/pitch.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Detection {
     /// Which camera this detection came from.
     pub camera: CameraId,
@@ -127,6 +127,21 @@ pub struct GpuNv12Frame {
     pub width: u32,
     /// Frame height in pixels.
     pub height: u32,
+    /// Camera rotation from stream metadata (0, 90, 180, 270 degrees).
+    ///
+    /// In the GPU zero-copy path, NVDEC decodes without applying rotation
+    /// metadata. The rendering shader flips UV coordinates so the display
+    /// is correct, but the detector receives raw upside-down frames. When
+    /// `rotation == 180`, the detector must flip the frame during
+    /// preprocessing so detection models see correctly oriented images.
+    pub rotation: i32,
+    /// Whether this frame uses P010 (10-bit NV12) pixel format.
+    ///
+    /// P010 stores 10-bit luma/chroma values in the upper 10 bits of each
+    /// `u16` sample. Detectors that expect 8-bit NV12 (e.g. NPP's
+    /// `nppiNV12ToRGB_8u_P2C3R`) must convert P010 to 8-bit first by
+    /// right-shifting each sample by 8 bits.
+    pub is_10bit: bool,
 }
 
 /// Trait for object detection on GPU-resident NV12 frames.
@@ -160,7 +175,7 @@ pub trait GpuDetector: Send {
 /// Implementations must handle Metal-side preprocessing (NV12-to-RGB
 /// conversion, resize, normalization via compute shaders) and inference,
 /// reading back only the small detection output.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub trait MetalDetector: Send {
     /// Run detection on a Metal-resident NV12 frame.
     ///

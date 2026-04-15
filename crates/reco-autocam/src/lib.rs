@@ -32,7 +32,7 @@ pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
-pub use directors::{BallDirector, FieldDirector, TrackingMode};
+pub use directors::{BallDirector, FieldDirector, SweepDirector, TrackingMode};
 pub use roi_filter::RoiFilteredDetector;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use roi_filter::RoiFilteredGpuDetector;
@@ -55,21 +55,113 @@ use reco_core::session::StitchSession;
 /// that discards detections outside the playing field polygon before they
 /// reach the director.
 ///
+/// Configuration for the autocam pipeline.
+///
+/// All fields have sensible defaults. Only `model_path` is required.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reco_autocam::{AutocamConfig, TrackingMode};
+///
+/// let config = AutocamConfig::new("model.onnx")
+///     .with_tracking_mode(TrackingMode::Field)
+///     .with_detection_interval(3);
+///
+/// reco_autocam::setup_autocam_from_config(&mut session, &config)?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct AutocamConfig {
+    /// Path to a YOLO model file (.onnx, .engine, .mlmodelc, or NCNN dir).
+    pub model_path: std::path::PathBuf,
+    /// Tracking strategy (default: Ball).
+    pub tracking_mode: TrackingMode,
+    /// Run detection every N frames (default: 1).
+    pub detection_interval: u64,
+    /// Optional playing field ROI polygons for filtering.
+    pub field_roi: Option<reco_core::calibration::FieldRoi>,
+    /// Whether the source produces P010 (10-bit NV12) frames.
+    /// GPU detectors allocate conversion buffers when true.
+    pub is_10bit: bool,
+}
+
+impl AutocamConfig {
+    /// Create a new config with the given model path and sensible defaults.
+    pub fn new(model_path: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            model_path: model_path.into(),
+            tracking_mode: TrackingMode::Ball,
+            detection_interval: 1,
+            field_roi: None,
+            is_10bit: false,
+        }
+    }
+
+    /// Set the tracking mode.
+    pub fn with_tracking_mode(mut self, mode: TrackingMode) -> Self {
+        self.tracking_mode = mode;
+        self
+    }
+
+    /// Set the detection interval.
+    pub fn with_detection_interval(mut self, interval: u64) -> Self {
+        self.detection_interval = interval;
+        self
+    }
+
+    /// Set the field ROI for detection filtering.
+    pub fn with_field_roi(mut self, roi: reco_core::calibration::FieldRoi) -> Self {
+        self.field_roi = Some(roi);
+        self
+    }
+
+    /// Mark the source as P010 (10-bit NV12).
+    ///
+    /// When set, GPU detectors allocate scratch buffers to convert 10-bit
+    /// samples to 8-bit before NPP color conversion.
+    pub fn with_10bit(mut self, is_10bit: bool) -> Self {
+        self.is_10bit = is_10bit;
+        self
+    }
+}
+
+/// Set up the autocam pipeline from a config struct.
+///
+/// Infers input dimensions, fps, and zero-copy mode from the session.
+/// Returns `true` if detection was successfully activated.
+pub fn setup_autocam_from_config(
+    session: &mut StitchSession,
+    config: &AutocamConfig,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let (input_width, input_height) = session.pipeline().source_info();
+    let use_zero_copy = session.pipeline().gpu().supports_zero_copy();
+
+    setup_autocam(
+        session,
+        config.model_path.to_str().unwrap_or(""),
+        input_width,
+        input_height,
+        30.0, // default fps when not available from source
+        use_zero_copy,
+        config.detection_interval,
+        0.0, // no lookahead
+        config.tracking_mode,
+        config.field_roi.as_ref(),
+        config.is_10bit,
+    )
+}
+
+/// Set up the autocam pipeline (detection + direction) on a stitch session.
+///
+/// For a simpler API with config struct and inferred parameters, use
+/// [`setup_autocam_from_config`] with [`AutocamConfig`] instead.
+///
+/// `is_10bit` should be true when the source produces P010 (10-bit NV12)
+/// frames, so GPU detectors allocate conversion buffers.
+///
 /// Returns `true` if detection was successfully activated, `false` if
 /// detection could not be initialized (the session remains usable without
 /// autocam in that case).
-///
-/// # Arguments
-///
-/// * `session` - The stitch session to attach detection and direction to.
-/// * `model_path` - Path to a YOLO ONNX model (or `.mlmodelc` on macOS).
-/// * `input_width`, `input_height` - Raw camera frame dimensions.
-/// * `fps` - Video frame rate (used for director timing).
-/// * `use_zero_copy` - Whether the pipeline is running in zero-copy mode.
-/// * `detection_interval` - Run detection every N frames (1 = every frame).
-/// * `lead_time` - Director lookahead in seconds (CPU path only).
-/// * `tracking_mode` - Which director to use (Ball or Field).
-/// * `field_roi` - Optional playing field ROI polygons for filtering detections.
 #[allow(clippy::too_many_arguments)]
 pub fn setup_autocam(
     session: &mut StitchSession,
@@ -82,6 +174,7 @@ pub fn setup_autocam(
     lead_time: f64,
     tracking_mode: TrackingMode,
     field_roi: Option<&FieldRoi>,
+    is_10bit: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut detection_active = false;
 
@@ -131,6 +224,7 @@ pub fn setup_autocam(
             input_height,
             0.10,
             trt_labels,
+            is_10bit,
         ) {
             Ok(Some(trt_det)) => {
                 let detector: Box<dyn reco_core::detector::GpuDetector> =
@@ -155,7 +249,14 @@ pub fn setup_autocam(
     // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     if !detection_active && use_zero_copy {
-        match OrtGpuDetector::try_new(model_path, input_width, input_height, 0.10, Vec::new()) {
+        match OrtGpuDetector::try_new(
+            model_path,
+            input_width,
+            input_height,
+            0.10,
+            Vec::new(),
+            is_10bit,
+        ) {
             Ok(Some(gpu_det)) => {
                 let detector: Box<dyn reco_core::detector::GpuDetector> =
                     if let Some(roi) = effective_roi.clone() {
@@ -245,6 +346,14 @@ pub fn setup_autocam(
         log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
     }
 
+    // Sweep director doesn't need detection - attach it regardless.
+    if tracking_mode == TrackingMode::Sweep {
+        log::info!("Tracking mode: sweep (debug, no AI)");
+        let director = Box::new(directors::SweepDirector::new(0.8, 10.0));
+        session.set_director(director);
+        return Ok(true);
+    }
+
     if detection_active {
         if detection_interval > 1 {
             session.set_detection_interval(detection_interval);
@@ -269,16 +378,13 @@ pub fn setup_autocam(
                 Box::new(d)
             }
             TrackingMode::Field => {
-                let d = FieldDirector::new(fps)
+                let d = FieldDirector::new()
                     .with_ball_class_id(ball_id)
                     .with_player_class_id(person_id);
                 log::info!("Tracking mode: field (ball + players)");
                 Box::new(d)
             }
-            TrackingMode::Sweep => {
-                log::info!("Tracking mode: sweep (debug, no AI)");
-                Box::new(directors::SweepDirector::new(0.8, 10.0))
-            }
+            TrackingMode::Sweep => unreachable!("handled above"),
         };
 
         let lookahead = if lead_time > 0.0 && !use_zero_copy {

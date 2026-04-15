@@ -1,4 +1,4 @@
-//! Detection pipeline extracted from [`StitchSession`](super::StitchSession).
+//! Detection pipeline extracted from [`StitchSession`](crate::session::StitchSession).
 //!
 //! Owns the detector backends (CPU, GPU/CUDA, Metal), detection interval,
 //! callback, and cached detections. This keeps detection concerns separated
@@ -12,27 +12,34 @@ use super::DetectionCallback;
 /// Detection pipeline owning detector backends, interval, callback,
 /// and cached detections.
 ///
-/// Internal to the session module. [`StitchSession`](super::StitchSession)
-/// delegates its public detection setters here.
-pub(crate) struct DetectionPipeline {
+/// Used internally by [`StitchSession`](crate::session::StitchSession) and also
+/// available as a standalone component for consumers who want detection
+/// without the full stitch+encode pipeline (e.g. Python SDKs, analytics).
+pub struct DetectionPipeline {
     pub(super) detector: Option<Box<dyn Detector>>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(super) gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(super) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
     callback: Option<DetectionCallback>,
     pub(super) last_detections: Vec<MappedDetection>,
 }
 
+impl Default for DetectionPipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DetectionPipeline {
     /// Create a new detection pipeline with default settings (no detector, interval 1).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             detector: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_detector: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_detector: None,
             detection_interval: 1,
             callback: None,
@@ -61,37 +68,37 @@ impl DetectionPipeline {
     }
 
     /// Whether a Metal detector is attached.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn has_metal_detector(&self) -> bool {
         self.metal_detector.is_some()
     }
 
     /// Attach a CPU detector for object detection on raw frames.
-    pub(crate) fn set_detector(&mut self, detector: Box<dyn Detector>) {
+    pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
         self.detector = Some(detector);
     }
 
     /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
+    pub fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
         self.gpu_detector = Some(detector);
     }
 
     /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    #[cfg(target_os = "macos")]
-    pub(crate) fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
         self.metal_detector = Some(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
     ///
     /// Clamped to a minimum of 1 (every frame).
-    pub(crate) fn set_detection_interval(&mut self, interval: u64) {
+    pub fn set_detection_interval(&mut self, interval: u64) {
         self.detection_interval = interval.max(1);
     }
 
     /// Set a callback for receiving tracked detection data.
-    pub(crate) fn set_callback(&mut self, cb: DetectionCallback) {
+    pub fn set_callback(&mut self, cb: DetectionCallback) {
         self.callback = Some(cb);
     }
 
@@ -172,6 +179,8 @@ impl DetectionPipeline {
         right_buf: &crate::zero_copy::GpuBufInfo,
         left_slot: u8,
         right_slot: u8,
+        left_rotation: i32,
+        right_rotation: i32,
     ) -> Vec<Detection> {
         let Some(ref mut gpu_det) = self.gpu_detector else {
             return Vec::new();
@@ -182,6 +191,8 @@ impl DetectionPipeline {
         let rs = right_slot as usize;
         let mut detections = Vec::new();
 
+        let is_10bit = left_buf.pixel_format == crate::renderer::GpuPixelFormat::P010;
+
         let left_frame = crate::detector::GpuNv12Frame {
             y_ptr: left_buf.y_ptr[ls],
             uv_ptr: left_buf.uv_ptr[ls],
@@ -189,6 +200,8 @@ impl DetectionPipeline {
             uv_pitch: left_buf.uv_pitch[ls],
             width: left_buf.width,
             height: left_buf.height,
+            rotation: left_rotation,
+            is_10bit,
         };
         let right_frame = crate::detector::GpuNv12Frame {
             y_ptr: right_buf.y_ptr[rs],
@@ -197,6 +210,8 @@ impl DetectionPipeline {
             uv_pitch: right_buf.uv_pitch[rs],
             width: right_buf.width,
             height: right_buf.height,
+            rotation: right_rotation,
+            is_10bit,
         };
         detections.extend(gpu_det.detect_gpu(CameraId::Left, &left_frame));
         detections.extend(gpu_det.detect_gpu(CameraId::Right, &right_frame));
@@ -208,7 +223,7 @@ impl DetectionPipeline {
     ///
     /// Returns raw detections from both cameras. The caller maps them to
     /// panorama coordinates.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(super) fn run_metal_detection(
         &mut self,
         left_cvpb: crate::metal_interop::CVPixelBufferRef,

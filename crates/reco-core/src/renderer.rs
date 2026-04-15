@@ -675,6 +675,7 @@ impl Renderer {
             viewport.position.yaw,
             viewport.position.pitch,
             viewport.config.rig_tilt,
+            viewport.config.rig_roll,
         );
 
         let left_mvp = projection * view * scene.model_matrix_left();
@@ -865,6 +866,12 @@ fn upload_yuv(
             actual: u.len(),
         });
     }
+    if v.len() != (uv_w * uv_h) as usize {
+        return Err(RenderError::FrameSizeMismatch {
+            expected: (uv_w * uv_h) as usize,
+            actual: v.len(),
+        });
+    }
 
     upload_plane(gpu, &plane.y_texture, y, w, h);
     upload_plane(gpu, &plane.u_texture, u, uv_w, uv_h);
@@ -930,7 +937,13 @@ fn upload_nv12(
 /// planes meet) by default. This matches v1 Three.js where the OrbitControls
 /// target is `[0, 0, 0]`. `yaw` rotates around Y (left/right from center),
 /// `pitch` rotates around X (up/down).
-fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32, rig_tilt: f32) -> Matrix4<f32> {
+fn view_matrix(
+    position: &[f32; 3],
+    yaw: f32,
+    pitch: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+) -> Matrix4<f32> {
     let eye = Point3::new(position[0], position[1], position[2]);
     // Base direction: eye → origin (the L-shape corner)
     let mut base_forward = -eye.coords.normalize();
@@ -949,6 +962,19 @@ fn view_matrix(position: &[f32; 3], yaw: f32, pitch: f32, rig_tilt: f32) -> Matr
             UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(base_right), rig_tilt);
         base_forward = tilt_q * base_forward;
         world_up = tilt_q * world_up;
+    }
+
+    // Rig roll: rotate around the forward axis to correct lateral lean.
+    // Negated because roll describes the camera's lean direction, and we
+    // need to rotate the opposite way to straighten the horizon.
+    // (Tilt is not negated because it shifts the view center to match
+    // where the camera points, which is the same direction.)
+    if rig_roll.abs() > 1e-6 {
+        let roll_q = UnitQuaternion::from_axis_angle(
+            &nalgebra::Unit::new_normalize(base_forward),
+            -rig_roll,
+        );
+        world_up = roll_q * world_up;
     }
 
     // Yaw: rotate around the (possibly tilted) up axis

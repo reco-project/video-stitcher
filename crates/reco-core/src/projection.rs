@@ -73,6 +73,91 @@ pub fn camera_to_panorama(
     Some(direction_to_yaw_pitch(&dir, &scene.camera_position))
 }
 
+/// Map a panorama position (yaw/pitch) back to a camera pixel coordinate.
+///
+/// This is the inverse of [`camera_to_panorama`]. Given a position in the
+/// panoramic view, returns the corresponding normalized pixel coordinate
+/// in the specified camera's image (or `None` if the position is outside
+/// that camera's field of view).
+///
+/// Useful for:
+/// - Projecting panorama-space detections back to camera images
+/// - Computing panorama-to-pitch coordinate transforms (consumer territory)
+/// - Overlay placement at specific panorama positions
+pub fn panorama_to_camera(
+    yaw: f32,
+    pitch: f32,
+    camera: CameraId,
+    calibration: &MatchCalibration,
+    scene: &SceneGeometry,
+) -> Option<(f32, f32)> {
+    use nalgebra::{Point3, Vector3};
+
+    let params = match camera {
+        CameraId::Left => &calibration.left,
+        CameraId::Right => &calibration.right,
+    };
+
+    // Step 1: yaw/pitch -> world ray direction
+    let cam_pos = Point3::from(Vector3::from(scene.camera_position));
+    let cos_pitch = pitch.cos();
+    let dir = Vector3::new(cos_pitch * yaw.sin(), pitch.sin(), -cos_pitch * yaw.cos());
+
+    // Step 2: Ray-plane intersection -> plane UV
+    // Get the model matrix for this camera's plane
+    let model = match camera {
+        CameraId::Left => scene.model_matrix_left(),
+        CameraId::Right => scene.model_matrix_right(),
+    };
+
+    // The plane is at z=0 in model space, facing +Z. Transform to world space.
+    let plane_origin = model.transform_point(&Point3::new(0.0, 0.0, 0.0));
+    let plane_normal = model
+        .transform_vector(&Vector3::new(0.0, 0.0, 1.0))
+        .normalize();
+
+    // Ray: cam_pos + t * dir. Intersect with plane.
+    let denom = plane_normal.dot(&dir);
+    if denom.abs() < 1e-6 {
+        return None; // Ray parallel to plane
+    }
+    let t = (plane_origin - cam_pos).dot(&plane_normal) / denom;
+    if t <= 0.0 {
+        return None; // Behind camera
+    }
+
+    let hit = cam_pos + dir * t;
+
+    // Transform hit to model-local coordinates
+    let inv_model = model.try_inverse()?;
+    let local = inv_model.transform_point(&hit);
+
+    // Model-local plane spans [-w/2, w/2] x [-h/2, h/2] where w = plane_width, h = plane_width/aspect
+    let half_w = scene.plane_width * 0.5;
+    let half_h = half_w / scene.plane_aspect;
+
+    // UV in [0, 1]
+    let u = (local.x / half_w * 0.5 + 0.5) as f64;
+    let v = (0.5 - local.y / half_h * 0.5) as f64;
+
+    if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
+        return None; // Outside the camera plane
+    }
+
+    // Step 3: Plane UV -> camera pixel via fisheye projection (forward model)
+    let pixel = crate::lens::undistorted_to_distorted(u, v, params.width, params.height, params);
+
+    // Normalize to [0, 1]
+    let norm_x = pixel.0 / params.width as f64;
+    let norm_y = pixel.1 / params.height as f64;
+
+    if (0.0..=1.0).contains(&norm_x) && (0.0..=1.0).contains(&norm_y) {
+        Some((norm_x as f32, norm_y as f32))
+    } else {
+        None
+    }
+}
+
 /// Compute the valid yaw/pitch bounds for a given FOV where no black
 /// edges appear in the viewport.
 ///
@@ -307,49 +392,13 @@ pub struct ClampedPosition {
 
 /// Angular offsets of viewport boundary points from center.
 ///
-/// Includes 4 corners AND 4 edge midpoints. Edge midpoints provide
-/// the tightest per-axis constraints.
-struct ViewportOffsets {
-    offsets: [(f32, f32); 8],
-}
-
-impl ViewportOffsets {
-    fn compute(fov_v_deg: f32, aspect: f32) -> Self {
-        let half_v = (fov_v_deg * 0.5_f32).to_radians();
-        let half_h = (half_v.tan() * aspect).atan();
-        let tan_h = half_h.tan();
-        let tan_v = half_v.tan();
-
-        let points = [
-            (-tan_h, tan_v),  // top-left
-            (tan_h, tan_v),   // top-right
-            (tan_h, -tan_v),  // bottom-right
-            (-tan_h, -tan_v), // bottom-left
-            (0.0, tan_v),     // top-center
-            (0.0, -tan_v),    // bottom-center
-            (-tan_h, 0.0),    // left-center
-            (tan_h, 0.0),     // right-center
-        ];
-
-        let mut offsets = [(0.0_f32, 0.0_f32); 8];
-        for (i, &(sx, sy)) in points.iter().enumerate() {
-            let len = (sx * sx + sy * sy + 1.0).sqrt();
-            let dx = sx / len;
-            let dy = sy / len;
-            let dz = -1.0 / len;
-            offsets[i] = (dx.atan2(-dz), dy.asin());
-        }
-        Self { offsets }
-    }
-}
-
 impl CoverageBoundary {
     /// Build the coverage boundary from calibration data.
     ///
     /// Densely samples both planes' edge loops and a sparse interior grid,
     /// projecting into (yaw, pitch) space and grouping into pitch slices.
     pub fn from_calibration(calibration: &MatchCalibration, scene: &SceneGeometry) -> Self {
-        let n_slices: usize = 200;
+        let n_slices: usize = 400;
         let margin = 0.02_f32;
 
         let mut left_points: Vec<(f32, f32)> = Vec::new();
@@ -362,8 +411,8 @@ impl CoverageBoundary {
                 &mut right_points
             };
 
-            // Dense edge sampling: 200 points per edge (4 edges = 800 per plane)
-            let edge_steps = 200_u32;
+            // Dense edge sampling: 400 points per edge (4 edges = 1600 per plane)
+            let edge_steps = 400_u32;
             for i in 0..=edge_steps {
                 let t = margin + (1.0 - 2.0 * margin) * (i as f32 / edge_steps as f32);
                 for &(nx, ny) in &[
@@ -456,8 +505,13 @@ impl CoverageBoundary {
             if yaw_lo >= yaw_hi {
                 pitch_range
             } else {
+                // Sample pitch range at multiple yaw positions and use the
+                // 10th percentile instead of absolute minimum. The absolute
+                // minimum is dominated by narrow seam edges which the director
+                // rarely visits. The 10th percentile gives a practical FOV
+                // that works across most of the useful yaw range.
                 let n_samples = 50;
-                let mut min_pr = pitch_range;
+                let mut ranges = Vec::with_capacity(n_samples + 1);
                 for j in 0..=n_samples {
                     let t = j as f32 / n_samples as f32;
                     let test_yaw = yaw_lo + t * (yaw_hi - yaw_lo);
@@ -476,10 +530,17 @@ impl CoverageBoundary {
                         }
                     }
                     if p_hi > p_lo {
-                        min_pr = min_pr.min(p_hi - p_lo);
+                        ranges.push(p_hi - p_lo);
                     }
                 }
-                min_pr
+                if ranges.is_empty() {
+                    pitch_range
+                } else {
+                    ranges.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    // 10th percentile: skip the narrowest 10%
+                    let idx = (ranges.len() / 10).min(ranges.len() - 1);
+                    ranges[idx]
+                }
             }
         };
 
@@ -546,21 +607,6 @@ impl CoverageBoundary {
         (lo.0 + frac * (hi.0 - lo.0), lo.1 + frac * (hi.1 - lo.1))
     }
 
-    /// Check if coverage is contiguous (no seam gap) at a given pitch.
-    fn is_contiguous_at(&self, pitch: f32) -> bool {
-        let left = self.interpolate_slice(&self.left_slices, pitch);
-        let right = self.interpolate_slice(&self.right_slices, pitch);
-        if left.0 > left.1 || right.0 > right.1 {
-            return false;
-        }
-        left.0 <= right.1 && right.0 <= left.1
-    }
-
-    /// Clamp a viewport position to the safe panning region for a given FOV.
-    ///
-    /// Computes the exact angular extent of 8 viewport boundary points
-    /// (4 corners + 4 edge midpoints) using perspective projection math,
-    /// then ensures each point falls within the precomputed coverage.
     /// Clamp a viewport position to the safe panning region for a given FOV.
     ///
     /// `rig_tilt` (radians) accounts for the renderer's rig tilt rotation.
@@ -586,7 +632,7 @@ impl CoverageBoundary {
         }
     }
 
-    /// Clamp in world space (no rig tilt). The core clamping logic.
+    /// Clamp viewport center to coverage with perspective-correct margins.
     fn safe_clamp_world(
         &self,
         yaw: f32,
@@ -594,89 +640,23 @@ impl CoverageBoundary {
         fov_v_deg: f32,
         aspect: f32,
     ) -> ClampedPosition {
-        let corners = ViewportOffsets::compute(fov_v_deg, aspect);
+        let half_vfov = (fov_v_deg * 0.5).to_radians();
+        let half_hfov = (aspect * half_vfov.tan()).atan();
 
-        // Pitch clamping: each boundary point constrains the center pitch
-        let mut safe_pitch_min = f32::MIN;
-        let mut safe_pitch_max = f32::MAX;
-        for &(_, dp) in &corners.offsets {
-            safe_pitch_min = safe_pitch_min.max(self.pitch_min - dp);
-            safe_pitch_max = safe_pitch_max.min(self.pitch_max - dp);
-        }
+        // Pitch: global bounds with vertical FOV margin
+        let clamped_pitch = if self.pitch_min + half_vfov <= self.pitch_max - half_vfov {
+            pitch.clamp(self.pitch_min + half_vfov, self.pitch_max - half_vfov)
+        } else {
+            (self.pitch_min + self.pitch_max) * 0.5
+        };
 
-        // Require contiguous coverage (no seam gap) at all corner pitches
-        let pitch_step = (self.pitch_max - self.pitch_min) / self.n_slices as f32;
-        if pitch_step <= f32::EPSILON {
-            // Degenerate coverage: clamp to midpoint to avoid infinite loop.
-            let mid_pitch = (self.pitch_min + self.pitch_max) * 0.5;
-            let (yaw_lo, yaw_hi) = self.yaw_range_at(mid_pitch);
-            return ClampedPosition {
-                yaw: yaw.clamp(yaw_lo, yaw_hi),
-                pitch: mid_pitch,
-            };
-        }
-        let max_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MIN, f32::max);
-        let min_corner_dp = corners.offsets.iter().map(|c| c.1).fold(f32::MAX, f32::min);
-
-        // Scan from top
-        {
-            let mut ceiling = safe_pitch_max;
-            let mut p = self.pitch_max - max_corner_dp;
-            while p >= self.pitch_min - min_corner_dp {
-                if corners
-                    .offsets
-                    .iter()
-                    .all(|&(_, dp)| self.is_contiguous_at(p + dp))
-                {
-                    ceiling = p;
-                    break;
-                }
-                p -= pitch_step;
-            }
-            safe_pitch_max = safe_pitch_max.min(ceiling);
-        }
-
-        // Scan from bottom
-        {
-            let mut floor = safe_pitch_min;
-            let mut p = self.pitch_min - min_corner_dp;
-            while p <= self.pitch_max - max_corner_dp {
-                if corners
-                    .offsets
-                    .iter()
-                    .all(|&(_, dp)| self.is_contiguous_at(p + dp))
-                {
-                    floor = p;
-                    break;
-                }
-                p += pitch_step;
-            }
-            safe_pitch_min = safe_pitch_min.max(floor);
-        }
-
-        if safe_pitch_min > safe_pitch_max {
-            let mid = (safe_pitch_min + safe_pitch_max) * 0.5;
-            safe_pitch_min = mid;
-            safe_pitch_max = mid;
-        }
-        let clamped_pitch = pitch.clamp(safe_pitch_min, safe_pitch_max);
-
-        // Yaw clamping using the clamped pitch
-        let mut safe_yaw_min = f32::MIN;
-        let mut safe_yaw_max = f32::MAX;
-        for &(dy, dp) in &corners.offsets {
-            let corner_pitch = clamped_pitch + dp;
-            let (cov_yaw_min, cov_yaw_max) = self.yaw_range_at(corner_pitch);
-            safe_yaw_min = safe_yaw_min.max(cov_yaw_min - dy);
-            safe_yaw_max = safe_yaw_max.min(cov_yaw_max - dy);
-        }
-
-        if safe_yaw_min > safe_yaw_max {
-            let mid = (safe_yaw_min + safe_yaw_max) * 0.5;
-            safe_yaw_min = mid;
-            safe_yaw_max = mid;
-        }
-        let clamped_yaw = yaw.clamp(safe_yaw_min, safe_yaw_max);
+        // Yaw: coverage range at clamped pitch with horizontal FOV margin
+        let (yaw_lo, yaw_hi) = self.yaw_range_at(clamped_pitch);
+        let clamped_yaw = if yaw_lo + half_hfov <= yaw_hi - half_hfov {
+            yaw.clamp(yaw_lo + half_hfov, yaw_hi - half_hfov)
+        } else {
+            (yaw_lo + yaw_hi) * 0.5
+        };
 
         ClampedPosition {
             yaw: clamped_yaw,
@@ -919,6 +899,7 @@ mod tests {
                 z_rz: 0.0,
             },
             rig_tilt: 0.0,
+            rig_roll: 0.0,
             sync_offset: 0,
             field_roi: None,
         }

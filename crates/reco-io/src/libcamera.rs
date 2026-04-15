@@ -234,6 +234,7 @@ impl LibcameraCameraSource {
             height: config.height,
             fps: config.fps as f64,
             fps_rational: None,
+            total_frames: None,
         };
 
         let mode = if single_camera {
