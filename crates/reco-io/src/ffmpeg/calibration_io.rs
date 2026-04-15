@@ -17,6 +17,12 @@ use thiserror::Error;
 
 use super::decoder::{DecodeError, VideoDecoder};
 
+/// Accept decoded frames within this many frames of the target seek position.
+///
+/// Half a frame is used so we accept the nearest frame at/after the seek point
+/// while avoiding overly loose matching.
+const SEEK_TOLERANCE_FRAMES: f64 = 0.5;
+
 /// Errors from calibration I/O operations.
 #[derive(Debug, Error)]
 pub enum CalibrationIoError {
@@ -95,7 +101,7 @@ pub fn extract_frames(
         while let Some(yuv) = decoder.next_frame()? {
             let frame_time = yuv.timestamp_us as f64 / 1_000_000.0;
             last_frame = Some(yuv);
-            if frame_time >= target_secs - 0.5 / fps {
+            if frame_time >= target_secs - SEEK_TOLERANCE_FRAMES / fps {
                 break;
             }
         }
