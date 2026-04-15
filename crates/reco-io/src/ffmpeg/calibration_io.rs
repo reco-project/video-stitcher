@@ -109,7 +109,18 @@ pub fn extract_frames(
 
 /// FFmpeg protocol prefixes that must be rejected when passing paths to the
 /// CLI. These could trigger network requests or read from arbitrary sources.
-const FORBIDDEN_PATH_PREFIXES: &[&str] = &["http://", "https://", "concat:", "pipe:", "data:"];
+const FORBIDDEN_PATH_PREFIXES: &[&str] = &[
+    "http://",
+    "https://",
+    "ftp://",
+    "file://",
+    "tcp://",
+    "udp://",
+    "rtmp://",
+    "concat:",
+    "pipe:",
+    "data:",
+];
 
 /// Extract mono PCM audio samples from a video file.
 ///
