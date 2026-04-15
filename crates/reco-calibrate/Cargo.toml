@@ -21,7 +21,7 @@ telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git",
 rand = "0.9"
 log = "0.4"
 nalgebra = "0.33"
-rayon = "1.10"
+rayon = "1.12"
 ciborium = "0.2"
 flate2 = "1"
 realfft = "3"
