@@ -1863,7 +1863,6 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
- "rayon",
 ]
 
 [[package]]
@@ -1879,6 +1878,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
+ "rayon",
 ]
 
 [[package]]
@@ -2885,7 +2885,7 @@ dependencies = [
  "image",
  "log",
  "nalgebra",
- "ndarray 0.16.1",
+ "ndarray 0.17.2",
  "nshare",
  "pollster",
  "primal",
