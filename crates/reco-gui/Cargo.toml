@@ -1,0 +1,31 @@
+[package]
+name = "reco-gui"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Slint-based GUI for Reco panoramic video stitcher"
+
+[[bin]]
+name = "reco-gui"
+path = "src/main.rs"
+
+[features]
+profiling = ["tracing", "reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling"]
+
+[dependencies]
+reco-core = { path = "../reco-core" }
+reco-io = { path = "../reco-io", features = ["ffmpeg"] }
+reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
+
+slint = "~1.15"
+pollster = "0.4"
+rfd = "0.15"
+log = "0.4"
+env_logger = "0.11"
+anyhow = "1"
+tracing = { workspace = true, optional = true }
+
+[build-dependencies]
+slint-build = "1.15"

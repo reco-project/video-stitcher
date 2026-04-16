@@ -1,0 +1,248 @@
+// Reco Video Stitcher - GUI
+// Material dark theme (configured via build.rs)
+
+import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator } from "std-widgets.slint";
+
+component FileChip inherits Rectangle {
+    in property <string> label;
+    in property <string> file-path;
+    in property <bool> has-file: file-path != "";
+
+    callback clicked();
+
+    height: 36px;
+    border-radius: 8px;
+    background: touch.has-hover ? #3a3a3a : #2a2a2a;
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalBox {
+        padding: 8px;
+        spacing: 6px;
+
+        Text {
+            text: root.label;
+            color: root.has-file ? #a0e8a0 : #aaa;
+            vertical-alignment: center;
+            font-size: 13px;
+            font-weight: root.has-file ? 600 : 400;
+        }
+
+        if root.has-file: Text {
+            text: root.file-path;
+            color: #888;
+            vertical-alignment: center;
+            font-size: 11px;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+export component RecoApp inherits Window {
+    title: "Reco Video Stitcher";
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    background: #121212;
+
+    // ── Properties bound from Rust ──
+
+    in-out property <image> preview-frame;
+    in-out property <bool> playing: false;
+    in-out property <bool> files-loaded: false;
+    in-out property <string> left-path: "";
+    in-out property <string> right-path: "";
+    in-out property <string> calibration-path: "";
+    in-out property <string> status-text: "Load left + right videos and calibration JSON to begin";
+    in-out property <float> progress: 0.0;
+    in-out property <int> current-frame: 0;
+    in-out property <int> total-frames: 0;
+    in-out property <float> fps: 0.0;
+    in-out property <bool> calibrating: false;
+    in-out property <string> calibration-step: "";
+    in-out property <bool> has-both-videos: left-path != "" && right-path != "";
+
+    // ── Callbacks into Rust ──
+
+    callback pick-left-video();
+    callback pick-right-video();
+    callback pick-calibration();
+    callback auto-calibrate();
+    callback toggle-playback();
+    callback step-forward();
+    callback step-backward();
+    callback seek(float);
+
+    VerticalBox {
+        padding: 0;
+        spacing: 0;
+
+        // ── File picker bar ──
+        Rectangle {
+            background: #1e1e1e;
+            height: 52px;
+
+            HorizontalBox {
+                padding: 8px;
+                spacing: 8px;
+                alignment: start;
+
+                FileChip {
+                    label: "Left";
+                    file-path: root.left-path;
+                    clicked => { root.pick-left-video(); }
+                }
+
+                FileChip {
+                    label: "Right";
+                    file-path: root.right-path;
+                    clicked => { root.pick-right-video(); }
+                }
+
+                FileChip {
+                    label: "Calibration";
+                    file-path: root.calibration-path;
+                    clicked => { root.pick-calibration(); }
+                }
+
+                // Separator
+                Rectangle { width: 1px; height: 24px; background: #444; }
+
+                Button {
+                    text: root.calibrating ? "Calibrating..." : "Auto Calibrate";
+                    enabled: root.has-both-videos && !root.calibrating && !root.files-loaded;
+                    clicked => { root.auto-calibrate(); }
+                }
+
+                if root.calibrating: Text {
+                    text: root.calibration-step;
+                    color: #8888ff;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // ── Preview area ──
+        Rectangle {
+            background: #0a0a0a;
+            vertical-stretch: 1;
+
+            if !root.files-loaded: Text {
+                text: root.status-text;
+                color: #666;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            if root.files-loaded: Image {
+                source: root.preview-frame;
+                image-fit: contain;
+                width: 100%;
+                height: 100%;
+            }
+        }
+
+        // ── Transport controls ──
+        Rectangle {
+            background: #1e1e1e;
+            height: 80px;
+
+            VerticalBox {
+                padding: 4px;
+                spacing: 4px;
+
+                // Seek slider
+                HorizontalBox {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+
+                    Text {
+                        text: root.current-frame;
+                        color: #aaa;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        width: 60px;
+                    }
+
+                    Slider {
+                        horizontal-stretch: 1;
+                        minimum: 0;
+                        maximum: root.total-frames == 0 ? 1 : root.total-frames;
+                        value: root.current-frame;
+                        enabled: root.files-loaded;
+                        changed(val) => {
+                            if root.total-frames > 0 {
+                                root.seek(val / root.total-frames);
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: root.total-frames;
+                        color: #aaa;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        width: 60px;
+                        horizontal-alignment: right;
+                    }
+                }
+
+                // Buttons row
+                HorizontalBox {
+                    alignment: center;
+                    spacing: 12px;
+
+                    Button {
+                        text: "|<";
+                        enabled: root.files-loaded;
+                        clicked => { root.step-backward(); }
+                    }
+
+                    Button {
+                        text: root.playing ? "Pause" : "Play";
+                        enabled: root.files-loaded;
+                        clicked => { root.toggle-playback(); }
+                    }
+
+                    Button {
+                        text: ">|";
+                        enabled: root.files-loaded;
+                        clicked => { root.step-forward(); }
+                    }
+                }
+            }
+        }
+
+        // ── Status bar ──
+        Rectangle {
+            background: #181818;
+            height: 28px;
+
+            HorizontalBox {
+                padding-left: 12px;
+                padding-right: 12px;
+
+                Text {
+                    text: root.status-text;
+                    color: #777;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                if root.fps > 0: Text {
+                    text: round(root.fps) + " fps";
+                    color: #555;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
