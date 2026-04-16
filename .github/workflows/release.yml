@@ -1,0 +1,223 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: reco
+
+          - name: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: reco
+            cross: true
+
+          - name: macos-arm64
+            target: aarch64-apple-darwin
+            os: macos-latest
+            binary: reco
+
+          - name: macos-x86_64
+            target: x86_64-apple-darwin
+            os: macos-15-intel
+            binary: reco
+
+          - name: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: reco.exe
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: release-${{ matrix.target }}
+
+      # ----------------------------------------------------------------
+      # Linux x86_64 (native) dependencies
+      # ----------------------------------------------------------------
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux' && !matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
+            pkg-config clang
+
+      # ----------------------------------------------------------------
+      # Linux ARM64 cross-compilation
+      #
+      # Sets up multiarch apt sources so we can install arm64 FFmpeg dev
+      # packages alongside the amd64 host packages. The approach:
+      #   1. Restrict existing sources to amd64 (prevent 404s on ports)
+      #   2. Add arm64 sources from ports.ubuntu.com
+      #   3. Install the aarch64 cross-toolchain + arm64 FFmpeg libraries
+      #
+      # KNOWN LIMITATION: The sed command that patches ubuntu.sources
+      # assumes DEB822 format (Ubuntu 24.04+). If the runner image
+      # changes format, apt-get update may show 404 warnings for arm64
+      # from archive.ubuntu.com -- these are harmless but noisy.
+      # If they become errors, replace the sed with a full sources
+      # rewrite (see comments in-line).
+      # ----------------------------------------------------------------
+      - name: Set up ARM64 cross-compilation
+        if: matrix.cross
+        run: |
+          sudo dpkg --add-architecture arm64
+          codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+
+          # Restrict existing sources to amd64 to prevent apt from
+          # looking for arm64 packages on archive.ubuntu.com (404).
+          # Targets DEB822 stanzas by inserting Architectures before Suites.
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo sed -i 's/^Suites:/Architectures: amd64\nSuites:/' \
+              /etc/apt/sources.list.d/ubuntu.sources
+          fi
+
+          # arm64 packages live on ports.ubuntu.com, not archive.ubuntu.com
+          cat <<SOURCES | sudo tee /etc/apt/sources.list.d/arm64-cross.sources
+          Types: deb
+          URIs: http://ports.ubuntu.com/ubuntu-ports/
+          Suites: ${codename} ${codename}-updates ${codename}-security
+          Components: main universe
+          Architectures: arm64
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SOURCES
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            pkg-config clang \
+            libavcodec-dev:arm64 libavformat-dev:arm64 libavutil-dev:arm64 \
+            libswscale-dev:arm64 libavdevice-dev:arm64 libavfilter-dev:arm64 \
+            libswresample-dev:arm64
+
+          # Tell cargo & pkg-config how to cross-compile
+          {
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc"
+            echo "PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig"
+            echo "PKG_CONFIG_ALLOW_CROSS=1"
+            echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc"
+            echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++"
+          } >> "$GITHUB_ENV"
+
+      # ----------------------------------------------------------------
+      # macOS dependencies (works for both ARM64 and Intel runners)
+      # ----------------------------------------------------------------
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg pkg-config
+
+      # ----------------------------------------------------------------
+      # Windows dependencies
+      #
+      # Downloads pre-built FFmpeg shared libraries from BtbN/FFmpeg-Builds.
+      # The "latest" tag always points to the most recent nightly build.
+      # For reproducible releases, pin to a specific BtbN release tag.
+      #
+      # KNOWN LIMITATION: No Windows ARM64 release build. There are no
+      # widely available FFmpeg development libraries for aarch64-pc-windows-msvc.
+      # The CI workflow runs cargo check for Windows ARM64 (reco-core only).
+      # ----------------------------------------------------------------
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl-shared.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
+          $dir = (Get-ChildItem "$env:RUNNER_TEMP\ffmpeg" -Directory | Select-Object -First 1).FullName
+          echo "FFMPEG_DIR=$dir" >> $env:GITHUB_ENV
+          echo "FFMPEG_DLL_DIR=$dir\bin" >> $env:GITHUB_ENV
+
+      # ----------------------------------------------------------------
+      # Build
+      # ----------------------------------------------------------------
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p reco-cli
+
+      # ----------------------------------------------------------------
+      # Package
+      # ----------------------------------------------------------------
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          staging="reco-${{ github.ref_name }}-${{ matrix.name }}"
+          mkdir "$staging"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$staging/"
+          cp LICENSE "$staging/"
+          tar czf "$staging.tar.gz" "$staging"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $staging = "reco-${{ github.ref_name }}-${{ matrix.name }}"
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary }}" "$staging\"
+          Copy-Item LICENSE "$staging\"
+          # Bundle FFmpeg DLLs so the binary is self-contained on Windows
+          if (Test-Path "$env:FFMPEG_DLL_DIR") {
+            Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
+          }
+          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4 # TODO: pin to commit SHA for supply-chain safety
+        with:
+          name: reco-${{ matrix.name }}
+          path: reco-${{ github.ref_name }}-${{ matrix.name }}.*
+          if-no-files-found: error
+
+  # ====================================================================
+  # Create the GitHub Release and attach all platform binaries
+  # ====================================================================
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4 # TODO: pin to commit SHA
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum reco-* > SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "Reco ${{ github.ref_name }}" \
+            --generate-notes \
+            artifacts/*

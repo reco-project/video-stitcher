@@ -119,6 +119,22 @@ jobs:
       - name: Check full CLI
         run: cargo check -p reco-cli
 
+  check-macos-intel:
+    name: Check (macOS Intel)
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Install dependencies
+        run: brew install ffmpeg gstreamer gst-plugins-base pkg-config
+      - name: Check reco-core
+        run: cargo check -p reco-core
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --features profiling
+      - name: Check full CLI
+        run: cargo check -p reco-cli
+
   check-windows:
     name: Check (Windows)
     runs-on: windows-latest
@@ -130,6 +146,39 @@ jobs:
         run: cargo check -p reco-core
       - name: Check reco-core (profiling)
         run: cargo check -p reco-core --features profiling
+
+  # Cross-compile check: cargo check type-checks without linking, so no
+  # FFmpeg or ORT native libraries are needed for the target architecture.
+  check-windows-arm:
+    name: Check (Windows ARM64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Check reco-core
+        run: cargo check -p reco-core --target aarch64-pc-windows-msvc
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --target aarch64-pc-windows-msvc --features profiling
+
+  # Cross-compile check: verifies reco-core compiles for aarch64 Linux (Jetson).
+  # Full CLI check is skipped because ffmpeg-sys-next's build script requires
+  # FFmpeg dev packages for the target architecture (multiarch apt setup).
+  check-linux-arm:
+    name: Check (Linux ARM64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Check reco-core
+        run: cargo check -p reco-core --target aarch64-unknown-linux-gnu
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --target aarch64-unknown-linux-gnu --features profiling
 
   secrets:
     name: Secret Scanning
