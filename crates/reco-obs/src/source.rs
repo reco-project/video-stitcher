@@ -28,6 +28,7 @@ use reco_core::calibration::MatchCalibration;
 use reco_core::gpu::GpuContext;
 use reco_core::pipeline::{StitchPipeline, YuvPlanes};
 use reco_core::renderer::InputFormat;
+use reco_core::rgba_readback::RgbaReadback;
 use reco_core::viewport::ViewportConfig;
 
 use crate::ffi;
@@ -63,6 +64,10 @@ struct RecoSource {
     /// The wgpu stitching pipeline (None until calibration is loaded).
     pipeline: Option<StitchPipeline>,
 
+    /// RGBA readback helper (triple-buffered staging + row-padding strip).
+    /// None until the pipeline is built.
+    readback: Option<RgbaReadback>,
+
     /// The shared GPU context.
     gpu: Option<GpuContext>,
 
@@ -86,7 +91,9 @@ struct RecoSource {
     /// Camera pitch in degrees (converted to radians for the pipeline).
     pitch_degrees: f64,
 
-    /// CPU-side RGBA buffer from the last render (readback from wgpu).
+    /// CPU-side RGBA buffer from the last render (owned copy of the most
+    /// recent frame from `RgbaReadback`, so `video_render` can read it on
+    /// the OBS graphics thread without holding a borrow).
     rgba_buffer: Vec<u8>,
 
     /// Whether `rgba_buffer` has new data since the last `video_render`.
@@ -101,6 +108,7 @@ impl RecoSource {
     fn new() -> Self {
         Self {
             pipeline: None,
+            readback: None,
             gpu: None,
             calibration: None,
             config_path: String::new(),
@@ -167,14 +175,29 @@ impl RecoSource {
                     self.input_height,
                     pipeline.gpu_name(),
                 );
+                // Build the RGBA readback helper alongside the pipeline.
+                // `RgbaReadback` owns the triple-buffered staging + row
+                // padding strip that used to live inline in this file.
+                match RgbaReadback::new(pipeline.gpu(), self.output_width, self.output_height) {
+                    Ok(readback) => {
+                        self.readback = Some(readback);
+                    }
+                    Err(e) => {
+                        log::error!("reco-obs: failed to create RGBA readback: {e}");
+                        self.pipeline = None;
+                        self.readback = None;
+                        return;
+                    }
+                }
                 self.pipeline = Some(pipeline);
-                // Pre-allocate the readback buffer.
+                // Pre-allocate the owned buffer that `video_render` reads.
                 let buf_size = (self.output_width * self.output_height * 4) as usize;
                 self.rgba_buffer.resize(buf_size, 0);
             }
             Err(e) => {
                 log::error!("reco-obs: failed to create pipeline: {e}");
                 self.pipeline = None;
+                self.readback = None;
             }
         }
     }
@@ -215,7 +238,10 @@ impl RecoSource {
             Some(p) => p,
             None => return,
         };
-
+        let readback = match &mut self.readback {
+            Some(r) => r,
+            None => return,
+        };
         let gpu = match &self.gpu {
             Some(g) => g,
             None => return,
@@ -252,101 +278,28 @@ impl RecoSource {
         let yaw = (self.yaw_degrees as f32).to_radians();
         let pitch = (self.pitch_degrees as f32).to_radians();
 
-        match pipeline.render_to_target(&left, &right, yaw, pitch) {
-            Ok(cmd_buf) => {
-                gpu.queue().submit(std::iter::once(cmd_buf));
-
-                // Readback: copy render target to CPU buffer.
-                // FRICTION: There is no built-in readback helper on
-                // StitchPipeline. Consumers must manually create a staging
-                // buffer, issue a copy command, map it, and extract bytes.
-                // The Nv12Converter does this internally but is tightly
-                // coupled to NV12 output. An `fn readback_rgba(&self) -> &[u8]`
-                // method on the pipeline (or a standalone ReadbackHelper)
-                // would be very useful for plugin consumers that need RGBA.
-
-                let render_target = pipeline.render_target();
-                let width = self.output_width;
-                let height = self.output_height;
-                let bytes_per_row = width * 4;
-                // wgpu requires rows aligned to 256 bytes.
-                let padded_bytes_per_row = (bytes_per_row + 255) & !255;
-
-                let staging_buf = gpu
-                    .device()
-                    .create_buffer(&reco_core::wgpu::BufferDescriptor {
-                        label: Some("reco-obs readback"),
-                        size: (padded_bytes_per_row * height) as u64,
-                        usage: reco_core::wgpu::BufferUsages::COPY_DST
-                            | reco_core::wgpu::BufferUsages::MAP_READ,
-                        mapped_at_creation: false,
-                    });
-
-                let mut encoder = gpu.device().create_command_encoder(
-                    &reco_core::wgpu::CommandEncoderDescriptor {
-                        label: Some("reco-obs readback encoder"),
-                    },
-                );
-
-                encoder.copy_texture_to_buffer(
-                    reco_core::wgpu::TexelCopyTextureInfo {
-                        texture: render_target,
-                        mip_level: 0,
-                        origin: reco_core::wgpu::Origin3d::ZERO,
-                        aspect: reco_core::wgpu::TextureAspect::All,
-                    },
-                    reco_core::wgpu::TexelCopyBufferInfo {
-                        buffer: &staging_buf,
-                        layout: reco_core::wgpu::TexelCopyBufferLayout {
-                            offset: 0,
-                            bytes_per_row: Some(padded_bytes_per_row),
-                            rows_per_image: Some(height),
-                        },
-                    },
-                    reco_core::wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-
-                gpu.queue().submit(std::iter::once(encoder.finish()));
-
-                // Synchronous map (blocking). Acceptable for now; a double/
-                // triple-buffer scheme would avoid stalling the pipeline.
-                let slice = staging_buf.slice(..);
-                let (tx, rx) = std::sync::mpsc::channel();
-                slice.map_async(reco_core::wgpu::MapMode::Read, move |result| {
-                    let _ = tx.send(result);
-                });
-                let _ = gpu
-                    .device()
-                    .poll(reco_core::wgpu::PollType::wait_indefinitely());
-
-                match rx.recv() {
-                    Ok(Ok(())) => {
-                        let mapped = slice.get_mapped_range();
-                        // Copy rows, stripping padding.
-                        for row in 0..height as usize {
-                            let src_offset = row * padded_bytes_per_row as usize;
-                            let dst_offset = row * bytes_per_row as usize;
-                            self.rgba_buffer[dst_offset..dst_offset + bytes_per_row as usize]
-                                .copy_from_slice(
-                                    &mapped[src_offset..src_offset + bytes_per_row as usize],
-                                );
-                        }
-                        self.frame_ready.store(true, Ordering::Release);
-                    }
-                    Ok(Err(e)) => {
-                        log::error!("reco-obs: buffer map failed: {e}");
-                    }
-                    Err(e) => {
-                        log::error!("reco-obs: readback channel error: {e}");
-                    }
-                }
-            }
+        // Render + triple-buffered RGBA readback via the shared
+        // `RgbaReadback` helper in reco-core. Returns `None` on the first
+        // two calls (pipeline warmup) and tightly-packed RGBA thereafter,
+        // so the wgpu 256-byte row padding is stripped for us.
+        let cmd_buf = match pipeline.render_to_target(&left, &right, yaw, pitch) {
+            Ok(cmd) => cmd,
             Err(e) => {
                 log::error!("reco-obs: render failed: {e}");
+                return;
+            }
+        };
+
+        match readback.readback(gpu, pipeline.render_target(), cmd_buf) {
+            Ok(Some(rgba)) => {
+                self.rgba_buffer.copy_from_slice(rgba);
+                self.frame_ready.store(true, Ordering::Release);
+            }
+            Ok(None) => {
+                // Pipeline warmup; next tick will have data.
+            }
+            Err(e) => {
+                log::error!("reco-obs: RGBA readback failed: {e}");
             }
         }
     }

@@ -72,6 +72,7 @@ macro_rules! profile_scope {
 /// use [`gpu::OutputFormat`] and the [`session`] API instead.
 pub use wgpu;
 
+pub mod analyze;
 pub(crate) mod async_encode;
 pub mod calibration;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -95,6 +96,7 @@ pub mod nv12_converter;
 pub mod pipeline;
 pub mod projection;
 pub mod renderer;
+pub mod rgba_readback;
 pub mod scene;
 pub mod session;
 pub mod source;

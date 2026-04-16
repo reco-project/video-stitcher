@@ -390,6 +390,53 @@ pub struct ClampedPosition {
     pub pitch: f32,
 }
 
+/// Full angular extent of the stitched panorama (radians).
+///
+/// Returned by [`StitchSession::panorama_extent`](crate::session::StitchSession::panorama_extent).
+/// Analytics consumers (heatmaps, zone stats) use this to size grids that
+/// span the full coverage rather than hardcoding `±45° yaw, ±20° pitch`.
+#[derive(Debug, Clone, Copy)]
+pub struct PanoramaExtent {
+    /// Minimum yaw with coverage from either camera (radians).
+    pub yaw_min: f32,
+    /// Maximum yaw with coverage from either camera (radians).
+    pub yaw_max: f32,
+    /// Minimum pitch with coverage from either camera (radians).
+    pub pitch_min: f32,
+    /// Maximum pitch with coverage from either camera (radians).
+    pub pitch_max: f32,
+}
+
+impl PanoramaExtent {
+    /// Width of the yaw range in radians.
+    pub fn yaw_span(&self) -> f32 {
+        self.yaw_max - self.yaw_min
+    }
+
+    /// Width of the pitch range in radians.
+    pub fn pitch_span(&self) -> f32 {
+        self.pitch_max - self.pitch_min
+    }
+
+    /// Map an angular position in radians to normalized `[0, 1]`
+    /// coordinates within this extent.
+    ///
+    /// Returns `None` if the extent is degenerate (zero span on either
+    /// axis). Values outside the extent are returned as-is (not clamped),
+    /// so callers can detect out-of-bounds detections.
+    pub fn normalize(&self, yaw: f32, pitch: f32) -> Option<(f32, f32)> {
+        let yaw_span = self.yaw_span();
+        let pitch_span = self.pitch_span();
+        if yaw_span <= 0.0 || pitch_span <= 0.0 {
+            return None;
+        }
+        Some((
+            (yaw - self.yaw_min) / yaw_span,
+            (pitch - self.pitch_min) / pitch_span,
+        ))
+    }
+}
+
 /// Angular offsets of viewport boundary points from center.
 ///
 impl CoverageBoundary {
@@ -579,8 +626,42 @@ impl CoverageBoundary {
         }
     }
 
+    /// Global yaw coverage range across the full panorama (radians).
+    ///
+    /// Returns `(yaw_min, yaw_max)`, the widest-point extremes of the
+    /// stitched panorama. Useful for heatmap consumers that need to
+    /// bucket detections by yaw across the full coverage.
+    ///
+    /// This is the global extent, not the per-pitch range. For a
+    /// pitch-aware range, sample with [`yaw_range_at`](Self::yaw_range_at).
+    pub fn yaw_range(&self) -> (f32, f32) {
+        let mut lo = f32::INFINITY;
+        let mut hi = f32::NEG_INFINITY;
+        for &(a, b) in &self.slices {
+            if a <= b {
+                lo = lo.min(a);
+                hi = hi.max(b);
+            }
+        }
+        if lo > hi { (0.0, 0.0) } else { (lo, hi) }
+    }
+
+    /// Global pitch coverage range across the full panorama (radians).
+    ///
+    /// Returns `(pitch_min, pitch_max)`. Used alongside
+    /// [`yaw_range`](Self::yaw_range) by heatmap and analytics consumers
+    /// that need panorama bounds without reaching into private state.
+    pub fn pitch_range(&self) -> (f32, f32) {
+        (self.pitch_min, self.pitch_max)
+    }
+
     /// Look up the combined yaw coverage range at a given pitch.
-    fn yaw_range_at(&self, pitch: f32) -> (f32, f32) {
+    ///
+    /// Returns the interpolated `(yaw_min, yaw_max)` where at least one
+    /// camera plane provides coverage. Used by the director for
+    /// perspective-aware clamping; analytics consumers typically want
+    /// [`yaw_range`](Self::yaw_range) for the global extent instead.
+    pub fn yaw_range_at(&self, pitch: f32) -> (f32, f32) {
         self.interpolate_slice(&self.slices, pitch)
     }
 
@@ -1118,5 +1199,84 @@ mod tests {
         // Just inside the edge
         assert!(point_in_polygon([0.001, 0.5], &unit_square()));
         assert!(point_in_polygon([0.999, 0.5], &unit_square()));
+    }
+
+    #[test]
+    fn coverage_yaw_and_pitch_ranges_match_internal_state() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+
+        let (yaw_min, yaw_max) = coverage.yaw_range();
+        assert!(yaw_min < yaw_max, "yaw range must be non-empty");
+        assert!(yaw_min.is_finite() && yaw_max.is_finite());
+
+        let (pitch_min, pitch_max) = coverage.pitch_range();
+        assert_eq!(pitch_min, coverage.pitch_min);
+        assert_eq!(pitch_max, coverage.pitch_max);
+    }
+
+    #[test]
+    fn coverage_yaw_range_is_widest_slice_envelope() {
+        // yaw_range() must be at least as wide as any yaw_range_at(pitch)
+        // sample, since it's the envelope over all pitch slices.
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+
+        let (y_lo_global, y_hi_global) = coverage.yaw_range();
+        let (p_lo, p_hi) = coverage.pitch_range();
+
+        for i in 0..=10 {
+            let t = i as f32 / 10.0;
+            let pitch = p_lo + t * (p_hi - p_lo);
+            let (y_lo, y_hi) = coverage.yaw_range_at(pitch);
+            if y_lo > y_hi {
+                continue; // degenerate interpolation outside coverage
+            }
+            assert!(
+                y_lo >= y_lo_global - 1e-4,
+                "pitch {pitch} yaw lo {y_lo} below global {y_lo_global}"
+            );
+            assert!(
+                y_hi <= y_hi_global + 1e-4,
+                "pitch {pitch} yaw hi {y_hi} above global {y_hi_global}"
+            );
+        }
+    }
+
+    #[test]
+    fn panorama_extent_normalize_is_in_range_at_corners() {
+        let ext = PanoramaExtent {
+            yaw_min: -0.5,
+            yaw_max: 0.5,
+            pitch_min: -0.3,
+            pitch_max: 0.3,
+        };
+        assert_eq!(ext.yaw_span(), 1.0);
+        assert_eq!(ext.pitch_span(), 0.6);
+
+        let (u, v) = ext.normalize(-0.5, -0.3).unwrap();
+        assert!((u - 0.0).abs() < 1e-6);
+        assert!((v - 0.0).abs() < 1e-6);
+
+        let (u, v) = ext.normalize(0.5, 0.3).unwrap();
+        assert!((u - 1.0).abs() < 1e-6);
+        assert!((v - 1.0).abs() < 1e-6);
+
+        let (u, v) = ext.normalize(0.0, 0.0).unwrap();
+        assert!((u - 0.5).abs() < 1e-6);
+        assert!((v - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn panorama_extent_normalize_rejects_degenerate() {
+        let ext = PanoramaExtent {
+            yaw_min: 0.0,
+            yaw_max: 0.0,
+            pitch_min: 0.0,
+            pitch_max: 0.0,
+        };
+        assert!(ext.normalize(0.0, 0.0).is_none());
     }
 }

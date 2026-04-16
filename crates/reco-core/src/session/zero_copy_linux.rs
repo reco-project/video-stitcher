@@ -244,7 +244,7 @@ impl StitchSession {
                 signal.left_slot,
                 signal.right_slot,
                 start.elapsed(),
-            );
+            )?;
             let pos = self.director_position();
             let render_buf = self.pipeline.render_gpu_frame(
                 &bind_groups,

@@ -143,14 +143,62 @@ pub enum ErrorPolicy {
     },
 }
 
-/// Callback for receiving tracked detection data.
+/// Boxed error type propagated by a [`DetectionSink`] implementation.
 ///
-/// Called each frame with the tracked objects (may be empty on non-detection
-/// frames or when no detector is configured). Use this to build external
-/// consumers like coaching assistants, VAR systems, or stats pipelines.
+/// Sinks return this so I/O failures (disk full, broken pipe) can bubble
+/// up through [`StitchSession::run`] as a [`SessionError::DetectionSink`]
+/// instead of being swallowed by a logger.
+pub type DetectionSinkError = Box<dyn std::error::Error + Send + Sync>;
+
+/// Fallible sink for per-frame tracked detection data.
 ///
-/// Arguments: `(objects, frame_index, timestamp_ms)`
-pub type DetectionCallback = Box<dyn FnMut(&[MappedDetection], u64, f64) + Send>;
+/// Sinks receive detections mapped to panorama coordinates every frame
+/// (including frames where no detector ran; the vector will be empty or
+/// hold the last known positions). The sink returns a `Result`, so CSV
+/// writers, socket senders, and similar consumers can surface I/O
+/// failures instead of logging and continuing with a corrupt output.
+///
+/// Any closure matching the signature `FnMut(&[MappedDetection], u64, f64)
+/// -> Result<(), DetectionSinkError>` automatically implements this trait
+/// via the blanket impl below, so callers can write:
+///
+/// ```rust,ignore
+/// session.set_detection_sink(Box::new(|dets, frame_idx, ts_ms| {
+///     writer.write_csv_row(dets, frame_idx, ts_ms)?;
+///     Ok(())
+/// }));
+/// ```
+///
+/// A sink is called once per frame. Errors returned from the sink abort
+/// the current session call (`step`, `process_frame`, or `run`) with
+/// [`SessionError::DetectionSink`].
+pub trait DetectionSink: Send {
+    /// Receive tracked detections for a single frame.
+    ///
+    /// `detections` is the same data the director sees (panorama
+    /// coordinates, camera origin, confidence). `frame_index` is 0-based.
+    /// `timestamp_ms` is measured from session start (not PTS).
+    fn on_detections(
+        &mut self,
+        detections: &[MappedDetection],
+        frame_index: u64,
+        timestamp_ms: f64,
+    ) -> Result<(), DetectionSinkError>;
+}
+
+impl<F> DetectionSink for F
+where
+    F: FnMut(&[MappedDetection], u64, f64) -> Result<(), DetectionSinkError> + Send,
+{
+    fn on_detections(
+        &mut self,
+        detections: &[MappedDetection],
+        frame_index: u64,
+        timestamp_ms: f64,
+    ) -> Result<(), DetectionSinkError> {
+        (self)(detections, frame_index, timestamp_ms)
+    }
+}
 
 /// Errors from [`StitchSession`].
 #[derive(Debug, Error)]
@@ -187,6 +235,14 @@ pub enum SessionError {
     /// Missing or invalid configuration.
     #[error("config: {0}")]
     Config(String),
+
+    /// A [`DetectionSink`] returned an error.
+    ///
+    /// Surfaces I/O failures from user-supplied sinks (CSV writers,
+    /// network senders, ...) so they are not silently swallowed. The
+    /// inner error is whatever the sink returned.
+    #[error("detection sink: {0}")]
+    DetectionSink(#[source] DetectionSinkError),
 }
 
 /// Builder for constructing a [`StitchSession`] with sensible defaults.
@@ -566,6 +622,26 @@ impl StitchSession {
         self.coverage.as_ref()
     }
 
+    /// Full angular extent of the stitched panorama.
+    ///
+    /// Higher-level shortcut for analytics consumers (heatmaps, zone
+    /// statistics) that want the coverage bounds without reaching into
+    /// [`CoverageBoundary`](crate::projection::CoverageBoundary). Returns
+    /// `None` if the session has no coverage boundary (should not happen
+    /// for sessions built from a valid calibration).
+    pub fn panorama_extent(&self) -> Option<crate::projection::PanoramaExtent> {
+        self.coverage.as_ref().map(|c| {
+            let (yaw_min, yaw_max) = c.yaw_range();
+            let (pitch_min, pitch_max) = c.pitch_range();
+            crate::projection::PanoramaExtent {
+                yaw_min,
+                yaw_max,
+                pitch_min,
+                pitch_max,
+            }
+        })
+    }
+
     /// Attach an encoder to this session.
     ///
     /// The encoder is moved to a background thread for async encoding.
@@ -644,16 +720,28 @@ impl StitchSession {
         self.director = Some(director);
     }
 
-    /// Set a callback for receiving tracked detection data.
+    /// Set the sink that receives tracked detection data each frame.
     ///
-    /// Called each frame with the current tracked objects, frame index,
-    /// and timestamp. Use this to build external consumers like coaching
-    /// assistants, VAR systems, or stats pipelines.
+    /// The sink is called once per frame with the current tracked
+    /// objects, frame index, and timestamp. Errors returned from the
+    /// sink abort the current session call ([`run`](Self::run),
+    /// [`step`](Self::step), [`process_frame`](Self::process_frame))
+    /// with [`SessionError::DetectionSink`].
     ///
-    /// The callback receives the same [`MappedDetection`] data as the director,
-    /// including panorama-space coordinates.
-    pub fn set_detection_callback(&mut self, cb: DetectionCallback) {
-        self.detection.set_callback(cb);
+    /// Closures matching `FnMut(&[MappedDetection], u64, f64) -> Result<(),
+    /// DetectionSinkError>` implement [`DetectionSink`] automatically via
+    /// the blanket impl, so typical usage is:
+    ///
+    /// ```rust,ignore
+    /// session.set_detection_sink(Box::new(|dets, frame_idx, ts_ms| {
+    ///     writer.write_row(dets, frame_idx, ts_ms)?;
+    ///     Ok(())
+    /// }));
+    /// ```
+    ///
+    /// Replaces any previously registered sink.
+    pub fn set_detection_sink(&mut self, sink: Box<dyn DetectionSink>) {
+        self.detection.set_sink(sink);
     }
 
     /// Get the current viewport position from the director, or default.
@@ -696,12 +784,13 @@ impl StitchSession {
     ///
     /// Detection only runs every `detection_interval` frames. On skipped
     /// frames, the last tracked objects are reused so the director still
-    /// has context. The detection callback fires every frame.
+    /// has context. The detection sink fires every frame; an error from
+    /// the sink aborts this call with [`SessionError::DetectionSink`].
     pub fn detect_and_update_director(
         &mut self,
         frame: &StereoFrame,
         elapsed: std::time::Duration,
-    ) {
+    ) -> Result<(), SessionError> {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect {
@@ -710,7 +799,7 @@ impl StitchSession {
             self.detection.last_detections = self.map_detections(detections);
         }
 
-        self.fire_callback_and_update_director(elapsed, should_detect);
+        self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
     /// Update the director without detection (zero-copy paths).
@@ -721,8 +810,11 @@ impl StitchSession {
         any(target_os = "linux", target_os = "windows"),
         allow(dead_code, reason = "used by macOS zero-copy path")
     )]
-    pub(crate) fn update_director(&mut self, elapsed: std::time::Duration) {
-        self.fire_callback_and_update_director(elapsed, false);
+    pub(crate) fn update_director(
+        &mut self,
+        elapsed: std::time::Duration,
+    ) -> Result<(), SessionError> {
+        self.fire_sink_and_update_director(elapsed, false)
     }
 
     /// Run GPU-resident detection and update the director.
@@ -742,7 +834,7 @@ impl StitchSession {
         left_slot: u8,
         right_slot: u8,
         elapsed: std::time::Duration,
-    ) {
+    ) -> Result<(), SessionError> {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect && self.detection.has_gpu_detector() {
@@ -757,7 +849,7 @@ impl StitchSession {
             self.detection.last_detections = self.map_detections(detections);
         }
 
-        self.fire_callback_and_update_director(elapsed, should_detect);
+        self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
     /// Run Metal-resident detection and update the director.
@@ -777,7 +869,7 @@ impl StitchSession {
         width: u32,
         height: u32,
         elapsed: std::time::Duration,
-    ) {
+    ) -> Result<(), SessionError> {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect && self.detection.has_metal_detector() {
@@ -788,25 +880,30 @@ impl StitchSession {
             self.detection.last_detections = self.map_detections(detections);
         }
 
-        self.fire_callback_and_update_director(elapsed, should_detect);
+        self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
-    /// Fire the detection callback and update the director with current state.
+    /// Fire the detection sink and update the director with current state.
     ///
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
-    /// Fires the callback with `last_detections` (which may be empty if no
+    /// Fires the sink with `last_detections` (which may be empty if no
     /// detector ran this frame) and passes a [`DirectorContext`] to the
     /// director. Viewport constraining is handled separately by
     /// [`director_position`](Self::director_position).
-    fn fire_callback_and_update_director(
+    ///
+    /// Sink errors surface as [`SessionError::DetectionSink`] and abort the
+    /// current session call.
+    fn fire_sink_and_update_director(
         &mut self,
         elapsed: std::time::Duration,
         fresh_detection: bool,
-    ) {
+    ) -> Result<(), SessionError> {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
-        // Fire callback for external consumers.
-        self.detection.fire_callback(self.frame_count, timestamp_ms);
+        // Fire sink for external consumers.
+        self.detection
+            .fire_sink(self.frame_count, timestamp_ms)
+            .map_err(SessionError::DetectionSink)?;
 
         // Update director with detections and timing only.
         // Coverage clamping is applied later in director_position().
@@ -819,6 +916,7 @@ impl StitchSession {
             };
             director.update(&ctx);
         }
+        Ok(())
     }
 
     /// Map raw detections to panorama coordinates.
@@ -882,7 +980,7 @@ impl StitchSession {
         override_position: Option<ViewportPosition>,
     ) -> Result<StepResult, SessionError> {
         // Run detection and update director.
-        self.detect_and_update_director(frame, elapsed);
+        self.detect_and_update_director(frame, elapsed)?;
 
         // Get viewport position (from director or override).
         let pos = if let Some(ovr) = override_position {
@@ -1021,7 +1119,7 @@ impl StitchSession {
         if let Some((left_buf, right_buf)) = buf_info {
             self.detect_and_update_director_gpu(
                 left_buf, right_buf, left_slot, right_slot, elapsed,
-            );
+            )?;
         }
         let pos = self.director_position();
 
@@ -1190,7 +1288,7 @@ impl StitchSession {
                 }
                 _ => {
                     // CPU-resident frames (Yuv420p, Nv12)
-                    self.detect_and_update_director(&frame, start.elapsed());
+                    self.detect_and_update_director(&frame, start.elapsed())?;
                     let pos = self.director_position();
                     self.process_frame(&frame, pos.yaw, pos.pitch)?;
                 }
@@ -1241,7 +1339,7 @@ impl StitchSession {
                 }
             };
             decoded_count += 1;
-            self.detect_and_update_director(&frame, start.elapsed());
+            self.detect_and_update_director(&frame, start.elapsed())?;
             buffer.push_back(frame);
         }
 
@@ -1263,7 +1361,7 @@ impl StitchSession {
                 };
                 if let Some(f) = frame {
                     decoded_count += 1;
-                    self.detect_and_update_director(&f, start.elapsed());
+                    self.detect_and_update_director(&f, start.elapsed())?;
                     buffer.push_back(f);
                 }
             }

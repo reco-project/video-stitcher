@@ -57,9 +57,9 @@ impl StitchSession {
                     width,
                     height,
                     start.elapsed(),
-                );
+                )?;
             } else {
-                self.update_director(start.elapsed());
+                self.update_director(start.elapsed())?;
             }
             let pos = self.director_position();
             let render_buf = self.pipeline.render_imported_textures(

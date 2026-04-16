@@ -41,6 +41,12 @@ pub struct SmartFileSource {
     right_rotation: i32,
     /// Human-readable description of the active decode path.
     decode_mode: &'static str,
+    /// True once the active backend has signaled end-of-stream.
+    ///
+    /// For the CPU mode this tracks the inner `FfmpegFileSource`'s flag;
+    /// for zero-copy modes this is set locally when the pair receiver
+    /// returns `Err` (decode threads finished).
+    exhausted: bool,
 }
 
 enum SourceMode {
@@ -210,6 +216,7 @@ impl SmartFileSource {
             left_rotation,
             right_rotation,
             decode_mode: "CPU upload",
+            exhausted: false,
         })
     }
 
@@ -359,6 +366,7 @@ impl SmartFileSource {
             left_rotation,
             right_rotation,
             decode_mode: "GPU zero-copy (CUDA/Vulkan)",
+            exhausted: false,
         })
     }
 
@@ -393,6 +401,7 @@ impl SmartFileSource {
             left_rotation,
             right_rotation,
             decode_mode: "Metal zero-copy (VideoToolbox)",
+            exhausted: false,
         })
     }
 
@@ -490,7 +499,13 @@ impl FrameSource for SmartFileSource {
 
     fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
         match &mut self.mode {
-            SourceMode::Cpu(source) => source.next_frame(),
+            SourceMode::Cpu(source) => {
+                let frame = source.next_frame()?;
+                if frame.is_none() {
+                    self.exhausted = true;
+                }
+                Ok(frame)
+            }
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(state) => {
                 let rx = state
@@ -502,7 +517,10 @@ impl FrameSource for SmartFileSource {
                         left_slot: signal.left_slot,
                         right_slot: signal.right_slot,
                     })),
-                    Err(_) => Ok(None),
+                    Err(_) => {
+                        self.exhausted = true;
+                        Ok(None)
+                    }
                 }
             }
             #[cfg(target_os = "macos")]
@@ -511,7 +529,10 @@ impl FrameSource for SmartFileSource {
                     left: pair.left,
                     right: pair.right,
                 })),
-                Err(_) => Ok(None),
+                Err(_) => {
+                    self.exhausted = true;
+                    Ok(None)
+                }
             },
         }
     }
@@ -530,6 +551,19 @@ impl FrameSource for SmartFileSource {
 
     fn right_rotation(&self) -> i32 {
         self.right_rotation
+    }
+
+    fn is_exhausted(&self) -> bool {
+        // CPU mode defers to the inner FfmpegFileSource's own flag, which
+        // is also set by `try_next_frame` (the zero-copy modes don't
+        // implement `try_next_frame`, so their local flag is sufficient).
+        match &self.mode {
+            SourceMode::Cpu(source) => self.exhausted || source.is_exhausted(),
+            #[cfg(target_os = "linux")]
+            SourceMode::GpuZeroCopy(_) => self.exhausted,
+            #[cfg(target_os = "macos")]
+            SourceMode::MetalZeroCopy(_) => self.exhausted,
+        }
     }
 }
 

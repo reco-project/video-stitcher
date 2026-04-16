@@ -23,7 +23,7 @@
 //!
 //! Detection data isn't just for the director. The same [`MappedDetection`]s
 //! are available to external consumers via
-//! [`StitchSession::set_detection_callback`](crate::session::StitchSession::set_detection_callback).
+//! [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink).
 //! This enables building coaching assistants, VAR systems, and stats
 //! pipelines on top of the detection data without modifying the director.
 

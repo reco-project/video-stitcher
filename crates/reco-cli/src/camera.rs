@@ -194,7 +194,7 @@ pub fn run_camera(
         // Warm up: discard first frame (camera ISP + pipeline init)
         if let Some(pair) = source.next_pair()? {
             let stereo = StereoFrame::Nv12(pair);
-            session.detect_and_update_director(&stereo, start.elapsed());
+            session.detect_and_update_director(&stereo, start.elapsed())?;
             let pos = session.director_position();
             session.process_frame(&stereo, pos.yaw, pos.pitch)?;
             println!("Warmup complete, starting capture...");
@@ -212,7 +212,7 @@ pub fn run_camera(
             };
 
             let stereo = StereoFrame::Nv12(pair);
-            session.detect_and_update_director(&stereo, start.elapsed());
+            session.detect_and_update_director(&stereo, start.elapsed())?;
             let pos = session.director_position();
             session.process_frame(&stereo, pos.yaw, pos.pitch)?;
             frame_count += 1;
@@ -243,7 +243,7 @@ pub fn run_camera(
                 }
             };
 
-            session.detect_and_update_director(&frame, start.elapsed());
+            session.detect_and_update_director(&frame, start.elapsed())?;
             let pos = session.director_position();
             session.process_frame(&frame, pos.yaw, pos.pitch)?;
             frame_count += 1;

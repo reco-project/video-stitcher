@@ -1,15 +1,17 @@
 //! Detection pipeline extracted from [`StitchSession`](crate::session::StitchSession).
 //!
 //! Owns the detector backends (CPU, GPU/CUDA, Metal), detection interval,
-//! callback, and cached detections. This keeps detection concerns separated
-//! from the rendering/encoding pipeline in `StitchSession`.
+//! sink, and cached detections. Separates detection concerns from the
+//! rendering/encoding pipeline in `StitchSession`, and is reused by
+//! [`AnalyzePipeline`](crate::analyze::AnalyzePipeline) for detection-only
+//! consumers.
 
 use crate::detector::{CameraId, Detection, Detector};
 use crate::director::MappedDetection;
 
-use super::DetectionCallback;
+use super::{DetectionSink, DetectionSinkError};
 
-/// Detection pipeline owning detector backends, interval, callback,
+/// Detection pipeline owning detector backends, interval, sink,
 /// and cached detections.
 ///
 /// Used internally by [`StitchSession`](crate::session::StitchSession) and also
@@ -22,7 +24,7 @@ pub struct DetectionPipeline {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(super) metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
-    callback: Option<DetectionCallback>,
+    sink: Option<Box<dyn DetectionSink>>,
     pub(super) last_detections: Vec<MappedDetection>,
 }
 
@@ -42,7 +44,7 @@ impl DetectionPipeline {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_detector: None,
             detection_interval: 1,
-            callback: None,
+            sink: None,
             last_detections: Vec::new(),
         }
     }
@@ -97,15 +99,39 @@ impl DetectionPipeline {
         self.detection_interval = interval.max(1);
     }
 
-    /// Set a callback for receiving tracked detection data.
-    pub fn set_callback(&mut self, cb: DetectionCallback) {
-        self.callback = Some(cb);
+    /// Set the sink that receives tracked detection data each frame.
+    ///
+    /// Replaces any sink set previously. Sink errors returned from
+    /// [`DetectionSink::on_detections`] abort the current session call
+    /// with [`SessionError::DetectionSink`](super::SessionError::DetectionSink).
+    pub fn set_sink(&mut self, sink: Box<dyn DetectionSink>) {
+        self.sink = Some(sink);
+    }
+
+    /// The most recent panorama-mapped detections.
+    ///
+    /// Owned by the pipeline so both [`StitchSession`](super::StitchSession)
+    /// and standalone callers (analyze path) can read or replace this
+    /// buffer without duplicating state.
+    pub fn last_detections(&self) -> &[MappedDetection] {
+        &self.last_detections
+    }
+
+    /// Replace the cached detections (e.g. after the caller has mapped
+    /// raw detector output to panorama coordinates).
+    pub fn set_last_detections(&mut self, dets: Vec<MappedDetection>) {
+        self.last_detections = dets;
     }
 
     /// Run the CPU detector on a stereo frame's raw data.
     ///
-    /// Returns an empty vec if no CPU detector is attached.
-    pub(super) fn run_detection(
+    /// Returns an empty vec if no CPU detector is attached. GPU-resident
+    /// frames (no CPU-accessible pixels) also return an empty vec.
+    ///
+    /// The caller is responsible for mapping raw detections to panorama
+    /// coordinates if needed (see
+    /// [`projection::camera_to_panorama`](crate::projection::camera_to_panorama)).
+    pub fn run_detection(
         &mut self,
         frame: &crate::source::StereoFrame,
         source_width: u32,
@@ -245,11 +271,21 @@ impl DetectionPipeline {
         detections
     }
 
-    /// Fire the detection callback with the current cached detections.
-    pub(super) fn fire_callback(&mut self, frame_count: u64, timestamp_ms: f64) {
-        if let Some(ref mut cb) = self.callback {
-            cb(&self.last_detections, frame_count, timestamp_ms);
+    /// Fire the detection sink with the current cached detections.
+    ///
+    /// Returns `Ok(())` when no sink is attached or the sink succeeds.
+    /// Sink errors propagate so `run` / `step` can abort. Callers that
+    /// compute panorama-mapped detections externally should first call
+    /// [`set_last_detections`](Self::set_last_detections).
+    pub fn fire_sink(
+        &mut self,
+        frame_index: u64,
+        timestamp_ms: f64,
+    ) -> Result<(), DetectionSinkError> {
+        if let Some(ref mut sink) = self.sink {
+            sink.on_detections(&self.last_detections, frame_index, timestamp_ms)?;
         }
+        Ok(())
     }
 }
 
