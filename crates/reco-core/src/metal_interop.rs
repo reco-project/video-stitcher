@@ -198,6 +198,7 @@ impl MetalTextureCache {
     ///
     /// Returns `Err(NotMetal)` if the wgpu backend is not Metal.
     pub fn new(gpu: &GpuContext) -> Result<Self, MetalInteropError> {
+        use foreign_types::ForeignTypeRef;
         use wgpu::hal::api::Metal;
 
         let device_ptr = unsafe {
@@ -205,8 +206,11 @@ impl MetalTextureCache {
                 .device
                 .as_hal::<Metal>()
                 .ok_or(MetalInteropError::NotMetal)?;
-            let raw_device = hal_device.raw_device();
-            objc2::rc::Retained::as_ptr(raw_device) as *const c_void
+            // wgpu-hal 28 metal backend exposes raw_device() as
+            // &metal::Device (metal crate 0.33). ForeignTypeRef::as_ptr
+            // returns a *mut MTLDevice objc pointer.
+            let raw_device: &metal::Device = hal_device.raw_device();
+            raw_device.as_ptr() as *const c_void
         };
 
         let mut cache: CVMetalTextureCacheRef = std::ptr::null();
@@ -331,23 +335,30 @@ impl MetalTextureCache {
         format: wgpu::TextureFormat,
         gpu: &GpuContext,
     ) -> Result<wgpu::Texture, MetalInteropError> {
-        use objc2::rc::Retained;
-        use objc2_metal::MTLTexture;
-        use objc2_metal::MTLTextureType;
+        use foreign_types::ForeignTypeRef;
+        use metal::MTLTextureType;
         use wgpu::hal::api::Metal;
 
-        // Retain the MTLTexture (bump reference count so it outlives the CVMetalTextureRef)
-        let retained = unsafe {
-            Retained::retain(mtl_texture_ptr as *mut objc2::runtime::ProtocolObject<dyn MTLTexture>)
+        if mtl_texture_ptr.is_null() {
+            return Err(MetalInteropError::NullTexture);
         }
-        .ok_or(MetalInteropError::NullTexture)?;
+
+        // Metal crate 0.33 uses the `foreign_types` pattern: `TextureRef`
+        // is a borrowed view over a raw MTLTexture pointer; `.to_owned()`
+        // clones it (sends Objective-C `retain`) and returns an owned
+        // `Texture`. This matches the wgpu-29 Retained::retain semantics:
+        // we bump the refcount so the texture outlives the CVMetalTextureRef.
+        let texture: metal::Texture = unsafe {
+            let texture_ref = metal::TextureRef::from_ptr(mtl_texture_ptr as *mut _);
+            texture_ref.to_owned()
+        };
 
         // Create HAL-level texture
         let hal_texture = unsafe {
             <Metal as wgpu::hal::Api>::Device::texture_from_raw(
-                retained,
+                texture,
                 format,
-                MTLTextureType::Type2D,
+                MTLTextureType::D2,
                 1, // array layers
                 1, // mip levels
                 wgpu::hal::CopyExtent {

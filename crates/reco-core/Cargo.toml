@@ -29,6 +29,17 @@ ash = "0.38"
 libloading = "0.9"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# The `metal` crate (0.33) is wgpu-hal 28's Metal backend dependency.
+# We use it directly for interop with VideoToolbox and compute shaders.
+# When wgpu moves back to objc2-metal (likely 29+), this dep goes
+# away and metal_interop.rs / metal_compute.rs revert to the
+# objc2-metal API. The old code is preserved in git history at
+# commit 62d62c8 (pre-wgpu-28 spike HEAD).
+metal = "0.33"
+foreign-types = "0.5"
+# Kept for reco-detect's CoreML path (still on objc2-core-ml 0.3).
+# When metal_compute / metal_interop drop objc2-metal, these two
+# may also become unnecessary if no other module uses them.
 objc2 = "0.6"
 objc2-metal = "0.3"
 objc2-foundation = { version = "0.3", features = ["NSObject"] }
