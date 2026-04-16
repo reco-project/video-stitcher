@@ -2961,6 +2961,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "reco-heatmap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ctrlc",
+ "env_logger",
+ "image",
+ "log",
+ "reco-autocam",
+ "reco-core",
+ "reco-io",
+]
+
+[[package]]
+name = "reco-highlights"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ctrlc",
+ "env_logger",
+ "log",
+ "reco-autocam",
+ "reco-core",
+ "reco-io",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "reco-io"
 version = "0.1.0"
 dependencies = [
@@ -2972,6 +3003,20 @@ dependencies = [
  "reco-core",
  "thiserror 2.0.18",
  "tracing",
+]
+
+[[package]]
+name = "reco-stats"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ctrlc",
+ "env_logger",
+ "log",
+ "reco-autocam",
+ "reco-core",
+ "reco-io",
 ]
 
 [[package]]

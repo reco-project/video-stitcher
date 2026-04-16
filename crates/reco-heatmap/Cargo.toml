@@ -1,0 +1,29 @@
+[package]
+name = "reco-heatmap"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Panorama-space ball position heatmap generator, driven by the reco-core detection stream"
+
+[[bin]]
+name = "reco-heatmap"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["dep:reco-io", "dep:reco-autocam", "dep:clap", "dep:env_logger", "dep:anyhow", "dep:ctrlc", "dep:image"]
+
+[dependencies]
+reco-core = { path = "../reco-core" }
+log = "0.4"
+
+reco-io = { path = "../reco-io", features = ["ffmpeg"], optional = true }
+reco-autocam = { path = "../reco-autocam", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+env_logger = { version = "0.11", optional = true }
+anyhow = { version = "1", optional = true }
+ctrlc = { version = "3", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
