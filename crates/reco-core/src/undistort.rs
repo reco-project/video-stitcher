@@ -156,7 +156,7 @@ impl GpuUndistort {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("undistort_pipeline_layout"),
-            bind_group_layouts: &[Some(&texture_layout), Some(&uniform_layout)],
+            bind_group_layouts: &[&texture_layout, &uniform_layout],
             immediate_size: 0,
         });
 

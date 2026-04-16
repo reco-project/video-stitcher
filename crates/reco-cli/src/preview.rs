@@ -822,10 +822,9 @@ impl ApplicationHandler for App {
                 };
 
                 let frame = match surface.get_current_texture() {
-                    reco_core::wgpu::CurrentSurfaceTexture::Success(f)
-                    | reco_core::wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    other => {
-                        log::warn!("Surface error: {other:?}");
+                    Ok(f) => f,
+                    Err(e) => {
+                        log::warn!("Surface error: {e:?}");
                         return;
                     }
                 };
