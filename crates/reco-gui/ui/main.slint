@@ -1,7 +1,7 @@
 // Reco Video Stitcher - GUI
 // Material dark theme (configured via build.rs)
 
-import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox } from "std-widgets.slint";
 
 component FileChip inherits Rectangle {
     in property <string> label;
@@ -114,8 +114,43 @@ export component RecoApp inherits Window {
     in-out property <float> blend-width: 0.05;
     in-out property <float> rig-tilt: 0.0; // degrees
 
+    // Live calibration adjustments (PlaneLayout fields on MatchCalibration).
+    // Updating these re-runs StitchPipeline::update_layout() so the user
+    // can fine-tune the stitch seam without re-running auto-calibrate.
+    in-out property <float> cal-intersect: 0.0;
+    in-out property <float> cal-camera-axis-offset: 0.0;
+    in-out property <float> cal-x-ty: 0.0;
+    in-out property <bool> cal-dirty: false;  // true when user has edited
+
     // Controls panel visibility.
     in-out property <bool> controls-open: false;
+
+    // Export dialog state.
+    in-out property <bool> export-dialog-open: false;
+    in-out property <string> export-output-path: "";
+    in-out property <int> export-width: 1920;
+    in-out property <int> export-height: 1080;
+    in-out property <string> export-codec: "h264";
+    in-out property <string> export-quality: "balanced";
+    in-out property <float> export-blend-width: 0.05;
+    in-out property <float> export-duration-secs: 0.0; // 0 = full clip
+    in-out property <string> export-model-path: "";
+    in-out property <string> export-tracking-mode: "ball";
+    in-out property <int> export-detection-interval: 3;
+    in-out property <bool> export-autocam-enabled: false;
+
+    // Export progress (also used by the main status bar).
+    in-out property <bool> export-in-progress: false;
+    in-out property <float> export-progress: 0.0; // 0..1
+    in-out property <int> export-frames-done: 0;
+    in-out property <int> export-frames-total: 0;
+    in-out property <string> export-status-text: "";
+
+    // Compile-time AI capability summary. Seeded by Rust at startup
+    // so the user can tell at-a-glance whether ball tracking will
+    // actually work with their build (TensorRT, CUDA, CoreML, etc).
+    in-out property <string> ai-status: "AI: unknown";
+    in-out property <bool> ai-gpu-available: false;
 
     // ── Callbacks into Rust ──
 
@@ -139,6 +174,18 @@ export component RecoApp inherits Window {
     callback changed-blend-width(float);
     callback changed-rig-tilt(float);
     callback changed-fov(float);
+    // Live calibration editing.
+    callback changed-cal-intersect(float);
+    callback changed-cal-camera-axis-offset(float);
+    callback changed-cal-x-ty(float);
+    callback save-calibration();
+    callback reset-calibration();
+    // Export dialog actions.
+    callback open-export-dialog();
+    callback pick-export-output();
+    callback pick-export-model();
+    callback start-export();
+    callback cancel-export();
 
     // Keyboard handling. The FocusScope must *wrap* the content so
     // key events have somewhere to bubble up when a child (button,
@@ -150,6 +197,12 @@ export component RecoApp inherits Window {
     public function refocus() { key-scope.focus(); }
 
     key-scope := FocusScope {
+        // FocusScope doesn't fill its Window parent by default; the
+        // VerticalBox below would render at its preferred height and
+        // overflow the bottom of the window, hiding the transport
+        // controls and status bar. Explicit 100/100 fixes that.
+        width: 100%;
+        height: 100%;
         init => { self.focus(); }
         key-pressed(event) => {
             // Space: play/pause
@@ -220,6 +273,13 @@ export component RecoApp inherits Window {
 
                 // Right-align spacer
                 Rectangle { horizontal-stretch: 1; }
+
+                Button {
+                    text: "Export…";
+                    enabled: root.files-loaded && !root.export-in-progress;
+                    primary: true;
+                    clicked => { root.open-export-dialog(); }
+                }
 
                 Button {
                     text: root.controls-open ? "Hide Controls" : "Controls";
@@ -356,6 +416,57 @@ export component RecoApp inherits Window {
                         clicked => { root.reset-view(); }
                     }
 
+                    Rectangle { height: 1px; background: #333; }
+
+                    // ── Live calibration ──
+                    Text {
+                        text: "Calibration";
+                        color: #fff;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+
+                    LabeledSlider {
+                        label: "Intersect";
+                        minimum: -0.5;
+                        maximum: 0.5;
+                        value <=> root.cal-intersect;
+                        decimals: 2;
+                        changed(v) => { root.changed-cal-intersect(v); }
+                    }
+
+                    LabeledSlider {
+                        label: "Camera axis offset";
+                        minimum: -0.3;
+                        maximum: 0.3;
+                        value <=> root.cal-camera-axis-offset;
+                        decimals: 2;
+                        changed(v) => { root.changed-cal-camera-axis-offset(v); }
+                    }
+
+                    LabeledSlider {
+                        label: "x_ty";
+                        minimum: -0.3;
+                        maximum: 0.3;
+                        value <=> root.cal-x-ty;
+                        decimals: 2;
+                        changed(v) => { root.changed-cal-x-ty(v); }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button {
+                            text: "Save Calibration";
+                            enabled: root.cal-dirty;
+                            clicked => { root.save-calibration(); }
+                        }
+                        Button {
+                            text: "Reset";
+                            enabled: root.cal-dirty;
+                            clicked => { root.reset-calibration(); }
+                        }
+                    }
+
                     // Keyboard hints
                     Rectangle {
                         height: 1px;
@@ -453,7 +564,7 @@ export component RecoApp inherits Window {
             }
         }
 
-        // ── Status bar ──
+        // ── Status bar (or export progress when active) ──
         Rectangle {
             background: #181818;
             height: 28px;
@@ -461,17 +572,37 @@ export component RecoApp inherits Window {
             HorizontalBox {
                 padding-left: 12px;
                 padding-right: 12px;
+                spacing: 10px;
 
-                Text {
+                if !root.export-in-progress: Text {
                     text: root.status-text;
                     color: #777;
                     font-size: 11px;
                     vertical-alignment: center;
                 }
 
-                Rectangle { horizontal-stretch: 1; }
+                if root.export-in-progress: Text {
+                    text: "Exporting: " + root.export-status-text;
+                    color: #8f8;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    font-weight: 600;
+                }
 
-                if root.fps > 0: Text {
+                if root.export-in-progress: ProgressIndicator {
+                    progress: root.export-progress;
+                    min-width: 120px;
+                    horizontal-stretch: 1;
+                }
+
+                if root.export-in-progress: Button {
+                    text: "Cancel";
+                    clicked => { root.cancel-export(); }
+                }
+
+                if !root.export-in-progress: Rectangle { horizontal-stretch: 1; }
+
+                if !root.export-in-progress && root.fps > 0: Text {
                     text: round(root.fps) + " fps";
                     color: #555;
                     font-size: 11px;
@@ -480,5 +611,263 @@ export component RecoApp inherits Window {
             }
         }
         }  // close VerticalBox
+
+        // ── Export dialog (modal overlay) ──
+        //
+        // Placed as a sibling of the main VerticalBox so it renders on
+        // top. Visibility toggled by `export-dialog-open`. Clicks on
+        // the dark backdrop outside the panel dismiss the dialog.
+        if root.export-dialog-open: Rectangle {
+            background: #000000aa; // 67% opacity scrim
+            TouchArea {
+                // Swallow clicks on the backdrop; clicking a transparent
+                // area (not the panel) closes the dialog.
+                clicked => { root.export-dialog-open = false; }
+            }
+
+            Rectangle {
+                // Centered modal panel
+                width: 560px;
+                height: 620px;
+                background: #222;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #444;
+
+                // Block click-through to the backdrop.
+                TouchArea {}
+
+                VerticalBox {
+                    padding: 24px;
+                    spacing: 14px;
+
+                    Text {
+                        text: "Export Stitched Video";
+                        color: #fff;
+                        font-size: 18px;
+                        font-weight: 600;
+                    }
+
+                    Text {
+                        text: "Run the full pipeline (decode → stitch → encode) and save the output.";
+                        color: #999;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+
+                    // Output path
+                    Text { text: "Output file"; color: #ccc; font-size: 12px; }
+                    HorizontalBox {
+                        spacing: 6px;
+                        padding: 0;
+                        LineEdit {
+                            text: root.export-output-path;
+                            placeholder-text: "Pick a destination file…";
+                            read-only: true;
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: "Save to…";
+                            clicked => { root.pick-export-output(); }
+                        }
+                    }
+
+                    // Resolution + codec + quality
+                    HorizontalBox {
+                        spacing: 10px;
+                        padding: 0;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Width"; color: #ccc; font-size: 12px; }
+                            ComboBox {
+                                model: ["1280", "1920", "2560", "3840"];
+                                // ComboBox.current-value expects a string;
+                                // binding an int property silently falls
+                                // through to index 0 and `selected` only
+                                // fires on user click. Map via current-index.
+                                current-index: root.export-width == 1280 ? 0
+                                             : root.export-width == 2560 ? 2
+                                             : root.export-width == 3840 ? 3
+                                             : 1;
+                                selected(v) => {
+                                    root.export-width = v == "1280" ? 1280
+                                                     : v == "2560" ? 2560
+                                                     : v == "3840" ? 3840
+                                                     : 1920;
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Height"; color: #ccc; font-size: 12px; }
+                            ComboBox {
+                                model: ["720", "1080", "1440", "2160"];
+                                current-index: root.export-height == 720 ? 0
+                                             : root.export-height == 1440 ? 2
+                                             : root.export-height == 2160 ? 3
+                                             : 1;
+                                selected(v) => {
+                                    root.export-height = v == "720" ? 720
+                                                      : v == "1440" ? 1440
+                                                      : v == "2160" ? 2160
+                                                      : 1080;
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalBox {
+                        spacing: 10px;
+                        padding: 0;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Codec"; color: #ccc; font-size: 12px; }
+                            ComboBox {
+                                model: ["h264", "hevc", "av1"];
+                                current-index: root.export-codec == "hevc" ? 1
+                                             : root.export-codec == "av1" ? 2
+                                             : 0;
+                                selected(v) => { root.export-codec = v; }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Quality"; color: #ccc; font-size: 12px; }
+                            ComboBox {
+                                model: ["fast", "balanced", "high"];
+                                current-index: root.export-quality == "fast" ? 0
+                                             : root.export-quality == "high" ? 2
+                                             : 1;
+                                selected(v) => { root.export-quality = v; }
+                            }
+                        }
+                    }
+
+                    // Blend + duration
+                    LabeledSlider {
+                        label: "Seam blend";
+                        minimum: 0;
+                        maximum: 0.3;
+                        value <=> root.export-blend-width;
+                        decimals: 2;
+                        changed(v) => { /* just stored, used at submit */ }
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    // AI Tracking section
+                    HorizontalBox {
+                        padding: 0;
+                        spacing: 8px;
+                        Text {
+                            text: "AI Tracking";
+                            color: #fff;
+                            font-size: 14px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        CheckBox {
+                            text: "Enable";
+                            checked <=> root.export-autocam-enabled;
+                            enabled: root.ai-gpu-available;
+                        }
+                    }
+
+                    Text {
+                        text: root.ai-status;
+                        color: root.ai-gpu-available ? #8f8 : #f88;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                    }
+
+                    if root.export-autocam-enabled: VerticalLayout {
+                        spacing: 8px;
+
+                        HorizontalBox {
+                            spacing: 6px;
+                            padding: 0;
+                            LineEdit {
+                                text: root.export-model-path;
+                                placeholder-text: "Pick a YOLO ONNX model…";
+                                read-only: true;
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Model…";
+                                clicked => { root.pick-export-model(); }
+                            }
+                        }
+
+                        HorizontalBox {
+                            spacing: 10px;
+                            padding: 0;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "Tracking mode"; color: #ccc; font-size: 12px; }
+                                ComboBox {
+                                    model: ["ball", "field", "sweep"];
+                                    current-index: root.export-tracking-mode == "field" ? 1
+                                                 : root.export-tracking-mode == "sweep" ? 2
+                                                 : 0;
+                                    selected(v) => { root.export-tracking-mode = v; }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "Detect every N frames"; color: #ccc; font-size: 12px; }
+                                ComboBox {
+                                    model: ["1", "3", "5", "10", "15", "30"];
+                                    current-index: root.export-detection-interval == 1 ? 0
+                                                 : root.export-detection-interval == 5 ? 2
+                                                 : root.export-detection-interval == 10 ? 3
+                                                 : root.export-detection-interval == 15 ? 4
+                                                 : root.export-detection-interval == 30 ? 5
+                                                 : 1;
+                                    selected(v) => {
+                                        root.export-detection-interval =
+                                            v == "1" ? 1 : v == "5" ? 5 : v == "10" ? 10
+                                            : v == "15" ? 15 : v == "30" ? 30 : 3;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; } // flex spacer
+
+                    HorizontalBox {
+                        spacing: 10px;
+                        padding: 0;
+
+                        Rectangle { horizontal-stretch: 1; }
+
+                        Button {
+                            text: "Cancel";
+                            clicked => { root.export-dialog-open = false; }
+                        }
+
+                        Button {
+                            text: "Start Export";
+                            primary: true;
+                            enabled: root.export-output-path != "";
+                            clicked => { root.start-export(); }
+                        }
+                    }
+                }
+            }
+        }
     }  // close FocusScope key-scope
 }

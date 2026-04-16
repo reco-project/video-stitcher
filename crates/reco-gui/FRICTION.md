@@ -226,6 +226,68 @@ pub struct LensProfileSummary {
 }
 ```
 
+## 12. slint::Image::try_from(wgpu::Texture) Takes Ownership, Forces Per-Frame Allocation
+
+**Impact**: ~0.5-1ms per frame of driver work at 1080p; palpable as reduced
+playback smoothness compared to the CLI preview.
+
+Slint's `Image::try_from(wgpu::Texture)` moves the texture into the Slint
+image. Slint holds it for as long as it's referenced by any UI property,
+so the same texture cannot be reused for the next frame without risking
+aliasing (old Image still displayed while new render target claims the
+same storage). Our consumer has to `device.create_texture(...)` every
+frame.
+
+The CLI preview has the opposite story: it renders into a
+`wgpu::SurfaceTexture` that winit owns and reuses across present cycles.
+No per-frame allocation, no driver churn, consistently smoother visible
+playback.
+
+**Suggested API addition in Slint (upstream issue)**:
+- An `Image::from_borrowed_texture(&wgpu::Texture)` variant with
+  explicit lifetime semantics (caller guarantees texture outlives Slint's
+  usage until next swap).
+- OR an `Image::swap_texture(&mut self, new: wgpu::Texture)` that atomically
+  reuses the slot.
+
+**Workaround we could try**: keep a small pool (2-3) of textures and
+rotate, relying on Slint to release the old Image before we re-enter.
+Not attempted yet because it depends on Slint's internal refcounting
+which isn't public.
+
+## 13. No Runtime API to Probe ONNX Runtime Execution Providers
+
+**Impact**: Users can't discover from the UI whether their build supports
+hardware-accelerated tracking; autocam silently refuses with a log
+message.
+
+reco-autocam's `setup_autocam` returns `Ok(false)` when it can't run
+(e.g., GPU-resident frames but no TensorRT/CUDA EP), but there's no
+way to ask ahead of time "will tracking work if I enable it?". The
+GUI currently uses compile-time `cfg!(feature = "tensorrt")` probes
+to surface an "AI: TensorRT available" / "AI: CPU-only" banner.
+This is informative but inaccurate when the machine lacks the runtime
+libraries (CUDA driver missing, TensorRT engine build failing, etc.).
+
+**Suggested API addition in reco-autocam (or a new reco-detect::probe module)**:
+```rust
+pub struct AiProbeResult {
+    pub providers: Vec<ExecutionProvider>,
+    pub can_run_on_gpu_frames: bool,
+    pub errors: Vec<String>,
+}
+
+pub fn probe_execution_providers() -> AiProbeResult {
+    // Try creating an ORT session for each compiled-in EP with a trivial
+    // model, record which ones succeed, return the capability set.
+}
+```
+
+**Related**: the user has published an issue about AI compatibility
+opacity. This would be the foundation for a clearer story: the GUI (and
+CLI) could print a single "Inference backend: TensorRT" line on startup
+that answers "will tracking work".
+
 ## 11. Slider Value Binding Echoes Fire `changed` for Programmatic Updates
 
 **Impact**: Medium - a Slint-level concern, but reco-gui had to work

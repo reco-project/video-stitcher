@@ -20,7 +20,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use reco_core::calibration::MatchCalibration;
@@ -128,6 +128,66 @@ struct AppState {
     /// through the camera-smoothing path but still need a re-render.
     /// Cleared by the timer after it renders.
     preview_dirty: bool,
+    /// Interrupt flag for a running export. Set to true when the user
+    /// clicks Cancel; StitchJob checks it between frames and aborts.
+    export_interrupted: Arc<AtomicBool>,
+    /// Join handle for the export worker. Held so the timer can see
+    /// when the export finishes (via try_recv on export_rx).
+    export_thread: Option<std::thread::JoinHandle<()>>,
+    /// Receives export completion notifications from the worker.
+    export_rx: Option<std::sync::mpsc::Receiver<ExportOutcome>>,
+    /// Original PlaneLayout values — what auto-calibrate produced. Live
+    /// calibration sliders edit relative to this so Reset restores.
+    cal_baseline_layout: Option<reco_core::calibration::PlaneLayout>,
+}
+
+/// Compile-time AI capability summary.
+///
+/// Reports which ONNX Runtime execution providers were baked into
+/// this binary. A runtime probe would be better (hardware might not
+/// support what we compiled in), but reco-autocam exposes no such
+/// API today — see reco-gui/FRICTION.md #12.
+fn ai_capability_summary() -> (String, bool) {
+    #[allow(unused_mut)]
+    let mut available: Vec<&'static str> = Vec::new();
+    #[cfg(feature = "tensorrt")]
+    available.push("TensorRT");
+    #[cfg(feature = "cuda")]
+    available.push("CUDA");
+    #[cfg(feature = "coreml")]
+    available.push("CoreML");
+
+    #[cfg(not(feature = "autocam"))]
+    return ("AI: disabled (build without autocam feature)".into(), false);
+
+    #[cfg(feature = "autocam")]
+    {
+        if available.is_empty() {
+            // CPU is always available but can't run alongside zero-copy
+            // GPU decode — autocam will refuse on NVDEC-resident frames.
+            (
+                "AI: CPU-only (ball tracking needs tensorrt / cuda feature for hardware decode)"
+                    .into(),
+                false,
+            )
+        } else {
+            (
+                format!("AI: {} available (hardware decode + inference)", available.join(", ")),
+                true,
+            )
+        }
+    }
+}
+
+/// Result published by the export thread.
+#[derive(Debug)]
+enum ExportOutcome {
+    /// Finished successfully — carries (frames, output path).
+    Ok(u64, PathBuf),
+    /// Export was cancelled by the user.
+    Cancelled,
+    /// Export failed with an error message.
+    Failed(String),
 }
 
 impl AppState {
@@ -149,13 +209,17 @@ impl AppState {
             pending_seek: None,
             last_render_at: None,
             preview_dirty: false,
+            export_interrupted: Arc::new(AtomicBool::new(false)),
+            export_thread: None,
+            export_rx: None,
+            cal_baseline_layout: None,
         }
     }
 
     /// Build a PreviewBridge using the captured Slint GPU handles. Fails
     /// if the rendering notifier hasn't populated `shared_gpu` yet.
     fn build_bridge(
-        &self,
+        &mut self,
         cal: &MatchCalibration,
         input_w: u32,
         input_h: u32,
@@ -165,6 +229,8 @@ impl AppState {
             .as_ref()
             .ok_or("GPU not ready yet (Slint rendering not initialized)")?
             .clone();
+        // Save baseline layout so Reset Calibration can restore it.
+        self.cal_baseline_layout = Some(cal.layout.clone());
         PreviewBridge::new(
             gpu.device,
             gpu.queue,
@@ -176,6 +242,36 @@ impl AppState {
             PREVIEW_HEIGHT,
         )
         .map_err(|e| format!("GPU init error: {e}"))
+    }
+
+    /// Apply an edited PlaneLayout to the renderer. `preview_dirty`
+    /// triggers a re-render on the next timer tick.
+    fn apply_layout(&mut self, layout: reco_core::calibration::PlaneLayout) {
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.layout = layout.clone();
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.renderer_mut().update_layout(layout);
+            self.preview_dirty = true;
+        }
+    }
+
+    /// Write the current (edited) calibration back to disk.
+    fn save_calibration(&self) -> Result<(), String> {
+        let (Some(cal), Some(path)) = (&self.calibration, &self.calibration_path) else {
+            return Err("No calibration or path to save".into());
+        };
+        let json = serde_json::to_string_pretty(cal).map_err(|e| format!("serialize: {e}"))?;
+        std::fs::write(path, json).map_err(|e| format!("write {}: {e}", path.display()))?;
+        log::info!("Saved calibration to {}", path.display());
+        Ok(())
+    }
+
+    /// Restore PlaneLayout to the values loaded at init (or after auto-cal).
+    fn reset_calibration(&mut self) {
+        if let Some(layout) = self.cal_baseline_layout.clone() {
+            self.apply_layout(layout);
+        }
     }
 
     /// Check if all three files are selected and try to initialize.
@@ -410,6 +506,14 @@ fn main() -> anyhow::Result<()> {
 
     let app = RecoApp::new()?;
     let state = Rc::new(RefCell::new(AppState::new()));
+
+    // Seed AI capability status once at startup so users can see
+    // before they try to use tracking whether this build will do GPU
+    // inference or fall back.
+    let (ai_status, ai_gpu_ok) = ai_capability_summary();
+    log::info!("{ai_status}");
+    app.set_ai_status(ai_status.into());
+    app.set_ai_gpu_available(ai_gpu_ok);
 
     // Capture Slint's wgpu device and queue on RenderingSetup. These
     // are reused by PreviewBridge so reco-core's stitch output lands
@@ -735,6 +839,222 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // ── Live calibration editing callbacks ──
+    //
+    // Each slider writes the corresponding field on the PlaneLayout,
+    // pushes the edited layout into the renderer, and flips cal-dirty
+    // so the Save button becomes enabled.
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_cal_intersect(move |v| {
+        let mut s = state_ref.borrow_mut();
+        let Some(mut layout) = s.calibration.as_ref().map(|c| c.layout.clone()) else {
+            return;
+        };
+        layout.intersect = v as f64;
+        s.apply_layout(layout);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_cal_camera_axis_offset(move |v| {
+        let mut s = state_ref.borrow_mut();
+        let Some(mut layout) = s.calibration.as_ref().map(|c| c.layout.clone()) else {
+            return;
+        };
+        layout.camera_axis_offset = v as f64;
+        s.apply_layout(layout);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_cal_x_ty(move |v| {
+        let mut s = state_ref.borrow_mut();
+        let Some(mut layout) = s.calibration.as_ref().map(|c| c.layout.clone()) else {
+            return;
+        };
+        layout.x_ty = v as f64;
+        s.apply_layout(layout);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_save_calibration(move || {
+        let s = state_ref.borrow();
+        if let Err(e) = s.save_calibration() {
+            log::error!("Save calibration: {e}");
+            if let Some(app) = app_weak.upgrade() {
+                app.set_status_text(format!("Save failed: {e}").into());
+            }
+        } else if let Some(app) = app_weak.upgrade() {
+            app.set_status_text("Calibration saved".into());
+            app.set_cal_dirty(false);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_reset_calibration(move || {
+        let mut s = state_ref.borrow_mut();
+        s.reset_calibration();
+        if let (Some(app), Some(layout)) = (
+            app_weak.upgrade(),
+            s.cal_baseline_layout.as_ref(),
+        ) {
+            app.set_cal_intersect(layout.intersect as f32);
+            app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
+            app.set_cal_x_ty(layout.x_ty as f32);
+            app.set_cal_dirty(false);
+        }
+    });
+
+    // ── Export dialog callbacks ──
+    //
+    // "Open" populates default values from current state (blend width
+    // from preview, output path blank so user must pick one). "Start"
+    // spawns a background thread running StitchJob; progress flows
+    // back via invoke_from_event_loop so Slint properties stay on the
+    // UI thread. "Cancel" flips the AtomicBool the job polls.
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_open_export_dialog(move || {
+        let s = state_ref.borrow();
+        if let Some(app) = app_weak.upgrade() {
+            // Seed reasonable defaults from current preview state.
+            if let Some(bridge) = s.bridge.as_ref() {
+                let cur_blend = bridge.renderer().pipeline().viewport().blend_width;
+                app.set_export_blend_width(cur_blend);
+            }
+            app.set_export_dialog_open(true);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_pick_export_output(move || {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Export stitched video to…")
+            .add_filter("MP4", &["mp4"])
+            .add_filter("MOV", &["mov"])
+            .add_filter("MKV", &["mkv"]);
+        if let Some(mut path) = dialog.save_file() {
+            // Ensure an extension — ffmpeg picks muxer by extension.
+            if path.extension().is_none() {
+                path.set_extension("mp4");
+            }
+            if let Some(app) = app_weak.upgrade() {
+                app.set_export_output_path(path.to_string_lossy().to_string().into());
+            }
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_pick_export_model(move || {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Select YOLO ONNX model")
+            .add_filter("ONNX", &["onnx"]);
+        if let Some(path) = dialog.pick_file()
+            && let Some(app) = app_weak.upgrade()
+        {
+            app.set_export_model_path(path.to_string_lossy().to_string().into());
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_start_export(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let output_str = app.get_export_output_path().to_string();
+        if output_str.is_empty() {
+            return;
+        }
+        let mut s = state_ref.borrow_mut();
+        if s.export_thread.is_some() {
+            log::warn!("Export already running, ignoring start request");
+            return;
+        }
+        let (Some(left), Some(right), Some(cal)) = (
+            s.left_path.clone(),
+            s.right_path.clone(),
+            s.calibration.clone(),
+        ) else {
+            log::error!("Cannot start export without left/right/calibration");
+            return;
+        };
+
+        // Snapshot all export settings. Slint properties must not be
+        // read from the worker thread — only the UI thread owns them.
+        let output = PathBuf::from(output_str);
+        let width = app.get_export_width() as u32;
+        let height = app.get_export_height() as u32;
+        let codec_str = app.get_export_codec().to_string();
+        let quality_str = app.get_export_quality().to_string();
+        let blend = app.get_export_blend_width();
+        let duration = app.get_export_duration_secs();
+        let autocam_enabled = app.get_export_autocam_enabled();
+        let model_path = app.get_export_model_path().to_string();
+        let tracking_mode = app.get_export_tracking_mode().to_string();
+        let detection_interval = app.get_export_detection_interval() as u32;
+
+        // Reset cancel flag, start a fresh channel for completion.
+        s.export_interrupted.store(false, Ordering::Relaxed);
+        let interrupted = Arc::clone(&s.export_interrupted);
+        let (tx, rx) = std::sync::mpsc::channel();
+        s.export_rx = Some(rx);
+
+        // UI-thread setup before launching the worker.
+        app.set_export_in_progress(true);
+        app.set_export_progress(0.0);
+        app.set_export_frames_done(0);
+        app.set_export_frames_total(0);
+        app.set_export_status_text("Initializing…".into());
+        app.set_export_dialog_open(false);
+
+        let app_weak_bg = app_weak.clone();
+        let output_for_thread = output.clone();
+        let handle = std::thread::spawn(move || {
+            let outcome = run_export(
+                left,
+                right,
+                cal,
+                output_for_thread,
+                width,
+                height,
+                codec_str,
+                quality_str,
+                blend,
+                duration,
+                autocam_enabled,
+                model_path,
+                tracking_mode,
+                detection_interval,
+                app_weak_bg,
+                &interrupted,
+            );
+            let _ = tx.send(outcome);
+        });
+        s.export_thread = Some(handle);
+    });
+
+    let state_ref = Rc::clone(&state);
+    app.on_cancel_export(move || {
+        let s = state_ref.borrow();
+        log::info!("Cancel requested");
+        s.export_interrupted.store(true, Ordering::Relaxed);
+    });
+
     // ── Playback timer ──
 
     let app_weak = app.as_weak();
@@ -752,6 +1072,43 @@ fn main() -> anyhow::Result<()> {
             {
                 s.cal_rx = None;
                 handle_calibration_result(result, &mut s, &app_weak);
+                return;
+            }
+
+            // Poll the export worker for completion.
+            if let Some(rx) = &s.export_rx
+                && let Ok(outcome) = rx.try_recv()
+            {
+                s.export_rx = None;
+                if let Some(h) = s.export_thread.take() {
+                    let _ = h.join();
+                }
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_export_in_progress(false);
+                    app.set_export_progress(0.0);
+                    match outcome {
+                        ExportOutcome::Ok(frames, path) => {
+                            app.set_export_status_text("".into());
+                            app.set_status_text(
+                                format!(
+                                    "Export complete: {frames} frames -> {}",
+                                    path.display(),
+                                )
+                                .into(),
+                            );
+                        }
+                        ExportOutcome::Cancelled => {
+                            app.set_export_status_text("".into());
+                            app.set_status_text("Export cancelled".into());
+                        }
+                        ExportOutcome::Failed(msg) => {
+                            app.set_export_status_text("".into());
+                            app.set_status_text(
+                                format!("Export failed: {msg}").into(),
+                            );
+                        }
+                    }
+                }
                 return;
             }
 
@@ -851,6 +1208,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             // Render the first frame.
             let img = s.render_current();
+            // Seed calibration slider values from the baseline layout.
+            let layout = s.cal_baseline_layout.clone();
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
@@ -862,6 +1221,24 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 );
                 if let Some(img) = img {
                     app.set_preview_frame(img);
+                }
+                if let Some(layout) = layout {
+                    app.set_cal_intersect(layout.intersect as f32);
+                    app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
+                    app.set_cal_x_ty(layout.x_ty as f32);
+                    app.set_cal_dirty(false);
+                }
+                // Seed export dialog output filename suggestion to
+                // sit next to the left-video file for convenience.
+                let left_path = s.left_path.clone();
+                if let Some(left_path) = left_path {
+                    let suggested = left_path.with_file_name(
+                        format!("{}_stitched.mp4",
+                            left_path.file_stem()
+                                .map(|s| s.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| "reco".into()))
+                    );
+                    app.set_export_output_path(suggested.to_string_lossy().to_string().into());
                 }
             }
         }
@@ -943,6 +1320,184 @@ fn handle_calibration_result(
             log::error!("Auto-calibration failed: {e}");
             if let Some(app) = app_weak.upgrade() {
                 app.set_status_text(format!("Calibration failed: {e}").into());
+            }
+        }
+    }
+}
+
+/// Run a StitchJob on the worker thread.
+///
+/// Creates its own GpuContext (the preview's device is on the UI
+/// thread and Send-unsafe). Pumps progress to Slint via
+/// `invoke_from_event_loop` so property updates stay on the UI thread.
+/// Honors the `interrupted` flag between frames for user-initiated cancel.
+#[allow(clippy::too_many_arguments)]
+fn run_export(
+    left: PathBuf,
+    right: PathBuf,
+    cal: MatchCalibration,
+    output: PathBuf,
+    width: u32,
+    height: u32,
+    codec_str: String,
+    quality_str: String,
+    blend: f32,
+    duration_secs: f32,
+    autocam_enabled: bool,
+    model_path: String,
+    tracking_mode: String,
+    detection_interval: u32,
+    app_weak: slint::Weak<RecoApp>,
+    interrupted: &AtomicBool,
+) -> ExportOutcome {
+    use reco_io::output::{Codec, Quality};
+
+    let codec = match codec_str.as_str() {
+        "hevc" | "h265" => Codec::HEVC,
+        "av1" => Codec::AV1,
+        _ => Codec::H264,
+    };
+    let quality = match quality_str.as_str() {
+        "fast" => Quality::Fast,
+        "high" => Quality::High,
+        _ => Quality::Balanced,
+    };
+
+    // Capture field_roi before moving cal into the job.
+    #[cfg(feature = "autocam")]
+    let field_roi = cal.field_roi.clone();
+
+    // Helper to post status updates to the UI thread.
+    let post_status = |text: String| {
+        let weak = app_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_export_status_text(text.into());
+            }
+        });
+    };
+
+    post_status("Probing source…".into());
+
+    // Probe the source once up front to seed the total-frames count
+    // that drives the progress bar percentage. Best-effort: if it
+    // fails, progress bar stays indeterminate until job reports frames.
+    use reco_core::source::FrameSource;
+    if let Ok(source) = reco_io::adapters::FfmpegFileSource::open(&left, &right)
+        && let Some(total) = source.total_frames()
+    {
+        let weak = app_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_export_frames_total(total as i32);
+            }
+        });
+    }
+
+    post_status("Opening encoder and decoders…".into());
+
+    let progress_weak = app_weak.clone();
+    let progress_start = Instant::now();
+    let mut job = reco_io::StitchJob::with_calibration(left.clone(), right.clone(), cal, output.clone())
+        .codec(codec)
+        .quality(quality)
+        .resolution(width, height)
+        .blend_width(blend)
+        .on_progress(move |p: &reco_core::session::FrameProgress| {
+            // Slint properties MUST be touched from the UI thread; use
+            // invoke_from_event_loop to queue the update.
+            let frames = p.frames_completed;
+            let elapsed = progress_start.elapsed().as_secs_f64();
+            let fps = if elapsed > 0.0 {
+                frames as f64 / elapsed
+            } else {
+                0.0
+            };
+            let weak = progress_weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(app) = weak.upgrade() {
+                    app.set_export_frames_done(frames as i32);
+                    let total = app.get_export_frames_total();
+                    if total > 0 {
+                        app.set_export_progress(frames as f32 / total as f32);
+                    }
+                    app.set_export_status_text(
+                        format!("Frame {frames} ({fps:.0} fps)").into(),
+                    );
+                }
+            });
+        });
+
+    if duration_secs > 0.0 {
+        job = job.duration(duration_secs as f64);
+    }
+
+    #[cfg(feature = "autocam")]
+    if autocam_enabled && !model_path.is_empty() {
+        let model_path_owned = model_path.clone();
+        let mode_str_owned = tracking_mode.clone();
+        let interval = detection_interval as u64;
+        let status_weak = app_weak.clone();
+        job = job.on_session(move |session, source| {
+            let info = source.info();
+            let mode = match mode_str_owned.as_str() {
+                "field" => reco_autocam::TrackingMode::Field,
+                "sweep" => reco_autocam::TrackingMode::Sweep,
+                _ => reco_autocam::TrackingMode::Ball,
+            };
+            let is_10bit =
+                source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
+            let result = reco_autocam::setup_autocam(
+                session,
+                &model_path_owned,
+                info.width,
+                info.height,
+                info.fps as f32,
+                source.is_gpu_resident(),
+                interval,
+                0.0,
+                mode,
+                field_roi.as_ref(),
+                is_10bit,
+            );
+            let (banner, log_msg): (String, String) = match result {
+                Ok(true) => (
+                    "AI tracking: active".into(),
+                    "Export autocam: tracking enabled".into(),
+                ),
+                Ok(false) => (
+                    "AI tracking UNAVAILABLE (needs tensorrt feature or CPU decode); export continuing WITHOUT tracking".into(),
+                    "Export autocam: unavailable (needs --features tensorrt or CPU decode)"
+                        .into(),
+                ),
+                Err(e) => (
+                    format!("AI tracking setup FAILED ({e}); export continuing WITHOUT tracking"),
+                    format!("Export autocam setup failed: {e}"),
+                ),
+            };
+            log::warn!("{log_msg}");
+            let weak = status_weak.clone();
+            let banner_owned = banner.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(app) = weak.upgrade() {
+                    app.set_status_text(banner_owned.into());
+                }
+            });
+        });
+    }
+
+    #[cfg(not(feature = "autocam"))]
+    {
+        let _ = (autocam_enabled, model_path, tracking_mode, detection_interval);
+    }
+
+    match job.run(interrupted) {
+        Ok(r) => ExportOutcome::Ok(r.frames_processed, output),
+        Err(e) => {
+            if interrupted.load(Ordering::Relaxed) {
+                ExportOutcome::Cancelled
+            } else {
+                ExportOutcome::Failed(format!("{e}"))
             }
         }
     }
