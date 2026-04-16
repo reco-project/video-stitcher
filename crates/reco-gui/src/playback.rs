@@ -29,6 +29,12 @@ pub struct StereoYuv {
 }
 
 /// Controls video file playback for the GUI.
+///
+/// Uses drift-free scheduling: frame advance timing is computed from a
+/// wall-clock anchor set when playback starts, not from the last
+/// successful advance. This prevents the cumulative lag that comes
+/// from snapping the anchor to actual advance times (which are always
+/// slightly late relative to the ideal frame boundary).
 pub struct Playback {
     source: Option<FfmpegFileSource>,
     info: Option<SourceInfo>,
@@ -37,7 +43,10 @@ pub struct Playback {
     frame_index: u64,
     total_frames: Option<u64>,
     frame_duration: Duration,
-    last_frame_time: Option<Instant>,
+    /// Wall-clock time when playback started (or resumed) and the
+    /// frame index at that moment. Used to compute the ideal target
+    /// frame index without drift.
+    playback_anchor: Option<(Instant, u64)>,
 }
 
 impl Playback {
@@ -51,7 +60,7 @@ impl Playback {
             frame_index: 0,
             total_frames: None,
             frame_duration: Duration::from_millis(33), // ~30fps default
-            last_frame_time: None,
+            playback_anchor: None,
         }
     }
 
@@ -76,7 +85,7 @@ impl Playback {
         self.state = PlayState::Paused;
         self.frame_index = 0;
         self.current_frame = None;
-        self.last_frame_time = None;
+        self.playback_anchor = None;
 
         // Decode the first frame so we have something to display.
         self.step_forward()?;
@@ -115,18 +124,34 @@ impl Playback {
     ///
     /// Uses `try_next_frame()` to avoid blocking the UI thread on decode.
     /// Returns `true` if a new frame was consumed.
+    ///
+    /// Timing is drift-free: the ideal frame index is computed from the
+    /// wall-clock elapsed time since playback started, so any single
+    /// late tick is caught up on the next tick rather than compounding.
     pub fn tick(&mut self) -> Result<bool, SourceError> {
         if self.state != PlayState::Playing {
             return Ok(false);
         }
 
         let now = Instant::now();
-        let should_advance = match self.last_frame_time {
-            Some(last) => now.duration_since(last) >= self.frame_duration,
-            None => true,
+
+        // Anchor on the first tick after play/resume/seek.
+        let (start, start_frame) = match self.playback_anchor {
+            Some(a) => a,
+            None => {
+                self.playback_anchor = Some((now, self.frame_index));
+                (now, self.frame_index)
+            }
         };
 
-        if !should_advance {
+        // Drift-free target: where the playhead SHOULD be based on wall
+        // clock, not based on when the last advance happened.
+        let elapsed = now.duration_since(start);
+        let frames_since_start = (elapsed.as_secs_f64() / self.frame_duration.as_secs_f64()) as u64;
+        let target_frame = start_frame + frames_since_start;
+
+        if self.frame_index >= target_frame {
+            // On schedule or ahead — no advance needed this tick.
             return Ok(false);
         }
 
@@ -148,7 +173,6 @@ impl Playback {
                 };
                 self.current_frame = Some(StereoYuv { left, right });
                 self.frame_index += 1;
-                self.last_frame_time = Some(now);
                 Ok(true)
             }
             None => {
@@ -169,7 +193,7 @@ impl Playback {
         match self.state {
             PlayState::Paused | PlayState::Finished => {
                 self.state = PlayState::Playing;
-                self.last_frame_time = None;
+                self.playback_anchor = None;
             }
             PlayState::Playing => {
                 self.state = PlayState::Paused;
@@ -191,6 +215,10 @@ impl Playback {
         if let Some(source) = self.source.as_mut() {
             source.seek(target)?;
             self.frame_index = target;
+            // Reset pacing anchor so playback resumes cleanly from the
+            // new position without trying to "catch up" N seconds of
+            // skipped frames.
+            self.playback_anchor = None;
             self.step_forward()?;
         }
         Ok(())

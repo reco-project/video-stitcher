@@ -19,7 +19,7 @@ reco-core = { path = "../reco-core" }
 reco-io = { path = "../reco-io", features = ["ffmpeg"] }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 
-slint = "~1.15"
+slint = { version = "~1.15", features = ["unstable-wgpu-28"] }
 pollster = "0.4"
 rfd = "0.15"
 log = "0.4"
