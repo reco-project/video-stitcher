@@ -2,9 +2,18 @@
 
 Friction points encountered while building a Slint GUI consumer of reco-core.
 
-## 1. wgpu Version Mismatch (blocking zero-copy rendering)
+## 1. wgpu Version Mismatch (blocking zero-copy rendering) — RESOLVED 2026-04-16
 
-**Impact**: Forces CPU readback bridge instead of zero-copy GPU texture sharing.
+**Status**: Resolved by downgrading reco-core to wgpu 28. The fork was
+working around PR gfx-rs/wgpu#9331 (shaderDrawParameters regression),
+which is a wgpu 29-only bug. On wgpu 28 the fork is unnecessary, and
+Slint 1.15's `unstable-wgpu-28` feature lets us share the device.
+`PreviewBridge` now uses `GpuContext::from_device_queue()` with handles
+captured from Slint's rendering notifier — zero CPU readback, no
+staging buffers.
+
+Historical context preserved below for anyone coming from the earlier
+architecture:
 
 reco-core uses wgpu 29 (custom fork at `mohamedtahaguelzim/wgpu.git` branch
 `fix/shader-draw-parameters-v29.0.1`). Slint 1.15 only supports wgpu 27 and 28
@@ -138,3 +147,101 @@ consumer must understand the pipeline internals to choose the right method.
 
 A unified API like `render(target: RenderTarget)` where `RenderTarget` is
 either a surface view or an internal texture would reduce confusion.
+
+## 9. CalibrationResult Doesn't Expose Detected Lens Profile
+
+**Impact**: GUI cannot show the user which lens profile was used.
+
+`reco_calibrate::video::calibrate_videos()` internally calls
+`CalibrationPipeline::detect_profiles()` which looks up the lens profile
+from embedded database + video metadata / telemetry. The returned
+`CalibrationResult` contains the final `MatchCalibration`, match counts,
+confidence, and per-frame stats — but NOT the path or identifier of the
+lens profile that was selected.
+
+The GUI wants to display something like:
+
+> Auto-calibrated (4 frames, 73 matches, 0.15° angular error)
+> Left lens: GoPro HERO10 Linear 4K (gopro_hero10_linear_4k.json)
+> Right lens: GoPro HERO10 Linear 4K (same)
+
+Without an API surface, the GUI can only read the log output, which is
+fragile and not structured.
+
+**Suggested API addition**:
+```rust
+pub struct CalibrationResult {
+    // ... existing fields ...
+
+    /// The lens profiles used during calibration. `None` if profiles
+    /// were not detected (e.g., manual override before detection).
+    pub left_lens_profile: Option<LensProfileInfo>,
+    pub right_lens_profile: Option<LensProfileInfo>,
+}
+
+pub struct LensProfileInfo {
+    /// Human-readable camera/model identifier ("GoPro HERO10").
+    pub camera: String,
+    /// Lens setting ("Linear 4K 16:9").
+    pub lens: String,
+    /// Source of the profile: Database | File(PathBuf) | Auto | Fallback.
+    pub source: ProfileSource,
+    /// Path if loaded from a file (for "open profile" in the GUI).
+    pub path: Option<PathBuf>,
+}
+```
+
+## 10. No API to List Available Lens Profiles
+
+**Impact**: GUI cannot populate a picker/dropdown for manual profile
+override.
+
+`LensDatabase::load_embedded()` returns a database containing thousands
+of profiles, but there's no public iterator over them. The consumer
+would need a `list_profiles() -> Vec<LensProfileSummary>` that returns
+`(camera, lens, resolution, fps)` tuples so a user-facing picker can
+present them grouped (e.g., all GoPro HERO10 profiles, all at 4K).
+
+Combined with (9), this would allow the GUI to show "Auto-detected:
+GoPro HERO10 Linear 4K" with a "Change..." button that opens a picker
+of the compatible profiles.
+
+**Suggested API addition**:
+```rust
+impl LensDatabase {
+    /// Iterate profile metadata without loading every profile into memory.
+    pub fn iter_profiles(&self) -> impl Iterator<Item = &LensProfileSummary>;
+
+    /// Return profiles matching the given resolution + fps, grouped for picker UI.
+    pub fn candidates(&self, width: u32, height: u32, fps: Option<f64>)
+        -> Vec<&LensProfileSummary>;
+}
+
+pub struct LensProfileSummary {
+    pub camera: String,
+    pub lens: String,
+    pub width: u32,
+    pub height: u32,
+    pub fps: Option<f64>,
+}
+```
+
+## 11. Slider Value Binding Echoes Fire `changed` for Programmatic Updates
+
+**Impact**: Medium - a Slint-level concern, but reco-gui had to work
+around it.
+
+Not a reco-core issue, but worth documenting for other consumers. The
+seek slider binds `value: root.current-frame` (one-way). When Rust
+advances playback and calls `app.set_current_frame(N)`, the slider's
+`value` updates and fires `changed(N)` — which our handler can't easily
+distinguish from a real user interaction. Without guarding, this creates
+a feedback loop: Rust→slider→changed→seek→Rust→slider→... At high timer
+tick rates (500Hz), this saturates NVDEC reinit and the process dies.
+
+The GUI debounces seek requests by 120ms via a `pending_seek` field +
+timer polling. Works, but it's effectively a client-side workaround for
+a Slint behavior that ideally would distinguish user-initiated vs
+programmatic value changes. Watch for a Slint API improvement; if Slint
+adds a `released` or similar "user-only" callback on Slider, this
+workaround can be dropped.

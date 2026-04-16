@@ -41,10 +41,53 @@ component FileChip inherits Rectangle {
     }
 }
 
+/// One labeled slider row for the controls panel.
+component LabeledSlider inherits VerticalLayout {
+    in property <string> label;
+    in property <float> minimum;
+    in property <float> maximum;
+    in-out property <float> value;
+    in property <string> suffix: "";
+    in property <int> decimals: 2;
+    callback changed(float);
+
+    spacing: 2px;
+
+    HorizontalLayout {
+        Text {
+            text: root.label;
+            color: #bbb;
+            font-size: 11px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: (root.decimals == 0
+                ? round(root.value)
+                : round(root.value * 100) / 100) + root.suffix;
+            color: #888;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+    }
+
+    Slider {
+        minimum: root.minimum;
+        maximum: root.maximum;
+        value <=> root.value;
+        changed(v) => { root.changed(v); }
+    }
+}
+
 export component RecoApp inherits Window {
     title: "Reco Video Stitcher";
     preferred-width: 1280px;
-    preferred-height: 800px;
+    preferred-height: 820px;
+    min-width: 720px;
+    // Prevent the transport + status bars from getting clipped at the
+    // bottom. 600px = file-bar (52) + preview min (~400) + transport
+    // (96) + status (28) + comfortable padding.
+    min-height: 600px;
     background: #121212;
 
     // ── Properties bound from Rust ──
@@ -64,6 +107,16 @@ export component RecoApp inherits Window {
     in-out property <string> calibration-step: "";
     in-out property <bool> has-both-videos: left-path != "" && right-path != "";
 
+    // Camera view state (kept in sync with Rust AppState).
+    in-out property <float> yaw: 0.0;      // radians
+    in-out property <float> pitch: 0.0;    // radians
+    in-out property <float> fov: 75.0;     // degrees
+    in-out property <float> blend-width: 0.05;
+    in-out property <float> rig-tilt: 0.0; // degrees
+
+    // Controls panel visibility.
+    in-out property <bool> controls-open: false;
+
     // ── Callbacks into Rust ──
 
     callback pick-left-video();
@@ -74,10 +127,52 @@ export component RecoApp inherits Window {
     callback step-forward();
     callback step-backward();
     callback seek(float);
+    // Relative seek in seconds (negative for rewind). CLI parity with `[` and `]`.
+    callback seek-relative(float);
+    // Mouse drag delta in pixels.
+    callback pan(float, float);
+    // Scroll wheel delta (degrees FOV per tick).
+    callback zoom(float);
+    // Reset yaw/pitch/fov to defaults.
+    callback reset-view();
+    // Settings-panel slider callbacks.
+    callback changed-blend-width(float);
+    callback changed-rig-tilt(float);
+    callback changed-fov(float);
 
-    VerticalBox {
-        padding: 0;
-        spacing: 0;
+    // Keyboard handling. The FocusScope must *wrap* the content so
+    // key events have somewhere to bubble up when a child (button,
+    // slider, text input) is focused. `init` grabs focus on startup
+    // so shortcuts work before the user clicks anything. The
+    // `refocus` callback lets Rust re-assert focus after any action
+    // that a widget would otherwise steal it with.
+    forward-focus: key-scope;
+    public function refocus() { key-scope.focus(); }
+
+    key-scope := FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            // Space: play/pause
+            if (event.text == " ") { root.toggle-playback(); return accept; }
+            // Arrow keys: pan
+            if (event.text == Key.LeftArrow)  { root.pan(-20, 0); return accept; }
+            if (event.text == Key.RightArrow) { root.pan(20, 0);  return accept; }
+            if (event.text == Key.UpArrow)    { root.pan(0, -20); return accept; }
+            if (event.text == Key.DownArrow)  { root.pan(0, 20);  return accept; }
+            // +/- : zoom
+            if (event.text == "+" || event.text == "=") { root.zoom(-5); return accept; }
+            if (event.text == "-" || event.text == "_") { root.zoom(5);  return accept; }
+            // [ / ] : seek by 5s
+            if (event.text == "[") { root.seek-relative(-5); return accept; }
+            if (event.text == "]") { root.seek-relative(5);  return accept; }
+            // R : reset view
+            if (event.text == "r" || event.text == "R") { root.reset-view(); return accept; }
+            return reject;
+        }
+
+        VerticalBox {
+            padding: 0;
+            spacing: 0;
 
         // ── File picker bar ──
         Rectangle {
@@ -122,38 +217,174 @@ export component RecoApp inherits Window {
                     font-size: 12px;
                     vertical-alignment: center;
                 }
+
+                // Right-align spacer
+                Rectangle { horizontal-stretch: 1; }
+
+                Button {
+                    text: root.controls-open ? "Hide Controls" : "Controls";
+                    enabled: root.files-loaded;
+                    clicked => { root.controls-open = !root.controls-open; }
+                }
             }
         }
 
-        // ── Preview area ──
-        Rectangle {
-            background: #0a0a0a;
+        // ── Preview area + side controls ──
+        HorizontalBox {
+            padding: 0;
+            spacing: 0;
             vertical-stretch: 1;
 
-            if !root.files-loaded: Text {
-                text: root.status-text;
-                color: #666;
-                font-size: 16px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            // Preview (with mouse drag + scroll handling)
+            Rectangle {
+                background: #0a0a0a;
+                horizontal-stretch: 1;
+
+                if !root.files-loaded: Text {
+                    text: root.status-text;
+                    color: #666;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if root.files-loaded: Image {
+                    source: root.preview-frame;
+                    image-fit: contain;
+                    width: 100%;
+                    height: 100%;
+                }
+
+                // Interaction layer: drag to pan, scroll to zoom.
+                // `moved` fires continuously while the pointer is
+                // pressed; we forward the delta to Rust which updates
+                // yaw/pitch and triggers a re-render.
+                drag := TouchArea {
+                    enabled: root.files-loaded;
+                    property <length> last-x: 0px;
+                    property <length> last-y: 0px;
+
+                    pointer-event(e) => {
+                        if (e.kind == PointerEventKind.down) {
+                            self.last-x = self.mouse-x;
+                            self.last-y = self.mouse-y;
+                        }
+                    }
+
+                    moved => {
+                        if (self.pressed) {
+                            root.pan(
+                                (self.mouse-x - self.last-x) / 1px,
+                                (self.mouse-y - self.last-y) / 1px,
+                            );
+                            self.last-x = self.mouse-x;
+                            self.last-y = self.mouse-y;
+                        }
+                    }
+
+                    scroll-event(e) => {
+                        // Positive delta = scroll down = zoom out.
+                        // Slint scroll deltas are lengths; /1px converts
+                        // to a plain number we can scale for FOV degrees.
+                        root.zoom(-e.delta-y / 40px);
+                        return accept;
+                    }
+                }
             }
 
-            if root.files-loaded: Image {
-                source: root.preview-frame;
-                image-fit: contain;
-                width: 100%;
-                height: 100%;
+            // Right-side controls panel (collapsible)
+            if root.controls-open: Rectangle {
+                background: #1a1a1a;
+                width: 280px;
+                border-width: 1px;
+                border-color: #333;
+
+                VerticalBox {
+                    padding: 12px;
+                    spacing: 14px;
+                    alignment: start;
+
+                    Text {
+                        text: "Camera";
+                        color: #fff;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+
+                    LabeledSlider {
+                        label: "Field of view";
+                        minimum: 20;
+                        maximum: 150;
+                        value <=> root.fov;
+                        suffix: "°";
+                        decimals: 0;
+                        changed(v) => { root.changed-fov(v); }
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    Text {
+                        text: "Stitching";
+                        color: #fff;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+
+                    LabeledSlider {
+                        label: "Seam blend";
+                        minimum: 0;
+                        maximum: 0.3;
+                        value <=> root.blend-width;
+                        decimals: 2;
+                        changed(v) => { root.changed-blend-width(v); }
+                    }
+
+                    LabeledSlider {
+                        label: "Rig tilt";
+                        minimum: -15;
+                        maximum: 15;
+                        value <=> root.rig-tilt;
+                        suffix: "°";
+                        decimals: 1;
+                        changed(v) => { root.changed-rig-tilt(v); }
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    Button {
+                        text: "Reset View";
+                        clicked => { root.reset-view(); }
+                    }
+
+                    // Keyboard hints
+                    Rectangle {
+                        height: 1px;
+                        background: #333;
+                    }
+
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text { text: "Shortcuts"; color: #888; font-size: 11px; font-weight: 600; }
+                        Text { text: "Space  Play / pause";     color: #666; font-size: 10px; }
+                        Text { text: "Arrows  Pan camera";      color: #666; font-size: 10px; }
+                        Text { text: "+ / -   Zoom";            color: #666; font-size: 10px; }
+                        Text { text: "Scroll  Zoom";            color: #666; font-size: 10px; }
+                        Text { text: "Drag    Pan";             color: #666; font-size: 10px; }
+                        Text { text: "[  ]   Seek 5 s";         color: #666; font-size: 10px; }
+                        Text { text: "R      Reset view";       color: #666; font-size: 10px; }
+                    }
+                }
             }
         }
 
         // ── Transport controls ──
         Rectangle {
             background: #1e1e1e;
-            height: 80px;
+            height: 96px;
 
             VerticalBox {
-                padding: 4px;
-                spacing: 4px;
+                padding: 6px;
+                spacing: 6px;
 
                 // Seek slider
                 HorizontalBox {
@@ -248,5 +479,6 @@ export component RecoApp inherits Window {
                 }
             }
         }
-    }
+        }  // close VerticalBox
+    }  // close FocusScope key-scope
 }
