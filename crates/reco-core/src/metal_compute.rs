@@ -14,14 +14,7 @@
 //! unified memory), so the CPU can read the tensor data directly
 //! without an explicit GPU-to-CPU copy.
 
-use objc2::rc::Retained;
-use objc2::runtime::ProtocolObject;
-use objc2_foundation::NSString;
-use objc2_metal::{
-    MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCompileOptions,
-    MTLComputeCommandEncoder, MTLComputePipelineState, MTLDevice, MTLLibrary, MTLResourceOptions,
-    MTLSize,
-};
+use metal::{Buffer, CommandQueue, ComputePipelineState, Device, MTLResourceOptions, MTLSize};
 
 use crate::gpu::GpuContext;
 use crate::metal_interop::{CVPixelBufferRef, MetalInteropError, MetalTextureCache};
@@ -178,12 +171,12 @@ kernel void nv12_to_chw_tensor(
 /// Reuse across frames for the same input/output dimensions.
 pub struct MetalPreprocessPipeline {
     #[allow(dead_code)]
-    device: Retained<ProtocolObject<dyn MTLDevice>>,
-    queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
-    pipeline_state: Retained<ProtocolObject<dyn MTLComputePipelineState>>,
+    device: Device,
+    queue: CommandQueue,
+    pipeline_state: ComputePipelineState,
     texture_cache: MetalTextureCache,
-    output_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    params_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
+    output_buffer: Buffer,
+    params_buffer: Buffer,
     input_size: u32,
     frame_width: u32,
     frame_height: u32,
@@ -209,50 +202,49 @@ impl MetalPreprocessPipeline {
     ) -> Result<Self, MetalComputeError> {
         use wgpu::hal::api::Metal;
 
-        // Extract the raw MTLDevice from wgpu.
-        let device = unsafe {
+        // Extract the raw MTLDevice from wgpu. wgpu-hal 28's metal
+        // backend exposes raw_device() as &metal::Device; we clone it
+        // (sends Objective-C `retain`) to get an owned Device.
+        let device: Device = unsafe {
             let hal_device = gpu
                 .device
                 .as_hal::<Metal>()
                 .ok_or(MetalInteropError::NotMetal)?;
-            hal_device.raw_device().clone()
+            hal_device.raw_device().to_owned()
         };
 
-        // Compile MSL source at runtime.
-        let source = NSString::from_str(PREPROCESS_MSL);
-        let options = MTLCompileOptions::new();
+        // Compile MSL source at runtime. metal crate 0.33 takes &str
+        // directly (no NSString wrapping needed) and returns a
+        // Result<Library, String>.
+        let options = metal::CompileOptions::new();
         let library = device
-            .newLibraryWithSource_options_error(&source, Some(&options))
-            .map_err(|e| MetalComputeError::ShaderCompile(e.to_string()))?;
+            .new_library_with_source(PREPROCESS_MSL, &options)
+            .map_err(MetalComputeError::ShaderCompile)?;
 
-        let func_name = NSString::from_str("nv12_to_chw_tensor");
         let function = library
-            .newFunctionWithName(&func_name)
-            .ok_or_else(|| MetalComputeError::ShaderCompile("kernel function not found".into()))?;
+            .get_function("nv12_to_chw_tensor", None)
+            .map_err(|_| MetalComputeError::ShaderCompile("kernel function not found".into()))?;
 
         let pipeline_state = device
-            .newComputePipelineStateWithFunction_error(&function)
+            .new_compute_pipeline_state_with_function(&function)
             .map_err(|e| MetalComputeError::ResourceCreation(format!("pipeline: {e}")))?;
 
-        // Create command queue for compute dispatches.
-        let queue = device
-            .newCommandQueue()
-            .ok_or_else(|| MetalComputeError::ResourceCreation("command queue".into()))?;
+        // Create command queue for compute dispatches. In metal crate
+        // 0.33, new_command_queue() returns CommandQueue directly.
+        let queue = device.new_command_queue();
 
         // Create texture cache for importing CVPixelBuffer planes.
         let texture_cache = MetalTextureCache::new(gpu)?;
 
         // Allocate output buffer: 3 * input_size * input_size * sizeof(f32).
         let tensor_bytes = 3 * (input_size as usize) * (input_size as usize) * 4;
-        let output_buffer = device
-            .newBufferWithLength_options(tensor_bytes, MTLResourceOptions::StorageModeShared)
-            .ok_or_else(|| MetalComputeError::ResourceCreation("output buffer".into()))?;
+        let output_buffer =
+            device.new_buffer(tensor_bytes as u64, MTLResourceOptions::StorageModeShared);
 
         // Allocate params buffer.
         let params_bytes = std::mem::size_of::<PreprocessParams>();
-        let params_buffer = device
-            .newBufferWithLength_options(params_bytes, MTLResourceOptions::StorageModeShared)
-            .ok_or_else(|| MetalComputeError::ResourceCreation("params buffer".into()))?;
+        let params_buffer =
+            device.new_buffer(params_bytes as u64, MTLResourceOptions::StorageModeShared);
 
         log::info!(
             "MetalPreprocessPipeline ready: frame={}x{}, model={}x{}, buffer={:.1}MB",
@@ -328,25 +320,21 @@ impl MetalPreprocessPipeline {
         };
 
         unsafe {
-            let params_ptr = self.params_buffer.contents().as_ptr() as *mut PreprocessParams;
+            let params_ptr = self.params_buffer.contents() as *mut PreprocessParams;
             params_ptr.write(params);
         }
 
-        // Create command buffer and compute encoder.
-        let cmd_buf = self
-            .queue
-            .commandBuffer()
-            .ok_or_else(|| MetalComputeError::Compute("command buffer creation".into()))?;
-        let encoder = cmd_buf
-            .computeCommandEncoder()
-            .ok_or_else(|| MetalComputeError::Compute("compute encoder creation".into()))?;
+        // Create command buffer and compute encoder. In metal crate
+        // 0.33, these return borrowed references (CommandBufferRef /
+        // ComputeCommandEncoderRef) directly, no Option.
+        let cmd_buf = self.queue.new_command_buffer();
+        let encoder = cmd_buf.new_compute_command_encoder();
 
-        encoder.setComputePipelineState(&self.pipeline_state);
+        encoder.set_compute_pipeline_state(&self.pipeline_state);
 
         // Extract raw MTLTexture references from wgpu textures via HAL.
-        // The as_hal guards must stay alive while the compute encoder references
-        // the textures. Metal retains textures internally on setTexture, but
-        // we keep the guards alive through endEncoding for safety.
+        // The as_hal guards must stay alive while the compute encoder
+        // references the textures.
         {
             let y_hal = unsafe {
                 y_plane
@@ -361,22 +349,21 @@ impl MetalPreprocessPipeline {
                     .ok_or(MetalInteropError::NotMetal)?
             };
 
-            unsafe {
-                encoder.setTexture_atIndex(Some(y_hal.raw_handle()), 0);
-                encoder.setTexture_atIndex(Some(uv_hal.raw_handle()), 1);
-            }
+            // metal crate's set_texture takes (index, Option<&TextureRef>).
+            // raw_handle() returns &metal::Texture which derefs to &TextureRef.
+            encoder.set_texture(0, Some(unsafe { y_hal.raw_handle() }));
+            encoder.set_texture(1, Some(unsafe { uv_hal.raw_handle() }));
         }
 
-        unsafe {
-            encoder.setBuffer_offset_atIndex(Some(&self.output_buffer), 0, 0);
-            encoder.setBuffer_offset_atIndex(Some(&self.params_buffer), 0, 1);
-        }
+        // metal crate's set_buffer takes (index, Option<&BufferRef>, offset).
+        encoder.set_buffer(0, Some(&self.output_buffer), 0);
+        encoder.set_buffer(1, Some(&self.params_buffer), 0);
 
         // Dispatch threadgroups.
         let sz = self.input_size as usize;
         let threadgroups = MTLSize {
-            width: (sz + 15) / 16,
-            height: (sz + 15) / 16,
+            width: sz.div_ceil(16) as u64,
+            height: sz.div_ceil(16) as u64,
             depth: 1,
         };
         let threads_per_group = MTLSize {
@@ -384,22 +371,19 @@ impl MetalPreprocessPipeline {
             height: 16,
             depth: 1,
         };
-        encoder.dispatchThreadgroups_threadsPerThreadgroup(threadgroups, threads_per_group);
-        encoder.endEncoding();
+        encoder.dispatch_thread_groups(threadgroups, threads_per_group);
+        encoder.end_encoding();
 
         // Submit and wait for completion.
         cmd_buf.commit();
-        cmd_buf.waitUntilCompleted();
+        cmd_buf.wait_until_completed();
 
         // SAFETY: The output MTLBuffer has StorageModeShared (unified memory).
-        // We have exclusive access after waitUntilCompleted(). Returning &mut
+        // We have exclusive access after wait_until_completed(). Returning &mut
         // is correct since the caller needs mutation for CoreML's MLMultiArray.
         let float_count = 3 * sz * sz;
         let result = unsafe {
-            std::slice::from_raw_parts_mut(
-                self.output_buffer.contents().as_ptr() as *mut f32,
-                float_count,
-            )
+            std::slice::from_raw_parts_mut(self.output_buffer.contents() as *mut f32, float_count)
         };
 
         Ok(result)

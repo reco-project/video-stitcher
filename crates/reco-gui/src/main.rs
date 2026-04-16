@@ -172,7 +172,10 @@ fn ai_capability_summary() -> (String, bool) {
             )
         } else {
             (
-                format!("AI: {} available (hardware decode + inference)", available.join(", ")),
+                format!(
+                    "AI: {} available (hardware decode + inference)",
+                    available.join(", ")
+                ),
                 true,
             )
         }
@@ -907,10 +910,7 @@ fn main() -> anyhow::Result<()> {
     app.on_reset_calibration(move || {
         let mut s = state_ref.borrow_mut();
         s.reset_calibration();
-        if let (Some(app), Some(layout)) = (
-            app_weak.upgrade(),
-            s.cal_baseline_layout.as_ref(),
-        ) {
+        if let (Some(app), Some(layout)) = (app_weak.upgrade(), s.cal_baseline_layout.as_ref()) {
             app.set_cal_intersect(layout.intersect as f32);
             app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
             app.set_cal_x_ty(layout.x_ty as f32);
@@ -1090,11 +1090,8 @@ fn main() -> anyhow::Result<()> {
                         ExportOutcome::Ok(frames, path) => {
                             app.set_export_status_text("".into());
                             app.set_status_text(
-                                format!(
-                                    "Export complete: {frames} frames -> {}",
-                                    path.display(),
-                                )
-                                .into(),
+                                format!("Export complete: {frames} frames -> {}", path.display(),)
+                                    .into(),
                             );
                         }
                         ExportOutcome::Cancelled => {
@@ -1103,9 +1100,7 @@ fn main() -> anyhow::Result<()> {
                         }
                         ExportOutcome::Failed(msg) => {
                             app.set_export_status_text("".into());
-                            app.set_status_text(
-                                format!("Export failed: {msg}").into(),
-                            );
+                            app.set_status_text(format!("Export failed: {msg}").into());
                         }
                     }
                 }
@@ -1232,12 +1227,13 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 // sit next to the left-video file for convenience.
                 let left_path = s.left_path.clone();
                 if let Some(left_path) = left_path {
-                    let suggested = left_path.with_file_name(
-                        format!("{}_stitched.mp4",
-                            left_path.file_stem()
-                                .map(|s| s.to_string_lossy().into_owned())
-                                .unwrap_or_else(|| "reco".into()))
-                    );
+                    let suggested = left_path.with_file_name(format!(
+                        "{}_stitched.mp4",
+                        left_path
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "reco".into())
+                    ));
                     app.set_export_output_path(suggested.to_string_lossy().to_string().into());
                 }
             }
@@ -1398,35 +1394,34 @@ fn run_export(
 
     let progress_weak = app_weak.clone();
     let progress_start = Instant::now();
-    let mut job = reco_io::StitchJob::with_calibration(left.clone(), right.clone(), cal, output.clone())
-        .codec(codec)
-        .quality(quality)
-        .resolution(width, height)
-        .blend_width(blend)
-        .on_progress(move |p: &reco_core::session::FrameProgress| {
-            // Slint properties MUST be touched from the UI thread; use
-            // invoke_from_event_loop to queue the update.
-            let frames = p.frames_completed;
-            let elapsed = progress_start.elapsed().as_secs_f64();
-            let fps = if elapsed > 0.0 {
-                frames as f64 / elapsed
-            } else {
-                0.0
-            };
-            let weak = progress_weak.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(app) = weak.upgrade() {
-                    app.set_export_frames_done(frames as i32);
-                    let total = app.get_export_frames_total();
-                    if total > 0 {
-                        app.set_export_progress(frames as f32 / total as f32);
+    let mut job =
+        reco_io::StitchJob::with_calibration(left.clone(), right.clone(), cal, output.clone())
+            .codec(codec)
+            .quality(quality)
+            .resolution(width, height)
+            .blend_width(blend)
+            .on_progress(move |p: &reco_core::session::FrameProgress| {
+                // Slint properties MUST be touched from the UI thread; use
+                // invoke_from_event_loop to queue the update.
+                let frames = p.frames_completed;
+                let elapsed = progress_start.elapsed().as_secs_f64();
+                let fps = if elapsed > 0.0 {
+                    frames as f64 / elapsed
+                } else {
+                    0.0
+                };
+                let weak = progress_weak.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(app) = weak.upgrade() {
+                        app.set_export_frames_done(frames as i32);
+                        let total = app.get_export_frames_total();
+                        if total > 0 {
+                            app.set_export_progress(frames as f32 / total as f32);
+                        }
+                        app.set_export_status_text(format!("Frame {frames} ({fps:.0} fps)").into());
                     }
-                    app.set_export_status_text(
-                        format!("Frame {frames} ({fps:.0} fps)").into(),
-                    );
-                }
+                });
             });
-        });
 
     if duration_secs > 0.0 {
         job = job.duration(duration_secs as f64);
@@ -1488,7 +1483,12 @@ fn run_export(
 
     #[cfg(not(feature = "autocam"))]
     {
-        let _ = (autocam_enabled, model_path, tracking_mode, detection_interval);
+        let _ = (
+            autocam_enabled,
+            model_path,
+            tracking_mode,
+            detection_interval,
+        );
     }
 
     match job.run(interrupted) {
