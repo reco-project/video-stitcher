@@ -43,6 +43,14 @@ pub struct FfmpegFileSource {
     total_frame_count: Option<u64>,
     /// Current frame position (incremented on each next_frame).
     current_frame: u64,
+    /// True once the decode pipeline has signaled end-of-stream.
+    ///
+    /// Set when the internal receiver reports `Disconnected` (both decode
+    /// threads have finished). A blocking `recv()` returning `Err` or a
+    /// non-blocking `try_recv()` returning `Disconnected` are the two
+    /// places this becomes `true`. Reset by `seek()`, which respawns
+    /// the decode pipeline.
+    exhausted: bool,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -110,6 +118,7 @@ impl FfmpegFileSource {
             sync_offset,
             total_frame_count,
             current_frame: 0,
+            exhausted: false,
         })
     }
 
@@ -320,7 +329,10 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
                 self.current_frame += 1;
                 Ok(Some(StereoFrame::Yuv420p(pair)))
             }
-            Err(_) => Ok(None),
+            Err(_) => {
+                self.exhausted = true;
+                Ok(None)
+            }
         }
     }
 
@@ -331,7 +343,10 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
                 Ok(Some(StereoFrame::Yuv420p(pair)))
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => Ok(None),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.exhausted = true;
+                Ok(None)
+            }
         }
     }
 
@@ -379,11 +394,16 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             Some(secs),
         );
         self.current_frame = frame;
+        self.exhausted = false;
         Ok(())
     }
 
     fn total_frames(&self) -> Option<u64> {
         self.total_frame_count
+    }
+
+    fn is_exhausted(&self) -> bool {
+        self.exhausted
     }
 }
 

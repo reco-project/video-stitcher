@@ -300,4 +300,21 @@ pub trait FrameSource: Send {
     fn total_frames(&self) -> Option<u64> {
         None
     }
+
+    /// Whether the source has reached end-of-stream.
+    ///
+    /// Once [`try_next_frame`](Self::try_next_frame) or
+    /// [`next_frame`](Self::next_frame) has returned `Ok(None)` for reasons
+    /// that are final (container EOF, camera stream ended), implementations
+    /// should return `true` from this method so callers can distinguish
+    /// "finished" from "frame not ready yet".
+    ///
+    /// Used by interactive consumers (GUI playback, OBS) that need to tell
+    /// end-of-stream apart from a transiently empty decode channel without
+    /// a timeout heuristic. File sources should override this to track EOF;
+    /// live sources (cameras) can keep the default (`false`) since they
+    /// never exhaust under normal operation.
+    fn is_exhausted(&self) -> bool {
+        false
+    }
 }

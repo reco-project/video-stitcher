@@ -153,14 +153,10 @@ impl Playback {
             }
             None => {
                 // Could be "not ready yet" or "end of stream".
-                // FfmpegFileSource returns Disconnected for EOF.
-                // try_next_frame returns Ok(None) for both cases,
-                // but after EOF the channel disconnects and stays None.
-                // If we've been getting None for a while with no new
-                // frames, assume EOF.
-                if self.last_frame_time.is_some()
-                    && now.duration_since(self.last_frame_time.unwrap()) > self.frame_duration * 30
-                {
+                // `FrameSource::is_exhausted()` answers unambiguously once
+                // the decoder channel has disconnected, so no timeout
+                // heuristic is needed.
+                if source.is_exhausted() {
                     self.state = PlayState::Finished;
                 }
                 Ok(false)

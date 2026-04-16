@@ -536,33 +536,31 @@ impl ApplicationHandler for App {
                 self.source.take();
                 event_loop.exit();
             }
-            WindowEvent::Resized(size) => {
-                if size.width > 0 && size.height > 0 {
-                    self.width = size.width;
-                    self.height = size.height;
-                    if let (Some(surface), Some(renderer)) = (&self.surface, &mut self.renderer) {
-                        let render_format = StitchRenderer::strip_srgb(self.surface_format);
-                        let view_formats = if render_format != self.surface_format {
-                            vec![render_format]
-                        } else {
-                            vec![]
-                        };
-                        surface.configure(
-                            renderer.gpu().device(),
-                            &reco_core::wgpu::SurfaceConfiguration {
-                                usage: reco_core::wgpu::TextureUsages::RENDER_ATTACHMENT,
-                                format: self.surface_format,
-                                width: self.width,
-                                height: self.height,
-                                present_mode: reco_core::wgpu::PresentMode::Fifo,
-                                desired_maximum_frame_latency: 2,
-                                alpha_mode: self.alpha_mode,
-                                view_formats,
-                            },
-                        );
-                        renderer.pipeline_mut().resize(self.width, self.height);
-                        self.needs_redraw = true;
-                    }
+            WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
+                self.width = size.width;
+                self.height = size.height;
+                if let (Some(surface), Some(renderer)) = (&self.surface, &mut self.renderer) {
+                    let render_format = StitchRenderer::strip_srgb(self.surface_format);
+                    let view_formats = if render_format != self.surface_format {
+                        vec![render_format]
+                    } else {
+                        vec![]
+                    };
+                    surface.configure(
+                        renderer.gpu().device(),
+                        &reco_core::wgpu::SurfaceConfiguration {
+                            usage: reco_core::wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            format: self.surface_format,
+                            width: self.width,
+                            height: self.height,
+                            present_mode: reco_core::wgpu::PresentMode::Fifo,
+                            desired_maximum_frame_latency: 2,
+                            alpha_mode: self.alpha_mode,
+                            view_formats,
+                        },
+                    );
+                    renderer.pipeline_mut().resize(self.width, self.height);
+                    self.needs_redraw = true;
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -779,20 +777,18 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::CursorMoved { position, .. } => {
-                if self.mouse_dragging {
-                    if let Some((prev_x, prev_y)) = self.last_mouse_pos {
-                        let dx = position.x - prev_x;
-                        let dy = position.y - prev_y;
-                        // Accumulate into smoothing targets (raw deltas)
-                        self.target_yaw += dx as f32 * MOUSE_SENSITIVITY;
-                        self.target_pitch += dy as f32 * MOUSE_SENSITIVITY;
-                    } else {
-                        // First move after click - switch to Poll for smooth updates
-                        event_loop.set_control_flow(ControlFlow::Poll);
-                    }
-                    self.last_mouse_pos = Some((position.x, position.y));
+            WindowEvent::CursorMoved { position, .. } if self.mouse_dragging => {
+                if let Some((prev_x, prev_y)) = self.last_mouse_pos {
+                    let dx = position.x - prev_x;
+                    let dy = position.y - prev_y;
+                    // Accumulate into smoothing targets (raw deltas)
+                    self.target_yaw += dx as f32 * MOUSE_SENSITIVITY;
+                    self.target_pitch += dy as f32 * MOUSE_SENSITIVITY;
+                } else {
+                    // First move after click - switch to Poll for smooth updates
+                    event_loop.set_control_flow(ControlFlow::Poll);
                 }
+                self.last_mouse_pos = Some((position.x, position.y));
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scroll = match delta {

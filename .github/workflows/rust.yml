@@ -22,6 +22,7 @@ env:
     libavcodec-dev libavformat-dev libavutil-dev
     libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+    libfontconfig1-dev
     pkg-config clang
 
 jobs:
@@ -119,21 +120,11 @@ jobs:
       - name: Check full CLI
         run: cargo check -p reco-cli
 
-  check-macos-intel:
-    name: Check (macOS Intel)
-    runs-on: macos-15-intel
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Install dependencies
-        run: brew install ffmpeg gstreamer gst-plugins-base pkg-config
-      - name: Check reco-core
-        run: cargo check -p reco-core
-      - name: Check reco-core (profiling)
-        run: cargo check -p reco-core --features profiling
-      - name: Check full CLI
-        run: cargo check -p reco-cli
+  # macOS Intel (x86_64-apple-darwin) is suspended - the ort-sys crate
+  # publishes no prebuilt ONNX Runtime binary for that target with
+  # reco-detect's feature set, and we have no hardware to test on.
+  # Re-enable once ort-sys gains a prebuilt for x86_64-apple-darwin or
+  # reco-detect is switched to `features = ["load-dynamic"]` there.
 
   check-windows:
     name: Check (Windows)

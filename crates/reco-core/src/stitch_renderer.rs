@@ -25,6 +25,7 @@ use crate::nv12_converter::Nv12Converter;
 use crate::pipeline::{Nv12Planes, PipelineError, StitchPipeline, YuvPlanes};
 use crate::projection::CoverageBoundary;
 use crate::renderer::InputFormat;
+use crate::rgba_readback::RgbaReadback;
 use crate::scene::SceneGeometry;
 use crate::viewport::ViewportConfig;
 
@@ -38,8 +39,10 @@ pub struct StitchRenderer {
     pipeline: StitchPipeline,
     /// Precomputed coverage boundary for no-black-edge clamping.
     coverage: CoverageBoundary,
-    /// NV12 converter for readback (lazy-initialized on first readback call).
+    /// NV12 converter for encode readback (lazy-initialized on first call).
     nv12: Option<Nv12Converter>,
+    /// RGBA readback helper for display in GUI frameworks (lazy-initialized).
+    rgba: Option<RgbaReadback>,
 }
 
 impl StitchRenderer {
@@ -85,6 +88,7 @@ impl StitchRenderer {
             pipeline,
             coverage,
             nv12: None,
+            rgba: None,
         })
     }
 
@@ -180,6 +184,79 @@ impl StitchRenderer {
             nv12.flush_pending(self.pipeline.gpu())
                 .map_err(|e| PipelineError::InvalidConfig {
                     reason: format!("NV12 flush: {e}"),
+                })
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Render a stereo frame and read back tightly-packed RGBA pixels.
+    ///
+    /// Intended for GUI frameworks and plugin consumers (OBS, egui) that
+    /// need CPU-side pixels for display. Mirrors
+    /// [`render_and_readback_nv12`](Self::render_and_readback_nv12) but
+    /// outputs `width * height * 4` bytes of RGBA in the render target's
+    /// texture format (`Rgba8Unorm` or `Bgra8Unorm` — see
+    /// [`strip_srgb`](Self::strip_srgb)).
+    ///
+    /// Uses [`RgbaReadback`]'s triple-buffer staging so the returned slice
+    /// is always from 2 frames ago. `None` on the first two calls during
+    /// warmup; `Some(&[u8])` from the third call onward. Call
+    /// [`flush_rgba`](Self::flush_rgba) in a loop after the frame loop to
+    /// drain the last two frames.
+    ///
+    /// Use alongside [`render_yuv`](Self::render_yuv) when the GPU drives a
+    /// surface and you only need readback for a secondary display path:
+    /// ```rust,ignore
+    /// renderer.render_yuv(&left, &right, yaw, pitch, &surface_view)?;
+    /// if let Some(rgba) = renderer.render_and_readback_rgba(&left, &right, yaw, pitch)? {
+    ///     shared_display_buffer.copy_from_slice(rgba);
+    /// }
+    /// ```
+    ///
+    /// Note that this submits its own render command buffer internally
+    /// (the double-render is cheap — shader cost is negligible next to
+    /// display compositing), so callers that only need readback should
+    /// use this method alone rather than combining with `render_yuv`.
+    pub fn render_and_readback_rgba(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Option<&[u8]>, PipelineError> {
+        if self.rgba.is_none() {
+            let w = self.pipeline.viewport().width;
+            let h = self.pipeline.viewport().height;
+            self.rgba = Some(RgbaReadback::new(self.pipeline.gpu(), w, h).map_err(|e| {
+                PipelineError::InvalidConfig {
+                    reason: format!("RGBA readback init: {e}"),
+                }
+            })?);
+            log::info!("StitchRenderer: RGBA readback initialized ({w}x{h})");
+        }
+
+        let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
+
+        let rgba = self.rgba.as_mut().unwrap();
+        let data = rgba
+            .readback(self.pipeline.gpu(), self.pipeline.render_target(), cmd)
+            .map_err(|e| PipelineError::InvalidConfig {
+                reason: format!("RGBA readback: {e}"),
+            })?;
+
+        Ok(data)
+    }
+
+    /// Flush one pending RGBA frame from the triple-buffer pipeline.
+    ///
+    /// Call in a loop after the frame loop ends to drain the final 1-2
+    /// frames. Returns `None` when no frames remain.
+    pub fn flush_rgba(&mut self) -> Result<Option<&[u8]>, PipelineError> {
+        if let Some(ref mut rgba) = self.rgba {
+            rgba.flush_pending(self.pipeline.gpu())
+                .map_err(|e| PipelineError::InvalidConfig {
+                    reason: format!("RGBA flush: {e}"),
                 })
         } else {
             Ok(None)
