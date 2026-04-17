@@ -74,6 +74,13 @@ impl FfmpegFileSource {
         right_path: &std::path::Path,
         sync_offset: i64,
     ) -> Result<Self, SourceError> {
+        // Validate both paths up front so the user sees a structured
+        // reason (not found / not a file / empty / permission) instead
+        // of a stringified FFmpeg "Invalid argument". Cheap: just a
+        // metadata syscall plus a non-blocking open.
+        reco_core::source::validate_input_path(left_path)?;
+        reco_core::source::validate_input_path(right_path)?;
+
         let probe =
             ffmpeg::decoder::VideoDecoder::open(left_path).map_err(|e| SourceError::Init {
                 path: left_path.display().to_string(),

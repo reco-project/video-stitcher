@@ -166,6 +166,19 @@ pub enum StitchError {
     /// Encoder error.
     #[error("encoder: {0}")]
     Encoder(#[from] reco_core::encoder::EncodeError),
+    /// Encoder completed without error but the output file has no
+    /// usable video stream. Typical cause: an encoder ffmpeg listed as
+    /// available silently rejected every frame (e.g. AV1/NVENC on
+    /// pre-Ada hardware). The file usually still has the audio stream.
+    #[error(
+        "encoder produced no video frames (output={}): the selected codec may not be supported on this hardware - try a different codec",
+        path
+    )]
+    EmptyOutput {
+        /// Path to the output file that was created but contains no
+        /// video.
+        path: String,
+    },
     /// I/O or other error.
     #[error("{0}")]
     Other(String),
@@ -465,6 +478,37 @@ impl StitchJob {
             self.on_progress.take(),
         )?;
         session.finish()?;
+
+        // Post-run sanity check: re-open the output file and verify it
+        // actually contains a video stream. Catches silent encoder
+        // failures where ffmpeg accepts every frame but produces a file
+        // with only audio (e.g. AV1/NVENC on hardware that doesn't
+        // support it). Without this check, the user thinks their export
+        // succeeded because StitchResult came back Ok; they only find
+        // out when they open the file in a player.
+        //
+        // Skipped when the caller asked for 0 frames (max_frames=0 or
+        // duration=0 short-circuit) because an empty output is the
+        // requested outcome.
+        if frame_count > 0 {
+            let output_path = self.output.clone();
+            match crate::ffmpeg::decoder::VideoDecoder::open(&output_path) {
+                Ok(d) => {
+                    let dur = d.duration_secs().unwrap_or(0.0);
+                    if d.width() == 0 || d.height() == 0 || dur <= 0.0 {
+                        return Err(StitchError::EmptyOutput {
+                            path: output_path.display().to_string(),
+                        });
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "post-run probe of {} failed ({e}); cannot verify video stream, trusting encoder",
+                        output_path.display()
+                    );
+                }
+            }
+        }
 
         Ok(StitchResult {
             frames_processed: frame_count,
