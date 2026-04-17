@@ -190,6 +190,7 @@ impl PreviewBridge {
             input_width,
             input_height,
             surface_format,
+            reco_core::renderer::InputFormat::Yuv420p,
         )?;
 
         let device = renderer.gpu().device();

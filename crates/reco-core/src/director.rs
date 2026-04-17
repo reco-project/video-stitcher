@@ -88,7 +88,10 @@ pub struct MappedDetection {
     /// Bounding box center in normalized camera coordinates `[0.0, 1.0]`.
     pub camera_center: (f32, f32),
 
-    /// Bounding box size in normalized camera coordinates.
+    /// Bounding box size in normalized `[0, 1]` camera coordinates.
+    ///
+    /// Multiply by the camera's pixel dimensions to get pixel size:
+    /// `pixel_w = camera_size.0 * calibration.left.width as f32`.
     pub camera_size: (f32, f32),
 
     /// Position in panorama space (yaw/pitch).

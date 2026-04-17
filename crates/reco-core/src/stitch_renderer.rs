@@ -12,7 +12,8 @@
 //! use reco_core::stitch_renderer::StitchRenderer;
 //!
 //! let renderer = StitchRenderer::new(
-//!     calibration, gpu, viewport, input_width, input_height, surface_format,
+//!     calibration, gpu, viewport, input_width, input_height,
+//!     surface_format, input_format,
 //! )?;
 //!
 //! // In the render loop:
@@ -28,6 +29,25 @@ use crate::renderer::InputFormat;
 use crate::rgba_readback::RgbaReadback;
 use crate::scene::SceneGeometry;
 use crate::viewport::ViewportConfig;
+
+/// Where to render the stitched panorama.
+///
+/// Pass to [`StitchRenderer::render`] to choose between surface display
+/// and readback without calling different methods.
+pub enum RenderTarget<'a> {
+    /// Present directly to a window surface.
+    Surface(&'a wgpu::TextureView),
+    /// Render to the internal RGBA texture for readback.
+    Texture,
+}
+
+/// What happened after a [`StitchRenderer::render`] call.
+pub enum RenderOutcome {
+    /// Surface render submitted to the GPU queue (nothing to do).
+    Submitted,
+    /// Texture render returned a command buffer for readback.
+    Commands(wgpu::CommandBuffer),
+}
 
 /// Surface-oriented stitch renderer.
 ///
@@ -60,6 +80,9 @@ impl StitchRenderer {
     /// * `input_width` - Width of each input camera frame in pixels.
     /// * `input_height` - Height of each input camera frame in pixels.
     /// * `surface_format` - The surface's texture format (sRGB is stripped automatically).
+    /// * `input_format` - Pixel format of the input frames
+    ///   ([`Yuv420p`](InputFormat::Yuv420p) for file decode,
+    ///   [`Nv12`](InputFormat::Nv12) for Jetson/NVDEC live input).
     pub fn new(
         calibration: MatchCalibration,
         gpu: GpuContext,
@@ -67,6 +90,7 @@ impl StitchRenderer {
         input_width: u32,
         input_height: u32,
         surface_format: wgpu::TextureFormat,
+        input_format: InputFormat,
     ) -> Result<Self, PipelineError> {
         let render_format = Self::strip_srgb(surface_format);
 
@@ -81,7 +105,7 @@ impl StitchRenderer {
             input_width,
             input_height,
             render_format,
-            InputFormat::Yuv420p,
+            input_format,
         )?;
 
         Ok(Self {
@@ -123,6 +147,39 @@ impl StitchRenderer {
     ) -> Result<(), PipelineError> {
         self.pipeline
             .render_nv12_to_view(left, right, yaw, pitch, view)
+    }
+
+    /// Render YUV420P frames to either a surface view or the internal
+    /// texture target, depending on the [`RenderTarget`] variant.
+    ///
+    /// Replaces the need to choose between `render_yuv` (surface) and
+    /// `pipeline().render_to_target` (readback). The outcome tells the
+    /// caller what happened:
+    ///
+    /// - [`RenderOutcome::Submitted`] — GPU work was submitted for a
+    ///   surface present; nothing left to do.
+    /// - [`RenderOutcome::Commands`] — a command buffer is ready for
+    ///   readback (pass to [`RgbaReadback::readback`](crate::rgba_readback::RgbaReadback::readback)
+    ///   or [`Nv12Converter::convert_and_readback`](crate::nv12_converter::Nv12Converter::convert_and_readback)).
+    pub fn render(
+        &self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+        target: RenderTarget<'_>,
+    ) -> Result<RenderOutcome, PipelineError> {
+        match target {
+            RenderTarget::Surface(view) => {
+                self.pipeline
+                    .render_to_view(left, right, yaw, pitch, view)?;
+                Ok(RenderOutcome::Submitted)
+            }
+            RenderTarget::Texture => {
+                let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
+                Ok(RenderOutcome::Commands(cmd))
+            }
+        }
     }
 
     // ── Render + Readback API ──
