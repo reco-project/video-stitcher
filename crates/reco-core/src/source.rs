@@ -43,6 +43,92 @@ pub enum SourceError {
         /// Human-readable explanation of the failure.
         reason: String,
     },
+
+    /// The requested input path was rejected during pre-open validation.
+    ///
+    /// Emitted before any decoder is touched when the path fails basic
+    /// sanity checks (missing, not a file, empty, unreadable). Consumers
+    /// should prefer this over [`Init`](Self::Init) for user-facing
+    /// error messages because it carries structured reasons instead of
+    /// relying on stringified FFmpeg diagnostics.
+    #[error("invalid input path ({path}): {reason}")]
+    InvalidPath {
+        /// Path the caller supplied.
+        path: String,
+        /// Structured reason the path was rejected.
+        reason: InvalidPathReason,
+    },
+}
+
+/// Structured reasons a source path can be rejected before opening.
+///
+/// Kept in an enum so consumers can branch on failure mode (show a
+/// specific red tint for "file not found" vs "empty file") without
+/// regex-matching an error string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum InvalidPathReason {
+    /// Path does not exist on disk.
+    #[error("file not found")]
+    NotFound,
+    /// Path exists but is not a regular file (directory, pipe, device).
+    #[error("not a regular file")]
+    NotAFile,
+    /// File is zero bytes; nothing for a decoder to work with.
+    #[error("file is empty")]
+    Empty,
+    /// Current process cannot read the file (permission denied).
+    #[error("permission denied")]
+    PermissionDenied,
+}
+
+/// Validate an input path against the basic prerequisites every
+/// file-backed source needs: exists, is a regular file, is non-empty,
+/// and is readable by the current process.
+///
+/// Returns `Ok(())` for valid paths, or
+/// [`SourceError::InvalidPath`] describing
+/// why it was rejected. Consumers should call this before attempting
+/// any codec-specific open so the user sees a clear error instead of
+/// a stringified FFmpeg "Invalid argument".
+///
+/// This is a cheap syscall (`metadata` + optional `open` probe) and is
+/// safe to run on every file pick.
+pub fn validate_input_path(path: &std::path::Path) -> Result<(), SourceError> {
+    let make_err = |reason: InvalidPathReason| SourceError::InvalidPath {
+        path: path.display().to_string(),
+        reason,
+    };
+
+    let metadata = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(e) => {
+            return Err(match e.kind() {
+                std::io::ErrorKind::NotFound => make_err(InvalidPathReason::NotFound),
+                std::io::ErrorKind::PermissionDenied => {
+                    make_err(InvalidPathReason::PermissionDenied)
+                }
+                _ => SourceError::InvalidPath {
+                    path: path.display().to_string(),
+                    reason: InvalidPathReason::NotFound,
+                },
+            });
+        }
+    };
+    if !metadata.is_file() {
+        return Err(make_err(InvalidPathReason::NotAFile));
+    }
+    if metadata.len() == 0 {
+        return Err(make_err(InvalidPathReason::Empty));
+    }
+    // Touch the file to surface permission errors that stat might miss
+    // (e.g. readable dir, unreadable file on some filesystems).
+    match std::fs::File::open(path) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(make_err(InvalidPathReason::PermissionDenied))
+        }
+        Err(_) => Ok(()), // surface non-permission errors via the real opener
+    }
 }
 
 /// Owned YUV420P frame data with dimensions and optional timestamp.
@@ -316,5 +402,60 @@ pub trait FrameSource: Send {
     /// never exhaust under normal operation.
     fn is_exhausted(&self) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn validate_path_accepts_real_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("video.mp4");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"not a real mp4 but non-empty").unwrap();
+        assert!(validate_input_path(&path).is_ok());
+    }
+
+    #[test]
+    fn validate_path_rejects_missing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("does-not-exist.mp4");
+        match validate_input_path(&path) {
+            Err(SourceError::InvalidPath {
+                reason: InvalidPathReason::NotFound,
+                ..
+            }) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_path_rejects_directory() {
+        let dir = tempdir().unwrap();
+        match validate_input_path(dir.path()) {
+            Err(SourceError::InvalidPath {
+                reason: InvalidPathReason::NotAFile,
+                ..
+            }) => {}
+            other => panic!("expected NotAFile, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_path_rejects_empty_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("empty.mp4");
+        std::fs::File::create(&path).unwrap();
+        match validate_input_path(&path) {
+            Err(SourceError::InvalidPath {
+                reason: InvalidPathReason::Empty,
+                ..
+            }) => {}
+            other => panic!("expected Empty, got {other:?}"),
+        }
     }
 }
