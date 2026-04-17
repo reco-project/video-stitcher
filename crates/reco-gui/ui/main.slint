@@ -245,6 +245,11 @@ export component RecoApp inherits Window {
     // camera and calls update_camera_params.
     callback changed-lens-param();
     callback reset-lens();
+    // Constrained-look checkbox. Fires when the user toggles it so Rust
+    // can sync `AppState.use_constrained_look` with the UI property
+    // (Slint's <=> binding updates the property but Rust needs a notify
+    // to act on the new value).
+    callback changed-constrained-look();
     // Export dialog actions.
     callback open-export-dialog();
     callback pick-export-output();
@@ -494,6 +499,7 @@ export component RecoApp inherits Window {
                     CheckBox {
                         text: "Constrained look (clamp to coverage)";
                         checked <=> root.use-constrained-look;
+                        toggled => { root.changed-constrained-look(); }
                     }
 
                     Rectangle { height: 1px; background: #333; }
@@ -651,9 +657,20 @@ export component RecoApp inherits Window {
                             primary: root.lens-selected-camera == "right";
                             clicked => { root.lens-selected-camera = "right"; }
                         }
+                        // "Both" applies the left-side slider values to
+                        // both cameras. Useful for stereo rigs with
+                        // matched lenses where you want to tune them in
+                        // lockstep. Rust implements this by mirroring
+                        // left-* params to right-* on every slider edit
+                        // while "both" is selected.
+                        Button {
+                            text: "Both";
+                            primary: root.lens-selected-camera == "both";
+                            clicked => { root.lens-selected-camera = "both"; }
+                        }
                     }
 
-                    if root.lens-info-available && root.lens-selected-camera == "left": VerticalLayout {
+                    if root.files-loaded && (root.lens-selected-camera == "left" || root.lens-selected-camera == "both"): VerticalLayout {
                         spacing: 4px;
 
                         LabeledSlider {
@@ -722,7 +739,7 @@ export component RecoApp inherits Window {
                         }
                     }
 
-                    if root.lens-info-available && root.lens-selected-camera == "right": VerticalLayout {
+                    if root.files-loaded && root.lens-selected-camera == "right": VerticalLayout {
                         spacing: 4px;
 
                         LabeledSlider {
@@ -795,6 +812,13 @@ export component RecoApp inherits Window {
                         text: "Reset Lens";
                         enabled: root.lens-dirty;
                         clicked => { root.reset-lens(); }
+                    }
+
+                    if root.files-loaded: Text {
+                        text: "Edits the in-memory lens. Save Calibration below to persist; Reset Lens restores the auto-detected profile.";
+                        color: #777;
+                        font-size: 10px;
+                        wrap: word-wrap;
                     }
 
                     if root.files-loaded: Rectangle { height: 1px; background: #333; }

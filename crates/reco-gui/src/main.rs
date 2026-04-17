@@ -492,10 +492,10 @@ impl AppState {
     /// clamped implicitly as it lerps toward the clamped target.
     fn clamp_targets(&mut self) {
         // Constrained-look toggle: when the user disables it we let
-        // yaw/pitch roam freely (useful for calibration debug or
+        // yaw/pitch/fov roam freely (useful for calibration debug or
         // inspecting the black margins beyond the stitched region).
-        // When enabled - the default - we clamp to the coverage boundary
-        // so the viewport cannot display black.
+        // When enabled - the default - we clamp both yaw/pitch AND fov
+        // so the viewport cannot display black at any zoom level.
         if !self.use_constrained_look {
             return;
         }
@@ -506,6 +506,16 @@ impl AppState {
         let (vw, vh) = bridge.viewport_size();
         let aspect = vw as f32 / vh as f32;
         let rig_tilt = renderer.pipeline().viewport().rig_tilt;
+
+        // FOV first: zooming out past what the coverage can contain
+        // produces black margins regardless of yaw/pitch, so clamp the
+        // target fov to the boundary's max before solving yaw/pitch
+        // (which depends on fov).
+        let max_fov = renderer.coverage().max_fov_degrees();
+        if max_fov > 0.0 {
+            self.target_fov = self.target_fov.min(max_fov);
+        }
+
         let clamped = renderer.coverage().safe_clamp(
             self.target_yaw,
             self.target_pitch,
@@ -1114,62 +1124,91 @@ fn main() -> anyhow::Result<()> {
         };
         let mut s = state_ref.borrow_mut();
         let selected = app.get_lens_selected_camera();
-        let (left_params, right_params) = if selected.as_str() == "right" {
-            let p = reco_core::calibration::CameraParams {
-                fx: app.get_lens_right_fx() as f64,
-                fy: app.get_lens_right_fy() as f64,
-                cx: app.get_lens_right_cx() as f64,
-                cy: app.get_lens_right_cy() as f64,
-                d: [
-                    app.get_lens_right_k1() as f64,
-                    app.get_lens_right_k2() as f64,
-                    app.get_lens_right_k3() as f64,
-                    app.get_lens_right_k4() as f64,
-                ],
-                width: 0,
-                height: 0,
-            };
-            // Keep width/height from the stored calibration - they're
-            // not user-editable. CameraParams::{width, height} are the
-            // image resolution the lens was modelled against.
-            let width = s
-                .bridge
-                .as_ref()
-                .map(|b| b.renderer().pipeline().calibration().right.width)
-                .unwrap_or(0);
-            let height = s
-                .bridge
-                .as_ref()
-                .map(|b| b.renderer().pipeline().calibration().right.height)
-                .unwrap_or(0);
-            let p = reco_core::calibration::CameraParams { width, height, ..p };
-            (None, Some(p))
-        } else {
-            let width = s
-                .bridge
-                .as_ref()
-                .map(|b| b.renderer().pipeline().calibration().left.width)
-                .unwrap_or(0);
-            let height = s
-                .bridge
-                .as_ref()
-                .map(|b| b.renderer().pipeline().calibration().left.height)
-                .unwrap_or(0);
-            let p = reco_core::calibration::CameraParams {
-                fx: app.get_lens_left_fx() as f64,
-                fy: app.get_lens_left_fy() as f64,
-                cx: app.get_lens_left_cx() as f64,
-                cy: app.get_lens_left_cy() as f64,
-                d: [
-                    app.get_lens_left_k1() as f64,
-                    app.get_lens_left_k2() as f64,
-                    app.get_lens_left_k3() as f64,
-                    app.get_lens_left_k4() as f64,
-                ],
-                width,
-                height,
-            };
-            (Some(p), None)
+        // Width/height come from the stored calibration (resolution the
+        // lens profile was modelled at) and are never user-editable.
+        let (left_wh, right_wh) = s
+            .bridge
+            .as_ref()
+            .map(|b| {
+                let c = b.renderer().pipeline().calibration();
+                (
+                    (c.left.width, c.left.height),
+                    (c.right.width, c.right.height),
+                )
+            })
+            .unwrap_or(((0, 0), (0, 0)));
+
+        let (left_params, right_params) = match selected.as_str() {
+            "right" => {
+                let p = reco_core::calibration::CameraParams {
+                    fx: app.get_lens_right_fx() as f64,
+                    fy: app.get_lens_right_fy() as f64,
+                    cx: app.get_lens_right_cx() as f64,
+                    cy: app.get_lens_right_cy() as f64,
+                    d: [
+                        app.get_lens_right_k1() as f64,
+                        app.get_lens_right_k2() as f64,
+                        app.get_lens_right_k3() as f64,
+                        app.get_lens_right_k4() as f64,
+                    ],
+                    width: right_wh.0,
+                    height: right_wh.1,
+                };
+                (None, Some(p))
+            }
+            "both" => {
+                // Mirror the Left sliders to both cameras. The Both tab
+                // only shows the left sliders in the UI; the user's
+                // intent is "apply these values to both lenses in
+                // lockstep". We also push the mirrored values back into
+                // the right-* Slint properties so when the user toggles
+                // to Right later the sliders show what got applied.
+                app.set_lens_right_fx(app.get_lens_left_fx());
+                app.set_lens_right_fy(app.get_lens_left_fy());
+                app.set_lens_right_cx(app.get_lens_left_cx());
+                app.set_lens_right_cy(app.get_lens_left_cy());
+                app.set_lens_right_k1(app.get_lens_left_k1());
+                app.set_lens_right_k2(app.get_lens_left_k2());
+                app.set_lens_right_k3(app.get_lens_left_k3());
+                app.set_lens_right_k4(app.get_lens_left_k4());
+                let left = reco_core::calibration::CameraParams {
+                    fx: app.get_lens_left_fx() as f64,
+                    fy: app.get_lens_left_fy() as f64,
+                    cx: app.get_lens_left_cx() as f64,
+                    cy: app.get_lens_left_cy() as f64,
+                    d: [
+                        app.get_lens_left_k1() as f64,
+                        app.get_lens_left_k2() as f64,
+                        app.get_lens_left_k3() as f64,
+                        app.get_lens_left_k4() as f64,
+                    ],
+                    width: left_wh.0,
+                    height: left_wh.1,
+                };
+                let right = reco_core::calibration::CameraParams {
+                    width: right_wh.0,
+                    height: right_wh.1,
+                    ..left.clone()
+                };
+                (Some(left), Some(right))
+            }
+            _ => {
+                let p = reco_core::calibration::CameraParams {
+                    fx: app.get_lens_left_fx() as f64,
+                    fy: app.get_lens_left_fy() as f64,
+                    cx: app.get_lens_left_cx() as f64,
+                    cy: app.get_lens_left_cy() as f64,
+                    d: [
+                        app.get_lens_left_k1() as f64,
+                        app.get_lens_left_k2() as f64,
+                        app.get_lens_left_k3() as f64,
+                        app.get_lens_left_k4() as f64,
+                    ],
+                    width: left_wh.0,
+                    height: left_wh.1,
+                };
+                (Some(p), None)
+            }
         };
         if let Some(bridge) = s.bridge.as_mut() {
             bridge
@@ -1203,6 +1242,28 @@ fn main() -> anyhow::Result<()> {
             s.preview_dirty = true;
             app.set_lens_dirty(false);
         }
+    });
+
+    // Slint's <=> binding updates the use-constrained-look property but
+    // does not call back into Rust. Without this notify, AppState's
+    // use_constrained_look stays at its initial value forever and the
+    // UI checkbox is cosmetic.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_constrained_look(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let new_value = app.get_use_constrained_look();
+        let mut s = state_ref.borrow_mut();
+        s.use_constrained_look = new_value;
+        // When re-enabling, apply the clamp to the current target so
+        // the camera snaps back inside coverage instead of waiting for
+        // the next pan/zoom input.
+        if new_value {
+            s.clamp_targets();
+        }
+        s.preview_dirty = true;
     });
 
     // ── Export dialog callbacks ──
