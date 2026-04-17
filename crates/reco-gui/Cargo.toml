@@ -23,6 +23,7 @@ profiling = ["tracing", "reco-core/profiling", "reco-io/profiling", "reco-calibr
 reco-core = { path = "../reco-core" }
 reco-io = { path = "../reco-io", features = ["ffmpeg"] }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
+reco-detect = { path = "../reco-detect" }
 reco-autocam = { path = "../reco-autocam", optional = true }
 
 slint = { version = "~1.15", features = ["unstable-wgpu-28"] }

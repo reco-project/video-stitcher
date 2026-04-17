@@ -152,6 +152,25 @@ export component RecoApp inherits Window {
     in-out property <string> ai-status: "AI: unknown";
     in-out property <bool> ai-gpu-available: false;
 
+    // Lens profile info. Populated after auto-calibration so the user
+    // can see which lens the detector resolved to. Empty strings render
+    // as "Unknown" via the Lens card below; `lens-info-available` flips
+    // when there's anything worth showing.
+    in-out property <string> lens-left-camera: "";
+    in-out property <string> lens-left-lens: "";
+    in-out property <string> lens-left-source: "";
+    in-out property <string> lens-right-camera: "";
+    in-out property <string> lens-right-lens: "";
+    in-out property <string> lens-right-source: "";
+    in-out property <int> lens-candidates-count: 0;
+    in-out property <bool> lens-info-available: false;
+
+    // Opt-in use of IMU-derived camera orientation as initial seeds
+    // for the bundle-adjustment optimizer. Helpful on clips whose first
+    // frame is pointed off-axis; harmful if the IMU is noisy. Default
+    // off because the feature-matching seed is reliable on most footage.
+    in-out property <bool> use-imu-seeds: false;
+
     // ── Callbacks into Rust ──
 
     callback pick-left-video();
@@ -262,6 +281,16 @@ export component RecoApp inherits Window {
                     text: root.calibrating ? "Calibrating..." : "Auto Calibrate";
                     enabled: root.has-both-videos && !root.calibrating && !root.files-loaded;
                     clicked => { root.auto-calibrate(); }
+                }
+
+                // IMU-seed opt-in. Most clips work best without it
+                // (feature matcher seeds the bundle-adjustment fine on
+                // its own), so this stays off by default. User can flip
+                // it on for clips where the first frame is aimed oddly.
+                CheckBox {
+                    text: "IMU seeds";
+                    checked <=> root.use-imu-seeds;
+                    enabled: root.has-both-videos && !root.calibrating && !root.files-loaded;
                 }
 
                 if root.calibrating: Text {
@@ -414,6 +443,100 @@ export component RecoApp inherits Window {
                     Button {
                         text: "Reset View";
                         clicked => { root.reset-view(); }
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    // ── Lens profile info (read-only) ──
+                    // Displayed after auto-calibrate. Shows which lens the
+                    // database/telemetry resolved to for each camera, plus
+                    // a hint about how many alternate profiles exist for
+                    // this video resolution. Functional override lives in
+                    // a later tier once the calibrate API supports passing
+                    // a chosen profile directly.
+                    Text {
+                        text: "Lens profiles";
+                        color: #fff;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+
+                    if !root.lens-info-available: Text {
+                        text: "Run auto-calibrate to detect lens profiles.";
+                        color: #777;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                    }
+
+                    if root.lens-info-available: VerticalLayout {
+                        spacing: 6px;
+
+                        // Left camera card
+                        Rectangle {
+                            border-radius: 6px;
+                            background: #242424;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 2px;
+                                Text {
+                                    text: "Left  " + root.lens-left-source;
+                                    color: #8ae68a;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                }
+                                Text {
+                                    text: root.lens-left-camera;
+                                    color: #eee;
+                                    font-size: 12px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: root.lens-left-lens;
+                                    color: #aaa;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        // Right camera card
+                        Rectangle {
+                            border-radius: 6px;
+                            background: #242424;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 2px;
+                                Text {
+                                    text: "Right  " + root.lens-right-source;
+                                    color: #8ae68a;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                }
+                                Text {
+                                    text: root.lens-right-camera;
+                                    color: #eee;
+                                    font-size: 12px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: root.lens-right-lens;
+                                    color: #aaa;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: root.lens-candidates-count == 0
+                                ? "No alternate profiles for this resolution."
+                                : (root.lens-candidates-count == 1
+                                    ? "1 alternate profile available for this resolution."
+                                    : root.lens-candidates-count + " alternate profiles available for this resolution.");
+                            color: #777;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
                     }
 
                     Rectangle { height: 1px; background: #333; }

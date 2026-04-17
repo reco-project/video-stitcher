@@ -74,7 +74,8 @@ pub use traits::{
 };
 pub use types::{
     AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep,
-    GrayFrame, MatchConfig, OptimizerConfig, YuvFrame,
+    GrayFrame, LensProfileInfo, LensProfileSummary, MatchConfig, OptimizerConfig, ProfileSource,
+    YuvFrame,
 };
 
 use reco_core::calibration::{CameraParams, MatchCalibration};

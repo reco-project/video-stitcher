@@ -68,53 +68,68 @@ pub fn probe_execution_providers() -> AiProbeResult {
 
     if let Some(_builder) = builder {
         // TensorRT EP
+        //
+        // `with_execution_providers` returns `Result<SessionBuilder,
+        // ort::Error<SessionBuilder>>`, whose generic payload differs
+        // from the `Error<()>` that `Session::builder()` yields. We can
+        // stringify both into a common `Result<(), String>` so the
+        // error arms agree on type.
         #[cfg(feature = "tensorrt")]
         {
-            match Session::builder()
-                .and_then(|b| b.with_execution_providers([ort::ep::TensorRT::default().build()]))
-            {
-                Ok(_) => {
+            let result: Result<(), String> = match Session::builder() {
+                Ok(b) => b
+                    .with_execution_providers([ort::ep::TensorRT::default().build()])
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            match result {
+                Ok(()) => {
                     providers.push("TensorRT".into());
                     can_run_on_gpu_frames = true;
                 }
-                Err(e) => {
-                    errors.push(format!("TensorRT: {e}"));
-                }
+                Err(e) => errors.push(format!("TensorRT: {e}")),
             }
         }
 
         // CUDA EP (only when TensorRT is not compiled in, matching ort_session.rs logic)
         #[cfg(all(feature = "cuda", not(feature = "tensorrt")))]
         {
-            match Session::builder()
-                .and_then(|b| b.with_execution_providers([ort::ep::CUDA::default().build()]))
-            {
-                Ok(_) => {
+            let result: Result<(), String> = match Session::builder() {
+                Ok(b) => b
+                    .with_execution_providers([ort::ep::CUDA::default().build()])
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            match result {
+                Ok(()) => {
                     providers.push("CUDA".into());
                     // CUDA EP alone can't handle NV12 device pointers
                     // without NPP preprocessing, so can_run_on_gpu_frames
                     // stays false unless TensorRT succeeded above.
                 }
-                Err(e) => {
-                    errors.push(format!("CUDA: {e}"));
-                }
+                Err(e) => errors.push(format!("CUDA: {e}")),
             }
         }
 
         // CoreML EP (macOS)
         #[cfg(feature = "coreml")]
         {
-            match Session::builder().and_then(|b| {
-                b.with_execution_providers([ort::ep::CoreML::default()
-                    .with_compute_units(ort::ep::coreml::ComputeUnits::All)
-                    .build()])
-            }) {
-                Ok(_) => {
+            let result: Result<(), String> = match Session::builder() {
+                Ok(b) => b
+                    .with_execution_providers([ort::ep::CoreML::default()
+                        .with_compute_units(ort::ep::coreml::ComputeUnits::All)
+                        .build()])
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            match result {
+                Ok(()) => {
                     providers.push("CoreML".into());
                 }
-                Err(e) => {
-                    errors.push(format!("CoreML: {e}"));
-                }
+                Err(e) => errors.push(format!("CoreML: {e}")),
             }
         }
 
