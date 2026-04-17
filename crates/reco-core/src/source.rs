@@ -86,7 +86,7 @@ pub enum InvalidPathReason {
 /// and is readable by the current process.
 ///
 /// Returns `Ok(())` for valid paths, or
-/// [`SourceError::InvalidPath`](SourceError::InvalidPath) describing
+/// [`SourceError::InvalidPath`] describing
 /// why it was rejected. Consumers should call this before attempting
 /// any codec-specific open so the user sees a clear error instead of
 /// a stringified FFmpeg "Invalid argument".
