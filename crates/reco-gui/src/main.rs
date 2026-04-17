@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_core::calibration::MatchCalibration;
 use reco_core::pipeline::YuvPlanes;
 use reco_core::wgpu;
@@ -85,8 +86,18 @@ const CAMERA_EPSILON: f32 = 0.0005;
 /// much better bundle-adjustment fit at the cost of a few extra seconds.
 const CALIBRATION_FRAMES: usize = 4;
 
+/// Calibration payload sent from the background worker: the computed
+/// match calibration plus the lens profile info each side resolved to,
+/// so the GUI can tell the user "we auto-detected GoPro HERO10 Linear 4K"
+/// without re-running detection.
+struct CalibrationOutput {
+    calibration: MatchCalibration,
+    left_lens_profile: Option<LensProfileInfo>,
+    right_lens_profile: Option<LensProfileInfo>,
+}
+
 /// Result sent from the calibration background thread.
-type CalibrationResult = Result<MatchCalibration, String>;
+type CalibrationResult = Result<CalibrationOutput, String>;
 
 /// Application state shared between Slint callbacks.
 struct AppState {
@@ -137,42 +148,51 @@ struct AppState {
     cal_baseline_layout: Option<reco_core::calibration::PlaneLayout>,
 }
 
-/// Compile-time AI capability summary.
+/// Runtime AI capability summary.
 ///
-/// Reports which ONNX Runtime execution providers were baked into
-/// this binary. A runtime probe would be better (hardware might not
-/// support what we compiled in), but reco-autocam exposes no such
-/// API today — see reco-gui/FRICTION.md #12.
+/// Calls `reco_detect::probe_execution_providers()` to discover which
+/// ONNX Runtime execution providers actually load on this machine,
+/// not just which were compiled in. Replaces the old compile-time
+/// `cfg!()` summary that lied when a feature was baked in but the
+/// runtime libraries were missing.
+///
+/// Returns `(status_text, can_run_ai_on_gpu_frames)`.
 fn ai_capability_summary() -> (String, bool) {
-    #[allow(unused_mut)]
-    let mut available: Vec<&'static str> = Vec::new();
-    #[cfg(feature = "tensorrt")]
-    available.push("TensorRT");
-    #[cfg(feature = "cuda")]
-    available.push("CUDA");
-    #[cfg(feature = "coreml")]
-    available.push("CoreML");
-
     #[cfg(not(feature = "autocam"))]
     return ("AI: disabled (build without autocam feature)".into(), false);
 
     #[cfg(feature = "autocam")]
     {
-        if available.is_empty() {
-            // CPU is always available but can't run alongside zero-copy
-            // GPU decode — autocam will refuse on NVDEC-resident frames.
-            (
-                "AI: CPU-only (ball tracking needs tensorrt / cuda feature for hardware decode)"
-                    .into(),
+        let probe = reco_detect::probe_execution_providers();
+        if !probe.is_available() {
+            return (
+                format!(
+                    "AI: unavailable ({})",
+                    probe
+                        .errors
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "no execution providers loaded".into())
+                ),
                 false,
-            )
-        } else {
+            );
+        }
+        if probe.can_run_on_gpu_frames {
             (
                 format!(
-                    "AI: {} available (hardware decode + inference)",
-                    available.join(", ")
+                    "AI: {} (hardware decode + inference)",
+                    probe.providers.join(", ")
                 ),
                 true,
+            )
+        } else {
+            // CPU (or CUDA-without-NPP) works but can't consume GPU-resident frames.
+            (
+                format!(
+                    "AI: {} (CPU-only path; ball tracking disabled on hardware decode)",
+                    probe.best_provider()
+                ),
+                false,
             )
         }
     }
@@ -483,6 +503,62 @@ impl AppState {
 }
 
 /// Extract just the filename from a path for display.
+/// Human-readable description of how a lens profile was resolved.
+fn profile_source_label(info: &LensProfileInfo) -> &'static str {
+    match info.source {
+        ProfileSource::AutoDetected => "Auto-detected",
+        ProfileSource::Database => "Database match",
+        ProfileSource::File(_) => "File",
+        ProfileSource::Fallback => "Fallback",
+    }
+}
+
+/// Populate the Slint lens-profile properties from calibration output.
+///
+/// Stamps the detected camera/lens/source for left and right, plus the
+/// count of alternate profiles in the embedded database that match the
+/// current video resolution (`in_w` x `in_h`). The candidate count lets
+/// the user tell at a glance whether they could reasonably override the
+/// auto-detected profile - zero means the picker has nothing new to offer.
+fn set_lens_profile_props(
+    app: &RecoApp,
+    left: Option<LensProfileInfo>,
+    right: Option<LensProfileInfo>,
+    in_w: u32,
+    in_h: u32,
+) {
+    if let Some(info) = &left {
+        app.set_lens_left_camera(info.camera.clone().into());
+        app.set_lens_left_lens(info.lens.clone().into());
+        app.set_lens_left_source(profile_source_label(info).into());
+    } else {
+        app.set_lens_left_camera("Unknown".into());
+        app.set_lens_left_lens("".into());
+        app.set_lens_left_source("Not detected".into());
+    }
+    if let Some(info) = &right {
+        app.set_lens_right_camera(info.camera.clone().into());
+        app.set_lens_right_lens(info.lens.clone().into());
+        app.set_lens_right_source(profile_source_label(info).into());
+    } else {
+        app.set_lens_right_camera("Unknown".into());
+        app.set_lens_right_lens("".into());
+        app.set_lens_right_source("Not detected".into());
+    }
+
+    // Count candidate profiles for the current resolution so the user
+    // sees whether alternates exist. Loading the embedded database is
+    // O(1) after the first call (static OnceCell inside reco-calibrate).
+    let candidates = if in_w > 0 && in_h > 0 {
+        let db = reco_calibrate::lens_database::LensDatabase::load_embedded();
+        db.candidates(in_w, in_h).len() as i32
+    } else {
+        0
+    };
+    app.set_lens_candidates_count(candidates);
+    app.set_lens_info_available(left.is_some() || right.is_some());
+}
+
 fn display_name(path: &std::path::Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -649,6 +725,14 @@ fn main() -> anyhow::Result<()> {
         };
         drop(s);
 
+        // Snapshot the IMU-seed opt-in so the worker thread doesn't
+        // need to touch the Slint app at all (which would require the
+        // Weak handle to upgrade successfully off the UI thread).
+        let use_imu_seeds = app_weak
+            .upgrade()
+            .map(|a| a.get_use_imu_seeds())
+            .unwrap_or(false);
+
         if let Some(app) = app_weak.upgrade() {
             app.set_calibrating(true);
             app.set_calibration_step("Starting...".into());
@@ -675,6 +759,7 @@ fn main() -> anyhow::Result<()> {
             // feature matches are noisier per frame.
             let config = reco_calibrate::CalibrationConfig {
                 num_frames: CALIBRATION_FRAMES,
+                use_imu_rotation_seeds: use_imu_seeds,
                 ..Default::default()
             };
             let result = reco_calibrate::video::calibrate_videos(
@@ -702,7 +787,11 @@ fn main() -> anyhow::Result<()> {
             let cal_result: CalibrationResult = match result {
                 Ok(r) => {
                     log::info!("Auto-calibration complete: {} matches", r.total_matches,);
-                    Ok(r.calibration)
+                    Ok(CalibrationOutput {
+                        calibration: r.calibration,
+                        left_lens_profile: r.left_lens_profile,
+                        right_lens_profile: r.right_lens_profile,
+                    })
                 }
                 Err(e) => Err(format!("{e}")),
             };
@@ -1227,6 +1316,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             // Seed calibration slider values from the baseline layout.
             let layout = s.cal_baseline_layout.clone();
 
+            let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
+
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
                 app.set_total_frames(total as i32);
@@ -1244,6 +1335,11 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_cal_x_ty(layout.x_ty as f32);
                     app.set_cal_dirty(false);
                 }
+                // Manual calibration JSON does not embed lens-profile info,
+                // so clear the display (hide the lens card) and just show
+                // the candidates count for this resolution so the user
+                // still knows how many database entries could match.
+                set_lens_profile_props(&app, None, None, in_w, in_h);
                 // Seed export dialog output filename suggestion to
                 // sit next to the left-video file for convenience.
                 let left_path = s.left_path.clone();
@@ -1296,43 +1392,49 @@ fn handle_calibration_result(
     }
 
     match result {
-        Ok(cal) => match state.init_with_calibration(cal) {
-            Ok(true) => {
-                let fps = state.playback.fps();
-                let total = state.playback.total_frames().unwrap_or(0);
-                let gpu_name = state
-                    .bridge
-                    .as_ref()
-                    .map(|b| b.renderer().gpu().gpu_name().to_string())
-                    .unwrap_or_default();
-                let img = state.render_current();
+        Ok(output) => {
+            let left_profile = output.left_lens_profile.clone();
+            let right_profile = output.right_lens_profile.clone();
+            match state.init_with_calibration(output.calibration) {
+                Ok(true) => {
+                    let fps = state.playback.fps();
+                    let total = state.playback.total_frames().unwrap_or(0);
+                    let gpu_name = state
+                        .bridge
+                        .as_ref()
+                        .map(|b| b.renderer().gpu().gpu_name().to_string())
+                        .unwrap_or_default();
+                    let img = state.render_current();
+                    let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_files_loaded(true);
-                    app.set_calibration_path("(auto-calibrated)".into());
-                    app.set_total_frames(total as i32);
-                    app.set_current_frame(state.playback.frame_index() as i32);
-                    app.set_fps(fps as f32);
-                    app.set_status_text(
-                        format!(
-                            "Auto-calibrated - {gpu_name} - {:.1} fps - {total} frames",
-                            fps,
-                        )
-                        .into(),
-                    );
-                    if let Some(img) = img {
-                        app.set_preview_frame(img);
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_files_loaded(true);
+                        app.set_calibration_path("(auto-calibrated)".into());
+                        app.set_total_frames(total as i32);
+                        app.set_current_frame(state.playback.frame_index() as i32);
+                        app.set_fps(fps as f32);
+                        app.set_status_text(
+                            format!(
+                                "Auto-calibrated - {gpu_name} - {:.1} fps - {total} frames",
+                                fps,
+                            )
+                            .into(),
+                        );
+                        if let Some(img) = img {
+                            app.set_preview_frame(img);
+                        }
+                        set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
+                    }
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    log::error!("Post-calibration init: {e}");
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_status_text(format!("Error: {e}").into());
                     }
                 }
             }
-            Ok(false) => {}
-            Err(e) => {
-                log::error!("Post-calibration init: {e}");
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_status_text(format!("Error: {e}").into());
-                }
-            }
-        },
+        }
         Err(e) => {
             log::error!("Auto-calibration failed: {e}");
             if let Some(app) = app_weak.upgrade() {

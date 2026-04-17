@@ -5308,6 +5308,7 @@ dependencies = [
  "reco-autocam",
  "reco-calibrate",
  "reco-core",
+ "reco-detect",
  "reco-io",
  "rfd",
  "serde_json",
