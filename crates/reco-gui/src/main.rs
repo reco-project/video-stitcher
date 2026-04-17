@@ -146,6 +146,18 @@ struct AppState {
     /// Original PlaneLayout values — what auto-calibrate produced. Live
     /// calibration sliders edit relative to this so Reset restores.
     cal_baseline_layout: Option<reco_core::calibration::PlaneLayout>,
+    /// Baseline camera intrinsics from the last successful calibration.
+    /// The Lens fine-tune sliders in the Controls panel edit these; the
+    /// Reset Lens button restores them. `None` until auto-calibrate or a
+    /// manual match.json load populates them.
+    cal_baseline_left_params: Option<reco_core::calibration::CameraParams>,
+    cal_baseline_right_params: Option<reco_core::calibration::CameraParams>,
+    /// When true, `clamp_targets` pins yaw/pitch to the coverage boundary
+    /// via [`CoverageBoundary::safe_clamp`] so the viewport never shows
+    /// black margins. When false, pan/zoom is unrestricted - useful for
+    /// calibration debug where the user wants to see beyond the stitched
+    /// region. Bound to the Slint `use-constrained-look` checkbox.
+    use_constrained_look: bool,
 }
 
 /// Runtime AI capability summary.
@@ -232,6 +244,9 @@ impl AppState {
             export_thread: None,
             export_rx: None,
             cal_baseline_layout: None,
+            cal_baseline_left_params: None,
+            cal_baseline_right_params: None,
+            use_constrained_look: true,
         }
     }
 
@@ -476,6 +491,14 @@ impl AppState {
     /// input can't set an unreachable goal. The current pose is
     /// clamped implicitly as it lerps toward the clamped target.
     fn clamp_targets(&mut self) {
+        // Constrained-look toggle: when the user disables it we let
+        // yaw/pitch roam freely (useful for calibration debug or
+        // inspecting the black margins beyond the stitched region).
+        // When enabled - the default - we clamp to the coverage boundary
+        // so the viewport cannot display black.
+        if !self.use_constrained_look {
+            return;
+        }
         let Some(bridge) = self.bridge.as_ref() else {
             return;
         };
@@ -510,6 +533,56 @@ impl AppState {
 }
 
 /// Extract just the filename from a path for display.
+/// Seed the Slint lens-tune sliders and their display ranges from a
+/// pair of baseline `CameraParams`. Called after auto-calibrate completes
+/// and on Reset Lens. Ranges are chosen wide enough for meaningful
+/// manual tuning (fx/fy: +/-15%, cx/cy: +/-10% of image dim) but tight
+/// enough that the slider granularity is useful.
+fn set_lens_sliders(
+    app: &RecoApp,
+    left: &reco_core::calibration::CameraParams,
+    right: &reco_core::calibration::CameraParams,
+) {
+    // Ranges are computed from the left camera's baseline. In stereo
+    // rigs the two lenses are typically matched models, so a single
+    // range keeps the UI simpler. If the cameras ever differ materially
+    // this can be revisited.
+    let f_baseline = left.fx.max(left.fy);
+    let fx_span = (f_baseline * 0.15).max(5.0);
+    let w = left.width.max(1) as f64;
+    let h = left.height.max(1) as f64;
+    let cx_span = (w * 0.10).max(5.0);
+    let cy_span = (h * 0.10).max(5.0);
+
+    app.set_lens_fx_min((left.fx - fx_span) as f32);
+    app.set_lens_fx_max((left.fx + fx_span) as f32);
+    app.set_lens_fy_min((left.fy - fx_span) as f32);
+    app.set_lens_fy_max((left.fy + fx_span) as f32);
+    app.set_lens_cx_min((left.cx - cx_span) as f32);
+    app.set_lens_cx_max((left.cx + cx_span) as f32);
+    app.set_lens_cy_min((left.cy - cy_span) as f32);
+    app.set_lens_cy_max((left.cy + cy_span) as f32);
+    app.set_lens_k_range(0.3);
+
+    app.set_lens_left_fx(left.fx as f32);
+    app.set_lens_left_fy(left.fy as f32);
+    app.set_lens_left_cx(left.cx as f32);
+    app.set_lens_left_cy(left.cy as f32);
+    app.set_lens_left_k1(left.d[0] as f32);
+    app.set_lens_left_k2(left.d[1] as f32);
+    app.set_lens_left_k3(left.d[2] as f32);
+    app.set_lens_left_k4(left.d[3] as f32);
+
+    app.set_lens_right_fx(right.fx as f32);
+    app.set_lens_right_fy(right.fy as f32);
+    app.set_lens_right_cx(right.cx as f32);
+    app.set_lens_right_cy(right.cy as f32);
+    app.set_lens_right_k1(right.d[0] as f32);
+    app.set_lens_right_k2(right.d[1] as f32);
+    app.set_lens_right_k3(right.d[2] as f32);
+    app.set_lens_right_k4(right.d[3] as f32);
+}
+
 /// Human-readable description of how a lens profile was resolved.
 fn profile_source_label(info: &LensProfileInfo) -> &'static str {
     match info.source {
@@ -1026,6 +1099,112 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // ── Live lens tuning callbacks ──
+    //
+    // Each slider emits `changed-lens-param` which asks Rust to read
+    // the current fx/fy/cx/cy/k1-k4 from the UI properties for the
+    // selected camera, build a `CameraParams`, and push it through
+    // `update_camera_params`. Cheap per reco-core Batch F.
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_lens_param(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        let selected = app.get_lens_selected_camera();
+        let (left_params, right_params) = if selected.as_str() == "right" {
+            let p = reco_core::calibration::CameraParams {
+                fx: app.get_lens_right_fx() as f64,
+                fy: app.get_lens_right_fy() as f64,
+                cx: app.get_lens_right_cx() as f64,
+                cy: app.get_lens_right_cy() as f64,
+                d: [
+                    app.get_lens_right_k1() as f64,
+                    app.get_lens_right_k2() as f64,
+                    app.get_lens_right_k3() as f64,
+                    app.get_lens_right_k4() as f64,
+                ],
+                width: 0,
+                height: 0,
+            };
+            // Keep width/height from the stored calibration - they're
+            // not user-editable. CameraParams::{width, height} are the
+            // image resolution the lens was modelled against.
+            let width = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().calibration().right.width)
+                .unwrap_or(0);
+            let height = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().calibration().right.height)
+                .unwrap_or(0);
+            let p = reco_core::calibration::CameraParams { width, height, ..p };
+            (None, Some(p))
+        } else {
+            let width = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().calibration().left.width)
+                .unwrap_or(0);
+            let height = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().calibration().left.height)
+                .unwrap_or(0);
+            let p = reco_core::calibration::CameraParams {
+                fx: app.get_lens_left_fx() as f64,
+                fy: app.get_lens_left_fy() as f64,
+                cx: app.get_lens_left_cx() as f64,
+                cy: app.get_lens_left_cy() as f64,
+                d: [
+                    app.get_lens_left_k1() as f64,
+                    app.get_lens_left_k2() as f64,
+                    app.get_lens_left_k3() as f64,
+                    app.get_lens_left_k4() as f64,
+                ],
+                width,
+                height,
+            };
+            (Some(p), None)
+        };
+        if let Some(bridge) = s.bridge.as_mut() {
+            bridge
+                .renderer_mut()
+                .update_camera_params(left_params, right_params);
+        }
+        s.preview_dirty = true;
+        app.set_lens_dirty(true);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_reset_lens(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        // Baseline lens params live on the calibration we snapshotted
+        // when auto-calibrate completed (see cal_baseline_*_params).
+        let (left_base, right_base) = (
+            s.cal_baseline_left_params.clone(),
+            s.cal_baseline_right_params.clone(),
+        );
+        if let (Some(left), Some(right)) = (left_base.as_ref(), right_base.as_ref()) {
+            set_lens_sliders(&app, left, right);
+            if let Some(bridge) = s.bridge.as_mut() {
+                bridge
+                    .renderer_mut()
+                    .update_camera_params(Some(left.clone()), Some(right.clone()));
+            }
+            s.preview_dirty = true;
+            app.set_lens_dirty(false);
+        }
+    });
+
     // ── Export dialog callbacks ──
     //
     // "Open" populates default values from current state (blend width
@@ -1330,6 +1509,18 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
 
+            // Snapshot current lens params as the fine-tune baseline so
+            // Reset Lens can restore them. For manual match.json loads
+            // this comes from the loaded calibration directly.
+            let lens_baseline = s.bridge.as_ref().map(|b| {
+                let cal = b.renderer().pipeline().calibration();
+                (cal.left.clone(), cal.right.clone())
+            });
+            if let Some((l, r)) = lens_baseline.as_ref() {
+                s.cal_baseline_left_params = Some(l.clone());
+                s.cal_baseline_right_params = Some(r.clone());
+            }
+
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
                 app.set_total_frames(total as i32);
@@ -1352,6 +1543,13 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 // the candidates count for this resolution so the user
                 // still knows how many database entries could match.
                 set_lens_profile_props(&app, None, None, in_w, in_h);
+                // Lens fine-tune sliders are seeded from the loaded
+                // calibration's camera params either way; the Lens
+                // fine-tune section is gated on `files-loaded` in Slint.
+                if let Some((l, r)) = lens_baseline.as_ref() {
+                    set_lens_sliders(&app, l, r);
+                    app.set_lens_dirty(false);
+                }
                 // Seed export dialog output filename suggestion to
                 // sit next to the left-video file for convenience.
                 let left_path = s.left_path.clone();
@@ -1419,6 +1617,18 @@ fn handle_calibration_result(
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 
+                    // Snapshot camera intrinsics as the Lens fine-tune
+                    // baseline so Reset Lens can restore them after
+                    // manual edits.
+                    let lens_baseline = state.bridge.as_ref().map(|b| {
+                        let cal = b.renderer().pipeline().calibration();
+                        (cal.left.clone(), cal.right.clone())
+                    });
+                    if let Some((l, r)) = lens_baseline.as_ref() {
+                        state.cal_baseline_left_params = Some(l.clone());
+                        state.cal_baseline_right_params = Some(r.clone());
+                    }
+
                     if let Some(app) = app_weak.upgrade() {
                         app.set_files_loaded(true);
                         app.set_calibration_path("(auto-calibrated)".into());
@@ -1436,6 +1646,10 @@ fn handle_calibration_result(
                             app.set_preview_frame(img);
                         }
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
+                        if let Some((l, r)) = lens_baseline.as_ref() {
+                            set_lens_sliders(&app, l, r);
+                            app.set_lens_dirty(false);
+                        }
                     }
                 }
                 Ok(false) => {}
