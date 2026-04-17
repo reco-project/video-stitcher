@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -138,6 +139,14 @@ struct AppState {
     /// Interrupt flag for a running export. Set to true when the user
     /// clicks Cancel; StitchJob checks it between frames and aborts.
     export_interrupted: Arc<AtomicBool>,
+    /// Timestamp of the last time `run_export`'s progress callback
+    /// fired. Used by the playback timer to detect when the encoder is
+    /// in its post-last-frame finalization phase (av_write_trailer +
+    /// index flush can take ~10 seconds) so we can display "Finalizing
+    /// output file…" instead of a stale frame count. Shared via Arc so
+    /// the worker thread can stamp it without going through
+    /// `invoke_from_event_loop`.
+    export_last_progress_at: Arc<Mutex<Option<Instant>>>,
     /// Join handle for the export worker. Held so the timer can see
     /// when the export finishes (via try_recv on export_rx).
     export_thread: Option<std::thread::JoinHandle<()>>,
@@ -241,6 +250,7 @@ impl AppState {
             last_render_at: None,
             preview_dirty: false,
             export_interrupted: Arc::new(AtomicBool::new(false)),
+            export_last_progress_at: Arc::new(Mutex::new(None)),
             export_thread: None,
             export_rx: None,
             cal_baseline_layout: None,
@@ -1362,6 +1372,11 @@ fn main() -> anyhow::Result<()> {
         let (tx, rx) = std::sync::mpsc::channel();
         s.export_rx = Some(rx);
 
+        // Seed the last-progress timestamp so the Finalizing detector
+        // has a starting point. Cloned for the worker below.
+        *s.export_last_progress_at.lock().unwrap() = Some(Instant::now());
+        let last_progress_at = Arc::clone(&s.export_last_progress_at);
+
         // UI-thread setup before launching the worker.
         app.set_export_in_progress(true);
         app.set_export_progress(0.0);
@@ -1390,6 +1405,7 @@ fn main() -> anyhow::Result<()> {
                 detection_interval,
                 app_weak_bg,
                 &interrupted,
+                last_progress_at,
             );
             let _ = tx.send(outcome);
         });
@@ -1453,6 +1469,24 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 return;
+            }
+
+            // If an export is running and we haven't seen a progress
+            // update in > 1.5 seconds, the encoder is in its tail phase
+            // (av_write_trailer + index flush can take up to ~15s on
+            // H.264/AV1). Switch the status text to "Finalizing..." so
+            // the progress bar doesn't look hung. Time-based detection
+            // is robust to whatever the probe-reported total-frames is;
+            // no frame-count heuristic needed.
+            if let Some(app) = app_weak.upgrade()
+                && app.get_export_in_progress()
+                && let Some(last) = *s.export_last_progress_at.lock().unwrap()
+                && last.elapsed() > Duration::from_millis(1500)
+            {
+                let status = app.get_export_status_text();
+                if !status.starts_with("Finalizing") {
+                    app.set_export_status_text("Finalizing output file…".into());
+                }
             }
 
             // Commit a debounced seek once the requested fraction has
@@ -1801,6 +1835,7 @@ fn run_export(
     detection_interval: u32,
     app_weak: slint::Weak<RecoApp>,
     interrupted: &AtomicBool,
+    last_progress_at: Arc<Mutex<Option<Instant>>>,
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
 
@@ -1850,6 +1885,7 @@ fn run_export(
 
     let progress_weak = app_weak.clone();
     let progress_start = Instant::now();
+    let progress_last_at = Arc::clone(&last_progress_at);
     let mut job =
         reco_io::StitchJob::with_calibration(left.clone(), right.clone(), cal, output.clone())
             .codec(codec)
@@ -1866,6 +1902,13 @@ fn run_export(
                 } else {
                     0.0
                 };
+                // Stamp the time directly from the worker thread. The
+                // main-thread timer reads this to detect when the job
+                // is in its finalization phase (encoder trailer write +
+                // index flush). Lock contention is negligible - we only
+                // touch it once per frame and the timer reads briefly.
+                *progress_last_at.lock().unwrap() = Some(Instant::now());
+
                 let weak = progress_weak.clone();
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(app) = weak.upgrade() {
@@ -1874,30 +1917,7 @@ fn run_export(
                         if total > 0 {
                             app.set_export_progress(frames as f32 / total as f32);
                         }
-                        // Once we've written the last frame, the encoder
-                        // still spends a few seconds on av_write_trailer
-                        // and index flushing before job.run returns.
-                        // Switching the status to "Finalizing..." here
-                        // stops the progress bar from looking hung.
-                        //
-                        // The probe-reported `total` overshoots the
-                        // actually-encoded count by the sync-offset skip
-                        // (e.g. 67 frames on the GoPro test clip), so
-                        // the literal `frames >= total` condition never
-                        // triggers. Match on "last 0.5% of frames" which
-                        // is generous enough to cover sync skips of a
-                        // few seconds but still tight enough that the
-                        // Finalizing text only appears at the real tail
-                        // of the job.
-                        let near_end = total > 0
-                            && (frames as i32 >= total || frames as f32 / total as f32 >= 0.995);
-                        if near_end {
-                            app.set_export_status_text("Finalizing output file…".into());
-                        } else {
-                            app.set_export_status_text(
-                                format!("Frame {frames} ({fps:.0} fps)").into(),
-                            );
-                        }
+                        app.set_export_status_text(format!("Frame {frames} ({fps:.0} fps)").into());
                     }
                 });
             });
