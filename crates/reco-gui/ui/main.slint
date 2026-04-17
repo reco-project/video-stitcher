@@ -175,7 +175,11 @@ export component RecoApp inherits Window {
                         maximum: root.total-frames == 0 ? 1 : root.total-frames;
                         value: root.current-frame;
                         enabled: root.files-loaded;
-                        changed(val) => {
+                        // `released` fires only on user pointer release,
+                        // unlike `changed` which also fires when Rust
+                        // writes `current-frame` back after a decode
+                        // (feedback loop).
+                        released(val) => {
                             if root.total-frames > 0 {
                                 root.seek(val / root.total-frames);
                             }
