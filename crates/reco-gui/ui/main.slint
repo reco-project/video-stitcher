@@ -171,6 +171,47 @@ export component RecoApp inherits Window {
     // off because the feature-matching seed is reliable on most footage.
     in-out property <bool> use-imu-seeds: false;
 
+    // When true (default), pan/zoom is clamped to the coverage boundary
+    // so the viewport never shows black margins. Users can disable it
+    // to inspect what is happening beyond the stitched region, which is
+    // useful for calibration debug.
+    in-out property <bool> use-constrained-look: true;
+
+    // Per-camera lens intrinsics (populated by Rust after auto-calibrate
+    // from `CalibrationResult.left_lens_profile` / `right_lens_profile`).
+    // The Lens tab binds sliders to these properties; changes flow back
+    // to Rust via `changed-lens-param`, which calls
+    // `StitchRenderer::update_camera_params` for live preview.
+    in-out property <float> lens-left-fx: 0.0;
+    in-out property <float> lens-left-fy: 0.0;
+    in-out property <float> lens-left-cx: 0.0;
+    in-out property <float> lens-left-cy: 0.0;
+    in-out property <float> lens-left-k1: 0.0;
+    in-out property <float> lens-left-k2: 0.0;
+    in-out property <float> lens-left-k3: 0.0;
+    in-out property <float> lens-left-k4: 0.0;
+    in-out property <float> lens-right-fx: 0.0;
+    in-out property <float> lens-right-fy: 0.0;
+    in-out property <float> lens-right-cx: 0.0;
+    in-out property <float> lens-right-cy: 0.0;
+    in-out property <float> lens-right-k1: 0.0;
+    in-out property <float> lens-right-k2: 0.0;
+    in-out property <float> lens-right-k3: 0.0;
+    in-out property <float> lens-right-k4: 0.0;
+    // Slider display ranges (set by Rust to baseline +/- safe delta).
+    in-out property <float> lens-fx-min: 0.0;
+    in-out property <float> lens-fx-max: 0.0;
+    in-out property <float> lens-fy-min: 0.0;
+    in-out property <float> lens-fy-max: 0.0;
+    in-out property <float> lens-cx-min: 0.0;
+    in-out property <float> lens-cx-max: 0.0;
+    in-out property <float> lens-cy-min: 0.0;
+    in-out property <float> lens-cy-max: 0.0;
+    in-out property <float> lens-k-range: 0.3; // k sliders: baseline +/- this
+    in-out property <bool> lens-dirty: false;
+    // Which camera the lens-tab sliders are editing.
+    in-out property <string> lens-selected-camera: "left";
+
     // ── Callbacks into Rust ──
 
     callback pick-left-video();
@@ -199,6 +240,16 @@ export component RecoApp inherits Window {
     callback changed-cal-x-ty(float);
     callback save-calibration();
     callback reset-calibration();
+    // Live lens parameter editing. Fires on any of the 8 sliders per
+    // camera; Rust reads the property values for the currently-selected
+    // camera and calls update_camera_params.
+    callback changed-lens-param();
+    callback reset-lens();
+    // Constrained-look checkbox. Fires when the user toggles it so Rust
+    // can sync `AppState.use_constrained_look` with the UI property
+    // (Slint's <=> binding updates the property but Rust needs a notify
+    // to act on the new value).
+    callback changed-constrained-look();
     // Export dialog actions.
     callback open-export-dialog();
     callback pick-export-output();
@@ -441,6 +492,16 @@ export component RecoApp inherits Window {
                         changed(v) => { root.changed-fov(v); }
                     }
 
+                    // Constrained look: clamps pan/zoom to the coverage
+                    // boundary when on (default). Off lets the user pan
+                    // into the black margins beyond the stitched region
+                    // - useful for calibration debug.
+                    CheckBox {
+                        text: "Constrained look (clamp to coverage)";
+                        checked <=> root.use-constrained-look;
+                        toggled => { root.changed-constrained-look(); }
+                    }
+
                     Rectangle { height: 1px; background: #333; }
 
                     Text {
@@ -461,8 +522,12 @@ export component RecoApp inherits Window {
 
                     LabeledSlider {
                         label: "Rig tilt";
-                        minimum: -15;
-                        maximum: 15;
+                        // Widened to +/- 30 per tester feedback: rig tilts
+                        // past 15 degrees happen on handheld / body-cam
+                        // footage and the old clamp hid the rest of the
+                        // range from the user.
+                        minimum: -30;
+                        maximum: 30;
                         value <=> root.rig-tilt;
                         suffix: "°";
                         decimals: 1;
@@ -499,7 +564,7 @@ export component RecoApp inherits Window {
                         wrap: word-wrap;
                     }
 
-                    if root.lens-info-available: VerticalLayout {
+                    if root.files-loaded: VerticalLayout {
                         spacing: 6px;
 
                         // Left camera card
@@ -572,6 +637,196 @@ export component RecoApp inherits Window {
 
                     Rectangle { height: 1px; background: #333; }
 
+                    // ── Live lens fine-tuning ──
+                    // Sliders bound directly to the stored CameraParams
+                    // via changed-lens-param. Editing one side at a time
+                    // keeps the Controls panel compact; the left/right
+                    // toggle swaps which camera the sliders are driving.
+                    if root.files-loaded: Text {
+                        text: "Lens fine-tune";
+                        color: #fff;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+
+                    if root.files-loaded: HorizontalLayout {
+                        spacing: 8px;
+                        Button {
+                            text: "Left";
+                            primary: root.lens-selected-camera == "left";
+                            clicked => { root.lens-selected-camera = "left"; }
+                        }
+                        Button {
+                            text: "Right";
+                            primary: root.lens-selected-camera == "right";
+                            clicked => { root.lens-selected-camera = "right"; }
+                        }
+                        // "Both" applies the left-side slider values to
+                        // both cameras. Useful for stereo rigs with
+                        // matched lenses where you want to tune them in
+                        // lockstep. Rust implements this by mirroring
+                        // left-* params to right-* on every slider edit
+                        // while "both" is selected.
+                        Button {
+                            text: "Both";
+                            primary: root.lens-selected-camera == "both";
+                            clicked => { root.lens-selected-camera = "both"; }
+                        }
+                    }
+
+                    if root.files-loaded && (root.lens-selected-camera == "left" || root.lens-selected-camera == "both"): VerticalLayout {
+                        spacing: 4px;
+
+                        LabeledSlider {
+                            label: "fx";
+                            minimum: root.lens-fx-min;
+                            maximum: root.lens-fx-max;
+                            value <=> root.lens-left-fx;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "fy";
+                            minimum: root.lens-fy-min;
+                            maximum: root.lens-fy-max;
+                            value <=> root.lens-left-fy;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "cx";
+                            minimum: root.lens-cx-min;
+                            maximum: root.lens-cx-max;
+                            value <=> root.lens-left-cx;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "cy";
+                            minimum: root.lens-cy-min;
+                            maximum: root.lens-cy-max;
+                            value <=> root.lens-left-cy;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k1";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-left-k1;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k2";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-left-k2;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k3";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-left-k3;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k4";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-left-k4;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                    }
+
+                    if root.files-loaded && root.lens-selected-camera == "right": VerticalLayout {
+                        spacing: 4px;
+
+                        LabeledSlider {
+                            label: "fx";
+                            minimum: root.lens-fx-min;
+                            maximum: root.lens-fx-max;
+                            value <=> root.lens-right-fx;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "fy";
+                            minimum: root.lens-fy-min;
+                            maximum: root.lens-fy-max;
+                            value <=> root.lens-right-fy;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "cx";
+                            minimum: root.lens-cx-min;
+                            maximum: root.lens-cx-max;
+                            value <=> root.lens-right-cx;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "cy";
+                            minimum: root.lens-cy-min;
+                            maximum: root.lens-cy-max;
+                            value <=> root.lens-right-cy;
+                            decimals: 0;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k1";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-right-k1;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k2";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-right-k2;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k3";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-right-k3;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                        LabeledSlider {
+                            label: "k4";
+                            minimum: -root.lens-k-range;
+                            maximum: root.lens-k-range;
+                            value <=> root.lens-right-k4;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-param(); }
+                        }
+                    }
+
+                    if root.files-loaded: Button {
+                        text: "Reset Lens";
+                        enabled: root.lens-dirty;
+                        clicked => { root.reset-lens(); }
+                    }
+
+                    if root.files-loaded: Text {
+                        text: "Edits the in-memory lens. Save Calibration below to persist; Reset Lens restores the auto-detected profile.";
+                        color: #777;
+                        font-size: 10px;
+                        wrap: word-wrap;
+                    }
+
+                    if root.files-loaded: Rectangle { height: 1px; background: #333; }
+
                     // ── Live calibration ──
                     Text {
                         text: "Calibration";
@@ -582,28 +837,37 @@ export component RecoApp inherits Window {
 
                     LabeledSlider {
                         label: "Intersect";
-                        minimum: -0.5;
-                        maximum: 0.5;
+                        // Widened per tester feedback - the old +/- 0.5
+                        // was too tight for some rig geometries.
+                        minimum: -1.0;
+                        maximum: 1.0;
                         value <=> root.cal-intersect;
-                        decimals: 2;
+                        decimals: 3;
                         changed(v) => { root.changed-cal-intersect(v); }
                     }
 
                     LabeledSlider {
                         label: "Camera axis offset";
-                        minimum: -0.3;
-                        maximum: 0.3;
+                        // Widened to +/- 0.6 per tester feedback - real
+                        // rigs can offset further than +/- 0.3 and the
+                        // old clamp made fine-tuning infeasible.
+                        minimum: -0.6;
+                        maximum: 0.6;
                         value <=> root.cal-camera-axis-offset;
-                        decimals: 2;
+                        decimals: 3;
                         changed(v) => { root.changed-cal-camera-axis-offset(v); }
                     }
 
                     LabeledSlider {
                         label: "x_ty";
-                        minimum: -0.3;
-                        maximum: 0.3;
+                        // Narrowed to +/- 0.1 per tester feedback - x_ty
+                        // is a small correction in practice and the old
+                        // +/- 0.3 range made the slider granularity too
+                        // coarse to tune well.
+                        minimum: -0.1;
+                        maximum: 0.1;
                         value <=> root.cal-x-ty;
-                        decimals: 2;
+                        decimals: 3;
                         changed(v) => { root.changed-cal-x-ty(v); }
                     }
 
@@ -819,10 +1083,14 @@ export component RecoApp inherits Window {
                     HorizontalBox {
                         spacing: 6px;
                         padding: 0;
+                        // Editable: users want to rename the suggested
+                        // file without invoking the file dialog every
+                        // time. Rust reads `export-output-path` verbatim
+                        // when Start Export fires, so whatever is typed
+                        // here is what gets written.
                         LineEdit {
-                            text: root.export-output-path;
-                            placeholder-text: "Pick a destination file…";
-                            read-only: true;
+                            text <=> root.export-output-path;
+                            placeholder-text: "Pick a destination file, or type a path…";
                             horizontal-stretch: 1;
                         }
                         Button {

@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -138,6 +139,14 @@ struct AppState {
     /// Interrupt flag for a running export. Set to true when the user
     /// clicks Cancel; StitchJob checks it between frames and aborts.
     export_interrupted: Arc<AtomicBool>,
+    /// Timestamp of the last time `run_export`'s progress callback
+    /// fired. Used by the playback timer to detect when the encoder is
+    /// in its post-last-frame finalization phase (av_write_trailer +
+    /// index flush can take ~10 seconds) so we can display "Finalizing
+    /// output file…" instead of a stale frame count. Shared via Arc so
+    /// the worker thread can stamp it without going through
+    /// `invoke_from_event_loop`.
+    export_last_progress_at: Arc<Mutex<Option<Instant>>>,
     /// Join handle for the export worker. Held so the timer can see
     /// when the export finishes (via try_recv on export_rx).
     export_thread: Option<std::thread::JoinHandle<()>>,
@@ -146,6 +155,18 @@ struct AppState {
     /// Original PlaneLayout values — what auto-calibrate produced. Live
     /// calibration sliders edit relative to this so Reset restores.
     cal_baseline_layout: Option<reco_core::calibration::PlaneLayout>,
+    /// Baseline camera intrinsics from the last successful calibration.
+    /// The Lens fine-tune sliders in the Controls panel edit these; the
+    /// Reset Lens button restores them. `None` until auto-calibrate or a
+    /// manual match.json load populates them.
+    cal_baseline_left_params: Option<reco_core::calibration::CameraParams>,
+    cal_baseline_right_params: Option<reco_core::calibration::CameraParams>,
+    /// When true, `clamp_targets` pins yaw/pitch to the coverage boundary
+    /// via `CoverageBoundary::safe_clamp` so the viewport never shows
+    /// black margins. When false, pan/zoom is unrestricted - useful for
+    /// calibration debug where the user wants to see beyond the stitched
+    /// region. Bound to the Slint `use-constrained-look` checkbox.
+    use_constrained_look: bool,
 }
 
 /// Runtime AI capability summary.
@@ -229,9 +250,13 @@ impl AppState {
             last_render_at: None,
             preview_dirty: false,
             export_interrupted: Arc::new(AtomicBool::new(false)),
+            export_last_progress_at: Arc::new(Mutex::new(None)),
             export_thread: None,
             export_rx: None,
             cal_baseline_layout: None,
+            cal_baseline_left_params: None,
+            cal_baseline_right_params: None,
+            use_constrained_look: true,
         }
     }
 
@@ -476,6 +501,14 @@ impl AppState {
     /// input can't set an unreachable goal. The current pose is
     /// clamped implicitly as it lerps toward the clamped target.
     fn clamp_targets(&mut self) {
+        // Constrained-look toggle: when the user disables it we let
+        // yaw/pitch/fov roam freely (useful for calibration debug or
+        // inspecting the black margins beyond the stitched region).
+        // When enabled - the default - we clamp both yaw/pitch AND fov
+        // so the viewport cannot display black at any zoom level.
+        if !self.use_constrained_look {
+            return;
+        }
         let Some(bridge) = self.bridge.as_ref() else {
             return;
         };
@@ -483,6 +516,16 @@ impl AppState {
         let (vw, vh) = bridge.viewport_size();
         let aspect = vw as f32 / vh as f32;
         let rig_tilt = renderer.pipeline().viewport().rig_tilt;
+
+        // FOV first: zooming out past what the coverage can contain
+        // produces black margins regardless of yaw/pitch, so clamp the
+        // target fov to the boundary's max before solving yaw/pitch
+        // (which depends on fov).
+        let max_fov = renderer.coverage().max_fov_degrees();
+        if max_fov > 0.0 {
+            self.target_fov = self.target_fov.min(max_fov);
+        }
+
         let clamped = renderer.coverage().safe_clamp(
             self.target_yaw,
             self.target_pitch,
@@ -510,6 +553,56 @@ impl AppState {
 }
 
 /// Extract just the filename from a path for display.
+/// Seed the Slint lens-tune sliders and their display ranges from a
+/// pair of baseline `CameraParams`. Called after auto-calibrate completes
+/// and on Reset Lens. Ranges are chosen wide enough for meaningful
+/// manual tuning (fx/fy: +/-15%, cx/cy: +/-10% of image dim) but tight
+/// enough that the slider granularity is useful.
+fn set_lens_sliders(
+    app: &RecoApp,
+    left: &reco_core::calibration::CameraParams,
+    right: &reco_core::calibration::CameraParams,
+) {
+    // Ranges are computed from the left camera's baseline. In stereo
+    // rigs the two lenses are typically matched models, so a single
+    // range keeps the UI simpler. If the cameras ever differ materially
+    // this can be revisited.
+    let f_baseline = left.fx.max(left.fy);
+    let fx_span = (f_baseline * 0.15).max(5.0);
+    let w = left.width.max(1) as f64;
+    let h = left.height.max(1) as f64;
+    let cx_span = (w * 0.10).max(5.0);
+    let cy_span = (h * 0.10).max(5.0);
+
+    app.set_lens_fx_min((left.fx - fx_span) as f32);
+    app.set_lens_fx_max((left.fx + fx_span) as f32);
+    app.set_lens_fy_min((left.fy - fx_span) as f32);
+    app.set_lens_fy_max((left.fy + fx_span) as f32);
+    app.set_lens_cx_min((left.cx - cx_span) as f32);
+    app.set_lens_cx_max((left.cx + cx_span) as f32);
+    app.set_lens_cy_min((left.cy - cy_span) as f32);
+    app.set_lens_cy_max((left.cy + cy_span) as f32);
+    app.set_lens_k_range(0.3);
+
+    app.set_lens_left_fx(left.fx as f32);
+    app.set_lens_left_fy(left.fy as f32);
+    app.set_lens_left_cx(left.cx as f32);
+    app.set_lens_left_cy(left.cy as f32);
+    app.set_lens_left_k1(left.d[0] as f32);
+    app.set_lens_left_k2(left.d[1] as f32);
+    app.set_lens_left_k3(left.d[2] as f32);
+    app.set_lens_left_k4(left.d[3] as f32);
+
+    app.set_lens_right_fx(right.fx as f32);
+    app.set_lens_right_fy(right.fy as f32);
+    app.set_lens_right_cx(right.cx as f32);
+    app.set_lens_right_cy(right.cy as f32);
+    app.set_lens_right_k1(right.d[0] as f32);
+    app.set_lens_right_k2(right.d[1] as f32);
+    app.set_lens_right_k3(right.d[2] as f32);
+    app.set_lens_right_k4(right.d[3] as f32);
+}
+
 /// Human-readable description of how a lens profile was resolved.
 fn profile_source_label(info: &LensProfileInfo) -> &'static str {
     match info.source {
@@ -1026,6 +1119,163 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // ── Live lens tuning callbacks ──
+    //
+    // Each slider emits `changed-lens-param` which asks Rust to read
+    // the current fx/fy/cx/cy/k1-k4 from the UI properties for the
+    // selected camera, build a `CameraParams`, and push it through
+    // `update_camera_params`. Cheap per reco-core Batch F.
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_lens_param(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        let selected = app.get_lens_selected_camera();
+        // Width/height come from the stored calibration (resolution the
+        // lens profile was modelled at) and are never user-editable.
+        let (left_wh, right_wh) = s
+            .bridge
+            .as_ref()
+            .map(|b| {
+                let c = b.renderer().pipeline().calibration();
+                (
+                    (c.left.width, c.left.height),
+                    (c.right.width, c.right.height),
+                )
+            })
+            .unwrap_or(((0, 0), (0, 0)));
+
+        let (left_params, right_params) = match selected.as_str() {
+            "right" => {
+                let p = reco_core::calibration::CameraParams {
+                    fx: app.get_lens_right_fx() as f64,
+                    fy: app.get_lens_right_fy() as f64,
+                    cx: app.get_lens_right_cx() as f64,
+                    cy: app.get_lens_right_cy() as f64,
+                    d: [
+                        app.get_lens_right_k1() as f64,
+                        app.get_lens_right_k2() as f64,
+                        app.get_lens_right_k3() as f64,
+                        app.get_lens_right_k4() as f64,
+                    ],
+                    width: right_wh.0,
+                    height: right_wh.1,
+                };
+                (None, Some(p))
+            }
+            "both" => {
+                // Mirror the Left sliders to both cameras. The Both tab
+                // only shows the left sliders in the UI; the user's
+                // intent is "apply these values to both lenses in
+                // lockstep". We also push the mirrored values back into
+                // the right-* Slint properties so when the user toggles
+                // to Right later the sliders show what got applied.
+                app.set_lens_right_fx(app.get_lens_left_fx());
+                app.set_lens_right_fy(app.get_lens_left_fy());
+                app.set_lens_right_cx(app.get_lens_left_cx());
+                app.set_lens_right_cy(app.get_lens_left_cy());
+                app.set_lens_right_k1(app.get_lens_left_k1());
+                app.set_lens_right_k2(app.get_lens_left_k2());
+                app.set_lens_right_k3(app.get_lens_left_k3());
+                app.set_lens_right_k4(app.get_lens_left_k4());
+                let left = reco_core::calibration::CameraParams {
+                    fx: app.get_lens_left_fx() as f64,
+                    fy: app.get_lens_left_fy() as f64,
+                    cx: app.get_lens_left_cx() as f64,
+                    cy: app.get_lens_left_cy() as f64,
+                    d: [
+                        app.get_lens_left_k1() as f64,
+                        app.get_lens_left_k2() as f64,
+                        app.get_lens_left_k3() as f64,
+                        app.get_lens_left_k4() as f64,
+                    ],
+                    width: left_wh.0,
+                    height: left_wh.1,
+                };
+                let right = reco_core::calibration::CameraParams {
+                    width: right_wh.0,
+                    height: right_wh.1,
+                    ..left.clone()
+                };
+                (Some(left), Some(right))
+            }
+            _ => {
+                let p = reco_core::calibration::CameraParams {
+                    fx: app.get_lens_left_fx() as f64,
+                    fy: app.get_lens_left_fy() as f64,
+                    cx: app.get_lens_left_cx() as f64,
+                    cy: app.get_lens_left_cy() as f64,
+                    d: [
+                        app.get_lens_left_k1() as f64,
+                        app.get_lens_left_k2() as f64,
+                        app.get_lens_left_k3() as f64,
+                        app.get_lens_left_k4() as f64,
+                    ],
+                    width: left_wh.0,
+                    height: left_wh.1,
+                };
+                (Some(p), None)
+            }
+        };
+        if let Some(bridge) = s.bridge.as_mut() {
+            bridge
+                .renderer_mut()
+                .update_camera_params(left_params, right_params);
+        }
+        s.preview_dirty = true;
+        app.set_lens_dirty(true);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_reset_lens(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        // Baseline lens params live on the calibration we snapshotted
+        // when auto-calibrate completed (see cal_baseline_*_params).
+        let (left_base, right_base) = (
+            s.cal_baseline_left_params.clone(),
+            s.cal_baseline_right_params.clone(),
+        );
+        if let (Some(left), Some(right)) = (left_base.as_ref(), right_base.as_ref()) {
+            set_lens_sliders(&app, left, right);
+            if let Some(bridge) = s.bridge.as_mut() {
+                bridge
+                    .renderer_mut()
+                    .update_camera_params(Some(left.clone()), Some(right.clone()));
+            }
+            s.preview_dirty = true;
+            app.set_lens_dirty(false);
+        }
+    });
+
+    // Slint's <=> binding updates the use-constrained-look property but
+    // does not call back into Rust. Without this notify, AppState's
+    // use_constrained_look stays at its initial value forever and the
+    // UI checkbox is cosmetic.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_constrained_look(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let new_value = app.get_use_constrained_look();
+        let mut s = state_ref.borrow_mut();
+        s.use_constrained_look = new_value;
+        // When re-enabling, apply the clamp to the current target so
+        // the camera snaps back inside coverage instead of waiting for
+        // the next pan/zoom input.
+        if new_value {
+            s.clamp_targets();
+        }
+        s.preview_dirty = true;
+    });
+
     // ── Export dialog callbacks ──
     //
     // "Open" populates default values from current state (blend width
@@ -1122,6 +1372,11 @@ fn main() -> anyhow::Result<()> {
         let (tx, rx) = std::sync::mpsc::channel();
         s.export_rx = Some(rx);
 
+        // Seed the last-progress timestamp so the Finalizing detector
+        // has a starting point. Cloned for the worker below.
+        *s.export_last_progress_at.lock().unwrap() = Some(Instant::now());
+        let last_progress_at = Arc::clone(&s.export_last_progress_at);
+
         // UI-thread setup before launching the worker.
         app.set_export_in_progress(true);
         app.set_export_progress(0.0);
@@ -1150,6 +1405,7 @@ fn main() -> anyhow::Result<()> {
                 detection_interval,
                 app_weak_bg,
                 &interrupted,
+                last_progress_at,
             );
             let _ = tx.send(outcome);
         });
@@ -1213,6 +1469,24 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 return;
+            }
+
+            // If an export is running and we haven't seen a progress
+            // update in > 1.5 seconds, the encoder is in its tail phase
+            // (av_write_trailer + index flush can take up to ~15s on
+            // H.264/AV1). Switch the status text to "Finalizing..." so
+            // the progress bar doesn't look hung. Time-based detection
+            // is robust to whatever the probe-reported total-frames is;
+            // no frame-count heuristic needed.
+            if let Some(app) = app_weak.upgrade()
+                && app.get_export_in_progress()
+                && let Some(last) = *s.export_last_progress_at.lock().unwrap()
+                && last.elapsed() > Duration::from_millis(1500)
+            {
+                let status = app.get_export_status_text();
+                if !status.starts_with("Finalizing") {
+                    app.set_export_status_text("Finalizing output file…".into());
+                }
             }
 
             // Commit a debounced seek once the requested fraction has
@@ -1330,6 +1604,27 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
 
+            // Snapshot current lens params as the fine-tune baseline so
+            // Reset Lens can restore them. For manual match.json loads
+            // this comes from the loaded calibration directly.
+            let lens_baseline = s.bridge.as_ref().map(|b| {
+                let cal = b.renderer().pipeline().calibration();
+                (cal.left.clone(), cal.right.clone())
+            });
+            if let Some((l, r)) = lens_baseline.as_ref() {
+                s.cal_baseline_left_params = Some(l.clone());
+                s.cal_baseline_right_params = Some(r.clone());
+            }
+            // Same for viewport-level settings (rig tilt, blend width).
+            let rig_tilt_rad = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+            let blend_width = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().viewport().blend_width);
+
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
                 app.set_total_frames(total as i32);
@@ -1347,11 +1642,24 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_cal_x_ty(layout.x_ty as f32);
                     app.set_cal_dirty(false);
                 }
+                if let Some(rt) = rig_tilt_rad {
+                    app.set_rig_tilt(rt.to_degrees());
+                }
+                if let Some(bw) = blend_width {
+                    app.set_blend_width(bw);
+                }
                 // Manual calibration JSON does not embed lens-profile info,
                 // so clear the display (hide the lens card) and just show
                 // the candidates count for this resolution so the user
                 // still knows how many database entries could match.
                 set_lens_profile_props(&app, None, None, in_w, in_h);
+                // Lens fine-tune sliders are seeded from the loaded
+                // calibration's camera params either way; the Lens
+                // fine-tune section is gated on `files-loaded` in Slint.
+                if let Some((l, r)) = lens_baseline.as_ref() {
+                    set_lens_sliders(&app, l, r);
+                    app.set_lens_dirty(false);
+                }
                 // Seed export dialog output filename suggestion to
                 // sit next to the left-video file for convenience.
                 let left_path = s.left_path.clone();
@@ -1419,6 +1727,37 @@ fn handle_calibration_result(
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 
+                    // Snapshot camera intrinsics as the Lens fine-tune
+                    // baseline so Reset Lens can restore them after
+                    // manual edits.
+                    let lens_baseline = state.bridge.as_ref().map(|b| {
+                        let cal = b.renderer().pipeline().calibration();
+                        (cal.left.clone(), cal.right.clone())
+                    });
+                    if let Some((l, r)) = lens_baseline.as_ref() {
+                        state.cal_baseline_left_params = Some(l.clone());
+                        state.cal_baseline_right_params = Some(r.clone());
+                    }
+
+                    // Grab the layout baseline so the Calibration sliders
+                    // (intersect, camera-axis offset, x_ty) show the
+                    // auto-calibrated values instead of 0. Without this
+                    // the preview looks correct while the sliders read
+                    // 0; clicking any of them snaps the layout to ~0
+                    // and destroys the calibration.
+                    let layout_baseline = state.cal_baseline_layout.clone();
+                    // Same idea for rig tilt and blend width: read the
+                    // calibrated values off the viewport so the View
+                    // panel sliders match what the preview actually shows.
+                    let rig_tilt_rad = state
+                        .bridge
+                        .as_ref()
+                        .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+                    let blend_width = state
+                        .bridge
+                        .as_ref()
+                        .map(|b| b.renderer().pipeline().viewport().blend_width);
+
                     if let Some(app) = app_weak.upgrade() {
                         app.set_files_loaded(true);
                         app.set_calibration_path("(auto-calibrated)".into());
@@ -1435,7 +1774,23 @@ fn handle_calibration_result(
                         if let Some(img) = img {
                             app.set_preview_frame(img);
                         }
+                        if let Some(layout) = layout_baseline.as_ref() {
+                            app.set_cal_intersect(layout.intersect as f32);
+                            app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
+                            app.set_cal_x_ty(layout.x_ty as f32);
+                            app.set_cal_dirty(false);
+                        }
+                        if let Some(rt) = rig_tilt_rad {
+                            app.set_rig_tilt(rt.to_degrees());
+                        }
+                        if let Some(bw) = blend_width {
+                            app.set_blend_width(bw);
+                        }
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
+                        if let Some((l, r)) = lens_baseline.as_ref() {
+                            set_lens_sliders(&app, l, r);
+                            app.set_lens_dirty(false);
+                        }
                     }
                 }
                 Ok(false) => {}
@@ -1480,6 +1835,7 @@ fn run_export(
     detection_interval: u32,
     app_weak: slint::Weak<RecoApp>,
     interrupted: &AtomicBool,
+    last_progress_at: Arc<Mutex<Option<Instant>>>,
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
 
@@ -1529,6 +1885,7 @@ fn run_export(
 
     let progress_weak = app_weak.clone();
     let progress_start = Instant::now();
+    let progress_last_at = Arc::clone(&last_progress_at);
     let mut job =
         reco_io::StitchJob::with_calibration(left.clone(), right.clone(), cal, output.clone())
             .codec(codec)
@@ -1545,6 +1902,13 @@ fn run_export(
                 } else {
                     0.0
                 };
+                // Stamp the time directly from the worker thread. The
+                // main-thread timer reads this to detect when the job
+                // is in its finalization phase (encoder trailer write +
+                // index flush). Lock contention is negligible - we only
+                // touch it once per frame and the timer reads briefly.
+                *progress_last_at.lock().unwrap() = Some(Instant::now());
+
                 let weak = progress_weak.clone();
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(app) = weak.upgrade() {
