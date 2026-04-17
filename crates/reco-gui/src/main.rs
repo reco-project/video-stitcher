@@ -15,6 +15,7 @@
 
 mod playback;
 mod preview;
+mod toast;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -31,6 +32,7 @@ use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
 use crate::preview::PreviewBridge;
+use crate::toast::{Severity, ToastManager};
 
 /// wgpu handles captured from Slint's rendering notifier. Populated once
 /// on `RenderingSetup`; used to build `PreviewBridge` when files load.
@@ -167,6 +169,11 @@ struct AppState {
     /// calibration debug where the user wants to see beyond the stitched
     /// region. Bound to the Slint `use-constrained-look` checkbox.
     use_constrained_look: bool,
+    /// Toast notification manager. Events across the app (calibration
+    /// failures, export errors, invalid file picks) push into this,
+    /// the main timer expires aged entries, and both push a refreshed
+    /// model into the Slint `toasts` property.
+    toasts: ToastManager,
 }
 
 /// Runtime AI capability summary.
@@ -257,6 +264,7 @@ impl AppState {
             cal_baseline_left_params: None,
             cal_baseline_right_params: None,
             use_constrained_look: true,
+            toasts: ToastManager::default(),
         }
     }
 
@@ -1094,15 +1102,26 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_save_calibration(move || {
-        let s = state_ref.borrow();
-        if let Err(e) = s.save_calibration() {
-            log::error!("Save calibration: {e}");
-            if let Some(app) = app_weak.upgrade() {
-                app.set_status_text(format!("Save failed: {e}").into());
+        let save_result = state_ref.borrow().save_calibration();
+        match save_result {
+            Err(e) => {
+                log::error!("Save calibration: {e}");
+                let mut s = state_ref.borrow_mut();
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_status_text("Save failed".into());
+                    s.toasts.push(Severity::Error, "Save failed", e);
+                    crate::toast::sync_to_ui(&s.toasts, &app);
+                }
             }
-        } else if let Some(app) = app_weak.upgrade() {
-            app.set_status_text("Calibration saved".into());
-            app.set_cal_dirty(false);
+            Ok(()) => {
+                let mut s = state_ref.borrow_mut();
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_status_text("Calibration saved".into());
+                    app.set_cal_dirty(false);
+                    s.toasts.push(Severity::Info, "Calibration saved", "");
+                    crate::toast::sync_to_ui(&s.toasts, &app);
+                }
+            }
         }
     });
 
@@ -1274,6 +1293,21 @@ fn main() -> anyhow::Result<()> {
             s.clamp_targets();
         }
         s.preview_dirty = true;
+    });
+
+    // ── Toast dismissal ──
+    //
+    // Slint's ToastStack fires `toast-dismissed(id)` when the user
+    // clicks the × on a card. Rust removes the matching entry and
+    // pushes the refreshed list back to Slint.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_toast_dismissed(move |id| {
+        let mut s = state_ref.borrow_mut();
+        s.toasts.dismiss(id);
+        if let Some(app) = app_weak.upgrade() {
+            crate::toast::sync_to_ui(&s.toasts, &app);
+        }
     });
 
     // ── Export dialog callbacks ──
@@ -1457,6 +1491,12 @@ fn main() -> anyhow::Result<()> {
                                 format!("Export complete: {frames} frames -> {}", path.display(),)
                                     .into(),
                             );
+                            s.toasts.push(
+                                Severity::Info,
+                                "Export complete",
+                                format!("{frames} frames to {}", path.display()),
+                            );
+                            crate::toast::sync_to_ui(&s.toasts, &app);
                         }
                         ExportOutcome::Cancelled => {
                             app.set_export_status_text("".into());
@@ -1464,7 +1504,22 @@ fn main() -> anyhow::Result<()> {
                         }
                         ExportOutcome::Failed(msg) => {
                             app.set_export_status_text("".into());
-                            app.set_status_text(format!("Export failed: {msg}").into());
+                            app.set_status_text("Export failed".into());
+                            // Detect the empty-output sanity-check hit
+                            // (Batch G) so we can give a codec-specific
+                            // nudge instead of the raw ffmpeg error.
+                            let is_empty_output =
+                                msg.contains("encoder produced no video frames");
+                            let (title, body) = if is_empty_output {
+                                (
+                                    "Export produced no video",
+                                    "The selected codec may not be supported on this hardware. Try H.264 or HEVC.".to_string(),
+                                )
+                            } else {
+                                ("Export failed", msg.clone())
+                            };
+                            s.toasts.push(Severity::Error, title, body);
+                            crate::toast::sync_to_ui(&s.toasts, &app);
                         }
                     }
                 }
@@ -1487,6 +1542,16 @@ fn main() -> anyhow::Result<()> {
                 if !status.starts_with("Finalizing") {
                     app.set_export_status_text("Finalizing output file…".into());
                 }
+            }
+
+            // Expire aged toasts. When the list changes, push the new
+            // model into Slint. Skip the work entirely when empty so
+            // a toast-free session incurs ~no overhead.
+            if !s.toasts.is_empty()
+                && s.toasts.expire(Instant::now())
+                && let Some(app) = app_weak.upgrade()
+            {
+                crate::toast::sync_to_ui(&s.toasts, &app);
             }
 
             // Commit a debounced seek once the requested fraction has
@@ -1694,10 +1759,41 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
         Err(e) => {
             log::error!("Init error: {e}");
             if let Some(app) = app_weak.upgrade() {
-                app.set_status_text(format!("Error: {e}").into());
+                // Batch G emits "invalid input path (...): <reason>" for
+                // validation failures. Classify so the toast carries a
+                // reason-specific title; fall back to generic "Init
+                // failed" otherwise.
+                let (title, body) = classify_init_error(&e);
+                app.set_status_text(title.clone().into());
                 app.set_files_loaded(false);
+                s.toasts.push(Severity::Error, title, body);
+                crate::toast::sync_to_ui(&s.toasts, &app);
             }
         }
+    }
+}
+
+/// Inspect an init error string and decide what to show the user.
+///
+/// Batch G's `SourceError::InvalidPath` display format is
+/// `"invalid input path (path): reason"`. We substring-match to pick
+/// a friendlier title; the full stringified error becomes the body.
+fn classify_init_error(err: &str) -> (String, String) {
+    if err.contains("invalid input path") {
+        let title = if err.contains("file not found") {
+            "File not found"
+        } else if err.contains("permission denied") {
+            "Permission denied"
+        } else if err.contains("file is empty") {
+            "Empty file"
+        } else if err.contains("not a regular file") {
+            "Not a video file"
+        } else {
+            "Invalid file"
+        };
+        (title.to_string(), err.to_string())
+    } else {
+        ("Init failed".to_string(), err.to_string())
     }
 }
 
@@ -1797,7 +1893,9 @@ fn handle_calibration_result(
                 Err(e) => {
                     log::error!("Post-calibration init: {e}");
                     if let Some(app) = app_weak.upgrade() {
-                        app.set_status_text(format!("Error: {e}").into());
+                        app.set_status_text("Post-calibration init failed".into());
+                        state.toasts.push(Severity::Error, "Init failed", e.clone());
+                        crate::toast::sync_to_ui(&state.toasts, &app);
                     }
                 }
             }
@@ -1805,7 +1903,11 @@ fn handle_calibration_result(
         Err(e) => {
             log::error!("Auto-calibration failed: {e}");
             if let Some(app) = app_weak.upgrade() {
-                app.set_status_text(format!("Calibration failed: {e}").into());
+                app.set_status_text("Calibration failed".into());
+                state
+                    .toasts
+                    .push(Severity::Error, "Auto-calibration failed", e.clone());
+                crate::toast::sync_to_ui(&state.toasts, &app);
             }
         }
     }
