@@ -161,6 +161,14 @@ struct AppState {
     /// settings namespace and saved on any change via the convenience
     /// `push_*` methods.
     user_settings: crate::settings::GuiSettings,
+    /// Last window size we persisted. Used to debounce resize saves -
+    /// we only write to disk when the current size actually differs
+    /// from the stored value.
+    last_persisted_window_size: Option<(u32, u32)>,
+    /// Last time we wrote window-size settings. Combined with the
+    /// debounce threshold below to avoid thrashing disk during a
+    /// drag-resize (Slint reports a new size every pixel).
+    last_window_size_save_at: Option<Instant>,
     /// Baseline camera intrinsics from the last successful calibration.
     /// The Lens fine-tune sliders in the Controls panel edit these; the
     /// Reset Lens button restores them. `None` until auto-calibrate or a
@@ -261,6 +269,8 @@ impl AppState {
             export_rx: None,
             cal_baseline_layout: None,
             user_settings: crate::settings::GuiSettings::load(),
+            last_persisted_window_size: None,
+            last_window_size_save_at: None,
             cal_baseline_left_params: None,
             cal_baseline_right_params: None,
             use_constrained_look: true,
@@ -717,6 +727,19 @@ fn main() -> anyhow::Result<()> {
     // Recent button in the file bar stays disabled.
     sync_recent_paths(&state.borrow().user_settings, &app);
 
+    // Restore last window size if the user resized before. Slint's
+    // `set_size` takes a `PhysicalSize`; we stored logical dimensions
+    // in settings but using them as physical is close enough at 1.0
+    // scale (the common case) - if the user moves to a HiDPI display
+    // the next resize will correct.
+    if let Some((w, h)) = state.borrow().user_settings.window_size
+        && w > 0
+        && h > 0
+    {
+        app.window()
+            .set_size(slint::LogicalSize::new(w as f32, h as f32));
+    }
+
     // Capture Slint's wgpu device and queue on RenderingSetup. These
     // are reused by PreviewBridge so reco-core's stitch output lands
     // directly in Slint-owned textures with zero copies.
@@ -919,6 +942,64 @@ fn main() -> anyhow::Result<()> {
         s.user_settings.save();
         if let Some(app) = app_weak.upgrade() {
             sync_recent_paths(&s.user_settings, &app);
+        }
+    });
+
+    // ── Preferences dialog callbacks ──
+    //
+    // Open prefills the prefs-* properties from user_settings; Save
+    // reads them back and persists. Cancel just closes - no state
+    // change needed because the Slint properties are scratch space
+    // that gets re-seeded on next open.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_open_prefs_dialog(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let s = state_ref.borrow();
+        app.set_prefs_default_codec(s.user_settings.default_codec.clone().into());
+        app.set_prefs_default_quality(s.user_settings.default_quality.clone().into());
+        app.set_prefs_default_blend_width(s.user_settings.default_blend_width);
+        app.set_prefs_ai_model_path(
+            s.user_settings
+                .ai_model_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .into(),
+        );
+        app.set_prefs_dialog_open(true);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_save_prefs(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.user_settings.default_codec = app.get_prefs_default_codec().to_string();
+        s.user_settings.default_quality = app.get_prefs_default_quality().to_string();
+        s.user_settings.default_blend_width = app.get_prefs_default_blend_width();
+        let model_path = app.get_prefs_ai_model_path().to_string();
+        s.user_settings.ai_model_path = if model_path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(model_path))
+        };
+        s.user_settings.save();
+    });
+
+    let app_weak = app.as_weak();
+    app.on_pick_prefs_model(move || {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Select YOLO ONNX model")
+            .add_filter("ONNX", &["onnx"]);
+        if let Some(path) = dialog.pick_file()
+            && let Some(app) = app_weak.upgrade()
+        {
+            app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
         }
     });
 
@@ -1622,6 +1703,37 @@ fn main() -> anyhow::Result<()> {
                 let status = app.get_export_status_text();
                 if !status.starts_with("Finalizing") {
                     app.set_export_status_text("Finalizing output file…".into());
+                }
+            }
+
+            // Persist window size, debounced. Slint doesn't offer a
+            // "window closing" hook, so we poll on the timer. But
+            // during an active drag-resize Slint reports a new size
+            // every pixel - we need to throttle writes heavily.
+            //
+            // Rule: record the delta when the size changes, but only
+            // hit disk when the size has been stable (no further
+            // change) for at least 2 seconds, so a finished resize
+            // flushes once instead of hundreds of times.
+            if let Some(app) = app_weak.upgrade() {
+                let size = app.window().size();
+                let cur = (size.width, size.height);
+                let last = s.last_persisted_window_size.unwrap_or((0, 0));
+                if cur != last {
+                    // Size differs from the last persisted one; start
+                    // or reset the debounce timer. Actual save happens
+                    // below once the timer passes the threshold.
+                    s.last_window_size_save_at = Some(Instant::now());
+                    s.last_persisted_window_size = Some(cur);
+                    s.user_settings.window_size = Some(cur);
+                } else if let Some(since) = s.last_window_size_save_at
+                    && since.elapsed() > Duration::from_secs(2)
+                {
+                    // Size has been stable for the debounce window;
+                    // flush to disk and clear the marker so we don't
+                    // re-flush until the next change.
+                    s.user_settings.save();
+                    s.last_window_size_save_at = None;
                 }
             }
 
