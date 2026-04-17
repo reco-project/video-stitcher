@@ -381,18 +381,25 @@ impl AppState {
         self.target_yaw += dx_px * MOUSE_SENSITIVITY;
         self.target_pitch += dy_px * MOUSE_SENSITIVITY;
         self.clamp_targets();
+        // Flag dirty so the playback timer requests redraws until the
+        // smoothing lerp settles. Without this, when paused, the lerp
+        // after the mouse is released is never run (timer sees nothing
+        // to do and stops nudging Slint), so pan motion snaps/stalls.
+        self.preview_dirty = true;
     }
 
     /// Apply a FOV delta (degrees). Clamps the target; lerp handles smoothing.
     fn apply_zoom(&mut self, delta_deg: f32) {
         self.target_fov = (self.target_fov + delta_deg).clamp(FOV_MIN, FOV_MAX);
         self.clamp_targets();
+        self.preview_dirty = true;
     }
 
     /// Set FOV absolute (from the slider). Updates target; lerp applies it.
     fn set_fov(&mut self, fov_deg: f32) {
         self.target_fov = fov_deg.clamp(FOV_MIN, FOV_MAX);
         self.clamp_targets();
+        self.preview_dirty = true;
     }
 
     /// Lerp current camera (yaw/pitch/fov) one step toward the targets.
@@ -1272,7 +1279,12 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     if !(camera_changed || video_advanced || was_dirty) {
         return false;
     }
-    s.preview_dirty = false;
+    // Clear dirty only if the camera has fully converged on its target.
+    // If the lerp still has work to do, keep dirty so the timer will
+    // nudge Slint for another BeforeRendering on the next tick - that
+    // is how paused panning stays smooth until the user lets go AND
+    // the camera eases to rest.
+    s.preview_dirty = camera_changed;
 
     let img = s.render_current();
     if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {

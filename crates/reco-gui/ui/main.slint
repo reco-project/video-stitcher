@@ -1,7 +1,7 @@
 // Reco Video Stitcher - GUI
 // Material dark theme (configured via build.rs)
 
-import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView } from "std-widgets.slint";
 
 component FileChip inherits Rectangle {
     in property <string> label;
@@ -242,8 +242,12 @@ export component RecoApp inherits Window {
             return reject;
         }
 
-        VerticalBox {
-            padding: 0;
+        // VerticalLayout (not VerticalBox) because VerticalBox applies
+        // implicit outer padding that pushed the bottom transport/status
+        // bars off the content area. Explicit layout with zero spacing
+        // ensures the file-bar + preview + transport + status fit the
+        // window exactly, no inset on any edge.
+        VerticalLayout {
             spacing: 0;
 
         // ── File picker bar ──
@@ -277,9 +281,17 @@ export component RecoApp inherits Window {
                 // Separator
                 Rectangle { width: 1px; height: 24px; background: #444; }
 
+                // Auto Calibrate is clickable any time we have both videos
+                // and aren't currently calibrating. Once `files-loaded`
+                // is true the button text switches to "Re-calibrate" so
+                // the user can retry with different options (IMU seeds
+                // toggled, different lens profile in a later tier)
+                // without restarting the app.
                 Button {
-                    text: root.calibrating ? "Calibrating..." : "Auto Calibrate";
-                    enabled: root.has-both-videos && !root.calibrating && !root.files-loaded;
+                    text: root.calibrating
+                        ? "Calibrating..."
+                        : (root.files-loaded ? "Re-calibrate" : "Auto Calibrate");
+                    enabled: root.has-both-videos && !root.calibrating;
                     clicked => { root.auto-calibrate(); }
                 }
 
@@ -287,10 +299,12 @@ export component RecoApp inherits Window {
                 // (feature matcher seeds the bundle-adjustment fine on
                 // its own), so this stays off by default. User can flip
                 // it on for clips where the first frame is aimed oddly.
+                // Editable while files are loaded so re-calibrate can
+                // toggle it.
                 CheckBox {
                     text: "IMU seeds";
                     checked <=> root.use-imu-seeds;
-                    enabled: root.has-both-videos && !root.calibrating && !root.files-loaded;
+                    enabled: root.has-both-videos && !root.calibrating;
                 }
 
                 if root.calibrating: Text {
@@ -319,8 +333,11 @@ export component RecoApp inherits Window {
         }
 
         // ── Preview area + side controls ──
-        HorizontalBox {
-            padding: 0;
+        // HorizontalLayout (not HorizontalBox) for the same reason as
+        // the outer VerticalLayout: VerticalBox/HorizontalBox carry
+        // implicit padding that inserts a 6-8px strip between sections
+        // and eats into the bottom bars' visible area.
+        HorizontalLayout {
             spacing: 0;
             vertical-stretch: 1;
 
@@ -339,7 +356,15 @@ export component RecoApp inherits Window {
 
                 if root.files-loaded: Image {
                     source: root.preview-frame;
+                    // `image-fit: contain` preserves source aspect and
+                    // centers inside the element. Anchoring the Image
+                    // to the full Rectangle (x=0, y=0, 100% w/h) means
+                    // any letterbox space from an aspect mismatch splits
+                    // evenly above/below or left/right instead of
+                    // landing asymmetrically at the top.
                     image-fit: contain;
+                    x: 0;
+                    y: 0;
                     width: 100%;
                     height: 100%;
                 }
@@ -381,14 +406,20 @@ export component RecoApp inherits Window {
                 }
             }
 
-            // Right-side controls panel (collapsible)
+            // Right-side controls panel (collapsible).
+            // Wrapped in ScrollView so users on short windows can reach
+            // the Calibration sliders, Save/Reset buttons, and shortcut
+            // help at the bottom. The inner VerticalLayout sets its
+            // natural height from content; ScrollView shows a vertical
+            // scrollbar automatically when that exceeds the viewport.
             if root.controls-open: Rectangle {
                 background: #1a1a1a;
                 width: 280px;
                 border-width: 1px;
                 border-color: #333;
 
-                VerticalBox {
+                ScrollView {
+                    VerticalLayout {
                     padding: 12px;
                     spacing: 14px;
                     alignment: start;
@@ -607,16 +638,21 @@ export component RecoApp inherits Window {
                         Text { text: "[  ]   Seek 5 s";         color: #666; font-size: 10px; }
                         Text { text: "R      Reset view";       color: #666; font-size: 10px; }
                     }
-                }
+                    }  // close VerticalLayout inside ScrollView
+                }  // close ScrollView
             }
         }
 
         // ── Transport controls ──
+        // `min-height` instead of `height` so the bar grows if its
+        // content (slider + buttons) ever needs more, and never shrinks
+        // below the intended 96px - even when the preview layout is
+        // fighting for vertical space.
         Rectangle {
             background: #1e1e1e;
-            height: 96px;
+            min-height: 96px;
 
-            VerticalBox {
+            VerticalLayout {
                 padding: 6px;
                 spacing: 6px;
 
@@ -690,9 +726,9 @@ export component RecoApp inherits Window {
         // ── Status bar (or export progress when active) ──
         Rectangle {
             background: #181818;
-            height: 28px;
+            min-height: 28px;
 
-            HorizontalBox {
+            HorizontalLayout {
                 padding-left: 12px;
                 padding-right: 12px;
                 spacing: 10px;
