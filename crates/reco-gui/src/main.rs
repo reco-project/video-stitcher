@@ -15,6 +15,7 @@
 
 mod playback;
 mod preview;
+mod settings;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -155,6 +156,11 @@ struct AppState {
     /// Original PlaneLayout values — what auto-calibrate produced. Live
     /// calibration sliders edit relative to this so Reset restores.
     cal_baseline_layout: Option<reco_core::calibration::PlaneLayout>,
+    /// Persisted user preferences (recent files, default export
+    /// settings, AI model path). Loaded at startup from the reco-io
+    /// settings namespace and saved on any change via the convenience
+    /// `push_*` methods.
+    user_settings: crate::settings::GuiSettings,
     /// Baseline camera intrinsics from the last successful calibration.
     /// The Lens fine-tune sliders in the Controls panel edit these; the
     /// Reset Lens button restores them. `None` until auto-calibrate or a
@@ -254,6 +260,7 @@ impl AppState {
             export_thread: None,
             export_rx: None,
             cal_baseline_layout: None,
+            user_settings: crate::settings::GuiSettings::load(),
             cal_baseline_left_params: None,
             cal_baseline_right_params: None,
             use_constrained_look: true,
@@ -773,6 +780,7 @@ fn main() -> anyhow::Result<()> {
             if let Some(app) = app_weak.upgrade() {
                 app.set_left_path(display_name(&path).into());
             }
+            s.user_settings.push_left(path.clone());
             s.left_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
@@ -790,6 +798,7 @@ fn main() -> anyhow::Result<()> {
             if let Some(app) = app_weak.upgrade() {
                 app.set_right_path(display_name(&path).into());
             }
+            s.user_settings.push_right(path.clone());
             s.right_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
@@ -807,6 +816,7 @@ fn main() -> anyhow::Result<()> {
             if let Some(app) = app_weak.upgrade() {
                 app.set_calibration_path(display_name(&path).into());
             }
+            s.user_settings.push_calibration(path.clone());
             s.calibration_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
@@ -1289,10 +1299,22 @@ fn main() -> anyhow::Result<()> {
     app.on_open_export_dialog(move || {
         let s = state_ref.borrow();
         if let Some(app) = app_weak.upgrade() {
-            // Seed reasonable defaults from current preview state.
+            // Seed from persisted user defaults first (codec, quality,
+            // model path) so the dialog reflects the user's last
+            // choices across sessions...
+            app.set_export_codec(s.user_settings.default_codec.clone().into());
+            app.set_export_quality(s.user_settings.default_quality.clone().into());
+            if let Some(model_path) = s.user_settings.ai_model_path.as_ref() {
+                app.set_export_model_path(model_path.to_string_lossy().to_string().into());
+            }
+            // ...then override blend width with the live preview's
+            // current value, which is usually what the user actually
+            // wants applied to the export (overrides the saved default).
             if let Some(bridge) = s.bridge.as_ref() {
                 let cur_blend = bridge.renderer().pipeline().viewport().blend_width;
                 app.set_export_blend_width(cur_blend);
+            } else {
+                app.set_export_blend_width(s.user_settings.default_blend_width);
             }
             app.set_export_dialog_open(true);
         }
@@ -1317,6 +1339,7 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_export_model(move || {
         let dialog = rfd::FileDialog::new()
             .set_title("Select YOLO ONNX model")
@@ -1325,6 +1348,11 @@ fn main() -> anyhow::Result<()> {
             && let Some(app) = app_weak.upgrade()
         {
             app.set_export_model_path(path.to_string_lossy().to_string().into());
+            // Remember across sessions so the user doesn't re-pick
+            // the same ONNX every run. Save is best-effort.
+            let mut s = state_ref.borrow_mut();
+            s.user_settings.ai_model_path = Some(path);
+            s.user_settings.save();
         }
     });
 
@@ -1365,6 +1393,15 @@ fn main() -> anyhow::Result<()> {
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();
         let detection_interval = app.get_export_detection_interval() as u32;
+
+        // Persist the user's codec / quality / blend choices as the
+        // defaults for next session. Model path is saved in the
+        // on_pick_export_model callback so it sticks even if the user
+        // never actually hits Start. Save is best-effort.
+        s.user_settings.default_codec = codec_str.clone();
+        s.user_settings.default_quality = quality_str.clone();
+        s.user_settings.default_blend_width = blend;
+        s.user_settings.save();
 
         // Reset cancel flag, start a fresh channel for completion.
         s.export_interrupted.store(false, Ordering::Relaxed);

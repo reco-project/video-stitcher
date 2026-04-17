@@ -21,7 +21,8 @@ profiling = ["tracing", "reco-core/profiling", "reco-io/profiling", "reco-calibr
 
 [dependencies]
 reco-core = { path = "../reco-core" }
-reco-io = { path = "../reco-io", features = ["ffmpeg"] }
+reco-io = { path = "../reco-io", features = ["ffmpeg", "config"] }
+serde = { version = "1", features = ["derive"] }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 reco-detect = { path = "../reco-detect" }
 reco-autocam = { path = "../reco-autocam", optional = true }
