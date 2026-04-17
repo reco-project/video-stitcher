@@ -153,7 +153,7 @@ struct AppState {
     cal_baseline_left_params: Option<reco_core::calibration::CameraParams>,
     cal_baseline_right_params: Option<reco_core::calibration::CameraParams>,
     /// When true, `clamp_targets` pins yaw/pitch to the coverage boundary
-    /// via [`CoverageBoundary::safe_clamp`] so the viewport never shows
+    /// via `CoverageBoundary::safe_clamp` so the viewport never shows
     /// black margins. When false, pan/zoom is unrestricted - useful for
     /// calibration debug where the user wants to see beyond the stitched
     /// region. Bound to the Slint `use-constrained-look` checkbox.
