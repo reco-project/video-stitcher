@@ -1,7 +1,7 @@
 //! Toast notification state for the GUI.
 //!
 //! Maintains the set of currently-visible toast cards and their
-//! expiration timestamps. The main playback timer calls [`tick`] each
+//! expiration timestamps. The main playback timer calls `expire` each
 //! cycle to drop expired entries and push the updated list into Slint.
 //!
 //! Toasts are keyed by a monotonic `id` so the UI can dismiss one by
