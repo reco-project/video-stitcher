@@ -9,9 +9,9 @@
 //! - `ffmpeg` (default): file decode/encode, RTMP/SRT/RTSP
 //! - `gstreamer`: live camera capture (Jetson ISP, V4L2, etc.)
 //! - `libcamera`: RPi CSI camera capture via rpicam-vid
-//! - `config`: opt-in user-preference persistence (see
-//!   [`settings`]) for consumers like reco-gui that need
-//!   to remember recent files and defaults across sessions.
+//! - `config`: opt-in user-preference persistence (via the `settings`
+//!   module) for consumers like reco-gui that need to remember
+//!   recent files and defaults across sessions.
 
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
