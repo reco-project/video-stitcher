@@ -1690,6 +1690,14 @@ fn handle_calibration_result(
                         state.cal_baseline_right_params = Some(r.clone());
                     }
 
+                    // Grab the layout baseline so the Calibration sliders
+                    // (intersect, camera-axis offset, x_ty) show the
+                    // auto-calibrated values instead of 0. Without this
+                    // the preview looks correct while the sliders read
+                    // 0; clicking any of them snaps the layout to ~0
+                    // and destroys the calibration.
+                    let layout_baseline = state.cal_baseline_layout.clone();
+
                     if let Some(app) = app_weak.upgrade() {
                         app.set_files_loaded(true);
                         app.set_calibration_path("(auto-calibrated)".into());
@@ -1705,6 +1713,12 @@ fn handle_calibration_result(
                         );
                         if let Some(img) = img {
                             app.set_preview_frame(img);
+                        }
+                        if let Some(layout) = layout_baseline.as_ref() {
+                            app.set_cal_intersect(layout.intersect as f32);
+                            app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
+                            app.set_cal_x_ty(layout.x_ty as f32);
+                            app.set_cal_dirty(false);
                         }
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
                         if let Some((l, r)) = lens_baseline.as_ref() {
@@ -1828,7 +1842,18 @@ fn run_export(
                         if total > 0 {
                             app.set_export_progress(frames as f32 / total as f32);
                         }
-                        app.set_export_status_text(format!("Frame {frames} ({fps:.0} fps)").into());
+                        // Once we've written the last frame, the encoder
+                        // still spends a few seconds on av_write_trailer
+                        // and index flushing before job.run returns.
+                        // Switching the status to "Finalizing..." here
+                        // stops the progress bar from looking hung.
+                        if total > 0 && frames as i32 >= total {
+                            app.set_export_status_text("Finalizing output file…".into());
+                        } else {
+                            app.set_export_status_text(
+                                format!("Frame {frames} ({fps:.0} fps)").into(),
+                            );
+                        }
                     }
                 });
             });
