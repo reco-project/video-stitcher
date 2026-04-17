@@ -177,6 +177,19 @@ export component RecoApp inherits Window {
     // useful for calibration debug.
     in-out property <bool> use-constrained-look: true;
 
+    // Recent-files dialog state. Rust pushes the three MRU lists here
+    // on startup and after every pick; the dialog reads them when the
+    // user opens it from the Recent button in the file bar.
+    in-out property <bool> recent-dialog-open: false;
+    in-out property <[string]> recent-left-paths: [];
+    in-out property <[string]> recent-right-paths: [];
+    in-out property <[string]> recent-calibration-paths: [];
+
+    // Keyboard shortcut help modal. The body is rendered inside the
+    // modal; the Controls panel also shows an abbreviated copy so
+    // users who never open the modal still see the hints.
+    in-out property <bool> shortcuts-dialog-open: false;
+
     // Per-camera lens intrinsics (populated by Rust after auto-calibrate
     // from `CalibrationResult.left_lens_profile` / `right_lens_profile`).
     // The Lens tab binds sliders to these properties; changes flow back
@@ -250,6 +263,12 @@ export component RecoApp inherits Window {
     // (Slint's <=> binding updates the property but Rust needs a notify
     // to act on the new value).
     callback changed-constrained-look();
+    // Recent-files modal: load a specific path into one of the three
+    // file slots. Same effect as picking it from the native dialog.
+    callback load-recent-left(string);
+    callback load-recent-right(string);
+    callback load-recent-calibration(string);
+    callback clear-recent-files();
     // Export dialog actions.
     callback open-export-dialog();
     callback pick-export-output();
@@ -367,6 +386,23 @@ export component RecoApp inherits Window {
 
                 // Right-align spacer
                 Rectangle { horizontal-stretch: 1; }
+
+                // Recent button. Only interactive if at least one MRU
+                // list has entries - otherwise there's nothing to show.
+                Button {
+                    text: "Recent…";
+                    enabled: root.recent-left-paths.length > 0
+                           || root.recent-right-paths.length > 0
+                           || root.recent-calibration-paths.length > 0;
+                    clicked => { root.recent-dialog-open = true; }
+                }
+
+                // Keyboard shortcut help. "?" is small and recognizable
+                // as help in dozens of apps; shorter than "Help".
+                Button {
+                    text: "?";
+                    clicked => { root.shortcuts-dialog-open = true; }
+                }
 
                 Button {
                     text: "Export…";
@@ -1034,6 +1070,261 @@ export component RecoApp inherits Window {
             }
         }
         }  // close VerticalBox
+
+        // ── Recent files dialog (modal) ──
+        // Three columns (Left / Right / Calibration). Each entry is a
+        // clickable row; click loads that path into the corresponding
+        // file slot. Rendered as a sibling of the main layout so it
+        // overlays everything.
+        if root.recent-dialog-open: Rectangle {
+            background: #000000aa;
+            TouchArea {
+                clicked => { root.recent-dialog-open = false; }
+            }
+
+            Rectangle {
+                width: 720px;
+                height: 460px;
+                background: #222;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #444;
+                // Block click-through so clicks inside the panel do
+                // not close the dialog.
+                TouchArea {}
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+                        Text {
+                            text: "Recent files";
+                            color: #fff;
+                            font-size: 16px;
+                            font-weight: 600;
+                        }
+                        Button {
+                            text: "Clear all";
+                            clicked => {
+                                root.clear-recent-files();
+                                root.recent-dialog-open = false;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        padding: 0;
+                        vertical-stretch: 1;
+
+                        // Three column wrappers share the same structure
+                        // so the styling stays consistent.
+                        Rectangle {
+                            border-radius: 6px;
+                            background: #1a1a1a;
+                            horizontal-stretch: 1;
+                            VerticalLayout {
+                                padding: 10px;
+                                spacing: 4px;
+                                Text {
+                                    text: "Left videos";
+                                    color: #aaa;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                }
+                                ScrollView {
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        for entry in root.recent-left-paths: Rectangle {
+                                            height: 28px;
+                                            border-radius: 4px;
+                                            background: row-l.has-hover ? #2d2d2d : transparent;
+                                            Text {
+                                                text: entry;
+                                                color: #ccc;
+                                                font-size: 11px;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                                x: 6px;
+                                                width: parent.width - 12px;
+                                            }
+                                            row-l := TouchArea {
+                                                clicked => {
+                                                    root.load-recent-left(entry);
+                                                    root.recent-dialog-open = false;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            border-radius: 6px;
+                            background: #1a1a1a;
+                            horizontal-stretch: 1;
+                            VerticalLayout {
+                                padding: 10px;
+                                spacing: 4px;
+                                Text {
+                                    text: "Right videos";
+                                    color: #aaa;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                }
+                                ScrollView {
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        for entry in root.recent-right-paths: Rectangle {
+                                            height: 28px;
+                                            border-radius: 4px;
+                                            background: row-r.has-hover ? #2d2d2d : transparent;
+                                            Text {
+                                                text: entry;
+                                                color: #ccc;
+                                                font-size: 11px;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                                x: 6px;
+                                                width: parent.width - 12px;
+                                            }
+                                            row-r := TouchArea {
+                                                clicked => {
+                                                    root.load-recent-right(entry);
+                                                    root.recent-dialog-open = false;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            border-radius: 6px;
+                            background: #1a1a1a;
+                            horizontal-stretch: 1;
+                            VerticalLayout {
+                                padding: 10px;
+                                spacing: 4px;
+                                Text {
+                                    text: "Calibrations";
+                                    color: #aaa;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                }
+                                ScrollView {
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        for entry in root.recent-calibration-paths: Rectangle {
+                                            height: 28px;
+                                            border-radius: 4px;
+                                            background: row-c.has-hover ? #2d2d2d : transparent;
+                                            Text {
+                                                text: entry;
+                                                color: #ccc;
+                                                font-size: 11px;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                                x: 6px;
+                                                width: parent.width - 12px;
+                                            }
+                                            row-c := TouchArea {
+                                                clicked => {
+                                                    root.load-recent-calibration(entry);
+                                                    root.recent-dialog-open = false;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        Button {
+                            text: "Close";
+                            clicked => { root.recent-dialog-open = false; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Keyboard shortcuts dialog (modal) ──
+        if root.shortcuts-dialog-open: Rectangle {
+            background: #000000aa;
+            TouchArea {
+                clicked => { root.shortcuts-dialog-open = false; }
+            }
+
+            Rectangle {
+                width: 420px;
+                height: 360px;
+                background: #222;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #444;
+                TouchArea {}
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Keyboard shortcuts";
+                        color: #fff;
+                        font-size: 16px;
+                        font-weight: 600;
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    // Explicit two-column rows for alignment: the key
+                    // column is fixed width, the description fills.
+                    for row in [
+                        { k: "Space", v: "Play / pause" },
+                        { k: "Arrows", v: "Pan camera (hold) or step 1 frame (with playback paused)" },
+                        { k: "+  /  -", v: "Zoom in / out" },
+                        { k: "Scroll", v: "Zoom in / out" },
+                        { k: "Drag", v: "Pan preview with mouse" },
+                        { k: "[  /  ]", v: "Seek backward / forward 5 seconds" },
+                        { k: "R", v: "Reset camera view (yaw, pitch, FOV)" },
+                    ]: HorizontalLayout {
+                        spacing: 12px;
+                        Text {
+                            text: row.k;
+                            color: #a0e8a0;
+                            font-size: 12px;
+                            font-weight: 600;
+                            width: 80px;
+                        }
+                        Text {
+                            text: row.v;
+                            color: #ccc;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        Button {
+                            text: "Close";
+                            clicked => { root.shortcuts-dialog-open = false; }
+                        }
+                    }
+                }
+            }
+        }
 
         // ── Export dialog (modal overlay) ──
         //

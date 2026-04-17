@@ -672,6 +672,21 @@ fn display_name(path: &std::path::Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+/// Push the current MRU lists into the Slint properties that back the
+/// Recent-files dialog. Called at startup and after every file pick.
+fn sync_recent_paths(settings: &settings::GuiSettings, app: &RecoApp) {
+    fn to_model(paths: &[std::path::PathBuf]) -> slint::ModelRc<slint::SharedString> {
+        let v: Vec<slint::SharedString> = paths
+            .iter()
+            .map(|p| slint::SharedString::from(p.to_string_lossy().as_ref()))
+            .collect();
+        slint::ModelRc::new(slint::VecModel::from(v))
+    }
+    app.set_recent_left_paths(to_model(settings.recent_left.entries()));
+    app.set_recent_right_paths(to_model(settings.recent_right.entries()));
+    app.set_recent_calibration_paths(to_model(settings.recent_calibration.entries()));
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -696,6 +711,11 @@ fn main() -> anyhow::Result<()> {
     log::info!("{ai_status}");
     app.set_ai_status(ai_status.into());
     app.set_ai_gpu_available(ai_gpu_ok);
+
+    // Seed the Recent-files dialog with the persisted MRU lists. If
+    // the user never loaded anything before, these are empty and the
+    // Recent button in the file bar stays disabled.
+    sync_recent_paths(&state.borrow().user_settings, &app);
 
     // Capture Slint's wgpu device and queue on RenderingSetup. These
     // are reused by PreviewBridge so reco-core's stitch output lands
@@ -781,6 +801,9 @@ fn main() -> anyhow::Result<()> {
                 app.set_left_path(display_name(&path).into());
             }
             s.user_settings.push_left(path.clone());
+            if let Some(app) = app_weak.upgrade() {
+                sync_recent_paths(&s.user_settings, &app);
+            }
             s.left_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
@@ -799,6 +822,9 @@ fn main() -> anyhow::Result<()> {
                 app.set_right_path(display_name(&path).into());
             }
             s.user_settings.push_right(path.clone());
+            if let Some(app) = app_weak.upgrade() {
+                sync_recent_paths(&s.user_settings, &app);
+            }
             s.right_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
@@ -817,9 +843,82 @@ fn main() -> anyhow::Result<()> {
                 app.set_calibration_path(display_name(&path).into());
             }
             s.user_settings.push_calibration(path.clone());
+            if let Some(app) = app_weak.upgrade() {
+                sync_recent_paths(&s.user_settings, &app);
+            }
             s.calibration_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
+        }
+    });
+
+    // ── Recent-files dialog callbacks ──
+    //
+    // Clicking an entry in the dialog is functionally equivalent to
+    // picking that file via the native dialog: update the MRU (so it
+    // moves to front), push to the Slint label property, and try to
+    // initialize if all three slots are now filled.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_load_recent_left(move |entry| {
+        let path = PathBuf::from(entry.as_str());
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_left_path(display_name(&path).into());
+        }
+        s.user_settings.push_left(path.clone());
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
+        }
+        s.left_path = Some(path);
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_load_recent_right(move |entry| {
+        let path = PathBuf::from(entry.as_str());
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_right_path(display_name(&path).into());
+        }
+        s.user_settings.push_right(path.clone());
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
+        }
+        s.right_path = Some(path);
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_load_recent_calibration(move |entry| {
+        let path = PathBuf::from(entry.as_str());
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_path(display_name(&path).into());
+        }
+        s.user_settings.push_calibration(path.clone());
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
+        }
+        s.calibration_path = Some(path);
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_clear_recent_files(move || {
+        let mut s = state_ref.borrow_mut();
+        s.user_settings.recent_left.clear();
+        s.user_settings.recent_right.clear();
+        s.user_settings.recent_calibration.clear();
+        s.user_settings.save();
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
         }
     });
 
