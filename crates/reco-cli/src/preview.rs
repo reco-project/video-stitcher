@@ -499,6 +499,7 @@ impl ApplicationHandler for App {
             self.input_width,
             self.input_height,
             surface_format,
+            reco_core::renderer::InputFormat::Yuv420p,
         )
         .expect("create renderer");
 

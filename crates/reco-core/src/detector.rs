@@ -20,6 +20,15 @@ pub enum CameraId {
     Right,
 }
 
+impl std::fmt::Display for CameraId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Left => f.write_str("L"),
+            Self::Right => f.write_str("R"),
+        }
+    }
+}
+
 /// Raw camera frame data for detection.
 ///
 /// Provides access to all YUV planes so detectors can use luma-only

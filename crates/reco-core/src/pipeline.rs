@@ -213,13 +213,19 @@ impl StitchPipeline {
     /// target. Use this for viewport-metadata changes (e.g. surface
     /// reconfigure in a preview window). For actual output resolution
     /// changes, rebuild the pipeline with [`Self::with_gpu`].
-    pub fn resize(&mut self, width: u32, height: u32) {
+    /// Returns `Some((width, height))` on success, or `None` if the
+    /// dimensions were zero (ignored). Consumers that own external
+    /// staging buffers (e.g.
+    /// [`RgbaReadback`](crate::rgba_readback::RgbaReadback)) should
+    /// recreate them when the returned size differs from the previous.
+    pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
         if width == 0 || height == 0 {
             log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
-            return;
+            return None;
         }
         self.viewport.width = width;
         self.viewport.height = height;
+        Some((width, height))
     }
 
     /// Set the vertical field of view in degrees.
