@@ -80,10 +80,6 @@ const CAMERA_SMOOTHING: f32 = 0.25;
 /// target to avoid lerping forever on float rounding error.
 const CAMERA_EPSILON: f32 = 0.0005;
 
-/// Minimum interval between renders, in ms. Caps the smoothing-driven
-/// render rate so the UI thread can still service input events.
-const MIN_RENDER_INTERVAL_MS: u128 = 16; // ~60Hz
-
 /// Default number of frame pairs for auto-calibration. The reco-core
 /// default is 2 which is thin for high-resolution footage; 4 gives a
 /// much better bundle-adjustment fit at the cost of a few extra seconds.
@@ -525,50 +521,66 @@ fn main() -> anyhow::Result<()> {
     let app_weak_notifier = app.as_weak();
     app.window()
         .set_rendering_notifier(move |rendering_state, graphics_api| {
-            if !matches!(rendering_state, slint::RenderingState::RenderingSetup) {
-                return;
-            }
-            let slint::GraphicsAPI::WGPU28 {
-                instance: _,
-                device,
-                queue,
-                ..
-            } = graphics_api
-            else {
-                log::warn!("Expected WGPU28 GraphicsAPI in rendering notifier, got something else");
-                return;
-            };
+            match rendering_state {
+                slint::RenderingState::RenderingSetup => {
+                    let slint::GraphicsAPI::WGPU28 {
+                        instance: _,
+                        device,
+                        queue,
+                        ..
+                    } = graphics_api
+                    else {
+                        log::warn!(
+                            "Expected WGPU28 GraphicsAPI in rendering notifier, got something else"
+                        );
+                        return;
+                    };
 
-            // Reconstruct adapter info by enumerating the instance. The
-            // notifier doesn't expose the adapter directly, but any adapter
-            // matching the device's backend will have the correct GPU name
-            // for logging — the device and queue are what actually matter
-            // for correctness.
-            let adapter_info = wgpu::AdapterInfo {
-                name: "Slint-shared wgpu 28 device".into(),
-                vendor: 0,
-                device: 0,
-                device_pci_bus_id: String::new(),
-                device_type: wgpu::DeviceType::Other,
-                driver: String::new(),
-                driver_info: String::new(),
-                backend: wgpu::Backend::Vulkan,
-                subgroup_min_size: 0,
-                subgroup_max_size: 0,
-                transient_saves_memory: false,
-            };
+                    // Reconstruct adapter info by enumerating the instance. The
+                    // notifier doesn't expose the adapter directly, but any adapter
+                    // matching the device's backend will have the correct GPU name
+                    // for logging — the device and queue are what actually matter
+                    // for correctness.
+                    let adapter_info = wgpu::AdapterInfo {
+                        name: "Slint-shared wgpu 28 device".into(),
+                        vendor: 0,
+                        device: 0,
+                        device_pci_bus_id: String::new(),
+                        device_type: wgpu::DeviceType::Other,
+                        driver: String::new(),
+                        driver_info: String::new(),
+                        backend: wgpu::Backend::Vulkan,
+                        subgroup_min_size: 0,
+                        subgroup_max_size: 0,
+                        transient_saves_memory: false,
+                    };
 
-            state_for_notifier.borrow_mut().shared_gpu = Some(SharedGpu {
-                device: device.clone(),
-                queue: queue.clone(),
-                adapter_info,
-            });
-            log::info!("Captured Slint wgpu 28 device/queue for zero-copy preview");
+                    state_for_notifier.borrow_mut().shared_gpu = Some(SharedGpu {
+                        device: device.clone(),
+                        queue: queue.clone(),
+                        adapter_info,
+                    });
+                    log::info!("Captured Slint wgpu 28 device/queue for zero-copy preview");
 
-            // If files were picked before the renderer was ready, the init
-            // path would have failed early. Retry now that we have the GPU.
-            if let Some(app) = app_weak_notifier.upgrade() {
-                try_init_and_update(&state_for_notifier, &app.as_weak());
+                    // If files were picked before the renderer was ready, the init
+                    // path would have failed early. Retry now that we have the GPU.
+                    if let Some(app) = app_weak_notifier.upgrade() {
+                        try_init_and_update(&state_for_notifier, &app.as_weak());
+                    }
+                }
+                slint::RenderingState::BeforeRendering => {
+                    // Vsync-locked playback tick. Previously this ran off a
+                    // 2 ms free-running timer, which put set_preview_frame
+                    // calls at random phases relative to Slint's 60 Hz
+                    // compositor. Small (~1 ms) submission jitter around
+                    // the 33 ms video interval crossed vsync boundaries
+                    // unpredictably, so individual frames displayed for
+                    // 1, 2, or 3 vsync slots at random, producing visible
+                    // judder perceived as ~25 fps. Driving from here
+                    // phase-locks everything to the compositor.
+                    vsync_render_tick(&state_for_notifier, &app_weak_notifier);
+                }
+                _ => {}
             }
         })?;
 
@@ -1131,61 +1143,70 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
 
-            // Lerp camera targets toward current and advance video if
-            // due. Both can happen in the same tick; we render once at
-            // the end if either produced new content. Render rate is
-            // capped at ~60Hz via MIN_RENDER_INTERVAL_MS.
-            let camera_changed = s.smooth_camera();
-            let video_advanced = match s.playback.tick() {
-                Ok(advanced) => advanced,
-                Err(e) => {
-                    log::error!("Playback tick error: {e}");
-                    if let Some(app) = app_weak.upgrade() {
-                        app.set_status_text(format!("Error: {e}").into());
-                    }
-                    false
-                }
-            };
-
-            let was_dirty = s.preview_dirty;
-            if !(camera_changed || video_advanced || was_dirty) {
-                return;
-            }
-            s.preview_dirty = false;
-
-            let now = Instant::now();
-            let ready_to_render = s
-                .last_render_at
-                .is_none_or(|prev| now.duration_since(prev).as_millis() >= MIN_RENDER_INTERVAL_MS);
-            if !ready_to_render {
-                return;
-            }
-
-            let img = s.render_current();
-            if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
-                app.set_preview_frame(img);
-                s.last_render_at = Some(now);
-                if video_advanced {
-                    app.set_current_frame(s.playback.frame_index() as i32);
-                    if s.playback.state() == PlayState::Finished {
-                        app.set_playing(false);
-                        app.set_status_text("Playback finished".into());
-                    }
-                }
-                // Reflect camera targets to the UI properties so
-                // sliders and the reset button stay in sync with what
-                // the user is actually seeing.
-                app.set_yaw(s.yaw);
-                app.set_pitch(s.pitch);
-                if let Some(bridge) = s.bridge.as_ref() {
-                    app.set_fov(bridge.renderer().pipeline().fov());
-                }
+            // Playback, camera-lerp, and rendering now happen in
+            // `vsync_render_tick` (driven by Slint's BeforeRendering
+            // notifier), so this timer only handles work that does
+            // not need vsync alignment. When playback is active we
+            // nudge Slint to keep redrawing so BeforeRendering fires
+            // even if nothing marked the window dirty yet.
+            if let Some(app) = app_weak.upgrade()
+                && (app.get_playing() || s.pending_seek.is_some() || s.preview_dirty)
+            {
+                app.window().request_redraw();
             }
         },
     );
 
     app.run()?;
     Ok(())
+}
+
+/// Vsync-aligned playback tick. Called from Slint's `BeforeRendering`
+/// notifier so render submissions land at deterministic phase
+/// relative to the compositor's 60 Hz cycle. Returns `true` when a
+/// frame was submitted.
+fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) -> bool {
+    let mut s = state.borrow_mut();
+    let camera_changed = s.smooth_camera();
+    let video_advanced = match s.playback.tick() {
+        Ok(advanced) => advanced,
+        Err(e) => {
+            log::error!("Playback tick error: {e}");
+            if let Some(app) = app_weak.upgrade() {
+                app.set_status_text(format!("Error: {e}").into());
+            }
+            false
+        }
+    };
+
+    let was_dirty = s.preview_dirty;
+    if !(camera_changed || video_advanced || was_dirty) {
+        return false;
+    }
+    s.preview_dirty = false;
+
+    let img = s.render_current();
+    if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
+        app.set_preview_frame(img);
+        s.last_render_at = Some(Instant::now());
+        if video_advanced {
+            app.set_current_frame(s.playback.frame_index() as i32);
+            if s.playback.state() == PlayState::Finished {
+                app.set_playing(false);
+                app.set_status_text("Playback finished".into());
+            }
+        }
+        // Reflect camera targets to the UI properties so sliders and
+        // the reset button stay in sync with what the user is
+        // actually seeing.
+        app.set_yaw(s.yaw);
+        app.set_pitch(s.pitch);
+        if let Some(bridge) = s.bridge.as_ref() {
+            app.set_fov(bridge.renderer().pipeline().fov());
+        }
+        return true;
+    }
+    false
 }
 
 /// Try to initialize the pipeline when all files are selected.
