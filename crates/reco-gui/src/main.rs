@@ -1581,6 +1581,15 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 s.cal_baseline_left_params = Some(l.clone());
                 s.cal_baseline_right_params = Some(r.clone());
             }
+            // Same for viewport-level settings (rig tilt, blend width).
+            let rig_tilt_rad = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+            let blend_width = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().viewport().blend_width);
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
@@ -1598,6 +1607,12 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
                     app.set_cal_x_ty(layout.x_ty as f32);
                     app.set_cal_dirty(false);
+                }
+                if let Some(rt) = rig_tilt_rad {
+                    app.set_rig_tilt(rt.to_degrees());
+                }
+                if let Some(bw) = blend_width {
+                    app.set_blend_width(bw);
                 }
                 // Manual calibration JSON does not embed lens-profile info,
                 // so clear the display (hide the lens card) and just show
@@ -1697,6 +1712,17 @@ fn handle_calibration_result(
                     // 0; clicking any of them snaps the layout to ~0
                     // and destroys the calibration.
                     let layout_baseline = state.cal_baseline_layout.clone();
+                    // Same idea for rig tilt and blend width: read the
+                    // calibrated values off the viewport so the View
+                    // panel sliders match what the preview actually shows.
+                    let rig_tilt_rad = state
+                        .bridge
+                        .as_ref()
+                        .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+                    let blend_width = state
+                        .bridge
+                        .as_ref()
+                        .map(|b| b.renderer().pipeline().viewport().blend_width);
 
                     if let Some(app) = app_weak.upgrade() {
                         app.set_files_loaded(true);
@@ -1719,6 +1745,12 @@ fn handle_calibration_result(
                             app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
                             app.set_cal_x_ty(layout.x_ty as f32);
                             app.set_cal_dirty(false);
+                        }
+                        if let Some(rt) = rig_tilt_rad {
+                            app.set_rig_tilt(rt.to_degrees());
+                        }
+                        if let Some(bw) = blend_width {
+                            app.set_blend_width(bw);
                         }
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
                         if let Some((l, r)) = lens_baseline.as_ref() {
@@ -1847,7 +1879,19 @@ fn run_export(
                         // and index flushing before job.run returns.
                         // Switching the status to "Finalizing..." here
                         // stops the progress bar from looking hung.
-                        if total > 0 && frames as i32 >= total {
+                        //
+                        // The probe-reported `total` overshoots the
+                        // actually-encoded count by the sync-offset skip
+                        // (e.g. 67 frames on the GoPro test clip), so
+                        // the literal `frames >= total` condition never
+                        // triggers. Match on "last 0.5% of frames" which
+                        // is generous enough to cover sync skips of a
+                        // few seconds but still tight enough that the
+                        // Finalizing text only appears at the real tail
+                        // of the job.
+                        let near_end = total > 0
+                            && (frames as i32 >= total || frames as f32 / total as f32 >= 0.995);
+                        if near_end {
                             app.set_export_status_text("Finalizing output file…".into());
                         } else {
                             app.set_export_status_text(

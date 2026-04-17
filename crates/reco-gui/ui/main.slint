@@ -837,10 +837,12 @@ export component RecoApp inherits Window {
 
                     LabeledSlider {
                         label: "Intersect";
-                        minimum: -0.5;
-                        maximum: 0.5;
+                        // Widened per tester feedback - the old +/- 0.5
+                        // was too tight for some rig geometries.
+                        minimum: -1.0;
+                        maximum: 1.0;
                         value <=> root.cal-intersect;
-                        decimals: 2;
+                        decimals: 3;
                         changed(v) => { root.changed-cal-intersect(v); }
                     }
 
