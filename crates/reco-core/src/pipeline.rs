@@ -263,6 +263,41 @@ impl StitchPipeline {
         self.update_calibration(cal);
     }
 
+    /// Update per-camera intrinsics (focal, principal point, distortion)
+    /// for one or both cameras without touching the plane layout or rig
+    /// orientation.
+    ///
+    /// Intended for interactive lens tweaking in a GUI: each `CameraParams`
+    /// change is written into the shader's per-frame uniform buffer, so the
+    /// next render call reflects the new values. No GPU pipeline or scene
+    /// recreation is needed - cheap enough (~microseconds) to call on
+    /// every slider drag.
+    ///
+    /// `left`/`right` are `None` to leave that side untouched. If both are
+    /// `None` this is a no-op. Passing `Some` for a side replaces that
+    /// side's `CameraParams` on the stored calibration; the next render
+    /// picks it up automatically.
+    ///
+    /// Does not recompute `SceneGeometry` because the plane layout is
+    /// unchanged; only the camera intrinsics (which live on the stored
+    /// calibration and are re-read each frame) need updating.
+    pub fn update_camera_params(
+        &mut self,
+        left: Option<crate::calibration::CameraParams>,
+        right: Option<crate::calibration::CameraParams>,
+    ) {
+        if left.is_none() && right.is_none() {
+            return;
+        }
+        if let Some(l) = left {
+            self.calibration.left = l;
+        }
+        if let Some(r) = right {
+            self.calibration.right = r;
+        }
+        log::debug!("Pipeline camera params updated");
+    }
+
     /// Set up bind groups for GPU-resident zero-copy input.
     ///
     /// Creates bind groups for the provided shared textures (Y + UV per slot

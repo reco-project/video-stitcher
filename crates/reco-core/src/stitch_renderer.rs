@@ -373,6 +373,23 @@ impl StitchRenderer {
             CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
     }
 
+    /// Replace one or both cameras' intrinsics (focal, principal point,
+    /// distortion) without rebuilding the pipeline or touching the layout.
+    ///
+    /// Intended for interactive lens-parameter tweaking in a GUI. See
+    /// [`StitchPipeline::update_camera_params`] for the full contract.
+    /// Coverage boundary is not recomputed because the layout (and thus
+    /// the panorama extent) is unchanged - only the per-camera undistort
+    /// uniforms shift, which affects what each camera "sees" through its
+    /// lens but not how the stitched planes are arranged in world space.
+    pub fn update_camera_params(
+        &mut self,
+        left: Option<crate::calibration::CameraParams>,
+        right: Option<crate::calibration::CameraParams>,
+    ) {
+        self.pipeline.update_camera_params(left, right);
+    }
+
     /// Set the seam blend width (0.0 = hard edge, 0.15 = default smooth blend).
     pub fn set_blend_width(&mut self, w: f32) {
         self.pipeline.viewport.blend_width = w;
