@@ -3,6 +3,8 @@
 //! These types carry frame data, matched features, configuration, and
 //! calibration results through the pipeline stages.
 
+use std::path::PathBuf;
+
 use reco_core::calibration::MatchCalibration;
 use serde::{Deserialize, Serialize};
 
@@ -229,6 +231,19 @@ pub struct CalibrationConfig {
     pub skip_end_secs: f64,
 
     // --- IMU-derived settings (populated by telemetry module) ---
+    /// Whether to use IMU-derived differential orientation as optimizer
+    /// starting points.
+    ///
+    /// When `true` (default), the roll/pitch/tilt computed from
+    /// accelerometer gravity vectors seed additional Nelder-Mead start
+    /// points, improving convergence for well-calibrated IMUs. Set to
+    /// `false` for rigs where per-camera accelerometer bias produces
+    /// unreliable differential readings (e.g. bogus -29 deg pitch on a
+    /// physically rigid side-by-side mount). IMU sync offset and
+    /// rig_tilt/rig_roll are still used regardless of this flag.
+    #[serde(default)]
+    pub use_imu_rotation_seeds: bool,
+
     /// IMU-derived roll seed for the x_rz initial guess (radians).
     ///
     /// When set, adds an extra optimizer start point seeded with this
@@ -263,6 +278,7 @@ impl Default for CalibrationConfig {
             num_frames: 2,
             skip_start_secs: 0.0,
             skip_end_secs: 0.0,
+            use_imu_rotation_seeds: false,
             imu_xrz_seed: None,
             imu_xrx_seed: None,
             imu_zrx_seed: None,
@@ -369,6 +385,57 @@ impl std::fmt::Display for CalibrationStep {
     }
 }
 
+// ── Lens Profile Types ────────────────────────────────────────────
+
+/// How a lens profile was resolved during calibration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProfileSource {
+    /// Matched from the embedded Gyroflow-derived database.
+    Database,
+    /// Loaded from a user-supplied file on disk.
+    File(PathBuf),
+    /// Auto-detected from camera telemetry embedded in the video.
+    AutoDetected,
+    /// Fallback profile when no exact match was found.
+    Fallback,
+}
+
+/// Identifies the lens profile used for one camera during calibration.
+///
+/// Returned on [`CalibrationResult::left_lens_profile`] and
+/// [`CalibrationResult::right_lens_profile`] so the GUI can display
+/// "Auto-detected: GoPro HERO10 Linear 4K" without parsing logs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LensProfileInfo {
+    /// Camera brand and model (e.g. "GoPro HERO10").
+    pub camera: String,
+    /// Lens mode or setting (e.g. "Linear 4K 16:9").
+    pub lens: String,
+    /// How the profile was resolved.
+    pub source: ProfileSource,
+    /// Path on disk, if loaded from a file.
+    pub path: Option<PathBuf>,
+}
+
+/// Summary of a lens profile in the embedded database.
+///
+/// Returned by [`LensDatabase::iter_profiles`](crate::lens_database::LensDatabase::iter_profiles)
+/// and [`LensDatabase::candidates`](crate::lens_database::LensDatabase::candidates)
+/// for populating a picker/dropdown in the GUI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LensProfileSummary {
+    /// Camera brand and model (e.g. "GoPro HERO10").
+    pub camera: String,
+    /// Lens mode or setting (e.g. "Linear 4K 16:9").
+    pub lens: String,
+    /// Profile resolution width in pixels.
+    pub width: u32,
+    /// Profile resolution height in pixels.
+    pub height: u32,
+}
+
+// ── Calibration Result ───────────────────────────────────────────
+
 /// Output of a successful calibration run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalibrationResult {
@@ -384,4 +451,9 @@ pub struct CalibrationResult {
     pub confidence: f64,
     /// Per-frame matching statistics.
     pub per_frame: Vec<FrameMatches>,
+    /// Lens profile used for the left camera. `None` if the profile was
+    /// set manually via `set_profiles()` rather than auto-detected.
+    pub left_lens_profile: Option<LensProfileInfo>,
+    /// Lens profile used for the right camera.
+    pub right_lens_profile: Option<LensProfileInfo>,
 }

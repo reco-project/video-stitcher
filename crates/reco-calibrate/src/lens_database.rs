@@ -22,6 +22,8 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 
+use crate::types::{LensProfileInfo, LensProfileSummary, ProfileSource};
+
 /// Embedded Gyroflow lens profile database (profiles.cbor.gz).
 static PROFILES_CBOR_GZ: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -135,7 +137,7 @@ impl LensDatabase {
         width: u32,
         height: u32,
         lens_info: Option<&str>,
-    ) -> Option<CameraParams> {
+    ) -> Option<(CameraParams, LensProfileInfo)> {
         let key = normalize_camera_key(brand, model);
         // Try exact model first, then strip variant suffixes to find the
         // parent model (e.g. "HERO11 Black Mini" -> "HERO11 Black").
@@ -228,7 +230,13 @@ impl LensDatabase {
                     p.lens_model,
                     p.source
                 );
-                return Some(p.params.clone());
+                let info = LensProfileInfo {
+                    camera: format_camera_name(&p.brand, &p.model),
+                    lens: format_lens_name(&p.lens_model, &p.camera_setting),
+                    source: ProfileSource::Database,
+                    path: None,
+                };
+                return Some((p.params.clone(), info));
             }
         }
 
@@ -256,7 +264,7 @@ impl LensDatabase {
                 p.lens_model,
                 p.source
             );
-            return Some(CameraParams {
+            let params = CameraParams {
                 width,
                 height,
                 fx: p.params.fx * scale,
@@ -264,7 +272,14 @@ impl LensDatabase {
                 cx: p.params.cx * scale,
                 cy: p.params.cy * scale,
                 d: p.params.d, // distortion coeffs are scale-invariant
-            });
+            };
+            let info = LensProfileInfo {
+                camera: format_camera_name(&p.brand, &p.model),
+                lens: format_lens_name(&p.lens_model, &p.camera_setting),
+                source: ProfileSource::Database,
+                path: None,
+            };
+            return Some((params, info));
         }
 
         log::warn!(
@@ -285,7 +300,7 @@ impl LensDatabase {
         width: u32,
         height: u32,
         lens_info: Option<&str>,
-    ) -> Option<CameraParams> {
+    ) -> Option<(CameraParams, LensProfileInfo)> {
         let model = camera_model.unwrap_or(camera_type);
         self.find(camera_type, model, width, height, lens_info)
     }
@@ -295,7 +310,11 @@ impl LensDatabase {
     /// Searches all profiles for an exact resolution match. If multiple
     /// cameras share the same resolution, returns the first match.
     /// This is the last-resort fallback when telemetry extraction fails.
-    pub fn find_by_resolution(&self, width: u32, height: u32) -> Option<CameraParams> {
+    pub fn find_by_resolution(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Option<(CameraParams, LensProfileInfo)> {
         for p in &self.profiles {
             if p.width == width && p.height == height {
                 log::info!(
@@ -305,7 +324,13 @@ impl LensDatabase {
                     p.brand,
                     p.source
                 );
-                return Some(p.params.clone());
+                let info = LensProfileInfo {
+                    camera: format_camera_name(&p.brand, &p.model),
+                    lens: format_lens_name(&p.lens_model, &p.camera_setting),
+                    source: ProfileSource::Fallback,
+                    path: None,
+                };
+                return Some((p.params.clone(), info));
             }
         }
         None
@@ -319,6 +344,76 @@ impl LensDatabase {
     /// Whether the database is empty.
     pub fn is_empty(&self) -> bool {
         self.profiles.is_empty()
+    }
+
+    /// Iterate over all profiles in the database as summaries.
+    ///
+    /// Returns one [`LensProfileSummary`] per entry, suitable for
+    /// populating a picker/dropdown in the GUI. Profiles are in the
+    /// order they were loaded (grouped by camera brand/model).
+    pub fn iter_profiles(&self) -> impl Iterator<Item = LensProfileSummary> + '_ {
+        self.profiles.iter().map(|p| LensProfileSummary {
+            camera: format_camera_name(&p.brand, &p.model),
+            lens: format_lens_name(&p.lens_model, &p.camera_setting),
+            width: p.width,
+            height: p.height,
+        })
+    }
+
+    /// Return profiles matching a given resolution, optionally sorted
+    /// for a picker UI.
+    ///
+    /// Filters by exact width and height. If `width` or `height` is 0,
+    /// that dimension is not filtered (wildcard). Returns an owned
+    /// `Vec` rather than an iterator so the caller can group, sort, or
+    /// dedup freely.
+    pub fn candidates(&self, width: u32, height: u32) -> Vec<LensProfileSummary> {
+        self.profiles
+            .iter()
+            .filter(|p| (width == 0 || p.width == width) && (height == 0 || p.height == height))
+            .map(|p| LensProfileSummary {
+                camera: format_camera_name(&p.brand, &p.model),
+                lens: format_lens_name(&p.lens_model, &p.camera_setting),
+                width: p.width,
+                height: p.height,
+            })
+            .collect()
+    }
+}
+
+/// Format "Brand Model" with title case from the lowercase internal storage.
+fn format_camera_name(brand: &str, model: &str) -> String {
+    let mut name = String::with_capacity(brand.len() + 1 + model.len());
+    for (i, word) in brand.split_whitespace().enumerate() {
+        if i > 0 {
+            name.push(' ');
+        }
+        let mut chars = word.chars();
+        if let Some(c) = chars.next() {
+            name.extend(c.to_uppercase());
+            name.extend(chars);
+        }
+    }
+    name.push(' ');
+    for (i, word) in model.split_whitespace().enumerate() {
+        if i > 0 {
+            name.push(' ');
+        }
+        let mut chars = word.chars();
+        if let Some(c) = chars.next() {
+            name.extend(c.to_uppercase());
+            name.extend(chars);
+        }
+    }
+    name
+}
+
+/// Format lens name from model and setting fields.
+fn format_lens_name(lens_model: &str, camera_setting: &str) -> String {
+    if camera_setting.is_empty() {
+        lens_model.to_string()
+    } else {
+        format!("{lens_model} ({camera_setting})")
     }
 }
 
@@ -366,7 +461,7 @@ pub fn detect_profile(
     video_width: u32,
     video_height: u32,
     db: &LensDatabase,
-) -> Option<CameraParams> {
+) -> Option<(CameraParams, LensProfileInfo)> {
     let tel = match crate::telemetry::extract(video_path) {
         Ok(t) => Some(t),
         Err(e) => {
@@ -383,18 +478,24 @@ pub fn detect_profile(
                 tel.camera_type,
                 tel.camera_model.as_deref().unwrap_or("?")
             );
-            return Some(profile.clone());
+            let info = LensProfileInfo {
+                camera: tel.camera_type.clone(),
+                lens: tel.camera_model.clone().unwrap_or_else(|| "unknown".into()),
+                source: ProfileSource::AutoDetected,
+                path: None,
+            };
+            return Some((profile.clone(), info));
         }
 
         // 2. Database lookup by camera identification + FOV mode
-        if let Some(params) = db.find_from_telemetry(
+        if let Some(found) = db.find_from_telemetry(
             &tel.camera_type,
             tel.camera_model.as_deref(),
             video_width,
             video_height,
             tel.lens_info.as_deref(),
         ) {
-            return Some(params);
+            return Some(found);
         }
     }
 

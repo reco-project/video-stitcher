@@ -40,7 +40,7 @@ use reco_core::calibration::CameraParams;
 use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
-use crate::types::{CalibrationConfig, CalibrationResult, YuvFrame};
+use crate::types::{CalibrationConfig, CalibrationResult, LensProfileInfo, YuvFrame};
 use crate::{audio_sync, lens_database, sampling, telemetry};
 
 /// Video metadata that the app provides from its decoder.
@@ -74,6 +74,10 @@ pub struct CalibrationPipeline {
     config: CalibrationConfig,
     left_params: Option<CameraParams>,
     right_params: Option<CameraParams>,
+    /// Lens profile metadata for the left camera (populated by detect_profiles).
+    left_profile_info: Option<LensProfileInfo>,
+    /// Lens profile metadata for the right camera.
+    right_profile_info: Option<LensProfileInfo>,
     sync_offset_frames: i64,
     /// IMU seeds extracted during imu_sync
     imu_xrz_seed: Option<f64>,
@@ -95,6 +99,8 @@ impl CalibrationPipeline {
             config,
             left_params: None,
             right_params: None,
+            left_profile_info: None,
+            right_profile_info: None,
             sync_offset_frames: 0,
             imu_xrz_seed: None,
             imu_xrx_seed: None,
@@ -125,7 +131,7 @@ impl CalibrationPipeline {
     pub fn detect_profiles(&mut self) -> Result<(CameraParams, CameraParams), CalibrateError> {
         let db = lens_database::LensDatabase::load_embedded();
 
-        let left_p = lens_database::detect_profile(
+        let (left_p, left_info) = lens_database::detect_profile(
             &self.left_info.path,
             self.left_info.width,
             self.left_info.height,
@@ -138,7 +144,7 @@ impl CalibrationPipeline {
             ))
         })?;
 
-        let right_p = lens_database::detect_profile(
+        let (right_p, right_info) = lens_database::detect_profile(
             &self.right_info.path,
             self.right_info.width,
             self.right_info.height,
@@ -146,11 +152,13 @@ impl CalibrationPipeline {
         )
         .unwrap_or_else(|| {
             log::info!("right camera: no profile found, using left camera profile");
-            left_p.clone()
+            (left_p.clone(), left_info.clone())
         });
 
         self.left_params = Some(left_p.clone());
         self.right_params = Some(right_p.clone());
+        self.left_profile_info = Some(left_info);
+        self.right_profile_info = Some(right_info);
         Ok((left_p, right_p))
     }
 
@@ -239,13 +247,23 @@ impl CalibrationPipeline {
             }
         }
 
-        // Rig tilt (stored in result for renderer)
+        // Rig tilt (stored in result for renderer).
+        // Cap at 25 deg - beyond that the IMU reading is likely noise
+        // from an uncalibrated accelerometer rather than real forward lean.
         if let Some(tilt) = telemetry::rig_tilt(&left_telem, skip) {
             log::info!("rig tilt: {:.1} deg", tilt.to_degrees());
-            self.rig_tilt = tilt;
+            if tilt.abs() < 25.0_f64.to_radians() {
+                self.rig_tilt = tilt;
+            } else {
+                log::warn!(
+                    "rig tilt {:.1} deg exceeds 25 deg threshold, ignoring",
+                    tilt.to_degrees()
+                );
+            }
         }
 
         // Rig roll: (left_roll - right_roll) / 2 cancels common IMU bias.
+        // Cap at 25 deg for the same reason as tilt.
         let left_roll = telemetry::gravity_vector(&left_telem, skip).map(|g| g[2].atan2(g[0]));
         let right_roll = telemetry::gravity_vector(&right_telem, skip).map(|g| g[2].atan2(g[0]));
         if let (Some(lr), Some(rr)) = (left_roll, right_roll) {
@@ -256,11 +274,11 @@ impl CalibrationPipeline {
                 rr.to_degrees(),
                 avg.to_degrees()
             );
-            if avg.abs() < 20.0_f64.to_radians() {
+            if avg.abs() < 25.0_f64.to_radians() {
                 self.rig_roll = avg;
             } else {
                 log::warn!(
-                    "rig roll {:.1} deg exceeds threshold, ignoring",
+                    "rig roll {:.1} deg exceeds 25 deg threshold, ignoring",
                     avg.to_degrees()
                 );
             }
@@ -350,25 +368,32 @@ impl CalibrationPipeline {
             )
         })?;
 
-        // Merge IMU seeds into config
+        // Merge IMU seeds into config only when the toggle is on.
+        // When off, the optimizer uses its built-in start grid instead
+        // of IMU-derived orientation. Sync offset, rig_tilt, and
+        // rig_roll are always applied regardless of this flag.
         let mut config = self.config.clone();
-        if self.imu_xrz_seed.is_some() {
-            config.imu_xrz_seed = self.imu_xrz_seed;
-        }
-        if self.imu_xrx_seed.is_some() {
-            config.imu_xrx_seed = self.imu_xrx_seed;
-        }
-        if self.imu_zrx_seed.is_some() {
-            config.imu_zrx_seed = self.imu_zrx_seed;
-        }
-        if self.enable_x_rx {
-            config.optimizer.enable_x_rx = true;
+        if config.use_imu_rotation_seeds {
+            if self.imu_xrz_seed.is_some() {
+                config.imu_xrz_seed = self.imu_xrz_seed;
+            }
+            if self.imu_xrx_seed.is_some() {
+                config.imu_xrx_seed = self.imu_xrx_seed;
+            }
+            if self.imu_zrx_seed.is_some() {
+                config.imu_zrx_seed = self.imu_zrx_seed;
+            }
+            if self.enable_x_rx {
+                config.optimizer.enable_x_rx = true;
+            }
         }
 
         let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;
         result.calibration.rig_tilt = self.rig_tilt;
         result.calibration.rig_roll = self.rig_roll;
         result.calibration.sync_offset = self.sync_offset_frames;
+        result.left_lens_profile = self.left_profile_info.clone();
+        result.right_lens_profile = self.right_profile_info.clone();
         Ok(result)
     }
 

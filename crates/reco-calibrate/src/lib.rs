@@ -480,5 +480,10 @@ pub fn calibrate_with(
         residual_error: best_residual,
         confidence,
         per_frame: successful_frames,
+        // Lens profile metadata is threaded through from the pipeline
+        // layer (CalibrationPipeline::calibrate). The core calibrate()
+        // function works with bare CameraParams and has no profile info.
+        left_lens_profile: None,
+        right_lens_profile: None,
     })
 }
