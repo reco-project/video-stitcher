@@ -1,309 +1,195 @@
 # GUI Consumer API Friction
 
-Friction points encountered while building a Slint GUI consumer of reco-core.
+Friction points encountered while building the Slint GUI consumer of
+reco-core. Active items are at the top; resolved items are archived
+at the bottom with the PR that fixed them so we can tell "this used to
+be painful" without re-litigating solved problems.
 
-## 1. wgpu Version Mismatch (blocking zero-copy rendering) — RESOLVED 2026-04-16
+## Active
 
-**Status**: Resolved by downgrading reco-core to wgpu 28. The fork was
-working around PR gfx-rs/wgpu#9331 (shaderDrawParameters regression),
-which is a wgpu 29-only bug. On wgpu 28 the fork is unnecessary, and
-Slint 1.15's `unstable-wgpu-28` feature lets us share the device.
-`PreviewBridge` now uses `GpuContext::from_device_queue()` with handles
-captured from Slint's rendering notifier — zero CPU readback, no
-staging buffers.
+### A1. reco-calibrate doesn't re-export lens profile types at crate root
 
-Historical context preserved below for anyone coming from the earlier
-architecture:
+**Impact**: Minor, one-line fix per consumer.
 
-reco-core uses wgpu 29 (custom fork at `mohamedtahaguelzim/wgpu.git` branch
-`fix/shader-draw-parameters-v29.0.1`). Slint 1.15 only supports wgpu 27 and 28
-via `unstable-wgpu-{27,28}` features. Since wgpu types from different major
-versions are distinct Rust types, the GPU device/queue cannot be shared between
-Slint and reco-core.
+`LensProfileInfo`, `LensProfileSummary`, `ProfileSource` live in
+`reco_calibrate::types::*` but were not re-exported in `lib.rs` alongside
+`CalibrationResult` and friends. The Tier 1 GUI had to either use
+fully-qualified paths or add the re-export itself.
 
-**Current workaround**: Headless `GpuContext` in reco-core, render to internal
-RGBA target, readback via staging buffer, convert to `slint::Image::from_rgba8()`.
-This adds ~2-5ms of GPU-to-CPU latency per frame at 1080p.
+**Fixed in passing** during Tier 1 (reco-gui PR #236), but the pattern
+suggests a general "every public type visible in a CalibrationResult
+field should be re-exported from the crate root" guideline worth adding
+to the next API-principles pass.
 
-**Resolution path**: Slint wgpu 29 support is tracked in slint-ui/slint#11378.
-Once merged, switch to `GpuContext::from_device_queue()` with the device/queue
-from Slint's `set_rendering_notifier` callback, eliminating all readback overhead.
+### A2. CalibrateVideosOptions only accepts lens profiles via file paths
 
-## 2. No RGBA Readback API on StitchRenderer
+**Impact**: Medium. Blocks a functional lens-profile picker in the GUI.
 
-**Impact**: GUI consumers must manually implement wgpu buffer copy + map.
+`reco_calibrate::video::CalibrateVideosOptions::{left_profile, right_profile}`
+are `Option<PathBuf>`. The consumer who already has a `LensProfileSummary`
+from `LensDatabase::candidates()` (Batch B) has no way to pass it
+directly. Workaround: look up the profile in the DB again via
+`find(camera, model, w, h, lens_info)`, which returns
+`(CameraParams, LensProfileInfo)`, then... there's no way to hand
+`CameraParams` to `calibrate_videos` either. So the consumer must either
+serialize the `CameraParams` to a temp JSON file just to re-load it, or
+drop down to `CalibrationPipeline::set_profiles()` and reimplement the
+video-frame extraction loop.
 
-`StitchRenderer` provides `render_and_readback_nv12()` for encoding, but no
-RGBA readback equivalent. GUI consumers need RGBA (or BGRA) pixel data to
-display in framework widgets.
-
-The workaround is ~120 lines of double-buffered readback boilerplate in
-`preview.rs`: two staging buffers with `MAP_READ | COPY_DST`,
-`copy_texture_to_buffer` from `render_target()`, non-blocking poll on the
-previous frame's buffer while submitting the next, row-padding strip, and
-direct write into `SharedPixelBuffer` to avoid an intermediate allocation.
-
-A single-buffered blocking approach is too slow for real-time playback (adds
-3-8ms of stall per frame). The double-buffered approach pipelines GPU work
-with CPU readback, trading one frame of latency for smooth playback.
-
-**Suggested API addition**:
+**Suggested addition**:
 ```rust
-impl StitchRenderer {
-    /// Render and read back RGBA pixels for display in GUI frameworks.
-    /// Double-buffered: returns the previous frame's data (one frame behind).
-    pub fn render_and_readback_rgba(
+pub struct CalibrateVideosOptions {
+    // ... existing ...
+    pub left_params: Option<CameraParams>,
+    pub right_params: Option<CameraParams>,
+}
+```
+If both `_path` and `_params` are set, `_params` wins.
+
+Blocked the Tier 1 picker from being functional (it's read-only); will
+block Tier 2's "pick an alternate profile and re-run" interaction too.
+
+### A3. Live lens tweaking has no "just update CameraParams" path
+
+**Impact**: High for Tier 2 live lens fine-tuning.
+
+To let the user tweak fx/fy/cx/cy/distortion sliders and see results in
+the preview, the GUI needs an API to replace the `CameraParams` inside
+an existing `MatchCalibration` and have the stitch pipeline re-undistort
+without rebuilding everything from scratch. Currently the stitch
+pipeline caches undistort LUTs at construction; changing camera params
+means recreating the pipeline.
+
+**Suggested addition** in reco-core:
+```rust
+impl StitchPipeline {
+    /// Replace camera intrinsics for one or both cameras and rebuild
+    /// the undistort LUTs. Cheap enough to call on slider drag.
+    pub fn update_camera_params(
         &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Option<&[u8]>, PipelineError> { ... }
+        left: Option<CameraParams>,
+        right: Option<CameraParams>,
+    ) -> Result<(), PipelineError>;
 }
 ```
 
-This would mirror `render_and_readback_nv12()` but output tightly-packed RGBA
-instead of NV12. Could reuse the same triple-buffer staging pattern that
-`Nv12Converter` already implements.
+Will raise as a Batch F candidate if Tier 2 hits this wall.
 
-## 3. GpuContext::new() is Async
+### A4. No API to clamp camera pose to coverage boundary
 
-**Impact**: Minor friction in synchronous GUI init code.
+**Impact**: Medium. Tier 2 "constrained look" toggle needs this.
 
-`GpuContext::new()` and `GpuContext::for_surface()` are async. GUI frameworks
-typically initialize synchronously (or at least within a synchronous setup
-callback). Every call site wraps with `pollster::block_on()`.
+`CoverageBoundary` (reco-core) knows the valid yaw/pitch ranges of the
+stitched output. The GUI yaw/pitch inputs feed the renderer directly,
+with no clamping. To prevent the preview from panning into black
+margins, the consumer would need a helper like
+`CoverageBoundary::clamp(yaw, pitch, fov_rad) -> (yaw, pitch)` that
+respects the effective viewport half-angle.
 
-This is a deliberate design choice (wgpu's adapter/device creation is async),
-not a bug. The friction is minor since pollster is already a workspace dep.
-
-## 4. StitchRenderer Hardcodes InputFormat::Yuv420p
-
-**Impact**: Low - file decode is Yuv420p anyway.
-
-`StitchRenderer::new()` hardcodes `InputFormat::Yuv420p` (line 81 of
-`stitch_renderer.rs`). A GUI consumer can't construct a renderer for NV12 input
-via this API - they'd need to use `StitchPipeline::with_gpu()` directly with a
-custom `InputFormat`. This matters for live camera preview (Jetson NV12 output).
-
-**Suggested**: Accept `InputFormat` as a parameter, or auto-detect from the
-source format.
-
-## 5. No Resize Without Recreating ReadbackBuffer
-
-**Impact**: Low - preview resize is infrequent.
-
-When the preview viewport resizes, `StitchPipeline::resize()` recreates the
-internal render target at the new dimensions. But any external staging buffers
-(like our `ReadbackBuffer`) also need recreation. The renderer doesn't notify
-consumers that its internal texture dimensions changed.
-
-A future `on_resize` callback or returning the new dimensions from `resize()`
-would help.
-
-## 6. render_to_target() Returns CommandBuffer, Caller Must Submit
-
-**Impact**: Medium - complicates double-buffered readback.
-
-`StitchPipeline::render_to_target()` returns a `wgpu::CommandBuffer` that the
-caller must submit to the queue. For the GUI readback bridge, we need to ALSO
-encode a copy-to-staging-buffer command and submit both together. This means
-the caller creates a separate `CommandEncoder`, encodes the copy, and submits
-`[render_cmd, copy_encoder.finish()]` as a batch.
-
-If `render_to_target` submitted internally (like `render_to_view` does), the
-caller would lose the ability to batch the copy. So the current API is correct
-for this use case, but it would be cleaner if there were a `render_to_buffer()`
-that renders + copies to a caller-provided staging buffer in one call.
-
-## 7. FrameSource::try_next_frame() EOF Ambiguity
-
-**Impact**: Low - workaround is a timeout heuristic.
-
-`FfmpegFileSource::try_next_frame()` returns `Ok(None)` for both "no frame
-decoded yet" (decode thread busy) and "end of stream" (channel disconnected).
-A GUI consumer polling non-blocking can't distinguish "wait for the next frame"
-from "playback is finished" without a timeout heuristic.
-
-**Current workaround**: If `Ok(None)` persists for 30x the frame duration
-(~1 second), assume EOF.
-
-**Suggested**: Return a distinct result like `Ok(FrameResult::NotReady)` vs
-`Ok(FrameResult::EndOfStream)`, or add a `fn is_exhausted(&self) -> bool`
-method to the `FrameSource` trait.
-
-## 8. render_to_view() vs render_to_target() Asymmetry
-
-**Impact**: Low - but confusing for GUI consumers.
-
-`StitchRenderer` has `render_yuv()` which renders directly to a
-`wgpu::TextureView` (surface) - this is the fast path the CLI uses.
-For GUI readback, you need `pipeline().render_to_target()` instead, which
-renders to the internal RGBA texture.
-
-The surface path (render_yuv) submits GPU commands internally. The target path
-(render_to_target) returns a CommandBuffer. This asymmetry means the GUI
-consumer must understand the pipeline internals to choose the right method.
-
-A unified API like `render(target: RenderTarget)` where `RenderTarget` is
-either a surface view or an internal texture would reduce confusion.
-
-## 9. CalibrationResult Doesn't Expose Detected Lens Profile
-
-**Impact**: GUI cannot show the user which lens profile was used.
-
-`reco_calibrate::video::calibrate_videos()` internally calls
-`CalibrationPipeline::detect_profiles()` which looks up the lens profile
-from embedded database + video metadata / telemetry. The returned
-`CalibrationResult` contains the final `MatchCalibration`, match counts,
-confidence, and per-frame stats — but NOT the path or identifier of the
-lens profile that was selected.
-
-The GUI wants to display something like:
-
-> Auto-calibrated (4 frames, 73 matches, 0.15° angular error)
-> Left lens: GoPro HERO10 Linear 4K (gopro_hero10_linear_4k.json)
-> Right lens: GoPro HERO10 Linear 4K (same)
-
-Without an API surface, the GUI can only read the log output, which is
-fragile and not structured.
-
-**Suggested API addition**:
+**Suggested addition**:
 ```rust
-pub struct CalibrationResult {
-    // ... existing fields ...
-
-    /// The lens profiles used during calibration. `None` if profiles
-    /// were not detected (e.g., manual override before detection).
-    pub left_lens_profile: Option<LensProfileInfo>,
-    pub right_lens_profile: Option<LensProfileInfo>,
-}
-
-pub struct LensProfileInfo {
-    /// Human-readable camera/model identifier ("GoPro HERO10").
-    pub camera: String,
-    /// Lens setting ("Linear 4K 16:9").
-    pub lens: String,
-    /// Source of the profile: Database | File(PathBuf) | Auto | Fallback.
-    pub source: ProfileSource,
-    /// Path if loaded from a file (for "open profile" in the GUI).
-    pub path: Option<PathBuf>,
+impl CoverageBoundary {
+    /// Given a desired camera pose and viewport FOV, return the pose
+    /// clamped so the entire viewport fits within the coverage region.
+    pub fn clamp(&self, yaw: f32, pitch: f32, hfov_rad: f32, aspect: f32)
+        -> (f32, f32);
 }
 ```
 
-## 10. No API to List Available Lens Profiles
+### A5. Cannot re-run auto-calibrate after files_loaded
 
-**Impact**: GUI cannot populate a picker/dropdown for manual profile
-override.
+**Impact**: UX bug, not an API gap, but maintained here because it
+surfaces a design question the API should answer.
 
-`LensDatabase::load_embedded()` returns a database containing thousands
-of profiles, but there's no public iterator over them. The consumer
-would need a `list_profiles() -> Vec<LensProfileSummary>` that returns
-`(camera, lens, resolution, fps)` tuples so a user-facing picker can
-present them grouped (e.g., all GoPro HERO10 profiles, all at 4K).
+The GUI disables Auto Calibrate once calibration completes
+(`!root.files-loaded` in main.slint). The user who wants to try
+different calibration options (different frames, IMU seeds toggled,
+different profiles once A2 is solved) has to restart the app. The fix
+is client-side (drop the `!files_loaded` gate), but it raises the
+question of whether reco-core should expose a "clear previous
+calibration" helper or document that consumers can freely re-run.
 
-Combined with (9), this would allow the GUI to show "Auto-detected:
-GoPro HERO10 Linear 4K" with a "Change..." button that opens a picker
-of the compatible profiles.
+Not blocking; tracking here so we revisit after Tier 2 touches the
+calibration flow.
 
-**Suggested API addition**:
+### A6. GpuContext::new() is async, consumers always pollster-wrap
+
+**Impact**: Very minor, but every consumer does the exact same thing.
+
+Deliberate (wgpu adapter creation is async), but every call site in
+reco-cli, reco-gui, reco-obs wraps it in `pollster::block_on`. A
+blocking convenience constructor in reco-core would let consumers avoid
+taking a direct dep on pollster:
+
 ```rust
-impl LensDatabase {
-    /// Iterate profile metadata without loading every profile into memory.
-    pub fn iter_profiles(&self) -> impl Iterator<Item = &LensProfileSummary>;
-
-    /// Return profiles matching the given resolution + fps, grouped for picker UI.
-    pub fn candidates(&self, width: u32, height: u32, fps: Option<f64>)
-        -> Vec<&LensProfileSummary>;
-}
-
-pub struct LensProfileSummary {
-    pub camera: String,
-    pub lens: String,
-    pub width: u32,
-    pub height: u32,
-    pub fps: Option<f64>,
+impl GpuContext {
+    pub fn new_blocking() -> Result<Self, PipelineError> {
+        pollster::block_on(Self::new())
+    }
 }
 ```
 
-## 12. slint::Image::try_from(wgpu::Texture) Takes Ownership, Forces Per-Frame Allocation
+### A7. render_to_target() still returns CommandBuffer
 
-**Impact**: ~0.5-1ms per frame of driver work at 1080p; palpable as reduced
-playback smoothness compared to the CLI preview.
+**Impact**: Low. The Batch A `RenderTarget`/`RenderOutcome` enums
+simplified the surface-vs-internal asymmetry, but the lower-level
+`render_to_target()` still returns a `wgpu::CommandBuffer` the caller
+must submit. For the zero-copy Slint path this is fine (we render
+directly to a Slint-owned texture via `render_yuv`); for any future
+consumer that wants to batch our render with their own copy commands,
+the current API already works. Leaving this here as a note for anyone
+hitting the old asymmetry - the Batch A outcome enum was the right
+abstraction.
 
-Slint's `Image::try_from(wgpu::Texture)` moves the texture into the Slint
-image. Slint holds it for as long as it's referenced by any UI property,
-so the same texture cannot be reused for the next frame without risking
-aliasing (old Image still displayed while new render target claims the
-same storage). Our consumer has to `device.create_texture(...)` every
-frame.
+## Resolved (archived)
 
-The CLI preview has the opposite story: it renders into a
-`wgpu::SurfaceTexture` that winit owns and reuses across present cycles.
-No per-frame allocation, no driver churn, consistently smoother visible
-playback.
+Items pruned from Active once the reco-core API added what we asked for.
+Kept as an audit trail of which consumer friction items drove which
+upstream changes.
 
-**Suggested API addition in Slint (upstream issue)**:
-- An `Image::from_borrowed_texture(&wgpu::Texture)` variant with
-  explicit lifetime semantics (caller guarantees texture outlives Slint's
-  usage until next swap).
-- OR an `Image::swap_texture(&mut self, new: wgpu::Texture)` that atomically
-  reuses the slot.
-
-**Workaround we could try**: keep a small pool (2-3) of textures and
-rotate, relying on Slint to release the old Image before we re-enter.
-Not attempted yet because it depends on Slint's internal refcounting
-which isn't public.
-
-## 13. No Runtime API to Probe ONNX Runtime Execution Providers
-
-**Impact**: Users can't discover from the UI whether their build supports
-hardware-accelerated tracking; autocam silently refuses with a log
-message.
-
-reco-autocam's `setup_autocam` returns `Ok(false)` when it can't run
-(e.g., GPU-resident frames but no TensorRT/CUDA EP), but there's no
-way to ask ahead of time "will tracking work if I enable it?". The
-GUI currently uses compile-time `cfg!(feature = "tensorrt")` probes
-to surface an "AI: TensorRT available" / "AI: CPU-only" banner.
-This is informative but inaccurate when the machine lacks the runtime
-libraries (CUDA driver missing, TensorRT engine build failing, etc.).
-
-**Suggested API addition in reco-autocam (or a new reco-detect::probe module)**:
-```rust
-pub struct AiProbeResult {
-    pub providers: Vec<ExecutionProvider>,
-    pub can_run_on_gpu_frames: bool,
-    pub errors: Vec<String>,
-}
-
-pub fn probe_execution_providers() -> AiProbeResult {
-    // Try creating an ORT session for each compiled-in EP with a trivial
-    // model, record which ones succeed, return the capability set.
-}
-```
-
-**Related**: the user has published an issue about AI compatibility
-opacity. This would be the foundation for a clearer story: the GUI (and
-CLI) could print a single "Inference backend: TensorRT" line on startup
-that answers "will tracking work".
-
-## 11. Slider Value Binding Echoes Fire `changed` for Programmatic Updates
-
-**Impact**: Medium - a Slint-level concern, but reco-gui had to work
-around it.
-
-Not a reco-core issue, but worth documenting for other consumers. The
-seek slider binds `value: root.current-frame` (one-way). When Rust
-advances playback and calls `app.set_current_frame(N)`, the slider's
-`value` updates and fires `changed(N)` — which our handler can't easily
-distinguish from a real user interaction. Without guarding, this creates
-a feedback loop: Rust→slider→changed→seek→Rust→slider→... At high timer
-tick rates (500Hz), this saturates NVDEC reinit and the process dies.
-
-The GUI debounces seek requests by 120ms via a `pending_seek` field +
-timer polling. Works, but it's effectively a client-side workaround for
-a Slint behavior that ideally would distinguish user-initiated vs
-programmatic value changes. Watch for a Slint API improvement; if Slint
-adds a `released` or similar "user-only" callback on Slider, this
-workaround can be dropped.
+- **R1. wgpu version mismatch blocking zero-copy rendering**
+  Resolved 2026-04-16 by downgrading reco-core to wgpu 28 and using
+  Slint 1.15's `unstable-wgpu-28` feature. `PreviewBridge` now shares
+  Slint's device/queue via `GpuContext::from_device_queue()`.
+- **R2. No RGBA readback API on StitchRenderer**
+  Resolved by Batch A (#223): `StitchRenderer::render_and_readback_rgba()`
+  + `flush_rgba()` with triple-buffered staging. Lifted ~120 lines of
+  readback boilerplate out of the GUI.
+- **R3. StitchRenderer hardcoded InputFormat::Yuv420p**
+  Resolved by Batch A (#223): `StitchRenderer::new` now takes an
+  `input_format: InputFormat` parameter so NV12 live-camera consumers
+  can construct a renderer without dropping to `StitchPipeline`.
+- **R4. resize() didn't notify consumers of new dimensions**
+  Resolved by Batch C (#222 companion): `StitchPipeline::resize()` now
+  returns `Option<(u32, u32)>` so external staging buffers can be
+  recreated when the internal render target changes size.
+- **R5. FrameSource::try_next_frame() EOF ambiguity**
+  Resolved by Batch A (#223): `FrameSource` trait gained
+  `fn is_exhausted(&self) -> bool` with a default impl. Replaced the
+  1-second timeout heuristic in the GUI.
+- **R6. render_to_view vs render_to_target asymmetry**
+  Resolved by Batch A (#223): `RenderTarget` enum + `RenderOutcome`
+  unify the surface and internal-texture paths.
+- **R7. CalibrationResult didn't expose detected lens profile**
+  Resolved by Batch B (#224): `CalibrationResult.left_lens_profile`
+  and `right_lens_profile` now carry `LensProfileInfo` with camera /
+  lens / source / optional path.
+- **R8. No API to list available lens profiles**
+  Resolved by Batch B (#224): `LensDatabase::iter_profiles()` and
+  `candidates(width, height)` return `LensProfileSummary` suitable
+  for picker UIs. The Tier 1 GUI uses `candidates()` for the
+  alternate-profile count.
+- **R9. Slider value binding echoes `changed` on programmatic updates**
+  Resolved by follow-up cleanup PR: switched seek slider to `released`
+  callback. No more feedback loop between Rust state and UI updates,
+  debounce no longer strictly needed but kept for drag coalescing.
+- **R10. slint::Image::try_from(wgpu::Texture) per-frame allocation**
+  Investigated and closed upstream. Slint maintainer (tronical) confirmed
+  wgpu barriers handle the aliasing concern; measured no perf
+  difference from per-frame allocation on our workload. Kept current
+  per-frame-allocation pattern.
+- **R11. No runtime API to probe ONNX Runtime execution providers**
+  Resolved by Batch E (#222): `reco_detect::probe_execution_providers()`
+  returns `AiProbeResult { providers, can_run_on_gpu_frames, errors }`.
+  The Tier 1 GUI uses it to show an honest runtime AI status instead
+  of lying with compile-time `cfg!()`.
