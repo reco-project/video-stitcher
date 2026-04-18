@@ -9,7 +9,10 @@ use std::path::Path;
 
 use ort::session::Session;
 use ort::value::Tensor;
-use reco_core::detector::{CameraId, ChromaFormat, Detection, Detector, RawFrame};
+use reco_core::detector::{
+    CameraId, ChromaFormat, Detection, Detector, DetectorError, DetectorFrame, RawFrame,
+    UnifiedDetector,
+};
 
 use super::postprocess;
 
@@ -149,39 +152,34 @@ fn chroma_sample(frame: &RawFrame<'_>, x: u32, y: u32) -> (f32, f32) {
     }
 }
 
-impl Detector for CpuYoloDetector {
-    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
+impl CpuYoloDetector {
+    /// Core inference path shared by the legacy [`Detector`] impl and
+    /// the [`UnifiedDetector`] impl. Returns a typed
+    /// [`DetectorError`] so the unified-trait consumer can react to
+    /// failure; the legacy impl collapses the error to a log + empty
+    /// vec for backwards compatibility.
+    fn detect_raw(
+        &mut self,
+        camera: CameraId,
+        frame: &RawFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("yolo_detect");
 
         let (rgb_chw, scale, pad_x, pad_y) = self.preprocess(frame);
 
         let sz = self.input_size as usize;
-        let input_tensor = match Tensor::from_array(([1, 3, sz, sz], rgb_chw)) {
-            Ok(t) => t,
-            Err(e) => {
-                log::error!("Failed to create input tensor: {e}");
-                return Vec::new();
-            }
-        };
+        let input_tensor = Tensor::from_array(([1, 3, sz, sz], rgb_chw))
+            .map_err(|e| DetectorError::InferenceFailed(format!("tensor build: {e}")))?;
 
-        let outputs = match self.session.run(ort::inputs![input_tensor]) {
-            Ok(o) => o,
-            Err(e) => {
-                log::error!("YOLO inference failed: {e}");
-                return Vec::new();
-            }
-        };
+        let outputs = self
+            .session
+            .run(ort::inputs![input_tensor])
+            .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?;
 
-        let (n, data) = match outputs[0].try_extract_tensor::<f32>() {
-            Ok((shape, slice)) => {
-                // Output shape: [1, N, 6]. Copy to owned vec to release borrow.
-                (shape[1] as usize, slice.to_vec())
-            }
-            Err(e) => {
-                log::error!("Failed to extract YOLO output tensor: {e}");
-                return Vec::new();
-            }
-        };
+        let (n, data) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map(|(shape, slice)| (shape[1] as usize, slice.to_vec()))
+            .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
         drop(outputs);
 
         let detections = postprocess(
@@ -222,7 +220,51 @@ impl Detector for CpuYoloDetector {
             );
         }
 
-        detections
+        Ok(detections)
+    }
+}
+
+impl Detector for CpuYoloDetector {
+    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
+        // Legacy trait: callers consume `Vec<Detection>` directly,
+        // so surface inference errors through the log and fall back
+        // to an empty vector (identical behavior to before the
+        // `detect_raw` extraction).
+        match self.detect_raw(camera, frame) {
+            Ok(dets) => dets,
+            Err(e) => {
+                log::error!("CpuYoloDetector: {e}");
+                Vec::new()
+            }
+        }
+    }
+}
+
+impl UnifiedDetector for CpuYoloDetector {
+    fn name(&self) -> &'static str {
+        "ort-cpu"
+    }
+
+    fn detect(
+        &mut self,
+        camera: CameraId,
+        frame: &DetectorFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        // `DetectorFrame` is `#[non_exhaustive]`, so we pattern-match
+        // the variants we can handle and catch everything else (today:
+        // CUDA on Linux/Windows, Metal on macOS/iOS; tomorrow: any
+        // new residency variant) with a single wildcard arm that
+        // returns a typed "not my frame" error. A future `StitchCore`
+        // dispatch layer routes the frame to a GPU backend instead of
+        // silently producing zero detections.
+        match frame {
+            DetectorFrame::Cpu(raw) => self.detect_raw(camera, raw),
+            _ => Err(DetectorError::UnsupportedFrameKind),
+        }
+    }
+
+    fn class_names(&self) -> Option<&[String]> {
+        Some(&self.labels)
     }
 }
 
@@ -365,5 +407,16 @@ mod tests {
     fn parse_names_dict_string_rejects_non_dict() {
         assert!(parse_names_dict_string("[0: 'x']").is_none());
         assert!(parse_names_dict_string("random garbage").is_none());
+    }
+
+    /// Compile-time: `CpuYoloDetector` must satisfy the `UnifiedDetector`
+    /// bounds so a future `StitchCore::set_detector` signature taking
+    /// `Box<dyn UnifiedDetector>` accepts it. This catches a regression
+    /// where a field accidentally becomes non-`Send` (shared mutable
+    /// state, raw pointer, etc.).
+    #[test]
+    fn cpu_yolo_detector_is_unified_detector_send() {
+        fn assert_unified_send<T: UnifiedDetector + Send + 'static>() {}
+        assert_unified_send::<CpuYoloDetector>();
     }
 }
