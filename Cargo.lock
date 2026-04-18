@@ -5314,7 +5314,6 @@ dependencies = [
  "anyhow",
  "env_logger",
  "log",
- "pollster",
  "reco-autocam",
  "reco-calibrate",
  "reco-core",
@@ -5337,7 +5336,6 @@ dependencies = [
  "gstreamer",
  "gstreamer-app",
  "log",
- "pollster",
  "reco-core",
  "serde",
  "serde_json",
@@ -5352,7 +5350,6 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "log",
- "pollster",
  "reco-core",
  "serde",
  "serde_json",

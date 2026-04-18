@@ -137,8 +137,7 @@ pub fn run_calibrate(
     anyhow::ensure!(pair_count > 0, "no frames could be extracted from videos");
 
     // Init GPU
-    let gpu = pollster::block_on(GpuContext::new())
-        .map_err(|e| anyhow::anyhow!("GPU init failed: {e}"))?;
+    let gpu = GpuContext::new_blocking().map_err(|e| anyhow::anyhow!("GPU init failed: {e}"))?;
     log::info!("GPU: {}", gpu.gpu_name());
 
     // Debug: save GPU-undistorted frames

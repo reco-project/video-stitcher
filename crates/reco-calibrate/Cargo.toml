@@ -30,11 +30,10 @@ serde_json = "1"
 thiserror = "2"
 tracing = { version = "0.1", optional = true }
 reco-io = { path = "../reco-io", optional = true }
-pollster = { version = "0.4", optional = true }
 
 [features]
 profiling = ["dep:tracing", "reco-core/profiling"]
-io = ["dep:reco-io", "dep:pollster"]
+io = ["dep:reco-io"]
 
 [dev-dependencies]
 approx = "0.5"

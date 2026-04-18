@@ -7,53 +7,6 @@ archived at the bottom with the PR that fixed them, so we can tell
 
 ## Active
 
-### A1. CalibrateVideosOptions only accepts lens profiles via file paths
-
-**Impact**: Medium. Blocks a functional lens-profile picker in the GUI.
-
-`reco_calibrate::video::CalibrateVideosOptions::{left_profile, right_profile}`
-are `Option<PathBuf>`. A consumer that already has a `LensProfileSummary`
-from `LensDatabase::candidates()` (Batch B) cannot pass it directly.
-Workaround: look up via `find(camera, model, w, h, lens_info)` which
-returns `(CameraParams, LensProfileInfo)`, but then there's no way to
-hand `CameraParams` to `calibrate_videos` either. The consumer either
-serializes `CameraParams` to a temp JSON just to re-load it, or drops
-down to `CalibrationPipeline::set_profiles()` and reimplements the
-video-frame extraction loop.
-
-**Suggested addition**:
-```rust
-pub struct CalibrateVideosOptions {
-    // ... existing ...
-    pub left_params: Option<CameraParams>,
-    pub right_params: Option<CameraParams>,
-}
-```
-If both `_path` and `_params` are set, `_params` wins.
-
-Currently manifests in the GUI Tier 1 lens picker being read-only -
-we display the detected profile and alternates count but can't let
-the user pick a different profile and re-run from the UI.
-
-### A2. StitchJob has no start_frame option for partial exports
-
-**Impact**: Medium. Blocks the GUI Export dialog's planned time-range
-picker.
-
-`reco_io::StitchJob` exposes `.max_frames(n)` and `.duration(s)` which
-bound the END of the export, but nothing for the START. A consumer
-that wants to export "from 0:15 to 0:30" must currently decode and
-discard frames from 0:00-0:15, which is wasted work for long clips.
-
-**Suggested addition**:
-```rust
-impl StitchJob {
-    /// Skip N frames before the first output frame. Combines with
-    /// max_frames / duration to select a window.
-    pub fn start_frame(mut self, n: u64) -> Self;
-}
-```
-
 ### A3. Preview pipeline and export StitchJob share CUDA context and
 racereliably when both active
 
@@ -109,23 +62,6 @@ feedback.
 **Suggested addition**: per-frame progress emission within
 `extract_frame_pairs`, or at least a "heartbeat" event every 2s so
 consumers know the worker is still alive.
-
-### A6. GpuContext::new() is async, consumers always pollster-wrap
-
-**Impact**: Very minor, but every consumer does the exact same thing.
-
-Deliberate (wgpu adapter creation is async), but every call site in
-reco-cli, reco-gui, reco-obs wraps it in `pollster::block_on`. A
-blocking convenience constructor in reco-core would let consumers
-avoid taking a direct dep on pollster:
-
-```rust
-impl GpuContext {
-    pub fn new_blocking() -> Result<Self, PipelineError> {
-        pollster::block_on(Self::new())
-    }
-}
-```
 
 ### A7. render_to_target() still returns CommandBuffer
 
@@ -205,3 +141,19 @@ drove which upstream changes.
   config_dir, RecentFiles}` behind an opt-in `config` feature.
   Per-consumer namespacing (`gui` / `cli` / `obs`) keeps each
   consumer's settings independent.
+- **R19. CalibrateVideosOptions only accepted lens profiles via paths**
+  Resolved by Batch H: `CalibrateVideosOptions { left_params,
+  right_params: Option<CameraParams> }` added. Lens profile resolution
+  now goes params > path > auto-detect. Consumers with a pre-resolved
+  `CameraParams` (e.g. from `LensDatabase::candidates()`) can skip the
+  file round-trip.
+- **R20. StitchJob had no start_frame for partial exports**
+  Resolved by Batch H: `StitchJob::start_frame(u64)` builder. Combines
+  with `max_frames`/`duration` to select a time window. Implemented as
+  drain-and-discard (no seek), so exports like "0:15 - 0:30" decode
+  from 0:00 but session progress reflects only the exported window.
+- **R21. GpuContext::new() was async, consumers had to pollster-wrap**
+  Resolved by Batch H: `GpuContext::new_blocking()`. reco-cli, reco-io,
+  reco-calibrate, reco-obs, and reco-gui dropped their direct `pollster`
+  deps (except reco-cli, which still needs it for
+  `GpuContext::for_surface` on the preview path).

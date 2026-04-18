@@ -100,6 +100,20 @@ impl GpuContext {
         Self::with_surface(None).await
     }
 
+    /// Blocking convenience wrapper for [`Self::new`].
+    ///
+    /// Uses `pollster` internally so callers in synchronous contexts
+    /// (OBS plugin callbacks, CLI entry points, test harnesses) can
+    /// construct a context without pulling pollster in themselves or
+    /// spinning up a runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GpuError::NoAdapter`] if no compatible GPU is found.
+    pub fn new_blocking() -> Result<Self, GpuError> {
+        pollster::block_on(Self::new())
+    }
+
     /// Initialize a GPU context with an optional compatible surface.
     ///
     /// When a surface is provided, the adapter selection will prefer GPUs

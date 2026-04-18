@@ -28,7 +28,6 @@ reco-detect = { path = "../reco-detect" }
 reco-autocam = { path = "../reco-autocam", optional = true }
 
 slint = { version = "~1.15", features = ["unstable-wgpu-28"] }
-pollster = "0.4"
 rfd = "0.15"
 log = "0.4"
 env_logger = "0.11"

@@ -138,7 +138,7 @@ impl RecoSource {
 
         // Initialize GPU context if we don't have one yet.
         if self.gpu.is_none() {
-            match pollster::block_on(GpuContext::new()) as Result<GpuContext, _> {
+            match GpuContext::new_blocking() as Result<GpuContext, _> {
                 Ok(gpu) => {
                     log::info!("reco-obs: GPU initialized: {}", gpu.gpu_name());
                     self.gpu = Some(gpu);

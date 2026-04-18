@@ -13,7 +13,7 @@
 //! ```rust,ignore
 //! use reco_io::SmartFileSource;
 //!
-//! let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
+//! let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 //! let mut source = SmartFileSource::open("left.mp4", "right.mp4", &gpu, 0)?;
 //! // source implements FrameSource - pass to session.run()
 //! ```

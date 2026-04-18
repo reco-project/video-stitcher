@@ -725,7 +725,7 @@ fn main() -> anyhow::Result<()> {
         ),
 
         Commands::Info => {
-            let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
+            let gpu = reco_core::gpu::GpuContext::new_blocking()?;
             println!("GPU: {}", gpu.gpu_name());
             println!("Backend: {}", gpu.backend_name());
             println!("Driver: {}", gpu.driver_info());

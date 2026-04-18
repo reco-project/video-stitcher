@@ -73,7 +73,7 @@ pub fn run_libcamera(
         ..Default::default()
     };
 
-    let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
+    let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
     let capture_width = cam_config.width;
     let capture_height = cam_config.height;
