@@ -34,7 +34,7 @@ use thiserror::Error;
 
 use crate::calibration::MatchCalibration;
 use crate::gpu::GpuContext;
-use crate::pipeline::{PipelineError, StitchPipeline, YuvPlanes};
+use crate::pipeline::{BgraPlanes, PipelineError, StitchPipeline, YuvPlanes};
 use crate::renderer::InputFormat;
 use crate::rgba_readback::{RgbaReadback, RgbaReadbackError};
 use crate::viewport::ViewportConfig;
@@ -120,6 +120,31 @@ impl LiveStitchSession {
         pitch: f32,
     ) -> Result<Option<&[u8]>, LiveSessionError> {
         let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
+        let rgba =
+            self.readback
+                .readback(self.pipeline.gpu(), self.pipeline.render_target(), cmd)?;
+        Ok(rgba)
+    }
+
+    /// Submit a stereo packed RGBA/BGRA frame and request an RGBA render.
+    ///
+    /// Like [`Self::submit_frame`] but for packed-RGB consumers (OBS
+    /// Browser Source, screen capture, WebRTC ingest). Requires the
+    /// session to have been built with [`InputFormat::Bgra`].
+    ///
+    /// `yaw` and `pitch` are in radians. The returned slice, when
+    /// `Some`, holds `output_width * output_height * 4` bytes of tight
+    /// RGBA valid until the next `submit_*` call.
+    pub fn submit_frame_bgra(
+        &mut self,
+        left: &BgraPlanes<'_>,
+        right: &BgraPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Option<&[u8]>, LiveSessionError> {
+        let cmd = self
+            .pipeline
+            .render_to_target_bgra(left, right, yaw, pitch)?;
         let rgba =
             self.readback
                 .readback(self.pipeline.gpu(), self.pipeline.render_target(), cmd)?;

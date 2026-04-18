@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::MatchCalibration;
 use reco_core::gpu::GpuContext;
-use reco_core::pipeline::{FramePlaneView, StridedYuvPlanes};
+use reco_core::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::renderer::InputFormat;
 use reco_core::session::{LiveSessionConfig, LiveStitchSession};
 use reco_core::viewport::ViewportConfig;
@@ -55,6 +55,12 @@ const PROP_PITCH: &CStr = c"pitch";
 const PROP_LEFT_SOURCE: &CStr = c"left_source";
 /// Name of the OBS source that feeds the right camera.
 const PROP_RIGHT_SOURCE: &CStr = c"right_source";
+/// Upstream pixel format (string: "i420" | "bgra"). Must match what the
+/// picked OBS sources actually deliver - OBS can't negotiate, so this is
+/// a manual hint.
+const PROP_INPUT_FORMAT: &CStr = c"input_format";
+const INPUT_FORMAT_I420: &CStr = c"i420";
+const INPUT_FORMAT_BGRA: &CStr = c"bgra";
 
 // ---------------------------------------------------------------------------
 // Source state
@@ -83,6 +89,10 @@ struct RecoSource {
     /// per side so the render loop never reallocates per frame.
     left_repack: Vec<u8>,
     right_repack: Vec<u8>,
+    /// Which reco-core input format the session was built with. Determines
+    /// which submit path (YUV vs BGRA) we dispatch to and which OBS video
+    /// formats we accept as valid input.
+    input_format: InputFormat,
     /// One-shot warning flag: emitted once per unsupported video format
     /// so we don't flood the log on every frame.
     warned_unsupported_format: bool,
@@ -145,6 +155,7 @@ impl RecoSource {
             right_source_name: String::new(),
             left_repack: Vec::new(),
             right_repack: Vec::new(),
+            input_format: InputFormat::Yuv420p,
             warned_unsupported_format: false,
             diag_tick: 0,
             diag_missed_left: 0,
@@ -244,16 +255,17 @@ impl RecoSource {
                 input_width: self.input_width,
                 input_height: self.input_height,
                 output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
-                input_format: InputFormat::Yuv420p,
+                input_format: self.input_format,
             },
         ) {
             Ok(session) => {
                 log::info!(
-                    "reco-obs: session initialized ({}x{} output, {}x{} input)",
+                    "reco-obs: session initialized ({}x{} output, {}x{} input, format={:?})",
                     self.output_width,
                     self.output_height,
                     self.input_width,
                     self.input_height,
+                    self.input_format,
                 );
                 self.session = Some(session);
                 let buf_size = (self.output_width * self.output_height * 4) as usize;
@@ -350,18 +362,38 @@ impl RecoSource {
             let l = unsafe { &*left_frame };
             let r = unsafe { &*right_frame };
 
-            // Tier 1: I420 only. NV12/YUY2/etc. -> warn once, skip.
-            let format_ok = l.format == ffi::video_format::VIDEO_FORMAT_I420
-                && r.format == ffi::video_format::VIDEO_FORMAT_I420;
+            // Must match what the session was built with. Mismatch =>
+            // warn once and skip. Camera inputs (V4L2, Media Source) are
+            // I420; browser / screen capture / WebRTC are BGRA.
+            let format_ok = match self.input_format {
+                InputFormat::Yuv420p => {
+                    l.format == ffi::video_format::VIDEO_FORMAT_I420
+                        && r.format == ffi::video_format::VIDEO_FORMAT_I420
+                }
+                InputFormat::Bgra => {
+                    matches!(
+                        l.format,
+                        ffi::video_format::VIDEO_FORMAT_BGRA
+                            | ffi::video_format::VIDEO_FORMAT_BGRX
+                            | ffi::video_format::VIDEO_FORMAT_RGBA
+                    ) && matches!(
+                        r.format,
+                        ffi::video_format::VIDEO_FORMAT_BGRA
+                            | ffi::video_format::VIDEO_FORMAT_BGRX
+                            | ffi::video_format::VIDEO_FORMAT_RGBA
+                    )
+                }
+                InputFormat::Nv12 => false,
+            };
             if !format_ok {
                 if !self.warned_unsupported_format {
                     log::warn!(
-                        "reco-obs: unsupported video format (left={:?}, right={:?}); Tier 1 \
-                         accepts only I420 (VIDEO_FORMAT_I420). NV12 is tracked as Tier 2. \
-                         Browser Source / screen capture / WebRTC deliver BGRA and need \
-                         reco-core InputFormat::Bgra support (see reco-obs FRICTION A8). For \
-                         now, use an OBS Media Source pointed at an I420-encoded video file, \
-                         or a V4L2 camera configured for I420 output.",
+                        "reco-obs: upstream format doesn't match session ({:?}, configured \
+                         for {:?}; got left={:?}, right={:?}). Change the plugin's 'Input \
+                         format' property to match the source type: I420 for V4L2 / Media \
+                         Source, BGRA for Browser Source / screen capture / WebRTC.",
+                        self.input_format,
+                        self.input_format,
                         l.format,
                         r.format,
                     );
@@ -387,19 +419,38 @@ impl RecoSource {
                     self.warned_unsupported_format = true;
                 }
             } else {
-                // Wrap OBS planes as StridedYuvPlanes and repack into the
-                // cached tight buffers. `copy_into` takes a single memcpy
-                // fast path when stride == width (common on software
-                // decoders).
-                let left_strided = strided_from_obs(l);
-                let right_strided = strided_from_obs(r);
-                let left_tight = left_strided.copy_into(&mut self.left_repack);
-                let right_tight = right_strided.copy_into(&mut self.right_repack);
-
                 let yaw = (self.yaw_degrees as f32).to_radians();
                 let pitch = (self.pitch_degrees as f32).to_radians();
-                let session = self.session.as_mut().expect("checked above");
-                match session.submit_frame(&left_tight, &right_tight, yaw, pitch) {
+                let result = match self.input_format {
+                    InputFormat::Yuv420p => {
+                        // Wrap OBS planes as StridedYuvPlanes and repack
+                        // into the cached tight buffers. `copy_into` takes
+                        // a single memcpy fast path when stride == width.
+                        let left_strided = strided_from_obs(l);
+                        let right_strided = strided_from_obs(r);
+                        let left_tight = left_strided.copy_into(&mut self.left_repack);
+                        let right_tight = right_strided.copy_into(&mut self.right_repack);
+                        let session = self.session.as_mut().expect("checked above");
+                        session.submit_frame(&left_tight, &right_tight, yaw, pitch)
+                    }
+                    InputFormat::Bgra => {
+                        // BGRA sources: swizzle bytes into cached RGBA
+                        // buffers once per frame. Shader expects RGB in
+                        // .rgb of a single sample. RGBA sources pass
+                        // through without swizzle (we go through the same
+                        // path because the caller would typically hand us
+                        // the right order already).
+                        let left_bgra = build_bgra_planes(l, &mut self.left_repack);
+                        let right_bgra = build_bgra_planes(r, &mut self.right_repack);
+                        let session = self.session.as_mut().expect("checked above");
+                        session.submit_frame_bgra(&left_bgra, &right_bgra, yaw, pitch)
+                    }
+                    InputFormat::Nv12 => {
+                        // Not yet supported in reco-obs; guarded above.
+                        Ok(None)
+                    }
+                };
+                match result {
                     Ok(Some(rgba)) => {
                         self.rgba_buffer.copy_from_slice(rgba);
                         self.frame_ready.store(true, Ordering::Release);
@@ -561,6 +612,11 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
         ffi::obs_data_set_default_int(settings, PROP_INPUT_WIDTH.as_ptr(), 1920);
         ffi::obs_data_set_default_int(settings, PROP_INPUT_HEIGHT.as_ptr(), 1080);
         ffi::obs_data_set_default_string(settings, PROP_CONFIG_PATH.as_ptr(), c"".as_ptr());
+        ffi::obs_data_set_default_string(
+            settings,
+            PROP_INPUT_FORMAT.as_ptr(),
+            INPUT_FORMAT_I420.as_ptr(),
+        );
     }
 }
 
@@ -588,6 +644,27 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
             ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
         );
         ffi::obs_enum_sources(Some(source_enum_proc_list), right_list as *mut c_void);
+
+        // Input format picker. Must match the native format OBS's picked
+        // sources deliver - OBS can't negotiate, and guessing wrong
+        // means no output.
+        let format_list = ffi::obs_properties_add_list(
+            props,
+            PROP_INPUT_FORMAT.as_ptr(),
+            c"Input format".as_ptr(),
+            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+        );
+        ffi::obs_property_list_add_string(
+            format_list,
+            c"I420 (Media Source, V4L2)".as_ptr(),
+            INPUT_FORMAT_I420.as_ptr(),
+        );
+        ffi::obs_property_list_add_string(
+            format_list,
+            c"BGRA (Browser Source, Screen Capture)".as_ptr(),
+            INPUT_FORMAT_BGRA.as_ptr(),
+        );
 
         ffi::obs_properties_add_path(
             props,
@@ -675,8 +752,11 @@ unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_da
     let dims_changed = (src.output_width, src.output_height) != old_output
         || (src.input_width, src.input_height) != old_input;
     let config_changed = src.config_path != old_config_path;
+    // apply_settings sets src.session to None when the input format
+    // changes, so we can use that as our "needs rebuild" signal.
+    let format_changed = src.session.is_none() && src.calibration.is_some();
 
-    if dims_changed || config_changed {
+    if dims_changed || config_changed || format_changed {
         // Destroy old OBS texture since dimensions may have changed.
         unsafe {
             ffi::obs_enter_graphics();
@@ -753,6 +833,44 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Build a [`BgraPlanes`] view over the source frame's RGBA data,
+/// swizzling from BGRA into the cached buffer when needed.
+///
+/// OBS packed RGB formats (BGRA, BGRX, RGBA) all store 4 bytes per
+/// pixel with `linesize[0]` bytes per row (may include padding). We
+/// strip the stride padding into the cached buffer and reorder to
+/// RGBA so the shader can sample `.rgb` directly.
+fn build_bgra_planes<'a>(frame: &ffi::obs_source_frame, buffer: &'a mut Vec<u8>) -> BgraPlanes<'a> {
+    let w = frame.width as usize;
+    let h = frame.height as usize;
+    let stride = frame.linesize[0] as usize;
+    let tight_size = w * h * 4;
+    buffer.resize(tight_size, 0);
+    // SAFETY: frame.data[0] is valid for linesize[0] * height bytes
+    // between get_frame/release_frame, guaranteed by OBS.
+    let src = unsafe { std::slice::from_raw_parts(frame.data[0] as *const u8, stride * h) };
+    let bgra_mode = matches!(
+        frame.format,
+        ffi::video_format::VIDEO_FORMAT_BGRA | ffi::video_format::VIDEO_FORMAT_BGRX
+    );
+    for row in 0..h {
+        let src_row = &src[row * stride..row * stride + w * 4];
+        let dst_row = &mut buffer[row * w * 4..(row + 1) * w * 4];
+        if bgra_mode {
+            for (s, d) in src_row.chunks_exact(4).zip(dst_row.chunks_exact_mut(4)) {
+                d[0] = s[2];
+                d[1] = s[1];
+                d[2] = s[0];
+                d[3] = s[3];
+            }
+        } else {
+            // VIDEO_FORMAT_RGBA: already in the order the shader wants.
+            dst_row.copy_from_slice(src_row);
+        }
+    }
+    BgraPlanes::from_rgba(buffer)
+}
 
 /// Wrap an `obs_source_frame` (I420 only) as a [`StridedYuvPlanes`] view.
 ///
@@ -861,6 +979,32 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         let ih = ffi::obs_data_get_int(settings, PROP_INPUT_HEIGHT.as_ptr());
         if ih > 0 {
             src.input_height = ih as u32;
+        }
+
+        // Input format choice. Parse string -> InputFormat. Unknown
+        // strings fall back to I420 with a one-shot warning.
+        let format_ptr = ffi::obs_data_get_string(settings, PROP_INPUT_FORMAT.as_ptr());
+        let new_format = if format_ptr.is_null() {
+            InputFormat::Yuv420p
+        } else {
+            match CStr::from_ptr(format_ptr).to_str() {
+                Ok("bgra") => InputFormat::Bgra,
+                Ok("i420") | Ok("") => InputFormat::Yuv420p,
+                Ok(other) => {
+                    log::warn!("reco-obs: unknown input_format '{other}', defaulting to I420");
+                    InputFormat::Yuv420p
+                }
+                Err(_) => InputFormat::Yuv420p,
+            }
+        };
+        if new_format != src.input_format {
+            src.input_format = new_format;
+            // Existing session was built with the old format; drop it so
+            // source_update rebuilds. This happens after apply_settings
+            // returns (the dim / config / format-change gate reruns
+            // try_init_pipeline).
+            src.session = None;
+            src.warned_unsupported_format = false;
         }
 
         // Upstream source picks. Empty string clears the slot.
