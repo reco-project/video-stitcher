@@ -225,10 +225,81 @@ pub struct audio_output_data {
     _opaque: [u8; 0],
 }
 
-/// Async video frame (opaque placeholder).
+/// Maximum number of planes in an async video frame (from libobs `media-io-defs.h`).
+pub const MAX_AV_PLANES: usize = 8;
+
+/// OBS video pixel format enum (subset - see `libobs/media-io/video-io.h`).
+///
+/// Only the variants reco-obs inspects are represented. Other values are
+/// delivered by OBS but Tier 1 ingestion rejects them with a warning.
+#[repr(i32)]
+#[allow(non_camel_case_types, dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum video_format {
+    /// Unset / unknown format.
+    VIDEO_FORMAT_NONE = 0,
+    /// Planar 4:2:0, three planes (Y, U, V). Matches our tight `YuvPlanes`.
+    VIDEO_FORMAT_I420 = 1,
+    /// Planar 4:2:0, two planes (Y, interleaved UV). Tier 2 target.
+    VIDEO_FORMAT_NV12 = 2,
+    /// Packed 4:2:2 - YVYU.
+    VIDEO_FORMAT_YVYU = 3,
+    /// Packed 4:2:2 - YUY2.
+    VIDEO_FORMAT_YUY2 = 4,
+    /// Packed 4:2:2 - UYVY.
+    VIDEO_FORMAT_UYVY = 5,
+    /// Packed RGBA.
+    VIDEO_FORMAT_RGBA = 6,
+    /// Packed BGRA.
+    VIDEO_FORMAT_BGRA = 7,
+    /// Packed BGRX.
+    VIDEO_FORMAT_BGRX = 8,
+    /// 8-bit grayscale.
+    VIDEO_FORMAT_Y800 = 9,
+    /// Planar 4:4:4.
+    VIDEO_FORMAT_I444 = 10,
+}
+
+/// Async video frame delivered to async video sources / consumed via
+/// [`obs_source_get_frame`]. Layout mirrors `struct obs_source_frame`
+/// in `libobs/obs.h` for OBS 30.x.
+///
+/// Fields after `trc` are used internally by libobs; treat them as
+/// opaque and don't rely on their offsets.
 #[repr(C)]
 pub struct obs_source_frame {
-    _opaque: [u8; 0],
+    /// Plane pointers. Only the first few are populated depending on `format`.
+    pub data: [*mut u8; MAX_AV_PLANES],
+    /// Bytes per row per plane (may include padding).
+    pub linesize: [u32; MAX_AV_PLANES],
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+    /// Presentation timestamp in nanoseconds.
+    pub timestamp: u64,
+    /// Pixel format.
+    pub format: video_format,
+    /// 4x4 color matrix (column-major) for YUV->RGB conversion.
+    pub color_matrix: [f32; 16],
+    /// Whether the source delivers full-range YUV (vs. limited 16-235).
+    pub full_range: bool,
+    /// HDR max luminance hint.
+    pub max_luminance: u16,
+    /// Min of each color channel (for range shaping).
+    pub color_range_min: [f32; 3],
+    /// Max of each color channel.
+    pub color_range_max: [f32; 3],
+    /// If true, the frame is Y-flipped.
+    pub flip: bool,
+    /// Render flags (bit 0 = is linear alpha).
+    pub flags: u8,
+    /// Transfer characteristic (enum video_trc in libobs).
+    pub trc: u8,
+    /// Internal: refcount (don't touch).
+    pub refs: std::sync::atomic::AtomicI32,
+    /// Internal: "already rendered" flag.
+    pub prev_frame: bool,
 }
 
 /// Async audio data (opaque placeholder).
@@ -243,11 +314,51 @@ pub struct obs_missing_files_t {
     _opaque: [u8; 0],
 }
 
-/// Source enumeration callback type.
+/// Source enumeration callback type (for `enum_active_sources` on a source).
 #[allow(non_camel_case_types)]
 pub type obs_source_enum_proc_t = Option<
     unsafe extern "C" fn(parent: *mut obs_source_t, child: *mut obs_source_t, param: *mut c_void),
 >;
+
+/// Global source enumeration callback (used by `obs_enum_sources`).
+///
+/// Return `true` to continue enumeration, `false` to stop.
+#[allow(non_camel_case_types)]
+pub type obs_enum_sources_cb =
+    Option<unsafe extern "C" fn(param: *mut c_void, source: *mut obs_source_t) -> bool>;
+
+/// UI dropdown kind (from `libobs/obs-properties.h`). We use
+/// `OBS_COMBO_TYPE_LIST` for non-editable source pickers.
+#[repr(i32)]
+#[allow(non_camel_case_types, dead_code)]
+#[derive(Debug, Clone, Copy)]
+pub enum obs_combo_type {
+    /// Invalid / unset.
+    OBS_COMBO_TYPE_INVALID = 0,
+    /// User-editable free-form entry.
+    OBS_COMBO_TYPE_EDITABLE = 1,
+    /// Fixed list (what we want for source pickers).
+    OBS_COMBO_TYPE_LIST = 2,
+    /// Radio-button group.
+    OBS_COMBO_TYPE_RADIO = 3,
+}
+
+/// Dropdown value type (we only use `STRING` for source names).
+#[repr(i32)]
+#[allow(non_camel_case_types, dead_code)]
+#[derive(Debug, Clone, Copy)]
+pub enum obs_combo_format {
+    /// Invalid / unset.
+    OBS_COMBO_FORMAT_INVALID = 0,
+    /// Integer values.
+    OBS_COMBO_FORMAT_INT = 1,
+    /// Float values.
+    OBS_COMBO_FORMAT_FLOAT = 2,
+    /// String values (what we use for source names).
+    OBS_COMBO_FORMAT_STRING = 3,
+    /// Bool values.
+    OBS_COMBO_FORMAT_BOOL = 4,
+}
 
 /// The source info registration struct.
 ///
@@ -463,4 +574,32 @@ unsafe extern "C" {
     ) -> *mut gs_eparam_t;
     pub fn gs_effect_set_texture(param: *mut gs_eparam_t, val: *mut gs_texture_t);
     pub fn gs_effect_loop(effect: *mut gs_effect_t, name: *const c_char) -> bool;
+
+    // Source enumeration + lookup (Tier 1 frame ingestion)
+    pub fn obs_enum_sources(enum_proc: obs_enum_sources_cb, param: *mut c_void);
+    pub fn obs_get_source_by_name(name: *const c_char) -> *mut obs_source_t;
+    pub fn obs_source_release(source: *mut obs_source_t);
+    pub fn obs_source_get_name(source: *const obs_source_t) -> *const c_char;
+
+    // Dropdown property (for source pickers)
+    pub fn obs_properties_add_list(
+        props: *mut obs_properties_t,
+        name: *const c_char,
+        description: *const c_char,
+        list_type: obs_combo_type,
+        format: obs_combo_format,
+    ) -> *mut obs_property_t;
+    pub fn obs_property_list_add_string(
+        p: *mut obs_property_t,
+        name: *const c_char,
+        val: *const c_char,
+    ) -> usize;
+
+    // Pull-based async video frame access.
+    //
+    // Returns the source's current async frame (ref-counted). Must be
+    // paired with obs_source_release_frame to avoid leaking. The frame
+    // contents are valid only between these two calls.
+    pub fn obs_source_get_frame(source: *mut obs_source_t) -> *mut obs_source_frame;
+    pub fn obs_source_release_frame(source: *mut obs_source_t, frame: *mut obs_source_frame);
 }

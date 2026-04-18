@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::MatchCalibration;
 use reco_core::gpu::GpuContext;
-use reco_core::pipeline::YuvPlanes;
+use reco_core::pipeline::{FramePlaneView, StridedYuvPlanes};
 use reco_core::renderer::InputFormat;
 use reco_core::session::{LiveSessionConfig, LiveStitchSession};
 use reco_core::viewport::ViewportConfig;
@@ -51,6 +51,10 @@ const PROP_INPUT_WIDTH: &CStr = c"input_width";
 const PROP_INPUT_HEIGHT: &CStr = c"input_height";
 const PROP_YAW: &CStr = c"yaw";
 const PROP_PITCH: &CStr = c"pitch";
+/// Name of the OBS source that feeds the left camera.
+const PROP_LEFT_SOURCE: &CStr = c"left_source";
+/// Name of the OBS source that feeds the right camera.
+const PROP_RIGHT_SOURCE: &CStr = c"right_source";
 
 // ---------------------------------------------------------------------------
 // Source state
@@ -64,6 +68,24 @@ struct RecoSource {
     /// High-level push session (bundles pipeline + RGBA readback).
     /// None until calibration is loaded and GPU is initialized.
     session: Option<LiveStitchSession>,
+
+    /// Upstream OBS source that feeds the left camera. Owned reference
+    /// (obs_get_source_by_name increments refcount, we release in destroy
+    /// or when the user picks a different source).
+    left_source: *mut ffi::obs_source_t,
+    /// Upstream OBS source that feeds the right camera. See [`Self::left_source`].
+    right_source: *mut ffi::obs_source_t,
+    /// Source name the user picked for the left camera (used to detect changes).
+    left_source_name: String,
+    /// Source name the user picked for the right camera.
+    right_source_name: String,
+    /// Reusable tight-pack buffers for `StridedYuvPlanes::copy_into`. One
+    /// per side so the render loop never reallocates per frame.
+    left_repack: Vec<u8>,
+    right_repack: Vec<u8>,
+    /// One-shot warning flag: emitted once per unsupported video format
+    /// so we don't flood the log on every frame.
+    warned_unsupported_format: bool,
 
     /// Current calibration loaded from the config file.
     calibration: Option<MatchCalibration>,
@@ -102,6 +124,13 @@ impl RecoSource {
     fn new() -> Self {
         Self {
             session: None,
+            left_source: ptr::null_mut(),
+            right_source: ptr::null_mut(),
+            left_source_name: String::new(),
+            right_source_name: String::new(),
+            left_repack: Vec::new(),
+            right_repack: Vec::new(),
+            warned_unsupported_format: false,
             calibration: None,
             config_path: String::new(),
             output_width: 1920,
@@ -113,6 +142,33 @@ impl RecoSource {
             rgba_buffer: Vec::new(),
             frame_ready: AtomicBool::new(false),
             obs_texture: ptr::null_mut(),
+        }
+    }
+
+    /// Replace `slot` with a new OBS source reference (resolved from
+    /// `new_name` via `obs_get_source_by_name`). Releases the old ref if
+    /// one was held. Safe to call with an empty name - that just releases.
+    unsafe fn set_source_slot(slot: &mut *mut ffi::obs_source_t, new_name: &str) {
+        unsafe {
+            if !slot.is_null() {
+                ffi::obs_source_release(*slot);
+                *slot = ptr::null_mut();
+            }
+            if new_name.is_empty() {
+                return;
+            }
+            let cstr = match std::ffi::CString::new(new_name) {
+                Ok(s) => s,
+                Err(_) => {
+                    log::warn!("reco-obs: source name contains NUL, ignoring");
+                    return;
+                }
+            };
+            let ptr = ffi::obs_get_source_by_name(cstr.as_ptr());
+            if ptr.is_null() {
+                log::warn!("reco-obs: upstream source '{new_name}' not found (not yet created?)");
+            }
+            *slot = ptr;
         }
     }
 
@@ -198,52 +254,97 @@ impl RecoSource {
         }
     }
 
-    /// Perform a render and readback cycle via [`LiveStitchSession`].
+    /// Pull the latest async frame pair from the upstream OBS sources,
+    /// stitch, and stash the RGBA result for `video_render`.
     ///
-    /// Currently renders a blank frame (all-zero YUV) since we don't have
-    /// live camera input wired up yet. When real OBS frame callbacks are
-    /// plumbed, the strided `obs_source_frame` planes should be wrapped
-    /// in [`reco_core::pipeline::StridedYuvPlanes`] and repacked into a
-    /// cached `Vec<u8>` via `copy_into(&mut buf)` before submission.
+    /// Returns silently (no render) when either upstream source is unset,
+    /// has no current frame, or delivers a format other than I420. The
+    /// `warned_unsupported_format` flag ensures unsupported-format warnings
+    /// fire at most once per source instance.
     fn render_and_readback(&mut self) {
-        let session = match &mut self.session {
-            Some(s) => s,
-            None => return,
-        };
+        if self.session.is_none() {
+            return;
+        }
+        if self.left_source.is_null() || self.right_source.is_null() {
+            return;
+        }
 
-        // TODO: Wire up actual camera frame data from OBS source inputs.
-        // For now, render a test pattern (zero YUV = green in BT.601).
-        let y_size = (self.input_width * self.input_height) as usize;
-        let uv_size = y_size / 4;
-        let y_data = vec![0u8; y_size];
-        let u_data = vec![128u8; uv_size];
-        let v_data = vec![128u8; uv_size];
+        // Acquire frames (obs_source_get_frame increments the internal
+        // ref; must pair with release_frame).
+        let left_frame = unsafe { ffi::obs_source_get_frame(self.left_source) };
+        let right_frame = unsafe { ffi::obs_source_get_frame(self.right_source) };
 
-        let left = YuvPlanes {
-            y: &y_data,
-            u: &u_data,
-            v: &v_data,
-        };
-        let right = YuvPlanes {
-            y: &y_data,
-            u: &u_data,
-            v: &v_data,
-        };
+        if !left_frame.is_null() && !right_frame.is_null() {
+            // SAFETY: both pointers non-null; OBS guarantees the frames
+            // are valid between get_frame and release_frame.
+            let l = unsafe { &*left_frame };
+            let r = unsafe { &*right_frame };
 
-        let yaw = (self.yaw_degrees as f32).to_radians();
-        let pitch = (self.pitch_degrees as f32).to_radians();
+            // Tier 1: I420 only. NV12/YUY2/etc. -> warn once, skip.
+            let format_ok = l.format == ffi::video_format::VIDEO_FORMAT_I420
+                && r.format == ffi::video_format::VIDEO_FORMAT_I420;
+            if !format_ok {
+                if !self.warned_unsupported_format {
+                    log::warn!(
+                        "reco-obs: unsupported video format (left={:?}, right={:?}); only I420 \
+                         is accepted in Tier 1. Set the upstream source to deliver I420 or wait \
+                         for NV12 support.",
+                        l.format,
+                        r.format,
+                    );
+                    self.warned_unsupported_format = true;
+                }
+            } else if l.width != self.input_width
+                || l.height != self.input_height
+                || r.width != self.input_width
+                || r.height != self.input_height
+            {
+                if !self.warned_unsupported_format {
+                    log::warn!(
+                        "reco-obs: input-dim mismatch (configured {}x{}, left={}x{}, \
+                         right={}x{}). Update the 'Input width/height' properties to match \
+                         your camera.",
+                        self.input_width,
+                        self.input_height,
+                        l.width,
+                        l.height,
+                        r.width,
+                        r.height,
+                    );
+                    self.warned_unsupported_format = true;
+                }
+            } else {
+                // Wrap OBS planes as StridedYuvPlanes and repack into the
+                // cached tight buffers. `copy_into` takes a single memcpy
+                // fast path when stride == width (common on software
+                // decoders).
+                let left_strided = strided_from_obs(l);
+                let right_strided = strided_from_obs(r);
+                let left_tight = left_strided.copy_into(&mut self.left_repack);
+                let right_tight = right_strided.copy_into(&mut self.right_repack);
 
-        match session.submit_frame(&left, &right, yaw, pitch) {
-            Ok(Some(rgba)) => {
-                self.rgba_buffer.copy_from_slice(rgba);
-                self.frame_ready.store(true, Ordering::Release);
+                let yaw = (self.yaw_degrees as f32).to_radians();
+                let pitch = (self.pitch_degrees as f32).to_radians();
+                let session = self.session.as_mut().expect("checked above");
+                match session.submit_frame(&left_tight, &right_tight, yaw, pitch) {
+                    Ok(Some(rgba)) => {
+                        self.rgba_buffer.copy_from_slice(rgba);
+                        self.frame_ready.store(true, Ordering::Release);
+                    }
+                    Ok(None) => { /* pipeline warmup */ }
+                    Err(e) => {
+                        log::error!("reco-obs: render/readback failed: {e}");
+                    }
+                }
             }
-            Ok(None) => {
-                // Pipeline warmup; next tick will have data.
-            }
-            Err(e) => {
-                log::error!("reco-obs: render/readback failed: {e}");
-            }
+        }
+
+        // Always release frames we acquired.
+        if !left_frame.is_null() {
+            unsafe { ffi::obs_source_release_frame(self.left_source, left_frame) };
+        }
+        if !right_frame.is_null() {
+            unsafe { ffi::obs_source_release_frame(self.right_source, right_frame) };
         }
     }
 
@@ -317,6 +418,19 @@ unsafe extern "C" fn source_destroy(data: *mut c_void) {
 
     let mut src = unsafe { Box::from_raw(data as *mut RecoSource) };
 
+    // Release the upstream source refs we held. Must run before the Box
+    // is dropped - OBS tracks ref lifetime through these calls.
+    unsafe {
+        if !src.left_source.is_null() {
+            ffi::obs_source_release(src.left_source);
+            src.left_source = ptr::null_mut();
+        }
+        if !src.right_source.is_null() {
+            ffi::obs_source_release(src.right_source);
+            src.right_source = ptr::null_mut();
+        }
+    }
+
     // Destroy OBS texture on the graphics thread.
     unsafe {
         ffi::obs_enter_graphics();
@@ -360,6 +474,26 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
 unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_properties_t {
     unsafe {
         let props = ffi::obs_properties_create();
+
+        // Left / right upstream source pickers. Populated via
+        // obs_enum_sources at property-open time.
+        let left_list = ffi::obs_properties_add_list(
+            props,
+            PROP_LEFT_SOURCE.as_ptr(),
+            c"Left camera source".as_ptr(),
+            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+        );
+        ffi::obs_enum_sources(Some(source_enum_proc_list), left_list as *mut c_void);
+
+        let right_list = ffi::obs_properties_add_list(
+            props,
+            PROP_RIGHT_SOURCE.as_ptr(),
+            c"Right camera source".as_ptr(),
+            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+        );
+        ffi::obs_enum_sources(Some(source_enum_proc_list), right_list as *mut c_void);
 
         ffi::obs_properties_add_path(
             props,
@@ -520,6 +654,83 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Wrap an `obs_source_frame` (I420 only) as a [`StridedYuvPlanes`] view.
+///
+/// Assumes the caller has already verified `format == VIDEO_FORMAT_I420`.
+/// OBS delivers I420 with plane[0]=Y (full-res), plane[1]=U, plane[2]=V
+/// (each half-res per dimension).
+fn strided_from_obs<'a>(frame: &'a ffi::obs_source_frame) -> StridedYuvPlanes<'a> {
+    let half_w = frame.width / 2;
+    let half_h = frame.height / 2;
+    // SAFETY: OBS guarantees data[i] points to linesize[i] * plane_height
+    // bytes while the frame is held. We build slices of exactly that length
+    // so FramePlaneView can traverse safely via stride indexing.
+    let y_slice = unsafe {
+        std::slice::from_raw_parts(
+            frame.data[0] as *const u8,
+            (frame.linesize[0] as usize) * (frame.height as usize),
+        )
+    };
+    let u_slice = unsafe {
+        std::slice::from_raw_parts(
+            frame.data[1] as *const u8,
+            (frame.linesize[1] as usize) * (half_h as usize),
+        )
+    };
+    let v_slice = unsafe {
+        std::slice::from_raw_parts(
+            frame.data[2] as *const u8,
+            (frame.linesize[2] as usize) * (half_h as usize),
+        )
+    };
+    StridedYuvPlanes {
+        y: FramePlaneView {
+            data: y_slice,
+            stride: frame.linesize[0],
+            width: frame.width,
+            height: frame.height,
+        },
+        u: FramePlaneView {
+            data: u_slice,
+            stride: frame.linesize[1],
+            width: half_w,
+            height: half_h,
+        },
+        v: FramePlaneView {
+            data: v_slice,
+            stride: frame.linesize[2],
+            width: half_w,
+            height: half_h,
+        },
+    }
+}
+
+/// OBS enumeration callback: appends every source name to the dropdown
+/// list passed as `param`. Always returns `true` to continue iterating.
+///
+/// Filtering out sources that can't deliver async video (scenes,
+/// transitions, audio-only inputs) requires additional bindings
+/// (`obs_source_get_output_flags`). For Tier 1 we accept everything;
+/// picking a bad source just means `obs_source_get_frame` returns null
+/// and we skip.
+unsafe extern "C" fn source_enum_proc_list(
+    param: *mut c_void,
+    source: *mut ffi::obs_source_t,
+) -> bool {
+    if param.is_null() || source.is_null() {
+        return true;
+    }
+    let prop = param as *mut ffi::obs_property_t;
+    let name_ptr = unsafe { ffi::obs_source_get_name(source) };
+    if !name_ptr.is_null() {
+        unsafe {
+            // Use the same cstring as both label and value.
+            ffi::obs_property_list_add_string(prop, name_ptr, name_ptr);
+        }
+    }
+    true
+}
+
 /// Read settings from an `obs_data_t` into the source struct.
 ///
 /// # Safety
@@ -550,6 +761,32 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         let ih = ffi::obs_data_get_int(settings, PROP_INPUT_HEIGHT.as_ptr());
         if ih > 0 {
             src.input_height = ih as u32;
+        }
+
+        // Upstream source picks. Empty string clears the slot.
+        let left_ptr = ffi::obs_data_get_string(settings, PROP_LEFT_SOURCE.as_ptr());
+        let left_name = if left_ptr.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(left_ptr).to_string_lossy().into_owned()
+        };
+        if left_name != src.left_source_name {
+            RecoSource::set_source_slot(&mut src.left_source, &left_name);
+            src.left_source_name = left_name;
+            // New source may deliver a different format; re-enable warning.
+            src.warned_unsupported_format = false;
+        }
+
+        let right_ptr = ffi::obs_data_get_string(settings, PROP_RIGHT_SOURCE.as_ptr());
+        let right_name = if right_ptr.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(right_ptr).to_string_lossy().into_owned()
+        };
+        if right_name != src.right_source_name {
+            RecoSource::set_source_slot(&mut src.right_source, &right_name);
+            src.right_source_name = right_name;
+            src.warned_unsupported_format = false;
         }
 
         // Viewport position.
