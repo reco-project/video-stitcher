@@ -36,6 +36,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
+use crate::core::{StitchCore, StitchCoreConfig, StitchCoreError};
 use crate::detector::{Detection, Detector};
 use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, GpuEncoder};
@@ -214,6 +215,10 @@ pub enum SessionError {
     /// GPU pipeline error.
     #[error("pipeline: {0}")]
     Pipeline(#[from] PipelineError),
+
+    /// `StitchCore` error (wraps pipeline / readback / config).
+    #[error("core: {0}")]
+    Core(#[from] StitchCoreError),
 
     /// NV12 conversion error.
     #[error("NV12 converter: {0}")]
@@ -469,7 +474,13 @@ impl StitchSessionBuilder {
 /// Call [`finish`](Self::finish) to flush the last frame and finalize
 /// encoding.
 pub struct StitchSession {
-    pub(crate) pipeline: StitchPipeline,
+    /// The canonical push-first core. Owns the `StitchPipeline`,
+    /// readback staging, coverage boundary, and director slot. The
+    /// session's director + legacy-detector path delegates pose +
+    /// coverage decisions to `self.core` during the plan-step-2
+    /// transition; later tranches will migrate the legacy
+    /// `DetectionPipeline` into the core too.
+    pub(crate) core: StitchCore,
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
     /// Additional encoders for multi-output (stream + record).
@@ -510,11 +521,6 @@ pub struct StitchSession {
     /// Created lazily on the first MetalResident frame.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
-
-    /// Precomputed coverage boundary for "no-black" viewport constraining.
-    /// Built from calibration at session creation. In world space.
-    /// Rig tilt correction is applied per-corner inside `safe_clamp`.
-    coverage: Option<crate::projection::CoverageBoundary>,
 
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
@@ -564,33 +570,41 @@ impl StitchSession {
         let output_width = config.viewport.width;
         let output_height = config.viewport.height;
 
-        let pipeline = StitchPipeline::with_gpu(
-            gpu,
-            config.calibration,
-            config.viewport,
-            config.input_width,
-            config.input_height,
-            config.output_format,
-            config.input_format,
-        )?;
-
+        // Build a `StitchCore` as the session's rendering foundation.
+        // Core owns the pipeline + readback + coverage + projection +
+        // camera_input. The session layers on NV12 conversion, async
+        // encoding, lookahead, and the legacy per-platform detection
+        // pipeline (until the unified-detector migration of the
+        // session body completes).
+        //
         // Rotation is NOT applied here. It's handled by:
         // - CPU path: decoder reverses buffers in extract_yuv()
         // - GPU path: configure_from_source() sets shader UV flip in run()
         // SessionConfig.left_rotation/right_rotation are kept for Layer 1
         // consumers who call set_flip_180() manually.
+        let core = StitchCore::new(
+            gpu,
+            StitchCoreConfig {
+                calibration: config.calibration,
+                viewport: config.viewport,
+                input_width: config.input_width,
+                input_height: config.input_height,
+                // `OutputFormat` -> `wgpu::TextureFormat` via the
+                // `From` impl in `crate::gpu`; covers all three
+                // session-facing variants (Rgba8Unorm, Rgba8UnormSrgb,
+                // Bgra8UnormSrgb).
+                output_format: config.output_format.into(),
+                input_format: config.input_format,
+                projection: None,
+                camera_input: None,
+                replay_buffer_duration: None,
+            },
+        )?;
 
-        let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
-
-        // Compute world-space coverage boundary from calibration (cheap, <1ms).
-        // Rig tilt correction is applied per-corner inside safe_clamp.
-        let coverage = crate::projection::CoverageBoundary::from_calibration(
-            pipeline.calibration(),
-            &pipeline.scene,
-        );
+        let nv12_converter = Nv12Converter::new(core.gpu(), output_width, output_height)?;
 
         Ok(Self {
-            pipeline,
+            core,
             nv12_converter,
             encoder: None,
             gpu_encoder: None,
@@ -610,7 +624,6 @@ impl StitchSession {
             gpu_buf_info: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
-            coverage: Some(coverage),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -620,10 +633,13 @@ impl StitchSession {
 
     /// The precomputed coverage boundary for "no-black" viewport constraining.
     ///
-    /// Use [`CoverageBoundary::safe_clamp`](crate::projection::CoverageBoundary::safe_clamp) to constrain viewport positions,
-    /// or [`CoverageBoundary::max_fov_degrees`](crate::projection::CoverageBoundary::max_fov_degrees) for the zoom-out ceiling.
+    /// Delegates to [`StitchCore::coverage`]; use
+    /// [`CoverageBoundary::safe_clamp`](crate::projection::CoverageBoundary::safe_clamp) to
+    /// constrain viewport positions, or
+    /// [`CoverageBoundary::max_fov_degrees`](crate::projection::CoverageBoundary::max_fov_degrees)
+    /// for the zoom-out ceiling.
     pub fn coverage(&self) -> Option<&crate::projection::CoverageBoundary> {
-        self.coverage.as_ref()
+        self.core.coverage()
     }
 
     /// Full angular extent of the stitched panorama.
@@ -634,7 +650,7 @@ impl StitchSession {
     /// `None` if the session has no coverage boundary (should not happen
     /// for sessions built from a valid calibration).
     pub fn panorama_extent(&self) -> Option<crate::projection::PanoramaExtent> {
-        self.coverage.as_ref().map(|c| {
+        self.core.coverage().map(|c| {
             let (yaw_min, yaw_max) = c.yaw_range();
             let (pitch_min, pitch_max) = c.pitch_range();
             crate::projection::PanoramaExtent {
@@ -762,24 +778,26 @@ impl StitchSession {
         // The director outputs world-space coordinates (from ball detections).
         // Clamp in world space, then convert to user space for the renderer
         // (which applies rig_tilt internally in its view matrix).
-        if let Some(ref coverage) = self.coverage {
+        if let Some(coverage) = self.core.coverage() {
             if let Some(ref mut fov) = pos.fov_degrees {
                 *fov = fov.min(coverage.max_fov_degrees());
             }
-            let fov = pos.fov_degrees.unwrap_or_else(|| self.pipeline.fov());
-            let aspect = self.pipeline.viewport().aspect_ratio();
+            let fov = pos
+                .fov_degrees
+                .unwrap_or_else(|| self.core.pipeline().fov());
+            let aspect = self.core.pipeline().viewport().aspect_ratio();
             // Clamp in world space (no rig_tilt transform needed).
             let clamped = coverage.safe_clamp(pos.yaw, pos.pitch, fov, aspect, 0.0);
             pos.yaw = clamped.yaw;
             // Convert world -> user: the renderer applies rig_tilt as
             // a rotation, so the effective world pitch at a given yaw is
             // user_pitch + rig_tilt * cos(yaw). Invert to get user_pitch.
-            let rig_tilt = self.pipeline.viewport().rig_tilt;
+            let rig_tilt = self.core.pipeline().viewport().rig_tilt;
             pos.pitch = clamped.pitch - rig_tilt * clamped.yaw.cos();
         }
 
         if let Some(fov) = pos.fov_degrees {
-            self.pipeline.set_fov(fov);
+            self.core.pipeline_mut().set_fov(fov);
         }
         pos
     }
@@ -798,7 +816,7 @@ impl StitchSession {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect {
-            let (width, height) = self.pipeline.source_info();
+            let (width, height) = self.core.pipeline().source_info();
             let detections = self.detection.run_detection(frame, width, height);
             self.detection.last_detections = self.map_detections(detections);
         }
@@ -877,7 +895,7 @@ impl StitchSession {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect && self.detection.has_metal_detector() {
-            let gpu = self.pipeline.gpu();
+            let gpu = self.core.gpu();
             let detections = self
                 .detection
                 .run_metal_detection(left_cvpb, right_cvpb, width, height, gpu);
@@ -932,8 +950,8 @@ impl StitchSession {
     /// handled at the detector level by `reco-autocam`'s `RoiFilteredDetector`
     /// decorators, so this method is pure coordinate mapping.
     fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
-        let calibration = self.pipeline.calibration();
-        let scene = &self.pipeline.scene;
+        let calibration = self.core.pipeline().calibration();
+        let scene = &self.core.pipeline().scene;
 
         detections
             .iter()
@@ -989,7 +1007,7 @@ impl StitchSession {
         // Get viewport position (from director or override).
         let pos = if let Some(ovr) = override_position {
             if let Some(fov) = ovr.fov_degrees {
-                self.pipeline.set_fov(fov);
+                self.core.pipeline_mut().set_fov(fov);
             }
             ovr
         } else {
@@ -1033,7 +1051,7 @@ impl StitchSession {
             return self.process_metal_frame(left, right, yaw, pitch);
         }
 
-        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
+        let render_buf = self.core.render_stereo_frame_at_pose(frame, yaw, pitch)?;
         self.submit_render_output(render_buf)
     }
 
@@ -1049,18 +1067,17 @@ impl StitchSession {
         // Lazily create the texture cache on first MetalResident frame.
         if self.metal_texture_cache.is_none() {
             self.metal_texture_cache = Some(crate::metal_interop::MetalTextureCache::new(
-                self.pipeline.gpu(),
+                self.core.gpu(),
             )?);
             log::info!("Metal zero-copy: texture cache initialized");
         }
         let cache = self.metal_texture_cache.as_ref().unwrap();
 
         // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
-        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.pipeline.gpu())? };
-        let (right_y, right_uv) =
-            unsafe { cache.import_nv12(right.as_ptr(), self.pipeline.gpu())? };
+        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
+        let (right_y, right_uv) = unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
 
-        let render_buf = self.pipeline.render_imported_textures(
+        let render_buf = self.core.render_imported_textures_at_pose(
             &left_y.texture,
             &left_uv.texture,
             &right_y.texture,
@@ -1087,8 +1104,8 @@ impl StitchSession {
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
         let nv12_data = self.nv12_converter.convert_and_readback(
-            self.pipeline.gpu(),
-            self.pipeline.render_target(),
+            self.core.gpu(),
+            self.core.pipeline().render_target(),
             render_commands,
         )?;
 
@@ -1132,9 +1149,13 @@ impl StitchSession {
                 "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
             )
         })?;
-        let render_buf =
-            self.pipeline
-                .render_gpu_frame(bind_groups, left_slot, right_slot, pos.yaw, pos.pitch);
+        let render_buf = self.core.render_gpu_frame_at_pose(
+            bind_groups,
+            left_slot,
+            right_slot,
+            pos.yaw,
+            pos.pitch,
+        );
         self.submit_render_output(render_buf)?;
 
         // Release slots for decode thread to reuse
@@ -1165,7 +1186,7 @@ impl StitchSession {
         if source.is_gpu_resident() {
             let (lr, rr) = (source.left_rotation(), source.right_rotation());
             if lr == 180 || rr == 180 {
-                self.pipeline.set_flip_180(lr == 180, rr == 180);
+                self.core.pipeline_mut().set_flip_180(lr == 180, rr == 180);
                 log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
             }
             // Store rotation for the GPU detector preprocessing path.
@@ -1190,7 +1211,7 @@ impl StitchSession {
     #[cfg(target_os = "linux")]
     pub fn setup_gpu_source(&mut self, shared: &SharedTextureSet) {
         let t = &shared.textures;
-        let bind_groups = self.pipeline.configure_gpu_source(
+        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
             [(&t[0], &t[1]), (&t[2], &t[3])],
             [(&t[4], &t[5]), (&t[6], &t[7])],
         );
@@ -1395,7 +1416,7 @@ impl StitchSession {
     /// and calls [`Encoder::finish`]. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
         // Flush remaining frames from the NV12 triple-buffer.
-        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
+        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.core.gpu())? {
             if let Some(ref encoder) = self.encoder {
                 encoder.submit(nv12_data, self.frame_count as i64)?;
             }
@@ -1430,8 +1451,8 @@ impl StitchSession {
         render_commands: wgpu::CommandBuffer,
     ) -> Result<Option<&[u8]>, SessionError> {
         let nv12_data = self.nv12_converter.convert_and_readback(
-            self.pipeline.gpu(),
-            self.pipeline.render_target(),
+            self.core.gpu(),
+            self.core.pipeline().render_target(),
             render_commands,
         )?;
         self.frame_count += 1;
@@ -1443,27 +1464,40 @@ impl StitchSession {
         self.frame_count
     }
 
-    /// Shared reference to the underlying pipeline.
+    /// Shared reference to the underlying pipeline (via `StitchCore`).
     pub fn pipeline(&self) -> &StitchPipeline {
-        &self.pipeline
+        self.core.pipeline()
     }
 
-    /// Mutable reference to the underlying pipeline.
+    /// Mutable reference to the underlying pipeline (via `StitchCore`).
     ///
     /// Needed for zero-copy setup (configure_gpu_source) and viewport
     /// changes (resize, set_fov).
     pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
-        &mut self.pipeline
+        self.core.pipeline_mut()
+    }
+
+    /// Borrow the underlying [`StitchCore`]. Useful for consumers that
+    /// want to reach through to the push-first API
+    /// (`submit_frame_*`, replay buffer, etc.) without giving up the
+    /// session's encode-loop features.
+    pub fn core(&self) -> &StitchCore {
+        &self.core
+    }
+
+    /// Mutable borrow of the underlying [`StitchCore`].
+    pub fn core_mut(&mut self) -> &mut StitchCore {
+        &mut self.core
     }
 
     /// Shared reference to the GPU context.
     pub fn gpu(&self) -> &GpuContext {
-        self.pipeline.gpu()
+        self.core.gpu()
     }
 
     /// The name of the GPU this session is running on.
     pub fn gpu_name(&self) -> &str {
-        self.pipeline.gpu_name()
+        self.core.pipeline().gpu_name()
     }
 
     /// Get current session performance metrics.
@@ -1501,12 +1535,10 @@ impl StitchSession {
     /// Update calibration parameters and recompute coverage boundary.
     ///
     /// Takes effect on the next render call. For interactive calibration
-    /// tweaking during preview or live operation.
+    /// tweaking during preview or live operation. Delegates to
+    /// [`StitchCore::update_calibration`] which re-derives the coverage
+    /// boundary in one call.
     pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
-        self.pipeline.update_calibration(calibration);
-        self.coverage = Some(crate::projection::CoverageBoundary::from_calibration(
-            self.pipeline.calibration(),
-            &self.pipeline.scene,
-        ));
+        self.core.update_calibration(calibration);
     }
 }

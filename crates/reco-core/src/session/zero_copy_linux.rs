@@ -59,7 +59,7 @@ impl StitchSession {
     ) -> Result<SharedTextureSet, SessionError> {
         log::info!("Creating shared textures for zero-copy ({pixel_format:?})...");
 
-        let gpu = self.pipeline.gpu();
+        let gpu = self.core.gpu();
         let create_pair =
             |label: &str, slot: usize| -> Result<(SharedTexture, SharedTexture), SessionError> {
                 let y = create_nv12_shared_texture(
@@ -146,7 +146,7 @@ impl StitchSession {
         right_slot_free_tx.send(1).expect("seed slot channel");
 
         // Configure bind groups for GPU-resident shared textures
-        let bind_groups = self.pipeline.configure_gpu_source(
+        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
             [(&left_y_0, &left_uv_0), (&left_y_1, &left_uv_1)],
             [(&right_y_0, &right_uv_0), (&right_y_1, &right_uv_1)],
         );
@@ -204,7 +204,7 @@ impl StitchSession {
             Some(bg) => bg,
             None => {
                 let t = &textures;
-                self.pipeline.configure_gpu_source(
+                self.core.pipeline_mut().configure_gpu_source(
                     [(&t[0], &t[1]), (&t[2], &t[3])],
                     [(&t[4], &t[5]), (&t[6], &t[7])],
                 )
@@ -246,7 +246,7 @@ impl StitchSession {
                 start.elapsed(),
             )?;
             let pos = self.director_position();
-            let render_buf = self.pipeline.render_gpu_frame(
+            let render_buf = self.core.render_gpu_frame_at_pose(
                 &bind_groups,
                 signal.left_slot,
                 signal.right_slot,

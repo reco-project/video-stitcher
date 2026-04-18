@@ -469,6 +469,117 @@ impl StitchCore {
     }
 
     // -----------------------------------------------------------------
+    // Low-level render-at-pose methods
+    //
+    // These produce a `wgpu::CommandBuffer` at a **caller-supplied pose**
+    // without running detection, without ticking the director, and
+    // without performing RGBA readback. They exist so consumers that
+    // need the rendered GPU texture as input to further GPU work
+    // (NV12 conversion for encoding, compositor texture import) can
+    // drive the core without paying for readback.
+    //
+    // The M3 `StitchSession::run` pull-adapter (plan step 2) uses these
+    // to route its encode loop through `StitchCore`: session owns its
+    // own director + detection pipeline during the transition and
+    // passes the resolved pose explicitly here. Once the session
+    // migration completes, these remain as the "render primitives" for
+    // multi-output consumers (record + stream, zero-copy compositor).
+    // -----------------------------------------------------------------
+
+    /// Render a stereo YUV420P frame at an explicit pose.
+    ///
+    /// Does not run detection, does not tick the director, does not
+    /// read back RGBA. Consumers that want the full `submit_*` loop
+    /// (detection + director + readback) should call
+    /// [`Self::submit_frame_yuv`] instead.
+    ///
+    /// The caller is responsible for subsequently consuming the
+    /// rendered texture (via [`Self::pipeline`] + `render_target()`)
+    /// or submitting the returned command buffer to chain further
+    /// GPU work.
+    pub fn render_yuv_at_pose(
+        &self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
+        Ok(self.pipeline.render_to_target(left, right, yaw, pitch)?)
+    }
+
+    /// Render a stereo packed-RGBA/BGRA frame at an explicit pose.
+    /// See [`Self::render_yuv_at_pose`] for semantics.
+    pub fn render_bgra_at_pose(
+        &self,
+        left: &BgraPlanes<'_>,
+        right: &BgraPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
+        Ok(self
+            .pipeline
+            .render_to_target_bgra(left, right, yaw, pitch)?)
+    }
+
+    /// Render any [`StereoFrame`](crate::source::StereoFrame) variant
+    /// (YUV / NV12 / GpuResident) at an explicit pose.
+    ///
+    /// Thin wrapper over
+    /// [`StitchPipeline::render_stereo_frame`](crate::pipeline::StitchPipeline::render_stereo_frame)
+    /// that converts the pipeline error into a `StitchCoreError`. The
+    /// `MetalResident` variant is NOT handled here; use
+    /// [`Self::render_imported_textures_at_pose`] after importing the
+    /// `CVPixelBuffer` via `MetalTextureCache`.
+    pub fn render_stereo_frame_at_pose(
+        &self,
+        frame: &crate::source::StereoFrame,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
+        Ok(self.pipeline.render_stereo_frame(frame, yaw, pitch)?)
+    }
+
+    /// Render from four pre-imported textures at an explicit pose.
+    ///
+    /// Used by the macOS zero-copy path where `CVPixelBuffer` Y/UV
+    /// planes are imported as wgpu textures via
+    /// [`MetalTextureCache`](crate::metal_interop::MetalTextureCache),
+    /// and the Linux zero-copy path that shares textures through the
+    /// bind-group variant below.
+    pub fn render_imported_textures_at_pose(
+        &mut self,
+        left_y: &wgpu::Texture,
+        left_uv: &wgpu::Texture,
+        right_y: &wgpu::Texture,
+        right_uv: &wgpu::Texture,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.pipeline
+            .render_imported_textures(left_y, left_uv, right_y, right_uv, yaw, pitch)
+    }
+
+    /// Render from pre-configured GPU bind groups and decode slots at
+    /// an explicit pose (Linux zero-copy path).
+    ///
+    /// Thin wrapper over
+    /// [`StitchPipeline::render_gpu_frame`](crate::pipeline::StitchPipeline::render_gpu_frame).
+    /// Consumers must have already called
+    /// [`StitchPipeline::configure_gpu_source`] via [`Self::pipeline_mut`].
+    #[cfg(target_os = "linux")]
+    pub fn render_gpu_frame_at_pose(
+        &mut self,
+        bind_groups: &crate::pipeline::GpuSourceBindGroups,
+        left_slot: u8,
+        right_slot: u8,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.pipeline
+            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch)
+    }
+
+    // -----------------------------------------------------------------
     // Director / pose
     // -----------------------------------------------------------------
 
