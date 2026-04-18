@@ -1,75 +1,103 @@
-# reco-core API Friction - OBS Plugin Consumer Perspective
+# OBS Plugin Consumer API Friction
 
-Issues encountered while building `reco-obs` as a plugin consumer of `reco-core`.
+Friction points encountered while building `reco-obs` as a plugin
+consumer of `reco-core` / `reco-io`. Active items at the top;
+resolved items archived at the bottom with the PR that fixed them.
 
-## 1. No RGBA readback helper on StitchPipeline
+## Active
 
-**Problem:** `StitchPipeline::render_to_target()` returns a `CommandBuffer` that
-renders to an internal wgpu texture, but there's no way to get the pixel data
-back to CPU without manually creating a staging buffer, issuing a copy command,
-mapping the buffer, and handling row padding (wgpu's 256-byte alignment).
+### A1. YuvPlanes requires tight packing, not stride-aware
 
-The `Nv12Converter` does this internally (with triple-buffering) but is coupled
-to NV12 output and lives in a separate type.
+**Impact**: Medium. Every OBS-style consumer has to copy or re-pack
+incoming frames before handing to reco-core.
 
-**Impact:** ~40 lines of boilerplate in `source.rs` (`render_and_readback`) for
-what should be a one-liner. Every plugin consumer that needs CPU pixels will
-duplicate this.
+`StitchPipeline::render_to_target()` takes `YuvPlanes<'a>` which is
+`{ y: &[u8], u: &[u8], v: &[u8] }` - three separate tightly-packed
+slice references. An OBS plugin receives frames as `obs_source_frame`
+with `data[MAX_AV_PLANES]` pointers, `linesize[MAX_AV_PLANES]`
+strides (which may include row padding), `width` / `height`, and a
+`format` enum.
 
-**Suggestion:** Add a `ReadbackHelper` or a method like
-`pipeline.readback_rgba() -> Option<&[u8]>` that handles staging buffer
-management, row padding, and async mapping. Could follow the same triple-buffer
-pattern as `Nv12Converter` but output RGBA.
+**Impact**: The consumer must (1) map OBS format → reco input format,
+(2) handle stride mismatches by copying tightly, (3) extract the
+right plane pointers based on format. Common code that every
+realistic live-input consumer will write.
 
-## 2. YuvPlanes requires pre-extracted plane pointers
-
-**Problem:** `StitchPipeline::render_to_target()` takes `YuvPlanes<'a>` which is
-`{ y: &[u8], u: &[u8], v: &[u8] }` - three separate slice references.
-
-An OBS plugin consumer receives frame data as `obs_source_frame` which has
-`data[MAX_AV_PLANES]` (array of plane pointers) + `linesize[MAX_AV_PLANES]`
-(stride per plane) + `width`/`height` + `format` enum.
-
-**Impact:** The consumer must:
-1. Know which OBS video format maps to which reco input format
-2. Handle stride mismatches (OBS may have padding per row, reco expects tight packing)
-3. Extract the right plane pointers based on format
-
-**Suggestion:** A `RawFrameView` type that accepts pointer + stride + dimensions
-per plane (or a contiguous buffer + format enum) would reduce this impedance
-mismatch. Something like:
+**Suggested addition**:
 ```rust
 pub struct FramePlaneView<'a> {
     pub data: &'a [u8],
-    pub stride: u32,  // bytes per row (may include padding)
+    pub stride: u32,  // bytes per row, may include padding
     pub width: u32,
     pub height: u32,
 }
+
+pub struct StridedYuvPlanes<'a> {
+    pub y: FramePlaneView<'a>,
+    pub u: FramePlaneView<'a>,
+    pub v: FramePlaneView<'a>,
+}
 ```
+Plus a conversion helper that copies stride → tight for the slow path.
 
-## 3. GpuContext::new() is async
+### A2. GpuContext::new() is async
 
-**Problem:** `GpuContext::new()` is an `async fn` that must be awaited. OBS
-plugin callbacks are synchronous C functions. This requires pulling in `pollster`
-(or equivalent) to block on the future.
+**Impact**: Very minor. Noted across all consumers (also in
+reco-gui/FRICTION.md A6). OBS plugin callbacks are synchronous C
+functions, so standalone `GpuContext::new` requires pulling in
+pollster. `GpuContext::from_device_queue` is the right sync escape
+hatch when you already have a wgpu device.
 
-**Impact:** Minor - just `pollster::block_on(GpuContext::new())`. But it adds a
-dependency and is slightly surprising for C FFI consumers.
+### A3. No OBS-level wgpu interop
 
-**Note:** `GpuContext::from_device_queue()` exists as a sync alternative if you
-already have a wgpu device, which is the right escape hatch. The async
-constructor is the natural choice for standalone use.
+**Impact**: Fundamental to OBS architecture, not a reco-core bug.
 
-## 4. No way to share wgpu device with OBS
+OBS uses its own graphics context (OpenGL / D3D11) and reco-core uses
+wgpu. There's no interop path, so rendered frames must be copied
+through CPU (GPU → staging → CPU → OBS texture). At 1080p that's
+~8 MB per frame; at 60fps = ~480 MB/s memory bandwidth wasted.
 
-**Problem:** OBS has its own graphics context (OpenGL/D3D11) and reco-core has
-its own wgpu context. There's no interop path between them, so rendered frames
-must be copied through CPU memory (GPU -> staging buffer -> CPU -> OBS texture).
+Platform-specific solutions (DMA-BUF on Linux, shared D3D11 textures
+on Windows) would need new interop code in reco-core. The
+`GpuContext::from_device_queue()` method would help if OBS moved to
+wgpu, which it hasn't.
 
-**Impact:** One full-resolution RGBA copy per frame. At 1920x1080 that's ~8MB
-per frame, which is significant at 60fps (~480MB/s of memory bandwidth wasted).
+Tracking here as a known limit; not actionable at the reco-core
+level without a specific interop target.
 
-**Note:** This is fundamentally an OBS architecture constraint, not a reco-core
-bug. The `GpuContext::from_device_queue()` method would help if OBS used wgpu,
-but it doesn't. Platform-specific solutions (DMA-BUF on Linux, shared D3D11
-textures on Windows) would need new interop code in reco-core.
+### A4. Live camera input has no high-level consumer helper
+
+**Impact**: High for the "Reco as OBS input source" use case.
+
+reco-io has `FfmpegFileSource`, `SmartFileSource`, and zero-copy
+CUDA adapters - all oriented toward decoding from files. For OBS
+(and future live-camera consumers), the incoming data comes from a
+callback with frame pointers + timing, not from a file path.
+
+There is currently no reco-io type that says "I will feed you frames
+one at a time, please stitch them" without a backing source file.
+The OBS plugin will either need to (a) write a mock `FrameSource`
+impl that blocks the OBS callback thread waiting for the next
+submission, or (b) call `StitchPipeline::render_to_target` directly
+and bypass the higher-level session machinery.
+
+**Suggested direction**: a `LiveStitchSession` in reco-core that
+exposes `submit_frame(left, right) -> Result<PixelBuffer>` without
+expecting a FrameSource. Could share most of the existing session
+logic, just with source pulled out.
+
+## Resolved (archived)
+
+- **R1. No RGBA readback helper on StitchPipeline**
+  Resolved by Batch A (#223): `StitchRenderer::render_and_readback_rgba()`
+  + `flush_rgba()` with triple-buffered staging, same pattern as
+  `Nv12Converter`. Earlier ~40 lines of boilerplate in
+  `reco-obs/source.rs` can be replaced.
+
+## Notes on plugin status
+
+reco-obs is still scaffolding PoC - it renders a green test pattern
+to verify the OBS plugin hook-up works. Real frame ingestion from
+OBS callbacks has not been implemented yet. When that happens, A1
+and A4 will become blockers and likely motivate a Batch H in
+reco-io.
