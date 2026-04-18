@@ -18,8 +18,6 @@
 
 /// Detection pipeline - also usable standalone without StitchSession.
 pub mod detection;
-/// Live push-based stitching for compositor consumers (OBS, V4L2, WebRTC).
-pub mod live;
 #[cfg(test)]
 mod tests;
 #[cfg(target_os = "linux")]
@@ -30,7 +28,12 @@ mod zero_copy_macos;
 #[cfg(target_os = "linux")]
 pub use zero_copy_linux::SharedTextureSet;
 
-pub use live::{LiveSessionConfig, LiveSessionError, LiveStitchSession};
+// `LiveStitchSession` + `LiveSessionConfig` + `LiveSessionError` were
+// deleted 2026-04-19 (plan-execution §3 M3 step 3). Consumers that
+// previously held a `LiveStitchSession` migrate to `StitchCore` (via
+// `reco_core::core::StitchCore`) and call `submit_frame_*_at_pose`
+// for explicit-pose inputs. reco-obs completed the migration in the
+// same commit.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

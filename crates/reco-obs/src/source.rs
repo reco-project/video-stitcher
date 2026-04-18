@@ -25,10 +25,10 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::MatchCalibration;
+use reco_core::core::{RenderOutcome, StitchCore, StitchCoreConfig};
 use reco_core::gpu::GpuContext;
 use reco_core::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::renderer::InputFormat;
-use reco_core::session::{LiveSessionConfig, LiveStitchSession};
 use reco_core::viewport::ViewportConfig;
 
 use crate::ffi;
@@ -71,9 +71,14 @@ const INPUT_FORMAT_BGRA: &CStr = c"bgra";
 /// Allocated in `create`, freed in `destroy`. OBS passes `*mut c_void`
 /// pointing to this through all callbacks.
 struct RecoSource {
-    /// High-level push session (bundles pipeline + RGBA readback).
+    /// Push-first stitch core (owns pipeline + RGBA readback).
     /// None until calibration is loaded and GPU is initialized.
-    session: Option<LiveStitchSession>,
+    /// Previously wrapped by `LiveStitchSession`; that struct was
+    /// removed as part of plan step 3 and reco-obs now calls
+    /// `StitchCore::submit_frame_*_at_pose` directly. The field name
+    /// stays `session` to avoid churning the rest of this file in
+    /// the same commit.
+    session: Option<StitchCore>,
 
     /// Upstream OBS source that feeds the left camera. Owned reference
     /// (obs_get_source_by_name increments refcount, we release in destroy
@@ -290,15 +295,18 @@ impl RecoSource {
             ..ViewportConfig::default()
         };
 
-        match LiveStitchSession::new(
+        match StitchCore::new(
             gpu,
-            LiveSessionConfig {
+            StitchCoreConfig {
                 calibration,
                 viewport,
                 input_width: self.input_width,
                 input_height: self.input_height,
                 output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
                 input_format: self.input_format,
+                projection: None,
+                camera_input: None,
+                replay_buffer_duration: None,
             },
         ) {
             Ok(session) => {
@@ -492,7 +500,7 @@ impl RecoSource {
                         let left_tight = left_strided.copy_into(&mut self.left_repack);
                         let right_tight = right_strided.copy_into(&mut self.right_repack);
                         let session = self.session.as_mut().expect("checked above");
-                        session.submit_frame(&left_tight, &right_tight, yaw, pitch)
+                        session.submit_frame_yuv_at_pose(&left_tight, &right_tight, yaw, pitch)
                     }
                     InputFormat::Bgra => {
                         // BGRA sources: swizzle bytes into cached RGBA
@@ -504,15 +512,16 @@ impl RecoSource {
                         let left_bgra = build_bgra_planes(l, &mut self.left_repack);
                         let right_bgra = build_bgra_planes(r, &mut self.right_repack);
                         let session = self.session.as_mut().expect("checked above");
-                        session.submit_frame_bgra(&left_bgra, &right_bgra, yaw, pitch)
+                        session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, yaw, pitch)
                     }
                     InputFormat::Nv12 => {
                         // Not yet supported in reco-obs; guarded above.
-                        Ok(None)
+                        // Return a Warmup so the match arms below align.
+                        Ok(RenderOutcome::Warmup)
                     }
                 };
                 match result {
-                    Ok(Some(rgba)) => {
+                    Ok(RenderOutcome::Rgba(rgba)) => {
                         self.rgba_buffer.copy_from_slice(rgba);
                         self.frame_ready.store(true, Ordering::Release);
                         if self.diag_submitted == 0 {
@@ -523,7 +532,7 @@ impl RecoSource {
                         }
                         self.diag_submitted += 1;
                     }
-                    Ok(None) => { /* pipeline warmup */ }
+                    Ok(RenderOutcome::Warmup) => { /* pipeline warmup */ }
                     Err(e) => {
                         log::error!("reco-obs: render/readback failed: {e}");
                     }

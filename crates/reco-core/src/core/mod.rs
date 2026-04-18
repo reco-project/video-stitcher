@@ -416,6 +416,96 @@ impl StitchCore {
         })
     }
 
+    /// Submit a stereo YUV420P frame pair at an explicit pose.
+    ///
+    /// Same full loop as [`Self::submit_frame_yuv`] — anchors the
+    /// session-start clock, runs detection when
+    /// `frame_count % detection_interval == 0`, renders, reads back
+    /// RGBA, pushes into the replay buffer, increments frame_count —
+    /// but bypasses the director and uses the caller-supplied
+    /// `(yaw, pitch)` directly. The FOV stays at whatever the
+    /// pipeline currently has (set via [`Self::pipeline_mut`] or
+    /// `update_calibration`).
+    ///
+    /// This is the canonical submit path for interactive UIs (OBS
+    /// pan/zoom sliders, mouse-drag preview) where pose comes from
+    /// user input rather than a director.
+    pub fn submit_frame_yuv_at_pose(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
+        self.anchor_session_start();
+
+        if self.detector.is_some() && self.should_run_detection() {
+            let (src_w, src_h) = self.pipeline.source_info();
+            let dets = self.run_yuv_detection(left, right, src_w, src_h);
+            self.last_detections = self.map_detections_to_panorama(dets);
+        }
+
+        let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
+        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
+        let rgba =
+            self.readback
+                .readback(self.pipeline.gpu(), self.pipeline.render_target(), cmd)?;
+        self.frame_count += 1;
+        if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
+            replay.push(ReplayFrame {
+                rgba: bytes.to_vec(),
+                captured_at,
+                pose: ViewportPosition {
+                    yaw,
+                    pitch,
+                    fov_degrees: None,
+                },
+            });
+        }
+        Ok(match rgba {
+            Some(bytes) => RenderOutcome::Rgba(bytes),
+            None => RenderOutcome::Warmup,
+        })
+    }
+
+    /// Submit a stereo BGRA frame pair at an explicit pose. See
+    /// [`Self::submit_frame_yuv_at_pose`] for semantics.
+    ///
+    /// Does not run detection (BGRA backends are not yet supported;
+    /// see [`Self::submit_frame_bgra`] for the rationale).
+    pub fn submit_frame_bgra_at_pose(
+        &mut self,
+        left: &BgraPlanes<'_>,
+        right: &BgraPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
+        self.anchor_session_start();
+        let cmd = self
+            .pipeline
+            .render_to_target_bgra(left, right, yaw, pitch)?;
+        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
+        let rgba =
+            self.readback
+                .readback(self.pipeline.gpu(), self.pipeline.render_target(), cmd)?;
+        self.frame_count += 1;
+        if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
+            replay.push(ReplayFrame {
+                rgba: bytes.to_vec(),
+                captured_at,
+                pose: ViewportPosition {
+                    yaw,
+                    pitch,
+                    fov_degrees: None,
+                },
+            });
+        }
+        Ok(match rgba {
+            Some(bytes) => RenderOutcome::Rgba(bytes),
+            None => RenderOutcome::Warmup,
+        })
+    }
+
     /// Submit a stereo packed-RGBA/BGRA frame pair and render the
     /// current pose.
     ///
