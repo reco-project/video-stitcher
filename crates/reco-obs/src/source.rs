@@ -1033,9 +1033,9 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
             src.warned_unsupported_format = false;
         }
 
-        // Viewport position.
-        src.yaw_degrees = 0.0; // obs_data_get_double is not bound yet
-        src.pitch_degrees = 0.0;
+        // Viewport position - property-driven yaw/pitch sliders.
+        src.yaw_degrees = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr());
+        src.pitch_degrees = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr());
     }
 }
 

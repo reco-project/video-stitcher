@@ -121,6 +121,44 @@ backlog. VDO Ninja can also expose a local v4l2loopback virtual
 camera via `v4l2loopback-dkms` + an ffmpeg pipeline - that path is
 async and works with Tier 1 I420 today.
 
+### A10. LiveStitchSession doesn't expose director / detector hooks for AI panning
+
+**Impact**: Medium. AI ball-tracking / auto-pan works in `reco-cli
+stitch --model` and in the GUI via `reco_core::session::StitchSession`
+(the file-stitching pull-based path), but `LiveStitchSession` (the
+push path used by reco-obs and any future live consumer) has no API
+to plug in a detector + director.
+
+Manual panning is live in reco-obs via the yaw/pitch property sliders
+(2026-04-18), which gives basic usability, but there's no path to
+"follow the ball automatically" in the OBS plugin today.
+
+**Suggested direction** (reco-core):
+
+Mirror `StitchSession`'s detector/director hooks on
+`LiveStitchSession`:
+
+- `LiveStitchSession::set_detector(Box<dyn Detector>)`
+- `LiveStitchSession::set_director(Box<dyn Director>)`
+- In `submit_frame` / `submit_frame_bgra`: after receiving the frame,
+  run detector -> update director -> use director's `ViewportPosition`
+  for yaw/pitch instead of the caller-provided values (or blend
+  director output with manual offsets).
+
+Consumer side (reco-obs Batch L):
+
+- Add `reco-autocam` + `reco-detect` as deps (plugin binary grows
+  ~30-50 MB with ORT bundled).
+- New properties: "Auto-pan model" (path to .onnx), "Tracking mode"
+  (ball / field), "Detection interval" (every N frames).
+- Run detection on a worker thread (not the video_tick thread) so
+  inference latency doesn't stall frame submission at 30fps+.
+- Expose tracking-quality feedback somehow (overlay? log? status
+  indicator?) so users see why auto-pan landed somewhere.
+
+Estimated ~4-6 hours minimum for a workable v1, plus meaningful
+testing time to validate tracking on real camera pairs.
+
 ### A3. No OBS-level wgpu interop
 
 **Impact**: Fundamental to OBS architecture, not a reco-core bug.

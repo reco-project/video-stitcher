@@ -517,6 +517,8 @@ unsafe extern "C" {
     // Settings (obs_data_t)
     pub fn obs_data_get_string(data: *mut obs_data_t, name: *const c_char) -> *const c_char;
     pub fn obs_data_get_int(data: *mut obs_data_t, name: *const c_char) -> i64;
+    pub fn obs_data_get_double(data: *mut obs_data_t, name: *const c_char) -> f64;
+    pub fn obs_data_set_default_double(data: *mut obs_data_t, name: *const c_char, val: f64);
     pub fn obs_data_set_default_string(
         data: *mut obs_data_t,
         name: *const c_char,
