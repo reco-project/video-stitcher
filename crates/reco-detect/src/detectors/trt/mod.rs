@@ -28,7 +28,9 @@ use reco_core::cuda_interop::{
     cuda_memset_d8, cuda_synchronize,
 };
 use reco_core::cuda_kernels::normalize_hwc_to_chw;
-use reco_core::detector::{CameraId, Detection, GpuDetector, GpuNv12Frame};
+use reco_core::detector::{
+    CameraId, Detection, DetectorError, DetectorFrame, GpuDetector, GpuNv12Frame, UnifiedDetector,
+};
 use reco_core::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 
 use self::cuda::{CudaBuffer, CudaStream};
@@ -299,8 +301,22 @@ impl TrtGpuDetector {
     }
 }
 
-impl GpuDetector for TrtGpuDetector {
-    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
+impl TrtGpuDetector {
+    /// Core inference path shared by the legacy [`GpuDetector`] impl
+    /// and the new [`UnifiedDetector`] impl. Returns a typed
+    /// [`DetectorError`] so unified-trait consumers can react to CUDA
+    /// / NPP / TensorRT failures; the legacy impl collapses the error
+    /// to a log + empty vector for backward compatibility.
+    ///
+    /// Each CUDA / NPP / TRT step that previously used
+    /// `log::error!; return Vec::new()` now returns
+    /// `Err(DetectorError::InferenceFailed("stage: {err}"))` so
+    /// telemetry dashboards can still break down failures by origin.
+    fn detect_gpu_raw(
+        &mut self,
+        camera: CameraId,
+        frame: &GpuNv12Frame,
+    ) -> Result<Vec<Detection>, DetectorError> {
         let GpuNv12Frame {
             y_ptr,
             uv_ptr,
@@ -314,38 +330,35 @@ impl GpuDetector for TrtGpuDetector {
         reco_core::profile_scope!("trt_yolo_detect");
 
         // Ensure CUDA context is current on this thread.
-        if let Err(e) = cuda_ensure_context() {
-            log::error!("TRT detect: failed to set CUDA context: {e}");
-            return Vec::new();
-        }
+        cuda_ensure_context()
+            .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
 
         // Step 0: Convert P010 (10-bit) to 8-bit NV12 if needed.
         let (nv12_y, nv12_y_pitch, nv12_uv, nv12_uv_pitch) = if is_10bit {
             reco_core::profile_scope!("p010_to_nv12");
             if self.nv12_8bit_y == 0 || self.nv12_8bit_uv == 0 {
-                log::error!("P010 frame received but no conversion buffers allocated");
-                return Vec::new();
+                return Err(DetectorError::InferenceFailed(
+                    "P010 frame received but no conversion buffers allocated".into(),
+                ));
             }
-            if let Err(e) = reco_core::cuda_kernels::p010_plane_to_nv12(
+            reco_core::cuda_kernels::p010_plane_to_nv12(
                 y_ptr,
                 y_pitch,
                 self.nv12_8bit_y,
                 width,
                 height,
-            ) {
-                log::error!("P010->NV12 Y conversion failed: {e}");
-                return Vec::new();
-            }
-            if let Err(e) = reco_core::cuda_kernels::p010_plane_to_nv12(
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("P010->NV12 Y conversion: {e}")))?;
+            reco_core::cuda_kernels::p010_plane_to_nv12(
                 uv_ptr,
                 uv_pitch,
                 self.nv12_8bit_uv,
                 width,
                 height / 2,
-            ) {
-                log::error!("P010->NV12 UV conversion failed: {e}");
-                return Vec::new();
-            }
+            )
+            .map_err(|e| {
+                DetectorError::InferenceFailed(format!("P010->NV12 UV conversion: {e}"))
+            })?;
             (
                 self.nv12_8bit_y,
                 width as usize,
@@ -359,7 +372,7 @@ impl GpuDetector for TrtGpuDetector {
         // Step 1: NV12 -> packed RGB u8 via NPP (identical to OrtGpuDetector).
         {
             reco_core::profile_scope!("npp_nv12_to_rgb");
-            if let Err(e) = npp_nv12_to_rgb(
+            npp_nv12_to_rgb(
                 nv12_y,
                 nv12_y_pitch,
                 nv12_uv,
@@ -367,22 +380,16 @@ impl GpuDetector for TrtGpuDetector {
                 self.rgb_u8,
                 width,
                 height,
-            ) {
-                log::error!("NPP NV12->RGB failed: {e}");
-                return Vec::new();
-            }
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("NPP NV12->RGB: {e}")))?;
         }
 
         // Step 1b: Flip 180 degrees if the source has rotation metadata.
-        // NVDEC decodes without applying rotation; the render shader flips
-        // UV for display, but the detector sees raw upside-down frames.
-        // Mirror the RGB buffer in-place via NPP before resize.
         if rotation == 180 {
             reco_core::profile_scope!("npp_mirror_180");
-            if let Err(e) = npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height) {
-                log::error!("NPP mirror (rotation=180) failed: {e}");
-                return Vec::new();
-            }
+            npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height).map_err(|e| {
+                DetectorError::InferenceFailed(format!("NPP mirror (rotation=180): {e}"))
+            })?;
         }
 
         // Step 2: Resize to letterboxed region (identical to OrtGpuDetector).
@@ -390,10 +397,8 @@ impl GpuDetector for TrtGpuDetector {
             reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
             let resized_size = (is as usize) * (is as usize) * 3;
-            if let Err(e) = cuda_memset_d8(self.resized_u8, 114, resized_size) {
-                log::error!("Grey fill failed: {e}");
-                return Vec::new();
-            }
+            cuda_memset_d8(self.resized_u8, 114, resized_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("grey fill: {e}")))?;
 
             let dst_roi = NppiRect {
                 x: self.pad_x as i32,
@@ -402,26 +407,20 @@ impl GpuDetector for TrtGpuDetector {
                 height: self.new_h as i32,
             };
 
-            if let Err(e) =
-                npp_resize_c3(self.rgb_u8, width, height, self.resized_u8, is, is, dst_roi)
-            {
-                log::error!("NPP resize failed: {e}");
-                return Vec::new();
-            }
+            npp_resize_c3(self.rgb_u8, width, height, self.resized_u8, is, is, dst_roi)
+                .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
         }
 
         // Step 3: Normalize u8 HWC -> f32 CHW (identical to OrtGpuDetector).
         {
             reco_core::profile_scope!("cuda_normalize");
-            if let Err(e) = normalize_hwc_to_chw(
+            normalize_hwc_to_chw(
                 self.resized_u8,
                 self.tensor_f32,
                 self.input_size,
                 self.input_size,
-            ) {
-                log::error!("CUDA normalize kernel failed: {e}");
-                return Vec::new();
-            }
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
         }
 
         // Step 4: TensorRT inference (replaces ORT).
@@ -430,37 +429,28 @@ impl GpuDetector for TrtGpuDetector {
 
             // Synchronize default stream (preprocessing runs on NULL stream)
             // before enqueuing TRT on our named stream.
-            if let Err(e) = cuda_synchronize() {
-                log::error!("CUDA sync before TRT failed: {e}");
-                return Vec::new();
-            }
+            cuda_synchronize()
+                .map_err(|e| DetectorError::InferenceFailed(format!("CUDA sync pre-TRT: {e}")))?;
 
             let mut binding_ptrs = self.build_binding_ptrs();
-            if let Err(e) = self.context.enqueue(&mut binding_ptrs, &self.stream) {
-                log::error!("TRT inference failed: {e}");
-                return Vec::new();
-            }
+            self.context
+                .enqueue(&mut binding_ptrs, &self.stream)
+                .map_err(|e| DetectorError::InferenceFailed(format!("TRT enqueue: {e}")))?;
 
-            if let Err(e) = self.stream.synchronize() {
-                log::error!("TRT stream sync failed: {e}");
-                return Vec::new();
-            }
+            self.stream
+                .synchronize()
+                .map_err(|e| DetectorError::InferenceFailed(format!("TRT stream sync: {e}")))?;
         }
 
         // Step 5: Copy output to host and postprocess.
         {
             // Copy the small output buffer (~7KB) to CPU.
-            if let Err(e) = self
-                .output_buf
+            self.output_buf
                 .copy_to_host(&mut self.output_host, &self.stream)
-            {
-                log::error!("TRT output D2H copy failed: {e}");
-                return Vec::new();
-            }
-            if let Err(e) = self.stream.synchronize() {
-                log::error!("TRT output sync failed: {e}");
-                return Vec::new();
-            }
+                .map_err(|e| DetectorError::InferenceFailed(format!("TRT output D2H: {e}")))?;
+            self.stream
+                .synchronize()
+                .map_err(|e| DetectorError::InferenceFailed(format!("TRT output sync: {e}")))?;
         }
 
         // Reinterpret output bytes as f32 slice.
@@ -511,7 +501,46 @@ impl GpuDetector for TrtGpuDetector {
             );
         }
 
-        detections
+        Ok(detections)
+    }
+}
+
+impl GpuDetector for TrtGpuDetector {
+    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
+        match self.detect_gpu_raw(camera, frame) {
+            Ok(dets) => dets,
+            Err(e) => {
+                log::error!("TrtGpuDetector: {e}");
+                Vec::new()
+            }
+        }
+    }
+}
+
+impl UnifiedDetector for TrtGpuDetector {
+    fn name(&self) -> &'static str {
+        "tensorrt-native"
+    }
+
+    fn detect(
+        &mut self,
+        camera: CameraId,
+        frame: &DetectorFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` and
+        // route everything else to `UnsupportedFrameKind` so the
+        // dispatcher can fall back to a CPU backend for `Cpu(_)`.
+        // The wildcard arm keeps this stable against future
+        // `#[non_exhaustive]` additions to `DetectorFrame`.
+        match frame {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            DetectorFrame::Cuda(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),
+            _ => Err(DetectorError::UnsupportedFrameKind),
+        }
+    }
+
+    fn class_names(&self) -> Option<&[String]> {
+        Some(&self.labels)
     }
 }
 
