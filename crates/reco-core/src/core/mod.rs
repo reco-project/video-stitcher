@@ -36,9 +36,12 @@
 //!   detector contract with `DetectorError` for remote-inference futures.
 //!
 //! The first two are consumed at construction (see [`StitchCoreConfig`]).
-//! `UnifiedDetector` is wired in when a backend migrates onto the unified
-//! trait (a later M3 tranche). `PipelineStage` slots in via
-//! [`StitchCore::push_pipeline_stage`] but has no registered stages yet.
+//! `UnifiedDetector` is wired via [`StitchCore::set_detector`]; detection
+//! runs on every `submit_frame_*` whose frame count is a multiple of
+//! [`StitchCore::detection_interval`], and raw detections are mapped to
+//! panorama coordinates before reaching the director. `PipelineStage`
+//! slots in via [`StitchCore::push_pipeline_stage`] but has no registered
+//! stages yet.
 //!
 //! ## Usage (push, live)
 //!
@@ -69,20 +72,18 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 
 use crate::calibration::MatchCalibration;
+use crate::detector::{
+    CameraId, ChromaFormat, Detection, DetectorFrame, RawFrame, UnifiedDetector,
+};
 use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 use crate::gpu::GpuContext;
 use crate::pipeline::{BgraPlanes, PipelineError, StitchPipeline, YuvPlanes};
-use crate::projection::{CoverageBoundary, LShapeProjection, PanoramaExtent, Projection};
+use crate::projection::{self, CoverageBoundary, LShapeProjection, PanoramaExtent, Projection};
 use crate::renderer::InputFormat;
 use crate::rgba_readback::{RgbaReadback, RgbaReadbackError};
 use crate::source::{CameraInput, StereoCameraInput};
 use crate::stage::PipelineStage;
 use crate::viewport::ViewportConfig;
-
-// DetectionPipeline is session-private today. Re-expose the pieces
-// StitchCore needs by composing its own thin detection hook; when the
-// `UnifiedDetector` backends land we swap this for the unified trait
-// without changing the outer API.
 
 /// Errors from [`StitchCore`].
 #[derive(Debug, Error)]
@@ -269,13 +270,13 @@ impl StitchCoreConfig {
 /// - An optional [`Director`] and pipeline-stage chain.
 /// - An optional [`ReplayBuffer`].
 ///
-/// Detection is explicitly *not* wired in yet: the plan's step M3-4
-/// replaces the per-platform detector traits with a single
-/// [`UnifiedDetector`](crate::detector::UnifiedDetector), and wiring
-/// detection here before that migration would just have to be reworked.
-/// Consumers that need detection today should keep using
-/// [`StitchSession`](crate::session::StitchSession) until the
-/// unified-detector migration lands.
+/// Detection is wired through the [`UnifiedDetector`] trait: attach
+/// one via [`Self::set_detector`] and the core will run it on every
+/// CPU-resident frame submitted (CUDA / Metal residency dispatch
+/// lands in a later tranche that adds GPU-frame `submit_*` methods).
+/// Raw detections are mapped to panorama coordinates and fed to the
+/// attached director each submit; directors see a non-empty
+/// `detections` slice on detection frames, empty otherwise.
 pub struct StitchCore {
     pipeline: StitchPipeline,
     readback: RgbaReadback,
@@ -288,6 +289,15 @@ pub struct StitchCore {
 
     coverage: Option<CoverageBoundary>,
     director: Option<Box<dyn Director>>,
+
+    detector: Option<Box<dyn UnifiedDetector>>,
+    /// How often detection runs. 1 = every frame (default), higher =
+    /// skip frames. On skipped frames the director still ticks with
+    /// the previously tracked detections.
+    detection_interval: u64,
+    /// Panorama-mapped detections from the last detection frame.
+    /// Reused on skipped frames so the director retains context.
+    last_detections: Vec<MappedDetection>,
 
     replay: Option<ReplayBuffer>,
 
@@ -343,6 +353,9 @@ impl StitchCore {
             stages: Vec::new(),
             coverage: Some(coverage),
             director: None,
+            detector: None,
+            detection_interval: 1,
+            last_detections: Vec::new(),
             replay,
             frame_count: 0,
             session_start: None,
@@ -366,6 +379,16 @@ impl StitchCore {
         right: &YuvPlanes<'_>,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
+
+        // Detection first, so the director's `update` tick in
+        // resolve_current_pose sees the latest tracked objects. Skipped
+        // frames reuse last_detections so the director still has context.
+        if self.detector.is_some() && self.should_run_detection() {
+            let (src_w, src_h) = self.pipeline.source_info();
+            let dets = self.run_yuv_detection(left, right, src_w, src_h);
+            self.last_detections = self.map_detections_to_panorama(dets);
+        }
+
         let pose = self.resolve_current_pose();
         let cmd = self
             .pipeline
@@ -404,6 +427,17 @@ impl StitchCore {
         right: &BgraPlanes<'_>,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
+
+        // BGRA detection path: YOLO backends today consume YUV or
+        // NV12 `RawFrame` variants. Wrapping BGRA bytes as a YUV
+        // frame would require a color-space conversion we're not
+        // paying for yet - consumers that want detection on BGRA
+        // sources (OBS Browser Source, screen capture) attach a
+        // detector that understands BGRA once such a backend exists.
+        // For now, BGRA submits tick the director with the last
+        // detections (potentially from earlier YUV submits) but do
+        // not run detection themselves.
+
         let pose = self.resolve_current_pose();
         let cmd = self
             .pipeline
@@ -446,6 +480,41 @@ impl StitchCore {
     /// Remove the currently attached director.
     pub fn clear_director(&mut self) {
         self.director = None;
+    }
+
+    /// Attach a unified-trait detector. Replaces any existing one.
+    ///
+    /// The detector runs on every `submit_frame_*` call whose frame
+    /// count matches [`Self::detection_interval`]. Raw detections are
+    /// mapped to panorama coordinates and handed to the director via
+    /// [`DirectorContext::detections`]. Detection errors are logged
+    /// (at `warn!` level) and swallowed so a transient inference
+    /// failure does not abort the render loop.
+    pub fn set_detector(&mut self, detector: Box<dyn UnifiedDetector>) {
+        self.detector = Some(detector);
+    }
+
+    /// Remove the currently attached detector. Cached last detections
+    /// are cleared so the director does not keep seeing stale data.
+    pub fn clear_detector(&mut self) {
+        self.detector = None;
+        self.last_detections.clear();
+    }
+
+    /// Set how often detection runs.
+    ///
+    /// `1` (default) = every frame, `3` = every third frame, etc.
+    /// Values `< 1` are clamped to `1`. Detection is expensive
+    /// (2-20 ms depending on the model and backend); skipping frames
+    /// lets the render loop run faster while the director interpolates
+    /// using the latest detection output.
+    pub fn set_detection_interval(&mut self, interval: u64) {
+        self.detection_interval = interval.max(1);
+    }
+
+    /// Current detection interval.
+    pub fn detection_interval(&self) -> u64 {
+        self.detection_interval
     }
 
     /// The resolved viewport pose for the next render, already clamped
@@ -617,18 +686,14 @@ impl StitchCore {
             .map(|s| s.elapsed().as_secs_f64() * 1000.0)
             .unwrap_or(0.0);
 
+        let fresh_detection = self.detector.is_some() && self.should_run_detection();
+
         if let Some(director) = self.director.as_mut() {
-            // Director receives an empty detections list today;
-            // detection wiring lands with the `UnifiedDetector`
-            // migration in a follow-up. An empty-slice context still
-            // ticks the director's internal smoothing so live-coded
-            // directors (e.g. keyframe animators) remain usable.
-            let empty: &[MappedDetection] = &[];
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
-                detections: empty,
-                fresh_detection: false,
+                detections: &self.last_detections,
+                fresh_detection,
             };
             director.update(&ctx);
         }
@@ -642,6 +707,74 @@ impl StitchCore {
             self.pipeline.set_fov(fov);
         }
         clamped
+    }
+
+    fn should_run_detection(&self) -> bool {
+        // Before any submit, frame_count == 0 and interval defaults to
+        // 1, which covers the "run on the very first frame" case.
+        self.detection_interval > 0 && self.frame_count.is_multiple_of(self.detection_interval)
+    }
+
+    /// Run the attached detector against a stereo YUV420P frame pair.
+    ///
+    /// Wraps each plane as [`RawFrame`] + [`DetectorFrame::Cpu`] and
+    /// dispatches through the unified trait, once per camera. Errors
+    /// are warned-and-dropped: a flaky inference call must not crash
+    /// the render loop.
+    fn run_yuv_detection(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        source_width: u32,
+        source_height: u32,
+    ) -> Vec<Detection> {
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (camera, planes) in [(CameraId::Left, left), (CameraId::Right, right)] {
+            let raw = RawFrame {
+                y: planes.y,
+                chroma: ChromaFormat::Yuv420p {
+                    u: planes.u,
+                    v: planes.v,
+                },
+                width: source_width,
+                height: source_height,
+            };
+            match detector.detect(camera, &DetectorFrame::Cpu(raw)) {
+                Ok(v) => out.extend(v),
+                Err(e) => log::warn!("StitchCore detector '{}' {camera:?}: {e}", detector.name()),
+            }
+        }
+        out
+    }
+
+    /// Map raw camera-space detections to panorama-space
+    /// [`MappedDetection`]s the director can consume.
+    fn map_detections_to_panorama(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
+        let calibration = self.pipeline.calibration();
+        let scene = &self.pipeline.scene;
+        detections
+            .into_iter()
+            .map(|d| {
+                let position = projection::camera_to_panorama(
+                    d.camera,
+                    d.center_x,
+                    d.center_y,
+                    calibration,
+                    scene,
+                );
+                MappedDetection {
+                    camera: d.camera,
+                    class_id: d.class_id,
+                    confidence: d.confidence,
+                    camera_center: (d.center_x, d.center_y),
+                    camera_size: (d.width, d.height),
+                    position,
+                }
+            })
+            .collect()
     }
 }
 
