@@ -711,7 +711,7 @@ impl StitchPipeline {
     /// Expects each plane as `width * height * 4` bytes in (R, G, B, A) byte
     /// order. Use [`BgraPlanes::from_bgra_swizzle_into`] when the source
     /// is BGRA. Requires the pipeline to be initialized with
-    /// [`InputFormat::Bgra`](crate::renderer::InputFormat::Bgra).
+    /// [`InputFormat::Bgra`](crate::renderer::InputFormat#variant.Bgra).
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "render_to_target_bgra")
