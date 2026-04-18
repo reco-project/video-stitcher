@@ -1,0 +1,13 @@
+[toolchain]
+# Pinned to 1.92.0 because wgpu 28 (crates.io release, not the former fork)
+# declares rust-version=1.92 in its Cargo.toml. Unpinning here lets
+# contributors drift ahead of that MSRV silently; CI enforces the same
+# version via the `msrv` workflow job.
+#
+# When you bump this, also bump:
+#   - `.github/workflows/rust.yml` (msrv job)
+#   - `rust-version.workspace = "X.Y"` in root Cargo.toml (once we
+#     consolidate the three rogue per-crate pins - M8 polish)
+channel = "1.92.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

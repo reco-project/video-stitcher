@@ -1,5 +1,16 @@
 //! Automatic camera control for reco.
 //!
+//! # Safety policy
+//!
+//! This crate contains zero `unsafe` code by construction. All platform
+//! / FFI boundaries live in reco-core (wgpu, zero-copy) or reco-detect
+//! (ORT, CUDA), so the intelligence layer can stay in safe Rust.
+//! CI enforces this via `#![forbid(unsafe_code)]` below; introducing
+//! `unsafe` here requires a lint override + an explicit PR discussion.
+
+#![forbid(unsafe_code)]
+
+//!
 //! This crate provides detection and direction for sports camera automation:
 //!
 //! - [`CpuYoloDetector`] - ONNX-based YOLO object detection on raw camera frames

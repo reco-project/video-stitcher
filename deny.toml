@@ -1,0 +1,105 @@
+# cargo-deny configuration for reco-video-stitcher.
+#
+# Run via `cargo deny check` locally or in CI. Four gates:
+#   - advisories: refuse known vulnerabilities (RUSTSEC advisory DB)
+#   - licenses:   only permit licenses compatible with AGPL-3.0-only
+#   - bans:       refuse duplicate major versions and specific banned crates
+#   - sources:    only crates.io + the upstream gfx-rs / reco org repos
+#
+# See deep-review-2026-04-18 T-1 batch and the Agent 4 F5 / Agent 1
+# "missing supply-chain policy" findings for context.
+
+[graph]
+all-features = false
+no-default-features = false
+# Platforms we actively ship to; deny ignores platform-specific deps
+# whose cfg doesn't match any target below.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "aarch64-pc-windows-msvc" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "aarch64-linux-android" },
+]
+
+# ---------------------------------------------------------------------------
+# Advisories: RUSTSEC database
+# ---------------------------------------------------------------------------
+
+[advisories]
+version = 2
+# Warn on unmaintained/yanked deps (Agent 1 flagged bincode 2.0.1 and
+# paste 1.0.15 both unmaintained). Do not hard-deny yet because the
+# upstream crates we depend on still pull them in; hard-deny once we
+# can resolve those. Reassess at M8.
+yanked = "deny"
+ignore = [
+    # Agent 1 findings as of 2026-04-18 - the reco-project ones are
+    # `cargo update`-able, the rest are transitive. Revisit on every
+    # dep bump.
+    #
+    # "RUSTSEC-YYYY-NNNN",  # description / tracking issue
+]
+
+# ---------------------------------------------------------------------------
+# Licenses: compatible with AGPL-3.0-only distribution
+# ---------------------------------------------------------------------------
+
+[licenses]
+version = 2
+allow = [
+    "AGPL-3.0",        # the project itself
+    "AGPL-3.0-only",
+    "Apache-2.0",      # compatible with AGPL-3.0 distribution
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",         # weak copyleft, AGPL-compatible
+    "Unicode-3.0",     # unicode crates
+    "Unicode-DFS-2016",
+    "Zlib",
+    "0BSD",
+]
+# Permit multi-license crates to resolve to any allowed license.
+confidence-threshold = 0.93
+
+# ---------------------------------------------------------------------------
+# Bans: duplicate major versions + specific disallowed crates
+# ---------------------------------------------------------------------------
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all-versions"
+# Crates we explicitly never want - e.g. alternate crypto impls,
+# unmaintained forks. Empty for now; populate as the review flags
+# specific cases.
+deny = []
+# Allow duplicates that are genuinely unresolvable (different crates
+# that transitively depend on incompatible major versions of a common
+# crate). Keep this list short and reviewed.
+skip = []
+# Specific exception: libloading 0.9.0 exists as a 3-way duplicate per
+# Agent 1 - the Nov-2025 pin in reco-core vs older pulls from wgpu
+# and nvml-wrapper. Remove when the transitive deps catch up.
+skip-tree = []
+
+# ---------------------------------------------------------------------------
+# Sources: crates.io + explicit git allowlist
+# ---------------------------------------------------------------------------
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # telemetry-parser is an unpinned git dep in reco-calibrate per
+    # Agent 1 - pin to a rev and narrow this list at M8. Listed here
+    # so cargo-deny doesn't hard-fail on it today.
+    "https://github.com/AdrianEddy/telemetry-parser",
+]

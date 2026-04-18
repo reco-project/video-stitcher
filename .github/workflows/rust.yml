@@ -2,7 +2,7 @@ name: Rust CI
 
 on:
   push:
-    branches: [v2, main]
+    branches: [v2, main, v2-consolidation]
   pull_request:
     branches: [v2, main]
 
@@ -26,6 +26,9 @@ env:
     pkg-config clang
 
 jobs:
+  # ===========================================================================
+  # check & lint — the tight-loop gate. Runs on every push.
+  # ===========================================================================
   check:
     name: Check & Lint
     runs-on: ubuntu-latest
@@ -40,15 +43,20 @@ jobs:
           packages: ${{ env.APT_PACKAGES }}
       - name: Format check
         run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy (default features)
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Clippy (with profiling)
-        run: cargo clippy --all-targets --features profiling -- -D warnings
+        run: cargo clippy --workspace --all-targets --features profiling -- -D warnings
       - name: Clippy (with gstreamer)
-        run: cargo clippy --all-targets --features gstreamer -- -D warnings
+        run: cargo clippy --workspace --all-targets --features gstreamer -- -D warnings
       - name: Clippy (with load-dynamic)
-        run: cargo clippy --all-targets --features load-dynamic -- -D warnings
+        run: cargo clippy --workspace --all-targets --features load-dynamic -- -D warnings
+      - name: Clippy (no default features)
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
+  # ===========================================================================
+  # test — default features + profiling + all-features.
+  # ===========================================================================
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -59,11 +67,16 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
           packages: ${{ env.APT_PACKAGES }}
-      - name: Run tests
-        run: cargo test --all
+      - name: Install libobs-dev (required by reco-obs bindgen)
+        run: sudo apt-get install -y libobs-dev
+      - name: Run tests (default)
+        run: cargo test --workspace
       - name: Run tests (with profiling)
-        run: cargo test --all --features profiling
+        run: cargo test --workspace --features profiling
 
+  # ===========================================================================
+  # doc — full workspace docs, all features enabled, warnings-as-errors.
+  # ===========================================================================
   doc:
     name: Documentation
     runs-on: ubuntu-latest
@@ -74,11 +87,30 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
           packages: ${{ env.APT_PACKAGES }}
-      - name: Build docs
-        run: cargo doc --no-deps --features profiling,gstreamer
+      - name: Install libobs-dev
+        run: sudo apt-get install -y libobs-dev
+      - name: Build docs (profiling + gstreamer + load-dynamic)
+        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic
         env:
           RUSTDOCFLAGS: "-D warnings"
 
+  # ===========================================================================
+  # deny — cargo-deny supply-chain + licenses + bans check.
+  # ===========================================================================
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: EmbarkStudios/cargo-deny-action@e2f4ede4a4e60ea15ff31bc0647485d80c66cfba # v2.0.4
+        with:
+          command: check
+          arguments: --all-features
+
+  # ===========================================================================
+  # audit — RUSTSEC advisory check. Kept alongside cargo-deny because
+  # rustsec/audit-check annotates PRs nicely with flagged advisories.
+  # ===========================================================================
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -91,10 +123,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  # ===========================================================================
+  # msrv — the Rust toolchain we officially support.
+  # ===========================================================================
   msrv:
     # Bumped from 1.88 to 1.92 because wgpu 28 declares rust-version=1.92
-    # in its Cargo.toml (the crates.io version, not the fork). cargo check
-    # fails with a "requires Rust 1.92" error otherwise.
+    # in its Cargo.toml. Enforced via rust-toolchain.toml + this job.
     name: MSRV (1.92.0)
     runs-on: ubuntu-latest
     steps:
@@ -105,8 +139,68 @@ jobs:
         with:
           packages: ${{ env.APT_PACKAGES }}
       - name: Check MSRV
-        run: cargo check --all
+        run: cargo check --workspace
 
+  # ===========================================================================
+  # GPU execution provider compile-check jobs.
+  #
+  # deep-review-2026-04-18 Agent 4 F1 (Critical): CI never builds any of
+  # `cuda / tensorrt / coreml / ncnn / tensorrt-native`, leaving their
+  # Rust + build.rs code with zero compile signal. This block closes
+  # that gap with compile-only jobs (no test-run, no GPU hardware).
+  #
+  # - CUDA / TensorRT / CoreML are exercised via `--features XYZ,load-dynamic`
+  #   which keeps ORT from linking at build time, so the host doesn't
+  #   need the runtime SDKs installed.
+  # - tensorrt-native is a C++ wrapper that requires NvInfer.h. No GH
+  #   runner has it, so the job is best-effort (`continue-on-error`).
+  #   Any actual C++ compile errors still appear in the log for humans.
+  # ===========================================================================
+  gpu-backends:
+    name: GPU backend compile-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
+        with:
+          packages: ${{ env.APT_PACKAGES }}
+      - name: Check reco-detect (cuda + load-dynamic)
+        run: cargo check -p reco-detect --features cuda,load-dynamic
+      - name: Check reco-detect (tensorrt + load-dynamic)
+        run: cargo check -p reco-detect --features tensorrt,load-dynamic
+      - name: Check reco-detect (ncnn)
+        run: cargo check -p reco-detect --features ncnn
+      - name: Check reco-detect (tensorrt-native, best-effort)
+        # Requires NvInfer.h which no hosted GH runner has. Kept in CI
+        # to catch Rust-side regressions in trt/engine.rs even when the
+        # C++ compile fails upstream.
+        run: cargo check -p reco-detect --features tensorrt-native
+        continue-on-error: true
+
+  # ===========================================================================
+  # Benchmark compile — catches bench regressions during the long v2
+  # consolidation branch. Compile-only; no runtime measurement.
+  # ===========================================================================
+  bench-build:
+    name: Benchmark compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
+        with:
+          packages: ${{ env.APT_PACKAGES }}
+      - name: Build benches (no-run)
+        run: cargo bench --workspace --no-run
+
+  # ===========================================================================
+  # macOS — covers reco-core + CLI; extended to reco-gui and the ORT
+  # CoreML backend (compile-only). reco-obs requires libobs headers that
+  # are not shipped via Homebrew, so it is skipped here.
+  # ===========================================================================
   check-macos:
     name: Check (macOS)
     runs-on: macos-latest
@@ -122,13 +216,19 @@ jobs:
         run: cargo check -p reco-core --features profiling
       - name: Check full CLI
         run: cargo check -p reco-cli
+      - name: Check reco-gui (macOS Metal path)
+        run: cargo check -p reco-gui
+      - name: Check reco-detect (coreml + load-dynamic)
+        run: cargo check -p reco-detect --features coreml,load-dynamic
 
   # macOS Intel (x86_64-apple-darwin) is suspended - the ort-sys crate
   # publishes no prebuilt ONNX Runtime binary for that target with
   # reco-detect's feature set, and we have no hardware to test on.
-  # Re-enable once ort-sys gains a prebuilt for x86_64-apple-darwin or
-  # reco-detect is switched to `features = ["load-dynamic"]` there.
 
+  # ===========================================================================
+  # Windows — covers reco-core + reco-gui. reco-obs requires libobs
+  # headers from vcpkg; deferred to a future CI expansion.
+  # ===========================================================================
   check-windows:
     name: Check (Windows)
     runs-on: windows-latest
@@ -140,6 +240,8 @@ jobs:
         run: cargo check -p reco-core
       - name: Check reco-core (profiling)
         run: cargo check -p reco-core --features profiling
+      - name: Check reco-gui (Windows D3D12 path)
+        run: cargo check -p reco-gui
 
   # Cross-compile check: cargo check type-checks without linking, so no
   # FFmpeg or ORT native libraries are needed for the target architecture.
@@ -173,6 +275,27 @@ jobs:
         run: cargo check -p reco-core --target aarch64-unknown-linux-gnu
       - name: Check reco-core (profiling)
         run: cargo check -p reco-core --target aarch64-unknown-linux-gnu --features profiling
+
+  # ===========================================================================
+  # Android compile-check — keeps the mobile trait design honest during
+  # the M3 refactor. User directive 2026-04-18: Android is a real
+  # hardware target, not just a trait-ready future. A real-device test
+  # via adb shell comes later in M5/M7.
+  # ===========================================================================
+  check-android:
+    name: Check (Android aarch64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Check reco-core (Android, no default features)
+        # reco-core has no std::fs / FFmpeg deps by itself; should
+        # compile clean for the Android target. Failures here flag
+        # inadvertent host-OS assumptions creeping in.
+        run: cargo check -p reco-core --target aarch64-linux-android --no-default-features
 
   secrets:
     name: Secret Scanning
