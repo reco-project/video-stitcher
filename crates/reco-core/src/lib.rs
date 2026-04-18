@@ -75,6 +75,9 @@ pub use wgpu;
 pub mod analyze;
 pub(crate) mod async_encode;
 pub mod calibration;
+/// M3 push-first `StitchCore` shell — the canonical entry point.
+/// See [`core::StitchCore`] for details.
+pub mod core;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod coreml_inference;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
