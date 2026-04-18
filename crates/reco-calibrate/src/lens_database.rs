@@ -455,22 +455,33 @@ pub fn load_from_json(json_str: &str, source: &str) -> Result<CameraParams, Lens
 /// 1. Embedded lens profile from video metadata (DJI cameras)
 /// 2. Camera identification + database lookup (GoPro, etc.)
 ///
+/// When `cached_telemetry` is `Some`, the caller has already parsed the
+/// telemetry stream (e.g. for IMU sync) and is passing it through to
+/// avoid a second parse. When `None`, this function extracts telemetry
+/// itself and falls back gracefully if the file has none.
+///
 /// Returns `None` if the camera can't be identified or no profile matches.
 pub fn detect_profile(
     video_path: &Path,
     video_width: u32,
     video_height: u32,
     db: &LensDatabase,
+    cached_telemetry: Option<&crate::telemetry::TelemetryData>,
 ) -> Option<(CameraParams, LensProfileInfo)> {
-    let tel = match crate::telemetry::extract(video_path) {
-        Ok(t) => Some(t),
-        Err(e) => {
-            log::warn!("lens auto-detect: telemetry extraction failed: {e}");
-            None
+    let extracted: Option<crate::telemetry::TelemetryData> = if cached_telemetry.is_some() {
+        None
+    } else {
+        match crate::telemetry::extract(video_path) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                log::warn!("lens auto-detect: telemetry extraction failed: {e}");
+                None
+            }
         }
     };
+    let tel: Option<&crate::telemetry::TelemetryData> = cached_telemetry.or(extracted.as_ref());
 
-    if let Some(ref tel) = tel {
+    if let Some(tel) = tel {
         // 1. Embedded lens profile (DJI cameras embed in metadata)
         if let Some(ref profile) = tel.lens_profile {
             log::info!(
