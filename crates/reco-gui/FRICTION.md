@@ -1,39 +1,24 @@
 # GUI Consumer API Friction
 
 Friction points encountered while building the Slint GUI consumer of
-reco-core. Active items are at the top; resolved items are archived
-at the bottom with the PR that fixed them so we can tell "this used to
-be painful" without re-litigating solved problems.
+reco-core and reco-io. Active items are at the top; resolved items
+archived at the bottom with the PR that fixed them, so we can tell
+"this used to be painful" without re-litigating solved problems.
 
 ## Active
 
-### A1. reco-calibrate doesn't re-export lens profile types at crate root
-
-**Impact**: Minor, one-line fix per consumer.
-
-`LensProfileInfo`, `LensProfileSummary`, `ProfileSource` live in
-`reco_calibrate::types::*` but were not re-exported in `lib.rs` alongside
-`CalibrationResult` and friends. The Tier 1 GUI had to either use
-fully-qualified paths or add the re-export itself.
-
-**Fixed in passing** during Tier 1 (reco-gui PR #236), but the pattern
-suggests a general "every public type visible in a CalibrationResult
-field should be re-exported from the crate root" guideline worth adding
-to the next API-principles pass.
-
-### A2. CalibrateVideosOptions only accepts lens profiles via file paths
+### A1. CalibrateVideosOptions only accepts lens profiles via file paths
 
 **Impact**: Medium. Blocks a functional lens-profile picker in the GUI.
 
 `reco_calibrate::video::CalibrateVideosOptions::{left_profile, right_profile}`
-are `Option<PathBuf>`. The consumer who already has a `LensProfileSummary`
-from `LensDatabase::candidates()` (Batch B) has no way to pass it
-directly. Workaround: look up the profile in the DB again via
-`find(camera, model, w, h, lens_info)`, which returns
-`(CameraParams, LensProfileInfo)`, then... there's no way to hand
-`CameraParams` to `calibrate_videos` either. So the consumer must either
-serialize the `CameraParams` to a temp JSON file just to re-load it, or
-drop down to `CalibrationPipeline::set_profiles()` and reimplement the
+are `Option<PathBuf>`. A consumer that already has a `LensProfileSummary`
+from `LensDatabase::candidates()` (Batch B) cannot pass it directly.
+Workaround: look up via `find(camera, model, w, h, lens_info)` which
+returns `(CameraParams, LensProfileInfo)`, but then there's no way to
+hand `CameraParams` to `calibrate_videos` either. The consumer either
+serializes `CameraParams` to a temp JSON just to re-load it, or drops
+down to `CalibrationPipeline::set_profiles()` and reimplements the
 video-frame extraction loop.
 
 **Suggested addition**:
@@ -46,71 +31,84 @@ pub struct CalibrateVideosOptions {
 ```
 If both `_path` and `_params` are set, `_params` wins.
 
-Blocked the Tier 1 picker from being functional (it's read-only); will
-block Tier 2's "pick an alternate profile and re-run" interaction too.
+Currently manifests in the GUI Tier 1 lens picker being read-only -
+we display the detected profile and alternates count but can't let
+the user pick a different profile and re-run from the UI.
 
-### A3. Live lens tweaking has no "just update CameraParams" path
+### A2. StitchJob has no start_frame option for partial exports
 
-**Impact**: High for Tier 2 live lens fine-tuning.
+**Impact**: Medium. Blocks the GUI Export dialog's planned time-range
+picker.
 
-To let the user tweak fx/fy/cx/cy/distortion sliders and see results in
-the preview, the GUI needs an API to replace the `CameraParams` inside
-an existing `MatchCalibration` and have the stitch pipeline re-undistort
-without rebuilding everything from scratch. Currently the stitch
-pipeline caches undistort LUTs at construction; changing camera params
-means recreating the pipeline.
-
-**Suggested addition** in reco-core:
-```rust
-impl StitchPipeline {
-    /// Replace camera intrinsics for one or both cameras and rebuild
-    /// the undistort LUTs. Cheap enough to call on slider drag.
-    pub fn update_camera_params(
-        &mut self,
-        left: Option<CameraParams>,
-        right: Option<CameraParams>,
-    ) -> Result<(), PipelineError>;
-}
-```
-
-Will raise as a Batch F candidate if Tier 2 hits this wall.
-
-### A4. No API to clamp camera pose to coverage boundary
-
-**Impact**: Medium. Tier 2 "constrained look" toggle needs this.
-
-`CoverageBoundary` (reco-core) knows the valid yaw/pitch ranges of the
-stitched output. The GUI yaw/pitch inputs feed the renderer directly,
-with no clamping. To prevent the preview from panning into black
-margins, the consumer would need a helper like
-`CoverageBoundary::clamp(yaw, pitch, fov_rad) -> (yaw, pitch)` that
-respects the effective viewport half-angle.
+`reco_io::StitchJob` exposes `.max_frames(n)` and `.duration(s)` which
+bound the END of the export, but nothing for the START. A consumer
+that wants to export "from 0:15 to 0:30" must currently decode and
+discard frames from 0:00-0:15, which is wasted work for long clips.
 
 **Suggested addition**:
 ```rust
-impl CoverageBoundary {
-    /// Given a desired camera pose and viewport FOV, return the pose
-    /// clamped so the entire viewport fits within the coverage region.
-    pub fn clamp(&self, yaw: f32, pitch: f32, hfov_rad: f32, aspect: f32)
-        -> (f32, f32);
+impl StitchJob {
+    /// Skip N frames before the first output frame. Combines with
+    /// max_frames / duration to select a window.
+    pub fn start_frame(mut self, n: u64) -> Self;
 }
 ```
 
-### A5. Cannot re-run auto-calibrate after files_loaded
+### A3. Preview pipeline and export StitchJob share CUDA context and
+racereliably when both active
 
-**Impact**: UX bug, not an API gap, but maintained here because it
-surfaces a design question the API should answer.
+**Impact**: High. Known to crash (#243) or hang (#247) the GUI when
+the user pauses/plays preview while an export is encoding.
 
-The GUI disables Auto Calibrate once calibration completes
-(`!root.files-loaded` in main.slint). The user who wants to try
-different calibration options (different frames, IMU seeds toggled,
-different profiles once A2 is solved) has to restart the app. The fix
-is client-side (drop the `!files_loaded` gate), but it raises the
-question of whether reco-core should expose a "clear previous
-calibration" helper or document that consumers can freely re-run.
+Both paths create their own NVDEC decoders on the same CUDA context
+(the process-wide default). Contention on `cuCtxPopCurrent` during
+frame handoff produces `cu->cuCtxPopCurrent(&dummy) failed` and a
+subsequent segfault, or a mutex-like hang depending on timing.
 
-Not blocking; tracking here so we revisit after Tier 2 touches the
-calibration flow.
+reco-core / reco-io don't currently expose any "is an export active"
+guard or "acquire-exclusive" flow, so consumers can't gate preview
+on export state.
+
+**Suggested direction** (needs design):
+- Either serialize: `StitchJob::run_exclusive` drops a mutex that the
+  preview pipeline must acquire too.
+- Or share: pass the preview's `GpuContext` + decoder handles into
+  `StitchJob` so they reuse the same resources.
+- Or isolate: spawn export in a subprocess with its own CUDA ctx.
+
+### A4. No way for consumers to unload a pipeline cleanly
+
+**Impact**: Medium. Manifested as a real state-corruption bug in Tier 3.
+
+Once a `PreviewBridge` / `StitchPipeline` is built, the only way to
+swap to different source files is to drop the whole struct and rebuild
+from scratch. The GUI had to add its own `unload_pipeline()` helper
+that sets `bridge = None`, `calibration = None`, `playback = new()`,
+etc. - a half-dozen-field reset that reco-core doesn't own.
+
+Without this, swapping a file while a pipeline is live left the preview
+rendering the OLD source while `AppState.left_path/right_path` pointed
+elsewhere - and export read the new paths and produced garbage.
+
+**Suggested direction**: either a reco-core "session state" helper that
+bundles pipeline + source + calibration with a single `unload()`, or
+document the pattern in reco-io's StitchJob docs so the next consumer
+doesn't reinvent it.
+
+### A5. No runtime progress callback granularity during heavy calibration steps
+
+**Impact**: Low to medium. Users on DJI 10-bit footage see the status
+bar frozen on one step for 60-90 seconds and assume hang.
+
+`reco_calibrate::video::calibrate_videos` emits `CalibrationProgress`
+events at the STEP level (probing, telemetry, audio_sync, akaze,
+optimize) but not INTRA-step. For DJI 4K 10-bit footage the
+audio-sync and telemetry-extraction steps each take 10-30s with no
+feedback.
+
+**Suggested addition**: per-frame progress emission within
+`extract_frame_pairs`, or at least a "heartbeat" event every 2s so
+consumers know the worker is still alive.
 
 ### A6. GpuContext::new() is async, consumers always pollster-wrap
 
@@ -118,8 +116,8 @@ calibration flow.
 
 Deliberate (wgpu adapter creation is async), but every call site in
 reco-cli, reco-gui, reco-obs wraps it in `pollster::block_on`. A
-blocking convenience constructor in reco-core would let consumers avoid
-taking a direct dep on pollster:
+blocking convenience constructor in reco-core would let consumers
+avoid taking a direct dep on pollster:
 
 ```rust
 impl GpuContext {
@@ -131,21 +129,20 @@ impl GpuContext {
 
 ### A7. render_to_target() still returns CommandBuffer
 
-**Impact**: Low. The Batch A `RenderTarget`/`RenderOutcome` enums
+**Impact**: Low. The Batch A `RenderTarget` / `RenderOutcome` enums
 simplified the surface-vs-internal asymmetry, but the lower-level
 `render_to_target()` still returns a `wgpu::CommandBuffer` the caller
 must submit. For the zero-copy Slint path this is fine (we render
-directly to a Slint-owned texture via `render_yuv`); for any future
-consumer that wants to batch our render with their own copy commands,
-the current API already works. Leaving this here as a note for anyone
-hitting the old asymmetry - the Batch A outcome enum was the right
-abstraction.
+directly to a Slint-owned texture via `render_yuv`); future consumers
+that want to batch our render with their own copy commands already
+work with the current API. Leaving this as a note for anyone hitting
+the old asymmetry - the Batch A outcome enum was the right abstraction.
 
 ## Resolved (archived)
 
-Items pruned from Active once the reco-core API added what we asked for.
-Kept as an audit trail of which consumer friction items drove which
-upstream changes.
+Items pruned from Active once the reco-core / reco-io API added what
+we asked for. Kept as an audit trail of which consumer friction items
+drove which upstream changes.
 
 - **R1. wgpu version mismatch blocking zero-copy rendering**
   Resolved 2026-04-16 by downgrading reco-core to wgpu 28 and using
@@ -153,43 +150,58 @@ upstream changes.
   Slint's device/queue via `GpuContext::from_device_queue()`.
 - **R2. No RGBA readback API on StitchRenderer**
   Resolved by Batch A (#223): `StitchRenderer::render_and_readback_rgba()`
-  + `flush_rgba()` with triple-buffered staging. Lifted ~120 lines of
-  readback boilerplate out of the GUI.
+  + `flush_rgba()` with triple-buffered staging.
 - **R3. StitchRenderer hardcoded InputFormat::Yuv420p**
   Resolved by Batch A (#223): `StitchRenderer::new` now takes an
-  `input_format: InputFormat` parameter so NV12 live-camera consumers
-  can construct a renderer without dropping to `StitchPipeline`.
+  `input_format: InputFormat` parameter.
 - **R4. resize() didn't notify consumers of new dimensions**
-  Resolved by Batch C (#222 companion): `StitchPipeline::resize()` now
-  returns `Option<(u32, u32)>` so external staging buffers can be
-  recreated when the internal render target changes size.
+  Resolved by Batch C: `StitchPipeline::resize()` returns
+  `Option<(u32, u32)>`.
 - **R5. FrameSource::try_next_frame() EOF ambiguity**
-  Resolved by Batch A (#223): `FrameSource` trait gained
-  `fn is_exhausted(&self) -> bool` with a default impl. Replaced the
-  1-second timeout heuristic in the GUI.
+  Resolved by Batch A: `FrameSource::is_exhausted()` trait method.
 - **R6. render_to_view vs render_to_target asymmetry**
-  Resolved by Batch A (#223): `RenderTarget` enum + `RenderOutcome`
-  unify the surface and internal-texture paths.
+  Resolved by Batch A: `RenderTarget` enum + `RenderOutcome`.
 - **R7. CalibrationResult didn't expose detected lens profile**
-  Resolved by Batch B (#224): `CalibrationResult.left_lens_profile`
-  and `right_lens_profile` now carry `LensProfileInfo` with camera /
-  lens / source / optional path.
+  Resolved by Batch B (#224): `CalibrationResult.left_lens_profile` /
+  `right_lens_profile` carry `LensProfileInfo`.
 - **R8. No API to list available lens profiles**
-  Resolved by Batch B (#224): `LensDatabase::iter_profiles()` and
-  `candidates(width, height)` return `LensProfileSummary` suitable
-  for picker UIs. The Tier 1 GUI uses `candidates()` for the
-  alternate-profile count.
+  Resolved by Batch B: `LensDatabase::iter_profiles()` +
+  `candidates(width, height)` returning `LensProfileSummary`.
 - **R9. Slider value binding echoes `changed` on programmatic updates**
-  Resolved by follow-up cleanup PR: switched seek slider to `released`
-  callback. No more feedback loop between Rust state and UI updates,
-  debounce no longer strictly needed but kept for drag coalescing.
+  Resolved by seek slider using `released` callback.
 - **R10. slint::Image::try_from(wgpu::Texture) per-frame allocation**
-  Investigated and closed upstream. Slint maintainer (tronical) confirmed
-  wgpu barriers handle the aliasing concern; measured no perf
-  difference from per-frame allocation on our workload. Kept current
-  per-frame-allocation pattern.
+  Investigated and closed upstream. Slint maintainer (tronical)
+  confirmed wgpu barriers handle the aliasing concern; no perf
+  difference measured.
 - **R11. No runtime API to probe ONNX Runtime execution providers**
-  Resolved by Batch E (#222): `reco_detect::probe_execution_providers()`
-  returns `AiProbeResult { providers, can_run_on_gpu_frames, errors }`.
-  The Tier 1 GUI uses it to show an honest runtime AI status instead
-  of lying with compile-time `cfg!()`.
+  Resolved by Batch E: `reco_detect::probe_execution_providers()`.
+- **R12. reco-calibrate didn't re-export lens profile types at crate root**
+  Resolved by Tier 1 PR (#236): `LensProfileInfo`,
+  `LensProfileSummary`, `ProfileSource` now re-exported from
+  `reco_calibrate` crate root.
+- **R13. Live lens tweaking had no fast CameraParams update path**
+  Resolved by Batch F (#238): `StitchPipeline::update_camera_params`
+  + matching method on `StitchRenderer`. Cheap enough for per-slider-
+  drag updates (no GPU pipeline rebuild).
+- **R14. No API to clamp camera pose to coverage boundary**
+  False friend - `CoverageBoundary::safe_clamp(yaw, pitch, fov, aspect,
+  rig_tilt)` was already present. Tier 2b constrained-look toggle uses
+  it directly.
+- **R15. Cannot re-run auto-calibrate after files_loaded**
+  Resolved by Tier 2 (#237) dropping the `!files_loaded` gate on the
+  Auto Calibrate button. Tier 3 hotfixes follow up with pipeline
+  unload on failure so the user doesn't end up in a mixed state.
+- **R16. Silent ffmpeg "Invalid argument" on bad input paths**
+  Resolved by Batch G (#254): `reco_core::source::validate_input_path`
+  with structured `InvalidPathReason` variants. The GUI maps each
+  reason to a toast ("File not found", "Permission denied", etc).
+- **R17. Silent encoder failures produce audio-only output**
+  Resolved by Batch G (#254): `StitchJob::run` re-opens the output
+  file after `session.finish()` and returns
+  `StitchError::EmptyOutput` if the video stream is empty. Catches
+  AV1-on-pre-Ada silent failure.
+- **R18. No shared settings persistence utility across consumers**
+  Resolved by reco-io PR #255: `reco_io::settings::{load, save,
+  config_dir, RecentFiles}` behind an opt-in `config` feature.
+  Per-consumer namespacing (`gui` / `cli` / `obs`) keeps each
+  consumer's settings independent.
