@@ -23,7 +23,7 @@ ncnn = ["autocam", "reco-autocam/ncnn"]
 gstreamer = ["reco-io/gstreamer"]
 libcamera = ["reco-io/libcamera"]
 rpi = ["reco-io/rpi"]
-profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling", "reco-autocam?/profiling", "tracing", "tracing-subscriber", "tracing-chrome"]
+profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling", "reco-autocam?/profiling", "tracing-chrome"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
@@ -31,14 +31,18 @@ reco-io = { path = "../reco-io", features = ["ffmpeg"] }
 reco-autocam = { path = "../reco-autocam", optional = true }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 clap = { version = "4", features = ["derive"] }
-env_logger = "0.11"
+# M2 tracing migration (deep-review-2026-04-18): tracing-subscriber replaces
+# env_logger. tracing-log bridges existing `log::*` macro calls in
+# reco-core / reco-io / reco-calibrate to the tracing pipeline so user
+# bug-report logs have a single structured source of truth.
 log = "0.4"
 anyhow = "1"
 serde_json = "1"
 pollster = "0.4"
 winit = "0.30"
-tracing = { workspace = true, optional = true }
-tracing-subscriber = { version = "0.3", optional = true, features = ["registry"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-log = { workspace = true }
 tracing-chrome = { version = "0.7", optional = true }
 ctrlc = "3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

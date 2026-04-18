@@ -62,6 +62,62 @@ pub extern "C" fn obs_module_ver() -> u32 {
     LIBOBS_API_VER
 }
 
+/// Install the standard tracing subscriber + log bridge for the OBS
+/// plugin.
+///
+/// Post-deployment this is the user's one shot at diagnosing a bug.
+/// OBS captures the plugin's stderr into its own log file, so every
+/// event from our pipeline ends up in a place the user can zip up
+/// and mail. Bridges `log::*` calls from reco-core / reco-io to the
+/// tracing pipeline so there is one structured source of truth.
+///
+/// Called once from [`obs_module_load`]. Uses `try_init` so repeated
+/// plugin loads (OBS devtools reload) do not panic.
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+    let _ = tracing_log::LogTracer::init();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_target(true).with_level(true))
+        .try_init();
+}
+
+/// Install a panic hook that emits the panic location + payload as a
+/// `tracing::error!` event before the default hook runs.
+///
+/// Critical for the OBS plugin: if any of our `unsafe extern "C"`
+/// callbacks panics, the default hook unwinds across the C ABI which
+/// is undefined behavior (Rust Reference; downgraded from UB to
+/// abort under `panic = "unwind"`, but still aborts the OBS host).
+/// The `catch_unwind` wrappers at each FFI boundary (separate commit)
+/// rely on this hook to produce a diagnosable record before the catch
+/// converts the panic into a safe early-return.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".into());
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".into()
+        };
+        tracing::error!(
+            target: "panic",
+            location = %location,
+            payload = %payload,
+            "reco-obs: panic caught by tracing panic hook"
+        );
+        default_hook(info);
+    }));
+}
+
 /// Called by OBS to load the module. Register our source here.
 ///
 /// # Safety
@@ -69,12 +125,11 @@ pub extern "C" fn obs_module_ver() -> u32 {
 /// Called by OBS during startup. We register our source info struct.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn obs_module_load() -> bool {
-    // Initialize logging with an Info default so plugin messages
-    // surface in OBS's captured stderr (and via OBS's log files too)
-    // without the user needing to set RUST_LOG manually. If the env
-    // already sets RUST_LOG, env_logger's parser takes over.
-    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .try_init();
+    // M2 migration: tracing_subscriber replaces env_logger. OBS captures
+    // the plugin's stderr so structured tracing events land in OBS's
+    // log files alongside other plugin output.
+    init_tracing();
+    install_panic_hook();
 
     log::info!("reco-obs: module loading (API version {LIBOBS_API_VER:#010x})");
 

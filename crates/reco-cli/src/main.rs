@@ -31,6 +31,63 @@ fn init_profiling() -> tracing_chrome::FlushGuard {
     guard
 }
 
+/// Install the standard tracing subscriber for the non-profiling path.
+///
+/// Routes legacy `log::*` macro calls from reco-core / reco-io /
+/// reco-calibrate into the tracing pipeline so a single structured
+/// source of truth carries every event. Reads `RUST_LOG` for level
+/// filtering; defaults to `info` if unset.
+///
+/// M2 migration: replaces the previous `env_logger::init()`.
+#[cfg(not(feature = "profiling"))]
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+    // Bridge legacy `log::*` calls into tracing. Ignores "already set"
+    // errors so tests that construct multiple CLIs don't panic.
+    let _ = tracing_log::LogTracer::init();
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let fmt_layer = fmt::layer().with_target(true).with_level(true);
+
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt_layer)
+        .try_init();
+}
+
+/// Install a panic hook that captures the panic context (location,
+/// payload) as a structured `tracing::error!` event before the default
+/// hook runs. When a user reports a bug post-deployment with a log
+/// file, the panic context is immediately searchable alongside regular
+/// log lines.
+///
+/// M2 addition: required for the post-deployment diagnostic story the
+/// user flagged during the plan iteration on 2026-04-18.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".into());
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".into()
+        };
+        tracing::error!(
+            target: "panic",
+            location = %location,
+            payload = %payload,
+            "panic caught by tracing panic hook"
+        );
+        default_hook(info);
+    }));
+}
+
 #[derive(Parser)]
 #[command(
     name = "reco",
@@ -446,12 +503,14 @@ fn parse_blend(s: &str) -> Result<f32, String> {
 }
 
 fn main() -> anyhow::Result<()> {
-    // When profiling, tracing-subscriber owns the global logger;
-    // otherwise, use env_logger for RUST_LOG filtering.
+    // When profiling, tracing-subscriber is owned by the chrome layer
+    // (one global subscriber per process). Otherwise, install our fmt
+    // subscriber + log bridge for normal structured output.
     #[cfg(feature = "profiling")]
     let _profiling_guard = init_profiling();
     #[cfg(not(feature = "profiling"))]
-    env_logger::init();
+    init_tracing();
+    install_panic_hook();
 
     // Set up Ctrl-C handler so stitch can finalize the output file
     let interrupted = Arc::new(AtomicBool::new(false));

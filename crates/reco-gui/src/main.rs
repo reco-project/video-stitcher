@@ -719,8 +719,55 @@ fn sync_recent_paths(settings: &settings::GuiSettings, app: &RecoApp) {
     app.set_recent_calibration_paths(to_model(settings.recent_calibration.entries()));
 }
 
+/// Install the standard tracing subscriber + log bridge.
+///
+/// Replaces the previous `env_logger::init()`. Bridges `log::*` calls
+/// from reco-core / reco-io / reco-calibrate into tracing so user bug
+/// reports arrive as one structured event stream instead of two
+/// loggers writing to the same stderr.
+///
+/// M2 migration (deep-review-2026-04-18 decision 11).
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+    let _ = tracing_log::LogTracer::init();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_target(true).with_level(true))
+        .try_init();
+}
+
+/// Panic hook: emit panic location + payload as a `tracing::error!`
+/// before the default hook runs, so a user-reported log file contains
+/// the panic context alongside surrounding events.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".into());
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".into()
+        };
+        tracing::error!(
+            target: "panic",
+            location = %location,
+            payload = %payload,
+            "panic caught by tracing panic hook"
+        );
+        default_hook(info);
+    }));
+}
+
 fn main() -> anyhow::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    init_tracing();
+    install_panic_hook();
 
     reco_io::init();
 

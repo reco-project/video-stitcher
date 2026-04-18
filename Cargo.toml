@@ -19,6 +19,13 @@ repository = "https://github.com/reco-project/video-stitcher"
 
 [workspace.dependencies]
 tracing = "0.1"
+# tracing-subscriber + env-filter: structured log output with RUST_LOG-
+# style filtering, feature-gated JSON emit for diagnostic bundles.
+# tracing-log: auto-bridges legacy `log::*` macro calls to tracing so
+# existing call sites in reco-core / reco-io / reco-calibrate keep
+# working while we migrate incrementally. Registered once per binary.
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "tracing-log"] }
+tracing-log = "0.2"
 
 # SPIKE: wgpu 28 interop with Slint. Fork removed; if wgpu 28 doesn't
 # have the shaderDrawParameters regression, no patch is needed.
