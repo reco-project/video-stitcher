@@ -721,6 +721,27 @@ impl CoverageBoundary {
         fov_v_deg: f32,
         aspect: f32,
     ) -> ClampedPosition {
+        // B-30 defense: non-finite inputs would propagate through the
+        // clamp / comparisons and emit NaN, which then flows into the
+        // MVP matrix and produces a black or garbage frame. Upstream
+        // guards (B-28 detector boundary, B-29 director EMA) stop most
+        // NaN at the source, but user overrides and external clients
+        // can still hand us non-finite values. Fall back to the
+        // coverage center.
+        if !yaw.is_finite()
+            || !pitch.is_finite()
+            || !fov_v_deg.is_finite()
+            || !aspect.is_finite()
+        {
+            let safe_pitch = (self.pitch_min + self.pitch_max) * 0.5;
+            let (yaw_lo, yaw_hi) = self.yaw_range_at(safe_pitch);
+            let safe_yaw = (yaw_lo + yaw_hi) * 0.5;
+            return ClampedPosition {
+                yaw: safe_yaw,
+                pitch: safe_pitch,
+            };
+        }
+
         let half_vfov = (fov_v_deg * 0.5).to_radians();
         let half_hfov = (aspect * half_vfov.tan()).atan();
 
@@ -1278,5 +1299,54 @@ mod tests {
             pitch_max: 0.0,
         };
         assert!(ext.normalize(0.0, 0.0).is_none());
+    }
+
+    // ── B-30 NaN-resilience regression tests ─────────────────────────
+
+    #[test]
+    fn safe_clamp_rejects_nan_yaw() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(f32::NAN, 0.0, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite(), "yaw must be finite, got {}", out.yaw);
+        assert!(
+            out.pitch.is_finite(),
+            "pitch must be finite, got {}",
+            out.pitch
+        );
+    }
+
+    #[test]
+    fn safe_clamp_rejects_nan_pitch() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(0.0, f32::NAN, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
+    }
+
+    #[test]
+    fn safe_clamp_rejects_nan_fov() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(0.0, 0.0, f32::NAN, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
+    }
+
+    #[test]
+    fn safe_clamp_rejects_infinite_inputs() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(f32::INFINITY, 0.0, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
+        let out = coverage.safe_clamp(0.0, f32::NEG_INFINITY, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
     }
 }
