@@ -26,9 +26,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::MatchCalibration;
 use reco_core::gpu::GpuContext;
-use reco_core::pipeline::{StitchPipeline, YuvPlanes};
+use reco_core::pipeline::YuvPlanes;
 use reco_core::renderer::InputFormat;
-use reco_core::rgba_readback::RgbaReadback;
+use reco_core::session::{LiveSessionConfig, LiveStitchSession};
 use reco_core::viewport::ViewportConfig;
 
 use crate::ffi;
@@ -61,15 +61,9 @@ const PROP_PITCH: &CStr = c"pitch";
 /// Allocated in `create`, freed in `destroy`. OBS passes `*mut c_void`
 /// pointing to this through all callbacks.
 struct RecoSource {
-    /// The wgpu stitching pipeline (None until calibration is loaded).
-    pipeline: Option<StitchPipeline>,
-
-    /// RGBA readback helper (triple-buffered staging + row-padding strip).
-    /// None until the pipeline is built.
-    readback: Option<RgbaReadback>,
-
-    /// The shared GPU context.
-    gpu: Option<GpuContext>,
+    /// High-level push session (bundles pipeline + RGBA readback).
+    /// None until calibration is loaded and GPU is initialized.
+    session: Option<LiveStitchSession>,
 
     /// Current calibration loaded from the config file.
     calibration: Option<MatchCalibration>,
@@ -107,9 +101,7 @@ struct RecoSource {
 impl RecoSource {
     fn new() -> Self {
         Self {
-            pipeline: None,
-            readback: None,
-            gpu: None,
+            session: None,
             calibration: None,
             config_path: String::new(),
             output_width: 1920,
@@ -136,68 +128,47 @@ impl RecoSource {
             }
         };
 
-        // Initialize GPU context if we don't have one yet.
-        if self.gpu.is_none() {
-            match GpuContext::new_blocking() as Result<GpuContext, _> {
-                Ok(gpu) => {
-                    log::info!("reco-obs: GPU initialized: {}", gpu.gpu_name());
-                    self.gpu = Some(gpu);
-                }
-                Err(e) => {
-                    log::error!("reco-obs: failed to initialize GPU: {e}");
-                    return;
-                }
+        let gpu = match GpuContext::new_blocking() {
+            Ok(g) => g,
+            Err(e) => {
+                log::error!("reco-obs: failed to initialize GPU: {e}");
+                return;
             }
-        }
+        };
+        log::info!("reco-obs: GPU initialized: {}", gpu.gpu_name());
 
-        let gpu = self.gpu.as_ref().unwrap().clone();
         let viewport = ViewportConfig {
             width: self.output_width,
             height: self.output_height,
             ..ViewportConfig::default()
         };
 
-        match StitchPipeline::with_gpu(
+        match LiveStitchSession::new(
             gpu,
-            calibration,
-            viewport,
-            self.input_width,
-            self.input_height,
-            reco_core::wgpu::TextureFormat::Rgba8Unorm,
-            InputFormat::Yuv420p,
+            LiveSessionConfig {
+                calibration,
+                viewport,
+                input_width: self.input_width,
+                input_height: self.input_height,
+                output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
+                input_format: InputFormat::Yuv420p,
+            },
         ) {
-            Ok(pipeline) => {
+            Ok(session) => {
                 log::info!(
-                    "reco-obs: pipeline initialized ({}x{} output, {}x{} input, GPU: {})",
+                    "reco-obs: session initialized ({}x{} output, {}x{} input)",
                     self.output_width,
                     self.output_height,
                     self.input_width,
                     self.input_height,
-                    pipeline.gpu_name(),
                 );
-                // Build the RGBA readback helper alongside the pipeline.
-                // `RgbaReadback` owns the triple-buffered staging + row
-                // padding strip that used to live inline in this file.
-                match RgbaReadback::new(pipeline.gpu(), self.output_width, self.output_height) {
-                    Ok(readback) => {
-                        self.readback = Some(readback);
-                    }
-                    Err(e) => {
-                        log::error!("reco-obs: failed to create RGBA readback: {e}");
-                        self.pipeline = None;
-                        self.readback = None;
-                        return;
-                    }
-                }
-                self.pipeline = Some(pipeline);
-                // Pre-allocate the owned buffer that `video_render` reads.
+                self.session = Some(session);
                 let buf_size = (self.output_width * self.output_height * 4) as usize;
                 self.rgba_buffer.resize(buf_size, 0);
             }
             Err(e) => {
-                log::error!("reco-obs: failed to create pipeline: {e}");
-                self.pipeline = None;
-                self.readback = None;
+                log::error!("reco-obs: failed to create session: {e}");
+                self.session = None;
             }
         }
     }
@@ -206,7 +177,7 @@ impl RecoSource {
     fn load_calibration(&mut self) {
         if self.config_path.is_empty() {
             self.calibration = None;
-            self.pipeline = None;
+            self.session = None;
             return;
         }
 
@@ -222,39 +193,23 @@ impl RecoSource {
                     self.config_path
                 );
                 self.calibration = None;
-                self.pipeline = None;
+                self.session = None;
             }
         }
     }
 
-    /// Perform a render and readback cycle.
+    /// Perform a render and readback cycle via [`LiveStitchSession`].
     ///
     /// Currently renders a blank frame (all-zero YUV) since we don't have
-    /// live camera input wired up yet. The real integration will need an
-    /// `obs_source_t` reference to pull video frames from upstream OBS
-    /// sources (e.g., two V4L2 camera inputs).
+    /// live camera input wired up yet. When real OBS frame callbacks are
+    /// plumbed, the strided `obs_source_frame` planes should be wrapped
+    /// in [`reco_core::pipeline::StridedYuvPlanes`] and repacked into a
+    /// cached `Vec<u8>` via `copy_into(&mut buf)` before submission.
     fn render_and_readback(&mut self) {
-        let pipeline = match &self.pipeline {
-            Some(p) => p,
+        let session = match &mut self.session {
+            Some(s) => s,
             None => return,
         };
-        let readback = match &mut self.readback {
-            Some(r) => r,
-            None => return,
-        };
-        let gpu = match &self.gpu {
-            Some(g) => g,
-            None => return,
-        };
-
-        // FRICTION: StitchPipeline expects raw YUV plane data (&[u8]) but
-        // an OBS plugin consumer would naturally have obs_source_frame
-        // pointers or OBS texture handles. There's no way to feed OBS's
-        // frame data into the pipeline without first extracting the raw
-        // plane bytes and sizes - which requires knowing the OBS video
-        // format and stride layout. A higher-level API that accepts
-        // width/height/stride/pointers (like a "RawFrameView") would
-        // reduce this impedance mismatch.
 
         // TODO: Wire up actual camera frame data from OBS source inputs.
         // For now, render a test pattern (zero YUV = green in BT.601).
@@ -278,19 +233,7 @@ impl RecoSource {
         let yaw = (self.yaw_degrees as f32).to_radians();
         let pitch = (self.pitch_degrees as f32).to_radians();
 
-        // Render + triple-buffered RGBA readback via the shared
-        // `RgbaReadback` helper in reco-core. Returns `None` on the first
-        // two calls (pipeline warmup) and tightly-packed RGBA thereafter,
-        // so the wgpu 256-byte row padding is stripped for us.
-        let cmd_buf = match pipeline.render_to_target(&left, &right, yaw, pitch) {
-            Ok(cmd) => cmd,
-            Err(e) => {
-                log::error!("reco-obs: render failed: {e}");
-                return;
-            }
-        };
-
-        match readback.readback(gpu, pipeline.render_target(), cmd_buf) {
+        match session.submit_frame(&left, &right, yaw, pitch) {
             Ok(Some(rgba)) => {
                 self.rgba_buffer.copy_from_slice(rgba);
                 self.frame_ready.store(true, Ordering::Release);
@@ -299,7 +242,7 @@ impl RecoSource {
                 // Pipeline warmup; next tick will have data.
             }
             Err(e) => {
-                log::error!("reco-obs: RGBA readback failed: {e}");
+                log::error!("reco-obs: render/readback failed: {e}");
             }
         }
     }
@@ -536,7 +479,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
     }
     let src = unsafe { &mut *(data as *mut RecoSource) };
 
-    if src.pipeline.is_none() {
+    if src.session.is_none() {
         return;
     }
 
