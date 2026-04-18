@@ -79,6 +79,113 @@ component LabeledSlider inherits VerticalLayout {
     }
 }
 
+// Toast notification payload. Kept flat (no nested structs) so the
+// Rust side can push via the generated `VecModel<Toast>` without
+// wrapping ceremony. `id` is an opaque Rust-side counter used as the
+// dismissal handle; UI code doesn't interpret it.
+export struct Toast {
+    id: int,
+    severity: string, // "info" | "warn" | "error"
+    title: string,
+    body: string,
+}
+
+/// A single dismissible toast card. Stacked vertically by `ToastStack`.
+///
+/// Severity drives the left-border accent color:
+/// - info: blue-grey
+/// - warn: amber
+/// - error: red
+/// All three share the same dark card background to match the app chrome.
+component ToastCard inherits Rectangle {
+    in property <Toast> toast;
+    callback dismissed(int);
+
+    height: content.preferred-height + 16px;
+    width: 360px;
+    border-radius: 6px;
+    background: #1f1f1f;
+    border-width: 1px;
+    border-color: #333;
+    // Severity accent via left-edge bar (drawn with a clipped child
+    // rectangle below). Also shifts the main border color subtly.
+    drop-shadow-blur: 6px;
+    drop-shadow-color: #000000aa;
+
+    Rectangle {
+        x: 0; y: 0;
+        width: 4px;
+        height: parent.height;
+        background: root.toast.severity == "error" ? #e06060
+                  : root.toast.severity == "warn"  ? #e0c060
+                  : #6080c0;
+    }
+
+    content := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 8px;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.toast.title;
+                color: #fff;
+                font-size: 12px;
+                font-weight: 600;
+                wrap: word-wrap;
+            }
+            if root.toast.body != "": Text {
+                text: root.toast.body;
+                color: #bbb;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+        }
+
+        // Dismiss button. Kept narrow so the card body gets the space.
+        Rectangle {
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            background: dismiss-touch.has-hover ? #3a3a3a : transparent;
+            Text {
+                text: "×";
+                color: #888;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            dismiss-touch := TouchArea {
+                clicked => { root.dismissed(root.toast.id); }
+            }
+        }
+    }
+}
+
+/// Bottom-right stack of toast cards. Spawns a `ToastCard` per entry
+/// in `toasts` and forwards dismissal back to the consumer via the
+/// `dismissed(id)` callback.
+component ToastStack inherits Rectangle {
+    in property <[Toast]> toasts;
+    callback dismissed(int);
+
+    VerticalLayout {
+        x: parent.width - self.preferred-width - 16px;
+        y: parent.height - self.preferred-height - 16px;
+        spacing: 8px;
+        alignment: end;
+
+        for toast in root.toasts: ToastCard {
+            toast: toast;
+            dismissed(id) => { root.dismissed(id); }
+        }
+    }
+}
+
 export component RecoApp inherits Window {
     title: "Reco Video Stitcher";
     preferred-width: 1280px;
@@ -176,6 +283,12 @@ export component RecoApp inherits Window {
     // to inspect what is happening beyond the stitched region, which is
     // useful for calibration debug.
     in-out property <bool> use-constrained-look: true;
+
+    // Toast notification list. Rust pushes via `set_toasts(model)` and
+    // drives auto-dismissal on its own timer; Slint renders whatever
+    // is currently in the list at the bottom-right.
+    in-out property <[Toast]> toasts: [];
+    callback toast-dismissed(int);
 
     // Per-camera lens intrinsics (populated by Rust after auto-calibrate
     // from `CalibrationResult.left_lens_profile` / `right_lens_profile`).
@@ -1034,6 +1147,16 @@ export component RecoApp inherits Window {
             }
         }
         }  // close VerticalBox
+
+        // ── Toast stack (floating overlay, bottom-right) ──
+        // Sibling of the main layout so it renders on top of everything
+        // including the preview and the transport bar. Does not block
+        // input outside the cards because ToastStack itself has no
+        // TouchArea - only the dismiss button inside each card.
+        ToastStack {
+            toasts: root.toasts;
+            dismissed(id) => { root.toast-dismissed(id); }
+        }
 
         // ── Export dialog (modal overlay) ──
         //
