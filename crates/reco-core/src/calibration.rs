@@ -92,7 +92,31 @@ pub enum CalibrationError {
         /// The offending value.
         value: f64,
     },
+
+    /// `sync_offset` is outside a realistic range.
+    ///
+    /// Guards against pathological values (e.g. `i64::MIN`) that would
+    /// hang the decode pairing loop by trying to skip an astronomical
+    /// number of frames. Realistic values are at most a few thousand
+    /// frames (a few minutes at 60fps); this limit is deliberately
+    /// generous.
+    #[error("params.sync_offset must be in [{min}, {max}] frames, got {value}")]
+    SyncOffsetOutOfRange {
+        /// The offending value.
+        value: i64,
+        /// The minimum allowed (negative).
+        min: i64,
+        /// The maximum allowed (positive).
+        max: i64,
+    },
 }
+
+/// Maximum realistic sync_offset in frames.
+///
+/// Chosen to be comfortably larger than any plausible physical offset
+/// (100000 frames is ~28 minutes at 60fps) while rejecting values that
+/// would hang the decode pairing loop. See [`CalibrationError::SyncOffsetOutOfRange`].
+const MAX_SYNC_OFFSET_FRAMES: i64 = 100_000;
 
 /// Camera intrinsic parameters from a lens profile.
 ///
@@ -346,6 +370,19 @@ impl MatchCalibration {
             return Err(CalibrationError::NonFiniteFloat {
                 field: "rig_roll".to_string(),
                 value: self.rig_roll.to_string(),
+            });
+        }
+        // B-10: reject pathological sync_offset (e.g. i64::MIN) that would
+        // hang the decode pairing loop. Bounds-check directly instead of
+        // `.abs()` because `i64::MIN.abs()` itself overflows and panics in
+        // debug builds.
+        if self.sync_offset < -MAX_SYNC_OFFSET_FRAMES
+            || self.sync_offset > MAX_SYNC_OFFSET_FRAMES
+        {
+            return Err(CalibrationError::SyncOffsetOutOfRange {
+                value: self.sync_offset,
+                min: -MAX_SYNC_OFFSET_FRAMES,
+                max: MAX_SYNC_OFFSET_FRAMES,
             });
         }
         Ok(())
@@ -816,5 +853,42 @@ mod tests {
 
         assert_eq!(parsed.left.width, cal.left.width);
         assert!((parsed.layout.intersect - cal.layout.intersect).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn validate_rejects_sync_offset_i64_min() {
+        // B-10: i64::MIN used to slip through; the validator must reject it.
+        // Do NOT use `.abs()` in the implementation because i64::MIN.abs()
+        // itself panics on overflow - test proves the bounds-check path works.
+        let mut cal = valid_cal();
+        cal.sync_offset = i64::MIN;
+        let err = cal.validate().expect_err("i64::MIN must be rejected");
+        assert!(matches!(err, CalibrationError::SyncOffsetOutOfRange { .. }));
+    }
+
+    #[test]
+    fn validate_rejects_sync_offset_i64_max() {
+        let mut cal = valid_cal();
+        cal.sync_offset = i64::MAX;
+        let err = cal.validate().expect_err("i64::MAX must be rejected");
+        assert!(matches!(err, CalibrationError::SyncOffsetOutOfRange { .. }));
+    }
+
+    #[test]
+    fn validate_accepts_plausible_sync_offsets() {
+        for v in [-10_000_i64, -60, 0, 60, 10_000] {
+            let mut cal = valid_cal();
+            cal.sync_offset = v;
+            cal.validate()
+                .unwrap_or_else(|e| panic!("sync_offset={v} must be accepted: {e:?}"));
+        }
+    }
+
+    #[test]
+    fn validate_rejects_sync_offset_just_past_cap() {
+        let mut cal = valid_cal();
+        cal.sync_offset = 100_001;
+        let err = cal.validate().unwrap_err();
+        assert!(matches!(err, CalibrationError::SyncOffsetOutOfRange { .. }));
     }
 }
