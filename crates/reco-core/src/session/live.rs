@@ -1,14 +1,14 @@
 //! Live push-based stitching for compositor/callback consumers.
 //!
 //! [`LiveStitchSession`] bundles a [`StitchPipeline`] with an
-//! [`RgbaReadback`] helper so consumers that receive frames one at a
+//! `RgbaReadback` helper so consumers that receive frames one at a
 //! time on a callback thread (OBS `video_tick`, V4L2 capture, WebRTC
 //! ingest) can call a single `submit_frame` and get back a tightly
 //! packed RGBA buffer ready for compositor upload.
 //!
-//! Contrast with [`StitchSession`](super::StitchSession), which drives
-//! a pull-based [`FrameSource`](crate::source::FrameSource) loop - the
-//! wrong shape when frames arrive asynchronously from a C callback.
+//! Contrast with `StitchSession`, which drives a pull-based
+//! [`FrameSource`](crate::source::FrameSource) loop - the wrong shape
+//! when frames arrive asynchronously from a C callback.
 //!
 //! ## Usage
 //!
