@@ -15,7 +15,9 @@ use reco_core::cuda_interop::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
 };
 use reco_core::cuda_kernels::normalize_hwc_to_chw;
-use reco_core::detector::{CameraId, Detection, GpuDetector, GpuNv12Frame};
+use reco_core::detector::{
+    CameraId, Detection, DetectorError, DetectorFrame, GpuDetector, GpuNv12Frame, UnifiedDetector,
+};
 use reco_core::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 
 use super::postprocess;
@@ -184,8 +186,23 @@ impl OrtGpuDetector {
     }
 }
 
-impl GpuDetector for OrtGpuDetector {
-    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
+impl OrtGpuDetector {
+    /// Core inference path shared by the legacy [`GpuDetector`] impl
+    /// and the new [`UnifiedDetector`] impl. Returns a typed
+    /// [`DetectorError`] so unified-trait consumers can distinguish
+    /// "no CUDA context" from "inference failed"; the legacy impl
+    /// collapses the error to a log + empty vector for backward
+    /// compatibility.
+    ///
+    /// Each CUDA / NPP / ORT step that previously logged and returned
+    /// an empty vec now returns
+    /// `Err(DetectorError::InferenceFailed(msg))` preserving the
+    /// original error text verbatim.
+    fn detect_gpu_raw(
+        &mut self,
+        camera: CameraId,
+        frame: &GpuNv12Frame,
+    ) -> Result<Vec<Detection>, DetectorError> {
         let GpuNv12Frame {
             y_ptr,
             uv_ptr,
@@ -201,10 +218,8 @@ impl GpuDetector for OrtGpuDetector {
         // Ensure a CUDA context is current on this thread. The zero-copy
         // frame loop may not have one after NVDEC decode pushes/pops its
         // own context.
-        if let Err(e) = reco_core::cuda_interop::cuda_ensure_context() {
-            log::error!("GPU detect: failed to set CUDA context: {e}");
-            return Vec::new();
-        }
+        reco_core::cuda_interop::cuda_ensure_context()
+            .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
 
         // Step 0: Convert P010 (10-bit) to 8-bit NV12 if needed.
         // NPP's NV12->RGB expects 8-bit samples, so we must down-convert
@@ -212,32 +227,31 @@ impl GpuDetector for OrtGpuDetector {
         let (nv12_y, nv12_y_pitch, nv12_uv, nv12_uv_pitch) = if is_10bit {
             reco_core::profile_scope!("p010_to_nv12");
             if self.nv12_8bit_y == 0 || self.nv12_8bit_uv == 0 {
-                log::error!("P010 frame received but no conversion buffers allocated");
-                return Vec::new();
+                return Err(DetectorError::InferenceFailed(
+                    "P010 frame received but no conversion buffers allocated".into(),
+                ));
             }
             // Convert Y plane: width * height samples.
-            if let Err(e) = reco_core::cuda_kernels::p010_plane_to_nv12(
+            reco_core::cuda_kernels::p010_plane_to_nv12(
                 y_ptr,
                 y_pitch,
                 self.nv12_8bit_y,
                 width,
                 height,
-            ) {
-                log::error!("P010->NV12 Y conversion failed: {e}");
-                return Vec::new();
-            }
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("P010->NV12 Y conversion: {e}")))?;
             // Convert UV plane: width * (height/2) samples.
             // UV plane has width/2 pixel pairs, each 2 u16 values = width u16 samples per row.
-            if let Err(e) = reco_core::cuda_kernels::p010_plane_to_nv12(
+            reco_core::cuda_kernels::p010_plane_to_nv12(
                 uv_ptr,
                 uv_pitch,
                 self.nv12_8bit_uv,
                 width,
                 height / 2,
-            ) {
-                log::error!("P010->NV12 UV conversion failed: {e}");
-                return Vec::new();
-            }
+            )
+            .map_err(|e| {
+                DetectorError::InferenceFailed(format!("P010->NV12 UV conversion: {e}"))
+            })?;
             // The 8-bit buffers are tightly packed (no pitch padding).
             (
                 self.nv12_8bit_y,
@@ -252,7 +266,7 @@ impl GpuDetector for OrtGpuDetector {
         // Step 1: NV12 -> packed RGB u8 via NPP.
         {
             reco_core::profile_scope!("npp_nv12_to_rgb");
-            if let Err(e) = npp_nv12_to_rgb(
+            npp_nv12_to_rgb(
                 nv12_y,
                 nv12_y_pitch,
                 nv12_uv,
@@ -260,10 +274,8 @@ impl GpuDetector for OrtGpuDetector {
                 self.rgb_u8,
                 width,
                 height,
-            ) {
-                log::error!("NPP NV12->RGB failed: {e}");
-                return Vec::new();
-            }
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("NPP NV12->RGB: {e}")))?;
         }
 
         // Step 1b: Flip 180 degrees if the source has rotation metadata.
@@ -272,10 +284,9 @@ impl GpuDetector for OrtGpuDetector {
         // Mirror the RGB buffer in-place via NPP before resize.
         if rotation == 180 {
             reco_core::profile_scope!("npp_mirror_180");
-            if let Err(e) = npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height) {
-                log::error!("NPP mirror (rotation=180) failed: {e}");
-                return Vec::new();
-            }
+            npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height).map_err(|e| {
+                DetectorError::InferenceFailed(format!("NPP mirror (rotation=180): {e}"))
+            })?;
         }
 
         // Step 2: Resize to letterboxed region within the pre-filled grey buffer.
@@ -284,10 +295,8 @@ impl GpuDetector for OrtGpuDetector {
             reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
             let resized_size = (is as usize) * (is as usize) * 3;
-            if let Err(e) = cuda_memset_d8(self.resized_u8, 114, resized_size) {
-                log::error!("Grey fill failed: {e}");
-                return Vec::new();
-            }
+            cuda_memset_d8(self.resized_u8, 114, resized_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("grey fill: {e}")))?;
 
             let pad_x_i = self.pad_x as u32;
             let pad_y_i = self.pad_y as u32;
@@ -298,26 +307,20 @@ impl GpuDetector for OrtGpuDetector {
                 height: self.new_h as i32,
             };
 
-            if let Err(e) =
-                npp_resize_c3(self.rgb_u8, width, height, self.resized_u8, is, is, dst_roi)
-            {
-                log::error!("NPP resize failed: {e}");
-                return Vec::new();
-            }
+            npp_resize_c3(self.rgb_u8, width, height, self.resized_u8, is, is, dst_roi)
+                .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
         }
 
         // Step 3: Normalize u8 HWC -> f32 CHW with /255.0 via CUDA kernel.
         {
             reco_core::profile_scope!("cuda_normalize");
-            if let Err(e) = normalize_hwc_to_chw(
+            normalize_hwc_to_chw(
                 self.resized_u8,
                 self.tensor_f32,
                 self.input_size,
                 self.input_size,
-            ) {
-                log::error!("CUDA normalize kernel failed: {e}");
-                return Vec::new();
-            }
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
         }
 
         // Step 4: Wrap GPU buffer as ORT tensor and run inference.
@@ -325,50 +328,33 @@ impl GpuDetector for OrtGpuDetector {
             reco_core::profile_scope!("gpu_ort_inference");
 
             let sz = self.input_size as i64;
-            let memory_info = match MemoryInfo::new(
+            let memory_info = MemoryInfo::new(
                 AllocationDevice::CUDA,
                 0,
                 AllocatorType::Device,
                 MemoryType::Default,
-            ) {
-                Ok(m) => m,
-                Err(e) => {
-                    log::error!("Failed to create CUDA MemoryInfo: {e}");
-                    return Vec::new();
-                }
-            };
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA MemoryInfo: {e}")))?;
 
-            let tensor: TensorRefMut<'_, f32> = match unsafe {
+            let tensor: TensorRefMut<'_, f32> = unsafe {
                 TensorRefMut::from_raw(
                     memory_info,
                     self.tensor_f32 as *mut c_void,
                     Shape::new([1i64, 3, sz, sz]),
                 )
-            } {
-                Ok(t) => t,
-                Err(e) => {
-                    log::error!("Failed to create GPU tensor: {e}");
-                    return Vec::new();
-                }
-            };
-
-            match self.session.run(ort::inputs![tensor]) {
-                Ok(o) => o,
-                Err(e) => {
-                    log::error!("GPU YOLO inference failed: {e}");
-                    return Vec::new();
-                }
             }
+            .map_err(|e| DetectorError::InferenceFailed(format!("GPU tensor wrap: {e}")))?;
+
+            self.session
+                .run(ort::inputs![tensor])
+                .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?
         };
 
         // Step 5: Extract output and postprocess on CPU.
-        let (n, data) = match outputs[0].try_extract_tensor::<f32>() {
-            Ok((shape, slice)) => (shape[1] as usize, slice.to_vec()),
-            Err(e) => {
-                log::error!("Failed to extract YOLO output: {e}");
-                return Vec::new();
-            }
-        };
+        let (n, data) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map(|(shape, slice)| (shape[1] as usize, slice.to_vec()))
+            .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
         drop(outputs);
 
         let detections = postprocess(
@@ -409,7 +395,46 @@ impl GpuDetector for OrtGpuDetector {
             );
         }
 
-        detections
+        Ok(detections)
+    }
+}
+
+impl GpuDetector for OrtGpuDetector {
+    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
+        match self.detect_gpu_raw(camera, frame) {
+            Ok(dets) => dets,
+            Err(e) => {
+                log::error!("OrtGpuDetector: {e}");
+                Vec::new()
+            }
+        }
+    }
+}
+
+impl UnifiedDetector for OrtGpuDetector {
+    fn name(&self) -> &'static str {
+        "ort-cuda"
+    }
+
+    fn detect(
+        &mut self,
+        camera: CameraId,
+        frame: &DetectorFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` and
+        // route everything else to `UnsupportedFrameKind` so the
+        // dispatcher can fall back to a CPU backend for `Cpu(_)`.
+        // The wildcard arm keeps this stable against future
+        // `#[non_exhaustive]` additions to `DetectorFrame`.
+        match frame {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            DetectorFrame::Cuda(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),
+            _ => Err(DetectorError::UnsupportedFrameKind),
+        }
+    }
+
+    fn class_names(&self) -> Option<&[String]> {
+        Some(&self.labels)
     }
 }
 
