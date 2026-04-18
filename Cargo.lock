@@ -5348,6 +5348,7 @@ dependencies = [
 name = "reco-obs"
 version = "0.1.0"
 dependencies = [
+ "bindgen",
  "env_logger",
  "log",
  "reco-core",

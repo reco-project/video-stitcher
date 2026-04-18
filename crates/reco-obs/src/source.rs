@@ -563,7 +563,7 @@ impl RecoSource {
                     self.output_height,
                     ffi::gs_color_format::GS_RGBA,
                     1,
-                    ptr::null(),
+                    ptr::null_mut(),
                     ffi::GS_DYNAMIC,
                 )
             };
@@ -1214,7 +1214,7 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
 pub(crate) fn source_info() -> ffi::obs_source_info {
     ffi::obs_source_info {
         id: SOURCE_ID.as_ptr(),
-        r#type: ffi::obs_source_type::OBS_SOURCE_TYPE_INPUT,
+        type_: ffi::obs_source_type::OBS_SOURCE_TYPE_INPUT,
         output_flags: ffi::OBS_SOURCE_VIDEO | ffi::OBS_SOURCE_INTERACTION,
         get_name: Some(source_get_name),
         create: Some(source_create),
