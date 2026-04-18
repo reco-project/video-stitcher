@@ -15,6 +15,7 @@
 
 mod playback;
 mod preview;
+mod settings;
 mod toast;
 
 use std::cell::RefCell;
@@ -157,6 +158,19 @@ struct AppState {
     /// Original PlaneLayout values — what auto-calibrate produced. Live
     /// calibration sliders edit relative to this so Reset restores.
     cal_baseline_layout: Option<reco_core::calibration::PlaneLayout>,
+    /// Persisted user preferences (recent files, default export
+    /// settings, AI model path). Loaded at startup from the reco-io
+    /// settings namespace and saved on any change via the convenience
+    /// `push_*` methods.
+    user_settings: crate::settings::GuiSettings,
+    /// Last window size we persisted. Used to debounce resize saves -
+    /// we only write to disk when the current size actually differs
+    /// from the stored value.
+    last_persisted_window_size: Option<(u32, u32)>,
+    /// Last time we wrote window-size settings. Combined with the
+    /// debounce threshold below to avoid thrashing disk during a
+    /// drag-resize (Slint reports a new size every pixel).
+    last_window_size_save_at: Option<Instant>,
     /// Baseline camera intrinsics from the last successful calibration.
     /// The Lens fine-tune sliders in the Controls panel edit these; the
     /// Reset Lens button restores them. `None` until auto-calibrate or a
@@ -261,6 +275,9 @@ impl AppState {
             export_thread: None,
             export_rx: None,
             cal_baseline_layout: None,
+            user_settings: crate::settings::GuiSettings::load(),
+            last_persisted_window_size: None,
+            last_window_size_save_at: None,
             cal_baseline_left_params: None,
             cal_baseline_right_params: None,
             use_constrained_look: true,
@@ -673,6 +690,21 @@ fn display_name(path: &std::path::Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+/// Push the current MRU lists into the Slint properties that back the
+/// Recent-files dialog. Called at startup and after every file pick.
+fn sync_recent_paths(settings: &settings::GuiSettings, app: &RecoApp) {
+    fn to_model(paths: &[std::path::PathBuf]) -> slint::ModelRc<slint::SharedString> {
+        let v: Vec<slint::SharedString> = paths
+            .iter()
+            .map(|p| slint::SharedString::from(p.to_string_lossy().as_ref()))
+            .collect();
+        slint::ModelRc::new(slint::VecModel::from(v))
+    }
+    app.set_recent_left_paths(to_model(settings.recent_left.entries()));
+    app.set_recent_right_paths(to_model(settings.recent_right.entries()));
+    app.set_recent_calibration_paths(to_model(settings.recent_calibration.entries()));
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -697,6 +729,24 @@ fn main() -> anyhow::Result<()> {
     log::info!("{ai_status}");
     app.set_ai_status(ai_status.into());
     app.set_ai_gpu_available(ai_gpu_ok);
+
+    // Seed the Recent-files dialog with the persisted MRU lists. If
+    // the user never loaded anything before, these are empty and the
+    // Recent button in the file bar stays disabled.
+    sync_recent_paths(&state.borrow().user_settings, &app);
+
+    // Restore last window size if the user resized before. Slint's
+    // `set_size` takes a `PhysicalSize`; we stored logical dimensions
+    // in settings but using them as physical is close enough at 1.0
+    // scale (the common case) - if the user moves to a HiDPI display
+    // the next resize will correct.
+    if let Some((w, h)) = state.borrow().user_settings.window_size
+        && w > 0
+        && h > 0
+    {
+        app.window()
+            .set_size(slint::LogicalSize::new(w as f32, h as f32));
+    }
 
     // Capture Slint's wgpu device and queue on RenderingSetup. These
     // are reused by PreviewBridge so reco-core's stitch output lands
@@ -781,6 +831,10 @@ fn main() -> anyhow::Result<()> {
             if let Some(app) = app_weak.upgrade() {
                 app.set_left_path(display_name(&path).into());
             }
+            s.user_settings.push_left(path.clone());
+            if let Some(app) = app_weak.upgrade() {
+                sync_recent_paths(&s.user_settings, &app);
+            }
             s.left_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
@@ -797,6 +851,10 @@ fn main() -> anyhow::Result<()> {
             let mut s = state_ref.borrow_mut();
             if let Some(app) = app_weak.upgrade() {
                 app.set_right_path(display_name(&path).into());
+            }
+            s.user_settings.push_right(path.clone());
+            if let Some(app) = app_weak.upgrade() {
+                sync_recent_paths(&s.user_settings, &app);
             }
             s.right_path = Some(path);
             drop(s);
@@ -815,9 +873,141 @@ fn main() -> anyhow::Result<()> {
             if let Some(app) = app_weak.upgrade() {
                 app.set_calibration_path(display_name(&path).into());
             }
+            s.user_settings.push_calibration(path.clone());
+            if let Some(app) = app_weak.upgrade() {
+                sync_recent_paths(&s.user_settings, &app);
+            }
             s.calibration_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
+        }
+    });
+
+    // ── Recent-files dialog callbacks ──
+    //
+    // Clicking an entry in the dialog is functionally equivalent to
+    // picking that file via the native dialog: update the MRU (so it
+    // moves to front), push to the Slint label property, and try to
+    // initialize if all three slots are now filled.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_load_recent_left(move |entry| {
+        let path = PathBuf::from(entry.as_str());
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_left_path(display_name(&path).into());
+        }
+        s.user_settings.push_left(path.clone());
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
+        }
+        s.left_path = Some(path);
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_load_recent_right(move |entry| {
+        let path = PathBuf::from(entry.as_str());
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_right_path(display_name(&path).into());
+        }
+        s.user_settings.push_right(path.clone());
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
+        }
+        s.right_path = Some(path);
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_load_recent_calibration(move |entry| {
+        let path = PathBuf::from(entry.as_str());
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_path(display_name(&path).into());
+        }
+        s.user_settings.push_calibration(path.clone());
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
+        }
+        s.calibration_path = Some(path);
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_clear_recent_files(move || {
+        let mut s = state_ref.borrow_mut();
+        s.user_settings.recent_left.clear();
+        s.user_settings.recent_right.clear();
+        s.user_settings.recent_calibration.clear();
+        s.user_settings.save();
+        if let Some(app) = app_weak.upgrade() {
+            sync_recent_paths(&s.user_settings, &app);
+        }
+    });
+
+    // ── Preferences dialog callbacks ──
+    //
+    // Open prefills the prefs-* properties from user_settings; Save
+    // reads them back and persists. Cancel just closes - no state
+    // change needed because the Slint properties are scratch space
+    // that gets re-seeded on next open.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_open_prefs_dialog(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let s = state_ref.borrow();
+        app.set_prefs_default_codec(s.user_settings.default_codec.clone().into());
+        app.set_prefs_default_quality(s.user_settings.default_quality.clone().into());
+        app.set_prefs_default_blend_width(s.user_settings.default_blend_width);
+        app.set_prefs_ai_model_path(
+            s.user_settings
+                .ai_model_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .into(),
+        );
+        app.set_prefs_dialog_open(true);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_save_prefs(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.user_settings.default_codec = app.get_prefs_default_codec().to_string();
+        s.user_settings.default_quality = app.get_prefs_default_quality().to_string();
+        s.user_settings.default_blend_width = app.get_prefs_default_blend_width();
+        let model_path = app.get_prefs_ai_model_path().to_string();
+        s.user_settings.ai_model_path = if model_path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(model_path))
+        };
+        s.user_settings.save();
+    });
+
+    let app_weak = app.as_weak();
+    app.on_pick_prefs_model(move || {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Select YOLO ONNX model")
+            .add_filter("ONNX", &["onnx"]);
+        if let Some(path) = dialog.pick_file()
+            && let Some(app) = app_weak.upgrade()
+        {
+            app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
         }
     });
 
@@ -1323,10 +1513,22 @@ fn main() -> anyhow::Result<()> {
     app.on_open_export_dialog(move || {
         let s = state_ref.borrow();
         if let Some(app) = app_weak.upgrade() {
-            // Seed reasonable defaults from current preview state.
+            // Seed from persisted user defaults first (codec, quality,
+            // model path) so the dialog reflects the user's last
+            // choices across sessions...
+            app.set_export_codec(s.user_settings.default_codec.clone().into());
+            app.set_export_quality(s.user_settings.default_quality.clone().into());
+            if let Some(model_path) = s.user_settings.ai_model_path.as_ref() {
+                app.set_export_model_path(model_path.to_string_lossy().to_string().into());
+            }
+            // ...then override blend width with the live preview's
+            // current value, which is usually what the user actually
+            // wants applied to the export (overrides the saved default).
             if let Some(bridge) = s.bridge.as_ref() {
                 let cur_blend = bridge.renderer().pipeline().viewport().blend_width;
                 app.set_export_blend_width(cur_blend);
+            } else {
+                app.set_export_blend_width(s.user_settings.default_blend_width);
             }
             app.set_export_dialog_open(true);
         }
@@ -1351,6 +1553,7 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_export_model(move || {
         let dialog = rfd::FileDialog::new()
             .set_title("Select YOLO ONNX model")
@@ -1359,6 +1562,11 @@ fn main() -> anyhow::Result<()> {
             && let Some(app) = app_weak.upgrade()
         {
             app.set_export_model_path(path.to_string_lossy().to_string().into());
+            // Remember across sessions so the user doesn't re-pick
+            // the same ONNX every run. Save is best-effort.
+            let mut s = state_ref.borrow_mut();
+            s.user_settings.ai_model_path = Some(path);
+            s.user_settings.save();
         }
     });
 
@@ -1399,6 +1607,15 @@ fn main() -> anyhow::Result<()> {
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();
         let detection_interval = app.get_export_detection_interval() as u32;
+
+        // Persist the user's codec / quality / blend choices as the
+        // defaults for next session. Model path is saved in the
+        // on_pick_export_model callback so it sticks even if the user
+        // never actually hits Start. Save is best-effort.
+        s.user_settings.default_codec = codec_str.clone();
+        s.user_settings.default_quality = quality_str.clone();
+        s.user_settings.default_blend_width = blend;
+        s.user_settings.save();
 
         // Reset cancel flag, start a fresh channel for completion.
         s.export_interrupted.store(false, Ordering::Relaxed);
@@ -1544,9 +1761,24 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            // Expire aged toasts. When the list changes, push the new
-            // model into Slint. Skip the work entirely when empty so
-            // a toast-free session incurs ~no overhead.
+            // Persist window size, debounced (Tier 3d).
+            if let Some(app) = app_weak.upgrade() {
+                let size = app.window().size();
+                let cur = (size.width, size.height);
+                let last = s.last_persisted_window_size.unwrap_or((0, 0));
+                if cur != last {
+                    s.last_window_size_save_at = Some(Instant::now());
+                    s.last_persisted_window_size = Some(cur);
+                    s.user_settings.window_size = Some(cur);
+                } else if let Some(since) = s.last_window_size_save_at
+                    && since.elapsed() > Duration::from_secs(2)
+                {
+                    s.user_settings.save();
+                    s.last_window_size_save_at = None;
+                }
+            }
+
+            // Expire aged toasts (Tier 3a).
             if !s.toasts.is_empty()
                 && s.toasts.expire(Instant::now())
                 && let Some(app) = app_weak.upgrade()

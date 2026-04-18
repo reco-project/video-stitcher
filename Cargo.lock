@@ -5321,6 +5321,7 @@ dependencies = [
  "reco-detect",
  "reco-io",
  "rfd",
+ "serde",
  "serde_json",
  "slint",
  "slint-build",
