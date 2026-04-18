@@ -611,8 +611,14 @@ unsafe extern "C" {
     // the source's async frames via obs_source_get_frame, but OBS doesn't
     // track that as "showing", so without inc_showing it may deactivate
     // the decoder and stall playback.
+    //
+    // `inc_showing` alone is insufficient for Media Source (ffmpeg_source):
+    // its decode thread also checks active_state, so we pair with
+    // `inc_active` to hold the upstream firmly.
     pub fn obs_source_inc_showing(source: *mut obs_source_t);
     pub fn obs_source_dec_showing(source: *mut obs_source_t);
+    pub fn obs_source_inc_active(source: *mut obs_source_t);
+    pub fn obs_source_dec_active(source: *mut obs_source_t);
 
     // Dropdown property (for source pickers)
     pub fn obs_properties_add_list(

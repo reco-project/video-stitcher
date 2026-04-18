@@ -93,6 +93,14 @@ struct RecoSource {
     diag_missed_left: u64,
     diag_missed_right: u64,
     diag_submitted: u64,
+    /// Count of video_render invocations since source creation. Logged
+    /// alongside the regular diag heartbeat so we can distinguish
+    /// "stitching runs but OBS never asks us to draw" from
+    /// "render runs but the texture isn't repainting".
+    diag_render_calls: u64,
+    /// Count of texture uploads (gs_texture_set_image calls) - should
+    /// track diag_submitted when the display path is healthy.
+    diag_uploads: u64,
 
     /// Current calibration loaded from the config file.
     calibration: Option<MatchCalibration>,
@@ -142,6 +150,8 @@ impl RecoSource {
             diag_missed_left: 0,
             diag_missed_right: 0,
             diag_submitted: 0,
+            diag_render_calls: 0,
+            diag_uploads: 0,
             calibration: None,
             config_path: String::new(),
             output_width: 1920,
@@ -168,6 +178,7 @@ impl RecoSource {
     unsafe fn set_source_slot(slot: &mut *mut ffi::obs_source_t, new_name: &str) {
         unsafe {
             if !slot.is_null() {
+                ffi::obs_source_dec_active(*slot);
                 ffi::obs_source_dec_showing(*slot);
                 ffi::obs_source_release(*slot);
                 *slot = ptr::null_mut();
@@ -186,8 +197,13 @@ impl RecoSource {
             if ptr.is_null() {
                 log::warn!("reco-obs: upstream source '{new_name}' not found (not yet created?)");
             } else {
+                // Hold both showing + active refs. Media Source's
+                // ffmpeg decode thread pauses on active==0 even when
+                // showing>0, so we need both to keep playback stable
+                // while the upstream isn't visibly rendered in the scene.
                 ffi::obs_source_inc_showing(ptr);
-                log::info!("reco-obs: holding '{new_name}' active via inc_showing");
+                ffi::obs_source_inc_active(ptr);
+                log::info!("reco-obs: holding '{new_name}' via inc_showing + inc_active");
             }
             *slot = ptr;
         }
@@ -288,10 +304,12 @@ impl RecoSource {
         // users can tell "plugin running but no render" from "plugin hung".
         if self.diag_tick.is_multiple_of(60) {
             log::info!(
-                "reco-obs: diag tick={} submitted={} missed_left={} missed_right={} \
-                 session={} left_src={} right_src={}",
+                "reco-obs: diag tick={} submitted={} uploads={} renders={} \
+                 missed_left={} missed_right={} session={} left_src={} right_src={}",
                 self.diag_tick,
                 self.diag_submitted,
+                self.diag_uploads,
+                self.diag_render_calls,
                 self.diag_missed_left,
                 self.diag_missed_right,
                 if self.session.is_some() { "ok" } else { "none" },
@@ -338,9 +356,12 @@ impl RecoSource {
             if !format_ok {
                 if !self.warned_unsupported_format {
                     log::warn!(
-                        "reco-obs: unsupported video format (left={:?}, right={:?}); only I420 \
-                         is accepted in Tier 1. Set the upstream source to deliver I420 or wait \
-                         for NV12 support.",
+                        "reco-obs: unsupported video format (left={:?}, right={:?}); Tier 1 \
+                         accepts only I420 (VIDEO_FORMAT_I420). NV12 is tracked as Tier 2. \
+                         Browser Source / screen capture / WebRTC deliver BGRA and need \
+                         reco-core InputFormat::Bgra support (see reco-obs FRICTION A8). For \
+                         now, use an OBS Media Source pointed at an I420-encoded video file, \
+                         or a V4L2 camera configured for I420 output.",
                         l.format,
                         r.format,
                     );
@@ -491,11 +512,13 @@ unsafe extern "C" fn source_destroy(data: *mut c_void) {
     // dec_showing with the inc_showing set_source_slot issued earlier.
     unsafe {
         if !src.left_source.is_null() {
+            ffi::obs_source_dec_active(src.left_source);
             ffi::obs_source_dec_showing(src.left_source);
             ffi::obs_source_release(src.left_source);
             src.left_source = ptr::null_mut();
         }
         if !src.right_source.is_null() {
+            ffi::obs_source_dec_active(src.right_source);
             ffi::obs_source_dec_showing(src.right_source);
             ffi::obs_source_release(src.right_source);
             src.right_source = ptr::null_mut();
@@ -683,6 +706,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
         return;
     }
     let src = unsafe { &mut *(data as *mut RecoSource) };
+    src.diag_render_calls = src.diag_render_calls.wrapping_add(1);
 
     if src.session.is_none() {
         return;
@@ -707,6 +731,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
             );
         }
         src.frame_ready.store(false, Ordering::Release);
+        src.diag_uploads = src.diag_uploads.wrapping_add(1);
     }
 
     // Draw via OBS's helper, which respects the outer effect already

@@ -64,6 +64,48 @@ already supports being rebuilt - but the reco-obs callback plumbing
 has to detect the size change and reset cached state (repack
 buffers, OBS texture, etc.). Tier 2 item.
 
+### A8. reco-core only accepts YUV input formats (blocks OBS Browser Source, screen capture, WebRTC)
+
+**Impact**: High for live-streaming setups. Hit 2026-04-18 while
+trying to wire an OBS Browser Source (VDO Ninja WebRTC feed) as an
+input for Tier 1 frame ingestion.
+
+`reco_core::renderer::InputFormat` has exactly two variants:
+`Yuv420p` and `Nv12`. Any OBS source whose native format is a packed
+RGB variety delivers frames in `VIDEO_FORMAT_BGRA` /
+`VIDEO_FORMAT_RGBA` / `VIDEO_FORMAT_BGRX`:
+
+- Browser Source (Chromium renders in BGRA)
+- Screen capture / Window capture
+- Desktop recording with DXGI / PipeWire
+- WebRTC ingest in general
+
+Our Tier 1 gate rejects these with the "unsupported video format"
+warning, so none of them can be stitched today.
+
+**Suggested direction** (reco-core):
+
+Add an `InputFormat::Bgra` variant (and maybe `InputFormat::Rgba` /
+`Bgrx`) to the renderer. Touch points:
+
+- `renderer.rs`: new shader path that samples a single `Rgba8Unorm`
+  texture and skips the YUV→RGB conversion. Bind group shrinks from
+  3 textures down to 1.
+- `StitchPipeline::with_gpu`: accept the new variant.
+- New `upload_left_bgra` / `upload_right_bgra` helpers (or just a
+  `BgraPlane` input struct for `render_to_target`).
+- `LiveSessionConfig::input_format` already threads through, no
+  additional API surface.
+
+Estimated ~2-3 hours of shader + plumbing work.
+
+**Why not convert in reco-obs**: BGRA is a common compositor format
+across use cases (OBS browser, screen capture, WebRTC, whiteboard
+overlays). Having every consumer reimplement the CPU-side BGRA→YUV
+conversion duplicates code and burns CPU that the GPU could absorb
+for free. Keeping conversion in reco-core shader means one
+implementation, zero CPU overhead.
+
 ### A3. No OBS-level wgpu interop
 
 **Impact**: Fundamental to OBS architecture, not a reco-core bug.
