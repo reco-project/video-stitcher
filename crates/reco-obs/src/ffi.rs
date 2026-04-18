@@ -566,6 +566,21 @@ unsafe extern "C" {
     );
     pub fn gs_draw_sprite(tex: *mut gs_texture_t, flip: u32, width: u32, height: u32);
 
+    /// High-level draw helper that handles the effect loop internally.
+    ///
+    /// Use this instead of starting a new `gs_effect_loop` inside a source's
+    /// `video_render` callback - OBS already has its outer effect active
+    /// when it calls us, so nesting with `gs_effect_loop` triggers
+    /// "effect is already active" and silently drops the draw.
+    pub fn obs_source_draw(
+        image: *mut gs_texture_t,
+        x: c_int,
+        y: c_int,
+        cx: u32,
+        cy: u32,
+        flip: bool,
+    );
+
     // Effects
     pub fn obs_get_base_effect(effect: obs_base_effect) -> *mut gs_effect_t;
     pub fn gs_effect_get_param_by_name(

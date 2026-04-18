@@ -638,15 +638,19 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
         src.frame_ready.store(false, Ordering::Release);
     }
 
-    // Draw the texture using OBS's default effect.
+    // Draw via OBS's helper, which respects the outer effect already
+    // active when video_render is called. Manually running
+    // `gs_effect_loop` here triggers "effect is already active" warnings
+    // and no draw lands on screen.
     unsafe {
-        let effect = ffi::obs_get_base_effect(ffi::obs_base_effect::OBS_EFFECT_DEFAULT);
-        let param = ffi::gs_effect_get_param_by_name(effect, c"image".as_ptr());
-        ffi::gs_effect_set_texture(param, src.obs_texture);
-
-        while ffi::gs_effect_loop(effect, c"Draw".as_ptr()) {
-            ffi::gs_draw_sprite(src.obs_texture, 0, src.output_width, src.output_height);
-        }
+        ffi::obs_source_draw(
+            src.obs_texture,
+            0,
+            0,
+            src.output_width,
+            src.output_height,
+            false,
+        );
     }
 }
 

@@ -69,10 +69,12 @@ pub extern "C" fn obs_module_ver() -> u32 {
 /// Called by OBS during startup. We register our source info struct.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn obs_module_load() -> bool {
-    // Initialize logging (env_logger) if not already set up.
-    // In practice OBS has its own log system, but this helps during
-    // development when testing outside OBS.
-    let _ = env_logger::try_init();
+    // Initialize logging with an Info default so plugin messages
+    // surface in OBS's captured stderr (and via OBS's log files too)
+    // without the user needing to set RUST_LOG manually. If the env
+    // already sets RUST_LOG, env_logger's parser takes over.
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .try_init();
 
     log::info!("reco-obs: module loading (API version {LIBOBS_API_VER:#010x})");
 
