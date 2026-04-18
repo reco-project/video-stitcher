@@ -100,6 +100,7 @@ pub mod rgba_readback;
 pub mod scene;
 pub mod session;
 pub mod source;
+pub mod stage;
 pub mod stitch_renderer;
 pub mod undistort;
 pub mod viewport;

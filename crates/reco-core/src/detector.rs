@@ -116,6 +116,122 @@ pub trait Detector: Send {
     fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection>;
 }
 
+// ---------------------------------------------------------------------------
+// M3 foundation: unified detector error + frame variants.
+// ---------------------------------------------------------------------------
+//
+// Added 2026-04-18 as part of the plan-execution M3 foundation. Not yet
+// used by a trait impl in this commit - the existing per-platform
+// `Detector` / `GpuDetector` / `MetalDetector` traits keep returning
+// `Vec<Detection>`. A later tranche will introduce the unified
+// `UnifiedDetector` trait that returns `Result<Vec<Detection>,
+// DetectorError>` so remote + timeout-able inference stops being a
+// per-backend problem.
+//
+// The plan-execution doc §2.7 + §8 row "Distributed AI inference"
+// captures why these types exist: remote inference (GoPro / mobile /
+// future gRPC workers) needs an error surface that in-process Vec
+// cannot express. Baking that in now means the trait shape does not
+// need a second breaking change when the first remote backend lands.
+
+/// Reasons a detector call can fail.
+///
+/// Designed to cover both in-process and remote backends. In-process
+/// variants (`InferenceFailed`, `Canceled`, `UnsupportedFrameKind`) map
+/// to ORT / TensorRT / NCNN runtime errors and the detection scheduler.
+/// Remote variants (`Timeout`, `Transport`) cover a future
+/// `reco-detect-remote` crate that ships frames to a gRPC / HTTP
+/// worker.
+#[derive(Debug, Clone)]
+pub enum DetectorError {
+    /// The underlying inference engine returned an error (ORT, TRT,
+    /// NCNN, CoreML). The string is the engine's own message.
+    InferenceFailed(String),
+    /// A caller-side deadline elapsed before the detector produced a
+    /// result. Most useful for remote backends where the budget is
+    /// wall-clock RTT plus compute.
+    Timeout {
+        /// How long the caller waited before giving up.
+        after: std::time::Duration,
+    },
+    /// The detector cannot accept this variant of [`DetectorFrame`]
+    /// (e.g. a CPU-only backend given CUDA pointers). Construction-
+    /// time mismatches should be caught in the builder; this variant
+    /// covers dynamic dispatch errors.
+    UnsupportedFrameKind,
+    /// Network / IPC / serialization error from a remote backend.
+    /// The string is the transport layer's own message (wrapped HTTP
+    /// status, gRPC status code, socket error).
+    Transport(String),
+    /// The caller cancelled the in-flight detection, typically because
+    /// the session shut down or a newer frame arrived and the older
+    /// one is no longer interesting.
+    Canceled,
+}
+
+impl std::fmt::Display for DetectorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InferenceFailed(msg) => write!(f, "inference failed: {msg}"),
+            Self::Timeout { after } => write!(f, "detector timed out after {after:?}"),
+            Self::UnsupportedFrameKind => {
+                write!(f, "detector does not support this frame variant")
+            }
+            Self::Transport(msg) => write!(f, "transport error: {msg}"),
+            Self::Canceled => write!(f, "detection canceled"),
+        }
+    }
+}
+
+impl std::error::Error for DetectorError {}
+
+/// Unified frame input for the future [`UnifiedDetector`] trait.
+///
+/// Each variant describes a different memory residency. The CPU
+/// variant is the only one shippable over the network (for future
+/// remote backends); CUDA / Metal variants are local-only.
+///
+/// Not yet wired up in this crate - the current in-tree detectors
+/// still take `RawFrame` / CUDA ptrs / `CVPixelBufferRef` directly.
+/// The M3 StitchCore refactor will collapse the three platform traits
+/// into one that accepts this enum.
+#[non_exhaustive]
+pub enum DetectorFrame<'a> {
+    /// CPU-resident YUV420P frame. The only variant that can cross
+    /// process boundaries - compression and ROI-cropping are the
+    /// remote backend's responsibility.
+    Cpu(RawFrame<'a>),
+
+    /// CUDA device-pointer NV12 frame. Local only; see
+    /// [`GpuNv12Frame`](crate::detector::GpuNv12Frame).
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    Cuda(GpuNv12Frame),
+
+    /// Metal / VideoToolbox `CVPixelBufferRef`. Local only.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    Metal {
+        /// Opaque CVPixelBuffer pointer from VideoToolbox.
+        cv_pixel_buffer: crate::metal_interop::CVPixelBufferRef,
+        /// Frame width in pixels.
+        width: u32,
+        /// Frame height in pixels.
+        height: u32,
+    },
+}
+
+impl DetectorFrame<'_> {
+    /// A short label for logs and error messages.
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            Self::Cpu(_) => "Cpu",
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            Self::Cuda(_) => "Cuda",
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            Self::Metal { .. } => "Metal",
+        }
+    }
+}
+
 /// A GPU-resident NV12 frame described by CUDA device pointers.
 ///
 /// Wraps the raw pointer/pitch/dimension parameters needed to locate the
