@@ -586,7 +586,7 @@ impl RecoSource {
 
 /// `get_name`: return the human-readable source name.
 unsafe extern "C" fn source_get_name(_type_data: *mut c_void) -> *const c_char {
-    SOURCE_NAME.as_ptr()
+    crate::ffi_catch!(ptr::null(), { SOURCE_NAME.as_ptr() })
 }
 
 /// `create`: allocate source state from settings.
@@ -594,301 +594,322 @@ unsafe extern "C" fn source_create(
     settings: *mut ffi::obs_data_t,
     _source: *mut ffi::obs_source_t,
 ) -> *mut c_void {
-    log::info!("reco-obs: creating source");
+    crate::ffi_catch!(ptr::null_mut(), {
+        log::info!("reco-obs: creating source");
 
-    let mut src = Box::new(RecoSource::new());
+        let mut src = Box::new(RecoSource::new());
 
-    // Read initial settings.
-    unsafe {
-        apply_settings(&mut src, settings);
-    }
+        // Read initial settings.
+        unsafe {
+            apply_settings(&mut src, settings);
+        }
 
-    // Try to initialize the pipeline if calibration is available.
-    src.load_calibration();
-    src.try_init_pipeline();
+        // Try to initialize the pipeline if calibration is available.
+        src.load_calibration();
+        src.try_init_pipeline();
 
-    Box::into_raw(src) as *mut c_void
+        Box::into_raw(src) as *mut c_void
+    })
 }
 
 /// `destroy`: free source state.
 unsafe extern "C" fn source_destroy(data: *mut c_void) {
-    if data.is_null() {
-        return;
-    }
-    log::info!("reco-obs: destroying source");
-
-    let mut src = unsafe { Box::from_raw(data as *mut RecoSource) };
-
-    // Release the upstream source refs we held. Must run before the Box
-    // is dropped - OBS tracks ref lifetime through these calls. Pair
-    // dec_showing with the inc_showing set_source_slot issued earlier.
-    unsafe {
-        if !src.left_source.is_null() {
-            ffi::obs_source_dec_active(src.left_source);
-            ffi::obs_source_dec_showing(src.left_source);
-            ffi::obs_source_release(src.left_source);
-            src.left_source = ptr::null_mut();
+    crate::ffi_catch!((), {
+        if data.is_null() {
+            return;
         }
-        if !src.right_source.is_null() {
-            ffi::obs_source_dec_active(src.right_source);
-            ffi::obs_source_dec_showing(src.right_source);
-            ffi::obs_source_release(src.right_source);
-            src.right_source = ptr::null_mut();
+        log::info!("reco-obs: destroying source");
+
+        let mut src = unsafe { Box::from_raw(data as *mut RecoSource) };
+
+        // Release the upstream source refs we held. Must run before the Box
+        // is dropped - OBS tracks ref lifetime through these calls. Pair
+        // dec_showing with the inc_showing set_source_slot issued earlier.
+        unsafe {
+            if !src.left_source.is_null() {
+                ffi::obs_source_dec_active(src.left_source);
+                ffi::obs_source_dec_showing(src.left_source);
+                ffi::obs_source_release(src.left_source);
+                src.left_source = ptr::null_mut();
+            }
+            if !src.right_source.is_null() {
+                ffi::obs_source_dec_active(src.right_source);
+                ffi::obs_source_dec_showing(src.right_source);
+                ffi::obs_source_release(src.right_source);
+                src.right_source = ptr::null_mut();
+            }
         }
-    }
 
-    // Destroy OBS texture on the graphics thread.
-    unsafe {
-        ffi::obs_enter_graphics();
-        src.destroy_obs_texture();
-        ffi::obs_leave_graphics();
-    }
-
-    // src is dropped here, which drops the pipeline and GPU context.
-}
-
-/// `get_width`: return output width.
-unsafe extern "C" fn source_get_width(data: *mut c_void) -> u32 {
-    if data.is_null() {
-        return 0;
-    }
-    let src = unsafe { &*(data as *const RecoSource) };
-    src.output_width
-}
-
-/// `get_height`: return output height.
-unsafe extern "C" fn source_get_height(data: *mut c_void) -> u32 {
-    if data.is_null() {
-        return 0;
-    }
-    let src = unsafe { &*(data as *const RecoSource) };
-    src.output_height
-}
-
-/// `get_defaults`: set default property values.
-unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
-    unsafe {
-        ffi::obs_data_set_default_int(settings, PROP_OUTPUT_WIDTH.as_ptr(), 1920);
-        ffi::obs_data_set_default_int(settings, PROP_OUTPUT_HEIGHT.as_ptr(), 1080);
-        ffi::obs_data_set_default_int(settings, PROP_INPUT_WIDTH.as_ptr(), 1920);
-        ffi::obs_data_set_default_int(settings, PROP_INPUT_HEIGHT.as_ptr(), 1080);
-        ffi::obs_data_set_default_string(settings, PROP_CONFIG_PATH.as_ptr(), c"".as_ptr());
-        ffi::obs_data_set_default_string(
-            settings,
-            PROP_INPUT_FORMAT.as_ptr(),
-            INPUT_FORMAT_I420.as_ptr(),
-        );
-    }
-}
-
-/// `get_properties`: define the settings UI.
-unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_properties_t {
-    unsafe {
-        let props = ffi::obs_properties_create();
-
-        // Left / right upstream source pickers. Populated via
-        // obs_enum_sources at property-open time.
-        let left_list = ffi::obs_properties_add_list(
-            props,
-            PROP_LEFT_SOURCE.as_ptr(),
-            c"Left camera source".as_ptr(),
-            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
-            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
-        );
-        ffi::obs_enum_sources(Some(source_enum_proc_list), left_list as *mut c_void);
-
-        let right_list = ffi::obs_properties_add_list(
-            props,
-            PROP_RIGHT_SOURCE.as_ptr(),
-            c"Right camera source".as_ptr(),
-            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
-            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
-        );
-        ffi::obs_enum_sources(Some(source_enum_proc_list), right_list as *mut c_void);
-
-        // Input format picker. Must match the native format OBS's picked
-        // sources deliver - OBS can't negotiate, and guessing wrong
-        // means no output.
-        let format_list = ffi::obs_properties_add_list(
-            props,
-            PROP_INPUT_FORMAT.as_ptr(),
-            c"Input format".as_ptr(),
-            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
-            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
-        );
-        ffi::obs_property_list_add_string(
-            format_list,
-            c"I420 (Media Source, V4L2)".as_ptr(),
-            INPUT_FORMAT_I420.as_ptr(),
-        );
-        ffi::obs_property_list_add_string(
-            format_list,
-            c"BGRA (Browser Source, Screen Capture)".as_ptr(),
-            INPUT_FORMAT_BGRA.as_ptr(),
-        );
-
-        ffi::obs_properties_add_path(
-            props,
-            PROP_CONFIG_PATH.as_ptr(),
-            c"Calibration file".as_ptr(),
-            ffi::obs_path_type::OBS_PATH_FILE,
-            c"JSON files (*.json)".as_ptr(),
-            ptr::null(),
-        );
-
-        ffi::obs_properties_add_int(
-            props,
-            PROP_OUTPUT_WIDTH.as_ptr(),
-            c"Output width".as_ptr(),
-            320,
-            7680,
-            1,
-        );
-        ffi::obs_properties_add_int(
-            props,
-            PROP_OUTPUT_HEIGHT.as_ptr(),
-            c"Output height".as_ptr(),
-            240,
-            4320,
-            1,
-        );
-        ffi::obs_properties_add_int(
-            props,
-            PROP_INPUT_WIDTH.as_ptr(),
-            c"Input width (per camera)".as_ptr(),
-            320,
-            7680,
-            1,
-        );
-        ffi::obs_properties_add_int(
-            props,
-            PROP_INPUT_HEIGHT.as_ptr(),
-            c"Input height (per camera)".as_ptr(),
-            240,
-            4320,
-            1,
-        );
-        ffi::obs_properties_add_float(
-            props,
-            PROP_YAW.as_ptr(),
-            c"Camera yaw (degrees)".as_ptr(),
-            -180.0,
-            180.0,
-            0.1,
-        );
-        ffi::obs_properties_add_float(
-            props,
-            PROP_PITCH.as_ptr(),
-            c"Camera pitch (degrees)".as_ptr(),
-            -90.0,
-            90.0,
-            0.1,
-        );
-
-        props
-    }
-}
-
-/// `update`: apply changed settings.
-unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_data_t) {
-    if data.is_null() {
-        return;
-    }
-    let src = unsafe { &mut *(data as *mut RecoSource) };
-
-    let old_config_path = src.config_path.clone();
-    let old_output = (src.output_width, src.output_height);
-    let old_input = (src.input_width, src.input_height);
-
-    unsafe {
-        apply_settings(src, settings);
-    }
-
-    // Reload calibration if the config path changed.
-    if src.config_path != old_config_path {
-        src.load_calibration();
-    }
-
-    // Rebuild pipeline if dimensions or calibration changed.
-    let dims_changed = (src.output_width, src.output_height) != old_output
-        || (src.input_width, src.input_height) != old_input;
-    let config_changed = src.config_path != old_config_path;
-    // apply_settings sets src.session to None when the input format
-    // changes, so we can use that as our "needs rebuild" signal.
-    let format_changed = src.session.is_none() && src.calibration.is_some();
-
-    if dims_changed || config_changed || format_changed {
-        // Destroy old OBS texture since dimensions may have changed.
+        // Destroy OBS texture on the graphics thread.
         unsafe {
             ffi::obs_enter_graphics();
             src.destroy_obs_texture();
             ffi::obs_leave_graphics();
         }
-        src.try_init_pipeline();
-    }
+
+        // src is dropped here, which drops the pipeline and GPU context.
+    })
+}
+
+/// `get_width`: return output width.
+unsafe extern "C" fn source_get_width(data: *mut c_void) -> u32 {
+    crate::ffi_catch!(0u32, {
+        if data.is_null() {
+            return 0;
+        }
+        let src = unsafe { &*(data as *const RecoSource) };
+        src.output_width
+    })
+}
+
+/// `get_height`: return output height.
+unsafe extern "C" fn source_get_height(data: *mut c_void) -> u32 {
+    crate::ffi_catch!(0u32, {
+        if data.is_null() {
+            return 0;
+        }
+        let src = unsafe { &*(data as *const RecoSource) };
+        src.output_height
+    })
+}
+
+/// `get_defaults`: set default property values.
+unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
+    crate::ffi_catch!((), {
+        unsafe {
+            ffi::obs_data_set_default_int(settings, PROP_OUTPUT_WIDTH.as_ptr(), 1920);
+            ffi::obs_data_set_default_int(settings, PROP_OUTPUT_HEIGHT.as_ptr(), 1080);
+            ffi::obs_data_set_default_int(settings, PROP_INPUT_WIDTH.as_ptr(), 1920);
+            ffi::obs_data_set_default_int(settings, PROP_INPUT_HEIGHT.as_ptr(), 1080);
+            ffi::obs_data_set_default_string(settings, PROP_CONFIG_PATH.as_ptr(), c"".as_ptr());
+            ffi::obs_data_set_default_string(
+                settings,
+                PROP_INPUT_FORMAT.as_ptr(),
+                INPUT_FORMAT_I420.as_ptr(),
+            );
+        }
+    })
+}
+
+/// `get_properties`: define the settings UI.
+unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_properties_t {
+    crate::ffi_catch!(ptr::null_mut(), {
+        unsafe {
+            let props = ffi::obs_properties_create();
+
+            // Left / right upstream source pickers. Populated via
+            // obs_enum_sources at property-open time.
+            let left_list = ffi::obs_properties_add_list(
+                props,
+                PROP_LEFT_SOURCE.as_ptr(),
+                c"Left camera source".as_ptr(),
+                ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+                ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+            );
+            ffi::obs_enum_sources(Some(source_enum_proc_list), left_list as *mut c_void);
+
+            let right_list = ffi::obs_properties_add_list(
+                props,
+                PROP_RIGHT_SOURCE.as_ptr(),
+                c"Right camera source".as_ptr(),
+                ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+                ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+            );
+            ffi::obs_enum_sources(Some(source_enum_proc_list), right_list as *mut c_void);
+
+            // Input format picker. Must match the native format OBS's picked
+            // sources deliver - OBS can't negotiate, and guessing wrong
+            // means no output.
+            let format_list = ffi::obs_properties_add_list(
+                props,
+                PROP_INPUT_FORMAT.as_ptr(),
+                c"Input format".as_ptr(),
+                ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+                ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+            );
+            ffi::obs_property_list_add_string(
+                format_list,
+                c"I420 (Media Source, V4L2)".as_ptr(),
+                INPUT_FORMAT_I420.as_ptr(),
+            );
+            ffi::obs_property_list_add_string(
+                format_list,
+                c"BGRA (Browser Source, Screen Capture)".as_ptr(),
+                INPUT_FORMAT_BGRA.as_ptr(),
+            );
+
+            ffi::obs_properties_add_path(
+                props,
+                PROP_CONFIG_PATH.as_ptr(),
+                c"Calibration file".as_ptr(),
+                ffi::obs_path_type::OBS_PATH_FILE,
+                c"JSON files (*.json)".as_ptr(),
+                ptr::null(),
+            );
+
+            ffi::obs_properties_add_int(
+                props,
+                PROP_OUTPUT_WIDTH.as_ptr(),
+                c"Output width".as_ptr(),
+                320,
+                7680,
+                1,
+            );
+            ffi::obs_properties_add_int(
+                props,
+                PROP_OUTPUT_HEIGHT.as_ptr(),
+                c"Output height".as_ptr(),
+                240,
+                4320,
+                1,
+            );
+            ffi::obs_properties_add_int(
+                props,
+                PROP_INPUT_WIDTH.as_ptr(),
+                c"Input width (per camera)".as_ptr(),
+                320,
+                7680,
+                1,
+            );
+            ffi::obs_properties_add_int(
+                props,
+                PROP_INPUT_HEIGHT.as_ptr(),
+                c"Input height (per camera)".as_ptr(),
+                240,
+                4320,
+                1,
+            );
+            ffi::obs_properties_add_float(
+                props,
+                PROP_YAW.as_ptr(),
+                c"Camera yaw (degrees)".as_ptr(),
+                -180.0,
+                180.0,
+                0.1,
+            );
+            ffi::obs_properties_add_float(
+                props,
+                PROP_PITCH.as_ptr(),
+                c"Camera pitch (degrees)".as_ptr(),
+                -90.0,
+                90.0,
+                0.1,
+            );
+
+            props
+        }
+    })
+}
+
+/// `update`: apply changed settings.
+unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_data_t) {
+    crate::ffi_catch!((), {
+        if data.is_null() {
+            return;
+        }
+        let src = unsafe { &mut *(data as *mut RecoSource) };
+
+        let old_config_path = src.config_path.clone();
+        let old_output = (src.output_width, src.output_height);
+        let old_input = (src.input_width, src.input_height);
+
+        unsafe {
+            apply_settings(src, settings);
+        }
+
+        // Reload calibration if the config path changed.
+        if src.config_path != old_config_path {
+            src.load_calibration();
+        }
+
+        // Rebuild pipeline if dimensions or calibration changed.
+        let dims_changed = (src.output_width, src.output_height) != old_output
+            || (src.input_width, src.input_height) != old_input;
+        let config_changed = src.config_path != old_config_path;
+        // apply_settings sets src.session to None when the input format
+        // changes, so we can use that as our "needs rebuild" signal.
+        let format_changed = src.session.is_none() && src.calibration.is_some();
+
+        if dims_changed || config_changed || format_changed {
+            // Destroy old OBS texture since dimensions may have changed.
+            unsafe {
+                ffi::obs_enter_graphics();
+                src.destroy_obs_texture();
+                ffi::obs_leave_graphics();
+            }
+            src.try_init_pipeline();
+        }
+    })
 }
 
 /// `video_tick`: called each frame on the OBS video thread.
 ///
 /// We perform the wgpu render + CPU readback here, off the graphics thread.
+/// Hot path (30-60 Hz). `catch_unwind` here is the primary guard against
+/// a panic in the stitch pipeline crashing the OBS host.
 unsafe extern "C" fn source_video_tick(data: *mut c_void, _seconds: c_float) {
-    if data.is_null() {
-        return;
-    }
-    let src = unsafe { &mut *(data as *mut RecoSource) };
-    src.render_and_readback();
+    crate::ffi_catch!((), {
+        if data.is_null() {
+            return;
+        }
+        let src = unsafe { &mut *(data as *mut RecoSource) };
+        src.render_and_readback();
+    })
 }
 
 /// `video_render`: called on the OBS graphics thread to draw the source.
 ///
 /// Uploads the CPU-side RGBA buffer to an OBS texture and draws it.
+/// Hot path. `catch_unwind` guards the graphics-thread upload path.
 unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::gs_effect_t) {
-    if data.is_null() {
-        return;
-    }
-    let src = unsafe { &mut *(data as *mut RecoSource) };
-    src.diag_render_calls = src.diag_render_calls.wrapping_add(1);
+    crate::ffi_catch!((), {
+        if data.is_null() {
+            return;
+        }
+        let src = unsafe { &mut *(data as *mut RecoSource) };
+        src.diag_render_calls = src.diag_render_calls.wrapping_add(1);
 
-    if src.session.is_none() {
-        return;
-    }
+        if src.session.is_none() {
+            return;
+        }
 
-    unsafe {
-        src.ensure_obs_texture();
-    }
-
-    if src.obs_texture.is_null() {
-        return;
-    }
-
-    // Upload new frame data if available.
-    if src.frame_ready.load(Ordering::Acquire) {
         unsafe {
-            ffi::gs_texture_set_image(
+            src.ensure_obs_texture();
+        }
+
+        if src.obs_texture.is_null() {
+            return;
+        }
+
+        // Upload new frame data if available.
+        if src.frame_ready.load(Ordering::Acquire) {
+            unsafe {
+                ffi::gs_texture_set_image(
+                    src.obs_texture,
+                    src.rgba_buffer.as_ptr(),
+                    src.output_width * 4,
+                    false,
+                );
+            }
+            src.frame_ready.store(false, Ordering::Release);
+            src.diag_uploads = src.diag_uploads.wrapping_add(1);
+        }
+
+        // Draw via OBS's helper, which respects the outer effect already
+        // active when video_render is called. Manually running
+        // `gs_effect_loop` here triggers "effect is already active" warnings
+        // and no draw lands on screen.
+        unsafe {
+            ffi::obs_source_draw(
                 src.obs_texture,
-                src.rgba_buffer.as_ptr(),
-                src.output_width * 4,
+                0,
+                0,
+                src.output_width,
+                src.output_height,
                 false,
             );
         }
-        src.frame_ready.store(false, Ordering::Release);
-        src.diag_uploads = src.diag_uploads.wrapping_add(1);
-    }
-
-    // Draw via OBS's helper, which respects the outer effect already
-    // active when video_render is called. Manually running
-    // `gs_effect_loop` here triggers "effect is already active" warnings
-    // and no draw lands on screen.
-    unsafe {
-        ffi::obs_source_draw(
-            src.obs_texture,
-            0,
-            0,
-            src.output_width,
-            src.output_height,
-            false,
-        );
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -913,23 +934,25 @@ unsafe extern "C" fn source_mouse_click(
     mouse_up: bool,
     _click_count: u32,
 ) {
-    if data.is_null() || event.is_null() {
-        return;
-    }
-    let src = unsafe { &mut *(data as *mut RecoSource) };
-    let ev = unsafe { &*event };
-    // Only handle left-button for drag-to-pan. Middle/right reserved for
-    // future features (e.g. double-click to reset pose).
-    if r#type != ffi::obs_mouse_button_type::MOUSE_LEFT as i32 {
-        return;
-    }
-    if mouse_up {
-        src.dragging = false;
-    } else {
-        src.dragging = true;
-        src.last_mouse_x = ev.x;
-        src.last_mouse_y = ev.y;
-    }
+    crate::ffi_catch!((), {
+        if data.is_null() || event.is_null() {
+            return;
+        }
+        let src = unsafe { &mut *(data as *mut RecoSource) };
+        let ev = unsafe { &*event };
+        // Only handle left-button for drag-to-pan. Middle/right reserved for
+        // future features (e.g. double-click to reset pose).
+        if r#type != ffi::obs_mouse_button_type::MOUSE_LEFT as i32 {
+            return;
+        }
+        if mouse_up {
+            src.dragging = false;
+        } else {
+            src.dragging = true;
+            src.last_mouse_x = ev.x;
+            src.last_mouse_y = ev.y;
+        }
+    })
 }
 
 /// `mouse_move`: while dragging, translate pixel delta to yaw/pitch.
@@ -938,32 +961,34 @@ unsafe extern "C" fn source_mouse_move(
     event: *const ffi::obs_mouse_event,
     mouse_leave: bool,
 ) {
-    if data.is_null() || event.is_null() {
-        return;
-    }
-    let src = unsafe { &mut *(data as *mut RecoSource) };
-    if mouse_leave {
-        // Treat leaving the source rect as dropping the drag to avoid
-        // a stale drag state if the user releases outside.
-        src.dragging = false;
-        return;
-    }
-    if !src.dragging {
-        return;
-    }
-    let ev = unsafe { &*event };
-    let dx = (ev.x - src.last_mouse_x) as f64;
-    let dy = (ev.y - src.last_mouse_y) as f64;
-    src.last_mouse_x = ev.x;
-    src.last_mouse_y = ev.y;
+    crate::ffi_catch!((), {
+        if data.is_null() || event.is_null() {
+            return;
+        }
+        let src = unsafe { &mut *(data as *mut RecoSource) };
+        if mouse_leave {
+            // Treat leaving the source rect as dropping the drag to avoid
+            // a stale drag state if the user releases outside.
+            src.dragging = false;
+            return;
+        }
+        if !src.dragging {
+            return;
+        }
+        let ev = unsafe { &*event };
+        let dx = (ev.x - src.last_mouse_x) as f64;
+        let dy = (ev.y - src.last_mouse_y) as f64;
+        src.last_mouse_x = ev.x;
+        src.last_mouse_y = ev.y;
 
-    // Natural "drag the scene, not the camera" mapping: drag right
-    // shifts the view left (yaw becomes more negative), drag up shifts
-    // the view down (pitch more positive). Clamp pitch to [-89, 89] to
-    // avoid pole flip.
-    src.yaw_degrees -= dx * DRAG_SENSITIVITY_DEG_PER_PIXEL;
-    src.pitch_degrees =
-        (src.pitch_degrees + dy * DRAG_SENSITIVITY_DEG_PER_PIXEL).clamp(-89.0, 89.0);
+        // Natural "drag the scene, not the camera" mapping: drag right
+        // shifts the view left (yaw becomes more negative), drag up shifts
+        // the view down (pitch more positive). Clamp pitch to [-89, 89] to
+        // avoid pole flip.
+        src.yaw_degrees -= dx * DRAG_SENSITIVITY_DEG_PER_PIXEL;
+        src.pitch_degrees =
+            (src.pitch_degrees + dy * DRAG_SENSITIVITY_DEG_PER_PIXEL).clamp(-89.0, 89.0);
+    })
 }
 
 /// `mouse_wheel`: scroll to zoom (adjust vertical FOV).
@@ -973,19 +998,21 @@ unsafe extern "C" fn source_mouse_wheel(
     _x_delta: i32,
     y_delta: i32,
 ) {
-    if data.is_null() {
-        return;
-    }
-    let src = unsafe { &mut *(data as *mut RecoSource) };
-    let session = match &mut src.session {
-        Some(s) => s,
-        None => return,
-    };
-    // y_delta is integer "ticks" from OBS (positive = wheel forward, which
-    // conventionally means zoom IN -> narrower FOV -> subtract).
-    let current = session.pipeline().fov();
-    let new_fov = (current - (y_delta as f32) * WHEEL_FOV_STEP_DEG).clamp(10.0, 150.0);
-    session.pipeline_mut().set_fov(new_fov);
+    crate::ffi_catch!((), {
+        if data.is_null() {
+            return;
+        }
+        let src = unsafe { &mut *(data as *mut RecoSource) };
+        let session = match &mut src.session {
+            Some(s) => s,
+            None => return,
+        };
+        // y_delta is integer "ticks" from OBS (positive = wheel forward, which
+        // conventionally means zoom IN -> narrower FOV -> subtract).
+        let current = session.pipeline().fov();
+        let new_fov = (current - (y_delta as f32) * WHEEL_FOV_STEP_DEG).clamp(10.0, 150.0);
+        session.pipeline_mut().set_fov(new_fov);
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1093,18 +1120,20 @@ unsafe extern "C" fn source_enum_proc_list(
     param: *mut c_void,
     source: *mut ffi::obs_source_t,
 ) -> bool {
-    if param.is_null() || source.is_null() {
-        return true;
-    }
-    let prop = param as *mut ffi::obs_property_t;
-    let name_ptr = unsafe { ffi::obs_source_get_name(source) };
-    if !name_ptr.is_null() {
-        unsafe {
-            // Use the same cstring as both label and value.
-            ffi::obs_property_list_add_string(prop, name_ptr, name_ptr);
+    crate::ffi_catch!(true, {
+        if param.is_null() || source.is_null() {
+            return true;
         }
-    }
-    true
+        let prop = param as *mut ffi::obs_property_t;
+        let name_ptr = unsafe { ffi::obs_source_get_name(source) };
+        if !name_ptr.is_null() {
+            unsafe {
+                // Use the same cstring as both label and value.
+                ffi::obs_property_list_add_string(prop, name_ptr, name_ptr);
+            }
+        }
+        true
+    })
 }
 
 /// Read settings from an `obs_data_t` into the source struct.

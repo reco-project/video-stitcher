@@ -26,6 +26,46 @@ mod source;
 use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
+/// Wrap the body of an `unsafe extern "C"` callback with
+/// `std::panic::catch_unwind` so a panic inside the callback cannot
+/// unwind across the C ABI boundary into the OBS host.
+///
+/// Pairs with [`install_panic_hook`]: on a panic, the hook emits a
+/// structured `tracing::error!` event (location + payload), then this
+/// macro's `catch_unwind` converts the would-be abort into a safe
+/// early-return with the caller-supplied default value. Together
+/// they complete the T-1 (severity-adjusted High-DoS) mitigation
+/// from the 2026-04-18 deep review.
+///
+/// Usage:
+/// ```ignore
+/// unsafe extern "C" fn source_get_width(data: *mut c_void) -> u32 {
+///     ffi_catch!(0u32, {
+///         // original body that may panic
+///     })
+/// }
+/// ```
+///
+/// The macro uses `AssertUnwindSafe` because the callback's captured
+/// state is typically a `&mut SourceInstance` whose invariants may
+/// already be broken by the panic. Consumers inside the body must not
+/// rely on re-entrant state being consistent after a caught panic;
+/// the safe default value is the only contract.
+#[macro_export]
+macro_rules! ffi_catch {
+    ($default:expr, $body:block) => {{
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| $body)) {
+            Ok(v) => v,
+            Err(_) => {
+                // Panic already logged via the panic hook installed in
+                // `obs_module_load`. Return a safe default so OBS can
+                // continue rather than aborting the host.
+                $default
+            }
+        }
+    }};
+}
+
 /// OBS API version this plugin targets.
 ///
 /// Format: `(major << 24) | (minor << 16) | patch`.
@@ -43,7 +83,9 @@ static MODULE_PTR: AtomicPtr<ffi::obs_module_t> = AtomicPtr::new(ptr::null_mut()
 /// Called by OBS during module loading. `module` is valid for the module lifetime.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn obs_module_set_pointer(module: *mut ffi::obs_module_t) {
-    MODULE_PTR.store(module, Ordering::Release);
+    ffi_catch!((), {
+        MODULE_PTR.store(module, Ordering::Release);
+    })
 }
 
 /// Return our stored module handle.
@@ -53,13 +95,13 @@ pub unsafe extern "C" fn obs_module_set_pointer(module: *mut ffi::obs_module_t) 
 /// Called by OBS; returns the pointer from `obs_module_set_pointer`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn obs_current_module() -> *mut ffi::obs_module_t {
-    MODULE_PTR.load(Ordering::Acquire)
+    ffi_catch!(ptr::null_mut(), { MODULE_PTR.load(Ordering::Acquire) })
 }
 
 /// Return the OBS API version this plugin was built against.
 #[unsafe(no_mangle)]
 pub extern "C" fn obs_module_ver() -> u32 {
-    LIBOBS_API_VER
+    ffi_catch!(0u32, { LIBOBS_API_VER })
 }
 
 /// Install the standard tracing subscriber + log bridge for the OBS
@@ -125,37 +167,93 @@ fn install_panic_hook() {
 /// Called by OBS during startup. We register our source info struct.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn obs_module_load() -> bool {
-    // M2 migration: tracing_subscriber replaces env_logger. OBS captures
-    // the plugin's stderr so structured tracing events land in OBS's
-    // log files alongside other plugin output.
-    init_tracing();
-    install_panic_hook();
+    ffi_catch!(false, {
+        // M2 migration: tracing_subscriber replaces env_logger. OBS captures
+        // the plugin's stderr so structured tracing events land in OBS's
+        // log files alongside other plugin output.
+        init_tracing();
+        install_panic_hook();
 
-    log::info!("reco-obs: module loading (API version {LIBOBS_API_VER:#010x})");
+        log::info!("reco-obs: module loading (API version {LIBOBS_API_VER:#010x})");
 
-    let info = source::source_info();
-    unsafe {
-        ffi::obs_register_source_s(&info, std::mem::size_of::<ffi::obs_source_info>());
-    }
+        let info = source::source_info();
+        unsafe {
+            ffi::obs_register_source_s(&info, std::mem::size_of::<ffi::obs_source_info>());
+        }
 
-    log::info!("reco-obs: source registered as 'reco_stitcher'");
-    true
+        log::info!("reco-obs: source registered as 'reco_stitcher'");
+        true
+    })
 }
 
 /// Called by OBS when the module is unloaded.
 #[unsafe(no_mangle)]
 pub extern "C" fn obs_module_unload() {
-    log::info!("reco-obs: module unloaded");
+    ffi_catch!((), {
+        log::info!("reco-obs: module unloaded");
+    })
 }
 
 /// Return the module display name.
 #[unsafe(no_mangle)]
 pub extern "C" fn obs_module_name() -> *const std::os::raw::c_char {
-    c"reco-obs".as_ptr()
+    ffi_catch!(ptr::null(), { c"reco-obs".as_ptr() })
 }
 
 /// Return the module description.
 #[unsafe(no_mangle)]
 pub extern "C" fn obs_module_description() -> *const std::os::raw::c_char {
-    c"GPU-accelerated panoramic video stitcher powered by Reco".as_ptr()
+    ffi_catch!(ptr::null(), {
+        c"GPU-accelerated panoramic video stitcher powered by Reco".as_ptr()
+    })
+}
+
+#[cfg(test)]
+mod macro_tests {
+    //! Regression tests for the `ffi_catch!` macro. Completes the T-1
+    //! (deep-review-2026-04-18) mitigation: panic hook + catch_unwind
+    //! wrappers together prevent a panic in any of the 22 `extern "C"`
+    //! callbacks from propagating across the C ABI.
+
+    #[test]
+    fn ffi_catch_returns_value_on_success() {
+        let out: u32 = crate::ffi_catch!(0u32, { 7 + 35 });
+        assert_eq!(out, 42);
+    }
+
+    #[test]
+    fn ffi_catch_returns_default_on_panic() {
+        let out: u32 = crate::ffi_catch!(42u32, {
+            panic!("synthetic panic for test");
+        });
+        assert_eq!(out, 42);
+    }
+
+    #[test]
+    fn ffi_catch_handles_string_panic_payload() {
+        let out: i64 = crate::ffi_catch!(-1i64, {
+            panic!("{}", String::from("string payload"));
+        });
+        assert_eq!(out, -1);
+    }
+
+    #[test]
+    fn ffi_catch_handles_void_callback() {
+        let mut counter = 0;
+        crate::ffi_catch!((), {
+            counter += 1;
+            if counter > 100 {
+                panic!("unreachable");
+            }
+        });
+        assert_eq!(counter, 1);
+    }
+
+    #[test]
+    fn ffi_catch_returns_default_pointer_on_panic() {
+        let out: *mut u8 = crate::ffi_catch!(std::ptr::null_mut(), {
+            panic!("ptr callback panic");
+        });
+        assert!(out.is_null());
+    }
 }
