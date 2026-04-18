@@ -85,8 +85,10 @@ use crate::source::{CameraInput, StereoCameraInput};
 use crate::stage::PipelineStage;
 use crate::viewport::ViewportConfig;
 
-/// Errors from [`StitchCore`].
-#[derive(Debug, Error)]
+/// Errors from [`StitchCore`]. `Clone + Send + Sync` so consumers
+/// posting render results to worker-thread channels carry the typed
+/// error instead of stringifying at the boundary.
+#[derive(Debug, Clone, Error)]
 pub enum StitchCoreError {
     /// GPU pipeline error (upload, render, or state mismatch).
     #[error("pipeline: {0}")]

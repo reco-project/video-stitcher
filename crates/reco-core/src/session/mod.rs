@@ -208,8 +208,11 @@ where
     }
 }
 
-/// Errors from [`StitchSession`].
-#[derive(Debug, Error)]
+/// Errors from [`StitchSession`]. `Clone + Send + Sync` so consumers
+/// posting session results across thread boundaries (reco-gui export
+/// thread, reco-obs async init) can keep the typed enum instead of
+/// falling back to `Result<_, String>`.
+#[derive(Debug, Clone, Error)]
 pub enum SessionError {
     /// GPU initialization error.
     #[error("GPU: {0}")]
@@ -251,11 +254,33 @@ pub enum SessionError {
     /// A [`DetectionSink`] returned an error.
     ///
     /// Surfaces I/O failures from user-supplied sinks (CSV writers,
-    /// network senders, ...) so they are not silently swallowed. The
-    /// inner error is whatever the sink returned.
+    /// network senders, ...) so they are not silently swallowed.
+    /// The sink's typed error is stringified at this boundary
+    /// because the sink trait uses `Box<dyn Error + Send + Sync>`
+    /// which is not `Clone`. Consumers that need the typed
+    /// underlying error should catch it before returning from the
+    /// sink closure; anything that reaches here is already formatted.
     #[error("detection sink: {0}")]
-    DetectionSink(#[source] DetectionSinkError),
+    DetectionSink(String),
 }
+
+// Compile-time assertion (plan step 7): every error type reachable
+// from the public session API is `Clone + Send + Sync`, so consumers
+// that post results to worker-thread channels (reco-gui export
+// thread, reco-obs async init) carry the typed error across the
+// boundary instead of stringifying. Regresses if a future variant
+// introduces a non-Clone wrapped error.
+const _: fn() = || {
+    fn assert_clone_send_sync<T: Clone + Send + Sync + 'static>() {}
+    assert_clone_send_sync::<SessionError>();
+    assert_clone_send_sync::<GpuError>();
+    assert_clone_send_sync::<PipelineError>();
+    assert_clone_send_sync::<StitchCoreError>();
+    assert_clone_send_sync::<Nv12Error>();
+    assert_clone_send_sync::<EncodeError>();
+    assert_clone_send_sync::<SourceError>();
+    assert_clone_send_sync::<crate::detector::DetectorError>();
+};
 
 /// Builder for constructing a [`StitchSession`] with sensible defaults.
 ///
@@ -889,7 +914,7 @@ impl StitchSession {
         // Fire sink for external consumers.
         self.detection
             .fire_sink(self.frame_count, timestamp_ms)
-            .map_err(SessionError::DetectionSink)?;
+            .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
 
         // Update director with detections and timing only.
         // Coverage clamping is applied later in director_position().

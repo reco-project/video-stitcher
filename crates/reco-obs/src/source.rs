@@ -72,13 +72,11 @@ const INPUT_FORMAT_BGRA: &CStr = c"bgra";
 /// pointing to this through all callbacks.
 struct RecoSource {
     /// Push-first stitch core (owns pipeline + RGBA readback).
-    /// None until calibration is loaded and GPU is initialized.
-    /// Previously wrapped by `LiveStitchSession`; that struct was
-    /// removed as part of plan step 3 and reco-obs now calls
-    /// `StitchCore::submit_frame_*_at_pose` directly. The field name
-    /// stays `session` to avoid churning the rest of this file in
-    /// the same commit.
-    session: Option<StitchCore>,
+    /// None until calibration is loaded and GPU is initialized. The
+    /// source drives OBS video_tick callbacks into
+    /// `StitchCore::submit_frame_*_at_pose` and reads the resulting
+    /// RGBA out of the triple-buffered readback ring.
+    core: Option<StitchCore>,
 
     /// Upstream OBS source that feeds the left camera. Owned reference
     /// (obs_get_source_by_name increments refcount, we release in destroy
@@ -162,7 +160,7 @@ struct RecoSource {
 impl RecoSource {
     fn new() -> Self {
         Self {
-            session: None,
+            core: None,
             left_source: ptr::null_mut(),
             right_source: ptr::null_mut(),
             left_source_name: String::new(),
@@ -318,13 +316,13 @@ impl RecoSource {
                     self.input_height,
                     self.input_format,
                 );
-                self.session = Some(session);
+                self.core = Some(session);
                 let buf_size = (self.output_width * self.output_height * 4) as usize;
                 self.rgba_buffer.resize(buf_size, 0);
             }
             Err(e) => {
                 log::error!("reco-obs: failed to create session: {e}");
-                self.session = None;
+                self.core = None;
             }
         }
     }
@@ -333,7 +331,7 @@ impl RecoSource {
     fn load_calibration(&mut self) {
         if self.config_path.is_empty() {
             self.calibration = None;
-            self.session = None;
+            self.core = None;
             return;
         }
 
@@ -349,7 +347,7 @@ impl RecoSource {
                     self.config_path
                 );
                 self.calibration = None;
-                self.session = None;
+                self.core = None;
             }
         }
     }
@@ -393,7 +391,7 @@ impl RecoSource {
                 self.diag_render_calls,
                 self.diag_missed_left,
                 self.diag_missed_right,
-                if self.session.is_some() { "ok" } else { "none" },
+                if self.core.is_some() { "ok" } else { "none" },
                 if self.left_source.is_null() {
                     "null"
                 } else {
@@ -407,7 +405,7 @@ impl RecoSource {
             );
         }
 
-        if self.session.is_none() {
+        if self.core.is_none() {
             return;
         }
         if self.left_source.is_null() || self.right_source.is_null() {
@@ -499,7 +497,7 @@ impl RecoSource {
                         let right_strided = strided_from_obs(r);
                         let left_tight = left_strided.copy_into(&mut self.left_repack);
                         let right_tight = right_strided.copy_into(&mut self.right_repack);
-                        let session = self.session.as_mut().expect("checked above");
+                        let session = self.core.as_mut().expect("checked above");
                         session.submit_frame_yuv_at_pose(&left_tight, &right_tight, yaw, pitch)
                     }
                     InputFormat::Bgra => {
@@ -511,7 +509,7 @@ impl RecoSource {
                         // the right order already).
                         let left_bgra = build_bgra_planes(l, &mut self.left_repack);
                         let right_bgra = build_bgra_planes(r, &mut self.right_repack);
-                        let session = self.session.as_mut().expect("checked above");
+                        let session = self.core.as_mut().expect("checked above");
                         session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, yaw, pitch)
                     }
                     InputFormat::Nv12 => {
@@ -835,9 +833,9 @@ unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_da
         let dims_changed = (src.output_width, src.output_height) != old_output
             || (src.input_width, src.input_height) != old_input;
         let config_changed = src.config_path != old_config_path;
-        // apply_settings sets src.session to None when the input format
+        // apply_settings sets src.core to None when the input format
         // changes, so we can use that as our "needs rebuild" signal.
-        let format_changed = src.session.is_none() && src.calibration.is_some();
+        let format_changed = src.core.is_none() && src.calibration.is_some();
 
         if dims_changed || config_changed || format_changed {
             // Destroy old OBS texture since dimensions may have changed.
@@ -878,7 +876,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
         let src = unsafe { &mut *(data as *mut RecoSource) };
         src.diag_render_calls = src.diag_render_calls.wrapping_add(1);
 
-        if src.session.is_none() {
+        if src.core.is_none() {
             return;
         }
 
@@ -1012,7 +1010,7 @@ unsafe extern "C" fn source_mouse_wheel(
             return;
         }
         let src = unsafe { &mut *(data as *mut RecoSource) };
-        let session = match &mut src.session {
+        let session = match &mut src.core {
             Some(s) => s,
             None => return,
         };
@@ -1199,7 +1197,7 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
             // source_update rebuilds. This happens after apply_settings
             // returns (the dim / config / format-change gate reruns
             // try_init_pipeline).
-            src.session = None;
+            src.core = None;
             src.warned_unsupported_format = false;
         }
 

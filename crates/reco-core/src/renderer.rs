@@ -51,7 +51,7 @@ const FAR_PLANE: f32 = 5.0;
 pub const PLANE_ASPECT: f32 = 16.0 / 9.0;
 
 /// Errors from the renderer.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum RenderError {
     /// Frame data has wrong size.
     #[error("frame data size mismatch: expected {expected} bytes, got {actual}")]

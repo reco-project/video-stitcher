@@ -218,8 +218,9 @@ impl<'a> BgraPlanes<'a> {
     }
 }
 
-/// Errors from the stitch pipeline.
-#[derive(Debug, Error)]
+/// Errors from the stitch pipeline. `Clone + Send + Sync` so consumers
+/// posting results to worker threads can carry the typed error.
+#[derive(Debug, Clone, Error)]
 pub enum PipelineError {
     /// GPU initialization failed.
     #[error("GPU error: {0}")]

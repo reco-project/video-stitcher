@@ -26,7 +26,7 @@
 use thiserror::Error;
 
 /// Errors from frame sources.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum SourceError {
     /// The source failed to open or initialize.
     #[error("source init ({path}): {reason}")]
