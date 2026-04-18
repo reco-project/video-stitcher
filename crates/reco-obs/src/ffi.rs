@@ -123,6 +123,16 @@ pub enum gs_color_space {
     GS_CS_709_SCRGB = 3,
 }
 
+/// Texture creation flag: auto-generate mipmaps (from `libobs/graphics/graphics.h`).
+#[allow(dead_code)]
+pub const GS_BUILD_MIPMAPS: u32 = 1 << 0;
+/// Texture creation flag: dynamic (CPU-writable via `gs_texture_map` /
+/// `gs_texture_set_image`). Required when uploading frames from the plugin.
+pub const GS_DYNAMIC: u32 = 1 << 1;
+/// Texture creation flag: render target (GPU-writable).
+#[allow(dead_code)]
+pub const GS_RENDER_TARGET: u32 = 1 << 2;
+
 /// OBS graphics color format.
 #[repr(C)]
 #[allow(non_camel_case_types, dead_code)]
@@ -595,6 +605,14 @@ unsafe extern "C" {
     pub fn obs_get_source_by_name(name: *const c_char) -> *mut obs_source_t;
     pub fn obs_source_release(source: *mut obs_source_t);
     pub fn obs_source_get_name(source: *const obs_source_t) -> *const c_char;
+
+    // Source activation (keeps Media Source decoders running even when the
+    // upstream source isn't rendered in the scene directly). We're using
+    // the source's async frames via obs_source_get_frame, but OBS doesn't
+    // track that as "showing", so without inc_showing it may deactivate
+    // the decoder and stall playback.
+    pub fn obs_source_inc_showing(source: *mut obs_source_t);
+    pub fn obs_source_dec_showing(source: *mut obs_source_t);
 
     // Dropdown property (for source pickers)
     pub fn obs_properties_add_list(

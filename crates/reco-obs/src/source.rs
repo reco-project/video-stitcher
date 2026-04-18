@@ -86,6 +86,13 @@ struct RecoSource {
     /// One-shot warning flag: emitted once per unsupported video format
     /// so we don't flood the log on every frame.
     warned_unsupported_format: bool,
+    /// Rolling tick counter + per-category "missed frame" counters for
+    /// diagnostic heartbeat logging. Flushed every ~60 ticks so consumers
+    /// can tell "plugin running but never rendered" from silent hang.
+    diag_tick: u64,
+    diag_missed_left: u64,
+    diag_missed_right: u64,
+    diag_submitted: u64,
 
     /// Current calibration loaded from the config file.
     calibration: Option<MatchCalibration>,
@@ -131,6 +138,10 @@ impl RecoSource {
             left_repack: Vec::new(),
             right_repack: Vec::new(),
             warned_unsupported_format: false,
+            diag_tick: 0,
+            diag_missed_left: 0,
+            diag_missed_right: 0,
+            diag_submitted: 0,
             calibration: None,
             config_path: String::new(),
             output_width: 1920,
@@ -147,10 +158,17 @@ impl RecoSource {
 
     /// Replace `slot` with a new OBS source reference (resolved from
     /// `new_name` via `obs_get_source_by_name`). Releases the old ref if
-    /// one was held. Safe to call with an empty name - that just releases.
+    /// one was held, and pairs `inc_showing` with `dec_showing` so the
+    /// upstream source (e.g. a Media Source) keeps its decoder running
+    /// while we're pulling frames from it - without that, OBS can
+    /// deactivate the source when it isn't visibly rendered anywhere,
+    /// which manifests as intermittent freezes in our stitched output.
+    ///
+    /// Safe to call with an empty name - that just releases the old ref.
     unsafe fn set_source_slot(slot: &mut *mut ffi::obs_source_t, new_name: &str) {
         unsafe {
             if !slot.is_null() {
+                ffi::obs_source_dec_showing(*slot);
                 ffi::obs_source_release(*slot);
                 *slot = ptr::null_mut();
             }
@@ -167,6 +185,9 @@ impl RecoSource {
             let ptr = ffi::obs_get_source_by_name(cstr.as_ptr());
             if ptr.is_null() {
                 log::warn!("reco-obs: upstream source '{new_name}' not found (not yet created?)");
+            } else {
+                ffi::obs_source_inc_showing(ptr);
+                log::info!("reco-obs: holding '{new_name}' active via inc_showing");
             }
             *slot = ptr;
         }
@@ -262,6 +283,31 @@ impl RecoSource {
     /// `warned_unsupported_format` flag ensures unsupported-format warnings
     /// fire at most once per source instance.
     fn render_and_readback(&mut self) {
+        self.diag_tick = self.diag_tick.wrapping_add(1);
+        // Every ~60 ticks (~1-2 seconds) flush a diagnostic heartbeat so
+        // users can tell "plugin running but no render" from "plugin hung".
+        if self.diag_tick.is_multiple_of(60) {
+            log::info!(
+                "reco-obs: diag tick={} submitted={} missed_left={} missed_right={} \
+                 session={} left_src={} right_src={}",
+                self.diag_tick,
+                self.diag_submitted,
+                self.diag_missed_left,
+                self.diag_missed_right,
+                if self.session.is_some() { "ok" } else { "none" },
+                if self.left_source.is_null() {
+                    "null"
+                } else {
+                    "ok"
+                },
+                if self.right_source.is_null() {
+                    "null"
+                } else {
+                    "ok"
+                },
+            );
+        }
+
         if self.session.is_none() {
             return;
         }
@@ -273,6 +319,12 @@ impl RecoSource {
         // ref; must pair with release_frame).
         let left_frame = unsafe { ffi::obs_source_get_frame(self.left_source) };
         let right_frame = unsafe { ffi::obs_source_get_frame(self.right_source) };
+        if left_frame.is_null() {
+            self.diag_missed_left += 1;
+        }
+        if right_frame.is_null() {
+            self.diag_missed_right += 1;
+        }
 
         if !left_frame.is_null() && !right_frame.is_null() {
             // SAFETY: both pointers non-null; OBS guarantees the frames
@@ -330,6 +382,13 @@ impl RecoSource {
                     Ok(Some(rgba)) => {
                         self.rgba_buffer.copy_from_slice(rgba);
                         self.frame_ready.store(true, Ordering::Release);
+                        if self.diag_submitted == 0 {
+                            log::info!(
+                                "reco-obs: first stitched frame ready ({} bytes)",
+                                rgba.len()
+                            );
+                        }
+                        self.diag_submitted += 1;
                     }
                     Ok(None) => { /* pipeline warmup */ }
                     Err(e) => {
@@ -362,6 +421,9 @@ impl RecoSource {
     /// Must be called on the OBS graphics thread.
     unsafe fn ensure_obs_texture(&mut self) {
         if self.obs_texture.is_null() && self.output_width > 0 && self.output_height > 0 {
+            // GS_DYNAMIC is required for gs_texture_set_image to work;
+            // without it the texture is static and all updates silently
+            // fail with "Texture is not dynamic" spam in the OBS log.
             self.obs_texture = unsafe {
                 ffi::gs_texture_create(
                     self.output_width,
@@ -369,11 +431,17 @@ impl RecoSource {
                     ffi::gs_color_format::GS_RGBA,
                     1,
                     ptr::null(),
-                    0,
+                    ffi::GS_DYNAMIC,
                 )
             };
             if self.obs_texture.is_null() {
                 log::error!("reco-obs: failed to create OBS texture");
+            } else {
+                log::info!(
+                    "reco-obs: OBS texture created ({}x{}, GS_RGBA, dynamic)",
+                    self.output_width,
+                    self.output_height
+                );
             }
         }
     }
@@ -419,13 +487,16 @@ unsafe extern "C" fn source_destroy(data: *mut c_void) {
     let mut src = unsafe { Box::from_raw(data as *mut RecoSource) };
 
     // Release the upstream source refs we held. Must run before the Box
-    // is dropped - OBS tracks ref lifetime through these calls.
+    // is dropped - OBS tracks ref lifetime through these calls. Pair
+    // dec_showing with the inc_showing set_source_slot issued earlier.
     unsafe {
         if !src.left_source.is_null() {
+            ffi::obs_source_dec_showing(src.left_source);
             ffi::obs_source_release(src.left_source);
             src.left_source = ptr::null_mut();
         }
         if !src.right_source.is_null() {
+            ffi::obs_source_dec_showing(src.right_source);
             ffi::obs_source_release(src.right_source);
             src.right_source = ptr::null_mut();
         }
