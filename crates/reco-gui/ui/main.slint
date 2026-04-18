@@ -1038,7 +1038,12 @@ export component RecoApp inherits Window {
                     HorizontalLayout {
                         spacing: 8px;
                         Button {
-                            text: "Save Calibration";
+                            // Labelled to make clear that it persists
+                            // everything - lens intrinsics included,
+                            // not just the rig layout. The save path
+                            // serializes the full MatchCalibration,
+                            // which carries both.
+                            text: "Save Calibration & Lens";
                             enabled: root.cal-dirty;
                             clicked => { root.save-calibration(); }
                         }
@@ -1101,8 +1106,13 @@ export component RecoApp inherits Window {
                     Slider {
                         horizontal-stretch: 1;
                         minimum: 0;
-                        maximum: root.total-frames == 0 ? 1 : root.total-frames;
-                        value: root.current-frame;
+                        maximum: root.total-frames == 0 ? 1.0 : 1.0 * root.total-frames;
+                        // Explicit float coercion: binding an int to
+                        // `value` (a float) was not re-flowing the
+                        // visual handle on every playback tick. Forcing
+                        // the expression to float makes Slint re-check
+                        // the binding each property change.
+                        value: 1.0 * root.current-frame;
                         enabled: root.files-loaded;
                         // `released` fires only on user pointer release,
                         // unlike `changed` which also fires when Rust

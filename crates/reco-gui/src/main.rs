@@ -397,6 +397,20 @@ impl AppState {
         Ok(true)
     }
 
+    /// Tear down the live pipeline so the preview stops rendering the
+    /// stale source after a calibration failure or an in-place file
+    /// swap. Keeps the user-picked paths on `AppState` so the user can
+    /// fix and retry, but drops the bridge + playback + calibration.
+    fn unload_pipeline(&mut self) {
+        self.bridge = None;
+        self.calibration = None;
+        self.cal_baseline_layout = None;
+        self.cal_baseline_left_params = None;
+        self.cal_baseline_right_params = None;
+        self.playback = crate::playback::Playback::new();
+        self.preview_dirty = true;
+    }
+
     /// Render the current frame. With zero-copy texture sharing, the
     /// same path works for both playback ticks and seek/step — no more
     /// sync vs async distinction.
@@ -825,9 +839,26 @@ fn main() -> anyhow::Result<()> {
     app.on_pick_left_video(move || {
         let dialog = rfd::FileDialog::new()
             .set_title("Select left camera video")
-            .add_filter("Video", &["mp4", "mov", "avi", "mkv"]);
+            // Case-insensitive globs so .MP4 (common on cameras that
+            // write uppercase) picks up alongside .mp4.
+            .add_filter(
+                "Video",
+                &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
+            );
         if let Some(path) = dialog.pick_file() {
             let mut s = state_ref.borrow_mut();
+            let changed = s.left_path.as_ref() != Some(&path);
+            if changed && s.bridge.is_some() {
+                // Swapping in a different file while a pipeline is
+                // live: unload so the preview stops rendering the old
+                // source and the user explicitly re-calibrates or
+                // re-loads a match.json.
+                s.unload_pipeline();
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_files_loaded(false);
+                    app.set_status_text("File changed — re-calibrate or load calibration".into());
+                }
+            }
             if let Some(app) = app_weak.upgrade() {
                 app.set_left_path(display_name(&path).into());
             }
@@ -846,9 +877,20 @@ fn main() -> anyhow::Result<()> {
     app.on_pick_right_video(move || {
         let dialog = rfd::FileDialog::new()
             .set_title("Select right camera video")
-            .add_filter("Video", &["mp4", "mov", "avi", "mkv"]);
+            .add_filter(
+                "Video",
+                &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
+            );
         if let Some(path) = dialog.pick_file() {
             let mut s = state_ref.borrow_mut();
+            let changed = s.right_path.as_ref() != Some(&path);
+            if changed && s.bridge.is_some() {
+                s.unload_pipeline();
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_files_loaded(false);
+                    app.set_status_text("File changed — re-calibrate or load calibration".into());
+                }
+            }
             if let Some(app) = app_weak.upgrade() {
                 app.set_right_path(display_name(&path).into());
             }
@@ -867,9 +909,17 @@ fn main() -> anyhow::Result<()> {
     app.on_pick_calibration(move || {
         let dialog = rfd::FileDialog::new()
             .set_title("Select calibration JSON")
-            .add_filter("JSON", &["json"]);
+            .add_filter("JSON", &["json", "JSON"]);
         if let Some(path) = dialog.pick_file() {
             let mut s = state_ref.borrow_mut();
+            let changed = s.calibration_path.as_ref() != Some(&path);
+            if changed && s.bridge.is_some() {
+                s.unload_pipeline();
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_files_loaded(false);
+                    app.set_status_text("Calibration changed — reloading".into());
+                }
+            }
             if let Some(app) = app_weak.upgrade() {
                 app.set_calibration_path(display_name(&path).into());
             }
@@ -894,6 +944,14 @@ fn main() -> anyhow::Result<()> {
     app.on_load_recent_left(move |entry| {
         let path = PathBuf::from(entry.as_str());
         let mut s = state_ref.borrow_mut();
+        let changed = s.left_path.as_ref() != Some(&path);
+        if changed && s.bridge.is_some() {
+            s.unload_pipeline();
+            if let Some(app) = app_weak.upgrade() {
+                app.set_files_loaded(false);
+                app.set_status_text("File changed — re-calibrate or load calibration".into());
+            }
+        }
         if let Some(app) = app_weak.upgrade() {
             app.set_left_path(display_name(&path).into());
         }
@@ -911,6 +969,14 @@ fn main() -> anyhow::Result<()> {
     app.on_load_recent_right(move |entry| {
         let path = PathBuf::from(entry.as_str());
         let mut s = state_ref.borrow_mut();
+        let changed = s.right_path.as_ref() != Some(&path);
+        if changed && s.bridge.is_some() {
+            s.unload_pipeline();
+            if let Some(app) = app_weak.upgrade() {
+                app.set_files_loaded(false);
+                app.set_status_text("File changed — re-calibrate or load calibration".into());
+            }
+        }
         if let Some(app) = app_weak.upgrade() {
             app.set_right_path(display_name(&path).into());
         }
@@ -928,6 +994,14 @@ fn main() -> anyhow::Result<()> {
     app.on_load_recent_calibration(move |entry| {
         let path = PathBuf::from(entry.as_str());
         let mut s = state_ref.borrow_mut();
+        let changed = s.calibration_path.as_ref() != Some(&path);
+        if changed && s.bridge.is_some() {
+            s.unload_pipeline();
+            if let Some(app) = app_weak.upgrade() {
+                app.set_files_loaded(false);
+                app.set_status_text("Calibration changed — reloading".into());
+            }
+        }
         if let Some(app) = app_weak.upgrade() {
             app.set_calibration_path(display_name(&path).into());
         }
@@ -2134,7 +2208,16 @@ fn handle_calibration_result(
         }
         Err(e) => {
             log::error!("Auto-calibration failed: {e}");
+            // Critical: unload the live pipeline so the preview stops
+            // rendering whatever it was showing before. Otherwise the
+            // preview keeps playing the OLD right/left video while the
+            // state thinks the new paths are active - and export would
+            // read the new paths and produce garbage. Flipping
+            // `files-loaded=false` forces the user to re-pick or
+            // re-calibrate from a clean state.
+            state.unload_pipeline();
             if let Some(app) = app_weak.upgrade() {
+                app.set_files_loaded(false);
                 app.set_status_text("Calibration failed".into());
                 state
                     .toasts
