@@ -18,11 +18,15 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Includes libobs-dev because reco-obs's build.rs runs bindgen
+  # against /usr/include/obs/obs.h on every workspace-level cargo
+  # command (clippy, test, doc, bench). Without it, any job that
+  # touches reco-obs fails at build-script time.
   APT_PACKAGES: >-
     libavcodec-dev libavformat-dev libavutil-dev
     libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
-    libfontconfig1-dev
+    libfontconfig1-dev libobs-dev
     pkg-config clang
 
 jobs:
@@ -67,8 +71,6 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
           packages: ${{ env.APT_PACKAGES }}
-      - name: Install libobs-dev (required by reco-obs bindgen)
-        run: sudo apt-get install -y libobs-dev
       - name: Run tests (default)
         run: cargo test --workspace
       - name: Run tests (with profiling)
@@ -87,8 +89,6 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
           packages: ${{ env.APT_PACKAGES }}
-      - name: Install libobs-dev
-        run: sudo apt-get install -y libobs-dev
       - name: Build docs (profiling + gstreamer + load-dynamic)
         run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic
         env:
@@ -240,17 +240,23 @@ jobs:
         run: cargo check -p reco-core
       - name: Check reco-core (profiling)
         run: cargo check -p reco-core --features profiling
-      - name: Check reco-gui (Windows D3D12 path)
-        run: cargo check -p reco-gui
+      # reco-gui transitively depends on ffmpeg-sys-next via reco-io,
+      # which fails to build on windows-latest without vcpkg FFmpeg
+      # provisioning. Deferred to M8 once we wire vcpkg in a way that
+      # doesn't blow per-push CI time budget.
 
   # Cross-compile check: cargo check type-checks without linking, so no
   # FFmpeg or ORT native libraries are needed for the target architecture.
+  # Pins the toolchain to 1.92.0 to match rust-toolchain.toml - otherwise
+  # @stable installs latest stable but rust-toolchain.toml forces 1.92.0
+  # on first cargo invocation, and the target's std lib is not installed
+  # for 1.92.0. Pinning resolves "can't find crate for `core`" errors.
   check-windows-arm:
     name: Check (Windows ARM64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           targets: aarch64-pc-windows-msvc
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -267,7 +273,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           targets: aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -287,7 +293,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned toolchain for same reason as check-linux-arm /
+      # check-windows-arm: rust-toolchain.toml forces 1.92.0, and
+      # `rustup target add` applies to the active toolchain.
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1

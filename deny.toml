@@ -29,7 +29,6 @@ targets = [
 # ---------------------------------------------------------------------------
 
 [advisories]
-version = 2
 # Warn on unmaintained/yanked deps (Agent 1 flagged bincode 2.0.1 and
 # paste 1.0.15 both unmaintained). Do not hard-deny yet because the
 # upstream crates we depend on still pull them in; hard-deny once we
@@ -48,10 +47,8 @@ ignore = [
 # ---------------------------------------------------------------------------
 
 [licenses]
-version = 2
 allow = [
-    "AGPL-3.0",        # the project itself
-    "AGPL-3.0-only",
+    "AGPL-3.0-only",   # the project itself (SPDX: "AGPL-3.0" is deprecated)
     "Apache-2.0",      # compatible with AGPL-3.0 distribution
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
@@ -75,7 +72,8 @@ confidence-threshold = 0.93
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-highlight = "all-versions"
+# Valid values: "simplest-path" | "lowest-version" | "all".
+highlight = "all"
 # Crates we explicitly never want - e.g. alternate crypto impls,
 # unmaintained forks. Empty for now; populate as the review flags
 # specific cases.
