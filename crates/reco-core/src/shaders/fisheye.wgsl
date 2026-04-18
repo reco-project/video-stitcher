@@ -19,7 +19,8 @@ struct Uniforms {
     // YUV color transfer: offset.xyz (Y, U, V), blend_width
     color_offset_blend: vec4<f32>,
     // flags.x: is_right (0 or 1)
-    // flags.y: use_nv12 (0 = YUV420P: separate U,V textures; 1 = NV12: interleaved UV in t_u)
+    // flags.y: input_format (0 = YUV420P: separate U,V textures; 1 = NV12: interleaved UV
+    //          in t_u; 2 = BGRA/RGBA: t_y holds packed 4-channel RGB, skip YUV conversion)
     // flags.z: flip_180 (0 or 1) - flip UV coordinates for 180-degree rotation
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
     // flags.w: reserved
@@ -88,22 +89,32 @@ fn apply_color_transfer(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> 
 
 // ---- YUV → RGB conversion ----
 
-/// Sample YUV textures and convert to linear RGB via BT.709.
+/// Sample the input plane(s) and return an sRGB-domain RGB triple.
 ///
-/// Supports two input layouts (selected by `u.flags.y`):
-///   0 = YUV420P: separate R8 textures for Y, U, V (software decode)
-///   1 = NV12: R8 Y texture + Rg8 UV texture with interleaved U,V (NVDEC)
+/// Supports three input layouts (selected by `u.flags.y`):
+///   0 = YUV420P: separate R8 textures for Y, U, V (software decode).
+///   1 = NV12: R8 Y texture + Rg8 UV texture with interleaved U,V (NVDEC).
+///   2 = BGRA/RGBA: t_y is an `Rgba8Unorm` texture holding packed RGB
+///       (source already sRGB-domain, skip YUV conversion).
 ///
-/// H.264 uses limited range (Y: 16–235, Cb/Cr: 16–240).
-/// After the BT.709 matrix, we get sRGB-like gamma values, which
-/// we linearize with srgb_to_linear to match the Rgba8UnormSrgb
-/// auto-decode path (identical visual output to the old RGBA upload).
+/// H.264 uses limited range (Y: 16-235, Cb/Cr: 16-240). After the
+/// BT.709 matrix we get sRGB-domain values which we write as-is to
+/// the `Rgba8Unorm` render target.
 fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
     // Apply 180-degree rotation for the GPU zero-copy path.
     // The CPU path reverses buffers in software; the GPU path flips UV coords instead.
     var sample_uv = uv;
     if u.flags.z == 1u {
         sample_uv = vec2<f32>(1.0 - uv.x, 1.0 - uv.y);
+    }
+
+    // BGRA / RGBA packed path: sample the full RGB triple in one fetch
+    // and return without YUV conversion. The upload side is responsible
+    // for delivering the triple in (R, G, B) order - swizzling BGRA is
+    // handled at upload time so the shader only sees R-in-red.
+    if u.flags.y == 2u {
+        let rgba = textureSample(t_y, s_video, sample_uv);
+        return vec4<f32>(rgba.rgb, 1.0);
     }
 
     let y_raw = textureSample(t_y, s_video, sample_uv).r;
@@ -122,7 +133,7 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
         v_raw = textureSample(t_v, s_video, sample_uv).r;
     }
 
-    // BT.709 limited-range YCbCr → full-range R'G'B'
+    // BT.709 limited-range YCbCr -> full-range R'G'B'
     let y = (y_raw - 16.0 / 255.0) * (255.0 / 219.0);
     let cb = (u_raw - 128.0 / 255.0) * (255.0 / 224.0);
     let cr = (v_raw - 128.0 / 255.0) * (255.0 / 224.0);
@@ -132,7 +143,7 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
     let b = y + 1.8556 * cb;
 
     let rgb = clamp(vec3<f32>(r, g, b), vec3<f32>(0.0), vec3<f32>(1.0));
-    // BT.709 YCbCr→R'G'B' produces sRGB-domain values directly.
+    // BT.709 YCbCr->R'G'B' produces sRGB-domain values directly.
     // Render target is Rgba8Unorm, so we write sRGB values as-is.
     return vec4<f32>(rgb, 1.0);
 }

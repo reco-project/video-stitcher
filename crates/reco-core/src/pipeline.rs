@@ -140,6 +140,47 @@ pub struct Nv12Planes<'a> {
     pub uv: &'a [u8],
 }
 
+/// Borrowed packed BGRA/RGBA plane for pipeline input.
+///
+/// Tightly packed, 4 bytes per pixel in (R, G, B, A) byte order - the
+/// shader samples `rgba.rgb` directly, so callers with BGRA data need
+/// to swizzle bytes at upload time (see
+/// [`BgraPlanes::from_bgra_swizzle_into`]). Used for OBS Browser
+/// Source, screen capture, WebRTC ingest, and any other consumer whose
+/// source frames are already sRGB-domain.
+pub struct BgraPlanes<'a> {
+    /// Packed RGBA bytes, length `width * height * 4`.
+    pub rgba: &'a [u8],
+}
+
+impl<'a> BgraPlanes<'a> {
+    /// Wrap an already-RGBA byte slice without copying.
+    ///
+    /// Length must be exactly `width * height * 4`; callers are expected
+    /// to match the dimensions the pipeline was constructed with.
+    pub fn from_rgba(rgba: &'a [u8]) -> Self {
+        Self { rgba }
+    }
+
+    /// Swizzle a BGRA-ordered source into a caller-owned `Vec<u8>` and
+    /// return a [`BgraPlanes`] borrowing from it.
+    ///
+    /// OBS and most desktop compositors deliver BGRA; the shader expects
+    /// RGBA, so this helper performs the cheap byte-reorder once per
+    /// frame. Cache the buffer across frames to avoid per-frame
+    /// allocation (the helper `resize`s in place).
+    pub fn from_bgra_swizzle_into(bgra: &[u8], buffer: &'a mut Vec<u8>) -> Self {
+        buffer.resize(bgra.len(), 0);
+        for (src, dst) in bgra.chunks_exact(4).zip(buffer.chunks_exact_mut(4)) {
+            dst[0] = src[2]; // R <- B
+            dst[1] = src[1]; // G
+            dst[2] = src[0]; // B <- R
+            dst[3] = src[3]; // A
+        }
+        Self { rgba: buffer }
+    }
+}
+
 /// Errors from the stitch pipeline.
 #[derive(Debug, Error)]
 pub enum PipelineError {
@@ -646,6 +687,44 @@ impl StitchPipeline {
         self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
         self.renderer
             .upload_right_nv12(&self.gpu, right.y, right.uv)?;
+
+        let viewport = ResolvedViewport {
+            config: self.viewport.clone(),
+            position: ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            },
+        };
+
+        Ok(self.renderer.render_to_target(
+            &self.gpu,
+            &self.scene,
+            &self.calibration,
+            &viewport,
+            self.viewport.blend_width,
+        ))
+    }
+
+    /// Upload packed BGRA/RGBA frames and render to the internal target.
+    ///
+    /// Expects each plane as `width * height * 4` bytes in (R, G, B, A) byte
+    /// order. Use [`BgraPlanes::from_bgra_swizzle_into`] when the source
+    /// is BGRA. Requires the pipeline to be initialized with
+    /// [`InputFormat::Bgra`](crate::renderer::InputFormat#variant.Bgra).
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "render_to_target_bgra")
+    )]
+    pub fn render_to_target_bgra(
+        &self,
+        left: &BgraPlanes<'_>,
+        right: &BgraPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        self.renderer.upload_left_bgra(&self.gpu, left.rgba)?;
+        self.renderer.upload_right_bgra(&self.gpu, right.rgba)?;
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),

@@ -155,8 +155,15 @@ pub enum InputFormat {
     /// Used with software decode or CPU-side conversion.
     Yuv420p,
     /// NV12: Y as R8 (full-res) + interleaved UV as Rg8 (half-res).
-    /// NVDEC native output format. V texture is a 1×1 dummy.
+    /// NVDEC native output format. V texture is a 1x1 dummy.
     Nv12,
+    /// Packed BGRA / RGBA: a single `Rgba8Unorm` texture at full resolution
+    /// holding pre-composited sRGB-domain RGB. Used by OBS Browser Source,
+    /// screen capture, WebRTC ingest, and other non-camera sources whose
+    /// native format is already RGB. The shader samples the single plane
+    /// and writes the RGB triple straight out (no YUV conversion).
+    /// `u_texture` / `v_texture` are 1x1 dummies in this mode.
+    Bgra,
 }
 
 /// GPU-side pixel format for NV12-family zero-copy decode output.
@@ -445,8 +452,17 @@ impl Renderer {
             })
         };
 
-        // Y plane is always R8Unorm at full resolution
-        let y_texture = create_texture("y", width, height, wgpu::TextureFormat::R8Unorm);
+        // Y plane format + u/v plane selection depend on input format.
+        // For Bgra the "Y" slot actually holds a full-res Rgba8Unorm texture;
+        // u/v are 1x1 dummies that the shader never samples.
+        let y_texture = match input_format {
+            InputFormat::Yuv420p | InputFormat::Nv12 => {
+                create_texture("y", width, height, wgpu::TextureFormat::R8Unorm)
+            }
+            InputFormat::Bgra => {
+                create_texture("rgba", width, height, wgpu::TextureFormat::Rgba8Unorm)
+            }
+        };
 
         let (u_texture, v_texture) = match input_format {
             InputFormat::Yuv420p => {
@@ -458,9 +474,16 @@ impl Renderer {
             InputFormat::Nv12 => {
                 // NV12: interleaved UV as Rg8Unorm at half resolution
                 let uv = create_texture("uv", width / 2, height / 2, wgpu::TextureFormat::Rg8Unorm);
-                // Dummy V texture — shader won't sample it in NV12 mode
+                // Dummy V texture - shader won't sample it in NV12 mode
                 let v_dummy = create_texture("v_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
                 (uv, v_dummy)
+            }
+            InputFormat::Bgra => {
+                // Shader skips u/v sampling on the Bgra path; 1x1 dummies
+                // satisfy the bind group layout without wasting memory.
+                let u_dummy = create_texture("u_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
+                let v_dummy = create_texture("v_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
+                (u_dummy, v_dummy)
             }
         };
 
@@ -580,6 +603,31 @@ impl Renderer {
             "upload_right_nv12 requires InputFormat::Nv12"
         );
         upload_nv12(gpu, &self.right, y, uv)
+    }
+
+    /// Upload a packed BGRA/RGBA plane to the left camera texture.
+    ///
+    /// Data must be `width * height * 4` bytes in (R, G, B, A) byte order.
+    /// Upload-side swizzling translates BGRA sources before calling this -
+    /// see [`pipeline::BgraPlanes`](crate::pipeline::BgraPlanes).
+    pub fn upload_left_bgra(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
+        debug_assert_eq!(
+            self.input_format,
+            InputFormat::Bgra,
+            "upload_left_bgra requires InputFormat::Bgra"
+        );
+        upload_bgra(gpu, &self.left, rgba)
+    }
+
+    /// Upload a packed BGRA/RGBA plane to the right camera texture.
+    /// See [`Self::upload_left_bgra`].
+    pub fn upload_right_bgra(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
+        debug_assert_eq!(
+            self.input_format,
+            InputFormat::Bgra,
+            "upload_right_bgra requires InputFormat::Bgra"
+        );
+        upload_bgra(gpu, &self.right, rgba)
     }
 
     /// Create a texture bind group from external textures.
@@ -818,6 +866,43 @@ impl Renderer {
 
 // ---- Helper functions ----
 
+/// Upload a packed RGBA plane (4 bytes per pixel) to a GPU texture.
+///
+/// Expects `width * height * 4` bytes in (R, G, B, A) order.
+/// Callers with BGRA source data need to swizzle to RGBA before
+/// this call - the shader samples `rgba.rgb` directly.
+fn upload_bgra(gpu: &GpuContext, plane: &PlaneResources, rgba: &[u8]) -> Result<(), RenderError> {
+    let w = plane.width;
+    let h = plane.height;
+    let expected = (w * h * 4) as usize;
+    if rgba.len() != expected {
+        return Err(RenderError::FrameSizeMismatch {
+            expected,
+            actual: rgba.len(),
+        });
+    }
+    gpu.queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &plane.y_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(w * 4),
+            rows_per_image: Some(h),
+        },
+        wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
+    );
+    Ok(())
+}
+
 /// Upload a single R8Unorm plane to a GPU texture.
 fn upload_plane(gpu: &GpuContext, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
     gpu.queue.write_texture(
@@ -1023,7 +1108,11 @@ pub(crate) fn build_gpu_uniforms(
         color_offset_blend: [0.0, 0.0, 0.0, blend_width],
         flags: [
             is_right as u32,
-            (input_format == InputFormat::Nv12) as u32,
+            match input_format {
+                InputFormat::Yuv420p => 0,
+                InputFormat::Nv12 => 1,
+                InputFormat::Bgra => 2,
+            },
             flip_180 as u32,
             0,
         ],

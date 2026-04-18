@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::MatchCalibration;
 use reco_core::gpu::GpuContext;
-use reco_core::pipeline::YuvPlanes;
+use reco_core::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::renderer::InputFormat;
 use reco_core::session::{LiveSessionConfig, LiveStitchSession};
 use reco_core::viewport::ViewportConfig;
@@ -51,6 +51,16 @@ const PROP_INPUT_WIDTH: &CStr = c"input_width";
 const PROP_INPUT_HEIGHT: &CStr = c"input_height";
 const PROP_YAW: &CStr = c"yaw";
 const PROP_PITCH: &CStr = c"pitch";
+/// Name of the OBS source that feeds the left camera.
+const PROP_LEFT_SOURCE: &CStr = c"left_source";
+/// Name of the OBS source that feeds the right camera.
+const PROP_RIGHT_SOURCE: &CStr = c"right_source";
+/// Upstream pixel format (string: "i420" | "bgra"). Must match what the
+/// picked OBS sources actually deliver - OBS can't negotiate, so this is
+/// a manual hint.
+const PROP_INPUT_FORMAT: &CStr = c"input_format";
+const INPUT_FORMAT_I420: &CStr = c"i420";
+const INPUT_FORMAT_BGRA: &CStr = c"bgra";
 
 // ---------------------------------------------------------------------------
 // Source state
@@ -64,6 +74,43 @@ struct RecoSource {
     /// High-level push session (bundles pipeline + RGBA readback).
     /// None until calibration is loaded and GPU is initialized.
     session: Option<LiveStitchSession>,
+
+    /// Upstream OBS source that feeds the left camera. Owned reference
+    /// (obs_get_source_by_name increments refcount, we release in destroy
+    /// or when the user picks a different source).
+    left_source: *mut ffi::obs_source_t,
+    /// Upstream OBS source that feeds the right camera. See [`Self::left_source`].
+    right_source: *mut ffi::obs_source_t,
+    /// Source name the user picked for the left camera (used to detect changes).
+    left_source_name: String,
+    /// Source name the user picked for the right camera.
+    right_source_name: String,
+    /// Reusable tight-pack buffers for `StridedYuvPlanes::copy_into`. One
+    /// per side so the render loop never reallocates per frame.
+    left_repack: Vec<u8>,
+    right_repack: Vec<u8>,
+    /// Which reco-core input format the session was built with. Determines
+    /// which submit path (YUV vs BGRA) we dispatch to and which OBS video
+    /// formats we accept as valid input.
+    input_format: InputFormat,
+    /// One-shot warning flag: emitted once per unsupported video format
+    /// so we don't flood the log on every frame.
+    warned_unsupported_format: bool,
+    /// Rolling tick counter + per-category "missed frame" counters for
+    /// diagnostic heartbeat logging. Flushed every ~60 ticks so consumers
+    /// can tell "plugin running but never rendered" from silent hang.
+    diag_tick: u64,
+    diag_missed_left: u64,
+    diag_missed_right: u64,
+    diag_submitted: u64,
+    /// Count of video_render invocations since source creation. Logged
+    /// alongside the regular diag heartbeat so we can distinguish
+    /// "stitching runs but OBS never asks us to draw" from
+    /// "render runs but the texture isn't repainting".
+    diag_render_calls: u64,
+    /// Count of texture uploads (gs_texture_set_image calls) - should
+    /// track diag_submitted when the display path is healthy.
+    diag_uploads: u64,
 
     /// Current calibration loaded from the config file.
     calibration: Option<MatchCalibration>,
@@ -85,6 +132,15 @@ struct RecoSource {
     /// Camera pitch in degrees (converted to radians for the pipeline).
     pitch_degrees: f64,
 
+    /// Interactive drag state. `true` between mouse-left-down and
+    /// mouse-left-up events. When true, mouse_move deltas translate to
+    /// yaw/pitch adjustments.
+    dragging: bool,
+    /// Last mouse x/y in source-local pixels, used to compute deltas
+    /// between consecutive mouse_move events.
+    last_mouse_x: i32,
+    last_mouse_y: i32,
+
     /// CPU-side RGBA buffer from the last render (owned copy of the most
     /// recent frame from `RgbaReadback`, so `video_render` can read it on
     /// the OBS graphics thread without holding a borrow).
@@ -102,6 +158,20 @@ impl RecoSource {
     fn new() -> Self {
         Self {
             session: None,
+            left_source: ptr::null_mut(),
+            right_source: ptr::null_mut(),
+            left_source_name: String::new(),
+            right_source_name: String::new(),
+            left_repack: Vec::new(),
+            right_repack: Vec::new(),
+            input_format: InputFormat::Yuv420p,
+            warned_unsupported_format: false,
+            diag_tick: 0,
+            diag_missed_left: 0,
+            diag_missed_right: 0,
+            diag_submitted: 0,
+            diag_render_calls: 0,
+            diag_uploads: 0,
             calibration: None,
             config_path: String::new(),
             output_width: 1920,
@@ -110,9 +180,86 @@ impl RecoSource {
             input_height: 1080,
             yaw_degrees: 0.0,
             pitch_degrees: 0.0,
+            dragging: false,
+            last_mouse_x: 0,
+            last_mouse_y: 0,
             rgba_buffer: Vec::new(),
             frame_ready: AtomicBool::new(false),
             obs_texture: ptr::null_mut(),
+        }
+    }
+
+    /// Replace `slot` with a new OBS source reference (resolved from
+    /// `new_name` via `obs_get_source_by_name`). Releases the old ref if
+    /// one was held, and pairs `inc_showing` with `dec_showing` so the
+    /// upstream source (e.g. a Media Source) keeps its decoder running
+    /// while we're pulling frames from it - without that, OBS can
+    /// deactivate the source when it isn't visibly rendered anywhere,
+    /// which manifests as intermittent freezes in our stitched output.
+    ///
+    /// Safe to call with an empty name - that just releases the old ref.
+    unsafe fn set_source_slot(slot: &mut *mut ffi::obs_source_t, new_name: &str) {
+        unsafe {
+            if !slot.is_null() {
+                ffi::obs_source_dec_active(*slot);
+                ffi::obs_source_dec_showing(*slot);
+                ffi::obs_source_release(*slot);
+                *slot = ptr::null_mut();
+            }
+            if new_name.is_empty() {
+                return;
+            }
+            let cstr = match std::ffi::CString::new(new_name) {
+                Ok(s) => s,
+                Err(_) => {
+                    log::warn!("reco-obs: source name contains NUL, ignoring");
+                    return;
+                }
+            };
+            let ptr = ffi::obs_get_source_by_name(cstr.as_ptr());
+            if ptr.is_null() {
+                log::warn!("reco-obs: upstream source '{new_name}' not found (not yet created?)");
+            } else {
+                // Sanity-check the source's output_flags. We can only
+                // consume ASYNC video sources via obs_source_get_frame.
+                // Sync video sources (Browser Source, Screen Capture,
+                // Window Capture, Game Capture) need render-to-texture
+                // (tracked as FRICTION A9) - they'd silently produce no
+                // output if we didn't warn here.
+                let flags = ffi::obs_source_get_output_flags(ptr);
+                let has_video = (flags & ffi::OBS_SOURCE_VIDEO) != 0;
+                let is_async = (flags & ffi::OBS_SOURCE_ASYNC) != 0;
+                if !has_video {
+                    log::warn!(
+                        "reco-obs: source '{new_name}' has no video output (flags={:#06x}); \
+                         it won't produce frames. Pick a video source (Media Source, V4L2 \
+                         Device, NDI).",
+                        flags
+                    );
+                } else if !is_async {
+                    log::warn!(
+                        "reco-obs: source '{new_name}' is a SYNC video source (flags={:#06x}); \
+                         reco-obs Tier 1 only consumes async sources. Browser Source, Screen \
+                         Capture, Window Capture, Game Capture all render this way - tracked \
+                         as FRICTION A9 (needs render-to-texture path). Workarounds: use \
+                         Media Source / V4L2 Device / NDI, or pipe the sync source through \
+                         v4l2loopback first.",
+                        flags
+                    );
+                } else {
+                    log::info!(
+                        "reco-obs: source '{new_name}' is async video (flags={:#06x}) - ok",
+                        flags
+                    );
+                }
+                // Hold both showing + active refs. Media Source's
+                // ffmpeg decode thread pauses on active==0 even when
+                // showing>0, so we need both to keep playback stable
+                // while the upstream isn't visibly rendered in the scene.
+                ffi::obs_source_inc_showing(ptr);
+                ffi::obs_source_inc_active(ptr);
+            }
+            *slot = ptr;
         }
     }
 
@@ -151,16 +298,17 @@ impl RecoSource {
                 input_width: self.input_width,
                 input_height: self.input_height,
                 output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
-                input_format: InputFormat::Yuv420p,
+                input_format: self.input_format,
             },
         ) {
             Ok(session) => {
                 log::info!(
-                    "reco-obs: session initialized ({}x{} output, {}x{} input)",
+                    "reco-obs: session initialized ({}x{} output, {}x{} input, format={:?})",
                     self.output_width,
                     self.output_height,
                     self.input_width,
                     self.input_height,
+                    self.input_format,
                 );
                 self.session = Some(session);
                 let buf_size = (self.output_width * self.output_height * 4) as usize;
@@ -198,52 +346,197 @@ impl RecoSource {
         }
     }
 
-    /// Perform a render and readback cycle via [`LiveStitchSession`].
+    /// Pull the latest async frame pair from the upstream OBS sources,
+    /// stitch, and stash the RGBA result for `video_render`.
     ///
-    /// Currently renders a blank frame (all-zero YUV) since we don't have
-    /// live camera input wired up yet. When real OBS frame callbacks are
-    /// plumbed, the strided `obs_source_frame` planes should be wrapped
-    /// in [`reco_core::pipeline::StridedYuvPlanes`] and repacked into a
-    /// cached `Vec<u8>` via `copy_into(&mut buf)` before submission.
+    /// Returns silently (no render) when either upstream source is unset,
+    /// has no current frame, or delivers a format other than I420. The
+    /// `warned_unsupported_format` flag ensures unsupported-format warnings
+    /// fire at most once per source instance.
     fn render_and_readback(&mut self) {
-        let session = match &mut self.session {
-            Some(s) => s,
-            None => return,
-        };
+        self.diag_tick = self.diag_tick.wrapping_add(1);
 
-        // TODO: Wire up actual camera frame data from OBS source inputs.
-        // For now, render a test pattern (zero YUV = green in BT.601).
-        let y_size = (self.input_width * self.input_height) as usize;
-        let uv_size = y_size / 4;
-        let y_data = vec![0u8; y_size];
-        let u_data = vec![128u8; uv_size];
-        let v_data = vec![128u8; uv_size];
-
-        let left = YuvPlanes {
-            y: &y_data,
-            u: &u_data,
-            v: &v_data,
-        };
-        let right = YuvPlanes {
-            y: &y_data,
-            u: &u_data,
-            v: &v_data,
-        };
-
-        let yaw = (self.yaw_degrees as f32).to_radians();
-        let pitch = (self.pitch_degrees as f32).to_radians();
-
-        match session.submit_frame(&left, &right, yaw, pitch) {
-            Ok(Some(rgba)) => {
-                self.rgba_buffer.copy_from_slice(rgba);
-                self.frame_ready.store(true, Ordering::Release);
+        // Lazy re-resolve: on OBS startup, source_create for the Reco
+        // source often fires before scene sources have finished loading,
+        // so our initial apply_settings resolves Media / Media 2 to null.
+        // Retry every 30 ticks (~0.5s at 60fps) until we get non-null
+        // refs. Cheap - obs_get_source_by_name is a hashmap lookup.
+        if self.diag_tick.is_multiple_of(30) {
+            unsafe {
+                if self.left_source.is_null() && !self.left_source_name.is_empty() {
+                    let name = self.left_source_name.clone();
+                    RecoSource::set_source_slot(&mut self.left_source, &name);
+                }
+                if self.right_source.is_null() && !self.right_source_name.is_empty() {
+                    let name = self.right_source_name.clone();
+                    RecoSource::set_source_slot(&mut self.right_source, &name);
+                }
             }
-            Ok(None) => {
-                // Pipeline warmup; next tick will have data.
+        }
+        // Every ~60 ticks (~1-2 seconds) flush a diagnostic heartbeat so
+        // users can tell "plugin running but no render" from "plugin hung".
+        if self.diag_tick.is_multiple_of(60) {
+            log::info!(
+                "reco-obs: diag tick={} submitted={} uploads={} renders={} \
+                 missed_left={} missed_right={} session={} left_src={} right_src={}",
+                self.diag_tick,
+                self.diag_submitted,
+                self.diag_uploads,
+                self.diag_render_calls,
+                self.diag_missed_left,
+                self.diag_missed_right,
+                if self.session.is_some() { "ok" } else { "none" },
+                if self.left_source.is_null() {
+                    "null"
+                } else {
+                    "ok"
+                },
+                if self.right_source.is_null() {
+                    "null"
+                } else {
+                    "ok"
+                },
+            );
+        }
+
+        if self.session.is_none() {
+            return;
+        }
+        if self.left_source.is_null() || self.right_source.is_null() {
+            return;
+        }
+
+        // Acquire frames (obs_source_get_frame increments the internal
+        // ref; must pair with release_frame).
+        let left_frame = unsafe { ffi::obs_source_get_frame(self.left_source) };
+        let right_frame = unsafe { ffi::obs_source_get_frame(self.right_source) };
+        if left_frame.is_null() {
+            self.diag_missed_left += 1;
+        }
+        if right_frame.is_null() {
+            self.diag_missed_right += 1;
+        }
+
+        if !left_frame.is_null() && !right_frame.is_null() {
+            // SAFETY: both pointers non-null; OBS guarantees the frames
+            // are valid between get_frame and release_frame.
+            let l = unsafe { &*left_frame };
+            let r = unsafe { &*right_frame };
+
+            // Must match what the session was built with. Mismatch =>
+            // warn once and skip. Camera inputs (V4L2, Media Source) are
+            // I420; browser / screen capture / WebRTC are BGRA.
+            let format_ok = match self.input_format {
+                InputFormat::Yuv420p => {
+                    l.format == ffi::video_format::VIDEO_FORMAT_I420
+                        && r.format == ffi::video_format::VIDEO_FORMAT_I420
+                }
+                InputFormat::Bgra => {
+                    matches!(
+                        l.format,
+                        ffi::video_format::VIDEO_FORMAT_BGRA
+                            | ffi::video_format::VIDEO_FORMAT_BGRX
+                            | ffi::video_format::VIDEO_FORMAT_RGBA
+                    ) && matches!(
+                        r.format,
+                        ffi::video_format::VIDEO_FORMAT_BGRA
+                            | ffi::video_format::VIDEO_FORMAT_BGRX
+                            | ffi::video_format::VIDEO_FORMAT_RGBA
+                    )
+                }
+                InputFormat::Nv12 => false,
+            };
+            if !format_ok {
+                if !self.warned_unsupported_format {
+                    log::warn!(
+                        "reco-obs: upstream format doesn't match session ({:?}, configured \
+                         for {:?}; got left={:?}, right={:?}). Change the plugin's 'Input \
+                         format' property to match the source type: I420 for V4L2 / Media \
+                         Source, BGRA for Browser Source / screen capture / WebRTC.",
+                        self.input_format,
+                        self.input_format,
+                        l.format,
+                        r.format,
+                    );
+                    self.warned_unsupported_format = true;
+                }
+            } else if l.width != self.input_width
+                || l.height != self.input_height
+                || r.width != self.input_width
+                || r.height != self.input_height
+            {
+                if !self.warned_unsupported_format {
+                    log::warn!(
+                        "reco-obs: input-dim mismatch (configured {}x{}, left={}x{}, \
+                         right={}x{}). Update the 'Input width/height' properties to match \
+                         your camera.",
+                        self.input_width,
+                        self.input_height,
+                        l.width,
+                        l.height,
+                        r.width,
+                        r.height,
+                    );
+                    self.warned_unsupported_format = true;
+                }
+            } else {
+                let yaw = (self.yaw_degrees as f32).to_radians();
+                let pitch = (self.pitch_degrees as f32).to_radians();
+                let result = match self.input_format {
+                    InputFormat::Yuv420p => {
+                        // Wrap OBS planes as StridedYuvPlanes and repack
+                        // into the cached tight buffers. `copy_into` takes
+                        // a single memcpy fast path when stride == width.
+                        let left_strided = strided_from_obs(l);
+                        let right_strided = strided_from_obs(r);
+                        let left_tight = left_strided.copy_into(&mut self.left_repack);
+                        let right_tight = right_strided.copy_into(&mut self.right_repack);
+                        let session = self.session.as_mut().expect("checked above");
+                        session.submit_frame(&left_tight, &right_tight, yaw, pitch)
+                    }
+                    InputFormat::Bgra => {
+                        // BGRA sources: swizzle bytes into cached RGBA
+                        // buffers once per frame. Shader expects RGB in
+                        // .rgb of a single sample. RGBA sources pass
+                        // through without swizzle (we go through the same
+                        // path because the caller would typically hand us
+                        // the right order already).
+                        let left_bgra = build_bgra_planes(l, &mut self.left_repack);
+                        let right_bgra = build_bgra_planes(r, &mut self.right_repack);
+                        let session = self.session.as_mut().expect("checked above");
+                        session.submit_frame_bgra(&left_bgra, &right_bgra, yaw, pitch)
+                    }
+                    InputFormat::Nv12 => {
+                        // Not yet supported in reco-obs; guarded above.
+                        Ok(None)
+                    }
+                };
+                match result {
+                    Ok(Some(rgba)) => {
+                        self.rgba_buffer.copy_from_slice(rgba);
+                        self.frame_ready.store(true, Ordering::Release);
+                        if self.diag_submitted == 0 {
+                            log::info!(
+                                "reco-obs: first stitched frame ready ({} bytes)",
+                                rgba.len()
+                            );
+                        }
+                        self.diag_submitted += 1;
+                    }
+                    Ok(None) => { /* pipeline warmup */ }
+                    Err(e) => {
+                        log::error!("reco-obs: render/readback failed: {e}");
+                    }
+                }
             }
-            Err(e) => {
-                log::error!("reco-obs: render/readback failed: {e}");
-            }
+        }
+
+        // Always release frames we acquired.
+        if !left_frame.is_null() {
+            unsafe { ffi::obs_source_release_frame(self.left_source, left_frame) };
+        }
+        if !right_frame.is_null() {
+            unsafe { ffi::obs_source_release_frame(self.right_source, right_frame) };
         }
     }
 
@@ -261,6 +554,9 @@ impl RecoSource {
     /// Must be called on the OBS graphics thread.
     unsafe fn ensure_obs_texture(&mut self) {
         if self.obs_texture.is_null() && self.output_width > 0 && self.output_height > 0 {
+            // GS_DYNAMIC is required for gs_texture_set_image to work;
+            // without it the texture is static and all updates silently
+            // fail with "Texture is not dynamic" spam in the OBS log.
             self.obs_texture = unsafe {
                 ffi::gs_texture_create(
                     self.output_width,
@@ -268,11 +564,17 @@ impl RecoSource {
                     ffi::gs_color_format::GS_RGBA,
                     1,
                     ptr::null(),
-                    0,
+                    ffi::GS_DYNAMIC,
                 )
             };
             if self.obs_texture.is_null() {
                 log::error!("reco-obs: failed to create OBS texture");
+            } else {
+                log::info!(
+                    "reco-obs: OBS texture created ({}x{}, GS_RGBA, dynamic)",
+                    self.output_width,
+                    self.output_height
+                );
             }
         }
     }
@@ -317,6 +619,24 @@ unsafe extern "C" fn source_destroy(data: *mut c_void) {
 
     let mut src = unsafe { Box::from_raw(data as *mut RecoSource) };
 
+    // Release the upstream source refs we held. Must run before the Box
+    // is dropped - OBS tracks ref lifetime through these calls. Pair
+    // dec_showing with the inc_showing set_source_slot issued earlier.
+    unsafe {
+        if !src.left_source.is_null() {
+            ffi::obs_source_dec_active(src.left_source);
+            ffi::obs_source_dec_showing(src.left_source);
+            ffi::obs_source_release(src.left_source);
+            src.left_source = ptr::null_mut();
+        }
+        if !src.right_source.is_null() {
+            ffi::obs_source_dec_active(src.right_source);
+            ffi::obs_source_dec_showing(src.right_source);
+            ffi::obs_source_release(src.right_source);
+            src.right_source = ptr::null_mut();
+        }
+    }
+
     // Destroy OBS texture on the graphics thread.
     unsafe {
         ffi::obs_enter_graphics();
@@ -353,6 +673,11 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
         ffi::obs_data_set_default_int(settings, PROP_INPUT_WIDTH.as_ptr(), 1920);
         ffi::obs_data_set_default_int(settings, PROP_INPUT_HEIGHT.as_ptr(), 1080);
         ffi::obs_data_set_default_string(settings, PROP_CONFIG_PATH.as_ptr(), c"".as_ptr());
+        ffi::obs_data_set_default_string(
+            settings,
+            PROP_INPUT_FORMAT.as_ptr(),
+            INPUT_FORMAT_I420.as_ptr(),
+        );
     }
 }
 
@@ -360,6 +685,47 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
 unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_properties_t {
     unsafe {
         let props = ffi::obs_properties_create();
+
+        // Left / right upstream source pickers. Populated via
+        // obs_enum_sources at property-open time.
+        let left_list = ffi::obs_properties_add_list(
+            props,
+            PROP_LEFT_SOURCE.as_ptr(),
+            c"Left camera source".as_ptr(),
+            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+        );
+        ffi::obs_enum_sources(Some(source_enum_proc_list), left_list as *mut c_void);
+
+        let right_list = ffi::obs_properties_add_list(
+            props,
+            PROP_RIGHT_SOURCE.as_ptr(),
+            c"Right camera source".as_ptr(),
+            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+        );
+        ffi::obs_enum_sources(Some(source_enum_proc_list), right_list as *mut c_void);
+
+        // Input format picker. Must match the native format OBS's picked
+        // sources deliver - OBS can't negotiate, and guessing wrong
+        // means no output.
+        let format_list = ffi::obs_properties_add_list(
+            props,
+            PROP_INPUT_FORMAT.as_ptr(),
+            c"Input format".as_ptr(),
+            ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+            ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+        );
+        ffi::obs_property_list_add_string(
+            format_list,
+            c"I420 (Media Source, V4L2)".as_ptr(),
+            INPUT_FORMAT_I420.as_ptr(),
+        );
+        ffi::obs_property_list_add_string(
+            format_list,
+            c"BGRA (Browser Source, Screen Capture)".as_ptr(),
+            INPUT_FORMAT_BGRA.as_ptr(),
+        );
 
         ffi::obs_properties_add_path(
             props,
@@ -447,8 +813,11 @@ unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_da
     let dims_changed = (src.output_width, src.output_height) != old_output
         || (src.input_width, src.input_height) != old_input;
     let config_changed = src.config_path != old_config_path;
+    // apply_settings sets src.session to None when the input format
+    // changes, so we can use that as our "needs rebuild" signal.
+    let format_changed = src.session.is_none() && src.calibration.is_some();
 
-    if dims_changed || config_changed {
+    if dims_changed || config_changed || format_changed {
         // Destroy old OBS texture since dimensions may have changed.
         unsafe {
             ffi::obs_enter_graphics();
@@ -478,6 +847,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
         return;
     }
     let src = unsafe { &mut *(data as *mut RecoSource) };
+    src.diag_render_calls = src.diag_render_calls.wrapping_add(1);
 
     if src.session.is_none() {
         return;
@@ -502,23 +872,240 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
             );
         }
         src.frame_ready.store(false, Ordering::Release);
+        src.diag_uploads = src.diag_uploads.wrapping_add(1);
     }
 
-    // Draw the texture using OBS's default effect.
+    // Draw via OBS's helper, which respects the outer effect already
+    // active when video_render is called. Manually running
+    // `gs_effect_loop` here triggers "effect is already active" warnings
+    // and no draw lands on screen.
     unsafe {
-        let effect = ffi::obs_get_base_effect(ffi::obs_base_effect::OBS_EFFECT_DEFAULT);
-        let param = ffi::gs_effect_get_param_by_name(effect, c"image".as_ptr());
-        ffi::gs_effect_set_texture(param, src.obs_texture);
-
-        while ffi::gs_effect_loop(effect, c"Draw".as_ptr()) {
-            ffi::gs_draw_sprite(src.obs_texture, 0, src.output_width, src.output_height);
-        }
+        ffi::obs_source_draw(
+            src.obs_texture,
+            0,
+            0,
+            src.output_width,
+            src.output_height,
+            false,
+        );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Interactive mouse callbacks (click-drag to pan, wheel to zoom)
+// ---------------------------------------------------------------------------
+
+/// Degrees of yaw/pitch per pixel of mouse drag.
+const DRAG_SENSITIVITY_DEG_PER_PIXEL: f64 = 0.1;
+/// Degrees of FOV change per wheel tick. Small for granular zoom;
+/// users expect wheel to feel smooth, not jumpy.
+const WHEEL_FOV_STEP_DEG: f32 = 0.5;
+
+/// `mouse_click`: start/end a drag for pan.
+///
+/// # Safety
+/// Invoked by OBS on the main UI thread. `data` and `event` are valid
+/// pointers for the lifetime of the call.
+unsafe extern "C" fn source_mouse_click(
+    data: *mut c_void,
+    event: *const ffi::obs_mouse_event,
+    r#type: i32,
+    mouse_up: bool,
+    _click_count: u32,
+) {
+    if data.is_null() || event.is_null() {
+        return;
+    }
+    let src = unsafe { &mut *(data as *mut RecoSource) };
+    let ev = unsafe { &*event };
+    // Only handle left-button for drag-to-pan. Middle/right reserved for
+    // future features (e.g. double-click to reset pose).
+    if r#type != ffi::obs_mouse_button_type::MOUSE_LEFT as i32 {
+        return;
+    }
+    if mouse_up {
+        src.dragging = false;
+    } else {
+        src.dragging = true;
+        src.last_mouse_x = ev.x;
+        src.last_mouse_y = ev.y;
+    }
+}
+
+/// `mouse_move`: while dragging, translate pixel delta to yaw/pitch.
+unsafe extern "C" fn source_mouse_move(
+    data: *mut c_void,
+    event: *const ffi::obs_mouse_event,
+    mouse_leave: bool,
+) {
+    if data.is_null() || event.is_null() {
+        return;
+    }
+    let src = unsafe { &mut *(data as *mut RecoSource) };
+    if mouse_leave {
+        // Treat leaving the source rect as dropping the drag to avoid
+        // a stale drag state if the user releases outside.
+        src.dragging = false;
+        return;
+    }
+    if !src.dragging {
+        return;
+    }
+    let ev = unsafe { &*event };
+    let dx = (ev.x - src.last_mouse_x) as f64;
+    let dy = (ev.y - src.last_mouse_y) as f64;
+    src.last_mouse_x = ev.x;
+    src.last_mouse_y = ev.y;
+
+    // Natural "drag the scene, not the camera" mapping: drag right
+    // shifts the view left (yaw becomes more negative), drag up shifts
+    // the view down (pitch more positive). Clamp pitch to [-89, 89] to
+    // avoid pole flip.
+    src.yaw_degrees -= dx * DRAG_SENSITIVITY_DEG_PER_PIXEL;
+    src.pitch_degrees =
+        (src.pitch_degrees + dy * DRAG_SENSITIVITY_DEG_PER_PIXEL).clamp(-89.0, 89.0);
+}
+
+/// `mouse_wheel`: scroll to zoom (adjust vertical FOV).
+unsafe extern "C" fn source_mouse_wheel(
+    data: *mut c_void,
+    _event: *const ffi::obs_mouse_event,
+    _x_delta: i32,
+    y_delta: i32,
+) {
+    if data.is_null() {
+        return;
+    }
+    let src = unsafe { &mut *(data as *mut RecoSource) };
+    let session = match &mut src.session {
+        Some(s) => s,
+        None => return,
+    };
+    // y_delta is integer "ticks" from OBS (positive = wheel forward, which
+    // conventionally means zoom IN -> narrower FOV -> subtract).
+    let current = session.pipeline().fov();
+    let new_fov = (current - (y_delta as f32) * WHEEL_FOV_STEP_DEG).clamp(10.0, 150.0);
+    session.pipeline_mut().set_fov(new_fov);
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Build a [`BgraPlanes`] view over the source frame's RGBA data,
+/// swizzling from BGRA into the cached buffer when needed.
+///
+/// OBS packed RGB formats (BGRA, BGRX, RGBA) all store 4 bytes per
+/// pixel with `linesize[0]` bytes per row (may include padding). We
+/// strip the stride padding into the cached buffer and reorder to
+/// RGBA so the shader can sample `.rgb` directly.
+fn build_bgra_planes<'a>(frame: &ffi::obs_source_frame, buffer: &'a mut Vec<u8>) -> BgraPlanes<'a> {
+    let w = frame.width as usize;
+    let h = frame.height as usize;
+    let stride = frame.linesize[0] as usize;
+    let tight_size = w * h * 4;
+    buffer.resize(tight_size, 0);
+    // SAFETY: frame.data[0] is valid for linesize[0] * height bytes
+    // between get_frame/release_frame, guaranteed by OBS.
+    let src = unsafe { std::slice::from_raw_parts(frame.data[0] as *const u8, stride * h) };
+    let bgra_mode = matches!(
+        frame.format,
+        ffi::video_format::VIDEO_FORMAT_BGRA | ffi::video_format::VIDEO_FORMAT_BGRX
+    );
+    for row in 0..h {
+        let src_row = &src[row * stride..row * stride + w * 4];
+        let dst_row = &mut buffer[row * w * 4..(row + 1) * w * 4];
+        if bgra_mode {
+            for (s, d) in src_row.chunks_exact(4).zip(dst_row.chunks_exact_mut(4)) {
+                d[0] = s[2];
+                d[1] = s[1];
+                d[2] = s[0];
+                d[3] = s[3];
+            }
+        } else {
+            // VIDEO_FORMAT_RGBA: already in the order the shader wants.
+            dst_row.copy_from_slice(src_row);
+        }
+    }
+    BgraPlanes::from_rgba(buffer)
+}
+
+/// Wrap an `obs_source_frame` (I420 only) as a [`StridedYuvPlanes`] view.
+///
+/// Assumes the caller has already verified `format == VIDEO_FORMAT_I420`.
+/// OBS delivers I420 with plane[0]=Y (full-res), plane[1]=U, plane[2]=V
+/// (each half-res per dimension).
+fn strided_from_obs<'a>(frame: &'a ffi::obs_source_frame) -> StridedYuvPlanes<'a> {
+    let half_w = frame.width / 2;
+    let half_h = frame.height / 2;
+    // SAFETY: OBS guarantees data[i] points to linesize[i] * plane_height
+    // bytes while the frame is held. We build slices of exactly that length
+    // so FramePlaneView can traverse safely via stride indexing.
+    let y_slice = unsafe {
+        std::slice::from_raw_parts(
+            frame.data[0] as *const u8,
+            (frame.linesize[0] as usize) * (frame.height as usize),
+        )
+    };
+    let u_slice = unsafe {
+        std::slice::from_raw_parts(
+            frame.data[1] as *const u8,
+            (frame.linesize[1] as usize) * (half_h as usize),
+        )
+    };
+    let v_slice = unsafe {
+        std::slice::from_raw_parts(
+            frame.data[2] as *const u8,
+            (frame.linesize[2] as usize) * (half_h as usize),
+        )
+    };
+    StridedYuvPlanes {
+        y: FramePlaneView {
+            data: y_slice,
+            stride: frame.linesize[0],
+            width: frame.width,
+            height: frame.height,
+        },
+        u: FramePlaneView {
+            data: u_slice,
+            stride: frame.linesize[1],
+            width: half_w,
+            height: half_h,
+        },
+        v: FramePlaneView {
+            data: v_slice,
+            stride: frame.linesize[2],
+            width: half_w,
+            height: half_h,
+        },
+    }
+}
+
+/// OBS enumeration callback: appends every source name to the dropdown
+/// list passed as `param`. Always returns `true` to continue iterating.
+///
+/// Filtering out sources that can't deliver async video (scenes,
+/// transitions, audio-only inputs) requires additional bindings
+/// (`obs_source_get_output_flags`). For Tier 1 we accept everything;
+/// picking a bad source just means `obs_source_get_frame` returns null
+/// and we skip.
+unsafe extern "C" fn source_enum_proc_list(
+    param: *mut c_void,
+    source: *mut ffi::obs_source_t,
+) -> bool {
+    if param.is_null() || source.is_null() {
+        return true;
+    }
+    let prop = param as *mut ffi::obs_property_t;
+    let name_ptr = unsafe { ffi::obs_source_get_name(source) };
+    if !name_ptr.is_null() {
+        unsafe {
+            // Use the same cstring as both label and value.
+            ffi::obs_property_list_add_string(prop, name_ptr, name_ptr);
+        }
+    }
+    true
+}
 
 /// Read settings from an `obs_data_t` into the source struct.
 ///
@@ -552,9 +1139,68 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
             src.input_height = ih as u32;
         }
 
-        // Viewport position.
-        src.yaw_degrees = 0.0; // obs_data_get_double is not bound yet
-        src.pitch_degrees = 0.0;
+        // Input format choice. Parse string -> InputFormat. Unknown
+        // strings fall back to I420 with a one-shot warning.
+        let format_ptr = ffi::obs_data_get_string(settings, PROP_INPUT_FORMAT.as_ptr());
+        let new_format = if format_ptr.is_null() {
+            InputFormat::Yuv420p
+        } else {
+            match CStr::from_ptr(format_ptr).to_str() {
+                Ok("bgra") => InputFormat::Bgra,
+                Ok("i420") | Ok("") => InputFormat::Yuv420p,
+                Ok(other) => {
+                    log::warn!("reco-obs: unknown input_format '{other}', defaulting to I420");
+                    InputFormat::Yuv420p
+                }
+                Err(_) => InputFormat::Yuv420p,
+            }
+        };
+        if new_format != src.input_format {
+            src.input_format = new_format;
+            // Existing session was built with the old format; drop it so
+            // source_update rebuilds. This happens after apply_settings
+            // returns (the dim / config / format-change gate reruns
+            // try_init_pipeline).
+            src.session = None;
+            src.warned_unsupported_format = false;
+        }
+
+        // Upstream source picks. Empty string clears the slot.
+        let left_ptr = ffi::obs_data_get_string(settings, PROP_LEFT_SOURCE.as_ptr());
+        let left_name = if left_ptr.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(left_ptr).to_string_lossy().into_owned()
+        };
+        // Always re-resolve when the slot is null and we have a name to
+        // try: the first apply_settings on source creation may have run
+        // before the upstream existed in the scene, caching a null ptr
+        // with a non-empty name. Later updates with the same name would
+        // skip the resolve and leave the slot permanently null.
+        if left_name != src.left_source_name || (src.left_source.is_null() && !left_name.is_empty())
+        {
+            RecoSource::set_source_slot(&mut src.left_source, &left_name);
+            src.left_source_name = left_name;
+            src.warned_unsupported_format = false;
+        }
+
+        let right_ptr = ffi::obs_data_get_string(settings, PROP_RIGHT_SOURCE.as_ptr());
+        let right_name = if right_ptr.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(right_ptr).to_string_lossy().into_owned()
+        };
+        if right_name != src.right_source_name
+            || (src.right_source.is_null() && !right_name.is_empty())
+        {
+            RecoSource::set_source_slot(&mut src.right_source, &right_name);
+            src.right_source_name = right_name;
+            src.warned_unsupported_format = false;
+        }
+
+        // Viewport position - property-driven yaw/pitch sliders.
+        src.yaw_degrees = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr());
+        src.pitch_degrees = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr());
     }
 }
 
@@ -569,7 +1215,7 @@ pub(crate) fn source_info() -> ffi::obs_source_info {
     ffi::obs_source_info {
         id: SOURCE_ID.as_ptr(),
         r#type: ffi::obs_source_type::OBS_SOURCE_TYPE_INPUT,
-        output_flags: ffi::OBS_SOURCE_VIDEO,
+        output_flags: ffi::OBS_SOURCE_VIDEO | ffi::OBS_SOURCE_INTERACTION,
         get_name: Some(source_get_name),
         create: Some(source_create),
         destroy: Some(source_destroy),
@@ -589,9 +1235,9 @@ pub(crate) fn source_info() -> ffi::obs_source_info {
         enum_active_sources: None,
         save: None,
         load: None,
-        mouse_click: None,
-        mouse_move: None,
-        mouse_wheel: None,
+        mouse_click: Some(source_mouse_click),
+        mouse_move: Some(source_mouse_move),
+        mouse_wheel: Some(source_mouse_wheel),
         focus: None,
         key_click: None,
         filter_remove: None,
