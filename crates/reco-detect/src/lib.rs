@@ -39,3 +39,14 @@ pub use ort_session::create_ort_session;
 pub use ort_session::reco_cache_dir;
 #[cfg(feature = "ort")]
 pub use probe::{AiProbeResult, probe_execution_providers};
+
+/// Fuzz entry-point re-export for the ONNX `names` metadata parser.
+///
+/// `__` prefix + `doc(hidden)` keeps this out of the public API while
+/// letting the `reco-fuzz` subcrate drive the parser directly. See
+/// `fuzz/fuzz_targets/onnx_names.rs` and the N-C1 OOM cap fix.
+#[cfg(feature = "ort")]
+#[doc(hidden)]
+pub fn __fuzz_parse_names_dict_string(names: &str) -> Option<Vec<String>> {
+    detectors::cpu::__fuzz_parse_names_dict_string(names)
+}

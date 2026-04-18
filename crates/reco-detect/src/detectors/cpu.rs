@@ -249,6 +249,15 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
 /// OOM primitive.
 const MAX_CLASS_COUNT: usize = 10_000;
 
+/// Fuzz entry point: drives [`parse_names_dict_string`] without
+/// requiring a real ONNX session. See `fuzz/fuzz_targets/onnx_names.rs`
+/// and the N-C1 OOM cap fix. `__` prefix + `doc(hidden)` keeps this
+/// out of the normal public API.
+#[doc(hidden)]
+pub fn __fuzz_parse_names_dict_string(names_str: &str) -> Option<Vec<String>> {
+    parse_names_dict_string(names_str)
+}
+
 /// Pure string parser for Ultralytics-style `names` metadata.
 ///
 /// Extracted from [`parse_onnx_names`] so the OOM guard can be

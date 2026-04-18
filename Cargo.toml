@@ -10,6 +10,11 @@ members = [
     "crates/reco-gui",
     "crates/reco-obs",
 ]
+# The `fuzz` subcrate is intentionally out of the workspace because
+# libfuzzer-sys requires nightly-specific compiler flags that would
+# otherwise constrain the rest of the workspace. Run targets via
+# `cargo +nightly fuzz run <target>` from the fuzz/ directory.
+exclude = ["fuzz"]
 
 [workspace.package]
 edition = "2024"

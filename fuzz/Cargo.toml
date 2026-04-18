@@ -1,0 +1,47 @@
+[package]
+name = "reco-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.92"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+reco-core = { path = "../crates/reco-core" }
+reco-detect = { path = "../crates/reco-detect" }
+
+# Intentionally not part of the main workspace - libfuzzer-sys uses
+# nightly-only compiler flags (SanitizerKind::Address, etc.) that
+# cannot appear in a stable-pinned workspace.
+[workspace]
+
+# Optimize fuzz targets for speed; debug assertions stay on so
+# overflow / bounds-check panics surface as failures.
+[profile.release]
+debug = 1
+
+# Each target is declared explicitly so cargo-fuzz picks them up.
+
+[[bin]]
+name = "calibration_json"
+path = "fuzz_targets/calibration_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "onnx_names"
+path = "fuzz_targets/onnx_names.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "input_path"
+path = "fuzz_targets/input_path.rs"
+test = false
+doc = false
+bench = false
