@@ -40,6 +40,7 @@ use reco_core::calibration::CameraParams;
 use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
+use crate::telemetry::TelemetryData;
 use crate::types::{CalibrationConfig, CalibrationResult, LensProfileInfo, YuvFrame};
 use crate::{audio_sync, lens_database, sampling, telemetry};
 
@@ -78,6 +79,14 @@ pub struct CalibrationPipeline {
     left_profile_info: Option<LensProfileInfo>,
     /// Lens profile metadata for the right camera.
     right_profile_info: Option<LensProfileInfo>,
+    /// Cached parsed telemetry for the left video, lazily populated on
+    /// first use (detect_profiles or imu_sync) so the expensive parse
+    /// runs at most once per video. `Some(Ok(..))` after a successful
+    /// parse, `Some(Err(()))` after a failed one (so we don't retry on
+    /// every call), `None` before first use.
+    left_telemetry: Option<Result<TelemetryData, ()>>,
+    /// Cached parsed telemetry for the right video. See [`Self::left_telemetry`].
+    right_telemetry: Option<Result<TelemetryData, ()>>,
     sync_offset_frames: i64,
     /// IMU seeds extracted during imu_sync
     imu_xrz_seed: Option<f64>,
@@ -101,6 +110,8 @@ impl CalibrationPipeline {
             right_params: None,
             left_profile_info: None,
             right_profile_info: None,
+            left_telemetry: None,
+            right_telemetry: None,
             sync_offset_frames: 0,
             imu_xrz_seed: None,
             imu_xrx_seed: None,
@@ -127,15 +138,26 @@ impl CalibrationPipeline {
     /// then looks up the matching profile in the embedded Gyroflow database.
     /// Falls back to the left profile for the right camera if not found.
     ///
+    /// The parsed telemetry is cached on the pipeline so
+    /// [`imu_sync`](Self::imu_sync) reuses it instead of parsing the same
+    /// files a second time. This matters on heavy sources (DJI Action 4,
+    /// newer GoPro) where each parse is 30-60s.
+    ///
     /// Returns the detected profiles for logging/display.
     pub fn detect_profiles(&mut self) -> Result<(CameraParams, CameraParams), CalibrateError> {
         let db = lens_database::LensDatabase::load_embedded();
+
+        self.ensure_left_telemetry();
+        self.ensure_right_telemetry();
+        let left_tel = self.left_telemetry.as_ref().and_then(|r| r.as_ref().ok());
+        let right_tel = self.right_telemetry.as_ref().and_then(|r| r.as_ref().ok());
 
         let (left_p, left_info) = lens_database::detect_profile(
             &self.left_info.path,
             self.left_info.width,
             self.left_info.height,
             &db,
+            left_tel,
         )
         .ok_or_else(|| {
             CalibrateError::InvalidConfig(format!(
@@ -149,6 +171,7 @@ impl CalibrationPipeline {
             self.right_info.width,
             self.right_info.height,
             &db,
+            right_tel,
         )
         .unwrap_or_else(|| {
             log::info!("right camera: no profile found, using left camera profile");
@@ -160,6 +183,43 @@ impl CalibrationPipeline {
         self.left_profile_info = Some(left_info);
         self.right_profile_info = Some(right_info);
         Ok((left_p, right_p))
+    }
+
+    /// Lazily populate the left-video telemetry cache. Called from
+    /// `detect_profiles` and `imu_sync`; subsequent calls are no-ops.
+    ///
+    /// Parse failures are recorded as `Err(())` so we don't retry on
+    /// every call - telemetry extraction is deterministic per-file.
+    fn ensure_left_telemetry(&mut self) {
+        if self.left_telemetry.is_none() {
+            self.left_telemetry = Some(match telemetry::extract(&self.left_info.path) {
+                Ok(t) => Ok(t),
+                Err(e) => {
+                    log::warn!(
+                        "left telemetry extraction failed for {}: {e}",
+                        self.left_info.path.display()
+                    );
+                    Err(())
+                }
+            });
+        }
+    }
+
+    /// Lazily populate the right-video telemetry cache. See
+    /// [`Self::ensure_left_telemetry`].
+    fn ensure_right_telemetry(&mut self) {
+        if self.right_telemetry.is_none() {
+            self.right_telemetry = Some(match telemetry::extract(&self.right_info.path) {
+                Ok(t) => Ok(t),
+                Err(e) => {
+                    log::warn!(
+                        "right telemetry extraction failed for {}: {e}",
+                        self.right_info.path.display()
+                    );
+                    Err(())
+                }
+            });
+        }
     }
 
     /// Load lens profiles from file paths.
@@ -207,31 +267,41 @@ impl CalibrationPipeline {
     /// Returns the sync offset in frames, or `None` if telemetry is
     /// unavailable or cross-correlation fails.
     pub fn imu_sync(&mut self) -> Result<Option<i64>, CalibrateError> {
-        let left_telem = telemetry::extract(&self.left_info.path).map_err(|e| {
-            CalibrateError::InvalidConfig(format!("left IMU extraction failed: {e}"))
-        })?;
-        let right_telem = telemetry::extract(&self.right_info.path).map_err(|e| {
-            CalibrateError::InvalidConfig(format!("right IMU extraction failed: {e}"))
-        })?;
+        self.ensure_left_telemetry();
+        self.ensure_right_telemetry();
 
-        // Gyro cross-correlation for sync offset
-        let sync_frames =
-            if let Some(offset) = telemetry::estimate_sync_offset(&left_telem, &right_telem) {
-                let frames = (-offset * self.left_info.fps).round() as i64;
-                log::info!("IMU sync offset: {offset:.3}s = {frames} frames");
-                self.sync_offset_frames = frames;
-                Some(frames)
-            } else {
-                None
-            };
+        let left_telem = self
+            .left_telemetry
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .ok_or_else(|| CalibrateError::InvalidConfig("left IMU extraction failed".into()))?;
+        let right_telem = self
+            .right_telemetry
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .ok_or_else(|| CalibrateError::InvalidConfig("right IMU extraction failed".into()))?;
 
-        // Use skip_start so gravity is measured after camera setup, not during.
         let skip = self.config.skip_start_secs;
+        let fps = self.left_info.fps;
 
-        // Differential orientation for rotation seeds
-        if let Some((roll, pitch, tilt)) =
-            telemetry::differential_orientation(&left_telem, &right_telem, skip)
-        {
+        // Compute all telemetry-derived values into locals first so we can
+        // release the telemetry borrows before mutating self.
+        let sync_computed = telemetry::estimate_sync_offset(left_telem, right_telem).map(|off| {
+            let frames = (-off * fps).round() as i64;
+            log::info!("IMU sync offset: {off:.3}s = {frames} frames");
+            frames
+        });
+        let diff_orientation = telemetry::differential_orientation(left_telem, right_telem, skip);
+        let rig_tilt_new = telemetry::rig_tilt(left_telem, skip);
+        let left_roll = telemetry::gravity_vector(left_telem, skip).map(|g| g[2].atan2(g[0]));
+        let right_roll = telemetry::gravity_vector(right_telem, skip).map(|g| g[2].atan2(g[0]));
+
+        // Telemetry borrows released here; safe to mutate self.
+        if let Some(frames) = sync_computed {
+            self.sync_offset_frames = frames;
+        }
+
+        if let Some((roll, pitch, tilt)) = diff_orientation {
             log::info!(
                 "differential roll: {:.2} deg, pitch: {:.2} deg, tilt: {:.2} deg",
                 roll.to_degrees(),
@@ -247,10 +317,9 @@ impl CalibrationPipeline {
             }
         }
 
-        // Rig tilt (stored in result for renderer).
-        // Cap at 25 deg - beyond that the IMU reading is likely noise
-        // from an uncalibrated accelerometer rather than real forward lean.
-        if let Some(tilt) = telemetry::rig_tilt(&left_telem, skip) {
+        // Rig tilt. Cap at 25 deg - beyond that the IMU reading is likely
+        // accelerometer noise rather than real forward lean.
+        if let Some(tilt) = rig_tilt_new {
             log::info!("rig tilt: {:.1} deg", tilt.to_degrees());
             if tilt.abs() < 25.0_f64.to_radians() {
                 self.rig_tilt = tilt;
@@ -263,9 +332,6 @@ impl CalibrationPipeline {
         }
 
         // Rig roll: (left_roll - right_roll) / 2 cancels common IMU bias.
-        // Cap at 25 deg for the same reason as tilt.
-        let left_roll = telemetry::gravity_vector(&left_telem, skip).map(|g| g[2].atan2(g[0]));
-        let right_roll = telemetry::gravity_vector(&right_telem, skip).map(|g| g[2].atan2(g[0]));
         if let (Some(lr), Some(rr)) = (left_roll, right_roll) {
             let avg = (lr - rr) / 2.0;
             log::info!(
@@ -284,7 +350,7 @@ impl CalibrationPipeline {
             }
         }
 
-        Ok(sync_frames)
+        Ok(sync_computed)
     }
 
     /// Estimate sync offset from audio cross-correlation.

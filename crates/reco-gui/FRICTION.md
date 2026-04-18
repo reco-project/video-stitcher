@@ -48,46 +48,19 @@ bundles pipeline + source + calibration with a single `unload()`, or
 document the pattern in reco-io's StitchJob docs so the next consumer
 doesn't reinvent it.
 
-### A5. Calibration progress is wrong and redundant on heavy footage
+### A5-residual. No intra-step heartbeat during very slow steps
 
-**Impact**: Medium. Reproduced 2026-04-18 on DJI Action 4 4K/10-bit
-clips (864k quaternions per video). Total calibrate_videos wall time
-~3 minutes, of which the first ~75s shows the misleading label
-"Probing video metadata" even though probing itself took <1s.
+**Impact**: Low after the A5 primary fix (R22). The step label now
+matches the work (DetectingProfiles step) and telemetry isn't parsed
+twice, but individual steps can still run 20-60s silently: AKAZE
+feature detection on dense scenes, the optimizer on 100+ frame pairs,
+audio PCM extraction on long clips. A consumer can't distinguish
+"making progress" from "hung" inside a single step.
 
-Three distinct problems compound:
-
-1. **Wrong label during `detect_profiles()`**. `calibrate_videos`
-   emits `CalibrationStep::Probing` before probing, then calls
-   `pipeline.detect_profiles()` which parses the full telemetry
-   stream for lens auto-detection - but emits no progress event of
-   its own. The UI stays on "Probing video metadata" for the entire
-   telemetry parse (~40s per DJI 4K/10-bit video, ~75s total).
-
-2. **Telemetry is parsed twice per video**. `detect_profiles()`
-   parses telemetry for embedded lens metadata; `imu_sync()` then
-   parses the same file again for gyro sync + gravity vectors. On
-   DJI Action 4 that doubles the wait from ~75s to ~175s. No cache.
-
-3. **No intra-step heartbeat**. Each heavy step (telemetry parse in
-   detect_profiles, telemetry parse + cross-correlation in imu_sync,
-   audio PCM extraction, AKAZE feature detection, optimizer) can
-   block for 20-90s with no feedback. Users on heavy footage assume
-   the app has hung and kill it mid-calibration.
-
-**Suggested direction**:
-
-- Emit a dedicated `CalibrationStep::DetectingProfiles` before
-  `pipeline.detect_profiles()` so the label matches the work.
-- Cache parsed telemetry on `CalibrationPipeline` so `imu_sync()`
-  reuses what `detect_profiles()` already read. Expected to halve
-  wall time on telemetry-heavy sources (DJI, newer GoPro).
-- Add a heartbeat event every 2s during any step that exceeds a
-  short threshold, so consumers can show a spinner or elapsed-time
-  hint without needing intra-step instrumentation.
-
-Fix lives in `reco-calibrate` (video.rs + pipeline.rs). GUI just
-needs to map the new step label + maybe show elapsed time.
+**Suggested direction**: a heartbeat event every 2s during any step
+that exceeds a short threshold, so consumers can show a spinner or
+elapsed-time hint without needing intra-step instrumentation in every
+slow routine.
 
 ### A7. render_to_target() still returns CommandBuffer
 
@@ -183,3 +156,11 @@ drove which upstream changes.
   reco-calibrate, reco-obs, and reco-gui dropped their direct `pollster`
   deps (except reco-cli, which still needs it for
   `GpuContext::for_surface` on the preview path).
+- **R22. Wrong step label + double telemetry parse during calibration**
+  Resolved 2026-04-18: new `CalibrationStep::DetectingProfiles` variant
+  emitted before `pipeline.detect_profiles()` so the GUI label matches
+  the work. `CalibrationPipeline` caches parsed `TelemetryData` for each
+  side on first use; `imu_sync()` reuses what `detect_profiles()` already
+  read. On DJI Action 4 4K/10-bit this halves wall time on the first
+  half of calibrate_videos (~175s → ~85s). Heartbeat emission during
+  very slow individual steps is tracked as A5-residual.

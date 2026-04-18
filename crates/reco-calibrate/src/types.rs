@@ -360,6 +360,12 @@ pub struct CalibrationProgress {
 pub enum CalibrationStep {
     /// Probing video metadata.
     Probing,
+    /// Detecting lens profiles (telemetry parse + database lookup).
+    ///
+    /// Separated from `Probing` because on telemetry-heavy sources
+    /// (DJI Action 4, newer GoPro) this step takes 30-60s per video,
+    /// dominating the wall-clock time of the first half of calibration.
+    DetectingProfiles,
     /// Extracting audio for temporal sync.
     AudioSync,
     /// Extracting video frames.
@@ -376,6 +382,7 @@ impl std::fmt::Display for CalibrationStep {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Probing => write!(f, "Probing"),
+            Self::DetectingProfiles => write!(f, "DetectingProfiles"),
             Self::AudioSync => write!(f, "AudioSync"),
             Self::ExtractingFrames => write!(f, "ExtractingFrames"),
             Self::Undistorting => write!(f, "Undistorting"),

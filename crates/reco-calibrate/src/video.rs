@@ -176,6 +176,15 @@ pub fn calibrate_videos(
             if let Some(ref lp) = options.left_profile {
                 pipeline.load_profiles(lp, options.right_profile.as_deref())?;
             } else {
+                // Distinct step label - telemetry parse dominates here on
+                // heavy sources (DJI Action 4, newer GoPro). Without this
+                // the UI stays on "Probing video metadata" for 30-60s.
+                check_interrupted(interrupted)?;
+                emit_progress(
+                    on_progress,
+                    CalibrationStep::DetectingProfiles,
+                    "Detecting lens profiles",
+                );
                 pipeline.detect_profiles()?;
             }
         }
