@@ -48,7 +48,11 @@ ignore = [
 
 [licenses]
 allow = [
-    "AGPL-3.0-only",   # the project itself (SPDX: "AGPL-3.0" is deprecated)
+    # The project itself. SPDX 2023 renamed "AGPL-3.0" to "AGPL-3.0-only"
+    # but cargo-deny's pinned spdx crate version here predates the
+    # rename and rejects "-only". Use the older identifier until we
+    # bump the cargo-deny action SHA past that change.
+    "AGPL-3.0",
     "Apache-2.0",      # compatible with AGPL-3.0 distribution
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",

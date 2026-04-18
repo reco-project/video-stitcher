@@ -30,12 +30,12 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 /// `std::panic::catch_unwind` so a panic inside the callback cannot
 /// unwind across the C ABI boundary into the OBS host.
 ///
-/// Pairs with [`install_panic_hook`]: on a panic, the hook emits a
-/// structured `tracing::error!` event (location + payload), then this
-/// macro's `catch_unwind` converts the would-be abort into a safe
-/// early-return with the caller-supplied default value. Together
-/// they complete the T-1 (severity-adjusted High-DoS) mitigation
-/// from the 2026-04-18 deep review.
+/// Pairs with the crate-private `install_panic_hook` helper: on a
+/// panic, the hook emits a structured `tracing::error!` event
+/// (location + payload), then this macro's `catch_unwind` converts
+/// the would-be abort into a safe early-return with the caller-
+/// supplied default value. Together they complete the T-1 (severity-
+/// adjusted High-DoS) mitigation from the 2026-04-18 deep review.
 ///
 /// Usage:
 /// ```ignore

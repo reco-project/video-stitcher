@@ -9,6 +9,13 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 /// Arguments for the stitch subcommand, collected from CLI parsing.
+///
+/// `detection_interval`, `lead_time`, and `tracking_mode` are only
+/// consumed inside `#[cfg(feature = "autocam")]` blocks below, so
+/// `--no-default-features` builds see them as dead. Silence the lint
+/// here instead of per-field gating to keep the struct shape stable
+/// across features.
+#[allow(dead_code)]
 pub struct StitchArgs<'a> {
     pub left: &'a str,
     pub right: &'a str,
@@ -44,8 +51,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     let progress = crate::helpers::ProgressReporter::new(30);
 
     // Load calibration up front so we can extract field_roi for autocam
-    // and pass the pre-loaded calibration to StitchJob.
+    // and pass the pre-loaded calibration to StitchJob. `field_roi` is
+    // only consumed under the autocam feature; a leading underscore
+    // silences the unused-var lint on `--no-default-features` builds.
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(args.calibration))?;
+    #[cfg_attr(not(feature = "autocam"), allow(unused_variables))]
     let field_roi = cal.field_roi.clone();
 
     let mut job = reco_io::StitchJob::with_calibration(args.left, args.right, cal, args.output)
