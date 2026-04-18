@@ -6,40 +6,6 @@ resolved items archived at the bottom with the PR that fixed them.
 
 ## Active
 
-### A1. YuvPlanes requires tight packing, not stride-aware
-
-**Impact**: Medium. Every OBS-style consumer has to copy or re-pack
-incoming frames before handing to reco-core.
-
-`StitchPipeline::render_to_target()` takes `YuvPlanes<'a>` which is
-`{ y: &[u8], u: &[u8], v: &[u8] }` - three separate tightly-packed
-slice references. An OBS plugin receives frames as `obs_source_frame`
-with `data[MAX_AV_PLANES]` pointers, `linesize[MAX_AV_PLANES]`
-strides (which may include row padding), `width` / `height`, and a
-`format` enum.
-
-**Impact**: The consumer must (1) map OBS format → reco input format,
-(2) handle stride mismatches by copying tightly, (3) extract the
-right plane pointers based on format. Common code that every
-realistic live-input consumer will write.
-
-**Suggested addition**:
-```rust
-pub struct FramePlaneView<'a> {
-    pub data: &'a [u8],
-    pub stride: u32,  // bytes per row, may include padding
-    pub width: u32,
-    pub height: u32,
-}
-
-pub struct StridedYuvPlanes<'a> {
-    pub y: FramePlaneView<'a>,
-    pub u: FramePlaneView<'a>,
-    pub v: FramePlaneView<'a>,
-}
-```
-Plus a conversion helper that copies stride → tight for the slow path.
-
 ### A3. No OBS-level wgpu interop
 
 **Impact**: Fundamental to OBS architecture, not a reco-core bug.
@@ -57,27 +23,6 @@ wgpu, which it hasn't.
 Tracking here as a known limit; not actionable at the reco-core
 level without a specific interop target.
 
-### A4. Live camera input has no high-level consumer helper
-
-**Impact**: High for the "Reco as OBS input source" use case.
-
-reco-io has `FfmpegFileSource`, `SmartFileSource`, and zero-copy
-CUDA adapters - all oriented toward decoding from files. For OBS
-(and future live-camera consumers), the incoming data comes from a
-callback with frame pointers + timing, not from a file path.
-
-There is currently no reco-io type that says "I will feed you frames
-one at a time, please stitch them" without a backing source file.
-The OBS plugin will either need to (a) write a mock `FrameSource`
-impl that blocks the OBS callback thread waiting for the next
-submission, or (b) call `StitchPipeline::render_to_target` directly
-and bypass the higher-level session machinery.
-
-**Suggested direction**: a `LiveStitchSession` in reco-core that
-exposes `submit_frame(left, right) -> Result<PixelBuffer>` without
-expecting a FrameSource. Could share most of the existing session
-logic, just with source pulled out.
-
 ## Resolved (archived)
 
 - **R1. No RGBA readback helper on StitchPipeline**
@@ -89,6 +34,20 @@ logic, just with source pulled out.
   Resolved by Batch H: `GpuContext::new_blocking()` added in reco-core.
   `reco-obs` dropped its direct `pollster` dep; plugin callbacks can
   now init the GPU synchronously without a runtime.
+- **R3. YuvPlanes required tight packing, not stride-aware**
+  Resolved by Batch I: `reco_core::pipeline::{FramePlaneView,
+  StridedYuvPlanes}` added alongside the existing tight `YuvPlanes`.
+  `StridedYuvPlanes::copy_into(&mut Vec<u8>)` repacks padded rows into
+  a caller-owned buffer (tight-fast-path when `stride == width`) and
+  returns a borrowed `YuvPlanes` ready for
+  `StitchPipeline::render_to_target`. Buffer is reusable across frames
+  to avoid per-frame allocation.
+- **R4. No live camera input consumer helper**
+  Resolved by Batch I: `reco_core::session::{LiveSessionConfig,
+  LiveStitchSession}`. Bundles `StitchPipeline` + `RgbaReadback` with
+  `submit_frame(left, right, yaw, pitch) -> Option<&[u8]>` for push-
+  based compositor consumers (OBS, V4L2, WebRTC). `reco-obs/src/source.rs`
+  migrated to it - net removal of ~30 lines of per-consumer plumbing.
 
 ## Notes on plugin status
 
