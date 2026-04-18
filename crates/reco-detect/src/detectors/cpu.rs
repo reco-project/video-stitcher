@@ -235,7 +235,25 @@ impl Detector for CpuYoloDetector {
 pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
     let metadata = session.metadata().ok()?;
     let names_str = metadata.custom("names")?;
+    parse_names_dict_string(&names_str)
+}
 
+/// Maximum class count accepted when building a dense label vector.
+///
+/// N-C1 (deep-review-2026-04-18): the ONNX `names` metadata is
+/// attacker-controlled (user-supplied model file). A crafted entry
+/// like `{9999999999: 'ball'}` would drive a multi-GB
+/// `Vec::with_capacity` and a matching loop. Cap the dense index at
+/// a generous ceiling - realistic models top out at ~1200 classes
+/// (LVIS); 10_000 leaves comfortable headroom while rejecting the
+/// OOM primitive.
+const MAX_CLASS_COUNT: usize = 10_000;
+
+/// Pure string parser for Ultralytics-style `names` metadata.
+///
+/// Extracted from [`parse_onnx_names`] so the OOM guard can be
+/// exercised without spinning up an ONNX session.
+fn parse_names_dict_string(names_str: &str) -> Option<Vec<String>> {
     // Parse Python-dict-style string: {0: 'person', 1: 'bicycle', ...}
     let inner = names_str.trim().strip_prefix('{')?.strip_suffix('}')?;
     if inner.is_empty() {
@@ -255,8 +273,14 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
 
     labels.sort_by_key(|(idx, _)| *idx);
 
-    // Build a dense label vector (fill gaps with "class_N").
     let max_idx = labels.last()?.0;
+    if max_idx >= MAX_CLASS_COUNT {
+        log::warn!(
+            "parse_onnx_names: max class index {max_idx} exceeds cap {MAX_CLASS_COUNT}; \
+             refusing to build dense label vector (possible malicious model metadata)"
+        );
+        return None;
+    }
     let mut result = Vec::with_capacity(max_idx + 1);
     let mut label_iter = labels.into_iter().peekable();
     for i in 0..=max_idx {
@@ -272,4 +296,65 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
         result.len()
     );
     Some(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_names_dict_string_happy_path() {
+        let input = "{0: 'person', 1: 'bicycle', 2: 'car'}";
+        let labels = parse_names_dict_string(input).unwrap();
+        assert_eq!(labels, vec!["person", "bicycle", "car"]);
+    }
+
+    #[test]
+    fn parse_names_dict_string_fills_gaps() {
+        let input = "{0: 'ball', 3: 'goal'}";
+        let labels = parse_names_dict_string(input).unwrap();
+        assert_eq!(labels, vec!["ball", "class_1", "class_2", "goal"]);
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_oom_index() {
+        // N-C1 regression: attacker-crafted ONNX metadata with an
+        // enormous class index would drive Vec::with_capacity(idx+1)
+        // into a multi-GB allocation and a billion-iteration loop.
+        // Guard rejects the dense build instead of allocating.
+        let input = "{9999999999: 'ball'}";
+        assert!(
+            parse_names_dict_string(input).is_none(),
+            "must refuse huge class index"
+        );
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_index_at_cap() {
+        // Exact boundary: MAX_CLASS_COUNT itself is the rejection point
+        // (cap is exclusive). Anything >= 10_000 refused.
+        let input = format!("{{{MAX_CLASS_COUNT}: 'class'}}");
+        assert!(parse_names_dict_string(&input).is_none());
+    }
+
+    #[test]
+    fn parse_names_dict_string_accepts_just_below_cap() {
+        let just_below = MAX_CLASS_COUNT - 1;
+        let input = format!("{{0: 'a', {just_below}: 'b'}}");
+        let labels = parse_names_dict_string(&input).unwrap();
+        assert_eq!(labels.len(), MAX_CLASS_COUNT);
+        assert_eq!(labels[0], "a");
+        assert_eq!(labels[just_below], "b");
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_empty() {
+        assert!(parse_names_dict_string("{}").is_none());
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_non_dict() {
+        assert!(parse_names_dict_string("[0: 'x']").is_none());
+        assert!(parse_names_dict_string("random garbage").is_none());
+    }
 }
