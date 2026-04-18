@@ -184,6 +184,20 @@ pub const OBS_SOURCE_ASYNC: u32 = 1 << 2;
 /// Source uses custom draw (no default effect passed to `video_render`).
 #[allow(dead_code)]
 pub const OBS_SOURCE_CUSTOM_DRAW: u32 = 1 << 3;
+/// Source handles interaction callbacks (mouse / key / focus). OBS will
+/// only deliver mouse_click / mouse_move / mouse_wheel events to a source
+/// that declares this flag.
+pub const OBS_SOURCE_INTERACTION: u32 = 1 << 5;
+
+/// OBS mouse button enum (from `libobs/obs-interaction.h`).
+#[repr(i32)]
+#[allow(non_camel_case_types, dead_code)]
+#[derive(Debug, Clone, Copy)]
+pub enum obs_mouse_button_type {
+    MOUSE_LEFT = 0,
+    MOUSE_MIDDLE = 1,
+    MOUSE_RIGHT = 2,
+}
 
 // ---------------------------------------------------------------------------
 // OBS base effect enum

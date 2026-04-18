@@ -132,6 +132,15 @@ struct RecoSource {
     /// Camera pitch in degrees (converted to radians for the pipeline).
     pitch_degrees: f64,
 
+    /// Interactive drag state. `true` between mouse-left-down and
+    /// mouse-left-up events. When true, mouse_move deltas translate to
+    /// yaw/pitch adjustments.
+    dragging: bool,
+    /// Last mouse x/y in source-local pixels, used to compute deltas
+    /// between consecutive mouse_move events.
+    last_mouse_x: i32,
+    last_mouse_y: i32,
+
     /// CPU-side RGBA buffer from the last render (owned copy of the most
     /// recent frame from `RgbaReadback`, so `video_render` can read it on
     /// the OBS graphics thread without holding a borrow).
@@ -171,6 +180,9 @@ impl RecoSource {
             input_height: 1080,
             yaw_degrees: 0.0,
             pitch_degrees: 0.0,
+            dragging: false,
+            last_mouse_x: 0,
+            last_mouse_y: 0,
             rgba_buffer: Vec::new(),
             frame_ready: AtomicBool::new(false),
             obs_texture: ptr::null_mut(),
@@ -880,6 +892,103 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
 }
 
 // ---------------------------------------------------------------------------
+// Interactive mouse callbacks (click-drag to pan, wheel to zoom)
+// ---------------------------------------------------------------------------
+
+/// Degrees of yaw/pitch per pixel of mouse drag.
+const DRAG_SENSITIVITY_DEG_PER_PIXEL: f64 = 0.1;
+/// Degrees of FOV change per wheel tick. Small for granular zoom;
+/// users expect wheel to feel smooth, not jumpy.
+const WHEEL_FOV_STEP_DEG: f32 = 0.5;
+
+/// `mouse_click`: start/end a drag for pan.
+///
+/// # Safety
+/// Invoked by OBS on the main UI thread. `data` and `event` are valid
+/// pointers for the lifetime of the call.
+unsafe extern "C" fn source_mouse_click(
+    data: *mut c_void,
+    event: *const ffi::obs_mouse_event,
+    r#type: i32,
+    mouse_up: bool,
+    _click_count: u32,
+) {
+    if data.is_null() || event.is_null() {
+        return;
+    }
+    let src = unsafe { &mut *(data as *mut RecoSource) };
+    let ev = unsafe { &*event };
+    // Only handle left-button for drag-to-pan. Middle/right reserved for
+    // future features (e.g. double-click to reset pose).
+    if r#type != ffi::obs_mouse_button_type::MOUSE_LEFT as i32 {
+        return;
+    }
+    if mouse_up {
+        src.dragging = false;
+    } else {
+        src.dragging = true;
+        src.last_mouse_x = ev.x;
+        src.last_mouse_y = ev.y;
+    }
+}
+
+/// `mouse_move`: while dragging, translate pixel delta to yaw/pitch.
+unsafe extern "C" fn source_mouse_move(
+    data: *mut c_void,
+    event: *const ffi::obs_mouse_event,
+    mouse_leave: bool,
+) {
+    if data.is_null() || event.is_null() {
+        return;
+    }
+    let src = unsafe { &mut *(data as *mut RecoSource) };
+    if mouse_leave {
+        // Treat leaving the source rect as dropping the drag to avoid
+        // a stale drag state if the user releases outside.
+        src.dragging = false;
+        return;
+    }
+    if !src.dragging {
+        return;
+    }
+    let ev = unsafe { &*event };
+    let dx = (ev.x - src.last_mouse_x) as f64;
+    let dy = (ev.y - src.last_mouse_y) as f64;
+    src.last_mouse_x = ev.x;
+    src.last_mouse_y = ev.y;
+
+    // Natural "drag the scene, not the camera" mapping: drag right
+    // shifts the view left (yaw becomes more negative), drag up shifts
+    // the view down (pitch more positive). Clamp pitch to [-89, 89] to
+    // avoid pole flip.
+    src.yaw_degrees -= dx * DRAG_SENSITIVITY_DEG_PER_PIXEL;
+    src.pitch_degrees =
+        (src.pitch_degrees + dy * DRAG_SENSITIVITY_DEG_PER_PIXEL).clamp(-89.0, 89.0);
+}
+
+/// `mouse_wheel`: scroll to zoom (adjust vertical FOV).
+unsafe extern "C" fn source_mouse_wheel(
+    data: *mut c_void,
+    _event: *const ffi::obs_mouse_event,
+    _x_delta: i32,
+    y_delta: i32,
+) {
+    if data.is_null() {
+        return;
+    }
+    let src = unsafe { &mut *(data as *mut RecoSource) };
+    let session = match &mut src.session {
+        Some(s) => s,
+        None => return,
+    };
+    // y_delta is integer "ticks" from OBS (positive = wheel forward, which
+    // conventionally means zoom IN -> narrower FOV -> subtract).
+    let current = session.pipeline().fov();
+    let new_fov = (current - (y_delta as f32) * WHEEL_FOV_STEP_DEG).clamp(10.0, 150.0);
+    session.pipeline_mut().set_fov(new_fov);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -1106,7 +1215,7 @@ pub(crate) fn source_info() -> ffi::obs_source_info {
     ffi::obs_source_info {
         id: SOURCE_ID.as_ptr(),
         r#type: ffi::obs_source_type::OBS_SOURCE_TYPE_INPUT,
-        output_flags: ffi::OBS_SOURCE_VIDEO,
+        output_flags: ffi::OBS_SOURCE_VIDEO | ffi::OBS_SOURCE_INTERACTION,
         get_name: Some(source_get_name),
         create: Some(source_create),
         destroy: Some(source_destroy),
@@ -1126,9 +1235,9 @@ pub(crate) fn source_info() -> ffi::obs_source_info {
         enum_active_sources: None,
         save: None,
         load: None,
-        mouse_click: None,
-        mouse_move: None,
-        mouse_wheel: None,
+        mouse_click: Some(source_mouse_click),
+        mouse_move: Some(source_mouse_move),
+        mouse_wheel: Some(source_mouse_wheel),
         focus: None,
         key_click: None,
         filter_remove: None,

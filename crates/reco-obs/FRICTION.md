@@ -195,6 +195,122 @@ Documenting here so the next person hitting this has an immediate
 answer; the pure-UX fix is small but OBS scene-graph walking is
 fiddly so it's backlog, not urgent.
 
+### A12. No keyboard / controller mapping for pan-zoom
+
+**Impact**: Medium. Drag-to-pan and scroll-to-zoom work in OBS
+"Interact" mode, but that requires opening a separate interact
+window every session. Live operators using a keyboard, or game-pad
+operators with a PS5/Xbox controller, have no fast path.
+
+**Suggested direction**:
+
+- **Keyboard (short-term)**: use OBS's `obs_hotkey_register_source`
+  API to declare hotkeys on the Reco source (yaw_left,
+  yaw_right, pitch_up, pitch_down, zoom_in, zoom_out, reset).
+  Users bind them in File -> Settings -> Hotkeys. Requires new FFI
+  bindings for the hotkey registration API; ~1 hour of work.
+- **Game pad (medium-term)**: OBS does not expose controller input
+  directly. Options: (a) a sidecar process using SDL3 that reads
+  controller axes and sends them to the plugin via a Unix socket /
+  named pipe; (b) use a general-purpose virtual-joystick-to-keyboard
+  utility (QJoyPad, antimicro) and bind to the hotkeys from path
+  (a). Plan to document the SDL3 sidecar approach in a separate
+  PR so game-pad support is reproducible.
+
+### A13. No "constrained look" toggle in the OBS plugin
+
+**Impact**: Medium. `reco_core::projection::CoverageBoundary::safe_clamp`
+exists (it's used by the GUI's constrained-look toggle, Tier 2b) but
+the OBS plugin applies raw yaw/pitch straight to the renderer. At
+extreme pan angles the view shows black borders outside the stitched
+coverage.
+
+**Suggested direction**: add a `constrained_look: bool` property to
+reco-obs, default true. When set, `render_and_readback` should clamp
+yaw/pitch via `CoverageBoundary::safe_clamp(yaw, pitch, fov, aspect,
+rig_tilt)` before passing to `submit_frame`. The calibration file
+already carries the boundary definition - just need to expose the
+clamp function through `LiveStitchSession` or plumb it at the
+reco-obs layer. Small: ~30 min including property wiring.
+
+### A14. No live calibration workflow for non-file sources
+
+**Impact**: High for production live use. The current calibration
+path (`reco_calibrate::video::calibrate_videos`) requires two video
+*files* on disk. For live OBS sources (V4L2 cameras, NDI, WebRTC)
+there's no equivalent that captures from a live source to produce
+calibration JSON.
+
+**Suggested direction** (reco-calibrate + reco-obs):
+
+- reco-calibrate already exposes the lower-level
+  `calibrate(&gpu, &frame_pairs)` that takes in-memory frame pairs -
+  the algorithmic side is ready.
+- New reco-io helper: a "capture N frame pairs from two live
+  FrameSources" utility that wraps the `StereoFrame` delivery and
+  hands back `Vec<(YuvFrame, YuvFrame)>`.
+- reco-obs UI: a "Calibrate from current sources" button in the
+  properties that grabs ~30 frame pairs from the picked async
+  sources via our existing `obs_source_get_frame` loop, feeds to
+  `calibrate()`, writes the JSON next to the configured calibration
+  path, then reloads.
+
+Estimated 3-4 hours of work across the two crates.
+
+### A15. OBS Interact window is a poor primary UX
+
+**Impact**: Medium. Users expect to pan the panorama in the main
+scene view, not a separate interact window that must be kept open.
+OBS's interaction model is designed for web source clicks, not
+continuous compositor control.
+
+**Suggested direction**: the nicer shape is an embedded dock panel
+(like Transition Override, Scene Filters) that gives a dedicated
+control surface: yaw / pitch sliders with live preview, FOV slider,
+constrained-look toggle, detector-status LED, recenter button. OBS
+exposes dock registration via `obs_frontend_add_dock_by_id` (needs
+qt bindings, typically via a small C++ shim). This is substantial
+plumbing work but dramatically better UX than per-property sliders +
+Interact mode.
+
+Alternate short-term: offer a full-screen projector ("Windowed
+Projector (Source)" in OBS, already built in) that shows just our
+panorama, and keep driving the pose via hotkeys (A12).
+
+### A16. No built-in scene / replay mode
+
+**Impact**: Low to medium. Users want to switch scenes to a playback
+view and enable replay instantly - replay isn't a plugin feature
+today, and scene switching is regular OBS behavior but OBS doesn't
+know our plugin's internal ring-buffer state.
+
+**Suggested direction** (two parts):
+
+- **Reco-core**: add an optional "rolling buffer" helper on
+  `LiveStitchSession` - a ring of the last N stitched RGBA frames
+  with timestamps, configurable duration (e.g. "keep last 30s").
+  Memory cost: 1920*1080*4 * 30fps * 30s = ~7 GB, so needs to be
+  opt-in.
+- **Reco-obs**: expose a "Replay mode" toggle + hotkey. When
+  activated, the source's `submit_frame` path switches from "stitch
+  current" to "replay from buffer", advancing the buffer pointer
+  based on wall time (or scrubbable via hotkey). Scene switch
+  orthogonal to this - the user uses standard OBS scene transitions
+  and the source just plays back from the buffer.
+
+Estimated 4-6 hours plus memory-budget discussion.
+
+### A17. No AI auto-pan access in the OBS plugin
+
+See also A10 (deeper architectural notes). Short version: reco-obs
+needs a way to plug in `reco_autocam::Director` + `reco_detect`
+execution. Requires `LiveStitchSession::set_detector` /
+`set_director` hooks in reco-core, then adding
+`reco-autocam` + `reco-detect` as reco-obs deps with a worker-thread
+inference scheduler so the 30fps tick doesn't stall on ORT
+inference. User has flagged AI access as important; worth
+prioritizing once the friction backlog is worked.
+
 ### A3. No OBS-level wgpu interop
 
 **Impact**: Fundamental to OBS architecture, not a reco-core bug.
