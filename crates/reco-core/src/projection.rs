@@ -728,11 +728,7 @@ impl CoverageBoundary {
         // NaN at the source, but user overrides and external clients
         // can still hand us non-finite values. Fall back to the
         // coverage center.
-        if !yaw.is_finite()
-            || !pitch.is_finite()
-            || !fov_v_deg.is_finite()
-            || !aspect.is_finite()
-        {
+        if !yaw.is_finite() || !pitch.is_finite() || !fov_v_deg.is_finite() || !aspect.is_finite() {
             let safe_pitch = (self.pitch_min + self.pitch_max) * 0.5;
             let (yaw_lo, yaw_hi) = self.yaw_range_at(safe_pitch);
             let safe_yaw = (yaw_lo + yaw_hi) * 0.5;

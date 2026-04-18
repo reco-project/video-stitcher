@@ -256,7 +256,9 @@ pub fn calibrate_videos(
                 log::info!("sync: IMU produced offset={offset} frames");
             }
             Ok(None) => {
-                log::warn!("sync: IMU returned no offset (one or both telemetry streams missing); trying audio");
+                log::warn!(
+                    "sync: IMU returned no offset (one or both telemetry streams missing); trying audio"
+                );
                 try_audio_sync(&mut pipeline, left_video, right_video);
             }
             Err(e) => {

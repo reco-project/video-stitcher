@@ -376,9 +376,7 @@ impl MatchCalibration {
         // hang the decode pairing loop. Bounds-check directly instead of
         // `.abs()` because `i64::MIN.abs()` itself overflows and panics in
         // debug builds.
-        if self.sync_offset < -MAX_SYNC_OFFSET_FRAMES
-            || self.sync_offset > MAX_SYNC_OFFSET_FRAMES
-        {
+        if self.sync_offset < -MAX_SYNC_OFFSET_FRAMES || self.sync_offset > MAX_SYNC_OFFSET_FRAMES {
             return Err(CalibrationError::SyncOffsetOutOfRange {
                 value: self.sync_offset,
                 min: -MAX_SYNC_OFFSET_FRAMES,

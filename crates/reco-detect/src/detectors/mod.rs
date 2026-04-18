@@ -365,7 +365,15 @@ mod tests {
         // the row would be kept and NaN would propagate into the director EMA.
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, f32::NAN, 0.0]]);
         let dets = postprocess(
-            &data, 1, CameraId::Left, 0.10, scale(), pad_x(), pad_y(), FRAME_W, FRAME_H,
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
         );
         assert!(
             dets.is_empty(),
@@ -377,7 +385,15 @@ mod tests {
     fn postprocess_rejects_infinite_confidence() {
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, f32::INFINITY, 0.0]]);
         let dets = postprocess(
-            &data, 1, CameraId::Left, 0.10, scale(), pad_x(), pad_y(), FRAME_W, FRAME_H,
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
         );
         assert!(dets.is_empty());
     }
@@ -389,7 +405,15 @@ mod tests {
             row[bad_idx] = f32::NAN;
             let data = make_tensor(&[row]);
             let dets = postprocess(
-                &data, 1, CameraId::Left, 0.10, scale(), pad_x(), pad_y(), FRAME_W, FRAME_H,
+                &data,
+                1,
+                CameraId::Left,
+                0.10,
+                scale(),
+                pad_x(),
+                pad_y(),
+                FRAME_W,
+                FRAME_H,
             );
             assert!(
                 dets.is_empty(),
@@ -402,7 +426,15 @@ mod tests {
     fn postprocess_rejects_nan_class_id() {
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.80, f32::NAN]]);
         let dets = postprocess(
-            &data, 1, CameraId::Left, 0.10, scale(), pad_x(), pad_y(), FRAME_W, FRAME_H,
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
         );
         assert!(dets.is_empty());
     }
@@ -412,7 +444,15 @@ mod tests {
         // Class id that would saturate u16 on cast; reject rather than pretend.
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.80, 1e9]]);
         let dets = postprocess(
-            &data, 1, CameraId::Left, 0.10, scale(), pad_x(), pad_y(), FRAME_W, FRAME_H,
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
         );
         assert!(dets.is_empty());
     }

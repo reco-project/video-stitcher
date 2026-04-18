@@ -645,8 +645,7 @@ mod tests {
             dir.pitch
         );
         assert!(
-            (dir.yaw - prior_yaw).abs() < 1e-6
-                && (dir.pitch - prior_pitch).abs() < 1e-6,
+            (dir.yaw - prior_yaw).abs() < 1e-6 && (dir.pitch - prior_pitch).abs() < 1e-6,
             "pose must be unchanged on NaN input",
         );
     }
