@@ -325,14 +325,40 @@ impl Director for FieldDirector {
                 target_pitch = target_pitch * (1.0 - w) + bp.pitch * w;
             }
 
-            self.yaw = target_yaw;
-            self.pitch = target_pitch;
+            // B-29 defense-in-depth: reject non-finite targets. B-28 stops
+            // NaN at the detector boundary, but this path also runs on
+            // cluster-aggregate arithmetic that could in principle drift
+            // (division by near-zero spread, degenerate calibration, etc).
+            if target_yaw.is_finite() && target_pitch.is_finite() {
+                self.yaw = target_yaw;
+                self.pitch = target_pitch;
+            } else {
+                log::warn!(
+                    "FieldDirector: non-finite target yaw={target_yaw} pitch={target_pitch}; \
+                     keeping yaw={} pitch={}",
+                    self.yaw,
+                    self.pitch,
+                );
+            }
         }
 
-        // FOV: EMA-smoothed toward target.
+        // FOV: EMA-smoothed toward target. The EMA accumulator is uniquely
+        // sticky: `current_fov += alpha * (target - current_fov)` latches
+        // permanently on the first NaN because `NaN + x = NaN`. Skip the
+        // update on non-finite input; keep the prior value.
         if let Some(ref c) = cluster {
             let target = self.target_fov(c.spread, c.pitch);
-            self.current_fov += FOV_ALPHA * (target - self.current_fov);
+            if target.is_finite() {
+                self.current_fov += FOV_ALPHA * (target - self.current_fov);
+            } else {
+                log::warn!(
+                    "FieldDirector: non-finite FOV target ({target}) from \
+                     spread={} pitch={}; keeping current_fov={}",
+                    c.spread,
+                    c.pitch,
+                    self.current_fov,
+                );
+            }
         }
 
         if ctx.frame_index.is_multiple_of(LOG_INTERVAL) {
@@ -549,5 +575,79 @@ mod tests {
     fn position_includes_fov() {
         let dir = FieldDirector::new();
         assert!(dir.position().fov_degrees.is_some());
+    }
+
+    // ── B-29 NaN-resilience regression tests ─────────────────────────
+
+    /// A single NaN FOV target must not permanently poison the EMA
+    /// accumulator. B-28 stops NaN at the detector boundary; this is
+    /// defense-in-depth for any upstream math path that could produce
+    /// a non-finite target.
+    #[test]
+    fn fov_ema_does_not_latch_on_nan() {
+        let mut dir = FieldDirector::new();
+        let baseline_fov = dir.current_fov;
+
+        // Inject NaN via the public-facing update path: players whose
+        // positions are NaN produce a NaN cluster centroid which flows
+        // into target_fov and returns NaN. The guard should keep
+        // current_fov at its prior value.
+        let nan_players = vec![
+            player(f32::NAN, f32::NAN),
+            player(f32::NAN, f32::NAN),
+            player(f32::NAN, f32::NAN),
+            player(f32::NAN, f32::NAN),
+            player(f32::NAN, f32::NAN),
+        ];
+        dir.update(&ctx(0, &nan_players));
+        assert!(
+            dir.current_fov.is_finite(),
+            "FOV EMA must stay finite after NaN input; got {}",
+            dir.current_fov,
+        );
+        assert!(
+            (dir.current_fov - baseline_fov).abs() < 1e-6,
+            "FOV EMA must keep prior value on NaN input",
+        );
+
+        // Subsequent valid updates must still converge normally.
+        let good = tight_group();
+        for i in 1..10 {
+            dir.update(&ctx(i, &good));
+        }
+        assert!(
+            dir.current_fov.is_finite(),
+            "FOV must remain finite through recovery updates",
+        );
+    }
+
+    /// Yaw/pitch must not latch to NaN even if a target computation
+    /// produces a non-finite value.
+    #[test]
+    fn yaw_pitch_do_not_latch_on_nan_target() {
+        let mut dir = FieldDirector::new();
+        dir.yaw = 0.3;
+        dir.pitch = 0.05;
+        let prior_yaw = dir.yaw;
+        let prior_pitch = dir.pitch;
+
+        let nan_players = vec![player(f32::NAN, f32::NAN); 5];
+        dir.update(&ctx(0, &nan_players));
+
+        assert!(
+            dir.yaw.is_finite(),
+            "yaw must stay finite after NaN input; got {}",
+            dir.yaw
+        );
+        assert!(
+            dir.pitch.is_finite(),
+            "pitch must stay finite after NaN input; got {}",
+            dir.pitch
+        );
+        assert!(
+            (dir.yaw - prior_yaw).abs() < 1e-6
+                && (dir.pitch - prior_pitch).abs() < 1e-6,
+            "pose must be unchanged on NaN input",
+        );
     }
 }
