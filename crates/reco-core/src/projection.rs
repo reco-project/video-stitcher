@@ -20,6 +20,77 @@ use crate::scene::SceneGeometry;
 
 use nalgebra::{Point3, Vector3};
 
+// ---------------------------------------------------------------------------
+// M3 foundation: Projection trait + LShapeProjection marker.
+// ---------------------------------------------------------------------------
+//
+// Plan-execution §2.5 + §7 decision 8: the future StitchCore takes a
+// `Box<dyn Projection>` instead of hardcoding the 2-plane L-shape
+// geometry. This makes alt-projections (cylindrical / flat-mixing-
+// shader / mono-single-plane / equirect / N-camera panoramic) drop-in
+// additions later without reshaping the core session API.
+//
+// This commit lands the trait + a marker implementation for today's
+// L-shape geometry. It does NOT move the existing `camera_to_panorama`
+// etc. free functions into the trait - that migration happens when
+// StitchCore is being written and the real method set emerges from
+// usage. Landing the shape first lets parallel design work on a
+// second projection (§7 decision 8, user-chosen form) start without
+// re-plumbing reco-core.
+
+/// A panoramic projection geometry.
+///
+/// Implemented by concrete projections (today's 2-plane L-shape,
+/// future cylindrical / flat-mix / mono / N-camera). Dispatched
+/// dynamically by StitchCore so swapping projections at session
+/// construction time does not require recompilation.
+///
+/// # Bounds
+///
+/// `Send + Sync` because StitchCore stores projections behind a
+/// shared reference and the render thread reads them concurrently.
+pub trait Projection: Send + Sync {
+    /// Short human-readable name for logs + diagnostic bundles.
+    fn name(&self) -> &'static str;
+
+    /// Number of input cameras this projection consumes. 1 for mono,
+    /// 2 for today's L-shape stereo, N>2 for future panoramic rigs.
+    fn camera_count(&self) -> u8;
+
+    /// WGSL fragment shader source for the composite pass that
+    /// transforms per-camera undistorted textures into the final
+    /// panorama output.
+    ///
+    /// Returned as a string so wgpu can compile it at pipeline
+    /// creation. Today's L-shape geometry returns an empty string:
+    /// its shader is still embedded in `stitch_renderer.rs`. The
+    /// migration happens when StitchCore takes over rendering and
+    /// dispatches composite via this trait.
+    fn wgsl_composite_source(&self) -> &str {
+        ""
+    }
+}
+
+/// Marker type for today's 2-plane L-shape stereo projection.
+///
+/// The geometry is documented in [`scene::SceneGeometry`](crate::scene::SceneGeometry).
+/// All the real math still lives in the free functions below and in
+/// `stitch_renderer.rs`; this struct carries no state today. It is
+/// here to make StitchCore's `Box<dyn Projection>` slot have a
+/// concrete default that matches shipping behavior.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LShapeProjection;
+
+impl Projection for LShapeProjection {
+    fn name(&self) -> &'static str {
+        "l-shape-stereo-2camera"
+    }
+
+    fn camera_count(&self) -> u8 {
+        2
+    }
+}
+
 /// Maximum Newton-Raphson iterations for KB4 inverse distortion.
 const MAX_ITERATIONS: usize = 20;
 /// Convergence threshold for Newton-Raphson.
@@ -1344,5 +1415,34 @@ mod tests {
         let out = coverage.safe_clamp(0.0, f32::NEG_INFINITY, 75.0, 16.0 / 9.0, 0.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
+    }
+
+    // ── M3 foundation: Projection trait tests ────────────────────────
+
+    #[test]
+    fn l_shape_projection_identifies_itself() {
+        let p = LShapeProjection;
+        assert_eq!(p.name(), "l-shape-stereo-2camera");
+        assert_eq!(p.camera_count(), 2);
+    }
+
+    #[test]
+    fn projection_is_dyn_compatible() {
+        // Core invariant: StitchCore will hold `Box<dyn Projection>`.
+        // Verify the trait bounds allow that today and that Send+Sync
+        // both hold.
+        let projections: Vec<Box<dyn Projection>> = vec![Box::new(LShapeProjection)];
+        fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+        assert_send_sync::<dyn Projection>();
+        assert_eq!(projections[0].camera_count(), 2);
+    }
+
+    #[test]
+    fn l_shape_projection_wgsl_composite_is_placeholder() {
+        // Today the composite shader is embedded in stitch_renderer.
+        // LShapeProjection returns "" until StitchCore migration
+        // moves that shader source out through this trait.
+        let p = LShapeProjection;
+        assert!(p.wgsl_composite_source().is_empty());
     }
 }
