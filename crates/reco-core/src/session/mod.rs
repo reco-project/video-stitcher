@@ -18,6 +18,8 @@
 
 /// Detection pipeline - also usable standalone without StitchSession.
 pub mod detection;
+/// Live push-based stitching for compositor consumers (OBS, V4L2, WebRTC).
+pub mod live;
 #[cfg(test)]
 mod tests;
 #[cfg(target_os = "linux")]
@@ -27,6 +29,8 @@ mod zero_copy_macos;
 
 #[cfg(target_os = "linux")]
 pub use zero_copy_linux::SharedTextureSet;
+
+pub use live::{LiveSessionConfig, LiveSessionError, LiveStitchSession};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

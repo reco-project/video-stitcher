@@ -46,6 +46,88 @@ pub struct YuvPlanes<'a> {
     pub v: &'a [u8],
 }
 
+/// A single stride-aware plane view.
+///
+/// External frameworks (OBS `obs_source_frame`, V4L2, GStreamer buffers)
+/// typically expose planes as a pointer plus a row stride that may exceed
+/// the plane width (padding). [`YuvPlanes`] assumes tight packing, so a
+/// consumer that receives padded data has to repack before calling
+/// [`StitchPipeline::render_to_target`]. [`StridedYuvPlanes::copy_into`]
+/// does the repack into a caller-owned buffer without reallocating on
+/// every frame.
+pub struct FramePlaneView<'a> {
+    /// Plane pixel bytes. Must have length at least `stride * height`.
+    pub data: &'a [u8],
+    /// Bytes per row, including any trailing padding.
+    pub stride: u32,
+    /// Plane width in pixels (bytes per row of usable data).
+    pub width: u32,
+    /// Plane height in rows.
+    pub height: u32,
+}
+
+/// Stride-aware YUV420P planes, suitable for hardware-decoded frames
+/// or framework callbacks that expose raw pointers + strides.
+///
+/// Use [`Self::copy_into`] to produce a tightly packed [`YuvPlanes`]
+/// view ready for [`StitchPipeline::render_to_target`].
+pub struct StridedYuvPlanes<'a> {
+    /// Y (luma) plane, full resolution.
+    pub y: FramePlaneView<'a>,
+    /// U (Cb) plane, half resolution per dimension.
+    pub u: FramePlaneView<'a>,
+    /// V (Cr) plane, half resolution per dimension.
+    pub v: FramePlaneView<'a>,
+}
+
+impl StridedYuvPlanes<'_> {
+    /// Repack the strided planes into a caller-owned tight buffer and
+    /// return a [`YuvPlanes`] view into it.
+    ///
+    /// The `buffer` is resized to `y_len + u_len + v_len` bytes. Cache
+    /// the buffer across frames to avoid per-frame allocation.
+    pub fn copy_into<'b>(&self, buffer: &'b mut Vec<u8>) -> YuvPlanes<'b> {
+        let y_len = (self.y.width as usize) * (self.y.height as usize);
+        let u_len = (self.u.width as usize) * (self.u.height as usize);
+        let v_len = (self.v.width as usize) * (self.v.height as usize);
+        buffer.resize(y_len + u_len + v_len, 0);
+        {
+            let (y_dst, rest) = buffer.split_at_mut(y_len);
+            let (u_dst, v_dst) = rest.split_at_mut(u_len);
+            copy_plane_tight(&self.y, y_dst);
+            copy_plane_tight(&self.u, u_dst);
+            copy_plane_tight(&self.v, v_dst);
+        }
+        let (y, rest) = buffer.split_at(y_len);
+        let (u, v) = rest.split_at(u_len);
+        YuvPlanes { y, u, v }
+    }
+}
+
+/// Copy `src` rows into `dst`, skipping stride padding.
+///
+/// `dst` must be exactly `src.width * src.height` bytes long.
+/// Rows where `stride == width` are copied in a single `copy_from_slice`.
+fn copy_plane_tight(src: &FramePlaneView<'_>, dst: &mut [u8]) {
+    let width = src.width as usize;
+    let height = src.height as usize;
+    let stride = src.stride as usize;
+    debug_assert_eq!(dst.len(), width * height);
+    debug_assert!(src.data.len() >= stride.saturating_mul(height));
+
+    if stride == width {
+        // Fast path: source is already tight; one memcpy.
+        dst.copy_from_slice(&src.data[..width * height]);
+        return;
+    }
+
+    for row in 0..height {
+        let src_start = row * stride;
+        let dst_start = row * width;
+        dst[dst_start..dst_start + width].copy_from_slice(&src.data[src_start..src_start + width]);
+    }
+}
+
 /// Borrowed NV12 plane references for pipeline input.
 ///
 /// Tightly packed (no stride padding):
@@ -622,5 +704,129 @@ impl StitchPipeline {
     /// Access the rendered RGBA texture for NV12 conversion.
     pub fn render_target(&self) -> &wgpu::Texture {
         self.renderer.render_target()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a test plane where row `r` contains byte value `r` for the first
+    /// `width` bytes, followed by `0xFF` padding up to `stride`.
+    fn padded_plane(width: u32, height: u32, stride: u32) -> Vec<u8> {
+        let mut buf = vec![0xFF; (stride * height) as usize];
+        for r in 0..height {
+            for c in 0..width {
+                buf[(r * stride + c) as usize] = r as u8;
+            }
+        }
+        buf
+    }
+
+    #[test]
+    fn copy_into_strips_row_padding() {
+        // 4-pixel wide plane padded to 8-byte rows (typical OBS alignment).
+        let y_data = padded_plane(4, 3, 8);
+        let u_data = padded_plane(2, 2, 4);
+        let v_data = padded_plane(2, 2, 4);
+        let strided = StridedYuvPlanes {
+            y: FramePlaneView {
+                data: &y_data,
+                stride: 8,
+                width: 4,
+                height: 3,
+            },
+            u: FramePlaneView {
+                data: &u_data,
+                stride: 4,
+                width: 2,
+                height: 2,
+            },
+            v: FramePlaneView {
+                data: &v_data,
+                stride: 4,
+                width: 2,
+                height: 2,
+            },
+        };
+
+        let mut buffer = Vec::new();
+        let tight = strided.copy_into(&mut buffer);
+
+        assert_eq!(tight.y.len(), 12);
+        assert_eq!(tight.u.len(), 4);
+        assert_eq!(tight.v.len(), 4);
+        // Row 0 should be [0,0,0,0], row 1 [1,1,1,1], etc - no 0xFF padding.
+        assert_eq!(tight.y, &[0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]);
+        assert_eq!(tight.u, &[0, 0, 1, 1]);
+        assert_eq!(tight.v, &[0, 0, 1, 1]);
+    }
+
+    #[test]
+    fn copy_into_fast_path_when_tight() {
+        // stride == width means no padding - fast path takes a single memcpy.
+        let y_data: Vec<u8> = (0..12).collect();
+        let u_data: Vec<u8> = (0..4).collect();
+        let v_data: Vec<u8> = (4..8).collect();
+        let strided = StridedYuvPlanes {
+            y: FramePlaneView {
+                data: &y_data,
+                stride: 4,
+                width: 4,
+                height: 3,
+            },
+            u: FramePlaneView {
+                data: &u_data,
+                stride: 2,
+                width: 2,
+                height: 2,
+            },
+            v: FramePlaneView {
+                data: &v_data,
+                stride: 2,
+                width: 2,
+                height: 2,
+            },
+        };
+        let mut buffer = Vec::new();
+        let tight = strided.copy_into(&mut buffer);
+        assert_eq!(tight.y, y_data.as_slice());
+        assert_eq!(tight.u, u_data.as_slice());
+        assert_eq!(tight.v, v_data.as_slice());
+    }
+
+    #[test]
+    fn copy_into_reuses_buffer_without_realloc() {
+        let plane = padded_plane(4, 3, 8);
+        let strided = StridedYuvPlanes {
+            y: FramePlaneView {
+                data: &plane,
+                stride: 8,
+                width: 4,
+                height: 3,
+            },
+            u: FramePlaneView {
+                data: &plane,
+                stride: 8,
+                width: 2,
+                height: 2,
+            },
+            v: FramePlaneView {
+                data: &plane,
+                stride: 8,
+                width: 2,
+                height: 2,
+            },
+        };
+
+        let mut buffer = Vec::with_capacity(64);
+        let cap_before = buffer.capacity();
+        let _tight = strided.copy_into(&mut buffer);
+        // 12 + 4 + 4 = 20 bytes needed, 64 capacity, no realloc.
+        assert_eq!(buffer.capacity(), cap_before);
+
+        // Second call with same dims: still no realloc.
+        let _tight2 = strided.copy_into(&mut buffer);
+        assert_eq!(buffer.capacity(), cap_before);
     }
 }
