@@ -64,6 +64,63 @@ already supports being rebuilt - but the reco-obs callback plumbing
 has to detect the size change and reset cached state (repack
 buffers, OBS texture, etc.). Tier 2 item.
 
+### A9. obs_source_get_frame only sees async video sources
+
+**Impact**: High. Discovered 2026-04-18 while trying to route an OBS
+Browser Source (VDO Ninja) into Tier 1 ingestion.
+
+OBS has two source rendering models:
+
+- **Async video sources** (Media Source / ffmpeg_source, V4L2 Device,
+  NDI, Decklink): produce frames via `obs_source_output_video()`. OBS
+  buffers them and our current ingestion path reads via
+  `obs_source_get_frame()`.
+- **Sync video sources** (Browser Source, Screen Capture, Window
+  Capture, Game Capture, Video Composite): render directly via a
+  `video_render` callback. OBS never buffers their output; there is
+  no async frame queue for `obs_source_get_frame` to pull from.
+
+Tier 1 of reco-obs uses `obs_source_get_frame`, so sync video sources
+are silently invisible - `get_frame` returns NULL forever, our diag
+log shows `submitted=0 missed_*` ticking up indefinitely with no
+warning (it looks healthy but no frames arrive).
+
+**Suggested direction** (reco-obs, not reco-core):
+
+Add a render-to-texture fallback. In `render_and_readback`, after
+`obs_source_get_frame` returns NULL for a slot, render the source to
+our own `gs_texture_t`:
+
+```c
+obs_enter_graphics();
+gs_texture_t *my_tex = /* pre-allocated per side */;
+gs_viewport_push();
+gs_projection_push();
+gs_set_render_target(my_tex, NULL);
+gs_ortho(0.0f, cx, 0.0f, cy, -100.0f, 100.0f);
+gs_clear(GS_CLEAR_COLOR, &zero, 0.0f, 0);
+obs_source_video_render(left_source);
+gs_set_render_target(NULL, NULL);
+gs_projection_pop();
+gs_viewport_pop();
+// download my_tex -> CPU staging -> BgraPlanes (Batch J)
+obs_leave_graphics();
+```
+
+Needs new FFI bindings for `gs_set_render_target`,
+`gs_viewport_push/pop`, `gs_projection_push/pop`, `gs_ortho`,
+`gs_clear`, `obs_source_video_render`, and a GPU-to-CPU texture
+readback path (staging buffer + `gs_stagesurface_map`). ~2-3 hours.
+
+Once implemented, the existing Batch J BGRA path (R5) is what
+consumes the readback, so no further reco-core work needed.
+
+**Workaround for now**: use any async source (Media Source pointed at
+a file, V4L2 camera, NDI input) while sync-source support is on
+backlog. VDO Ninja can also expose a local v4l2loopback virtual
+camera via `v4l2loopback-dkms` + an ffmpeg pipeline - that path is
+async and works with Tier 1 I420 today.
+
 ### A3. No OBS-level wgpu interop
 
 **Impact**: Fundamental to OBS architecture, not a reco-core bug.
