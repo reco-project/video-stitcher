@@ -19,7 +19,7 @@
 //! ```
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
@@ -50,6 +50,7 @@ pub struct StitchJob {
     // Processing settings
     max_frames: Option<u64>,
     duration: Option<f64>,
+    start_frame: u64,
     sync_offset: Option<i64>,
     blend_width: f32,
 
@@ -207,6 +208,7 @@ impl StitchJob {
             preset: None,
             max_frames: None,
             duration: None,
+            start_frame: 0,
             sync_offset: None,
             blend_width: 0.15,
             on_progress: None,
@@ -296,6 +298,19 @@ impl StitchJob {
         self
     }
 
+    /// Skip `n` frames from each input before the first output frame.
+    ///
+    /// Combine with [`max_frames`](Self::max_frames) or
+    /// [`duration`](Self::duration) to select a time window, e.g. export
+    /// "0:15 - 0:30" as `.start_frame(450).duration(15.0)` at 30fps.
+    ///
+    /// Skipped frames are decoded and dropped (no seek), so latency is
+    /// proportional to decode rate. Default: `0`.
+    pub fn start_frame(mut self, n: u64) -> Self {
+        self.start_frame = n;
+        self
+    }
+
     /// Override the temporal sync offset between cameras (frames).
     /// Positive: right camera started first. Negative: left started first.
     /// Default: use the value from calibration.
@@ -369,7 +384,7 @@ impl StitchJob {
         }
 
         // Initialize GPU
-        let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
+        let gpu = reco_core::gpu::GpuContext::new_blocking()?;
         let gpu_name = gpu.gpu_name().to_string();
 
         // Open source with auto GPU detection
@@ -465,6 +480,32 @@ impl StitchJob {
         )?;
         let enc_name = encoder.encoder_name().to_string();
         session.set_encoder(Box::new(encoder), 2);
+
+        // Drain-and-discard frames up to start_frame.
+        // Done here (before session.run) so the session's frame counter
+        // and progress callback reflect the exported window, not the skip.
+        if self.start_frame > 0 {
+            log::info!("skipping first {} frames before export", self.start_frame);
+            use reco_core::source::FrameSource as _;
+            for skipped in 0..self.start_frame {
+                if interrupted.load(Ordering::Relaxed) {
+                    return Err(StitchError::Other(
+                        "cancelled during start_frame skip".into(),
+                    ));
+                }
+                match source.next_frame()? {
+                    Some(_) => {} // drop the frame
+                    None => {
+                        log::warn!(
+                            "start_frame={} exceeded source length (stopped at {})",
+                            self.start_frame,
+                            skipped,
+                        );
+                        break;
+                    }
+                }
+            }
+        }
 
         // Compute frame limit
         let frame_limit =

@@ -40,14 +40,6 @@ pub struct StridedYuvPlanes<'a> {
 ```
 Plus a conversion helper that copies stride → tight for the slow path.
 
-### A2. GpuContext::new() is async
-
-**Impact**: Very minor. Noted across all consumers (also in
-reco-gui/FRICTION.md A6). OBS plugin callbacks are synchronous C
-functions, so standalone `GpuContext::new` requires pulling in
-pollster. `GpuContext::from_device_queue` is the right sync escape
-hatch when you already have a wgpu device.
-
 ### A3. No OBS-level wgpu interop
 
 **Impact**: Fundamental to OBS architecture, not a reco-core bug.
@@ -93,6 +85,10 @@ logic, just with source pulled out.
   + `flush_rgba()` with triple-buffered staging, same pattern as
   `Nv12Converter`. Earlier ~40 lines of boilerplate in
   `reco-obs/source.rs` can be replaced.
+- **R2. GpuContext::new() was async**
+  Resolved by Batch H: `GpuContext::new_blocking()` added in reco-core.
+  `reco-obs` dropped its direct `pollster` dep; plugin callbacks can
+  now init the GPU synchronously without a runtime.
 
 ## Notes on plugin status
 

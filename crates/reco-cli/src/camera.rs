@@ -78,7 +78,7 @@ pub fn run_camera(
         ..Default::default()
     };
 
-    let gpu = pollster::block_on(reco_core::gpu::GpuContext::new())?;
+    let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
     // Use NV12 capture on Jetson to skip the NV12->I420 conversion
     // in nvvidconv. The NVIDIA ISP natively outputs NV12.

@@ -26,6 +26,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use reco_core::calibration::CameraParams;
 use reco_core::gpu::{GpuContext, GpuError};
 use reco_io::ffmpeg::calibration_io::{self, CalibrationIoError};
 
@@ -36,6 +37,11 @@ use crate::types::{CalibrationConfig, CalibrationProgress, CalibrationResult, Ca
 /// Options for [`calibrate_videos`].
 ///
 /// All fields are optional with sensible defaults.
+///
+/// Lens profile resolution order (first match wins):
+/// 1. `left_params` + `right_params` (both must be set)
+/// 2. `left_profile` path (+ optional `right_profile`)
+/// 3. auto-detect from video metadata
 #[derive(Debug, Clone, Default)]
 pub struct CalibrateVideosOptions {
     /// Calibration algorithm config. Uses [`CalibrationConfig::default()`] if `None`.
@@ -44,6 +50,14 @@ pub struct CalibrateVideosOptions {
     pub left_profile: Option<PathBuf>,
     /// Path to the right lens profile. Uses left profile if `None`.
     pub right_profile: Option<PathBuf>,
+    /// Pre-loaded left camera params. Wins over `left_profile` when both are
+    /// set. Must be set together with `right_params`.
+    ///
+    /// Lets consumers that already resolved profiles (e.g. via
+    /// `LensDatabase::candidates()`) skip the file round-trip.
+    pub left_params: Option<CameraParams>,
+    /// Pre-loaded right camera params. See [`Self::left_params`].
+    pub right_params: Option<CameraParams>,
     /// Manual sync offset in frames. Auto-detects via IMU/audio if `None`.
     pub sync_offset: Option<i64>,
 }
@@ -147,11 +161,24 @@ pub fn calibrate_videos(
 
     let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
 
-    // Lens profiles
-    if let Some(ref lp) = options.left_profile {
-        pipeline.load_profiles(lp, options.right_profile.as_deref())?;
-    } else {
-        pipeline.detect_profiles()?;
+    // Lens profiles: direct params > path > auto-detect.
+    match (options.left_params.clone(), options.right_params.clone()) {
+        (Some(lp), Some(rp)) => pipeline.set_profiles(lp, rp),
+        (left_params, right_params) => {
+            if left_params.is_some() || right_params.is_some() {
+                log::warn!(
+                    "CalibrateVideosOptions: left_params/right_params must both \
+                     be set (got left={}, right={}); falling back to path / auto-detect",
+                    left_params.is_some(),
+                    right_params.is_some(),
+                );
+            }
+            if let Some(ref lp) = options.left_profile {
+                pipeline.load_profiles(lp, options.right_profile.as_deref())?;
+            } else {
+                pipeline.detect_profiles()?;
+            }
+        }
     }
 
     // Sync: manual > IMU > audio > default (0)
@@ -207,7 +234,7 @@ pub fn calibrate_videos(
         CalibrationStep::FeatureMatching,
         "GPU init and feature matching",
     );
-    let gpu = pollster::block_on(GpuContext::new())?;
+    let gpu = GpuContext::new_blocking()?;
     log::info!("GPU: {}", gpu.gpu_name());
 
     let result = pipeline.calibrate(&gpu, &frame_pairs)?;

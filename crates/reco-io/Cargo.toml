@@ -22,7 +22,6 @@ config = ["dep:serde", "dep:serde_json", "dep:directories"]
 [dependencies]
 reco-core = { path = "../reco-core" }
 log = "0.4"
-pollster = "0.4"
 thiserror = "2"
 tracing = { workspace = true, optional = true }
 
