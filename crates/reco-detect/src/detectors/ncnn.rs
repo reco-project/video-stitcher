@@ -19,7 +19,10 @@ use std::ffi::{CString, c_void};
 use std::os::raw::c_char;
 use std::path::Path;
 
-use reco_core::detector::{CameraId, ChromaFormat, Detection, Detector, RawFrame};
+use reco_core::detector::{
+    CameraId, ChromaFormat, Detection, Detector, DetectorError, DetectorFrame, RawFrame,
+    UnifiedDetector,
+};
 
 // ── NCNN C API FFI ──────────────────────────────────────────────────
 
@@ -348,8 +351,18 @@ impl NcnnYoloDetector {
     }
 }
 
-impl Detector for NcnnYoloDetector {
-    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
+impl NcnnYoloDetector {
+    /// Core inference path shared by the legacy [`Detector`] impl and
+    /// the new [`UnifiedDetector`] impl. Returns a typed
+    /// [`DetectorError`] so unified-trait consumers can react to NCNN
+    /// failures (non-zero input / extract return codes); the legacy
+    /// impl collapses the error to a log + empty vector for backward
+    /// compatibility.
+    fn detect_raw(
+        &mut self,
+        camera: CameraId,
+        frame: &RawFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("ncnn_yolo_detect");
 
         // Preprocess returns an NCNN Mat (already resized + normalized via NEON).
@@ -359,19 +372,21 @@ impl Detector for NcnnYoloDetector {
             let ex = ncnn_extractor_create(self.net);
             let ret = ncnn_extractor_input(ex, self.input_name.as_ptr(), input_mat);
             if ret != 0 {
-                log::error!("NCNN input failed: {ret}");
                 ncnn_mat_destroy(input_mat);
                 ncnn_extractor_destroy(ex);
-                return Vec::new();
+                return Err(DetectorError::InferenceFailed(format!(
+                    "ncnn input code {ret}"
+                )));
             }
 
             let mut output_mat: *mut c_void = std::ptr::null_mut();
             let ret = ncnn_extractor_extract(ex, self.output_name.as_ptr(), &mut output_mat);
             if ret != 0 {
-                log::error!("NCNN inference failed: {ret}");
                 ncnn_mat_destroy(input_mat);
                 ncnn_extractor_destroy(ex);
-                return Vec::new();
+                return Err(DetectorError::InferenceFailed(format!(
+                    "ncnn extract code {ret}"
+                )));
             }
 
             let detections = self.postprocess(output_mat, camera);
@@ -388,8 +403,46 @@ impl Detector for NcnnYoloDetector {
                 );
             }
 
-            detections
+            Ok(detections)
         }
+    }
+}
+
+impl Detector for NcnnYoloDetector {
+    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
+        match self.detect_raw(camera, frame) {
+            Ok(dets) => dets,
+            Err(e) => {
+                log::error!("NcnnYoloDetector: {e}");
+                Vec::new()
+            }
+        }
+    }
+}
+
+impl UnifiedDetector for NcnnYoloDetector {
+    fn name(&self) -> &'static str {
+        "ncnn"
+    }
+
+    fn detect(
+        &mut self,
+        camera: CameraId,
+        frame: &DetectorFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        // CPU-residency backend: accept only `Cpu(_)`; anything else
+        // (CUDA, Metal, or a future `#[non_exhaustive]` addition) is
+        // routed away via `UnsupportedFrameKind` so the dispatcher
+        // can pick a GPU backend. A single wildcard arm keeps this
+        // stable against upstream enum additions.
+        match frame {
+            DetectorFrame::Cpu(raw) => self.detect_raw(camera, raw),
+            _ => Err(DetectorError::UnsupportedFrameKind),
+        }
+    }
+
+    fn class_names(&self) -> Option<&[String]> {
+        Some(&self.labels)
     }
 }
 
