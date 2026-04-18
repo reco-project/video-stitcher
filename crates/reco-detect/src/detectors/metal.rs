@@ -15,9 +15,7 @@
 use std::path::Path;
 
 use reco_core::coreml_inference::CoreMlModel;
-use reco_core::detector::{
-    CameraId, Detection, DetectorError, DetectorFrame, MetalDetector, UnifiedDetector,
-};
+use reco_core::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use reco_core::gpu::GpuContext;
 use reco_core::metal_compute::MetalPreprocessPipeline;
 use reco_core::metal_interop::CVPixelBufferRef;
@@ -45,6 +43,13 @@ enum InferenceBackend {
 ///
 /// Created via [`MetalYoloDetector::try_new`].
 pub struct MetalYoloDetector {
+    /// Owned clone of the session's `GpuContext`. Needed by the Metal
+    /// preprocess pipeline on every `detect()` call; before the M3
+    /// trait collapse the session passed a `&GpuContext` parameter
+    /// but `UnifiedDetector::detect` has no such parameter, so the
+    /// detector now owns its own handle. Cloning is cheap (wgpu
+    /// types are reference-counted).
+    gpu: GpuContext,
     backend: InferenceBackend,
     preprocess: MetalPreprocessPipeline,
     input_size: u32,
@@ -142,6 +147,7 @@ impl MetalYoloDetector {
         );
 
         Ok(Self {
+            gpu: gpu.clone(),
             backend,
             preprocess,
             input_size,
@@ -204,38 +210,48 @@ impl MetalYoloDetector {
     }
 }
 
-impl MetalYoloDetector {
-    /// Core inference path shared by the legacy [`MetalDetector`]
-    /// impl and the new [`UnifiedDetector`] impl. Returns a typed
-    /// [`DetectorError`] so unified-trait consumers can react to
-    /// Metal preprocess / CoreML / ORT failures.
-    ///
-    /// # Safety
-    ///
-    /// `cv_pixel_buffer` must be a valid `CVPixelBufferRef`, typically
-    /// from a `RetainedCVPixelBuffer`. The preprocess pipeline holds
-    /// the pointer only for the duration of this call.
-    unsafe fn detect_metal_raw(
+impl UnifiedDetector for MetalYoloDetector {
+    fn name(&self) -> &'static str {
+        "metal-coreml"
+    }
+
+    fn detect(
         &mut self,
         camera: CameraId,
-        cv_pixel_buffer: CVPixelBufferRef,
-        width: u32,
-        height: u32,
-        gpu: &GpuContext,
+        frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
+        // Metal-residency backend: matches `Metal { cv_pixel_buffer,
+        // width, height }`; all other residencies (Cpu, Cuda, future
+        // `#[non_exhaustive]` additions) are routed to
+        // `UnsupportedFrameKind` via a single wildcard arm so the
+        // dispatcher picks a different backend.
+        //
+        // The `GpuContext` needed by `MetalPreprocessPipeline` is
+        // owned by this struct (cloned at construction time); wgpu
+        // types are reference-counted so the clone is cheap and shares
+        // the session's device/queue.
+        let (cv_pixel_buffer, width, height) = match frame {
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            DetectorFrame::Metal {
+                cv_pixel_buffer,
+                width,
+                height,
+            } => (*cv_pixel_buffer, *width, *height),
+            _ => return Err(DetectorError::UnsupportedFrameKind),
+        };
+
         reco_core::profile_scope!("metal_yolo_detect");
 
         // Step 1: Metal compute preprocess (NV12 -> CHW f32 tensor).
         let tensor_data = {
             reco_core::profile_scope!("metal_preprocess");
-            // SAFETY: caller guarantees cv_pixel_buffer is valid (from RetainedCVPixelBuffer).
-            unsafe { self.preprocess.preprocess(cv_pixel_buffer, gpu) }
+            // SAFETY: caller guarantees cv_pixel_buffer is valid
+            // (session wraps it as a RetainedCVPixelBuffer).
+            unsafe { self.preprocess.preprocess(cv_pixel_buffer, &self.gpu) }
                 .map_err(|e| DetectorError::InferenceFailed(format!("metal preprocess: {e}")))?
         };
 
         // Step 2: Run inference (CoreML native or ORT).
-        // Copy tensor data to release the mutable borrow on self.preprocess
-        // before calling self.run_inference (which borrows other parts of self).
         let mut tensor_owned = tensor_data.to_vec();
         let (n, data) = self.run_inference(&mut tensor_owned).ok_or_else(|| {
             DetectorError::InferenceFailed("metal inference returned None".into())
@@ -287,63 +303,6 @@ impl MetalYoloDetector {
         }
 
         Ok(detections)
-    }
-}
-
-impl MetalDetector for MetalYoloDetector {
-    fn detect_metal(
-        &mut self,
-        camera: CameraId,
-        cv_pixel_buffer: CVPixelBufferRef,
-        width: u32,
-        height: u32,
-        gpu: &GpuContext,
-    ) -> Vec<Detection> {
-        // SAFETY: forwarded from the caller. MetalDetector's contract
-        // already requires `cv_pixel_buffer` be a valid
-        // `CVPixelBufferRef`.
-        match unsafe { self.detect_metal_raw(camera, cv_pixel_buffer, width, height, gpu) } {
-            Ok(dets) => dets,
-            Err(e) => {
-                log::error!("MetalYoloDetector: {e}");
-                Vec::new()
-            }
-        }
-    }
-}
-
-impl UnifiedDetector for MetalYoloDetector {
-    fn name(&self) -> &'static str {
-        "metal-coreml"
-    }
-
-    fn detect(
-        &mut self,
-        camera: CameraId,
-        frame: &DetectorFrame<'_>,
-    ) -> Result<Vec<Detection>, DetectorError> {
-        // Metal-residency backend: accept `Metal { cv_pixel_buffer,
-        // width, height }` variant and route everything else
-        // (Cpu, Cuda, or future `#[non_exhaustive]` additions) via
-        // `UnsupportedFrameKind` so the dispatcher picks a different
-        // backend. Metal inference also needs a `&GpuContext` which
-        // isn't part of `DetectorFrame`; this impl is today unreachable
-        // in the unified dispatch because `StitchCore::set_detector`
-        // has not shipped yet. Once it does, the caller will stash a
-        // `GpuContext` on the detector itself or supply one via a
-        // setter before invocation. Returning a clear error makes the
-        // current gap explicit rather than silently returning empty
-        // detections.
-        match frame {
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            DetectorFrame::Metal { .. } => Err(DetectorError::InferenceFailed(
-                "Metal UnifiedDetector invocation requires a GpuContext supplied via a \
-                 future set_gpu_context setter; use MetalDetector::detect_metal until \
-                 StitchCore::set_detector is wired."
-                    .into(),
-            )),
-            _ => Err(DetectorError::UnsupportedFrameKind),
-        }
     }
 
     fn class_names(&self) -> Option<&[String]> {

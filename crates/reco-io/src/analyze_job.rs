@@ -27,7 +27,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use reco_core::analyze::{AnalyzeError, AnalyzePipeline};
-use reco_core::detector::Detector;
+use reco_core::detector::UnifiedDetector;
 use reco_core::session::{DetectionSink, FrameProgress};
 use reco_core::source::FrameSource;
 
@@ -61,7 +61,7 @@ pub struct AnalyzeJob {
     detection_interval: u64,
 
     // Detector + sink
-    detector: Option<Box<dyn Detector>>,
+    detector: Option<Box<dyn UnifiedDetector>>,
     sink: Option<Box<dyn DetectionSink>>,
 
     // Callback
@@ -147,7 +147,7 @@ impl AnalyzeJob {
     // ── Detector + sink ──
 
     /// Attach the CPU detector. Required before [`run`](Self::run).
-    pub fn detector(mut self, detector: Box<dyn Detector>) -> Self {
+    pub fn detector(mut self, detector: Box<dyn UnifiedDetector>) -> Self {
         self.detector = Some(detector);
         self
     }

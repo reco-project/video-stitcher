@@ -20,8 +20,7 @@ use std::os::raw::c_char;
 use std::path::Path;
 
 use reco_core::detector::{
-    CameraId, ChromaFormat, Detection, Detector, DetectorError, DetectorFrame, RawFrame,
-    UnifiedDetector,
+    CameraId, ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
 
 // ── NCNN C API FFI ──────────────────────────────────────────────────
@@ -404,18 +403,6 @@ impl NcnnYoloDetector {
             }
 
             Ok(detections)
-        }
-    }
-}
-
-impl Detector for NcnnYoloDetector {
-    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
-        match self.detect_raw(camera, frame) {
-            Ok(dets) => dets,
-            Err(e) => {
-                log::error!("NcnnYoloDetector: {e}");
-                Vec::new()
-            }
         }
     }
 }

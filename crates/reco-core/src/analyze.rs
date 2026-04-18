@@ -94,8 +94,9 @@ impl AnalyzePipeline {
         }
     }
 
-    /// Attach a CPU detector for object detection on decoded frames.
-    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::Detector>) {
+    /// Attach a unified-trait detector for object detection on
+    /// decoded frames.
+    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::UnifiedDetector>) {
         self.detection.set_detector(detector);
     }
 

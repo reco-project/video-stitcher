@@ -16,7 +16,7 @@ use reco_core::cuda_interop::{
 };
 use reco_core::cuda_kernels::normalize_hwc_to_chw;
 use reco_core::detector::{
-    CameraId, Detection, DetectorError, DetectorFrame, GpuDetector, GpuNv12Frame, UnifiedDetector,
+    CameraId, Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
 };
 use reco_core::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 
@@ -396,18 +396,6 @@ impl OrtGpuDetector {
         }
 
         Ok(detections)
-    }
-}
-
-impl GpuDetector for OrtGpuDetector {
-    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection> {
-        match self.detect_gpu_raw(camera, frame) {
-            Ok(dets) => dets,
-            Err(e) => {
-                log::error!("OrtGpuDetector: {e}");
-                Vec::new()
-            }
-        }
     }
 }
 

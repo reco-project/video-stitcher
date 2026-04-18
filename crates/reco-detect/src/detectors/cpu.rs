@@ -10,8 +10,7 @@ use std::path::Path;
 use ort::session::Session;
 use ort::value::Tensor;
 use reco_core::detector::{
-    CameraId, ChromaFormat, Detection, Detector, DetectorError, DetectorFrame, RawFrame,
-    UnifiedDetector,
+    CameraId, ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
 
 use super::postprocess;
@@ -221,22 +220,6 @@ impl CpuYoloDetector {
         }
 
         Ok(detections)
-    }
-}
-
-impl Detector for CpuYoloDetector {
-    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
-        // Legacy trait: callers consume `Vec<Detection>` directly,
-        // so surface inference errors through the log and fall back
-        // to an empty vector (identical behavior to before the
-        // `detect_raw` extraction).
-        match self.detect_raw(camera, frame) {
-            Ok(dets) => dets,
-            Err(e) => {
-                log::error!("CpuYoloDetector: {e}");
-                Vec::new()
-            }
-        }
     }
 }
 

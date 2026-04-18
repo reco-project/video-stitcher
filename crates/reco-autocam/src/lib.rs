@@ -45,10 +45,9 @@ pub use reco_detect::TrtGpuDetector;
 
 pub use directors::{BallDirector, FieldDirector, SweepDirector, TrackingMode};
 pub use roi_filter::RoiFilteredDetector;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use roi_filter::RoiFilteredGpuDetector;
-#[cfg(target_os = "macos")]
-pub use roi_filter::RoiFilteredMetalDetector;
+// `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
+// deleted: the unified `RoiFilteredDetector` covers every residency
+// because it wraps `Box<dyn UnifiedDetector>`.
 pub use smoother::{SmoothedDirector, TrajectorySmoother};
 
 use std::path::Path;
@@ -238,13 +237,13 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(trt_det)) => {
-                let detector: Box<dyn reco_core::detector::GpuDetector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredGpuDetector::new(Box::new(trt_det), roi))
+                        Box::new(RoiFilteredDetector::new(Box::new(trt_det), roi))
                     } else {
                         Box::new(trt_det)
                     };
-                session.set_gpu_detector(detector);
+                session.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: native TensorRT tracking enabled (engine: {model_path})");
             }
@@ -269,13 +268,13 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(gpu_det)) => {
-                let detector: Box<dyn reco_core::detector::GpuDetector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredGpuDetector::new(Box::new(gpu_det), roi))
+                        Box::new(RoiFilteredDetector::new(Box::new(gpu_det), roi))
                     } else {
                         Box::new(gpu_det)
                     };
-                session.set_gpu_detector(detector);
+                session.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: GPU YOLO ball tracking enabled (model: {model_path})");
             }
@@ -299,13 +298,13 @@ pub fn setup_autocam(
             Vec::new(),
         ) {
             Ok(metal_det) => {
-                let detector: Box<dyn reco_core::detector::MetalDetector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredMetalDetector::new(Box::new(metal_det), roi))
+                        Box::new(RoiFilteredDetector::new(Box::new(metal_det), roi))
                     } else {
                         Box::new(metal_det)
                     };
-                session.set_metal_detector(detector);
+                session.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: Metal YOLO ball tracking enabled (model: {model_path})");
             }
@@ -328,7 +327,7 @@ pub fn setup_autocam(
             Vec::new(), // labels loaded from sidecar if needed
         ) {
             Ok(ncnn_det) => {
-                let detector: Box<dyn reco_core::detector::Detector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
                         Box::new(RoiFilteredDetector::new(Box::new(ncnn_det), roi))
                     } else {
@@ -347,11 +346,12 @@ pub fn setup_autocam(
     // ORT CPU fallback for .onnx files.
     if !detection_active && !use_zero_copy {
         let yolo = CpuYoloDetector::from_file(model_path)?;
-        let detector: Box<dyn reco_core::detector::Detector> = if let Some(roi) = effective_roi {
-            Box::new(RoiFilteredDetector::new(Box::new(yolo), roi))
-        } else {
-            Box::new(yolo)
-        };
+        let detector: Box<dyn reco_core::detector::UnifiedDetector> =
+            if let Some(roi) = effective_roi {
+                Box::new(RoiFilteredDetector::new(Box::new(yolo), roi))
+            } else {
+                Box::new(yolo)
+            };
         session.set_detector(detector);
         detection_active = true;
         log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");

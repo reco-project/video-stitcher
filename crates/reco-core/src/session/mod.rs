@@ -40,7 +40,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
 use crate::core::{StitchCore, StitchCoreConfig, StitchCoreError};
-use crate::detector::{Detection, Detector};
+use crate::detector::Detection;
 use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, GpuEncoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
@@ -280,12 +280,8 @@ pub struct StitchSessionBuilder {
     gpu: Option<GpuContext>,
     encoder: Option<(Box<dyn Encoder + Send>, usize)>,
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
-    detector: Option<Box<dyn Detector>>,
+    detector: Option<Box<dyn crate::detector::UnifiedDetector>>,
     director: Option<Box<dyn Director>>,
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
     lookahead_frames: usize,
 }
@@ -353,8 +349,8 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach a detector for object detection on raw frames.
-    pub fn detector(mut self, detector: Box<dyn Detector>) -> Self {
+    /// Attach a [`UnifiedDetector`](crate::detector::UnifiedDetector).
+    pub fn detector(mut self, detector: Box<dyn crate::detector::UnifiedDetector>) -> Self {
         self.detector = Some(detector);
         self
     }
@@ -362,20 +358,6 @@ impl StitchSessionBuilder {
     /// Attach a director for camera panning.
     pub fn director(mut self, director: Box<dyn Director>) -> Self {
         self.director = Some(director);
-        self
-    }
-
-    /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn gpu_detector(mut self, detector: Box<dyn crate::detector::GpuDetector>) -> Self {
-        self.gpu_detector = Some(detector);
-        self
-    }
-
-    /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub fn metal_detector(mut self, detector: Box<dyn crate::detector::MetalDetector>) -> Self {
-        self.metal_detector = Some(detector);
         self
     }
 
@@ -454,15 +436,6 @@ impl StitchSessionBuilder {
         if let Some(dir) = self.director {
             session.set_director(dir);
         }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        if let Some(gpu_det) = self.gpu_detector {
-            session.set_gpu_detector(gpu_det);
-        }
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        if let Some(metal_det) = self.metal_detector {
-            session.set_metal_detector(metal_det);
-        }
-
         Ok(session)
     }
 }
@@ -550,10 +523,6 @@ impl StitchSession {
             gpu_encoder: None,
             detector: None,
             director: None,
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
-            gpu_detector: None,
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            metal_detector: None,
             detection_interval: 1,
             lookahead_frames: 0,
         }
@@ -679,33 +648,16 @@ impl StitchSession {
         self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
     }
 
-    /// Attach a detector for object detection on raw camera frames.
+    /// Attach a [`UnifiedDetector`](crate::detector::UnifiedDetector)
+    /// for object detection on raw camera frames.
     ///
-    /// When set, the CPU batch loop ([`Self::run`]) runs detection on each
-    /// frame's raw YUV data and maps results to panorama coordinates
-    /// to the director. Zero-copy paths skip detection (no CPU-accessible
-    /// frame data).
-    pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
+    /// The backend declares which [`DetectorFrame`](crate::detector::DetectorFrame)
+    /// residencies it accepts. Session dispatches CPU frames (YUV /
+    /// NV12) and CUDA frames (shared textures) through the same
+    /// detector; backends return `UnsupportedFrameKind` for residencies
+    /// they cannot handle and session logs+drops those at the boundary.
+    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::UnifiedDetector>) {
         self.detection.set_detector(detector);
-    }
-
-    /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
-    ///
-    /// When set, the zero-copy frame loop runs detection entirely on GPU
-    /// using NV12 device pointers from shared textures. Only the small
-    /// detection output is read back to CPU.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
-        self.detection.set_gpu_detector(detector);
-    }
-
-    /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    ///
-    /// When set, the macOS zero-copy frame loop runs detection using
-    /// Metal compute shaders for preprocessing and CoreML for inference.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
-        self.detection.set_metal_detector(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
@@ -862,7 +814,7 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         let should_detect = self.detection.should_detect(self.frame_count);
 
-        if should_detect && self.detection.has_gpu_detector() {
+        if should_detect && self.detection.has_detector() {
             let detections = self.detection.run_gpu_detection(
                 left_buf,
                 right_buf,
@@ -879,13 +831,10 @@ impl StitchSession {
 
     /// Run Metal-resident detection and update the director.
     ///
-    /// Uses the [`MetalDetector`](crate::detector::MetalDetector) to detect
-    /// objects directly from CVPixelBuffers via Metal compute shaders,
-    /// avoiding any GPU-to-CPU frame readback. Only the small detection
-    /// output is transferred to CPU for tracking and director updates.
-    ///
-    /// Falls back to [`update_director`](Self::update_director) if no
-    /// Metal detector is attached.
+    /// Dispatches to the attached unified detector through
+    /// [`DetectorFrame::Metal`](crate::detector::DetectorFrame::Metal).
+    /// The backend (e.g. `MetalYoloDetector`) owns the `GpuContext`
+    /// clone it needs for CVPixelBuffer import.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn detect_and_update_director_metal(
         &mut self,
@@ -895,14 +844,26 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
+        use crate::detector::{CameraId, DetectorFrame};
+
         let should_detect = self.detection.should_detect(self.frame_count);
 
-        if should_detect && self.detection.has_metal_detector() {
-            let gpu = self.core.gpu();
-            let detections = self
-                .detection
-                .run_metal_detection(left_cvpb, right_cvpb, width, height, gpu);
-            self.detection.last_detections = self.map_detections(detections);
+        if should_detect && self.detection.has_detector() {
+            if let Some(ref mut detector) = self.detection.detector {
+                let mut raw = Vec::new();
+                for (camera, cvpb) in [(CameraId::Left, left_cvpb), (CameraId::Right, right_cvpb)] {
+                    let frame = DetectorFrame::Metal {
+                        cv_pixel_buffer: cvpb,
+                        width,
+                        height,
+                    };
+                    match detector.detect(camera, &frame) {
+                        Ok(v) => raw.extend(v),
+                        Err(e) => log::warn!("detector '{}' {camera:?}: {e}", detector.name()),
+                    }
+                }
+                self.detection.last_detections = self.map_detections(raw);
+            }
         }
 
         self.fire_sink_and_update_director(elapsed, should_detect)

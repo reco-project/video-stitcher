@@ -95,26 +95,12 @@ pub struct Detection {
     pub height: f32,
 }
 
-/// Trait for object detection on raw camera frames.
-///
-/// A frame-level analyzer that may maintain internal state across calls
-/// (e.g. tracking state, warmup flags). Implementations should be
-/// async-friendly - detection may run on a separate thread or even a
-/// different device (e.g. a Jetson's DLA).
-///
-/// # Frame Data
-///
-/// The [`RawFrame`] contains the full YUV data of a single camera frame
-/// (before any stitching or undistortion). Most detection models only
-/// need the Y (luma) plane for grayscale inference, but full color is
-/// available for tasks like jersey classification.
-pub trait Detector: Send {
-    /// Run detection on a raw camera frame.
-    ///
-    /// Returns a list of detections found in the frame. May return an
-    /// empty vector if no objects are detected.
-    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection>;
-}
+// `trait Detector` / `trait GpuDetector` / `trait MetalDetector` were
+// deleted 2026-04-19 (plan-execution §3 M3 step 4 final cleanup).
+// Every reco-detect backend and every session consumer now uses
+// [`UnifiedDetector`] below. `RawFrame`, `ChromaFormat`,
+// `GpuNv12Frame`, and `CameraId` remain as parameter types for
+// [`DetectorFrame`] variants and the unified trait's inputs.
 
 // ---------------------------------------------------------------------------
 // M3 foundation: unified detector error + frame variants.
@@ -339,56 +325,9 @@ pub struct GpuNv12Frame {
     pub is_10bit: bool,
 }
 
-/// Trait for object detection on GPU-resident NV12 frames.
-///
-/// A frame-level analyzer that may maintain internal state across calls.
-/// Unlike [`Detector`] which operates on CPU-accessible [`RawFrame`] data,
-/// this trait takes CUDA device pointers directly. Used in the zero-copy
-/// pipeline where decoded frames never leave the GPU.
-///
-/// Implementations must handle GPU-side preprocessing (NV12-to-RGB
-/// conversion, resize, normalization) and inference entirely on the GPU,
-/// reading back only the small detection output.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub trait GpuDetector: Send {
-    /// Run detection on a GPU-resident NV12 frame.
-    ///
-    /// The [`GpuNv12Frame`] contains CUDA device pointers to the Y and
-    /// interleaved UV planes, their row pitches (may differ from width
-    /// due to alignment), and frame dimensions.
-    fn detect_gpu(&mut self, camera: CameraId, frame: &GpuNv12Frame) -> Vec<Detection>;
-}
-
-/// Trait for object detection on Metal-resident NV12 frames (macOS).
-///
-/// A frame-level analyzer that may maintain internal state across calls.
-/// Unlike [`GpuDetector`] which operates on CUDA device pointers,
-/// this trait takes `CVPixelBufferRef` pointers from VideoToolbox.
-/// Used in the macOS zero-copy pipeline where decoded frames are
-/// IOSurface-backed and can be imported as Metal textures.
-///
-/// Implementations must handle Metal-side preprocessing (NV12-to-RGB
-/// conversion, resize, normalization via compute shaders) and inference,
-/// reading back only the small detection output.
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub trait MetalDetector: Send {
-    /// Run detection on a Metal-resident NV12 frame.
-    ///
-    /// `cv_pixel_buffer` is a `CVPixelBufferRef` from VideoToolbox decode,
-    /// backed by an IOSurface. The implementor imports it as Metal textures
-    /// via `CVMetalTextureCache` for GPU-side preprocessing.
-    ///
-    /// `gpu` is needed for importing the CVPixelBuffer planes as Metal
-    /// textures via `CVMetalTextureCache`.
-    fn detect_metal(
-        &mut self,
-        camera: CameraId,
-        cv_pixel_buffer: crate::metal_interop::CVPixelBufferRef,
-        width: u32,
-        height: u32,
-        gpu: &crate::gpu::GpuContext,
-    ) -> Vec<Detection>;
-}
+// `trait GpuDetector` + `trait MetalDetector` deleted: replaced by
+// `UnifiedDetector` + `DetectorFrame::{Cuda, Metal}` variants. See
+// the comment above the old `trait Detector` removal for context.
 
 #[cfg(test)]
 mod tests {
