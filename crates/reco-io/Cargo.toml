@@ -14,6 +14,10 @@ rpi = ["ffmpeg", "ffmpeg-next/rpi"]
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
 libcamera = []
 profiling = ["tracing", "reco-core/profiling"]
+# Opt-in user-preference persistence for consumers. Pulls in serde +
+# directories (~150 kB of deps). Consumers that only need frame I/O
+# (headless stitching, test harnesses) can skip it.
+config = ["dep:serde", "dep:serde_json", "dep:directories"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
@@ -28,3 +32,12 @@ ffmpeg-next = { version = "8", default-features = false, features = ["codec", "f
 # GStreamer backend
 gstreamer = { version = "0.25", optional = true }
 gstreamer-app = { version = "0.25", optional = true }
+
+# `config` feature deps.
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+directories = { version = "6", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+serde = { version = "1", features = ["derive"] }

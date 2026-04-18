@@ -9,6 +9,9 @@
 //! - `ffmpeg` (default): file decode/encode, RTMP/SRT/RTSP
 //! - `gstreamer`: live camera capture (Jetson ISP, V4L2, etc.)
 //! - `libcamera`: RPi CSI camera capture via rpicam-vid
+//! - `config`: opt-in user-preference persistence (via the `settings`
+//!   module) for consumers like reco-gui that need to remember
+//!   recent files and defaults across sessions.
 
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
@@ -33,6 +36,9 @@ pub mod analyze_job;
 
 #[cfg(feature = "ffmpeg")]
 pub mod zero_copy;
+
+#[cfg(feature = "config")]
+pub mod settings;
 
 #[cfg(feature = "ffmpeg")]
 pub use smart_source::SmartFileSource;
