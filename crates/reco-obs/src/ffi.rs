@@ -177,6 +177,10 @@ pub enum obs_path_type {
 
 /// Source provides video output (synchronous rendering via `video_render`).
 pub const OBS_SOURCE_VIDEO: u32 = 1;
+/// Source delivers frames asynchronously via `obs_source_output_video`.
+/// When OR'd with `OBS_SOURCE_VIDEO`, forms `OBS_SOURCE_ASYNC_VIDEO` -
+/// the only mode reco-obs can currently consume via `obs_source_get_frame`.
+pub const OBS_SOURCE_ASYNC: u32 = 1 << 2;
 /// Source uses custom draw (no default effect passed to `video_render`).
 #[allow(dead_code)]
 pub const OBS_SOURCE_CUSTOM_DRAW: u32 = 1 << 3;
@@ -607,6 +611,9 @@ unsafe extern "C" {
     pub fn obs_get_source_by_name(name: *const c_char) -> *mut obs_source_t;
     pub fn obs_source_release(source: *mut obs_source_t);
     pub fn obs_source_get_name(source: *const obs_source_t) -> *const c_char;
+    /// Returns the bitmask of OBS_SOURCE_* flags declared by the source.
+    /// Bit 0 = video, bit 1 = audio, bit 2 = async, bit 3 = custom_draw, etc.
+    pub fn obs_source_get_output_flags(source: *const obs_source_t) -> u32;
 
     // Source activation (keeps Media Source decoders running even when the
     // upstream source isn't rendered in the scene directly). We're using

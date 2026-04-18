@@ -159,6 +159,42 @@ Consumer side (reco-obs Batch L):
 Estimated ~4-6 hours minimum for a workable v1, plus meaningful
 testing time to validate tracking on real camera pairs.
 
+### A11. Visible upstream sources steal async frames from our poller
+
+**Impact**: High (UX footgun). When an upstream Media Source is
+visible in the scene (eye icon ON), OBS's scene renderer pulls its
+async frames for compositing, and our subsequent
+`obs_source_get_frame` polls return NULL every tick. Hiding the
+upstream with the eye icon (while our `inc_showing` / `inc_active`
+refs keep its decoder running) is what lets frames land in our poll.
+
+Discovered 2026-04-18 after a long debugging session where picking
+Media Sources appeared to do nothing. Toggling their visibility off
+immediately produced `first stitched frame ready` and `submitted`
+counters started growing at 30 fps.
+
+**Suggested direction** (reco-obs, plugin-level): when the user
+picks an upstream source in our properties, automatically hide its
+scene item (if any) via `obs_sceneitem_set_visible(item, false)`.
+Would need new FFI bindings for:
+
+- `obs_source_get_scene` or equivalent (walk scene graph to find the
+  scene item referencing our picked source)
+- `obs_sceneitem_set_visible`
+- Likely `obs_scene_enum_items` to locate the scene item
+
+Undo on `dec_showing` / destroy would be nice but not required - the
+user can toggle visibility back themselves if they move the source
+to a different scene.
+
+Alternate direction: surface a UI hint in the properties dialog
+("Hide upstream sources in the scene panel for correct frame
+capture"), or add a dedicated help string on each dropdown.
+
+Documenting here so the next person hitting this has an immediate
+answer; the pure-UX fix is small but OBS scene-graph walking is
+fiddly so it's backlog, not urgent.
+
 ### A3. No OBS-level wgpu interop
 
 **Impact**: Fundamental to OBS architecture, not a reco-core bug.

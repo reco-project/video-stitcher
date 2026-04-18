@@ -208,13 +208,44 @@ impl RecoSource {
             if ptr.is_null() {
                 log::warn!("reco-obs: upstream source '{new_name}' not found (not yet created?)");
             } else {
+                // Sanity-check the source's output_flags. We can only
+                // consume ASYNC video sources via obs_source_get_frame.
+                // Sync video sources (Browser Source, Screen Capture,
+                // Window Capture, Game Capture) need render-to-texture
+                // (tracked as FRICTION A9) - they'd silently produce no
+                // output if we didn't warn here.
+                let flags = ffi::obs_source_get_output_flags(ptr);
+                let has_video = (flags & ffi::OBS_SOURCE_VIDEO) != 0;
+                let is_async = (flags & ffi::OBS_SOURCE_ASYNC) != 0;
+                if !has_video {
+                    log::warn!(
+                        "reco-obs: source '{new_name}' has no video output (flags={:#06x}); \
+                         it won't produce frames. Pick a video source (Media Source, V4L2 \
+                         Device, NDI).",
+                        flags
+                    );
+                } else if !is_async {
+                    log::warn!(
+                        "reco-obs: source '{new_name}' is a SYNC video source (flags={:#06x}); \
+                         reco-obs Tier 1 only consumes async sources. Browser Source, Screen \
+                         Capture, Window Capture, Game Capture all render this way - tracked \
+                         as FRICTION A9 (needs render-to-texture path). Workarounds: use \
+                         Media Source / V4L2 Device / NDI, or pipe the sync source through \
+                         v4l2loopback first.",
+                        flags
+                    );
+                } else {
+                    log::info!(
+                        "reco-obs: source '{new_name}' is async video (flags={:#06x}) - ok",
+                        flags
+                    );
+                }
                 // Hold both showing + active refs. Media Source's
                 // ffmpeg decode thread pauses on active==0 even when
                 // showing>0, so we need both to keep playback stable
                 // while the upstream isn't visibly rendered in the scene.
                 ffi::obs_source_inc_showing(ptr);
                 ffi::obs_source_inc_active(ptr);
-                log::info!("reco-obs: holding '{new_name}' via inc_showing + inc_active");
             }
             *slot = ptr;
         }
@@ -312,6 +343,24 @@ impl RecoSource {
     /// fire at most once per source instance.
     fn render_and_readback(&mut self) {
         self.diag_tick = self.diag_tick.wrapping_add(1);
+
+        // Lazy re-resolve: on OBS startup, source_create for the Reco
+        // source often fires before scene sources have finished loading,
+        // so our initial apply_settings resolves Media / Media 2 to null.
+        // Retry every 30 ticks (~0.5s at 60fps) until we get non-null
+        // refs. Cheap - obs_get_source_by_name is a hashmap lookup.
+        if self.diag_tick.is_multiple_of(30) {
+            unsafe {
+                if self.left_source.is_null() && !self.left_source_name.is_empty() {
+                    let name = self.left_source_name.clone();
+                    RecoSource::set_source_slot(&mut self.left_source, &name);
+                }
+                if self.right_source.is_null() && !self.right_source_name.is_empty() {
+                    let name = self.right_source_name.clone();
+                    RecoSource::set_source_slot(&mut self.right_source, &name);
+                }
+            }
+        }
         // Every ~60 ticks (~1-2 seconds) flush a diagnostic heartbeat so
         // users can tell "plugin running but no render" from "plugin hung".
         if self.diag_tick.is_multiple_of(60) {
@@ -1014,10 +1063,15 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         } else {
             CStr::from_ptr(left_ptr).to_string_lossy().into_owned()
         };
-        if left_name != src.left_source_name {
+        // Always re-resolve when the slot is null and we have a name to
+        // try: the first apply_settings on source creation may have run
+        // before the upstream existed in the scene, caching a null ptr
+        // with a non-empty name. Later updates with the same name would
+        // skip the resolve and leave the slot permanently null.
+        if left_name != src.left_source_name || (src.left_source.is_null() && !left_name.is_empty())
+        {
             RecoSource::set_source_slot(&mut src.left_source, &left_name);
             src.left_source_name = left_name;
-            // New source may deliver a different format; re-enable warning.
             src.warned_unsupported_format = false;
         }
 
@@ -1027,7 +1081,9 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         } else {
             CStr::from_ptr(right_ptr).to_string_lossy().into_owned()
         };
-        if right_name != src.right_source_name {
+        if right_name != src.right_source_name
+            || (src.right_source.is_null() && !right_name.is_empty())
+        {
             RecoSource::set_source_slot(&mut src.right_source, &right_name);
             src.right_source_name = right_name;
             src.warned_unsupported_format = false;
