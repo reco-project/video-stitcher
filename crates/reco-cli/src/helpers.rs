@@ -22,10 +22,14 @@ use std::cell::Cell;
 /// right now.
 pub struct ProgressReporter {
     /// Fallback start time, used only by [`Self::report`] callers
-    /// that don't supply the session's elapsed clock. Anchored at
-    /// [`Self::new`] (before GPU init, so strictly pre-warmup);
-    /// session-driven paths should prefer
-    /// [`Self::report_with_elapsed`].
+    /// that don't supply the session's elapsed clock (camera /
+    /// libcamera capture paths). Anchored at [`Self::new`] (before
+    /// GPU init, so strictly pre-warmup); session-driven paths
+    /// should prefer [`Self::report_with_elapsed`].
+    #[allow(
+        dead_code,
+        reason = "only read by `report()`, which is gstreamer/libcamera-path-only under default features"
+    )]
     start: std::time::Instant,
     interval: u64,
     /// Last `(frame_count, elapsed)` checkpoint — used to compute
@@ -53,6 +57,10 @@ impl ProgressReporter {
     /// caller did). Prefer [`Self::report_with_elapsed`] when the
     /// caller has access to the session's own clock — it measures
     /// only the decode/render/encode loop and excludes GPU init.
+    #[allow(
+        dead_code,
+        reason = "used only by gstreamer/libcamera capture paths under their features"
+    )]
     pub fn report(&self, frame_count: u64) {
         self.report_with_elapsed(frame_count, self.start.elapsed());
     }
