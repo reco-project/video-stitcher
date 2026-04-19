@@ -300,7 +300,24 @@ know our plugin's internal ring-buffer state.
 
 Estimated 4-6 hours plus memory-budget discussion.
 
-### A19. Replay recording has no tile-downscale / quality override
+### A22. Input dimensions are declared, not detected — mismatched sources silently freeze the output
+
+**Impact**: High UX. Surfaced 2026-04-19 during second in-OBS test. `Input width` and `Input height` in the Reco source Properties dialog are user-declared values that must match the actual frames coming from both upstream OBS sources. If they drift out of sync (e.g. user swaps one source from a 1080p Media Source to a 4K Media Source without also updating Input W/H), the plugin logs `input-dim mismatch (configured WxH, left=..., right=...)` once and then refuses to submit frames. The last rendered frame stays on screen, OBS keeps polling, and the user sees a hang.
+
+Observed symptom: `diag_tick` keeps advancing while `submitted` plateaus. Only visible in stderr/log; Properties UI gives no hint.
+
+Root cause: the pipeline's GPU textures are sized at `StitchCore::new` time using the declared Input W/H. When the actual incoming frame dimensions differ, the submit path (`StitchCore::submit_frame_yuv_at_pose`) correctly rejects — but reco-obs does not rebuild the session to match the new input.
+
+**Suggested direction**: on every successful upstream-source bind, peek the first frame's reported width/height, compare against `self.input_width` / `self.input_height`, and if they differ:
+
+1. Log the detected dims at `info!` level so the story is obvious: "reco-obs: detected input 5312x2988 on right, rebuilding pipeline."
+2. Update `self.input_width` / `self.input_height` from the detection (probably also write them back to the OBS settings dict so the Properties UI reflects reality next time the user opens it).
+3. Invalidate the current `core` (set to `None`) and call `try_init_pipeline` to rebuild with the new dimensions.
+4. Handle the mismatch case (left=1080p, right=4K) explicitly: log a clear error, maybe grey out the source preview with an overlay, and wait for both sides to match instead of silently refusing.
+
+Bonus: a scale / downscale option in Properties (tied to A19) would let users mix 1080p + 4K intentionally by requesting the output scale to the lower of the two.
+
+**Blocks**: nothing urgent in production, but the first time any user changes sources they hit this and assume the plugin crashed.
 
 **Impact**: Medium. Surfaced 2026-04-19 during first in-OBS test. Replay tiles are written at the exact input resolution (the stacked composite is `width × 2*height` for N=2), with no way to request a smaller recording. Consequences:
 
