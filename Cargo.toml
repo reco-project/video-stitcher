@@ -7,6 +7,7 @@ members = [
     "crates/reco-autocam",
     "crates/reco-calibrate",
     "crates/reco-detect",
+    "crates/reco-gpu-interop",
     "crates/reco-gui",
     "crates/reco-obs",
 ]

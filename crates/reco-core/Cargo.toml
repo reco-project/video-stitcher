@@ -27,6 +27,12 @@ ash = "0.38"
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 libloading = "0.9"
+# CUDA / NPP glue migrated to reco-gpu-interop in plan M5 (phase 1);
+# reco-core re-exports for API compatibility so consumers keep their
+# `reco_core::cuda_interop::*` / `cuda_kernels::*` / `npp_interop::*`
+# paths. The Metal / Vulkan / zero-copy follow-up tranches will enable
+# additional features on this dep.
+reco-gpu-interop = { path = "../reco-gpu-interop", features = ["cuda"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 # The `metal` crate (0.33) is wgpu-hal 28's Metal backend dependency.

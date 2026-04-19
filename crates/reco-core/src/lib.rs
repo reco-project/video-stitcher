@@ -80,10 +80,16 @@ pub mod calibration;
 pub mod core;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod coreml_inference;
+// CUDA / NPP modules migrated to the `reco-gpu-interop` crate per
+// plan M5 (phase 1). Re-exported here so existing
+// `reco_core::cuda_interop::*` / `reco_core::cuda_kernels::*` /
+// `reco_core::npp_interop::*` consumer paths keep working.
+// Follow-up tranches migrate `metal_*`, `coreml_inference`,
+// `vulkan_interop`, and `zero_copy` the same way.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod cuda_interop;
+pub use reco_gpu_interop::cuda_interop;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod cuda_kernels;
+pub use reco_gpu_interop::cuda_kernels;
 pub mod detector;
 pub mod director;
 pub mod encoder;
@@ -98,7 +104,7 @@ pub mod metal_compute;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod npp_interop;
+pub use reco_gpu_interop::npp_interop;
 pub mod nv12_converter;
 pub mod pipeline;
 /// M4 unified pose-control primitive. See [`pose_control::PoseControl`]
