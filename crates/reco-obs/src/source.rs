@@ -61,6 +61,16 @@ const PROP_RIGHT_SOURCE: &CStr = c"right_source";
 const PROP_INPUT_FORMAT: &CStr = c"input_format";
 const INPUT_FORMAT_I420: &CStr = c"i420";
 const INPUT_FORMAT_BGRA: &CStr = c"bgra";
+/// Opt-in replay recording (M6.5 item 3, FRICTION A18 close).
+/// When enabled alongside a non-empty [`PROP_REPLAY_PATH`], the
+/// plugin attaches a stacked-video recorder to the StitchCore so
+/// every submitted YUV frame pair is also written to disk as a
+/// vertically stacked Matroska file. Reader-while-writer is safe
+/// (see architecture/stacked-video-replay-2026-04-19 in the vault).
+#[cfg(feature = "replay")]
+const PROP_REPLAY_ENABLED: &CStr = c"replay_enabled";
+#[cfg(feature = "replay")]
+const PROP_REPLAY_PATH: &CStr = c"replay_path";
 
 // ---------------------------------------------------------------------------
 // Source state
@@ -155,6 +165,25 @@ struct RecoSource {
     /// OBS graphics texture for uploading RGBA data.
     /// Created/destroyed on the OBS graphics thread.
     obs_texture: *mut ffi::gs_texture_t,
+
+    /// Replay-recording toggle state (M6.5 item 3). Mirrors the OBS
+    /// property; kept here so `try_init_pipeline` can re-attach a
+    /// recorder after a session rebuild (dim / format change).
+    #[cfg(feature = "replay")]
+    replay_enabled: bool,
+    /// Output path for the stacked-video replay file. Empty string
+    /// means "no output path set"; the recorder only attaches when
+    /// both `replay_enabled` is true and this is non-empty.
+    #[cfg(feature = "replay")]
+    replay_path: String,
+    /// Whether the `StitchCore` currently has a stacked-video
+    /// recorder attached. Tracked here because `StitchCore` does
+    /// not expose a getter (and shouldn't - attachment state is a
+    /// consumer concern, not a pipeline concern). Used to avoid
+    /// tearing down and re-attaching the recorder on every settings
+    /// update when the user changes an unrelated property.
+    #[cfg(feature = "replay")]
+    replay_recorder_attached: bool,
 }
 
 impl RecoSource {
@@ -189,6 +218,12 @@ impl RecoSource {
             rgba_buffer: Vec::new(),
             frame_ready: AtomicBool::new(false),
             obs_texture: ptr::null_mut(),
+            #[cfg(feature = "replay")]
+            replay_enabled: false,
+            #[cfg(feature = "replay")]
+            replay_path: String::new(),
+            #[cfg(feature = "replay")]
+            replay_recorder_attached: false,
         }
     }
 
@@ -319,13 +354,90 @@ impl RecoSource {
                 self.core = Some(session);
                 let buf_size = (self.output_width * self.output_height * 4) as usize;
                 self.rgba_buffer.resize(buf_size, 0);
+                // A session rebuild drops any previously-attached
+                // recorder along with the old core, so the tracking
+                // flag must reset even if the recording was on
+                // moments ago. `update_replay_recorder` then
+                // re-attaches a fresh encoder if the user still has
+                // it enabled.
+                #[cfg(feature = "replay")]
+                {
+                    self.replay_recorder_attached = false;
+                }
+                self.update_replay_recorder();
             }
             Err(e) => {
                 log::error!("reco-obs: failed to create session: {e}");
                 self.core = None;
+                #[cfg(feature = "replay")]
+                {
+                    self.replay_recorder_attached = false;
+                }
             }
         }
     }
+
+    /// Re-align the stacked-video recorder with current settings.
+    ///
+    /// Called after `try_init_pipeline` (session rebuild) and from
+    /// `source_update` (property change). Attaches a recorder when
+    /// the user has ticked the toggle AND supplied a path AND the
+    /// session exists; detaches it otherwise. No-op when the target
+    /// state already matches the current state.
+    ///
+    /// Logging is story-telling per project convention: the user
+    /// should be able to read the log and know exactly when the
+    /// recorder started, stopped, or refused to start (missing
+    /// path, failed to open file, etc.).
+    #[cfg(feature = "replay")]
+    fn update_replay_recorder(&mut self) {
+        let want_recording =
+            self.replay_enabled && !self.replay_path.is_empty() && self.core.is_some();
+        if want_recording && !self.replay_recorder_attached {
+            // Transition: off -> on. Open the encoder and attach.
+            let Some(core) = self.core.as_mut() else {
+                return;
+            };
+            let path = std::path::PathBuf::from(&self.replay_path);
+            let cfg = reco_io::stacked_video::encoder::StackedEncoderConfig::default();
+            match reco_io::stacked_video::replay::session_recorder(
+                &path,
+                cfg,
+                self.input_width,
+                self.input_height,
+            ) {
+                Ok(recorder) => {
+                    log::info!(
+                        "reco-obs: replay recording ENABLED -> {} ({}x{} per tile)",
+                        self.replay_path,
+                        self.input_width,
+                        self.input_height,
+                    );
+                    core.set_stacked_recorder(recorder);
+                    self.replay_recorder_attached = true;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "reco-obs: replay recorder failed to open '{}' ({e}); \
+                         stitching continues without replay",
+                        self.replay_path,
+                    );
+                }
+            }
+        } else if !want_recording && self.replay_recorder_attached {
+            // Transition: on -> off. Finalize the file.
+            if let Some(core) = self.core.as_mut() {
+                log::info!("reco-obs: replay recording DISABLED (finalizing file)");
+                core.clear_stacked_recorder();
+            }
+            self.replay_recorder_attached = false;
+        }
+    }
+
+    /// No-op stub when the `replay` feature is disabled. Keeps the
+    /// call sites unconditional without scattering `#[cfg]` around.
+    #[cfg(not(feature = "replay"))]
+    fn update_replay_recorder(&mut self) {}
 
     /// Load calibration from the config file path.
     fn load_calibration(&mut self) {
@@ -689,6 +801,11 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
             ffi::obs_data_set_default_int(settings, PROP_INPUT_WIDTH.as_ptr(), 1920);
             ffi::obs_data_set_default_int(settings, PROP_INPUT_HEIGHT.as_ptr(), 1080);
             ffi::obs_data_set_default_string(settings, PROP_CONFIG_PATH.as_ptr(), c"".as_ptr());
+            #[cfg(feature = "replay")]
+            {
+                ffi::obs_data_set_default_bool(settings, PROP_REPLAY_ENABLED.as_ptr(), false);
+                ffi::obs_data_set_default_string(settings, PROP_REPLAY_PATH.as_ptr(), c"".as_ptr());
+            }
             ffi::obs_data_set_default_string(
                 settings,
                 PROP_INPUT_FORMAT.as_ptr(),
@@ -803,6 +920,30 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
                 0.1,
             );
 
+            #[cfg(feature = "replay")]
+            {
+                // Two-property pair: enable toggle + output path.
+                // The recorder only attaches when both are set, so
+                // toggling off halts recording without destroying
+                // the setting, and setting a path without checking
+                // the box is a no-op. Users usually configure the
+                // path once and flip the toggle around a recording
+                // session.
+                ffi::obs_properties_add_bool(
+                    props,
+                    PROP_REPLAY_ENABLED.as_ptr(),
+                    c"Record replay (stacked video)".as_ptr(),
+                );
+                ffi::obs_properties_add_path(
+                    props,
+                    PROP_REPLAY_PATH.as_ptr(),
+                    c"Replay output path (.mkv)".as_ptr(),
+                    ffi::obs_path_type::OBS_PATH_FILE_SAVE,
+                    c"Matroska video (*.mkv)".as_ptr(),
+                    ptr::null(),
+                );
+            }
+
             props
         }
     })
@@ -845,6 +986,12 @@ unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_da
                 ffi::obs_leave_graphics();
             }
             src.try_init_pipeline();
+        } else {
+            // No pipeline rebuild needed, but replay settings may
+            // have flipped. Update the recorder attachment state
+            // so toggling the "Record replay" checkbox takes
+            // effect immediately.
+            src.update_replay_recorder();
         }
     })
 }
@@ -1237,6 +1384,23 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         // Viewport position - property-driven yaw/pitch sliders.
         src.yaw_degrees = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr());
         src.pitch_degrees = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr());
+
+        // Replay recording toggle + path (M6.5 item 3). Recorder
+        // attachment itself happens in `try_init_pipeline` /
+        // `update_replay_recorder` — this block only captures the
+        // property state.
+        #[cfg(feature = "replay")]
+        {
+            src.replay_enabled = ffi::obs_data_get_bool(settings, PROP_REPLAY_ENABLED.as_ptr());
+            let replay_path_ptr = ffi::obs_data_get_string(settings, PROP_REPLAY_PATH.as_ptr());
+            src.replay_path = if replay_path_ptr.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(replay_path_ptr)
+                    .to_string_lossy()
+                    .into_owned()
+            };
+        }
     }
 }
 

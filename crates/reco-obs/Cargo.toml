@@ -12,9 +12,15 @@ crate-type = ["cdylib"]
 
 [features]
 profiling = ["reco-core/profiling"]
+# Enables the M6.5 replay-recording UI (two OBS properties: toggle +
+# output path). Pulls in reco-io for the stacked-video encoder.
+# Opt-in so builds that don't want the replay path keep a smaller
+# plugin `.so` footprint.
+replay = ["dep:reco-io"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
+reco-io = { path = "../reco-io", features = ["stacked-output"], optional = true }
 # M2 tracing migration: tracing-subscriber replaces env_logger.
 # tracing-log bridges legacy `log::*` calls. Critical for the OBS
 # plugin: post-deployment we rely on log files for bug diagnosis, and

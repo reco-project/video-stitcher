@@ -5379,6 +5379,7 @@ dependencies = [
  "bindgen",
  "log",
  "reco-core",
+ "reco-io",
  "serde",
  "serde_json",
  "tracing",
