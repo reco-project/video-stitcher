@@ -630,6 +630,25 @@ pub mod encoder {
             Ok(())
         }
 
+        /// Write pre-packed YUV420P atlas bytes directly, bypassing
+        /// the per-tile pack step. Used by the M7 GPU-pack path
+        /// where the shader produces the final atlas and the
+        /// encoder just needs to receive the bytes.
+        ///
+        /// `y` / `u` / `v` must match the layout's
+        /// `packed_width() × packed_height()` Y plane and
+        /// `(packed_width() / 2) × (packed_height() / 2)` chroma
+        /// planes respectively.
+        pub fn push_prepacked_yuv420p(
+            &mut self,
+            y: &[u8],
+            u: &[u8],
+            v: &[u8],
+        ) -> Result<(), StackedEncodeError> {
+            self.encoder.write_yuv420p_planes(y, u, v)?;
+            Ok(())
+        }
+
         /// Flush remaining packets and finalize the container.
         /// Required for plain MP4 (writes the `moov` atom); optional
         /// but recommended for fMP4 (writes a trailing `mfra` index
@@ -1053,6 +1072,161 @@ pub mod replay {
         height: u32,
     ) -> Result<Box<dyn CoreStackedReplayRecorder>, StackedEncodeError> {
         SessionStackedRecorder::open(path, config, width, height)
+    }
+
+    use reco_core::core::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
+    use reco_core::yuv_stack_packer::StackedAtlas;
+
+    /// GPU-pack atlas recorder (M7 pivot). Implements
+    /// [`reco_core::core::StackedReplayGpuRecorder`] by forwarding
+    /// pre-packed [`StackedAtlas`] bytes straight to a
+    /// [`StackedEncoder`]. There's no pack work in this type — the
+    /// compute shader already produced the Y/U/V atlas planes; this
+    /// recorder is just the sink that reaches the encoder.
+    ///
+    /// Open with [`GpuAtlasRecorder::open`], passing the
+    /// **atlas** dimensions (not per-tile dims) returned by
+    /// [`reco_core::session::StitchSession::stacked_atlas_dims`].
+    /// Attach via
+    /// [`reco_core::session::StitchSession::set_stacked_gpu_recorder`].
+    pub struct GpuAtlasRecorder {
+        encoder: Option<StackedEncoder>,
+        atlas_width: u32,
+        atlas_height: u32,
+        frames_recorded: u64,
+        frames_failed: u64,
+        /// Flush-to-disk cadence. Kept identical to
+        /// [`SessionStackedRecorder`]: once per 30 atlases, which at
+        /// 30 fps is roughly once per second.
+        flush_interval: u64,
+    }
+
+    impl GpuAtlasRecorder {
+        /// Open a GPU-pack atlas recorder. `atlas_width / atlas_height`
+        /// are the full atlas dims the packer produces — for an N=2
+        /// vstack of `tile_w × tile_h` tiles this is
+        /// `(tile_w, tile_h * 2)`. The encoder is configured for a
+        /// 1×1 layout of `atlas_width × atlas_height` since the pack
+        /// shader already built the grid; there are no sub-tiles to
+        /// pack here.
+        pub fn open(
+            path: &std::path::Path,
+            config: StackedEncoderConfig,
+            atlas_width: u32,
+            atlas_height: u32,
+        ) -> Result<Box<dyn CoreStackedGpuRecorder>, StackedEncodeError> {
+            let layout = crate::stacked_video::GridLayout::vstack(atlas_width, atlas_height, 1)
+                .ok_or_else(|| {
+                    StackedEncodeError::Pack(StackError::TileDimensionMismatch {
+                        index: 0,
+                        got_w: atlas_width,
+                        got_h: atlas_height,
+                        expected_w: (atlas_width / 2) * 2,
+                        expected_h: (atlas_height / 2) * 2,
+                    })
+                })?;
+            let encoder = StackedEncoder::new(layout, path, config)?;
+            log::info!(
+                "GpuAtlasRecorder: atlas {}x{} -> {} (GPU-pack sink, M7)",
+                atlas_width,
+                atlas_height,
+                path.display(),
+            );
+            Ok(Box::new(Self {
+                encoder: Some(encoder),
+                atlas_width,
+                atlas_height,
+                frames_recorded: 0,
+                frames_failed: 0,
+                flush_interval: 30,
+            }))
+        }
+    }
+
+    impl CoreStackedGpuRecorder for GpuAtlasRecorder {
+        fn record_atlas(&mut self, atlas: &StackedAtlas) {
+            // Dimension drift: the packer was opened for a fixed
+            // atlas size. Anything else indicates consumer wiring
+            // confusion — stop recording, log once.
+            if atlas.width != self.atlas_width || atlas.height != self.atlas_height {
+                log::warn!(
+                    "GpuAtlasRecorder: atlas {}x{} != opened {}x{}; disabling recording",
+                    atlas.width,
+                    atlas.height,
+                    self.atlas_width,
+                    self.atlas_height,
+                );
+                self.encoder = None;
+                return;
+            }
+            let Some(ref mut encoder) = self.encoder else {
+                return;
+            };
+            match encoder.push_prepacked_yuv420p(&atlas.y, &atlas.u, &atlas.v) {
+                Ok(()) => {
+                    self.frames_recorded += 1;
+                    if self.frames_recorded.is_multiple_of(self.flush_interval)
+                        && let Err(e) = encoder.flush()
+                    {
+                        log::warn!("GpuAtlasRecorder: flush failed ({e})");
+                    }
+                }
+                Err(e) => {
+                    self.frames_failed += 1;
+                    log::warn!(
+                        "GpuAtlasRecorder: write failed after {} atlases ({e}); disabling",
+                        self.frames_recorded,
+                    );
+                    self.encoder = None;
+                }
+            }
+        }
+
+        fn flush(&mut self) {
+            if let Some(ref mut encoder) = self.encoder
+                && let Err(e) = encoder.flush()
+            {
+                log::warn!("GpuAtlasRecorder: flush failed ({e})");
+            }
+        }
+
+        fn finish(&mut self) {
+            if let Some(mut encoder) = self.encoder.take() {
+                match encoder.finish() {
+                    Ok(()) => log::info!(
+                        "GpuAtlasRecorder: finished ({} atlases recorded, {} failed)",
+                        self.frames_recorded,
+                        self.frames_failed,
+                    ),
+                    Err(e) => log::warn!(
+                        "GpuAtlasRecorder: finish failed ({e}) after {} atlases",
+                        self.frames_recorded,
+                    ),
+                }
+            }
+        }
+    }
+
+    impl Drop for GpuAtlasRecorder {
+        fn drop(&mut self) {
+            if self.encoder.is_some() {
+                <Self as CoreStackedGpuRecorder>::finish(self);
+            }
+        }
+    }
+
+    /// Convenience constructor for the GPU-pack recorder. Mirrors
+    /// [`session_recorder`] for the GPU path: the encoder type isn't
+    /// exposed to consumers; they receive a boxed trait object ready
+    /// for
+    /// [`reco_core::session::StitchSession::set_stacked_gpu_recorder`].
+    pub fn session_gpu_recorder(
+        path: &std::path::Path,
+        config: StackedEncoderConfig,
+        atlas_width: u32,
+        atlas_height: u32,
+    ) -> Result<Box<dyn CoreStackedGpuRecorder>, StackedEncodeError> {
+        GpuAtlasRecorder::open(path, config, atlas_width, atlas_height)
     }
 }
 
