@@ -257,6 +257,54 @@ pub enum Quality {
     High,
 }
 
+/// Output container format.
+///
+/// The default [`Container::Mp4Fragmented`] is the right choice for
+/// write-while-read workflows (replay backends, live uploads) because
+/// fragmented MP4 writes a minimal `moov` atom up front and flushes
+/// self-contained fragments on keyframes, so a concurrent reader can
+/// parse the file mid-write. Plain [`Container::Mp4`] writes the
+/// `moov` at close, so partial files are unreadable and concurrent
+/// readers see only the header. [`Container::Matroska`] is the
+/// crash-safe alternative with similar streaming properties.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Container {
+    /// Plain MP4 (`.mp4`). Final-file-only; index written at close.
+    /// Default for the stitch output path so the existing behavior
+    /// is preserved; opt in to a streamable container explicitly
+    /// when needed.
+    #[default]
+    Mp4,
+    /// Fragmented MP4 (`.mp4`) with `empty_moov` + `frag_keyframe`
+    /// movflags. Readable while still being written. Default for
+    /// the stacked-video replay encoder.
+    Mp4Fragmented,
+    /// Matroska (`.mkv`). Naturally streamable; recommended by OBS
+    /// for crash-safe recording.
+    Matroska,
+}
+
+impl Container {
+    /// FFmpeg muxer name for this container.
+    fn muxer_name(self) -> &'static str {
+        match self {
+            Self::Mp4 | Self::Mp4Fragmented => "mp4",
+            Self::Matroska => "matroska",
+        }
+    }
+
+    /// Parse from a string (case-insensitive). Accepts `"mp4"`,
+    /// `"fmp4"`/`"mp4-fragmented"`, and `"mkv"`/`"matroska"`.
+    pub fn from_str_loose(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "mp4" => Some(Self::Mp4),
+            "fmp4" | "mp4-fragmented" | "mp4_fragmented" => Some(Self::Mp4Fragmented),
+            "mkv" | "matroska" => Some(Self::Matroska),
+            _ => None,
+        }
+    }
+}
+
 /// Configuration for the video encoder.
 #[derive(Debug, Clone, Default)]
 pub struct EncoderConfig {
@@ -273,6 +321,17 @@ pub struct EncoderConfig {
     /// Path to a source file to copy audio from (stream copy, no re-encoding).
     /// The first audio stream found will be muxed into the output.
     pub audio_source: Option<std::path::PathBuf>,
+    /// Output container format. Defaults to plain MP4 to match the
+    /// existing stitch-output behavior; opt in to fragmented MP4 or
+    /// Matroska for streamable / write-while-read workflows (e.g.,
+    /// the M6.5 stacked-video replay backend).
+    pub container: Container,
+    /// Override the encoder's group-of-pictures size (frames
+    /// between keyframes). `None` leaves ffmpeg / libx264 defaults
+    /// (typically 250 frames). Set a small value (e.g. 30) when
+    /// the output needs frequent keyframes for seekable replay or
+    /// fragmented-MP4 fragment flush cadence.
+    pub gop_size: Option<u32>,
 }
 
 /// Video encoder that writes RGBA frames to an MP4 file.
@@ -393,8 +452,21 @@ impl VideoEncoder {
                 None => continue,
             };
 
-            // Fresh output context for each attempt
-            let mut octx = format::output(path)?;
+            // Fresh output context for each attempt. Use
+            // `output_as` for non-default containers (fragmented
+            // MP4 via movflags still goes through the mp4 muxer, so
+            // the default path works via extension lookup; Matroska
+            // needs the explicit muxer name when the extension
+            // doesn't match).
+            // `format::output(path)` infers muxer from extension.
+            // `output_as(path, name)` forces by name. We use the
+            // latter for Matroska so callers can point at `.mp4`
+            // or any extension and still get MKV - consumers'
+            // opt-in container choice wins over filename.
+            let mut octx = match config.container {
+                Container::Mp4 | Container::Mp4Fragmented => format::output(path)?,
+                Container::Matroska => format::output_as(path, config.container.muxer_name())?,
+            };
 
             match Self::try_open(
                 &mut octx, codec, *pixel_fmt, *is_hw, width, height, fps, config, name,
@@ -418,7 +490,19 @@ impl VideoEncoder {
                         None
                     };
 
-                    octx.write_header()?;
+                    // Fragmented MP4 needs `movflags` so the muxer
+                    // writes an `empty_moov` up front and flushes
+                    // self-contained fragments on every keyframe.
+                    // A concurrent reader can then parse the file
+                    // mid-write; plain MP4 would park the `moov`
+                    // until `write_trailer` and break replay.
+                    if config.container == Container::Mp4Fragmented {
+                        let mut opts = ffmpeg::Dictionary::new();
+                        opts.set("movflags", "empty_moov+frag_keyframe");
+                        let _ = octx.write_header_with(opts)?;
+                    } else {
+                        octx.write_header()?;
+                    }
 
                     let output_time_base = octx
                         .stream(stream_index)
@@ -500,6 +584,13 @@ impl VideoEncoder {
         let encoder_time_base = Rational(fps.1, fps.0);
         enc.set_time_base(encoder_time_base);
 
+        // Optional GOP override for callers that need short keyframe
+        // intervals (replay-recording fMP4, live streaming). Applied
+        // before `open_with` so libx264 / libx265 / etc. pick it up.
+        if let Some(gop) = config.gop_size {
+            enc.set_gop(gop);
+        }
+
         if needs_global_header {
             enc.set_flags(codec::Flags::GLOBAL_HEADER);
         }
@@ -508,6 +599,14 @@ impl VideoEncoder {
             enc.set_threading(ffmpeg::threading::Config::count(0));
         }
 
+        // Seed the output stream with the encoder's unopened
+        // parameters BEFORE `open_with` so the muxer has valid
+        // codec parameters when it allocates its internal fragment
+        // state (matters for the fMP4 muxer with `empty_moov`,
+        // which writes the moov before any packet lands). The
+        // canonical ffmpeg-next transcode example follows the same
+        // pattern: set params, open, re-set params.
+        ost.set_parameters(&enc);
         let opts = build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
         let encoder = enc.open_with(opts)?;
         ost.set_parameters(&encoder);
@@ -748,6 +847,147 @@ impl VideoEncoder {
         Ok(())
     }
 
+    /// Write a pre-converted YUV420P planar frame.
+    ///
+    /// Plane slices must be tightly packed (no padding between
+    /// rows): Y is `width * height`, U and V are each
+    /// `(width / 2) * (height / 2)`. Odd dimensions are rejected
+    /// because 4:2:0 chroma subsampling requires even width/height.
+    ///
+    /// This path exists for the stacked-video replay encoder
+    /// ([`crate::stacked_video::encoder::StackedEncoder`]), which
+    /// produces YUV420P natively from its pack primitive. Feeding
+    /// RGBA through [`Self::write_frame`] would trigger a
+    /// YUV→RGBA→YUV roundtrip for every replay frame; skipping the
+    /// scaler saves ~1-2ms per frame at 1080p and avoids colorspace
+    /// drift from repeated range conversion.
+    ///
+    /// Requires the encoder's internal pixel format to be
+    /// YUV420P. Currently all software encoders
+    /// (`libx264`/`libx265`/`libsvtav1`/`libaom-av1`) use YUV420P;
+    /// hardware encoders use NV12 and are not supported on this
+    /// path (they should go through [`Self::write_nv12_frame`]
+    /// instead).
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "encode_yuv420p_frame")
+    )]
+    pub fn write_yuv420p_planes(
+        &mut self,
+        y: &[u8],
+        u: &[u8],
+        v: &[u8],
+    ) -> Result<(), EncodeError> {
+        if !self.width.is_multiple_of(2) || !self.height.is_multiple_of(2) {
+            return Err(EncodeError::FrameSizeMismatch {
+                expected: 0,
+                actual: 0,
+            });
+        }
+
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let chroma_w = w / 2;
+        let chroma_h = h / 2;
+        let y_expected = w * h;
+        let uv_expected = chroma_w * chroma_h;
+
+        if y.len() != y_expected {
+            return Err(EncodeError::FrameSizeMismatch {
+                expected: y_expected,
+                actual: y.len(),
+            });
+        }
+        if u.len() != uv_expected || v.len() != uv_expected {
+            return Err(EncodeError::FrameSizeMismatch {
+                expected: uv_expected,
+                actual: u.len().max(v.len()),
+            });
+        }
+
+        if self.yuv_frame.format() != Pixel::YUV420P {
+            // Hardware encoders take NV12; plane-packed YUV420P is
+            // for software encoders only. Callers hitting this path
+            // have either misconfigured the encoder or need
+            // `write_nv12_frame`.
+            return Err(EncodeError::CodecNotFound(format!(
+                "write_yuv420p_planes requires YUV420P encoder, got {:?}",
+                self.yuv_frame.format(),
+            )));
+        }
+
+        // Row-by-row copy honoring ffmpeg's plane strides (which may
+        // exceed the logical row width due to SIMD alignment).
+        let y_stride = self.yuv_frame.stride(0);
+        if y_stride == w {
+            self.yuv_frame.data_mut(0)[..y_expected].copy_from_slice(y);
+        } else {
+            for row in 0..h {
+                let src_start = row * w;
+                let dst_start = row * y_stride;
+                self.yuv_frame.data_mut(0)[dst_start..dst_start + w]
+                    .copy_from_slice(&y[src_start..src_start + w]);
+            }
+        }
+
+        for (plane_idx, src) in [(1usize, u), (2, v)] {
+            let stride = self.yuv_frame.stride(plane_idx);
+            if stride == chroma_w {
+                self.yuv_frame.data_mut(plane_idx)[..uv_expected].copy_from_slice(src);
+            } else {
+                for row in 0..chroma_h {
+                    let src_start = row * chroma_w;
+                    let dst_start = row * stride;
+                    self.yuv_frame.data_mut(plane_idx)[dst_start..dst_start + chroma_w]
+                        .copy_from_slice(&src[src_start..src_start + chroma_w]);
+                }
+            }
+        }
+
+        self.yuv_frame.set_pts(Some(self.frame_count));
+        self.encoder.send_frame(&self.yuv_frame)?;
+        self.receive_and_write_packets()?;
+
+        self.frame_count += 1;
+        Ok(())
+    }
+
+    /// Flush muxer + AVIO buffers to disk without finalizing the
+    /// container.
+    ///
+    /// Forces any fragments or packets currently buffered in ffmpeg
+    /// (either the muxer's internal queue or the AVIO output layer)
+    /// out to the file descriptor. A subsequent [`Self::finish`] is
+    /// still required to write the final trailer.
+    ///
+    /// Needed for write-while-read workflows on fragmented MP4 /
+    /// Matroska where a concurrent reader only sees bytes once
+    /// they've actually hit disk. Call periodically (e.g. every
+    /// keyframe) from the stacked-video replay path.
+    ///
+    /// `av_write_frame(ctx, NULL)` prompts the muxer to emit any
+    /// queued packets; `avio_flush` then forces the AVIO layer to
+    /// write its buffer to the OS. Both are safe to call multiple
+    /// times and at any point after `write_header`.
+    pub fn flush_to_disk(&mut self) -> Result<(), EncodeError> {
+        // SAFETY: `octx` is a live output context (created in
+        // `new`, never dropped until `Drop` runs). `avio_flush` is
+        // safe on any live AVIO and doesn't alter muxer state —
+        // just forces the output-layer buffer to the file
+        // descriptor. We intentionally avoid
+        // `av_write_frame(ctx, NULL)` because fMP4's
+        // `frag_keyframe` mode treats that as "close current
+        // fragment" which clashes with the subsequent
+        // `write_trailer` on finish (observed as AVERROR -105).
+        unsafe {
+            let pb = (*self.octx.as_mut_ptr()).pb;
+            if !pb.is_null() {
+                ffmpeg::sys::avio_flush(pb);
+            }
+        }
+        Ok(())
+    }
+
     /// Flush the encoder and finalize the output file.
     ///
     /// Must be called after all frames have been written. Safe to call
@@ -789,6 +1029,27 @@ impl VideoEncoder {
         while self.encoder.receive_packet(&mut packet).is_ok() {
             packet.set_stream(self.stream_index);
             packet.rescale_ts(self.encoder_time_base, self.output_time_base);
+            // The fMP4 muxer refuses to finalize a fragment whose
+            // last packet has no duration (raises a warning then
+            // fails `write_trailer` with AVERROR(EINVAL)). libx264
+            // doesn't always populate `duration` on output packets,
+            // so fill in the one-frame default (1 unit in encoder
+            // time base, rescaled to output time base) when it's
+            // missing. Safe for the non-fragmented muxers too,
+            // which happily accept explicit durations.
+            if packet.duration() <= 0 {
+                // SAFETY: `av_rescale_q` is a pure arithmetic helper
+                // (a / b * c rounded). No FFI state, no pointers,
+                // no lifetime concerns.
+                let one_frame = unsafe {
+                    ffmpeg::sys::av_rescale_q(
+                        1,
+                        self.encoder_time_base.into(),
+                        self.output_time_base.into(),
+                    )
+                };
+                packet.set_duration(one_frame.max(1));
+            }
             packet.write_interleaved(&mut self.octx)?;
         }
         // Audio packets are forwarded during flush (after all video is written)

@@ -36,6 +36,11 @@ pub struct StitchArgs<'a> {
     pub tracking_mode: &'a str,
     pub crf: Option<u8>,
     pub preset: Option<String>,
+    /// Optional replay-recording output path. When `Some`, the
+    /// stitch job writes a stacked-video copy of the source frames
+    /// alongside the stitched output (M6.5 feature, `replay`
+    /// feature flag on reco-cli).
+    pub replay_path: Option<&'a str>,
 }
 
 /// Run the stitch subcommand.
@@ -87,6 +92,22 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if let Some(ref preset) = args.preset {
         job = job.preset(preset);
+    }
+
+    // Opt-in replay recording. The builder call is all the
+    // consumer needs - StitchJob owns the encoder lifecycle, the
+    // per-frame tap, and the finalize.
+    #[cfg(feature = "replay")]
+    if let Some(replay_path) = args.replay_path {
+        job = job.with_replay_recording(replay_path);
+        println!("Replay recording: {replay_path}");
+    }
+    #[cfg(not(feature = "replay"))]
+    if args.replay_path.is_some() {
+        log::warn!(
+            "--replay specified but `replay` feature is disabled. \
+             Build with --features replay to enable."
+        );
     }
 
     // Sweep director needs no model - attach it directly.

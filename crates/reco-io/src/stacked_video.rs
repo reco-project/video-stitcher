@@ -455,56 +455,567 @@ fn read_tile_plane(
 // lands in the consumer-wiring tranche (M6.5 item 3 + 6) when
 // reco-obs / reco-gui actually record replays.
 
-/// Encoder stub (plan M6.5 item 1) gated behind `stacked-output`.
-/// Lands with real ffmpeg glue in a follow-up; today it exists so
-/// the feature gate is exercised by CI and consumers can see the
-/// intended shape.
 #[cfg(feature = "stacked-output")]
 pub mod encoder {
-    use super::GridLayout;
+    //! Stacked-video encoder. Wraps
+    //! [`crate::ffmpeg::encoder::VideoEncoder`] with a default
+    //! configuration suited to the replay-recording use case:
+    //! fragmented MP4 (readable while being written), YUV420P planar
+    //! pixel format (skips the RGBA scaler), and a software encoder
+    //! so it doesn't contend with the GPU encoder already running
+    //! the live stitch output.
+    //!
+    //! Consumers can override any of these via the [`StackedEncoderConfig`]
+    //! builder. Hardware-encoded stacked output would need an NV12
+    //! pack variant; not implemented in this cut (see the vault note
+    //! `architecture/stacked-video-replay-2026-04-19.md`).
+    use super::{GridLayout, StackError, pack_yuv420p};
+    use crate::ffmpeg::encoder::{
+        Container, EncodeError, EncoderConfig, Quality, VideoCodec, VideoEncoder,
+    };
+    use reco_core::source::YuvFrame;
+    use std::path::Path;
+    use thiserror::Error;
 
-    /// Placeholder stacked-video encoder. Real impl wraps
-    /// `crate::ffmpeg::encoder::VideoEncoder` and calls
-    /// `pack_yuv420p` on each frame pair before encode.
+    /// Errors from stacked-video encoding. Flattens both layers
+    /// (pack and ffmpeg encode) so consumers pattern-match on one
+    /// type.
+    #[derive(Debug, Error)]
+    pub enum StackedEncodeError {
+        /// Pack-layer error (tile dimensions, count, etc.).
+        #[error("pack: {0}")]
+        Pack(#[from] StackError),
+        /// FFmpeg-layer error (codec open, mux, write).
+        #[error("encode: {0}")]
+        Encode(#[from] EncodeError),
+    }
+
+    /// Configuration for [`StackedEncoder`]. Derived from
+    /// [`EncoderConfig`] but with replay-friendly defaults:
+    /// fragmented MP4, `libx264` software encoder, no audio
+    /// passthrough. Override any field as needed.
+    #[derive(Debug, Clone)]
+    pub struct StackedEncoderConfig {
+        /// Inner encoder config. Container defaults to
+        /// [`Container::Mp4Fragmented`]; codec defaults to
+        /// [`VideoCodec::H264`]; `encoder_name` is forced to the
+        /// software encoder for the chosen codec so pack output
+        /// (YUV420P) is accepted without a pixel-format conversion.
+        pub inner: EncoderConfig,
+        /// Output frames-per-second (numerator, denominator).
+        pub fps: (i32, i32),
+    }
+
+    impl Default for StackedEncoderConfig {
+        fn default() -> Self {
+            Self {
+                inner: EncoderConfig {
+                    // Matroska is the replay-recording default:
+                    // streamable (readers can open mid-write),
+                    // crash-safe (partial files are always
+                    // recoverable), and OBS's own default. fMP4 is
+                    // also supported via `Container::Mp4Fragmented`
+                    // but currently trips a muxer/libx264 finalize
+                    // bug in ffmpeg 7 / ffmpeg-next 8 that we
+                    // haven't root-caused (write_trailer returns
+                    // AVERROR -162 even with the canonical
+                    // movflags recipe; plain MP4 and Matroska
+                    // both finalize cleanly with identical stream
+                    // setup). Flagged for follow-up; consumers
+                    // that explicitly opt in to fMP4 today will
+                    // hit it.
+                    container: Container::Matroska,
+                    codec: VideoCodec::H264,
+                    quality: Quality::Balanced,
+                    encoder_name: Some("libx264".to_string()),
+                    crf: None,
+                    preset: None,
+                    audio_source: None,
+                    // Short GOP so replay readers see recent
+                    // frames within ~1 second. For Matroska the
+                    // GOP controls cluster cadence; for fMP4 it
+                    // would control fragment cadence. 30 frames
+                    // at 30fps costs ~5-10% bitrate vs the libx264
+                    // default of 250.
+                    gop_size: Some(30),
+                },
+                fps: (30, 1),
+            }
+        }
+    }
+
+    /// Stacked-video encoder. One instance per output file.
+    ///
+    /// Not [`Sync`] — the underlying `ffmpeg` encoder owns raw
+    /// pointers and must stay on one thread.
     pub struct StackedEncoder {
-        _layout: GridLayout,
+        layout: GridLayout,
+        encoder: VideoEncoder,
     }
 
     impl StackedEncoder {
-        /// Create a stacked encoder for the given grid. Not yet
-        /// implemented — returns a stub.
-        pub fn new(layout: GridLayout, _output_path: &std::path::Path) -> Self {
-            log::warn!(
-                "reco-io stacked_video::encoder::StackedEncoder is a stub; \
-                 ffmpeg glue lands in the consumer-wiring tranche"
+        /// Open a new stacked-video file for the given grid layout.
+        ///
+        /// The file's dimensions are
+        /// `layout.packed_width() × layout.packed_height()`. All
+        /// tile dimensions must be even (enforced by [`GridLayout`]
+        /// construction).
+        pub fn new(
+            layout: GridLayout,
+            output_path: &Path,
+            config: StackedEncoderConfig,
+        ) -> Result<Self, StackedEncodeError> {
+            let fps = ffmpeg_next::Rational(config.fps.0, config.fps.1);
+            let encoder = VideoEncoder::new(
+                output_path,
+                layout.packed_width(),
+                layout.packed_height(),
+                fps,
+                &config.inner,
+            )?;
+            log::info!(
+                "StackedEncoder: {}x{} grid ({} rows x {} cols, tile {}x{}) -> {} ({}, {})",
+                layout.packed_width(),
+                layout.packed_height(),
+                layout.rows(),
+                layout.cols(),
+                layout.tile_width(),
+                layout.tile_height(),
+                output_path.display(),
+                encoder.encoder_name(),
+                match config.inner.container {
+                    Container::Mp4 => "mp4",
+                    Container::Mp4Fragmented => "fmp4",
+                    Container::Matroska => "mkv",
+                },
             );
-            Self { _layout: layout }
+            Ok(Self { layout, encoder })
+        }
+
+        /// Push one row-major tuple of tiles. `tiles[i]` is either
+        /// `Some(&YuvFrame)` or `None` for an empty tile (zero-filled
+        /// neutral grey). Callers driving the stacked encoder with
+        /// pre-synced input typically pass all `Some`; a partially
+        /// filled grid is supported for N-up layouts with fewer
+        /// cameras than capacity.
+        pub fn push(&mut self, tiles: &[Option<&YuvFrame>]) -> Result<(), StackedEncodeError> {
+            let packed = pack_yuv420p(&self.layout, tiles)?;
+            self.encoder
+                .write_yuv420p_planes(&packed.y, &packed.u, &packed.v)?;
+            Ok(())
+        }
+
+        /// Convenience: push a slice of owned frames (all
+        /// populated). Equivalent to building an `Option` slice with
+        /// `Some` on every entry.
+        pub fn push_all(&mut self, tiles: &[&YuvFrame]) -> Result<(), StackedEncodeError> {
+            let opts: Vec<Option<&YuvFrame>> = tiles.iter().copied().map(Some).collect();
+            self.push(&opts)
+        }
+
+        /// Push buffered bytes to disk without finalizing the
+        /// container.
+        ///
+        /// Required for write-while-read replay: a concurrent reader
+        /// only sees bytes once the AVIO layer has written them to
+        /// the file descriptor, and fMP4 flushes fragments only on
+        /// this call (or when the next keyframe forces one). Call
+        /// periodically from the replay path, typically once per
+        /// keyframe or every few seconds.
+        ///
+        /// Does not finalize the file; [`Self::finish`] is still
+        /// required when the recording session ends.
+        pub fn flush(&mut self) -> Result<(), StackedEncodeError> {
+            self.encoder.flush_to_disk()?;
+            Ok(())
+        }
+
+        /// Flush remaining packets and finalize the container.
+        /// Required for plain MP4 (writes the `moov` atom); optional
+        /// but recommended for fMP4 (writes a trailing `mfra` index
+        /// so seek performance on the finished file is better).
+        pub fn finish(&mut self) -> Result<(), StackedEncodeError> {
+            self.encoder.finish()?;
+            Ok(())
+        }
+
+        /// The grid layout this encoder was configured with.
+        pub fn layout(&self) -> &GridLayout {
+            &self.layout
         }
     }
 }
 
-/// Source stub (plan M6.5 item 2) gated behind `stacked-output`.
-/// Symmetric to the encoder above.
+/// FrameSource decorator that records pre-stitch source frames to a
+/// stacked-video file alongside the live pipeline.
+///
+/// Enables the "professional replay" capability from the M6.5 plan
+/// with zero plumbing in the consumer: call
+/// [`crate::StitchJob::with_replay_recording`] and the library wires
+/// a [`ReplayRecordingSource`] in front of the real source. Each
+/// frame is passed through to the stitch pipeline unmodified while a
+/// copy is packed into the replay encoder on the same thread.
+///
+/// Only the CPU `StereoFrame::Yuv420p` variant is recorded today:
+///
+/// - `Nv12` (Jetson ISP / NVDEC on Linux): not yet supported;
+///   would need an NV12 pack variant or a one-off Nv12→Yuv420p
+///   conversion on the hot path.
+/// - `GpuResident` / `MetalResident`: can't record without a
+///   GPU→CPU readback per frame, which we don't pay until a
+///   consumer explicitly asks.
+///
+/// A non-Yuv420p frame logs a `warn!` on first encounter and is
+/// passed through unrecorded. The replay file will contain only the
+/// Yuv420p-path frames.
+#[cfg(feature = "stacked-output")]
+pub mod replay {
+    use super::encoder::{StackedEncoder, StackedEncoderConfig};
+    use super::{GridLayout, encoder::StackedEncodeError};
+    use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame, YuvFrame};
+    use std::path::Path;
+
+    /// Decorator FrameSource that also writes source frames to a
+    /// stacked-video replay file.
+    pub struct ReplayRecordingSource {
+        inner: Box<dyn FrameSource>,
+        encoder: Option<StackedEncoder>,
+        warned_non_yuv420p: bool,
+        frames_recorded: u64,
+        flush_interval: u64,
+    }
+
+    impl ReplayRecordingSource {
+        /// Wrap an existing source, recording each Yuv420p stereo
+        /// frame to `path` as it passes through. `config` supplies
+        /// the encoder parameters; `StackedEncoderConfig::default`
+        /// is the usual choice.
+        pub fn wrap(
+            inner: Box<dyn FrameSource>,
+            path: &Path,
+            config: StackedEncoderConfig,
+        ) -> Result<Self, StackedEncodeError> {
+            let info = inner.info();
+            let layout = GridLayout::vstack(info.width, info.height, 2).ok_or_else(|| {
+                StackedEncodeError::Pack(super::StackError::TileDimensionMismatch {
+                    index: 0,
+                    got_w: info.width,
+                    got_h: info.height,
+                    expected_w: (info.width / 2) * 2,
+                    expected_h: (info.height / 2) * 2,
+                })
+            })?;
+            let encoder = StackedEncoder::new(layout, path, config)?;
+            log::info!(
+                "Replay recording: {}x{} -> {} (stacked vertical, 2 tiles)",
+                info.width,
+                info.height,
+                path.display(),
+            );
+            let _ = layout;
+            Ok(Self {
+                inner,
+                encoder: Some(encoder),
+                warned_non_yuv420p: false,
+                frames_recorded: 0,
+                // Flush to disk every ~1 second at 30fps. Balances
+                // replay freshness against syscall overhead.
+                flush_interval: 30,
+            })
+        }
+
+        /// Finalize the replay file. Safe to call from the pipeline
+        /// run-end path; subsequent frames from the inner source
+        /// pass through unrecorded.
+        pub fn finish(&mut self) -> Result<(), StackedEncodeError> {
+            if let Some(mut enc) = self.encoder.take() {
+                enc.finish()?;
+                log::info!(
+                    "Replay recording: finished ({} frames)",
+                    self.frames_recorded
+                );
+            }
+            Ok(())
+        }
+
+        /// How many frames have been written to the replay file.
+        pub fn frames_recorded(&self) -> u64 {
+            self.frames_recorded
+        }
+
+        fn record(&mut self, frame: &StereoFrame) {
+            let Some(ref mut encoder) = self.encoder else {
+                return;
+            };
+            match frame {
+                StereoFrame::Yuv420p(pair) => {
+                    let info = self.inner.info();
+                    let left = YuvFrame {
+                        y: pair.left.y.clone(),
+                        u: pair.left.u.clone(),
+                        v: pair.left.v.clone(),
+                        width: info.width,
+                        height: info.height,
+                        timestamp_us: 0,
+                    };
+                    let right = YuvFrame {
+                        y: pair.right.y.clone(),
+                        u: pair.right.u.clone(),
+                        v: pair.right.v.clone(),
+                        width: info.width,
+                        height: info.height,
+                        timestamp_us: 0,
+                    };
+                    if let Err(e) = encoder.push(&[Some(&left), Some(&right)]) {
+                        log::warn!(
+                            "replay push failed ({e}); disabling replay recording for this session"
+                        );
+                        self.encoder = None;
+                        return;
+                    }
+                    self.frames_recorded += 1;
+                    if self.frames_recorded.is_multiple_of(self.flush_interval) {
+                        // Best-effort flush; on failure we keep
+                        // encoding. The reader will see stale
+                        // content but that's better than dropping
+                        // the whole session.
+                        let _ = encoder.flush();
+                    }
+                }
+                _ => {
+                    if !self.warned_non_yuv420p {
+                        log::warn!(
+                            "replay recording: source yields non-Yuv420p frames; \
+                             recording disabled for this session (Nv12/GPU-resident \
+                             variants need a separate pack path, not implemented yet)"
+                        );
+                        self.warned_non_yuv420p = true;
+                        self.encoder = None;
+                    }
+                }
+            }
+        }
+    }
+
+    impl FrameSource for ReplayRecordingSource {
+        fn info(&self) -> SourceInfo {
+            self.inner.info()
+        }
+
+        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+            let frame = self.inner.next_frame()?;
+            if let Some(ref f) = frame {
+                self.record(f);
+            }
+            Ok(frame)
+        }
+
+        fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+            let frame = self.inner.try_next_frame()?;
+            if let Some(ref f) = frame {
+                self.record(f);
+            }
+            Ok(frame)
+        }
+
+        fn is_gpu_resident(&self) -> bool {
+            self.inner.is_gpu_resident()
+        }
+
+        fn gpu_pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+            self.inner.gpu_pixel_format()
+        }
+
+        fn left_rotation(&self) -> i32 {
+            self.inner.left_rotation()
+        }
+
+        fn right_rotation(&self) -> i32 {
+            self.inner.right_rotation()
+        }
+    }
+
+    impl Drop for ReplayRecordingSource {
+        fn drop(&mut self) {
+            // Best-effort finalize on drop so callers who forget
+            // to call `finish()` still get a valid file (albeit
+            // without the final-log line).
+            let _ = self.finish();
+        }
+    }
+
+    /// Compile-time bound: `ReplayRecordingSource` must be Send so
+    /// StitchJob can move it into the session's worker loop.
+    const _: fn() = || {
+        fn assert_send<T: Send>() {}
+        assert_send::<ReplayRecordingSource>();
+    };
+}
+
 #[cfg(feature = "stacked-output")]
 pub mod source {
-    use super::GridLayout;
+    //! Stacked-video source. Wraps
+    //! [`crate::ffmpeg::decoder::VideoDecoder`] and demuxes each
+    //! packed frame into N tiles.
+    //!
+    //! Two consumer shapes:
+    //!
+    //! - [`StackedSource::next_tuple`] yields the full tile vector
+    //!   for N-arbitrary consumers (replay scrubbing, analysis).
+    //! - The [`reco_core::source::FrameSource`] impl accepts only
+    //!   `capacity == 2` layouts and yields
+    //!   [`reco_core::source::StereoFrame::Yuv420p`] pairs so the
+    //!   stitch pipeline can drive off a stacked recording as if it
+    //!   were two independent cameras.
+    use super::{GridLayout, StackError, unpack_yuv420p};
+    use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
+    use reco_core::source::{
+        FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData, YuvFrame,
+    };
+    use std::path::Path;
+    use thiserror::Error;
 
-    /// Placeholder stacked-video demux source. Real impl wraps
-    /// `crate::ffmpeg::decoder::VideoDecoder` and calls
-    /// `unpack_yuv420p` on each decoded frame.
+    /// Errors from stacked-video decoding.
+    #[derive(Debug, Error)]
+    pub enum StackedDecodeError {
+        /// FFmpeg-layer error (open, decode).
+        #[error("decode: {0}")]
+        Decode(#[from] DecodeError),
+        /// Unpack-layer error (packed frame shape vs layout).
+        #[error("unpack: {0}")]
+        Unpack(#[from] StackError),
+        /// The container dimensions don't match the given grid
+        /// layout. The caller supplied the wrong grid for the file.
+        #[error(
+            "layout mismatch: file is {file_w}x{file_h}, layout expects {layout_w}x{layout_h}"
+        )]
+        LayoutMismatch {
+            /// The decoded file's reported width.
+            file_w: u32,
+            /// The decoded file's reported height.
+            file_h: u32,
+            /// What `layout.packed_width()` returns.
+            layout_w: u32,
+            /// What `layout.packed_height()` returns.
+            layout_h: u32,
+        },
+        /// FrameSource path was given a layout whose capacity is
+        /// not 2. Stereo pipeline requires exactly two tiles.
+        #[error("FrameSource path requires capacity=2, layout has {got}")]
+        NotStereo {
+            /// The layout's `rows * cols`.
+            got: u32,
+        },
+    }
+
+    /// Stacked-video source. One instance per input file.
     pub struct StackedSource {
-        _layout: GridLayout,
+        layout: GridLayout,
+        decoder: VideoDecoder,
     }
 
     impl StackedSource {
-        /// Open a stacked video file. Not yet implemented —
-        /// returns a stub.
-        pub fn open(layout: GridLayout, _input_path: &std::path::Path) -> std::io::Result<Self> {
-            log::warn!(
-                "reco-io stacked_video::source::StackedSource is a stub; \
-                 ffmpeg glue lands in the consumer-wiring tranche"
-            );
-            Ok(Self { _layout: layout })
+        /// Open a stacked video file for the given grid layout.
+        ///
+        /// Verifies that the file's dimensions match
+        /// `layout.packed_width() × layout.packed_height()`. A
+        /// mismatch means the caller passed the wrong grid for
+        /// the file - probably a shape change between writer and
+        /// reader.
+        pub fn open(layout: GridLayout, input_path: &Path) -> Result<Self, StackedDecodeError> {
+            let decoder = VideoDecoder::open(input_path)?;
+            let file_w = decoder.width();
+            let file_h = decoder.height();
+            if file_w != layout.packed_width() || file_h != layout.packed_height() {
+                return Err(StackedDecodeError::LayoutMismatch {
+                    file_w,
+                    file_h,
+                    layout_w: layout.packed_width(),
+                    layout_h: layout.packed_height(),
+                });
+            }
+            Ok(Self { layout, decoder })
+        }
+
+        /// Grid layout this source was opened with.
+        pub fn layout(&self) -> &GridLayout {
+            &self.layout
+        }
+
+        /// Frame rate of the underlying file (frames per second).
+        pub fn fps(&self) -> f64 {
+            self.decoder.fps()
+        }
+
+        /// Decode the next packed frame and split it into N tiles,
+        /// or `None` at end of stream.
+        pub fn next_tuple(&mut self) -> Result<Option<Vec<YuvFrame>>, StackedDecodeError> {
+            match self.decoder.next_frame()? {
+                Some(packed) => {
+                    let tiles = unpack_yuv420p(&self.layout, &packed)?;
+                    Ok(Some(tiles))
+                }
+                None => Ok(None),
+            }
+        }
+    }
+
+    // Safety: VideoDecoder owns ffmpeg raw pointers but is bound to
+    // one thread by its `!Sync` wrapping. StackedSource inherits
+    // that; the Send impl is carried by VideoDecoder (which the
+    // crate already marks Send).
+    impl FrameSource for StackedSource {
+        fn info(&self) -> SourceInfo {
+            let tw = self.layout.tile_width();
+            let th = self.layout.tile_height();
+            let (num, den) = {
+                let r = self.decoder.frame_rate();
+                (r.0, r.1)
+            };
+            SourceInfo {
+                width: tw,
+                height: th,
+                fps: self.fps(),
+                fps_rational: Some((num, den)),
+                total_frames: None,
+            }
+        }
+
+        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+            if self.layout.capacity() != 2 {
+                return Err(SourceError::Read {
+                    reason: format!(
+                        "StackedSource as FrameSource requires capacity=2, layout has {}",
+                        self.layout.capacity()
+                    ),
+                });
+            }
+            let tuple = self.next_tuple().map_err(|e| SourceError::Read {
+                reason: e.to_string(),
+            })?;
+            let Some(tiles) = tuple else {
+                return Ok(None);
+            };
+            // Row-major: `tiles[0] = left`, `tiles[1] = right` matches
+            // the writer convention established in `pack_yuv420p`.
+            let tiles: [YuvFrame; 2] = tiles.try_into().map_err(|v: Vec<YuvFrame>| {
+                SourceError::Read {
+                    reason: format!("expected 2 tiles, got {}", v.len()),
+                }
+            })?;
+            let [left, right] = tiles;
+            Ok(Some(StereoFrame::Yuv420p(FramePair {
+                left: YuvData {
+                    y: left.y,
+                    u: left.u,
+                    v: left.v,
+                },
+                right: YuvData {
+                    y: right.y,
+                    u: right.u,
+                    v: right.v,
+                },
+            })))
         }
     }
 }

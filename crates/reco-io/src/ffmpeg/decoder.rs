@@ -427,7 +427,16 @@ impl VideoDecoder {
         tracing::instrument(skip_all, name = "decode_frame")
     )]
     pub fn next_frame(&mut self) -> Result<Option<YuvFrame>, DecodeError> {
+        // After EOF we still may have buffered frames in the decoder
+        // (multi-slice encoders like libx264 with `slices=7` or
+        // multi-reference H.264 with long GOPs hold several frames in
+        // the reorder queue). Keep draining until `receive_frame`
+        // stops returning frames — only then signal real end-of-stream.
         if self.eof_sent {
+            profile_scope!("h264_decode");
+            if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                return Ok(Some(self.extract_yuv()?));
+            }
             return Ok(None);
         }
 
@@ -455,6 +464,9 @@ impl VideoDecoder {
             if !found_packet {
                 self.eof_sent = true;
                 self.decoder.send_eof()?;
+                // Fall through to the `eof_sent` branch on subsequent
+                // calls; drain one frame now to keep the caller's
+                // "poll one at a time" loop moving forward.
                 if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
                     return Ok(Some(self.extract_yuv()?));
                 }

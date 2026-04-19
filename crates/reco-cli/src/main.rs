@@ -187,6 +187,12 @@ enum Commands {
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
         #[arg(long)]
         preset: Option<String>,
+
+        /// Record pre-stitch source frames to this path as a
+        /// stacked-video file for later replay or cloud upload.
+        /// Requires building with `--features replay`.
+        #[arg(long)]
+        replay: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -550,6 +556,7 @@ fn main() -> anyhow::Result<()> {
             tracking,
             crf,
             preset,
+            replay,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -571,6 +578,7 @@ fn main() -> anyhow::Result<()> {
                 tracking_mode: &tracking,
                 crf,
                 preset,
+                replay_path: replay.as_deref(),
             },
             &interrupted,
         ),

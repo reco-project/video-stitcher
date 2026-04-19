@@ -57,6 +57,22 @@ pub struct StitchJob {
     // Callbacks
     on_progress: Option<ProgressCallback>,
     on_session: Option<SessionCallback>,
+
+    // Replay recording (M6.5 stacked-video). Opt-in, gated by the
+    // `stacked-output` feature so consumers not building it pay
+    // nothing.
+    #[cfg(feature = "stacked-output")]
+    replay_recording: Option<ReplayRecordingConfig>,
+}
+
+/// Configuration for optional replay recording (see
+/// [`StitchJob::with_replay_recording`]). Stored rather than eagerly
+/// opened so `StitchJob::run` is the single allocation / error
+/// boundary for the replay file.
+#[cfg(feature = "stacked-output")]
+struct ReplayRecordingConfig {
+    path: PathBuf,
+    encoder_config: Box<crate::stacked_video::encoder::StackedEncoderConfig>,
 }
 
 /// Boxed progress callback type alias to satisfy clippy::type_complexity.
@@ -213,6 +229,8 @@ impl StitchJob {
             blend_width: 0.15,
             on_progress: None,
             on_session: None,
+            #[cfg(feature = "stacked-output")]
+            replay_recording: None,
         }
     }
 
@@ -322,6 +340,60 @@ impl StitchJob {
     /// Set the blend width for seam blending (0.0 - 1.0). Default: 0.15.
     pub fn blend_width(mut self, blend: f32) -> Self {
         self.blend_width = blend;
+        self
+    }
+
+    // ── Replay recording (M6.5 stacked-video) ──
+
+    /// Record pre-stitch source frames to a stacked-video file at
+    /// `path` while the job runs. The file is a grid-layout video
+    /// (vertical stack for the default N=2 layout) that can be read
+    /// back via [`crate::stacked_video::source::StackedSource`] for
+    /// professional replay, web panorama generation, or cloud
+    /// deployment.
+    ///
+    /// Defaults to Matroska container, libx264, 30-frame GOP - see
+    /// [`crate::stacked_video::encoder::StackedEncoderConfig`] for
+    /// the full default and use [`Self::replay_recording_config`]
+    /// to override.
+    ///
+    /// Recording is best-effort and never fails the stitch run: if
+    /// the encoder can't keep up or the source yields non-Yuv420p
+    /// frames (GPU-resident, NV12), the replay file gracefully
+    /// stops recording while the stitch output completes.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// StitchJob::new("left.mp4", "right.mp4", "match.json", "out.mp4")
+    ///     .with_replay_recording("replay.mkv")
+    ///     .run(&interrupted)?;
+    /// ```
+    #[cfg(feature = "stacked-output")]
+    pub fn with_replay_recording(mut self, path: impl AsRef<Path>) -> Self {
+        self.replay_recording = Some(ReplayRecordingConfig {
+            path: path.as_ref().to_path_buf(),
+            encoder_config: Box::new(
+                crate::stacked_video::encoder::StackedEncoderConfig::default(),
+            ),
+        });
+        self
+    }
+
+    /// Override the encoder configuration used for replay recording.
+    /// Only meaningful in combination with [`Self::with_replay_recording`].
+    #[cfg(feature = "stacked-output")]
+    pub fn replay_recording_config(
+        mut self,
+        config: crate::stacked_video::encoder::StackedEncoderConfig,
+    ) -> Self {
+        if let Some(ref mut cfg) = self.replay_recording {
+            *cfg.encoder_config = config;
+        } else {
+            log::warn!(
+                "replay_recording_config called without with_replay_recording - ignored"
+            );
+        }
         self
     }
 
@@ -470,6 +542,8 @@ impl StitchJob {
             crf: self.crf,
             preset: self.preset.clone(),
             audio_source,
+            container: crate::ffmpeg::encoder::Container::default(),
+            gop_size: None,
         };
         let encoder = crate::adapters::FfmpegFileEncoder::new(
             &self.output,
@@ -511,14 +585,70 @@ impl StitchJob {
         let frame_limit =
             reco_core::session::compute_frame_limit(self.duration, self.max_frames, info.fps);
 
-        // Run the frame loop
-        let frame_count = session.run(
-            &mut source,
-            frame_limit,
-            interrupted,
-            self.on_progress.take(),
-        )?;
+        // Optional replay recording: wrap the source with a
+        // decorator that writes pre-stitch frames to a stacked-video
+        // file alongside the main encode. Replay starts from this
+        // point so the recording aligns with the exported window
+        // (frames skipped via `start_frame` are already past).
+        //
+        // Two arms so the replay branch can take ownership of
+        // `source` via `Box::new`, while the non-replay arm keeps
+        // the borrowed `&mut source` already set up.
+        #[cfg(feature = "stacked-output")]
+        let replay_cfg = self.replay_recording.take();
+        #[cfg(not(feature = "stacked-output"))]
+        let replay_cfg: Option<()> = None;
+
+        let frame_count;
+        #[cfg(feature = "stacked-output")]
+        let mut replay_src: Option<crate::stacked_video::replay::ReplayRecordingSource> = None;
+
+        #[cfg(feature = "stacked-output")]
+        if let Some(cfg) = replay_cfg {
+            let inner: Box<dyn FrameSource> = Box::new(source);
+            let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
+                inner,
+                &cfg.path,
+                *cfg.encoder_config,
+            )
+            .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
+            frame_count = session.run(
+                &mut replay,
+                frame_limit,
+                interrupted,
+                self.on_progress.take(),
+            )?;
+            replay_src = Some(replay);
+        } else {
+            frame_count = session.run(
+                &mut source,
+                frame_limit,
+                interrupted,
+                self.on_progress.take(),
+            )?;
+        }
+        #[cfg(not(feature = "stacked-output"))]
+        {
+            // Without the stacked-output feature, replay recording
+            // is unavailable and `replay_cfg` is always None.
+            let _ = replay_cfg;
+            frame_count = session.run(
+                &mut source,
+                frame_limit,
+                interrupted,
+                self.on_progress.take(),
+            )?;
+        }
         session.finish()?;
+
+        #[cfg(feature = "stacked-output")]
+        if let Some(mut replay) = replay_src.take()
+            && let Err(e) = replay.finish()
+        {
+            log::warn!(
+                "replay recording finalize failed ({e}); stitch output still valid"
+            );
+        }
 
         // Post-run sanity check: re-open the output file and verify it
         // actually contains a video stream. Catches silent encoder

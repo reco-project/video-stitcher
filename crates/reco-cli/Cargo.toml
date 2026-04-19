@@ -14,6 +14,7 @@ path = "src/main.rs"
 [features]
 default = ["autocam"]
 autocam = ["dep:reco-autocam"]
+replay = ["reco-io/stacked-output"]
 cuda = ["autocam", "reco-autocam/cuda"]
 tensorrt = ["autocam", "reco-autocam/tensorrt"]
 coreml = ["autocam", "reco-autocam/coreml"]
