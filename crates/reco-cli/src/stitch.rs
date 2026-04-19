@@ -41,6 +41,12 @@ pub struct StitchArgs<'a> {
     /// alongside the stitched output (M6.5 feature, `replay`
     /// feature flag on reco-cli).
     pub replay_path: Option<&'a str>,
+    /// Optional replay-tile downscale `(width, height)`. When
+    /// `Some`, the GPU pack shader produces smaller replay tiles
+    /// (FRICTION reco-obs A19). Has no effect without
+    /// [`Self::replay_path`]. GPU path only — CPU-resident
+    /// sources log a warn and record at source dims.
+    pub replay_scale: Option<(u32, u32)>,
 }
 
 /// Run the stitch subcommand.
@@ -100,7 +106,16 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     #[cfg(feature = "replay")]
     if let Some(replay_path) = args.replay_path {
         job = job.with_replay_recording(replay_path);
-        println!("Replay recording: {replay_path}");
+        if let Some((w, h)) = args.replay_scale {
+            job = job.with_replay_scale(w, h);
+            println!("Replay recording: {replay_path} (scaled to {w}x{h} per tile)");
+        } else {
+            println!("Replay recording: {replay_path}");
+        }
+    }
+    #[cfg(feature = "replay")]
+    if args.replay_scale.is_some() && args.replay_path.is_none() {
+        log::warn!("--replay-scale specified without --replay; ignoring.");
     }
     #[cfg(not(feature = "replay"))]
     if args.replay_path.is_some() {

@@ -73,6 +73,14 @@ pub struct StitchJob {
 struct ReplayRecordingConfig {
     path: PathBuf,
     encoder_config: Box<crate::stacked_video::encoder::StackedEncoderConfig>,
+    /// Optional replay tile downscale `(width, height)`. When
+    /// `None`, replay tiles match the source tile dims. When
+    /// `Some`, the GPU pack shader downscales each tile via the
+    /// sampler's linear filter (free on the GPU path) and the CPU
+    /// decorator rejects the config with a warn (CPU path has no
+    /// free downscale today; use the GPU path for A19). FRICTION
+    /// reco-obs A19.
+    scale: Option<(u32, u32)>,
 }
 
 /// Boxed progress callback type alias to satisfy clippy::type_complexity.
@@ -394,7 +402,38 @@ impl StitchJob {
             encoder_config: Box::new(
                 crate::stacked_video::encoder::StackedEncoderConfig::default(),
             ),
+            scale: None,
         });
+        self
+    }
+
+    /// Set the replay tile downscale (FRICTION reco-obs A19). Must
+    /// be called AFTER [`Self::with_replay_recording`] — no-op with
+    /// a warn if replay recording wasn't enabled first.
+    ///
+    /// `(width, height)` are the per-tile dims after scale; the
+    /// atlas height becomes `height * N` for an N-vstack layout. A
+    /// 1080p source with `.with_replay_scale(1280, 720)` produces
+    /// a 1280x1440 atlas (two 720p tiles stacked).
+    ///
+    /// The GPU pack path folds this into the compute shader's
+    /// sampler at no extra cost (linear filter handles the scale).
+    /// The CPU path doesn't support downscale today — enabling it
+    /// on a CPU-resident source logs a warn and the replay file
+    /// keeps the source dims.
+    ///
+    /// Dimensions must be YUV420P-aligned: `width` divisible by 4
+    /// (pack shader quirk), `height` even.
+    #[cfg(feature = "stacked-output")]
+    pub fn with_replay_scale(mut self, width: u32, height: u32) -> Self {
+        if let Some(ref mut cfg) = self.replay_recording {
+            cfg.scale = Some((width, height));
+        } else {
+            log::warn!(
+                "with_replay_scale({width}x{height}) called without with_replay_recording \
+                 - ignored; call with_replay_recording(path) first"
+            );
+        }
         self
     }
 
@@ -637,21 +676,26 @@ impl StitchJob {
             // Both arms log the decision explicitly so the pack
             // path is never a silent choice.
             if source.is_gpu_resident() {
+                // Resolve the output tile size. `scale` is the
+                // per-tile dims after downscale; the layout stays
+                // sized by the source tile dims (layout.capacity
+                // is N, atlas h = output.height * rows).
+                let (out_w, out_h) = cfg.scale.unwrap_or((info.width, info.height));
                 let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(
-                    info.width,
-                    info.height,
-                    2,
+                    out_w, out_h, 2,
                 )
                 .ok_or_else(|| {
                     StitchError::Other(format!(
-                        "GPU stacked replay: source dims {}x{} are not YUV420P-aligned (must be even)",
+                        "GPU stacked replay: replay tile dims {out_w}x{out_h} are not YUV420P-aligned \
+                         (width must be divisible by 4, height must be even). Source: {}x{}",
                         info.width, info.height,
                     ))
                 })?;
-                let output_size = reco_core::yuv_stack_packer::OutputTileSize::unscaled(
-                    info.width,
-                    info.height,
-                );
+                let output_size = if cfg.scale.is_some() {
+                    reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+                } else {
+                    reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+                };
                 session
                     .enable_gpu_stacked_replay(layout, output_size)
                     .map_err(|e| StitchError::Other(format!("enable GPU stacked replay: {e}")))?;
@@ -669,12 +713,19 @@ impl StitchJob {
                 )
                 .map_err(|e| StitchError::Other(format!("open GPU replay recorder: {e}")))?;
                 session.set_stacked_gpu_recorder(recorder);
+                let scale_note = if cfg.scale.is_some() {
+                    format!(" [A19 downscale: source {}x{} -> tile {}x{}]",
+                            info.width, info.height, out_w, out_h)
+                } else {
+                    String::new()
+                };
                 log::info!(
-                    "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}) -> {}",
-                    info.width,
-                    info.height,
+                    "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}){} -> {}",
+                    out_w,
+                    out_h,
                     atlas_w,
                     atlas_h,
+                    scale_note,
                     cfg.path.display(),
                 );
                 frame_count = session.run(
@@ -684,6 +735,15 @@ impl StitchJob {
                     self.on_progress.take(),
                 )?;
             } else {
+                if cfg.scale.is_some() {
+                    log::warn!(
+                        "reco-io: --replay-scale requested on a CPU-resident source, but the \
+                         CPU ReplayRecordingSource decorator doesn't support downscale today. \
+                         Recording at source dims {}x{} instead. Use a GPU-resident source \
+                         (zero-copy NVDEC) or disable --replay-scale.",
+                        info.width, info.height,
+                    );
+                }
                 log::info!(
                     "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
                     info.width,

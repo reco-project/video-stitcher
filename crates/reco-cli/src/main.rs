@@ -193,6 +193,16 @@ enum Commands {
         /// Requires building with `--features replay`.
         #[arg(long)]
         replay: Option<String>,
+
+        /// Downscale replay tiles to `WIDTHxHEIGHT` (e.g.
+        /// `1280x720`, `854x480`). Reduces replay file size and
+        /// CPU encode cost (libx264 at 1080p stacked crawls on
+        /// ARM / Jetson). GPU pack path only: CPU-resident
+        /// sources log a warn and record at source dims. Width
+        /// must be divisible by 4; height must be even. Requires
+        /// `--replay`.
+        #[arg(long, value_parser = parse_wxh)]
+        replay_scale: Option<(u32, u32)>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -508,6 +518,35 @@ fn parse_blend(s: &str) -> Result<f32, String> {
     }
 }
 
+/// Parse a `WIDTHxHEIGHT` string (e.g. `1280x720`, `854x480`) into
+/// `(u32, u32)`. Used by `--replay-scale`. Validates YUV420P
+/// alignment: width divisible by 4, height even.
+fn parse_wxh(s: &str) -> Result<(u32, u32), String> {
+    let (w, h) = s
+        .split_once(['x', 'X'])
+        .ok_or_else(|| format!("expected WIDTHxHEIGHT, got {s:?}"))?;
+    let w: u32 = w
+        .parse()
+        .map_err(|e| format!("invalid width {w:?}: {e}"))?;
+    let h: u32 = h
+        .parse()
+        .map_err(|e| format!("invalid height {h:?}: {e}"))?;
+    if w == 0 || h == 0 {
+        return Err(format!("dimensions must be > 0, got {w}x{h}"));
+    }
+    if !w.is_multiple_of(4) {
+        return Err(format!(
+            "width must be divisible by 4 (pack shader packs 4 pixels per u32 write), got {w}"
+        ));
+    }
+    if !h.is_multiple_of(2) {
+        return Err(format!(
+            "height must be even (YUV420P chroma subsampling), got {h}"
+        ));
+    }
+    Ok((w, h))
+}
+
 fn main() -> anyhow::Result<()> {
     // When profiling, tracing-subscriber is owned by the chrome layer
     // (one global subscriber per process). Otherwise, install our fmt
@@ -557,6 +596,7 @@ fn main() -> anyhow::Result<()> {
             crf,
             preset,
             replay,
+            replay_scale,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -579,6 +619,7 @@ fn main() -> anyhow::Result<()> {
                 crf,
                 preset,
                 replay_path: replay.as_deref(),
+                replay_scale,
             },
             &interrupted,
         ),
