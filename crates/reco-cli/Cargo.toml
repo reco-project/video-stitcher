@@ -12,8 +12,13 @@ name = "reco"
 path = "src/main.rs"
 
 [features]
-default = ["autocam"]
+# Default gives autocam + ort (CPU) detection, matching
+# pre-refactor behavior. Jetson / custom builds opt out via
+# `--no-default-features --features autocam,tensorrt-native,...`
+# so the prebuilt ort-sys (glibc-sensitive) isn't pulled.
+default = ["autocam", "ort"]
 autocam = ["dep:reco-autocam"]
+ort = ["autocam", "reco-autocam/ort"]
 replay = ["reco-io/stacked-output"]
 cuda = ["autocam", "reco-autocam/cuda"]
 tensorrt = ["autocam", "reco-autocam/tensorrt"]
@@ -29,7 +34,10 @@ profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profili
 [dependencies]
 reco-core = { path = "../reco-core" }
 reco-io = { path = "../reco-io", features = ["ffmpeg"] }
-reco-autocam = { path = "../reco-autocam", optional = true }
+# default-features = false so autocam's own default (ort) doesn't
+# force ort on Jetson / tensorrt-native builds. reco-cli's default
+# feature set above re-enables ort for standard consumers.
+reco-autocam = { path = "../reco-autocam", optional = true, default-features = false }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 clap = { version = "4", features = ["derive"] }
 # M2 tracing migration (deep-review-2026-04-18): tracing-subscriber replaces

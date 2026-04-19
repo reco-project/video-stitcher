@@ -9,10 +9,21 @@ description = "Automatic camera control for reco: YOLO ball detector, EMA smooth
 
 [dependencies]
 reco-core = { path = "../reco-core" }
-reco-detect = { path = "../reco-detect" }
+# default-features = false so consumers can choose a detection
+# backend explicitly (ort / tensorrt-native / ncnn / etc.) without
+# reco-detect's `default = ["ort"]` sneaking ort in via feature
+# unification. Needed for Jetson builds where prebuilt ort-sys
+# references glibc symbols the Tegra host doesn't have.
+reco-detect = { path = "../reco-detect", default-features = false }
 log = "0.4"
 
 [features]
+# Preserve pre-refactor behavior: autocam's default build still
+# enables the ort (CPU) backend so no existing consumer regresses.
+# Jetson / custom builds opt out via `--no-default-features
+# --features tensorrt-native` (or ncnn).
+default = ["ort"]
+ort = ["reco-detect/ort"]
 cuda = ["reco-detect/cuda"]
 tensorrt = ["reco-detect/tensorrt"]
 coreml = ["reco-detect/coreml"]

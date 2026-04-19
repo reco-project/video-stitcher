@@ -12,9 +12,15 @@ name = "reco-gui"
 path = "src/main.rs"
 
 [features]
-default = ["autocam"]
+# Default gives ort CPU detection, matching pre-refactor behavior.
+# Jetson / custom builds opt out via --no-default-features +
+# explicit backend (tensorrt-native, ncnn).
+default = ["autocam", "ort"]
 autocam = ["dep:reco-autocam"]
+ort = ["autocam", "reco-autocam/ort"]
 tensorrt = ["autocam", "reco-autocam/tensorrt"]
+tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
+ncnn = ["autocam", "reco-autocam/ncnn"]
 cuda = ["autocam", "reco-autocam/cuda"]
 coreml = ["autocam", "reco-autocam/coreml"]
 profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling"]
@@ -24,8 +30,11 @@ reco-core = { path = "../reco-core" }
 reco-io = { path = "../reco-io", features = ["ffmpeg", "config"] }
 serde = { version = "1", features = ["derive"] }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
-reco-detect = { path = "../reco-detect" }
-reco-autocam = { path = "../reco-autocam", optional = true }
+# default-features = false so autocam's own default (ort) doesn't
+# pull ort on Jetson / tensorrt-native builds. Default feature
+# set above re-enables ort for non-Jetson consumers.
+reco-detect = { path = "../reco-detect", default-features = false }
+reco-autocam = { path = "../reco-autocam", optional = true, default-features = false }
 
 slint = { version = "~1.15", features = ["unstable-wgpu-28"] }
 rfd = "0.15"
