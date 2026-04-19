@@ -720,6 +720,47 @@ impl StitchSession {
         self.director = Some(director);
     }
 
+    /// Attach a stacked-video replay recorder.
+    ///
+    /// Forwards to [`StitchCore::set_stacked_recorder`] on the
+    /// session's underlying core. Push-based consumers (OBS,
+    /// GStreamer bridge) that wire this get the same replay-recording
+    /// ergonomics the pull-side `StitchJob::with_replay_recording`
+    /// already provides: one method call, the session handles the
+    /// per-frame tap + encoder lifecycle internally. Closes FRICTION
+    /// A18 on the reco-obs side.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // reco-io exposes a constructor that returns the concrete
+    /// // `Box<dyn StackedReplayRecorder>`; consumers don't touch
+    /// // the encoder type directly.
+    /// let recorder = reco_io::stacked_video::replay::session_recorder(
+    ///     "replay.mkv",
+    ///     reco_io::stacked_video::encoder::StackedEncoderConfig::default(),
+    ///     info.width,
+    ///     info.height,
+    /// )?;
+    /// session.set_stacked_recorder(recorder);
+    /// ```
+    pub fn set_stacked_recorder(&mut self, recorder: Box<dyn crate::core::StackedReplayRecorder>) {
+        self.core.set_stacked_recorder(recorder);
+    }
+
+    /// Finalize and drop the currently attached replay recorder.
+    /// No-op if no recorder is attached.
+    pub fn clear_stacked_recorder(&mut self) {
+        self.core.clear_stacked_recorder();
+    }
+
+    /// Flush the replay recorder's buffered bytes to disk. Call
+    /// periodically (e.g. once per second) so a concurrent reader
+    /// sees recent frames. No-op if no recorder is attached.
+    pub fn flush_stacked_recorder(&mut self) {
+        self.core.flush_stacked_recorder();
+    }
+
     /// Set the sink that receives tracked detection data each frame.
     ///
     /// The sink is called once per frame with the current tracked

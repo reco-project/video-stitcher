@@ -325,6 +325,51 @@ impl StitchCoreConfig {
 /// Raw detections are mapped to panorama coordinates and fed to the
 /// attached director each submit; directors see a non-empty
 /// `detections` slice on detection frames, empty otherwise.
+/// Recorder hook for the push-API replay backend (FRICTION A18 /
+/// plan M6.5 item 3 on the push side).
+///
+/// reco-core doesn't know about ffmpeg or the stacked-video file
+/// format - this trait is the abstraction boundary so a concrete
+/// implementation in reco-io (under the `stacked-output` feature)
+/// can be plugged into [`StitchCore`] without pulling I/O types
+/// into core. Consumers who only care about the pull API and go
+/// through [`crate::session::StitchSession`] plus a
+/// `reco_io::StitchJob::with_replay_recording(...)` builder never
+/// touch this trait directly.
+///
+/// # Semantics
+///
+/// - `record_yuv` fires after every successful YUV submit via
+///   [`StitchCore::submit_frame_yuv`] and
+///   [`StitchCore::submit_frame_yuv_at_pose`]. It sees the tight
+///   (no-stride) YUV420P planes the render consumed, so the
+///   recorded replay exactly matches what the stitch pipeline saw.
+/// - BGRA submit paths are not recorded today: the stacked
+///   encoder is YUV-native, so recording BGRA frames would force
+///   a BGRA→YUV420P conversion on the hot path. Skipped with a
+///   one-shot `warn!`.
+/// - `flush` and `finish` are best-effort; errors are logged by
+///   the implementation and never propagated back to the submit
+///   path so a failing recorder cannot break the stitch output.
+///
+/// # Thread safety
+///
+/// The recorder is owned by `StitchCore` (single-thread consumer
+/// of the push API) so `Send` is sufficient; no `Sync`.
+pub trait StackedReplayRecorder: Send {
+    /// Record a stereo YUV420P tile pair. `width` / `height` are
+    /// the tile dimensions for both cameras (identical).
+    fn record_yuv(&mut self, left: &YuvPlanes<'_>, right: &YuvPlanes<'_>, width: u32, height: u32);
+    /// Best-effort push buffered bytes to disk. Called on demand
+    /// by the session (e.g. once per second) so a concurrent
+    /// reader sees recent frames.
+    fn flush(&mut self) {}
+    /// Finalize the recording. Called when the session ends.
+    /// After this call the recorder stops recording; subsequent
+    /// `record_yuv` calls are no-ops.
+    fn finish(&mut self) {}
+}
+
 pub struct StitchCore {
     pipeline: StitchPipeline,
     readback: RgbaReadback,
@@ -348,6 +393,14 @@ pub struct StitchCore {
     last_detections: Vec<MappedDetection>,
 
     replay: Option<ReplayBuffer>,
+
+    /// Optional stacked-video replay recorder attached via
+    /// [`Self::set_stacked_recorder`]. Fires on every successful
+    /// YUV submit (not BGRA — see [`StackedReplayRecorder`] docs).
+    /// Decouples reco-core from the actual encoder implementation
+    /// (lives in reco-io under `stacked-output`) so mobile / wasm
+    /// builds that skip reco-io see no replay-recording code.
+    stacked_recorder: Option<Box<dyn StackedReplayRecorder>>,
 
     /// Whether `resolve_current_pose` clamps output through the
     /// coverage boundary (FRICTION A13 — "constrained look"). `true`
@@ -417,6 +470,7 @@ impl StitchCore {
             detection_interval: 1,
             last_detections: Vec::new(),
             replay,
+            stacked_recorder: None,
             constrained_look: true,
             frame_count: 0,
             session_start: None,
@@ -440,6 +494,16 @@ impl StitchCore {
         right: &YuvPlanes<'_>,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
+
+        // Feed the stacked-video replay recorder before render so
+        // the recording captures the exact planes the pipeline will
+        // see. Errors inside the recorder are logged by the impl;
+        // never propagate them - a failing recorder must not break
+        // the live stitch output.
+        if let Some(ref mut recorder) = self.stacked_recorder {
+            let (src_w, src_h) = self.pipeline.source_info();
+            recorder.record_yuv(left, right, src_w, src_h);
+        }
 
         // Detection first, so the director's `update` tick in
         // resolve_current_pose sees the latest tracked objects. Skipped
@@ -499,6 +563,14 @@ impl StitchCore {
         pitch: f32,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
+
+        // Replay recording tap — see `submit_frame_yuv` for the
+        // rationale (record-before-render so the file exactly
+        // matches what the pipeline consumed).
+        if let Some(ref mut recorder) = self.stacked_recorder {
+            let (src_w, src_h) = self.pipeline.source_info();
+            recorder.record_yuv(left, right, src_w, src_h);
+        }
 
         if self.detector.is_some() && self.should_run_detection() {
             let (src_w, src_h) = self.pipeline.source_info();
@@ -761,6 +833,50 @@ impl StitchCore {
     pub fn clear_detector(&mut self) {
         self.detector = None;
         self.last_detections.clear();
+    }
+
+    /// Attach a stacked-video replay recorder (M6.5 item 3, push
+    /// side).
+    ///
+    /// Every subsequent YUV submit feeds the recorder before
+    /// rendering. Errors inside the recorder are swallowed so a
+    /// failing recorder cannot break the live stitch output; the
+    /// recorder's own implementation is expected to log any
+    /// failure. See [`StackedReplayRecorder`] for the full
+    /// contract.
+    ///
+    /// Dropping an existing recorder via [`Self::clear_stacked_recorder`]
+    /// is required before attaching a new one; otherwise the old
+    /// recording is quietly abandoned.
+    pub fn set_stacked_recorder(&mut self, recorder: Box<dyn StackedReplayRecorder>) {
+        if self.stacked_recorder.is_some() {
+            log::warn!(
+                "StitchCore::set_stacked_recorder replacing an existing recorder; \
+                 call clear_stacked_recorder first to finalize the previous recording"
+            );
+        }
+        log::info!("StitchCore: stacked-video replay recorder attached");
+        self.stacked_recorder = Some(recorder);
+    }
+
+    /// Drop the current replay recorder, calling `finish` first so
+    /// the recording file is finalized. No-op if no recorder is
+    /// attached.
+    pub fn clear_stacked_recorder(&mut self) {
+        if let Some(mut recorder) = self.stacked_recorder.take() {
+            recorder.finish();
+            log::info!("StitchCore: stacked-video replay recorder detached");
+        }
+    }
+
+    /// Flush the replay recorder's buffered bytes to disk. Call
+    /// periodically (e.g. once per second from a timer) so a
+    /// concurrent reader sees recent frames. No-op if no recorder
+    /// is attached.
+    pub fn flush_stacked_recorder(&mut self) {
+        if let Some(ref mut recorder) = self.stacked_recorder {
+            recorder.flush();
+        }
     }
 
     /// Set how often detection runs.

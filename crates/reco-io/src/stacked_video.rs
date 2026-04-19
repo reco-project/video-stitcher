@@ -850,6 +850,210 @@ pub mod replay {
         fn assert_send<T: Send>() {}
         assert_send::<ReplayRecordingSource>();
     };
+
+    // ─────────────────────────────────────────────────────────────
+    // Push-API recorder (FRICTION A18 close)
+    // ─────────────────────────────────────────────────────────────
+
+    use crate::stacked_video::StackError;
+    use reco_core::core::StackedReplayRecorder as CoreStackedReplayRecorder;
+    use reco_core::pipeline::YuvPlanes;
+
+    /// Push-API stacked-video recorder. Implements reco-core's
+    /// [`reco_core::core::StackedReplayRecorder`] trait so any
+    /// [`reco_core::session::StitchSession`] can attach a recording
+    /// file with a single call.
+    ///
+    /// Packs each submitted YUV plane pair into a
+    /// [`super::super::GridLayout`] and feeds the encoder. Uses the
+    /// same [`StackedEncoder`] + [`StackedEncoderConfig`] the pull
+    /// side uses, so behavior, container defaults, and GOP cadence
+    /// are identical across the two APIs.
+    pub struct SessionStackedRecorder {
+        encoder: Option<StackedEncoder>,
+        width: u32,
+        height: u32,
+        frames_recorded: u64,
+        frames_failed: u64,
+        /// Reusable buffers so `push_planes` avoids allocating a
+        /// new YuvFrame per call. Sized on first use then fixed.
+        left_buf: Option<reco_core::source::YuvFrame>,
+        right_buf: Option<reco_core::source::YuvFrame>,
+    }
+
+    impl SessionStackedRecorder {
+        /// Open a recording for an N=2 vertical stack of
+        /// `width × height` tiles. Returns a boxed trait object so
+        /// consumers can pass it straight to
+        /// [`reco_core::session::StitchSession::set_stacked_recorder`].
+        pub fn open(
+            path: &std::path::Path,
+            config: StackedEncoderConfig,
+            width: u32,
+            height: u32,
+        ) -> Result<Box<dyn CoreStackedReplayRecorder>, StackedEncodeError> {
+            let layout =
+                crate::stacked_video::GridLayout::vstack(width, height, 2).ok_or_else(|| {
+                    StackedEncodeError::Pack(StackError::TileDimensionMismatch {
+                        index: 0,
+                        got_w: width,
+                        got_h: height,
+                        expected_w: (width / 2) * 2,
+                        expected_h: (height / 2) * 2,
+                    })
+                })?;
+            let encoder = StackedEncoder::new(layout, path, config)?;
+            log::info!(
+                "SessionStackedRecorder: {}x{} tiles -> {} (push API, M6.5 A18)",
+                width,
+                height,
+                path.display(),
+            );
+            Ok(Box::new(Self {
+                encoder: Some(encoder),
+                width,
+                height,
+                frames_recorded: 0,
+                frames_failed: 0,
+                left_buf: None,
+                right_buf: None,
+            }))
+        }
+
+        fn ensure_buf(buf: &mut Option<reco_core::source::YuvFrame>, width: u32, height: u32) {
+            let needed_y = (width as usize) * (height as usize);
+            let needed_uv = needed_y / 4;
+            match buf {
+                Some(f) if f.y.len() == needed_y && f.u.len() == needed_uv => {}
+                _ => {
+                    *buf = Some(reco_core::source::YuvFrame {
+                        y: vec![0u8; needed_y],
+                        u: vec![0u8; needed_uv],
+                        v: vec![0u8; needed_uv],
+                        width,
+                        height,
+                        timestamp_us: 0,
+                    });
+                }
+            }
+        }
+
+        fn fill_from_planes(frame: &mut reco_core::source::YuvFrame, planes: &YuvPlanes<'_>) {
+            // YuvPlanes is tight (no stride padding) by contract,
+            // so a straight copy_from_slice works. If the slices
+            // are shorter than expected (malformed caller input)
+            // we skip recording for this frame - the encoder would
+            // reject a tile with mismatched plane sizes anyway.
+            let need_y = frame.y.len();
+            let need_uv = frame.u.len();
+            if planes.y.len() < need_y || planes.u.len() < need_uv || planes.v.len() < need_uv {
+                return;
+            }
+            frame.y.copy_from_slice(&planes.y[..need_y]);
+            frame.u.copy_from_slice(&planes.u[..need_uv]);
+            frame.v.copy_from_slice(&planes.v[..need_uv]);
+        }
+    }
+
+    impl CoreStackedReplayRecorder for SessionStackedRecorder {
+        fn record_yuv(
+            &mut self,
+            left: &YuvPlanes<'_>,
+            right: &YuvPlanes<'_>,
+            width: u32,
+            height: u32,
+        ) {
+            // Reject dimension drift: the recorder was opened for
+            // a fixed layout. If the session starts feeding
+            // differently-sized frames (e.g. resolution change
+            // mid-session) we stop recording and log.
+            if width != self.width || height != self.height {
+                log::warn!(
+                    "SessionStackedRecorder: frame {}x{} != opened {}x{}; disabling recording",
+                    width,
+                    height,
+                    self.width,
+                    self.height,
+                );
+                self.encoder = None;
+                return;
+            }
+            let Some(ref mut encoder) = self.encoder else {
+                return;
+            };
+            Self::ensure_buf(&mut self.left_buf, width, height);
+            Self::ensure_buf(&mut self.right_buf, width, height);
+            let (Some(ref mut left_frame), Some(ref mut right_frame)) =
+                (self.left_buf.as_mut(), self.right_buf.as_mut())
+            else {
+                return;
+            };
+            Self::fill_from_planes(left_frame, left);
+            Self::fill_from_planes(right_frame, right);
+            match encoder.push(&[Some(left_frame), Some(right_frame)]) {
+                Ok(()) => {
+                    self.frames_recorded += 1;
+                }
+                Err(e) => {
+                    self.frames_failed += 1;
+                    log::warn!(
+                        "SessionStackedRecorder: push failed after {} frames ({e}); \
+                         disabling recording",
+                        self.frames_recorded,
+                    );
+                    self.encoder = None;
+                }
+            }
+        }
+
+        fn flush(&mut self) {
+            if let Some(ref mut encoder) = self.encoder
+                && let Err(e) = encoder.flush()
+            {
+                log::warn!("SessionStackedRecorder: flush failed ({e})");
+            }
+        }
+
+        fn finish(&mut self) {
+            if let Some(mut encoder) = self.encoder.take() {
+                match encoder.finish() {
+                    Ok(()) => log::info!(
+                        "SessionStackedRecorder: finished ({} frames recorded, {} failed)",
+                        self.frames_recorded,
+                        self.frames_failed,
+                    ),
+                    Err(e) => log::warn!(
+                        "SessionStackedRecorder: finish failed ({e}) after {} frames",
+                        self.frames_recorded,
+                    ),
+                }
+            }
+        }
+    }
+
+    impl Drop for SessionStackedRecorder {
+        fn drop(&mut self) {
+            // Best-effort finalize so a recorder dropped without an
+            // explicit `finish()` call still produces a valid file.
+            if self.encoder.is_some() {
+                self.finish();
+            }
+        }
+    }
+
+    /// Convenience constructor: opens a recorder suitable for
+    /// [`reco_core::session::StitchSession::set_stacked_recorder`].
+    /// Equivalent to [`SessionStackedRecorder::open`] but named for
+    /// discoverability from consumers looking at the session API
+    /// docs.
+    pub fn session_recorder(
+        path: &std::path::Path,
+        config: StackedEncoderConfig,
+        width: u32,
+        height: u32,
+    ) -> Result<Box<dyn CoreStackedReplayRecorder>, StackedEncodeError> {
+        SessionStackedRecorder::open(path, config, width, height)
+    }
 }
 
 #[cfg(feature = "stacked-output")]
@@ -886,9 +1090,7 @@ pub mod source {
         Unpack(#[from] StackError),
         /// The container dimensions don't match the given grid
         /// layout. The caller supplied the wrong grid for the file.
-        #[error(
-            "layout mismatch: file is {file_w}x{file_h}, layout expects {layout_w}x{layout_h}"
-        )]
+        #[error("layout mismatch: file is {file_w}x{file_h}, layout expects {layout_w}x{layout_h}")]
         LayoutMismatch {
             /// The decoded file's reported width.
             file_w: u32,
@@ -998,11 +1200,12 @@ pub mod source {
             };
             // Row-major: `tiles[0] = left`, `tiles[1] = right` matches
             // the writer convention established in `pack_yuv420p`.
-            let tiles: [YuvFrame; 2] = tiles.try_into().map_err(|v: Vec<YuvFrame>| {
-                SourceError::Read {
-                    reason: format!("expected 2 tiles, got {}", v.len()),
-                }
-            })?;
+            let tiles: [YuvFrame; 2] =
+                tiles
+                    .try_into()
+                    .map_err(|v: Vec<YuvFrame>| SourceError::Read {
+                        reason: format!("expected 2 tiles, got {}", v.len()),
+                    })?;
             let [left, right] = tiles;
             Ok(Some(StereoFrame::Yuv420p(FramePair {
                 left: YuvData {

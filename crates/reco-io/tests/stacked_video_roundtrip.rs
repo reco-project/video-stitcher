@@ -225,6 +225,61 @@ fn matroska_reader_sees_partial_writes() {
     assert_eq!(total, N_FRAMES, "final file should hold all pushed frames");
 }
 
+/// Push-API recorder (FRICTION A18 close): verifies
+/// `SessionStackedRecorder` accepts `YuvPlanes<'_>` feeds and
+/// produces a replayable stacked-video file.
+///
+/// This is the key correctness test for the M6.5 item 3 push side:
+/// consumers call `record_yuv` per submit, `finish` at session end,
+/// and the output file must be openable by `StackedSource` with all
+/// pushed frames recoverable.
+#[test]
+fn session_recorder_records_planes() {
+    use reco_core::pipeline::YuvPlanes;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("session_replay.mkv");
+    let layout = GridLayout::vstack(TILE_W, TILE_H, 2).expect("even dims");
+
+    let mut rec = reco_io::stacked_video::replay::SessionStackedRecorder::open(
+        &path,
+        encoder_config(Container::Matroska),
+        TILE_W,
+        TILE_H,
+    )
+    .expect("open session recorder");
+
+    for i in 0..N_FRAMES {
+        let l = synthetic_tile(i, 0);
+        let r = synthetic_tile(i, 1);
+        let left = YuvPlanes {
+            y: &l.y,
+            u: &l.u,
+            v: &l.v,
+        };
+        let right = YuvPlanes {
+            y: &r.y,
+            u: &r.u,
+            v: &r.v,
+        };
+        rec.record_yuv(&left, &right, TILE_W, TILE_H);
+    }
+    rec.finish();
+    drop(rec);
+
+    // Readback: open the recorded file as a StackedSource and
+    // verify we get every frame back.
+    let mut src = StackedSource::open(layout, &path).expect("open recorded file");
+    let mut count = 0usize;
+    while src.next_tuple().expect("decode").is_some() {
+        count += 1;
+    }
+    assert_eq!(
+        count, N_FRAMES,
+        "session recorder should produce a fully round-trippable file"
+    );
+}
+
 /// Plain MP4 (moov-at-end) cannot be opened until the writer
 /// finishes. This is the negative case that motivates the fMP4
 /// default - it documents why "just use MP4" is wrong for replay.

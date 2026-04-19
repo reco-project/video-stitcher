@@ -300,22 +300,6 @@ know our plugin's internal ring-buffer state.
 
 Estimated 4-6 hours plus memory-budget discussion.
 
-### A18. No push-API entry point for disk-based replay recording
-
-**Impact**: Medium. Filed 2026-04-19 during M6.5 item 3 wiring. The M6.5 stacked-video replay feature landed as a `StitchJob::with_replay_recording(path)` builder on the pull-side API (reco-cli proved the consumer surface is one line). reco-obs uses the push API (`StitchSession::submit_frame_*_at_pose`) and has no equivalent entry point - if the plugin wanted to enable replay recording today, it would have to manage a `StackedEncoder` itself and push pre-stitch frames to both the session and the encoder on every tick. That's the exact "consumer works around API friction" pattern we don't want.
-
-**Related**: A16 (rolling in-memory replay buffer). A16 is the memory-resident scrub buffer for short-window replay; A18 is the disk-resident full-session recording for professional replay and offline analysis. They're complementary.
-
-**Suggested direction**:
-
-- Add `StitchSession::set_replay_recorder(Box<dyn ReplayRecorder>)` or equivalent on the push API. The session owns the recorder lifecycle; each successful `submit_frame_*_at_pose` also feeds the recorder.
-- Alternatively, expose a trait like `FrameInterceptor` on StitchSession so replay recording is one of several possible post-submit taps (detection logging, analytics export, etc.). Keeps the shape open for future consumers.
-- reco-obs then calls `session.set_replay_recorder(stacked_recorder)` during source activation, mirroring reco-cli's builder - one line, no encoder lifecycle in consumer code.
-
-**Not a blocker**: reco-obs can ship Tier 2 (AI auto-pan, pan-zoom hotkeys) before this lands. Note in changelog that replay recording is pull-side only for now.
-
-**Estimated 3-5 hours** once the push-API shape is chosen. Mirrors exactly what the pull-side StitchJob does.
-
 ### A17. No AI auto-pan access in the OBS plugin
 
 See also A10 (deeper architectural notes). Short version: reco-obs
@@ -379,6 +363,18 @@ level without a specific interop target.
   Source, screen capture and WebRTC feeds that deliver BGRA/BGRX/RGBA
   are accepted, swizzle-to-RGBA happens once per frame into a cached
   buffer.
+- **A18. No push-API entry point for disk-based replay recording**
+  Resolved 2026-04-19 alongside M6.5 item 3 wiring. Added
+  `reco_core::core::StackedReplayRecorder` trait and
+  `StitchSession::{set,clear,flush}_stacked_recorder` on the push
+  API. reco-io provides `stacked_video::replay::session_recorder(path,
+  config, width, height)` that returns a `Box<dyn StackedReplayRecorder>`
+  ready for `session.set_stacked_recorder(...)`. Mirrors the pull-side
+  `StitchJob::with_replay_recording` builder: one line for the
+  consumer, the session owns the per-frame tap + encoder lifecycle.
+  Integration test `session_recorder_records_planes` in
+  `reco-io/tests/stacked_video_roundtrip.rs` verifies a round trip
+  through the trait path.
 
 ## Notes on plugin status
 

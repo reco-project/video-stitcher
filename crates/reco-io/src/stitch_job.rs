@@ -390,9 +390,7 @@ impl StitchJob {
         if let Some(ref mut cfg) = self.replay_recording {
             *cfg.encoder_config = config;
         } else {
-            log::warn!(
-                "replay_recording_config called without with_replay_recording - ignored"
-            );
+            log::warn!("replay_recording_config called without with_replay_recording - ignored");
         }
         self
     }
@@ -645,9 +643,7 @@ impl StitchJob {
         if let Some(mut replay) = replay_src.take()
             && let Err(e) = replay.finish()
         {
-            log::warn!(
-                "replay recording finalize failed ({e}); stitch output still valid"
-            );
+            log::warn!("replay recording finalize failed ({e}); stitch output still valid");
         }
 
         // Post-run sanity check: re-open the output file and verify it
