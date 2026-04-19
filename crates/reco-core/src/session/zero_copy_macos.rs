@@ -46,9 +46,10 @@ impl StitchSession {
             let (left_y, left_uv) = unsafe { cache.import_nv12(left_ptr, self.core.gpu())? };
             let (right_y, right_uv) = unsafe { cache.import_nv12(right_ptr, self.core.gpu())? };
 
-            // Run detection on GPU if a Metal detector is attached,
-            // otherwise just update the director with empty state.
-            if self.detection.has_metal_detector() {
+            // Run detection on GPU if a detector is attached (UnifiedDetector
+            // handles Metal residency internally via DetectorFrame::Metal).
+            // Otherwise just update the director with empty state.
+            if self.detection.has_detector() {
                 let width = pair.left.width();
                 let height = pair.left.height();
                 self.detect_and_update_director_metal(

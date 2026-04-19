@@ -184,6 +184,10 @@ pub fn setup_autocam_from_config(
 /// detection could not be initialized (the session remains usable without
 /// autocam in that case).
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(
+    not(any(feature = "ort", feature = "tensorrt-native")),
+    allow(unused_variables, unused_mut)
+)]
 pub fn setup_autocam(
     session: &mut StitchSession,
     model_path: &str,
@@ -197,6 +201,20 @@ pub fn setup_autocam(
     field_roi: Option<&FieldRoi>,
     is_10bit: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    // No-detector-feature config: ort + tensorrt-native + ncnn all
+    // disabled. Every detector path below is cfg-gated out, so the
+    // frame loop runs without autocam. Log once and bail so the caller
+    // knows why detection stayed off.
+    #[cfg(not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")))]
+    {
+        log::warn!(
+            "Autocam: no detector backend compiled in (enable ort, tensorrt-native, or ncnn). \
+             Session will run without AI camera control."
+        );
+        return Ok(false);
+    }
+
+    #[allow(unreachable_code)]
     let mut detection_active = false;
 
     // Load class names from the model to resolve label -> class_id for directors.

@@ -42,18 +42,14 @@ ignore = [
 
 [licenses]
 # Policy: keep third-party deps dual-license-friendly. The project
-# itself is AGPL-3.0-only today, but leadership wants the OPTION to
-# relicense or offer a commercial track, so we do NOT accept GPL/AGPL
-# third-party crates in the base allow-list. Any GPL/AGPL code that
-# ships today is whitelisted per-crate with a documented reason so
-# the dual-license cost is visible.
+# is AGPL-3.0-only today but we want the OPTION to relicense or offer
+# a commercial track. So the base `allow` list contains ONLY permissive
+# licenses compatible with both AGPL and a future proprietary/commercial
+# track. The project's own crates get per-crate AGPL exceptions below —
+# that way a transitive third-party AGPL dep can NEVER slip in unnoticed.
 allow = [
-    # Project's own crates. Modern SPDX uses "AGPL-3.0-only"; the old
-    # "AGPL-3.0" form is no longer needed since all reco-* Cargo.toml
-    # files use the current identifier.
-    "AGPL-3.0-only",
-    # Permissive third-party licenses — all AGPL-compatible AND
-    # dual-license-friendly.
+    # Permissive third-party licenses — compatible with AGPL today AND
+    # with a future dual-license / commercial track.
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
@@ -63,7 +59,7 @@ allow = [
     "CDLA-Permissive-2.0",# Community Data License (ONNX metadata) — permissive
     "ISC",
     "MIT",
-    "MPL-2.0",            # weak copyleft, file-scope — still dual-license-friendly
+    "MPL-2.0",            # weak copyleft, file-scope — dual-license-friendly
     "Unicode-3.0",
     "WTFPL",              # permissive ("do what the fuck you want")
     "Zlib",
@@ -72,32 +68,47 @@ allow = [
 # Permit multi-license crates to resolve to any allowed license.
 confidence-threshold = 0.93
 
-# Per-crate GPL/AGPL exceptions. Each entry is a concession against
-# the dual-license policy above. Keep this list short and audited.
+# Per-crate exceptions. Each entry is a DELIBERATE concession: the
+# crate ships under a license that would otherwise be rejected, and
+# we accept it for a specific documented reason.
+#
+# Note on SPDX suffix: CI's pinned cargo-deny action uses an older
+# spdx crate that rejects the modern "-only" suffix. Use the bare
+# forms ("AGPL-3.0", "GPL-3.0") until the action SHA gets bumped.
 exceptions = [
-    # ---------------------------------------------------------------
-    # Slint (tri-licensed GPL-3.0-only OR LicenseRef-Slint-Royalty-
-    # free-2.0 OR LicenseRef-Slint-Software-3.0). cargo-deny picks
-    # the SPDX-standard option (GPL-3.0-only), which blocks dual-
-    # licensing of reco-gui. Options before dual-license ships:
-    #   1. Commercial Slint license (paid)
-    #   2. Replace Slint in reco-gui (egui / iced / native Qt)
-    #   3. Ship reco-gui under GPL-only while keeping reco-core +
-    #      other crates dual-licensable (likely the shortest path)
-    # Tracked in the dual-license planning doc.
-    # ---------------------------------------------------------------
-    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-qt" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-selector" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-winit" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-common" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-compiler" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-core" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-core-macros" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-renderer-femtovg" },
-    { allow = ["GPL-3.0-only"], crate = "i-slint-renderer-software" },
-    { allow = ["GPL-3.0-only"], crate = "slint" },
-    { allow = ["GPL-3.0-only"], crate = "slint-build" },
-    { allow = ["GPL-3.0-only"], crate = "slint-macros" },
+    # --- Project's own crates (declared AGPL-3.0-only). Listed here
+    # instead of the base `allow` so a transitive third-party AGPL
+    # dep can't slip in through the same gate. ---
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-core" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-cli" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-io" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-autocam" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-calibrate" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-control" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-detect" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-gui" },
+    { allow = ["AGPL-3.0", "AGPL-3.0-only"], crate = "reco-obs" },
+
+    # --- Slint (tri-licensed GPL-3.0-only OR LicenseRef-Slint-Royalty-
+    # free-2.0 OR LicenseRef-Slint-Software-3.0). We hold a Slint
+    # proprietary royalty-free license for desktop (non-embedded) use,
+    # which selects the LicenseRef-Slint-Royalty-free-2.0 option.
+    # cargo-deny doesn't recognize LicenseRef-* identifiers, so we
+    # pin GPL-3.0 here to make the lint pass; the ACTUAL license we
+    # distribute under is the Slint royalty-free one. Revisit if we
+    # ever plan embedded-hardware distribution (not scheduled). ---
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-backend-qt" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-backend-selector" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-backend-winit" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-common" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-compiler" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-core" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-core-macros" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-renderer-femtovg" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "i-slint-renderer-software" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "slint" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "slint-build" },
+    { allow = ["GPL-3.0", "GPL-3.0-only"], crate = "slint-macros" },
 ]
 
 # ---------------------------------------------------------------------------
