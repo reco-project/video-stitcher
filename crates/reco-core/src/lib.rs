@@ -79,7 +79,7 @@ pub mod calibration;
 /// See [`core::StitchCore`] for details.
 pub mod core;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod coreml_inference;
+pub use reco_gpu_interop::coreml_inference;
 // CUDA / NPP modules migrated to the `reco-gpu-interop` crate per
 // plan M5 (phase 1). Re-exported here so existing
 // `reco_core::cuda_interop::*` / `reco_core::cuda_kernels::*` /

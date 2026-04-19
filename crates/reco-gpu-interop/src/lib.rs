@@ -62,6 +62,13 @@ pub mod cuda_kernels;
 #[cfg(all(feature = "cuda", any(target_os = "linux", target_os = "windows")))]
 pub mod npp_interop;
 
+// Metal / CoreML family. `coreml_inference` lands in phase 1
+// because it is standalone (pure CoreML C API wrap, no GpuContext
+// entanglement). `metal_interop` and `metal_compute` migrations
+// land in a follow-up once `GpuContext` has been reshaped.
+#[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
+pub mod coreml_inference;
+
 // Android hardware-buffer stub. Compiles on every target; marked
 // `cfg(target_os = "android")` on the actual bindings when they
 // land so the stub doesn't accidentally ship on desktop.

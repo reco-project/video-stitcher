@@ -35,6 +35,10 @@ libloading = "0.9"
 reco-gpu-interop = { path = "../reco-gpu-interop", features = ["cuda"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# reco-gpu-interop's `metal` feature enables `coreml_inference`
+# today; `metal_interop` + `metal_compute` migrate here once the
+# GpuContext reshape lands.
+reco-gpu-interop = { path = "../reco-gpu-interop", features = ["metal"] }
 # The `metal` crate (0.33) is wgpu-hal 28's Metal backend dependency.
 # We use it directly for interop with VideoToolbox and compute shaders.
 # When wgpu moves back to objc2-metal (likely 29+), this dep goes

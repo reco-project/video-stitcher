@@ -63,4 +63,23 @@ thiserror = "2"
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 libloading = "0.9"
 
+# `metal`-feature deps: objc2-family for CoreML + Metal FFI via
+# Apple's objc2 ecosystem. Only compiled on macOS / iOS targets.
+# `metal_interop` and `metal_compute` migrations land in a
+# follow-up (they take `&GpuContext` today); `coreml_inference`
+# is standalone and moves with this commit.
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSObject"] }
+objc2-core-ml = { version = "0.3", features = [
+    "MLModel",
+    "MLMultiArray",
+    "MLFeatureValue",
+    "MLFeatureProvider",
+    "MLDictionaryFeatureProvider",
+    "MLModelConfiguration",
+    "block2",
+] }
+
 [dev-dependencies]
