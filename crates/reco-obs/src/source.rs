@@ -398,6 +398,23 @@ impl RecoSource {
             let Some(core) = self.core.as_mut() else {
                 return;
             };
+            // Safety check: replay tiles are recorded at the raw
+            // input resolution (no downscale). For 5K cameras the
+            // composite is 5120x5760, and libx264 at that size can
+            // eat most of a modern CPU. Warn loudly so the user
+            // isn't surprised by the bitrate / file size / encoder
+            // stall. Threshold picked at "anything > 4K per tile".
+            if self.input_width > 3840 || self.input_height > 2160 {
+                log::warn!(
+                    "reco-obs: replay recording at {}x{} per tile -> {}x{} composite. \
+                     Software libx264 at this size may not keep up in real time; \
+                     file will be large. Future work: GPU pack + downscale option.",
+                    self.input_width,
+                    self.input_height,
+                    self.input_width,
+                    self.input_height * 2,
+                );
+            }
             let path = std::path::PathBuf::from(&self.replay_path);
             let cfg = reco_io::stacked_video::encoder::StackedEncoderConfig::default();
             match reco_io::stacked_video::replay::session_recorder(
@@ -1135,13 +1152,18 @@ unsafe extern "C" fn source_mouse_move(
         src.last_mouse_x = ev.x;
         src.last_mouse_y = ev.y;
 
-        // Natural "drag the scene, not the camera" mapping: drag right
-        // shifts the view left (yaw becomes more negative), drag up shifts
-        // the view down (pitch more positive). Clamp pitch to [-89, 89] to
-        // avoid pole flip.
-        src.yaw_degrees -= dx * DRAG_SENSITIVITY_DEG_PER_PIXEL;
+        // "Drag the camera" mapping (user feedback 2026-04-19): drag
+        // left -> video appears to move right on screen (camera
+        // yaws left, revealing content from that side). Drag down
+        // -> video appears to move up (camera pitches down). Both
+        // axes inverted relative to the "drag the scene" convention
+        // a browser map would use; the stitcher feels more like a
+        // physical PTZ head this way.
+        //
+        // Clamp pitch to [-89, 89] to avoid pole flip.
+        src.yaw_degrees += dx * DRAG_SENSITIVITY_DEG_PER_PIXEL;
         src.pitch_degrees =
-            (src.pitch_degrees + dy * DRAG_SENSITIVITY_DEG_PER_PIXEL).clamp(-89.0, 89.0);
+            (src.pitch_degrees - dy * DRAG_SENSITIVITY_DEG_PER_PIXEL).clamp(-89.0, 89.0);
     })
 }
 

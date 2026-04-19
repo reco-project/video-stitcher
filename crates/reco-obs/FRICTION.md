@@ -300,6 +300,29 @@ know our plugin's internal ring-buffer state.
 
 Estimated 4-6 hours plus memory-budget discussion.
 
+### A19. Replay recording has no tile-downscale / quality override
+
+**Impact**: Medium. Surfaced 2026-04-19 during first in-OBS test. Replay tiles are written at the exact input resolution (the stacked composite is `width × 2*height` for N=2), with no way to request a smaller recording. Consequences:
+
+- Two 5K cameras produce a 5120×5760 composite. libx264 software encode at this size struggles to keep up on modest hardware, the file grows at several GB/min, and disk I/O may stall the OBS video_tick.
+- A user who wants replay for review purposes (not archival) has no way to trade quality for size.
+
+Today we emit a `warn!` when the input exceeds 4K per tile so the user isn't silently blindsided, but the proper fix is a UI-visible `Replay scale` dropdown (Full / 1080p / 720p) and a `Replay quality` dropdown (Fast / Balanced / High). Both map onto `StackedEncoderConfig.inner.{resolution, quality, crf}` which already exist.
+
+**Suggested direction**: add two dropdowns in the reco-obs properties UI and thread them through `StackedEncoderConfig`. A GPU-resident downscale (once the future wgpu pack path lands) would avoid the CPU hit entirely.
+
+### A20. Replay records concurrently with OBS recording/streaming without warning
+
+**Impact**: Low. Surfaced 2026-04-19 during first in-OBS test. Toggling "Record replay" while OBS itself is recording or streaming results in two parallel encode paths (the OBS encoder and our stacked encoder) that have nothing to do with each other. Not harmful, but surprising to a user who expects "OBS is recording" to imply "reco-obs is also saving the panorama via OBS".
+
+**Suggested direction**: one-shot log info at replay start time noting whether OBS is currently recording/streaming, and possibly a properties-UI hint text near the toggle. Cheap fix; mostly a documentation / transparency concern.
+
+### A21. Live Matroska replay is hard to scrub in general-purpose players
+
+**Impact**: Low. Surfaced 2026-04-19 during first in-OBS test. A Matroska file that's still being written has unstable duration metadata - VLC, mpv, and OBS itself treat the duration as `N/A` and won't scrub backwards past a few seconds. This is a generic streaming-container limitation, not a reco bug: finalized files (after the user unticks the toggle) scrub normally.
+
+**Suggested direction**: either accept it (replay is replay, not scrub), or write a parallel "chunked" file (rotate every N seconds into a new .mkv) so recent chunks are always complete and seekable. Low priority - real-time replay in a stitcher UI is future work anyway.
+
 ### A17. No AI auto-pan access in the OBS plugin
 
 See also A10 (deeper architectural notes). Short version: reco-obs
