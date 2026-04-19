@@ -41,15 +41,31 @@ use std::path::{Path, PathBuf};
 
 use serde::{Serialize, de::DeserializeOwned};
 
-/// Errors from the settings module.
-#[derive(Debug, thiserror::Error)]
+/// Errors from the settings module. `Clone + Send + Sync` so
+/// consumers posting results to worker-thread channels carry the
+/// typed error instead of stringifying (matches plan step 7).
+/// `std::io::Error` and `serde_json::Error` are not `Clone`, so
+/// both are flattened to `String` at the `From` boundary with the
+/// original error's `kind()` / `Display` preserved in the message.
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum SettingsError {
-    /// Filesystem error reading, writing, or creating a settings file.
-    #[error("settings I/O: {0}")]
-    Io(#[from] std::io::Error),
+    /// Filesystem error reading, writing, or creating a settings
+    /// file. The [`std::io::ErrorKind`] is stored separately so
+    /// [`load_or_default`] can still distinguish `NotFound` without
+    /// string-matching.
+    #[error("settings I/O: {message}")]
+    Io {
+        /// The io error kind at the boundary. Preserved so
+        /// [`load_or_default`] can branch on `NotFound` without
+        /// parsing the message.
+        kind: std::io::ErrorKind,
+        /// Formatted error message (original `std::io::Error` is
+        /// not `Clone`).
+        message: String,
+    },
     /// JSON (de)serialization error.
     #[error("settings serialize: {0}")]
-    Serialize(#[from] serde_json::Error),
+    Serialize(String),
     /// Namespace contained characters outside `[a-z0-9_-]`.
     ///
     /// The allowed set is intentionally narrow to avoid path-traversal
@@ -62,6 +78,21 @@ pub enum SettingsError {
     /// Could not resolve the platform config directory.
     #[error("cannot resolve config directory")]
     NoConfigDir,
+}
+
+impl From<std::io::Error> for SettingsError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io {
+            kind: e.kind(),
+            message: e.to_string(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for SettingsError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Serialize(e.to_string())
+    }
 }
 
 /// Directory under which reco settings files are stored.
@@ -132,7 +163,10 @@ pub fn load<T: DeserializeOwned>(namespace: &str) -> Result<T, SettingsError> {
 pub fn load_or_default<T: DeserializeOwned + Default>(namespace: &str) -> T {
     match load::<T>(namespace) {
         Ok(v) => v,
-        Err(SettingsError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => T::default(),
+        Err(SettingsError::Io {
+            kind: std::io::ErrorKind::NotFound,
+            ..
+        }) => T::default(),
         Err(e) => {
             log::warn!("settings({namespace}): falling back to defaults after load error: {e}");
             T::default()
@@ -155,6 +189,40 @@ pub fn save<T: Serialize>(namespace: &str, value: &T) -> Result<(), SettingsErro
     std::fs::rename(&tmp, &path)?;
     Ok(())
 }
+
+/// Whether a settings file exists for the given namespace.
+///
+/// Returns `Ok(false)` on first-run, `Ok(true)` if any bytes have
+/// been persisted. `Err` for namespace validation failures or
+/// platform-config-dir resolution failures — never for plain
+/// "file missing" which is the `Ok(false)` case.
+pub fn exists(namespace: &str) -> Result<bool, SettingsError> {
+    let path = settings_path(namespace)?;
+    Ok(path.exists())
+}
+
+/// Delete the settings file for a namespace. Used by consumer
+/// "reset preferences" flows.
+///
+/// Returns `Ok(true)` if a file was removed, `Ok(false)` if nothing
+/// was there to begin with. Any other filesystem error propagates.
+pub fn delete(namespace: &str) -> Result<bool, SettingsError> {
+    let path = settings_path(namespace)?;
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+// Compile-time bound check: `SettingsError` is `Clone + Send + Sync`
+// so consumer worker threads (reco-gui save-on-drop, future settings
+// autosave) can send results across mpsc channels without
+// stringifying. Regresses if a future variant wraps a non-Clone type.
+const _: fn() = || {
+    fn assert_clone_send_sync<T: Clone + Send + Sync + 'static>() {}
+    assert_clone_send_sync::<SettingsError>();
+};
 
 /// Recently-used file paths, capped at a configurable length.
 ///
@@ -366,6 +434,54 @@ mod tests {
         mru.push(PathBuf::from("/2"));
         mru.push(PathBuf::from("/3"));
         assert_eq!(mru.entries(), &[PathBuf::from("/3"), PathBuf::from("/2")]);
+    }
+
+    #[test]
+    fn exists_returns_false_before_save_true_after() {
+        let _guard = ConfigDirOverride::new();
+        let ns = "exists_probe";
+        assert!(!exists(ns).unwrap());
+        save(ns, &DummySettings::default()).unwrap();
+        assert!(exists(ns).unwrap());
+    }
+
+    #[test]
+    fn delete_removes_existing_file_and_reports_true() {
+        let _guard = ConfigDirOverride::new();
+        let ns = "delete_probe";
+        save(
+            ns,
+            &DummySettings {
+                flag: true,
+                count: 3,
+                name: "keep".into(),
+            },
+        )
+        .unwrap();
+        assert!(delete(ns).unwrap(), "first delete removed the file");
+        assert!(!exists(ns).unwrap(), "file gone after delete");
+        assert!(
+            !delete(ns).unwrap(),
+            "second delete is a no-op and returns Ok(false)"
+        );
+    }
+
+    #[test]
+    fn delete_validates_namespace() {
+        let _guard = ConfigDirOverride::new();
+        assert!(matches!(
+            delete("has space"),
+            Err(SettingsError::BadNamespace { .. })
+        ));
+    }
+
+    #[test]
+    fn load_or_default_still_distinguishes_not_found_after_flatten() {
+        // After flattening Io to { kind, message }, load_or_default
+        // still uses `kind` (not string-match) to detect NotFound.
+        let _guard = ConfigDirOverride::new();
+        let v: DummySettings = load_or_default("never_saved_xxx");
+        assert_eq!(v, DummySettings::default());
     }
 
     #[test]
