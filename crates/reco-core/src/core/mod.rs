@@ -198,6 +198,52 @@ impl ReplayBuffer {
     pub fn latest(&self) -> Option<&ReplayFrame> {
         self.frames.back()
     }
+
+    /// Oldest buffered frame, if any. Useful for consumers that want
+    /// to know the effective buffered duration
+    /// (`latest.captured_at - oldest.captured_at`).
+    pub fn oldest(&self) -> Option<&ReplayFrame> {
+        self.frames.front()
+    }
+
+    /// The effective buffered duration: the difference between
+    /// oldest and newest frame timestamps. Returns `Duration::ZERO`
+    /// for empty or single-frame buffers.
+    pub fn buffered_duration(&self) -> Duration {
+        match (self.frames.front(), self.frames.back()) {
+            (Some(first), Some(last)) => last.captured_at.saturating_sub(first.captured_at),
+            _ => Duration::ZERO,
+        }
+    }
+
+    /// Drop every buffered frame without changing `max_duration`.
+    /// Consumers wire this to a "Clear replay" UI button so the user
+    /// can start a fresh replay window after an event.
+    pub fn clear(&mut self) {
+        self.frames.clear();
+    }
+
+    /// Clone every buffered frame into an owned vector.
+    ///
+    /// Used by consumers that want to ship the replay off the render
+    /// thread (to disk, to a "Save replay" dialog, to a network
+    /// stream). The buffer itself keeps the frames, so the consumer
+    /// can keep recording while it exports a snapshot.
+    ///
+    /// Returns the vector in oldest-to-newest order, matching
+    /// [`Self::iter`].
+    pub fn snapshot(&self) -> Vec<ReplayFrame> {
+        self.frames.iter().cloned().collect()
+    }
+
+    /// Drain every buffered frame into an owned vector, leaving the
+    /// buffer empty. Same ordering contract as [`Self::snapshot`].
+    /// Unlike `snapshot`, this transfers ownership — no clone cost
+    /// for consumers that are about to discard the buffer anyway
+    /// (e.g. a "Save + reset" UI flow).
+    pub fn take(&mut self) -> Vec<ReplayFrame> {
+        self.frames.drain(..).collect()
+    }
 }
 
 /// Configuration for building a [`StitchCore`].
@@ -303,6 +349,18 @@ pub struct StitchCore {
 
     replay: Option<ReplayBuffer>,
 
+    /// Whether `resolve_current_pose` clamps output through the
+    /// coverage boundary (FRICTION A13 — "constrained look"). `true`
+    /// by default so the viewport never reveals black panorama
+    /// edges; toggle off when the user wants to explore the raw
+    /// panorama space (e.g. to find the edge of coverage during
+    /// debugging or a cinematographic effect).
+    ///
+    /// The public [`Self::safe_clamp`] method remains available
+    /// regardless of this flag — it's the primitive consumers use
+    /// for ad-hoc clamping outside the render loop.
+    constrained_look: bool,
+
     frame_count: u64,
     session_start: Option<Instant>,
 }
@@ -359,6 +417,7 @@ impl StitchCore {
             detection_interval: 1,
             last_detections: Vec::new(),
             replay,
+            constrained_look: true,
             frame_count: 0,
             session_start: None,
         })
@@ -761,6 +820,38 @@ impl StitchCore {
         self.coverage.as_ref()
     }
 
+    /// Whether the render loop's pose resolution clamps through the
+    /// coverage boundary (FRICTION A13). `true` by default. Consumers
+    /// expose this as a UI toggle ("Constrained look") so users can
+    /// choose between "never show black edges" (on) and "unrestricted
+    /// panning" (off).
+    pub fn constrained_look(&self) -> bool {
+        self.constrained_look
+    }
+
+    /// Enable or disable constrained-look clamping.
+    ///
+    /// When `true`, [`Self::submit_frame_yuv`] / `..._bgra` /
+    /// `submit_frame_*_at_pose` pass the director's (or caller's)
+    /// pose through [`Self::safe_clamp`] before rendering.
+    /// When `false`, the raw pose is used verbatim; the FOV max is
+    /// still respected (pipeline-set) but coverage-based yaw/pitch
+    /// clamping is skipped.
+    ///
+    /// The public [`Self::safe_clamp`] method is unaffected — it
+    /// always clamps, regardless of this flag.
+    pub fn set_constrained_look(&mut self, enabled: bool) {
+        self.constrained_look = enabled;
+    }
+
+    /// Toggle the constrained-look flag. Returns the new value.
+    /// Consumers handling [`HotkeyIntent::ToggleConstrained`](crate::pose_control::HotkeyIntent::ToggleConstrained)
+    /// wire it to this method.
+    pub fn toggle_constrained_look(&mut self) -> bool {
+        self.constrained_look = !self.constrained_look;
+        self.constrained_look
+    }
+
     /// Full angular extent of the stitched panorama, derived from the
     /// coverage boundary. Higher-level shortcut for analytics consumers.
     pub fn panorama_extent(&self) -> Option<PanoramaExtent> {
@@ -839,6 +930,13 @@ impl StitchCore {
         self.replay.as_ref()
     }
 
+    /// Mutable borrow of the replay buffer. Consumers wire this to
+    /// "Clear replay" / "Save replay + reset" UI buttons which call
+    /// [`ReplayBuffer::clear`] or [`ReplayBuffer::take`] respectively.
+    pub fn replay_buffer_mut(&mut self) -> Option<&mut ReplayBuffer> {
+        self.replay.as_mut()
+    }
+
     // -----------------------------------------------------------------
     // Introspection
     // -----------------------------------------------------------------
@@ -905,7 +1003,17 @@ impl StitchCore {
             .director
             .as_ref()
             .map_or(ViewportPosition::default(), |d| d.position());
-        let clamped = self.safe_clamp(raw);
+        // Constrained-look (FRICTION A13): when on (default), clamp
+        // the pose through the coverage boundary so the viewport
+        // never reveals black panorama edges. When off, pass the
+        // raw pose through — useful for exploring the panorama space
+        // directly or for a deliberate cinematographic effect where
+        // black bars are acceptable.
+        let clamped = if self.constrained_look {
+            self.safe_clamp(raw)
+        } else {
+            raw
+        };
         if let Some(fov) = clamped.fov_degrees {
             self.pipeline.set_fov(fov);
         }
@@ -1032,8 +1140,74 @@ mod tests {
         let buf = ReplayBuffer::new(Duration::from_secs(1));
         assert!(buf.is_empty());
         assert!(buf.latest().is_none());
+        assert!(buf.oldest().is_none());
         assert_eq!(buf.len(), 0);
+        assert_eq!(buf.buffered_duration(), Duration::ZERO);
         assert_eq!(buf.max_duration(), Duration::from_secs(1));
+    }
+
+    /// A16 "Clear replay" / "Save replay" UI wiring: `clear`,
+    /// `snapshot`, `take`, `buffered_duration`, `oldest`.
+    #[test]
+    fn replay_buffer_snapshot_and_take_preserve_ordering() {
+        let mut buf = ReplayBuffer::new(Duration::from_secs(10));
+        for i in 0..3u8 {
+            buf.push(ReplayFrame {
+                rgba: vec![i; 4],
+                captured_at: Duration::from_millis(i as u64 * 100),
+                pose: ViewportPosition::default(),
+            });
+        }
+        // snapshot returns oldest-to-newest, no consumption.
+        let snap = buf.snapshot();
+        assert_eq!(snap.len(), 3);
+        assert_eq!(snap[0].rgba[0], 0);
+        assert_eq!(snap[2].rgba[0], 2);
+        assert_eq!(buf.len(), 3, "snapshot does not drain");
+
+        // take drains and returns owned vec in same order.
+        let drained = buf.take();
+        assert_eq!(drained.len(), 3);
+        assert_eq!(drained[0].rgba[0], 0);
+        assert!(buf.is_empty(), "take empties the buffer");
+    }
+
+    #[test]
+    fn replay_buffer_clear_drops_frames_keeps_max_duration() {
+        let mut buf = ReplayBuffer::new(Duration::from_secs(5));
+        buf.push(ReplayFrame {
+            rgba: vec![0u8; 4],
+            captured_at: Duration::ZERO,
+            pose: ViewportPosition::default(),
+        });
+        assert!(!buf.is_empty());
+        buf.clear();
+        assert!(buf.is_empty());
+        assert_eq!(
+            buf.max_duration(),
+            Duration::from_secs(5),
+            "clear preserves the configured window"
+        );
+    }
+
+    #[test]
+    fn replay_buffer_duration_tracks_oldest_newest_spread() {
+        let mut buf = ReplayBuffer::new(Duration::from_secs(10));
+        buf.push(ReplayFrame {
+            rgba: vec![],
+            captured_at: Duration::from_millis(100),
+            pose: ViewportPosition::default(),
+        });
+        buf.push(ReplayFrame {
+            rgba: vec![],
+            captured_at: Duration::from_millis(850),
+            pose: ViewportPosition::default(),
+        });
+        assert_eq!(buf.buffered_duration(), Duration::from_millis(750));
+        assert_eq!(
+            buf.oldest().unwrap().captured_at,
+            Duration::from_millis(100)
+        );
     }
 
     /// `StitchCoreError` is `std::error::Error` (so downstream
