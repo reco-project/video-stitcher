@@ -761,6 +761,56 @@ impl StitchSession {
         self.core.flush_stacked_recorder();
     }
 
+    /// Enable the GPU-pack replay path (M7 pivot item 1).
+    ///
+    /// Forwards to [`crate::core::StitchCore::enable_gpu_stacked_replay`].
+    /// After enabling, attach a
+    /// [`crate::core::StackedReplayGpuRecorder`] via
+    /// [`Self::set_stacked_gpu_recorder`] to route the packed atlas
+    /// to an encoder. The pack runs on every YUV submit and logs
+    /// its path choice once at enable time.
+    pub fn enable_gpu_stacked_replay(
+        &mut self,
+        layout: crate::yuv_stack_packer::StackGridLayout,
+        output_size: crate::yuv_stack_packer::OutputTileSize,
+    ) -> Result<(), crate::core::StitchCoreError> {
+        self.core.enable_gpu_stacked_replay(layout, output_size)
+    }
+
+    /// Disable the GPU-pack replay path. Also finalizes any
+    /// attached GPU recorder.
+    pub fn disable_gpu_stacked_replay(&mut self) {
+        self.core.disable_gpu_stacked_replay();
+    }
+
+    /// Attach a GPU-pack atlas recorder. Call after
+    /// [`Self::enable_gpu_stacked_replay`].
+    pub fn set_stacked_gpu_recorder(
+        &mut self,
+        recorder: Box<dyn crate::core::StackedReplayGpuRecorder>,
+    ) {
+        self.core.set_stacked_gpu_recorder(recorder);
+    }
+
+    /// Finalize and drop the GPU-pack atlas recorder. No-op if none
+    /// is attached.
+    pub fn clear_stacked_gpu_recorder(&mut self) {
+        self.core.clear_stacked_gpu_recorder();
+    }
+
+    /// Flush the GPU-pack recorder's buffered bytes to disk. No-op
+    /// if none is attached.
+    pub fn flush_stacked_gpu_recorder(&mut self) {
+        self.core.flush_stacked_gpu_recorder();
+    }
+
+    /// Atlas dimensions the active GPU packer produces, or `None` if
+    /// the GPU-pack path is not enabled. Consumers use this to open
+    /// an encoder sized for the atlas.
+    pub fn stacked_atlas_dims(&self) -> Option<(u32, u32)> {
+        self.core.stacked_atlas_dims()
+    }
+
     /// Set the sink that receives tracked detection data each frame.
     ///
     /// The sink is called once per frame with the current tracked

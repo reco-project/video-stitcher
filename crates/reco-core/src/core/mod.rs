@@ -84,6 +84,9 @@ use crate::rgba_readback::{RgbaReadback, RgbaReadbackError};
 use crate::source::{CameraInput, StereoCameraInput};
 use crate::stage::PipelineStage;
 use crate::viewport::ViewportConfig;
+use crate::yuv_stack_packer::{
+    OutputTileSize, PackerError, SourceFormat, StackGridLayout, StackedAtlas, YuvStackPacker,
+};
 
 /// Errors from [`StitchCore`]. `Clone + Send + Sync` so consumers
 /// posting render results to worker-thread channels carry the typed
@@ -99,6 +102,9 @@ pub enum StitchCoreError {
     /// Caller-facing configuration error (e.g. unsupported combination).
     #[error("config: {0}")]
     Config(String),
+    /// GPU stacked-replay packer error (shader pipeline build, dim check).
+    #[error("stacked packer: {0}")]
+    StackedPacker(#[from] PackerError),
 }
 
 /// Returned from every [`StitchCore::submit_frame_yuv`] /
@@ -370,6 +376,39 @@ pub trait StackedReplayRecorder: Send {
     fn finish(&mut self) {}
 }
 
+/// Recorder hook for the GPU-pack replay path (M7 pivot item 1).
+///
+/// The GPU-pack path is chosen by
+/// [`StitchCore::enable_gpu_stacked_replay`] when the source frames
+/// are already on the GPU: the pack shader reads the renderer's
+/// YUV textures into a tiled atlas and reads back a single
+/// YUV420P buffer via a triple-buffered staging ring. Consumers
+/// receive that buffer here, two frames after the submit that
+/// produced it — mirroring the RGBA readback's lag.
+///
+/// Unlike [`StackedReplayRecorder`], this trait does NOT fire on
+/// every submit; it fires when `YuvStackPacker::poll_ready`
+/// returns a complete atlas. Early submits during the warm-up
+/// (first two frames) produce no `record_atlas` call at all.
+/// Path-choice is decided once per session at
+/// [`StitchCore::enable_gpu_stacked_replay`] and logged explicitly
+/// so CPU vs GPU packing is never a silent decision.
+///
+/// # Thread safety
+///
+/// Owned by `StitchCore` on the render thread; `Send` is enough.
+pub trait StackedReplayGpuRecorder: Send {
+    /// Receive a packed YUV420P atlas. The bytes live in
+    /// `atlas.y / u / v`; dimensions are `atlas.width × atlas.height`
+    /// (Y-plane). Called at most once per `submit_frame_*` call,
+    /// and only when the triple-buffer produces a ready slot.
+    fn record_atlas(&mut self, atlas: &StackedAtlas);
+    /// Best-effort push buffered bytes to disk.
+    fn flush(&mut self) {}
+    /// Finalize the recording. Called when the session ends.
+    fn finish(&mut self) {}
+}
+
 pub struct StitchCore {
     pipeline: StitchPipeline,
     readback: RgbaReadback,
@@ -401,6 +440,20 @@ pub struct StitchCore {
     /// (lives in reco-io under `stacked-output`) so mobile / wasm
     /// builds that skip reco-io see no replay-recording code.
     stacked_recorder: Option<Box<dyn StackedReplayRecorder>>,
+
+    /// Optional GPU-pack packer attached via
+    /// [`Self::enable_gpu_stacked_replay`]. Holds the compute
+    /// pipelines and triple-buffered staging ring. `None` when the
+    /// session runs on a CPU-pack (or no replay) path.
+    stacked_packer: Option<YuvStackPacker>,
+
+    /// Optional GPU-pack atlas recorder attached via
+    /// [`Self::set_stacked_gpu_recorder`]. Receives the packed atlas
+    /// bytes every time [`YuvStackPacker::poll_ready`] yields a
+    /// completed readback slot. `None` means the pack still runs
+    /// (if enabled) but the bytes are dropped — useful when a
+    /// consumer wants to attach the recorder lazily.
+    stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
 
     /// Whether `resolve_current_pose` clamps output through the
     /// coverage boundary (FRICTION A13 — "constrained look"). `true`
@@ -471,6 +524,8 @@ impl StitchCore {
             last_detections: Vec::new(),
             replay,
             stacked_recorder: None,
+            stacked_packer: None,
+            stacked_gpu_recorder: None,
             constrained_look: true,
             frame_count: 0,
             session_start: None,
@@ -518,6 +573,15 @@ impl StitchCore {
         let cmd = self
             .pipeline
             .render_to_target(left, right, pose.yaw, pose.pitch)?;
+        // GPU stacked-replay pack runs before the readback so the
+        // borrow checker sees `self.readback` free while the pack
+        // runs. Queue ordering: `queue.write_texture` inside
+        // `render_to_target` is already enqueued; the pack submit
+        // processes the writes before its compute pass reads the
+        // textures, and the subsequent stitch submit reads the
+        // same textures into the render target. No-op when packer
+        // is not enabled.
+        self.drive_gpu_stacked_pack();
         // Split-borrow: push_replay only accesses self.replay +
         // self.session_start; self.readback keeps the rgba slice
         // alive. Inlining the replay push (instead of going through
@@ -579,6 +643,9 @@ impl StitchCore {
         }
 
         let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
+        // GPU stacked-replay pack — see `submit_frame_yuv` for
+        // ordering rationale. No-op when not enabled.
+        self.drive_gpu_stacked_pack();
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let rgba =
             self.readback
@@ -876,6 +943,174 @@ impl StitchCore {
     pub fn flush_stacked_recorder(&mut self) {
         if let Some(ref mut recorder) = self.stacked_recorder {
             recorder.flush();
+        }
+    }
+
+    /// Enable the GPU-pack replay path (M7 pivot item 1).
+    ///
+    /// Builds a [`YuvStackPacker`] sized for `layout` × `output_size`
+    /// and wires it into subsequent YUV submit calls. The packer's
+    /// source-format variant is derived from the pipeline's input
+    /// format so consumers don't risk a YUV/NV12 mismatch.
+    ///
+    /// Call [`Self::set_stacked_gpu_recorder`] to attach an
+    /// atlas-consuming sink (typically a
+    /// [`reco_io`](../../../reco_io/index.html) encoder) before the
+    /// first submit, or later — the pack still runs either way and
+    /// the first two submits are warmup.
+    ///
+    /// Emits one `log::info!` line stating the pack path has been
+    /// chosen (GPU), the tile dims, `N`, and the source format — so
+    /// the CPU vs GPU decision is never silent.
+    ///
+    /// Returns `StitchCoreError::Config` when the pipeline's input
+    /// format is BGRA (the pack shader only handles YUV420P / NV12)
+    /// or when the layout / output dims violate YUV420P alignment.
+    pub fn enable_gpu_stacked_replay(
+        &mut self,
+        layout: StackGridLayout,
+        output_size: OutputTileSize,
+    ) -> Result<(), StitchCoreError> {
+        let source_format = match self.pipeline.input_format() {
+            InputFormat::Yuv420p => SourceFormat::Yuv420p,
+            InputFormat::Nv12 => SourceFormat::Nv12,
+            InputFormat::Bgra => {
+                return Err(StitchCoreError::Config(
+                    "GPU stacked replay requires YUV420P or NV12 input; BGRA pipelines must use \
+                     the CPU replay-recording path"
+                        .into(),
+                ));
+            }
+        };
+        let packer =
+            YuvStackPacker::new(self.pipeline.gpu(), layout, output_size, source_format)?;
+        let (atlas_w, atlas_h) = packer.atlas_dims();
+        log::info!(
+            "reco-core: replay pack path = GPU shader (tiles {}x{} out, N={}, atlas {}x{}, source_format={:?})",
+            output_size.width,
+            output_size.height,
+            layout.capacity(),
+            atlas_w,
+            atlas_h,
+            source_format,
+        );
+        if self.stacked_recorder.is_some() {
+            log::warn!(
+                "StitchCore::enable_gpu_stacked_replay: a CPU StackedReplayRecorder is also \
+                 attached; both paths will run and duplicate work. Clear one to avoid \
+                 redundant recording."
+            );
+        }
+        self.stacked_packer = Some(packer);
+        Ok(())
+    }
+
+    /// Disable the GPU-pack replay path and drop the packer.
+    /// Also calls `finish` on any attached GPU recorder so its file
+    /// is finalized. No-op when the path was not enabled.
+    pub fn disable_gpu_stacked_replay(&mut self) {
+        if self.stacked_packer.take().is_some() {
+            log::info!("StitchCore: GPU stacked replay disabled");
+        }
+        self.clear_stacked_gpu_recorder();
+    }
+
+    /// Attach a GPU-pack atlas recorder. Must be called after
+    /// [`Self::enable_gpu_stacked_replay`] for the pack output to
+    /// reach disk — without a recorder the packer still runs but
+    /// the readback bytes are dropped.
+    pub fn set_stacked_gpu_recorder(
+        &mut self,
+        recorder: Box<dyn StackedReplayGpuRecorder>,
+    ) {
+        if self.stacked_gpu_recorder.is_some() {
+            log::warn!(
+                "StitchCore::set_stacked_gpu_recorder replacing an existing GPU recorder; \
+                 call clear_stacked_gpu_recorder first to finalize the previous recording"
+            );
+        }
+        if self.stacked_packer.is_none() {
+            log::warn!(
+                "StitchCore::set_stacked_gpu_recorder called before \
+                 enable_gpu_stacked_replay: recorder will receive no atlases until the \
+                 packer is enabled"
+            );
+        }
+        log::info!("StitchCore: GPU stacked-replay recorder attached");
+        self.stacked_gpu_recorder = Some(recorder);
+    }
+
+    /// Drop the GPU-pack atlas recorder, calling `finish` so the
+    /// output file is finalized. No-op if no recorder is attached.
+    pub fn clear_stacked_gpu_recorder(&mut self) {
+        if let Some(mut recorder) = self.stacked_gpu_recorder.take() {
+            recorder.finish();
+            log::info!("StitchCore: GPU stacked-replay recorder detached");
+        }
+    }
+
+    /// Flush the GPU recorder's buffered bytes to disk. No-op if no
+    /// recorder is attached.
+    pub fn flush_stacked_gpu_recorder(&mut self) {
+        if let Some(ref mut recorder) = self.stacked_gpu_recorder {
+            recorder.flush();
+        }
+    }
+
+    /// Atlas dimensions `(width, height)` the current packer produces,
+    /// or `None` when GPU stacked replay is not enabled. Consumers
+    /// use this to open an encoder sized for the atlas.
+    pub fn stacked_atlas_dims(&self) -> Option<(u32, u32)> {
+        self.stacked_packer.as_ref().map(|p| p.atlas_dims())
+    }
+
+    /// Private: runs the GPU pack for the two-camera stereo case
+    /// after the stitch submit has landed. Safe to call from every
+    /// YUV submit path — early-returns when no packer is enabled.
+    ///
+    /// The pack submits as a **separate** `CommandBuffer` after the
+    /// stitch+readback submit. That preserves the readback API
+    /// (unchanged) and relies on wgpu queue ordering: the stitch
+    /// submit commits `queue.write_texture` of the current frame's
+    /// YUV data, and the pack submit then samples those same
+    /// textures before the next frame's `queue.write_texture`
+    /// overwrites them. One extra submit per frame (~100 us PCIe
+    /// overhead).
+    ///
+    /// Hard-coded to the two-camera stereo layout (tile 0 = left,
+    /// tile 1 = right) today. N-camera will extend this when
+    /// `CameraInput::camera_count() > 2` starts landing real
+    /// pipelines.
+    fn drive_gpu_stacked_pack(&mut self) {
+        let Some(ref mut packer) = self.stacked_packer else {
+            return;
+        };
+        // Pipeline's plane-view accessors return
+        // (y_view, u_or_uv_view, v_or_dummy_view); the packer's
+        // shader branches on its pre-configured SourceFormat so we
+        // don't need to care which variant we're feeding here.
+        let (ly, lu, lv) = self.pipeline.left_plane_views();
+        let (ry, ru, rv) = self.pipeline.right_plane_views();
+        let gpu = self.pipeline.gpu();
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("stitch_core_gpu_stacked_pack"),
+            });
+        let capacity = packer.layout().capacity();
+        if capacity >= 1 {
+            packer.pack_tile(gpu, &mut encoder, 0, &ly, &lu, &lv);
+        }
+        if capacity >= 2 {
+            packer.pack_tile(gpu, &mut encoder, 1, &ry, &ru, &rv);
+        }
+        packer.copy_to_staging(&mut encoder);
+        gpu.queue.submit(Some(encoder.finish()));
+
+        if let Some(atlas) = packer.poll_ready(gpu)
+            && let Some(ref mut recorder) = self.stacked_gpu_recorder
+        {
+            recorder.record_atlas(&atlas);
         }
     }
 

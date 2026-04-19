@@ -373,10 +373,6 @@ impl StitchPipeline {
     /// kernel variant (separate R8 planes for YUV420P vs interleaved
     /// Rg8 UV for NV12) without the consumer passing the format
     /// through a second time.
-    #[allow(
-        dead_code,
-        reason = "consumed by StitchCore's GPU stacked-replay wiring in the next commit of the M7 sprint"
-    )]
     pub(crate) fn input_format(&self) -> crate::renderer::InputFormat {
         self.renderer.input_format()
     }
@@ -387,10 +383,6 @@ impl StitchPipeline {
     /// parallel with the panorama render into its own atlas buffer.
     /// For NV12 inputs the `U` view is the interleaved UV texture
     /// and the `V` view is a 1×1 dummy.
-    #[allow(
-        dead_code,
-        reason = "consumed by StitchCore's GPU stacked-replay wiring in the next commit of the M7 sprint"
-    )]
     pub(crate) fn left_plane_views(
         &self,
     ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
@@ -398,10 +390,6 @@ impl StitchPipeline {
     }
 
     /// Right-side counterpart to [`Self::left_plane_views`].
-    #[allow(
-        dead_code,
-        reason = "consumed by StitchCore's GPU stacked-replay wiring in the next commit of the M7 sprint"
-    )]
     pub(crate) fn right_plane_views(
         &self,
     ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
