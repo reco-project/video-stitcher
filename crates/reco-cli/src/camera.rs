@@ -39,6 +39,10 @@ pub struct CameraRunConfig<'a> {
     pub detection_interval: u64,
     pub crf: Option<u8>,
     pub preset: Option<String>,
+    /// Output container (`mp4` / `fmp4` / `mkv`). None → `mp4`.
+    /// Pick `mkv` or `fmp4` for streamable tee via external
+    /// `ffmpeg -c copy -f flv rtmp://...`.
+    pub container: Option<&'a str>,
     /// Optional path for M7 stacked-replay recording. Same feature
     /// as `StitchJob::with_replay_recording`. Requires the `replay`
     /// feature flag on reco-cli.
@@ -69,6 +73,7 @@ pub fn run_camera(
         detection_interval,
         crf,
         preset,
+        container,
         replay_path,
         replay_scale,
     } = config;
@@ -239,12 +244,20 @@ pub fn run_camera(
             eprintln!("Unknown codec '{codec}', defaulting to H.264");
             reco_io::ffmpeg::encoder::VideoCodec::H264
         });
+    let container_choice = if let Some(c) = container {
+        reco_io::ffmpeg::encoder::Container::from_str_loose(c).ok_or_else(|| {
+            anyhow::anyhow!("unknown container '{c}' (expected mp4, fmp4, or mkv)")
+        })?
+    } else {
+        reco_io::ffmpeg::encoder::Container::default()
+    };
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
         codec: video_codec,
         quality,
         crf,
         preset,
+        container: container_choice,
         ..Default::default()
     };
 

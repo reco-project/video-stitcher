@@ -36,6 +36,10 @@ pub struct StitchArgs<'a> {
     pub tracking_mode: &'a str,
     pub crf: Option<u8>,
     pub preset: Option<String>,
+    /// Output container selector (`mp4` / `fmp4` / `mkv`). None
+    /// means default (plain MP4, finalized at close). `mkv` or
+    /// `fmp4` for streamable tee use.
+    pub container: Option<&'a str>,
     /// Optional replay-recording output path. When `Some`, the
     /// stitch job writes a stacked-video copy of the source frames
     /// alongside the stitched output (M6.5 feature, `replay`
@@ -98,6 +102,18 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if let Some(ref preset) = args.preset {
         job = job.preset(preset);
+    }
+    if let Some(container) = args.container {
+        let c = reco_io::ffmpeg::encoder::Container::from_str_loose(container).ok_or_else(
+            || anyhow::anyhow!("unknown container '{container}' (expected mp4, fmp4, or mkv)"),
+        )?;
+        job = job.format(match c {
+            reco_io::ffmpeg::encoder::Container::Mp4 => reco_io::output::Format::Mp4,
+            reco_io::ffmpeg::encoder::Container::Mp4Fragmented => {
+                reco_io::output::Format::Mp4Fragmented
+            }
+            reco_io::ffmpeg::encoder::Container::Matroska => reco_io::output::Format::Mkv,
+        });
     }
 
     // Opt-in replay recording. The builder call is all the

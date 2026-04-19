@@ -597,7 +597,15 @@ impl StitchJob {
             crf: self.crf,
             preset: self.preset.clone(),
             audio_source,
-            container: crate::ffmpeg::encoder::Container::default(),
+            container: match self.format {
+                crate::output::Format::Mp4 | crate::output::Format::Mov => {
+                    crate::ffmpeg::encoder::Container::Mp4
+                }
+                crate::output::Format::Mp4Fragmented => {
+                    crate::ffmpeg::encoder::Container::Mp4Fragmented
+                }
+                crate::output::Format::Mkv => crate::ffmpeg::encoder::Container::Matroska,
+            },
             gop_size: None,
         };
         let encoder = crate::adapters::FfmpegFileEncoder::new(

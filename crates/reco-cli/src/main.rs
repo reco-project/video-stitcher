@@ -188,6 +188,15 @@ enum Commands {
         #[arg(long)]
         preset: Option<String>,
 
+        /// Output container format. One of: `mp4` (default,
+        /// finalized at close), `fmp4` (fragmented MP4, readable
+        /// mid-write), `mkv` (Matroska, crash-safe + streamable).
+        /// Pick `mkv` or `fmp4` if you plan to tee the output to
+        /// RTMP via a second ffmpeg with `-c copy` while the
+        /// stitch is still running.
+        #[arg(long)]
+        container: Option<String>,
+
         /// Record pre-stitch source frames to this path as a
         /// stacked-video file for later replay or cloud upload.
         /// Requires building with `--features replay`.
@@ -319,6 +328,15 @@ enum Commands {
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
         #[arg(long)]
         preset: Option<String>,
+
+        /// Output container format. One of: `mp4` (default, needs
+        /// close-time finalize), `fmp4` (fragmented MP4, streamable
+        /// mid-write), `mkv` (Matroska, crash-safe + streamable).
+        /// Use `mkv` or `fmp4` if you plan to stream the output
+        /// via an external `ffmpeg -c copy -f flv rtmp://...`
+        /// tee while the capture is still running.
+        #[arg(long)]
+        container: Option<String>,
 
         /// Record pre-stitch source frames to this path as a
         /// stacked-video file. Same M7 replay feature as
@@ -607,6 +625,7 @@ fn main() -> anyhow::Result<()> {
             tracking,
             crf,
             preset,
+            container,
             replay,
             replay_scale,
         } => stitch::run_stitch(
@@ -630,6 +649,7 @@ fn main() -> anyhow::Result<()> {
                 tracking_mode: &tracking,
                 crf,
                 preset,
+                container: container.as_deref(),
                 replay_path: replay.as_deref(),
                 replay_scale,
             },
@@ -689,6 +709,7 @@ fn main() -> anyhow::Result<()> {
             detection_interval,
             crf,
             preset,
+            container,
             replay,
             replay_scale,
         } => {
@@ -730,6 +751,7 @@ fn main() -> anyhow::Result<()> {
                     detection_interval,
                     crf,
                     preset,
+                    container: container.as_deref(),
                     replay_path: replay.as_deref(),
                     replay_scale,
                 },
