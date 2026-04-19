@@ -39,6 +39,13 @@ pub struct CameraRunConfig<'a> {
     pub detection_interval: u64,
     pub crf: Option<u8>,
     pub preset: Option<String>,
+    /// Optional path for M7 stacked-replay recording. Same feature
+    /// as `StitchJob::with_replay_recording`. Requires the `replay`
+    /// feature flag on reco-cli.
+    pub replay_path: Option<&'a str>,
+    /// Optional downscaled replay tile dims `(width, height)`.
+    /// GPU-pack path only; no-op when replay_path is None.
+    pub replay_scale: Option<(u32, u32)>,
 }
 
 pub fn run_camera(
@@ -62,6 +69,8 @@ pub fn run_camera(
         detection_interval,
         crf,
         preset,
+        replay_path,
+        replay_scale,
     } = config;
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
@@ -142,6 +151,79 @@ pub fn run_camera(
         height
     );
 
+    // M7 replay recording on live cams (closes #273). Live capture
+    // runs through `session.process_frame` → CPU-upload render
+    // path; the GPU pack tap in `process_frame` reads from the
+    // renderer's internal plane textures (populated by
+    // `queue.write_texture` on each frame), so replay works
+    // regardless of whether the source is NV12 or I420.
+    #[cfg(feature = "replay")]
+    let _replay_attached = if let Some(replay_path) = replay_path {
+        let (out_w, out_h) = replay_scale.unwrap_or((capture_width, capture_height));
+        let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "replay tile dims {out_w}x{out_h} not YUV420P-aligned \
+                     (width divisible by 4, height even)"
+                )
+            })?;
+        let output_size = if replay_scale.is_some() {
+            reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+        } else {
+            reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+        };
+        session
+            .enable_gpu_stacked_replay(layout, output_size)
+            .map_err(|e| anyhow::anyhow!("enable GPU stacked replay: {e}"))?;
+        let (atlas_w, atlas_h) = session
+            .stacked_atlas_dims()
+            .ok_or_else(|| anyhow::anyhow!("stacked_atlas_dims returned None after enable"))?;
+        // Jetson has no NVENC; libx264 default is what we have. On
+        // non-Jetson the same default applies per session discussion
+        // (NVENC + NV12 pack shader combo deferred to #271).
+        let encoder_config = reco_io::stacked_video::encoder::StackedEncoderConfig {
+            fps: (capture_fps as i32, 1),
+            ..Default::default()
+        };
+        let recorder = reco_io::stacked_video::replay::session_gpu_recorder(
+            std::path::Path::new(replay_path),
+            encoder_config,
+            atlas_w,
+            atlas_h,
+        )
+        .map_err(|e| anyhow::anyhow!("open GPU replay recorder: {e}"))?;
+        session.set_stacked_gpu_recorder(recorder);
+        let scale_note = if replay_scale.is_some() {
+            format!(
+                " [A19 downscale: source {}x{} -> tile {}x{}]",
+                capture_width, capture_height, out_w, out_h
+            )
+        } else {
+            String::new()
+        };
+        log::info!(
+            "reco-cli: camera replay pack path = GPU (tile {}x{}, N=2, atlas {}x{}){} -> {}",
+            out_w,
+            out_h,
+            atlas_w,
+            atlas_h,
+            scale_note,
+            replay_path,
+        );
+        println!("Replay recording: {replay_path}");
+        true
+    } else {
+        false
+    };
+    #[cfg(not(feature = "replay"))]
+    {
+        let _ = replay_path;
+        let _ = replay_scale;
+        if replay_path.is_some() {
+            log::warn!("--replay specified but `replay` feature is disabled.");
+        }
+    }
+
     reco_io::init();
     let quality = match quality {
         "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
@@ -221,6 +303,8 @@ pub fn run_camera(
 
         // Stop cameras gracefully before finishing encoder
         source.stop();
+        #[cfg(feature = "replay")]
+        session.clear_stacked_gpu_recorder();
         session.finish()?;
 
         progress.finish(frame_count, output);
@@ -250,6 +334,8 @@ pub fn run_camera(
             progress.report(frame_count);
         }
 
+        #[cfg(feature = "replay")]
+        session.clear_stacked_gpu_recorder();
         session.finish()?;
 
         progress.finish(frame_count, output);

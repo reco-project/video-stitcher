@@ -319,6 +319,18 @@ enum Commands {
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
         #[arg(long)]
         preset: Option<String>,
+
+        /// Record pre-stitch source frames to this path as a
+        /// stacked-video file. Same M7 replay feature as
+        /// `stitch --replay`. Requires `--features replay`.
+        #[arg(long)]
+        replay: Option<String>,
+
+        /// Downscale replay tiles to `WIDTHxHEIGHT` (e.g.
+        /// `1280x720`, `856x480`). GPU pack path only; width
+        /// divisible by 4, height even. Requires `--replay`.
+        #[arg(long, value_parser = parse_wxh)]
+        replay_scale: Option<(u32, u32)>,
     },
 
     /// Stitch live RPi CSI camera feeds via libcamera (rpicam-vid).
@@ -677,6 +689,8 @@ fn main() -> anyhow::Result<()> {
             detection_interval,
             crf,
             preset,
+            replay,
+            replay_scale,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -716,6 +730,8 @@ fn main() -> anyhow::Result<()> {
                     detection_interval,
                     crf,
                     preset,
+                    replay_path: replay.as_deref(),
+                    replay_scale,
                 },
                 &interrupted,
             )

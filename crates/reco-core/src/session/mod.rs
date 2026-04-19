@@ -1144,7 +1144,16 @@ impl StitchSession {
         }
 
         let render_buf = self.core.render_stereo_frame_at_pose(frame, yaw, pitch)?;
-        self.submit_render_output(render_buf)
+        self.submit_render_output(render_buf)?;
+        // GPU stacked-replay pack tap (M7). `render_stereo_frame_at_pose`
+        // has just populated the renderer's internal plane textures
+        // via `queue.write_texture`, so the packer's pipeline-view
+        // path can read them. No-op when the packer isn't enabled.
+        // Zero-copy `StereoFrame::GpuResident` goes through
+        // `step_gpu_with_bufs` (Linux) which taps the pack with
+        // external views instead.
+        self.core.drive_gpu_stacked_pack();
+        Ok(())
     }
 
     /// Process a MetalResident frame: import CVPixelBuffers as textures, render.

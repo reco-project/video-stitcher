@@ -1118,16 +1118,20 @@ impl StitchCore {
         }
     }
 
-    /// Private: runs the GPU pack from the pipeline's internal
-    /// plane textures. Used by CPU-upload submit paths
-    /// (`submit_frame_yuv*`) where `queue.write_texture` has just
-    /// populated the renderer's own textures. Zero-copy paths take
-    /// [`Self::pack_gpu_stacked_replay_from_views`] instead because
-    /// their source data lives elsewhere.
+    /// Runs the GPU pack from the pipeline's internal plane
+    /// textures. Used by CPU-upload submit paths where
+    /// `queue.write_texture` has just populated the renderer's
+    /// own textures — fires from `submit_frame_yuv*` and from the
+    /// session's `process_frame` non-zero-copy branch. Zero-copy
+    /// paths take [`Self::pack_gpu_stacked_replay_from_views`]
+    /// instead because their source data lives in shared
+    /// textures that bypass the renderer's internal planes.
     ///
-    /// Delegates through the same pack + poll + record path so both
-    /// entry points share behavior.
-    fn drive_gpu_stacked_pack(&mut self) {
+    /// Delegates through the same pack + poll + record path so
+    /// every entry point shares behavior.
+    ///
+    /// No-op when the packer isn't enabled.
+    pub(crate) fn drive_gpu_stacked_pack(&mut self) {
         if self.stacked_packer.is_none() {
             return;
         }
