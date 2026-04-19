@@ -116,4 +116,5 @@ pub mod undistort;
 pub mod viewport;
 #[cfg(target_os = "linux")]
 pub mod vulkan_interop;
+pub mod yuv_stack_packer;
 pub mod zero_copy;
