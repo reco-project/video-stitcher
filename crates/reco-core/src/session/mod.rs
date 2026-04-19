@@ -108,12 +108,15 @@ pub struct FrameProgress {
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
 /// Result from [`StitchSession::step`] - one frame with full session features.
+///
+/// Detections are not returned here — consumers that need them should
+/// attach a [`DetectionSink`] at construction. Keeping detections off
+/// the per-frame return path avoids a `Vec<MappedDetection>` clone that
+/// showed up on the plan §M7.5 alloc audit with no in-tree consumer.
 #[derive(Debug, Clone)]
 pub struct StepResult {
     /// Where the virtual camera pointed for this frame.
     pub viewport: ViewportPosition,
-    /// Detections mapped to panorama coordinates (empty if no detector or skipped frame).
-    pub detections: Vec<MappedDetection>,
     /// Frame index (0-based).
     pub frame_index: u64,
 }
@@ -1106,8 +1109,6 @@ impl StitchSession {
             self.director_position()
         };
 
-        // Capture detections before render (they'll be overwritten on next detect).
-        let detections = self.detection.last_detections.clone();
         let frame_index = self.frame_count;
 
         // Render + encode.
@@ -1115,7 +1116,6 @@ impl StitchSession {
 
         Ok(StepResult {
             viewport: pos,
-            detections,
             frame_index,
         })
     }
