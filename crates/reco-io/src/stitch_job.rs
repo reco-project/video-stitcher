@@ -358,24 +358,27 @@ impl StitchJob {
     /// to override.
     ///
     /// Recording is best-effort and never fails the stitch run: if
-    /// the encoder can't keep up or the source yields non-Yuv420p
-    /// frames (GPU-resident, NV12), the replay file gracefully
-    /// stops recording while the stitch output completes.
+    /// the encoder can't keep up, the replay file gracefully stops
+    /// recording while the stitch output completes.
     ///
     /// # Pack path
     ///
-    /// `StitchJob` uses the CPU `ReplayRecordingSource` decorator
-    /// today. For CPU-resident YUV420P sources this is
-    /// byte-efficient (no upload, no GPU round-trip). For GPU-
-    /// resident sources (NVDEC zero-copy, Metal CVPixelBuffer) the
-    /// CPU decorator can't record Nv12 frames: the M7 GPU-pack path
-    /// exists in reco-core and works for push-API consumers that
-    /// call `StitchCore::submit_frame_yuv*` with CPU YUV planes,
-    /// but it isn't yet wired to zero-copy submit paths
-    /// (tracked in issue #270). Until that lands, replay recording
-    /// on zero-copy sources produces an empty file and
-    /// `StitchJob::run` emits a loud warn so the failure mode is
-    /// visible.
+    /// At [`Self::run`] time, `StitchJob` picks between two pack
+    /// paths based on whether the source delivers frames on CPU or
+    /// GPU. The choice is logged explicitly once per run so it's
+    /// never a silent decision:
+    ///
+    /// - **GPU path** (`source.is_gpu_resident() == true`): the
+    ///   stacked-video compute shader packs the same GPU textures
+    ///   the stitch pipeline samples, then triple-buffers a
+    ///   readback of the packed atlas. Used by NVDEC zero-copy
+    ///   today; Metal / Jetson ISP will follow the same path once
+    ///   wired. No extra upload, no CPU memcpy.
+    /// - **CPU path** (default for software-decoded YUV): wraps
+    ///   the source in
+    ///   [`crate::stacked_video::replay::ReplayRecordingSource`]
+    ///   which packs YUV planes on the CPU. Uploading them just
+    ///   to pack would lose to this path.
     ///
     /// # Example
     ///
@@ -613,38 +616,73 @@ impl StitchJob {
         let replay_cfg: Option<()> = None;
 
         let frame_count;
+        // Tracks a CPU-path replay decorator when that arm is
+        // chosen; the finalizer below calls `finish()` after the
+        // run. GPU path finalizes via
+        // `session.clear_stacked_gpu_recorder()` below.
         #[cfg(feature = "stacked-output")]
         let mut replay_src: Option<crate::stacked_video::replay::ReplayRecordingSource> = None;
 
         #[cfg(feature = "stacked-output")]
         if let Some(cfg) = replay_cfg {
-            // Pack-path selection. Today the GPU-pack path (wired
-            // through StitchCore::submit_frame_yuv* in reco-core
-            // commit 7281bd9) only activates for CPU-upload submit
-            // paths: consumers that call submit_frame_yuv* with
-            // YuvPlanes references. Zero-copy (NVDEC / Metal)
-            // sources take the submit_render_output path which
-            // doesn't go through the renderer's internal plane
-            // textures the GPU packer currently reads from, so
-            // enabling the GPU pack there would record empty
-            // atlases. Issue #270 tracks the wiring plan.
+            // Pack-path selection. GPU-resident sources (NVDEC
+            // zero-copy, future Metal / Jetson ISP) send frames
+            // through `submit_render_output`; the session's
+            // zero-copy driver now taps the pack shader directly
+            // against those shared textures (post-#270 wiring in
+            // reco-core). CPU-resident sources continue through
+            // the `ReplayRecordingSource` decorator: uploading
+            // just-to-pack would lose to a straight CPU memcpy.
             //
-            // Until that lands, StitchJob stays on the CPU
-            // ReplayRecordingSource decorator path regardless of
-            // source residency. For CPU-resident sources this is
-            // correct and efficient. For GPU-resident sources the
-            // CPU decorator will warn-once and skip Nv12 frames
-            // (pre-M7 behavior), so replay recording isn't usable
-            // on zero-copy runs yet. A loud warn makes that
-            // visible instead of silently producing an empty file.
+            // Both arms log the decision explicitly so the pack
+            // path is never a silent choice.
             if source.is_gpu_resident() {
-                log::warn!(
-                    "Replay recording requested on a GPU-resident source (zero-copy decode). \
-                     GPU-pack replay isn't wired to zero-copy submit paths yet (issue #270), \
-                     and the CPU recorder can't record Nv12 frames, so the replay file will \
-                     be empty. To record replay today, disable zero-copy decode. Output: {}",
+                let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(
+                    info.width,
+                    info.height,
+                    2,
+                )
+                .ok_or_else(|| {
+                    StitchError::Other(format!(
+                        "GPU stacked replay: source dims {}x{} are not YUV420P-aligned (must be even)",
+                        info.width, info.height,
+                    ))
+                })?;
+                let output_size = reco_core::yuv_stack_packer::OutputTileSize::unscaled(
+                    info.width,
+                    info.height,
+                );
+                session
+                    .enable_gpu_stacked_replay(layout, output_size)
+                    .map_err(|e| StitchError::Other(format!("enable GPU stacked replay: {e}")))?;
+                let (atlas_w, atlas_h) = session.stacked_atlas_dims().ok_or_else(|| {
+                    StitchError::Other(
+                        "stacked_atlas_dims returned None right after enable; internal bug"
+                            .into(),
+                    )
+                })?;
+                let recorder = crate::stacked_video::replay::session_gpu_recorder(
+                    &cfg.path,
+                    *cfg.encoder_config,
+                    atlas_w,
+                    atlas_h,
+                )
+                .map_err(|e| StitchError::Other(format!("open GPU replay recorder: {e}")))?;
+                session.set_stacked_gpu_recorder(recorder);
+                log::info!(
+                    "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}) -> {}",
+                    info.width,
+                    info.height,
+                    atlas_w,
+                    atlas_h,
                     cfg.path.display(),
                 );
+                frame_count = session.run(
+                    &mut source,
+                    frame_limit,
+                    interrupted,
+                    self.on_progress.take(),
+                )?;
             } else {
                 log::info!(
                     "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
@@ -652,21 +690,21 @@ impl StitchJob {
                     info.height,
                     cfg.path.display(),
                 );
+                let inner: Box<dyn FrameSource> = Box::new(source);
+                let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
+                    inner,
+                    &cfg.path,
+                    *cfg.encoder_config,
+                )
+                .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
+                frame_count = session.run(
+                    &mut replay,
+                    frame_limit,
+                    interrupted,
+                    self.on_progress.take(),
+                )?;
+                replay_src = Some(replay);
             }
-            let inner: Box<dyn FrameSource> = Box::new(source);
-            let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
-                inner,
-                &cfg.path,
-                *cfg.encoder_config,
-            )
-            .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
-            frame_count = session.run(
-                &mut replay,
-                frame_limit,
-                interrupted,
-                self.on_progress.take(),
-            )?;
-            replay_src = Some(replay);
         } else {
             frame_count = session.run(
                 &mut source,
@@ -687,6 +725,13 @@ impl StitchJob {
                 self.on_progress.take(),
             )?;
         }
+
+        // GPU-path finalize: drop the atlas recorder (its `finish`
+        // closes the encoder file) before `session.finish()` so
+        // the replay file lands before the main encoder's trailer.
+        // No-op when the GPU path wasn't selected.
+        #[cfg(feature = "stacked-output")]
+        session.clear_stacked_gpu_recorder();
         session.finish()?;
 
         #[cfg(feature = "stacked-output")]

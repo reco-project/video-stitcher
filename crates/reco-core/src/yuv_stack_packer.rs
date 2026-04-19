@@ -187,6 +187,41 @@ impl OutputTileSize {
     }
 }
 
+/// External source views for [`YuvStackPacker::pack_tile_from_views`].
+///
+/// Zero-copy submit paths (NVDEC on Linux, CVPixelBuffer on macOS)
+/// don't populate the renderer's internal plane textures — the
+/// source data lives in shared / imported textures instead. This
+/// enum lets callers supply those views directly so the pack shader
+/// reads from the same textures the stitch render is sampling.
+///
+/// The variant must match the packer's configured
+/// [`SourceFormat`] (set at construction time). Mismatch is a
+/// runtime panic in debug builds, silent read-of-wrong-texture in
+/// release builds, so callers should plumb through the format they
+/// configured the session with.
+pub enum StackedPackSource<'a> {
+    /// Three separate planes (Y full-res, U + V half-res).
+    Yuv420p {
+        /// Y plane view (R8Unorm / R16Unorm, full-res).
+        y: &'a wgpu::TextureView,
+        /// U plane view (R8Unorm / R16Unorm, half-res).
+        u: &'a wgpu::TextureView,
+        /// V plane view (R8Unorm / R16Unorm, half-res).
+        v: &'a wgpu::TextureView,
+    },
+    /// NV12 interleaved: Y full-res, UV interleaved half-res.
+    /// The packer's built-in 1×1 dummy texture is substituted at
+    /// binding 2 so the bind group layout stays stable across
+    /// both source-format variants.
+    Nv12 {
+        /// Y plane view (R8Unorm, full-res).
+        y: &'a wgpu::TextureView,
+        /// UV plane view (Rg8Unorm, half-res, interleaved).
+        uv: &'a wgpu::TextureView,
+    },
+}
+
 /// A fully-packed readback: atlas bytes split into Y/U/V planes in
 /// the exact layout
 /// [`reco_io::stacked_video::pack_yuv420p`] produces on the CPU
@@ -266,6 +301,15 @@ pub struct YuvStackPacker {
     y_plane_bytes: u32,
     uv_plane_bytes: u32,
     atlas_bytes: u32,
+    /// 1×1 R8Unorm dummy view used as the V-slot binding in the
+    /// NV12 source-format path. The NV12 kernel never samples from
+    /// it, but the bind group layout declares three texture slots
+    /// so the YUV420P kernels can share the same layout. Pre-built
+    /// once at construction to keep `pack_tile_from_views` branchless.
+    /// The `TextureView` holds an `Arc` to the underlying 1×1
+    /// texture so we don't need to keep the `Texture` itself
+    /// around as a separate field.
+    dummy_v_view: wgpu::TextureView,
 }
 
 impl YuvStackPacker {
@@ -458,6 +502,31 @@ impl YuvStackPacker {
 
         let (map_tx, map_rx) = std::sync::mpsc::sync_channel(STAGING_SLOTS);
 
+        // 1×1 R8Unorm dummy for the V-slot in NV12 mode. The NV12
+        // kernel's bind group layout demands three texture bindings
+        // for layout compatibility with YUV420P, but the shader
+        // never samples from this one. Contents are undefined;
+        // we don't even bother zeroing.
+        let dummy_v_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("yuv_stack_pack_dummy_v"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let dummy_v_view =
+            dummy_v_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // The view holds a strong reference to the texture's inner
+        // state; `dummy_v_texture` itself can drop here.
+        drop(dummy_v_texture);
+
         Ok(Self {
             source_format,
             pipeline_y,
@@ -483,6 +552,7 @@ impl YuvStackPacker {
             y_plane_bytes,
             uv_plane_bytes,
             atlas_bytes,
+            dummy_v_view,
         })
     }
 
@@ -617,6 +687,51 @@ impl YuvStackPacker {
         self.source_format
     }
 
+    /// Pack a tile from an explicit [`StackedPackSource`] rather
+    /// than positional Y/U/V views. This is the entry point used by
+    /// zero-copy submit paths where the source data lives in
+    /// shared / imported textures.
+    ///
+    /// Panics in debug builds when the [`StackedPackSource`] variant
+    /// doesn't match the packer's configured [`SourceFormat`]; in
+    /// release builds the mismatch is silently tolerated (the
+    /// wrong-format shader kernel reads through textures bound via
+    /// the compatibility path, producing visibly wrong output — the
+    /// debug assert is the reliable guard).
+    pub fn pack_tile_from_views(
+        &self,
+        gpu: &GpuContext,
+        encoder: &mut wgpu::CommandEncoder,
+        tile_index: u32,
+        source: StackedPackSource<'_>,
+    ) {
+        match (self.source_format, source) {
+            (SourceFormat::Yuv420p, StackedPackSource::Yuv420p { y, u, v }) => {
+                self.pack_tile(gpu, encoder, tile_index, y, u, v);
+            }
+            (SourceFormat::Nv12, StackedPackSource::Nv12 { y, uv }) => {
+                // Binding 2 gets the packer's 1×1 dummy so the
+                // bind group layout stays uniform across both
+                // source-format kernels.
+                self.pack_tile(gpu, encoder, tile_index, y, uv, &self.dummy_v_view);
+            }
+            (want, _) => {
+                debug_assert!(
+                    false,
+                    "YuvStackPacker: source_format mismatch — configured for {:?} but caller \
+                     passed a different StackedPackSource variant. This is a wiring bug.",
+                    want,
+                );
+                log::error!(
+                    "YuvStackPacker::pack_tile_from_views: source_format mismatch \
+                     (configured={:?}); skipping tile {} (replay file will have missing frames)",
+                    want,
+                    tile_index,
+                );
+            }
+        }
+    }
+
     /// Queue a GPU copy from the atlas buffer into the current
     /// staging slot, then advance the slot pointer. Call once per
     /// frame after all `pack_tile` calls.
@@ -632,9 +747,21 @@ impl YuvStackPacker {
         self.pending_count = (self.pending_count + 1).min(STAGING_SLOTS as u8);
     }
 
-    /// Non-blocking poll for the frame two submits ago. Returns
-    /// `None` for the first two calls (warmup) and whenever the
-    /// slot isn't ready yet.
+    /// Poll for the frame two submits ago. Returns `None` for the
+    /// first two calls (warmup); otherwise returns the packed atlas.
+    ///
+    /// Uses the same pattern as
+    /// [`crate::rgba_readback::RgbaReadback::readback`]: a
+    /// non-blocking `PollType::Poll` first (since the GPU work is
+    /// 2 frames old and should already be done), falling back to
+    /// `wait_indefinitely` + blocking `recv` if the poll didn't
+    /// drain the map callback. The blocking path is rare on fast
+    /// GPUs but required for correctness — if we return None on a
+    /// slot whose `map_async` was already issued, the next frame
+    /// can't re-map it without tripping wgpu's
+    /// "map called on in-flight buffer" panic, and the atlas is
+    /// lost (observed 2026-04-19: 0 atlases recorded across 60
+    /// frames with pure non-blocking poll).
     pub fn poll_ready(&mut self, gpu: &GpuContext) -> Option<StackedAtlas> {
         // Read slot lags the write slot by 2 (current_slot already
         // advanced post-copy). Equivalent to `(current_slot + 1) % 3`.
@@ -648,38 +775,51 @@ impl YuvStackPacker {
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-        // Non-blocking poll. If the GPU hasn't finished yet we'll
-        // try again next frame.
-        let poll = gpu.device.poll(wgpu::PollType::Poll).ok()?;
-        let _ = poll; // intentionally ignore PollStatus details
+        // Non-blocking poll first; on a fast GPU the map callback
+        // has already fired because the work is 2 frames old.
+        let _ = gpu.device.poll(wgpu::PollType::Poll).ok()?;
 
-        match self.map_rx.try_recv() {
-            Ok(Ok(())) => {
-                // Snapshot dims + plane bounds before borrowing
-                // readback_buffers mutably — keeps the borrow
-                // checker happy without a second pass.
-                let (atlas_w, atlas_h) = self.atlas_dims();
-                let y_end = self.y_plane_bytes as usize;
-                let u_end = y_end + self.uv_plane_bytes as usize;
-                let v_end = u_end + self.uv_plane_bytes as usize;
-
-                let mapped = slice.get_mapped_range();
-                let dst = &mut self.readback_buffers[read_slot];
-                dst.clear();
-                dst.extend_from_slice(&mapped);
-                drop(mapped);
-                buffer.unmap();
-
-                Some(StackedAtlas {
-                    y: dst[..y_end].to_vec(),
-                    u: dst[y_end..u_end].to_vec(),
-                    v: dst[u_end..v_end].to_vec(),
-                    width: atlas_w,
-                    height: atlas_h,
-                })
+        let recv_result = match self.map_rx.try_recv() {
+            Ok(r) => r,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Map callback hasn't fired yet — block on the
+                // device until it does. Typical wait is
+                // microseconds on a real GPU; this is the same
+                // fallback RgbaReadback uses.
+                gpu.device
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .ok()?;
+                self.map_rx.recv().ok()?
             }
-            _ => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => return None,
+        };
+
+        if recv_result.is_err() {
+            return None;
         }
+
+        // Snapshot dims + plane bounds before borrowing
+        // readback_buffers mutably — keeps the borrow
+        // checker happy without a second pass.
+        let (atlas_w, atlas_h) = self.atlas_dims();
+        let y_end = self.y_plane_bytes as usize;
+        let u_end = y_end + self.uv_plane_bytes as usize;
+        let v_end = u_end + self.uv_plane_bytes as usize;
+
+        let mapped = slice.get_mapped_range();
+        let dst = &mut self.readback_buffers[read_slot];
+        dst.clear();
+        dst.extend_from_slice(&mapped);
+        drop(mapped);
+        buffer.unmap();
+
+        Some(StackedAtlas {
+            y: dst[..y_end].to_vec(),
+            u: dst[y_end..u_end].to_vec(),
+            v: dst[u_end..v_end].to_vec(),
+            width: atlas_w,
+            height: atlas_h,
+        })
     }
 }
 

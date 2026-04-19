@@ -211,6 +211,40 @@ impl StitchSession {
             }
         };
 
+        // Pre-build texture views for the GPU stacked-replay pack.
+        // Layout mirrors SharedTextureSet.textures:
+        //   [left_y_0, left_uv_0, left_y_1, left_uv_1,
+        //    right_y_0, right_uv_0, right_y_1, right_uv_1]
+        // Indexed per slot below via signal.left_slot / right_slot.
+        // Views are reused every frame — wgpu makes them cheap via
+        // Arc refcounting on the inner texture.
+        let shared_views: [wgpu::TextureView; 8] = [
+            textures[0]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[1]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[2]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[3]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[4]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[5]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[6]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[7]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+        ];
+
         let frame_rx = decode_handles.frame_rx;
 
         loop {
@@ -254,6 +288,28 @@ impl StitchSession {
                 pos.pitch,
             );
             self.submit_render_output(render_buf)?;
+
+            // GPU stacked-replay pack on zero-copy sources.
+            // Reads the same shared textures the render just
+            // sampled; must complete before slot-free release so
+            // the decode thread doesn't overwrite mid-pack. Views
+            // indexed per slot:
+            //   left:  [left_slot * 2], [left_slot * 2 + 1]    (y, uv)
+            //   right: [4 + right_slot * 2], [4 + right_slot * 2 + 1]
+            // No-op when the packer isn't enabled (e.g. no replay
+            // requested for this run).
+            let ls = signal.left_slot as usize;
+            let rs = signal.right_slot as usize;
+            self.core.pack_gpu_stacked_replay_from_views(
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &shared_views[ls * 2],
+                    uv: &shared_views[ls * 2 + 1],
+                },
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &shared_views[4 + rs * 2],
+                    uv: &shared_views[4 + rs * 2 + 1],
+                },
+            );
 
             // Release slots for decode thread reuse.
             //

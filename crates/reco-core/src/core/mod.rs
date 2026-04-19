@@ -85,7 +85,8 @@ use crate::source::{CameraInput, StereoCameraInput};
 use crate::stage::PipelineStage;
 use crate::viewport::ViewportConfig;
 use crate::yuv_stack_packer::{
-    OutputTileSize, PackerError, SourceFormat, StackGridLayout, StackedAtlas, YuvStackPacker,
+    OutputTileSize, PackerError, SourceFormat, StackGridLayout, StackedAtlas, StackedPackSource,
+    YuvStackPacker,
 };
 
 /// Errors from [`StitchCore`]. `Clone + Send + Sync` so consumers
@@ -1064,45 +1065,48 @@ impl StitchCore {
         self.stacked_packer.as_ref().map(|p| p.atlas_dims())
     }
 
-    /// Private: runs the GPU pack for the two-camera stereo case
-    /// after the stitch submit has landed. Safe to call from every
-    /// YUV submit path — early-returns when no packer is enabled.
+    /// Pack the GPU stacked-replay atlas from external texture
+    /// views (the zero-copy entry point).
     ///
-    /// The pack submits as a **separate** `CommandBuffer` after the
-    /// stitch+readback submit. That preserves the readback API
-    /// (unchanged) and relies on wgpu queue ordering: the stitch
-    /// submit commits `queue.write_texture` of the current frame's
-    /// YUV data, and the pack submit then samples those same
-    /// textures before the next frame's `queue.write_texture`
-    /// overwrites them. One extra submit per frame (~100 us PCIe
-    /// overhead).
+    /// Used by session-layer zero-copy submit paths where source
+    /// frames live in shared / imported textures rather than the
+    /// renderer's internal plane textures. Call after the stitch
+    /// submit has landed; this method encodes a separate command
+    /// buffer for the pack + staging copy, submits it, and polls
+    /// the triple-buffer ring for a ready atlas to feed to the
+    /// attached recorder.
     ///
-    /// Hard-coded to the two-camera stereo layout (tile 0 = left,
-    /// tile 1 = right) today. N-camera will extend this when
-    /// `CameraInput::camera_count() > 2` starts landing real
-    /// pipelines.
-    fn drive_gpu_stacked_pack(&mut self) {
+    /// The storytelling flow (per the project principle — no silent
+    /// decisions): the caller chose this path because the source is
+    /// GPU-resident. The packer's configured `SourceFormat` was
+    /// logged at `enable_gpu_stacked_replay` time. From here on,
+    /// every call is just bytes moving through the pipeline, so no
+    /// per-frame logging.
+    ///
+    /// No-op when the packer isn't enabled.
+    ///
+    /// Hard-coded to the two-camera stereo layout today; extend
+    /// when `CameraInput::camera_count() > 2` lands.
+    pub fn pack_gpu_stacked_replay_from_views(
+        &mut self,
+        left: StackedPackSource<'_>,
+        right: StackedPackSource<'_>,
+    ) {
         let Some(ref mut packer) = self.stacked_packer else {
             return;
         };
-        // Pipeline's plane-view accessors return
-        // (y_view, u_or_uv_view, v_or_dummy_view); the packer's
-        // shader branches on its pre-configured SourceFormat so we
-        // don't need to care which variant we're feeding here.
-        let (ly, lu, lv) = self.pipeline.left_plane_views();
-        let (ry, ru, rv) = self.pipeline.right_plane_views();
         let gpu = self.pipeline.gpu();
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("stitch_core_gpu_stacked_pack"),
+                label: Some("stitch_core_gpu_stacked_pack_ext"),
             });
         let capacity = packer.layout().capacity();
         if capacity >= 1 {
-            packer.pack_tile(gpu, &mut encoder, 0, &ly, &lu, &lv);
+            packer.pack_tile_from_views(gpu, &mut encoder, 0, left);
         }
         if capacity >= 2 {
-            packer.pack_tile(gpu, &mut encoder, 1, &ry, &ru, &rv);
+            packer.pack_tile_from_views(gpu, &mut encoder, 1, right);
         }
         packer.copy_to_staging(&mut encoder);
         gpu.queue.submit(Some(encoder.finish()));
@@ -1112,6 +1116,65 @@ impl StitchCore {
         {
             recorder.record_atlas(&atlas);
         }
+    }
+
+    /// Private: runs the GPU pack from the pipeline's internal
+    /// plane textures. Used by CPU-upload submit paths
+    /// (`submit_frame_yuv*`) where `queue.write_texture` has just
+    /// populated the renderer's own textures. Zero-copy paths take
+    /// [`Self::pack_gpu_stacked_replay_from_views`] instead because
+    /// their source data lives elsewhere.
+    ///
+    /// Delegates through the same pack + poll + record path so both
+    /// entry points share behavior.
+    fn drive_gpu_stacked_pack(&mut self) {
+        if self.stacked_packer.is_none() {
+            return;
+        }
+        // Pipeline's plane-view accessors return
+        // (y_view, u_or_uv_view, v_or_dummy_view). Build the
+        // StackedPackSource variant matching the packer's
+        // configured source format — the packer will route to the
+        // right shader kernel internally.
+        let (ly, lu, lv) = self.pipeline.left_plane_views();
+        let (ry, ru, rv) = self.pipeline.right_plane_views();
+        // Keep bindings alive across the pack call via locals.
+        let (left, right) = match self.pipeline.input_format() {
+            InputFormat::Yuv420p => (
+                StackedPackSource::Yuv420p {
+                    y: &ly,
+                    u: &lu,
+                    v: &lv,
+                },
+                StackedPackSource::Yuv420p {
+                    y: &ry,
+                    u: &ru,
+                    v: &rv,
+                },
+            ),
+            InputFormat::Nv12 => (
+                StackedPackSource::Nv12 {
+                    y: &ly,
+                    uv: &lu,
+                },
+                StackedPackSource::Nv12 {
+                    y: &ry,
+                    uv: &ru,
+                },
+            ),
+            InputFormat::Bgra => {
+                // Shouldn't happen: enable_gpu_stacked_replay
+                // rejects BGRA up front. Defensive no-op so the
+                // live render loop can't panic on an invariant
+                // violation.
+                log::error!(
+                    "drive_gpu_stacked_pack: packer enabled but pipeline input_format is \
+                     BGRA; skipping pack (this is a logic bug in StitchCore)"
+                );
+                return;
+            }
+        };
+        self.pack_gpu_stacked_replay_from_views(left, right);
     }
 
     /// Set how often detection runs.

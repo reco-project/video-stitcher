@@ -517,6 +517,16 @@ pub struct StitchSession {
     /// CUDA buffer info for GPU detection (GPU zero-copy).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
+    /// Texture views for the 8 shared zero-copy textures, layout
+    /// `[left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0,
+    /// right_uv_0, right_y_1, right_uv_1]`. Stashed at
+    /// `setup_gpu_source` time so `step_gpu_with_bufs` can hand
+    /// slot-indexed views to the GPU stacked-replay pack without
+    /// rebuilding views every frame. TextureView holds an Arc on
+    /// the underlying texture so the shared-memory lifetime is
+    /// still bound to the SharedTextureSet the source owns.
+    #[cfg(target_os = "linux")]
+    gpu_shared_views: Option<[wgpu::TextureView; 8]>,
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
@@ -619,6 +629,8 @@ impl StitchSession {
             gpu_slot_free_tx: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
+            #[cfg(target_os = "linux")]
+            gpu_shared_views: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -1238,6 +1250,25 @@ impl StitchSession {
         );
         self.submit_render_output(render_buf)?;
 
+        // GPU stacked-replay pack on zero-copy sources. No-op when
+        // the packer isn't enabled. Must complete before slot-free
+        // release so the decode thread doesn't overwrite the
+        // shared textures mid-pack.
+        if let Some(ref views) = self.gpu_shared_views {
+            let ls = left_slot as usize;
+            let rs = right_slot as usize;
+            self.core.pack_gpu_stacked_replay_from_views(
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[ls * 2],
+                    uv: &views[ls * 2 + 1],
+                },
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[4 + rs * 2],
+                    uv: &views[4 + rs * 2 + 1],
+                },
+            );
+        }
+
         // Release slots for decode thread to reuse
         if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
             if left_tx.send(left_slot).is_err() {
@@ -1301,6 +1332,24 @@ impl StitchSession {
             shared.right_slot_free_tx.clone(),
         ));
         self.gpu_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
+        // Pre-build the 8 shared texture views for the GPU
+        // stacked-replay pack shader. Same order as `t` above so
+        // `step_gpu_with_bufs` can index per slot:
+        //   left  y: [ls * 2],     uv: [ls * 2 + 1]
+        //   right y: [4 + rs * 2], uv: [4 + rs * 2 + 1]
+        // Views hold Arcs to the underlying textures, so the
+        // SharedTextureSet still owns the lifetime.
+        let desc = wgpu::TextureViewDescriptor::default();
+        self.gpu_shared_views = Some([
+            t[0].texture.create_view(&desc),
+            t[1].texture.create_view(&desc),
+            t[2].texture.create_view(&desc),
+            t[3].texture.create_view(&desc),
+            t[4].texture.create_view(&desc),
+            t[5].texture.create_view(&desc),
+            t[6].texture.create_view(&desc),
+            t[7].texture.create_view(&desc),
+        ]);
         log::info!("Session configured for GPU-resident source");
     }
 
