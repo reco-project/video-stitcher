@@ -21,6 +21,7 @@
 //!   (DMA-BUF, shared handles) is a future optimization.
 
 mod ffi;
+mod obs_log;
 mod source;
 
 use std::ptr;
@@ -140,7 +141,15 @@ fn init_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let _ = tracing_subscriber::registry()
         .with(filter)
+        // Stderr layer: captured by RUST_LOG for external tooling
+        // and developer runs. Still useful alongside the OBS layer
+        // because OBS doesn't duplicate stderr into its log file.
         .with(fmt::layer().with_target(true).with_level(true))
+        // OBS log layer: surfaces each event in OBS's own log pane
+        // (Help → Log Files → View Current Log). This is the pane
+        // end users actually open when something is wrong; without
+        // it our diagnostics were invisible to them.
+        .with(obs_log::ObsLogLayer)
         .try_init();
 }
 

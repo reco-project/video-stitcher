@@ -40,3 +40,9 @@ tracing-log = { workspace = true }
 # size mismatch (Rust AtomicI32 = 4 bytes vs C `volatile long` = 8 bytes
 # on LP64). See deep-review-2026-04-18 T-2 / C2.
 bindgen = "0.72"
+# Compiles the tiny `blog_shim.c` helper that wraps OBS's variadic
+# `blog(...)` function behind a fixed-arity C entry point we can call
+# from Rust. Required to surface plugin diagnostic messages in OBS's
+# own log pane (Help → Log Files → View Current Log) rather than only
+# in the captured stderr that most users never see.
+cc = "1"

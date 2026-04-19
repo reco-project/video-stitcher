@@ -147,4 +147,21 @@ fn main() {
         println!("cargo:rustc-cfg=have_frontend_api");
     }
     println!("cargo:rustc-check-cfg=cfg(have_frontend_api)");
+
+    // Compile the `blog` shim so Rust can call OBS's variadic
+    // logger through a fixed-arity entry point. libobs is loaded
+    // into the process by OBS before any plugin, so the shim's
+    // `blog(...)` reference resolves at plugin load time without
+    // us needing to `-lobs` here. `cc` picks up system headers
+    // automatically on Linux/macOS.
+    let shim_path = PathBuf::from("src/blog_shim.c");
+    println!("cargo:rerun-if-changed={}", shim_path.display());
+    cc::Build::new()
+        .file(&shim_path)
+        .include(&include_dir)
+        .flag_if_supported("-std=c11")
+        // OBS ships headers that rely on GNU extensions (typeof
+        // etc.) on Linux. `-D_GNU_SOURCE` avoids any surprises.
+        .define("_GNU_SOURCE", None)
+        .compile("reco_obs_blog_shim");
 }

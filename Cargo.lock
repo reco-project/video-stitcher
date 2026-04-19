@@ -5377,6 +5377,7 @@ name = "reco-obs"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+ "cc",
  "log",
  "reco-core",
  "reco-io",

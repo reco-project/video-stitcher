@@ -1188,7 +1188,20 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
 const DRAG_SENSITIVITY_DEG_PER_PIXEL: f64 = 0.1;
 /// Degrees of FOV change per wheel tick. Small for granular zoom;
 /// users expect wheel to feel smooth, not jumpy.
-const WHEEL_FOV_STEP_DEG: f32 = 0.5;
+/// FOV change per standard mouse-wheel notch (one "click"), in
+/// degrees. OBS passes `y_delta` in eighths of a degree of wheel
+/// rotation (Qt convention — see
+/// https://doc.qt.io/qt-6/qwheelevent.html#angleDelta); a standard
+/// notch is 15° of rotation = 120 `y_delta` units, which we divide
+/// out below. 1° of FOV per notch feels close to the granularity of
+/// most photo/video apps and matches user expectation from first
+/// in-OBS run.
+const WHEEL_FOV_STEP_DEG: f32 = 1.0;
+/// `y_delta` units that make one standard wheel notch under the Qt
+/// convention OBS inherits. Smooth-scroll devices emit smaller
+/// values (fractional notches), which naturally translate to a
+/// fraction of `WHEEL_FOV_STEP_DEG`.
+const WHEEL_NOTCHES_PER_DELTA: f32 = 120.0;
 
 /// `mouse_click`: start/end a drag for pan.
 ///
@@ -1283,7 +1296,12 @@ unsafe extern "C" fn source_mouse_wheel(
         // y_delta is integer "ticks" from OBS (positive = wheel forward, which
         // conventionally means zoom IN -> narrower FOV -> subtract).
         let current = session.pipeline().fov();
-        let new_fov = (current - (y_delta as f32) * WHEEL_FOV_STEP_DEG).clamp(10.0, 150.0);
+        // y_delta is in eighths of a degree of wheel rotation; divide
+        // by 120 to get notches (one standard click), then scale by
+        // WHEEL_FOV_STEP_DEG. Smooth-scroll devices send smaller
+        // y_delta values and naturally produce fractional notches.
+        let notches = (y_delta as f32) / WHEEL_NOTCHES_PER_DELTA;
+        let new_fov = (current - notches * WHEEL_FOV_STEP_DEG).clamp(10.0, 150.0);
         session.pipeline_mut().set_fov(new_fov);
     })
 }
