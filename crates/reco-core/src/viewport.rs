@@ -23,7 +23,10 @@ pub struct ViewportConfig {
     ///
     /// Controls how much of the right plane's left edge fades in over the
     /// left plane using a smoothstep alpha gradient. `0.0` = hard seam,
-    /// `0.15` = blend over 15% of the plane width. Default: 0.15.
+    /// `0.15` = blend over 15% of the plane width. Default: 0.05 (tight
+    /// crossfade — the small value matches the live-production tests on
+    /// Jetson CSI IMX477, larger blends wash out ball tracking in the
+    /// overlap region).
     pub blend_width: f32,
     /// Rig tilt in radians (forward lean from vertical).
     ///

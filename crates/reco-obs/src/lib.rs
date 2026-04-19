@@ -12,13 +12,22 @@
 //! - **Windows**: `%APPDATA%/obs-studio/plugins/reco-obs/bin/64bit/reco_obs.dll`
 //! - **macOS**: `~/Library/Application Support/obs-studio/plugins/reco-obs.plugin/Contents/MacOS/libreco_obs.dylib`
 //!
-//! ## Limitations
+//! ## Current status
 //!
-//! - Camera frame input is not yet wired up (renders test pattern).
-//!   The next step is to pull frames from upstream OBS sources.
+//! Tier 1 shipped 2026-04-18 (PR #267): async-frame ingestion from upstream
+//! OBS sources, BGRA input path, interactive pan / zoom via mouse + keyboard,
+//! optional stacked-video replay recording. See
+//! [`FRICTION.md`](https://github.com/reco-project/video-stitcher/blob/main/crates/reco-obs/FRICTION.md)
+//! for active consumer pain points.
+//!
+//! ## Known limitations
+//!
+//! - BGRA is the only input format wired today. NV12 zero-copy from OBS
+//!   sources is open work.
 //! - RGBA readback from wgpu to CPU then re-upload to OBS texture incurs
-//!   an extra GPU-CPU-GPU copy. Platform-specific zero-copy interop
-//!   (DMA-BUF, shared handles) is a future optimization.
+//!   one GPU-CPU-GPU round-trip per frame. Platform-specific zero-copy
+//!   interop (DMA-BUF on Linux, shared handles on Windows, IOSurface on
+//!   macOS) is tracked as a future optimization.
 
 mod ffi;
 mod obs_log;

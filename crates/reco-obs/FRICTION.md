@@ -380,6 +380,25 @@ wgpu, which it hasn't.
 Tracking here as a known limit; not actionable at the reco-core
 level without a specific interop target.
 
+### N9. FOV accessors still require pipeline[_mut]()
+
+**Impact**: Low. Hit every time the plugin changes FOV from a UI
+event.
+
+Post-M3, `StitchCore` owns the pipeline and exposes `pipeline_mut()`
+for direct access, but there's no `StitchCore::set_fov(f32)` /
+`fov_degrees()` shortcut. Consumers go through
+`core.pipeline_mut().set_fov(v)` and `core.pipeline().viewport_config().fov_degrees`.
+Three public surfaces for a single hot-path operation.
+
+A `StitchCore::set_fov` + `StitchCore::fov_degrees` pair would match
+the `set_rig_tilt` / `rig_tilt` pattern already on the core. Same
+shape extension applies to `blend_width` and `rig_roll` — currently
+reached via the same pipeline detour.
+
+Plan disposition: K6 (post-M3 ergonomics; defer until a second
+consumer hits the same pain).
+
 ## Resolved (archived)
 
 - **R1. No RGBA readback helper on StitchPipeline**

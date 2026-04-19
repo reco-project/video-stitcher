@@ -1,23 +1,27 @@
 //! Automatic camera control for reco.
 //!
+//! The intelligence layer: directors decide where the virtual camera
+//! points, detectors feed them what's on screen. Detector backends
+//! live in [`reco_detect`]; they are re-exported at crate root for
+//! convenience but not owned here.
+//!
+//! # What this crate owns
+//!
+//! - [`BallDirector`] - single-ball follower with plausibility rejection
+//! - [`FieldDirector`] - ball + player DBSCAN clustering, broadcast style
+//! - [`SweepDirector`] - constrained pan sweep when no trackable subject exists
+//! - [`SmoothedDirector`] - One Euro decorator around any inner director
+//! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any `UnifiedDetector`
+//! - [`TrackingMode`] + [`AutocamConfig`] + [`setup_autocam`] -
+//!   orchestration glue a consumer calls once per session.
+//!
 //! # Safety policy
 //!
-//! This crate contains zero `unsafe` code by construction. All platform
-//! / FFI boundaries live in reco-core (wgpu, zero-copy) or reco-detect
-//! (ORT, CUDA), so the intelligence layer can stay in safe Rust.
-//! CI enforces this via `#![forbid(unsafe_code)]` below; introducing
-//! `unsafe` here requires a lint override + an explicit PR discussion.
-
-#![forbid(unsafe_code)]
-
-//!
-//! This crate provides detection and direction for sports camera automation:
-//!
-//! - [`CpuYoloDetector`] - ONNX-based YOLO object detection on raw camera frames
-//! - [`BallDirector`] - Ball-following director with plausibility rejection
-//! - [`FieldDirector`] - Ball + player tracking for robust football coverage
-//! - [`SmoothedDirector`] - Decorator that adds One Euro trajectory smoothing
-//! - [`TrackingMode`] - Selects which director to use
+//! Zero `unsafe` code by construction. All platform / FFI boundaries
+//! live in reco-core (wgpu, zero-copy) or reco-detect (ORT, CUDA), so
+//! this crate stays in safe Rust. CI enforces via `#![forbid(unsafe_code)]`;
+//! introducing `unsafe` here requires a lint override + an explicit
+//! PR discussion.
 //!
 //! # Usage
 //!
@@ -29,6 +33,8 @@
 //! let smoothed = SmoothedDirector::new(Box::new(director), 30.0, 15);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
+
+#![forbid(unsafe_code)]
 
 mod directors;
 mod roi_filter;
