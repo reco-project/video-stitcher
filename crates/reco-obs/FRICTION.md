@@ -311,11 +311,23 @@ Today we emit a `warn!` when the input exceeds 4K per tile so the user isn't sil
 
 **Suggested direction**: add two dropdowns in the reco-obs properties UI and thread them through `StackedEncoderConfig`. A GPU-resident downscale (once the future wgpu pack path lands) would avoid the CPU hit entirely.
 
-### A20. Replay records concurrently with OBS recording/streaming without warning
+### A20. Replay record toggle is fully decoupled from OBS Stream / Record buttons
 
-**Impact**: Low. Surfaced 2026-04-19 during first in-OBS test. Toggling "Record replay" while OBS itself is recording or streaming results in two parallel encode paths (the OBS encoder and our stacked encoder) that have nothing to do with each other. Not harmful, but surprising to a user who expects "OBS is recording" to imply "reco-obs is also saving the panorama via OBS".
+**Impact**: Medium UX. Surfaced 2026-04-19 during first in-OBS test, revisited same-day. The "Record replay (stacked video)" checkbox in the Reco source Properties dialog is a pure plugin-side toggle - it starts and stops writing the `.mkv` file on its own, with no connection to OBS's global "Start Recording" or "Start Streaming" buttons. Two surprises in both directions:
 
-**Suggested direction**: one-shot log info at replay start time noting whether OBS is currently recording/streaming, and possibly a properties-UI hint text near the toggle. Cheap fix; mostly a documentation / transparency concern.
+- Enabling the checkbox while OBS isn't recording anything still writes a replay file (probably unexpected; the user may assume "OBS isn't recording" means nothing is being written to disk).
+- Clicking OBS's "Start Recording" does NOT also start the replay (and conversely "Stop Recording" doesn't stop it). Users have to toggle the replay checkbox separately, each time.
+
+The mental model users carry is closer to "OBS's record button controls everything the plugin writes." Ours doesn't match that.
+
+**Suggested direction** (two alternatives):
+
+1. **Follow OBS state**: the replay toggle becomes "Enable replay recording" (intent), and the actual file is opened when OBS starts recording/streaming AND the checkbox is ticked, closed when OBS stops. Cleanest from a user-expectation standpoint.
+2. **Surface a dedicated button**: add a "Record replay" button in OBS's main UI alongside the existing Start Recording / Start Streaming. Requires registering a hotkey or dock. More work but gives the user a clear separate control when they genuinely want replay independent of OBS recording.
+
+Option 1 is the lower-friction default, but loses the use case "record replay for post-match review without also doing an OBS recording of the stitched output." Option 2 preserves both flows at the cost of UI weight. Leaning toward shipping option 1 + documenting that option 2 is available as a toggle in Advanced settings.
+
+**Blocks**: nothing urgent, but every user who tries replay hits this on first run.
 
 ### A21. Live Matroska replay is hard to scrub in general-purpose players
 
