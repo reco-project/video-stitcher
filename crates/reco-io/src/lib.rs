@@ -40,6 +40,17 @@ pub mod zero_copy;
 #[cfg(feature = "config")]
 pub mod settings;
 
+/// M6.5 stacked-video pack / unpack. Maps N YUV420P tiles into one
+/// grid-layout frame (and back) for single-file replay recording,
+/// web panorama input, and cloud deployment. FFmpeg-backed
+/// encoder/source stubs are gated behind the `stacked-output`
+/// feature; the pure CPU pack/unpack primitives have no feature gate.
+///
+/// A GPU-accelerated pack/unpack path (wgpu compute shader that
+/// blits N source textures into one render target) is a natural
+/// follow-up — noted as a future-work item in the module docs.
+pub mod stacked_video;
+
 #[cfg(feature = "ffmpeg")]
 pub use smart_source::SmartFileSource;
 

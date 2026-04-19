@@ -18,6 +18,11 @@ profiling = ["tracing", "reco-core/profiling"]
 # directories (~150 kB of deps). Consumers that only need frame I/O
 # (headless stitching, test harnesses) can skip it.
 config = ["dep:serde", "dep:serde_json", "dep:directories"]
+# M6.5 stacked-video: enables the ffmpeg-backed StackedEncoder /
+# StackedSource wrappers around the pure pack/unpack primitives in
+# `stacked_video`. The primitives themselves have no feature gate.
+# Requires `ffmpeg`.
+stacked-output = ["ffmpeg"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
