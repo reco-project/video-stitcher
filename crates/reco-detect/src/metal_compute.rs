@@ -207,7 +207,7 @@ impl MetalPreprocessPipeline {
         // (sends Objective-C `retain`) to get an owned Device.
         let device: Device = unsafe {
             let hal_device = gpu
-                .device
+                .device()
                 .as_hal::<Metal>()
                 .ok_or(MetalInteropError::NotMetal)?;
             hal_device.raw_device().to_owned()
@@ -288,8 +288,7 @@ impl MetalPreprocessPipeline {
         reco_core::profile_scope!("metal_preprocess");
 
         // Detect pixel format (video-range vs full-range).
-        let format =
-            unsafe { crate::metal_interop::CVPixelBufferGetPixelFormatType(cv_pixel_buffer) };
+        let format = unsafe { reco_core::metal_interop::pixel_buffer_format(cv_pixel_buffer) };
         self.is_full_range = format == 0x34323066; // '420f'
 
         // Import Y and UV planes as Metal textures (zero-copy via IOSurface).

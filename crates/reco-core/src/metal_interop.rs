@@ -93,6 +93,22 @@ const MTL_PIXEL_FORMAT_RG8_UNORM: u64 = 30;
 const K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE: u32 = 0x34323076; // '420v'
 const K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE: u32 = 0x34323066; // '420f'
 
+/// Read the pixel format FourCC from a CVPixelBuffer.
+///
+/// Wraps `CVPixelBufferGetPixelFormatType` so downstream crates
+/// (reco-detect's Metal preprocess) don't need their own FFI
+/// declaration. Returns raw `u32`; compare against `0x34323066`
+/// ("420f", full-range NV12) or `0x34323076` ("420v", video-range).
+///
+/// # Safety
+///
+/// `cv_pixel_buffer` must be a valid `CVPixelBufferRef` that is
+/// retained for the duration of this call.
+#[inline]
+pub unsafe fn pixel_buffer_format(cv_pixel_buffer: CVPixelBufferRef) -> u32 {
+    unsafe { CVPixelBufferGetPixelFormatType(cv_pixel_buffer) }
+}
+
 // ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
