@@ -16,8 +16,8 @@
 
 use metal::{Buffer, CommandQueue, ComputePipelineState, Device, MTLResourceOptions, MTLSize};
 
-use crate::gpu::GpuContext;
-use crate::metal_interop::{CVPixelBufferRef, MetalInteropError, MetalTextureCache};
+use reco_core::gpu::GpuContext;
+use reco_core::metal_interop::{CVPixelBufferRef, MetalInteropError, MetalTextureCache};
 
 /// Errors from Metal compute operations.
 #[derive(Debug, thiserror::Error)]
@@ -200,7 +200,7 @@ impl MetalPreprocessPipeline {
         frame_width: u32,
         frame_height: u32,
     ) -> Result<Self, MetalComputeError> {
-        use wgpu::hal::api::Metal;
+        use reco_core::wgpu::hal::api::Metal;
 
         // Extract the raw MTLDevice from wgpu. wgpu-hal 28's metal
         // backend exposes raw_device() as &metal::Device; we clone it
@@ -283,9 +283,9 @@ impl MetalPreprocessPipeline {
         cv_pixel_buffer: CVPixelBufferRef,
         gpu: &GpuContext,
     ) -> Result<&mut [f32], MetalComputeError> {
-        use wgpu::hal::api::Metal;
+        use reco_core::wgpu::hal::api::Metal;
 
-        crate::profile_scope!("metal_preprocess");
+        reco_core::profile_scope!("metal_preprocess");
 
         // Detect pixel format (video-range vs full-range).
         let format =
