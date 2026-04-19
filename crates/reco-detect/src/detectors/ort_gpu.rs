@@ -5,6 +5,18 @@
 //! and inference (ORT TensorRT/CUDA EP). Only the small detection output
 //! (~7KB for `[1, 300, 6]`) is read back to CPU.
 
+/// `MemoryInfo` wrapper with manual `Send` impl.
+///
+/// ORT's `MemoryInfo` holds `*mut OrtMemoryInfo` and is therefore not
+/// `Send` by default. But a `MemoryInfo` is immutable descriptor state
+/// (device / allocator type / memtype) — ORT's C layer treats it as
+/// read-only config. UnifiedDetector requires `Send`, so wrap with an
+/// opt-in unsafe impl for the "we only read it" use case.
+struct SendMemoryInfo(ort::memory::MemoryInfo);
+// SAFETY: MemoryInfo is read-only descriptor state; no interior mutation
+// crosses thread boundaries.
+unsafe impl Send for SendMemoryInfo {}
+
 use std::ffi::c_void;
 use std::path::Path;
 
@@ -50,6 +62,10 @@ pub struct OrtGpuDetector {
     // Y plane: width * height bytes, UV plane: width * height/2 bytes.
     nv12_8bit_y: CUdeviceptr,
     nv12_8bit_uv: CUdeviceptr,
+    // Cached CUDA device MemoryInfo. Constant for the detector's
+    // lifetime; constructing one per inference showed up on the
+    // per-frame alloc audit (plan M7 item 5).
+    cuda_memory_info: SendMemoryInfo,
 }
 
 impl OrtGpuDetector {
@@ -154,6 +170,16 @@ impl OrtGpuDetector {
             is_10bit,
         );
 
+        let cuda_memory_info = SendMemoryInfo(
+            MemoryInfo::new(
+                AllocationDevice::CUDA,
+                0,
+                AllocatorType::Device,
+                MemoryType::Default,
+            )
+            .map_err(|e| format!("CUDA MemoryInfo: {e}"))?,
+        );
+
         let mut detector = Self {
             session,
             input_size,
@@ -169,6 +195,7 @@ impl OrtGpuDetector {
             tensor_f32,
             nv12_8bit_y,
             nv12_8bit_uv,
+            cuda_memory_info,
         };
 
         // Warmup: force TRT EP to eagerly build the engine and initialize
@@ -328,17 +355,9 @@ impl OrtGpuDetector {
             reco_core::profile_scope!("gpu_ort_inference");
 
             let sz = self.input_size as i64;
-            let memory_info = MemoryInfo::new(
-                AllocationDevice::CUDA,
-                0,
-                AllocatorType::Device,
-                MemoryType::Default,
-            )
-            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA MemoryInfo: {e}")))?;
-
             let tensor: TensorRefMut<'_, f32> = unsafe {
                 TensorRefMut::from_raw(
-                    memory_info,
+                    self.cuda_memory_info.0.clone(),
                     self.tensor_f32 as *mut c_void,
                     Shape::new([1i64, 3, sz, sz]),
                 )
@@ -350,15 +369,17 @@ impl OrtGpuDetector {
                 .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?
         };
 
-        // Step 5: Extract output and postprocess on CPU.
-        let (n, data) = outputs[0]
+        // Step 5: Extract output and postprocess on CPU without
+        // materializing an intermediate Vec<f32>. `outputs` owns the
+        // backing buffer; `slice` borrows from it. Postprocess runs
+        // to completion before we drop `outputs`.
+        let (shape, slice) = outputs[0]
             .try_extract_tensor::<f32>()
-            .map(|(shape, slice)| (shape[1] as usize, slice.to_vec()))
             .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
-        drop(outputs);
+        let n = shape[1] as usize;
 
         let detections = postprocess(
-            &data,
+            slice,
             n,
             camera,
             self.confidence_threshold,
@@ -368,6 +389,7 @@ impl OrtGpuDetector {
             width,
             height,
         );
+        drop(outputs);
 
         if !detections.is_empty() {
             log::debug!(

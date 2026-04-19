@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use ort::session::Session;
-use ort::value::Tensor;
+use ort::value::TensorRef;
 use reco_core::detector::{
     CameraId, ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
@@ -26,6 +26,11 @@ pub struct CpuYoloDetector {
     input_size: u32,
     confidence_threshold: f32,
     labels: Vec<String>,
+    /// Pre-allocated preprocess scratch for `3 * input_size * input_size`
+    /// f32 (4.9 MB at sz=640). Fresh allocation per frame was one of the
+    /// M7 plan §M7.5 hotspots; this buffer is filled in place and handed
+    /// to `TensorRef::from_array_view` without moving ownership.
+    rgb_chw_buf: Vec<f32>,
 }
 
 impl CpuYoloDetector {
@@ -60,11 +65,15 @@ impl CpuYoloDetector {
             confidence_threshold,
         );
 
+        let sz = input_size as usize;
+        let rgb_chw_buf = vec![114.0 / 255.0_f32; 3 * sz * sz];
+
         Ok(Self {
             session,
             input_size,
             confidence_threshold,
             labels,
+            rgb_chw_buf,
         })
     }
 
@@ -77,12 +86,14 @@ impl CpuYoloDetector {
         &self.labels
     }
 
-    /// Convert a raw YUV frame to a flat RGB float32 buffer in CHW layout,
-    /// letterboxed to `input_size x input_size`, normalized to `[0, 1]`.
+    /// Fill `self.rgb_chw_buf` from a raw YUV frame: flat RGB float32 in
+    /// CHW layout, letterboxed to `input_size x input_size`, normalized
+    /// to `[0, 1]`. The buffer is reused across frames so no allocation
+    /// happens per call.
     ///
-    /// Returns `(rgb_chw, scale, pad_x, pad_y)` where scale and padding are
-    /// needed to map detection coordinates back to the original frame.
-    fn preprocess(&self, frame: &RawFrame<'_>) -> (Vec<f32>, f32, f32, f32) {
+    /// Returns `(scale, pad_x, pad_y)` for mapping detection coordinates
+    /// back to the original frame.
+    fn preprocess(&mut self, frame: &RawFrame<'_>) -> (f32, f32, f32) {
         let (fw, fh) = (frame.width as f32, frame.height as f32);
         let is = self.input_size as f32;
 
@@ -94,12 +105,17 @@ impl CpuYoloDetector {
         let pad_y = (self.input_size - new_h) as f32 / 2.0;
 
         let sz = self.input_size as usize;
-        let mut rgb_chw = vec![114.0 / 255.0_f32; 3 * sz * sz]; // grey fill
 
-        // For each pixel in the letterboxed region, sample from the source frame
-        // with nearest-neighbor, convert YUV->RGB inline.
+        // Refill grey pad. Resetting the whole buffer is cheaper than
+        // tracking which pixels were last written — at 640×640×3 f32
+        // this is a single ~5 MB contiguous write ~2× / sec at 30 fps
+        // on the detection interval, not per-frame.
+        let grey = 114.0 / 255.0_f32;
+        self.rgb_chw_buf.fill(grey);
+
         let pad_x_i = pad_x as u32;
         let pad_y_i = pad_y as u32;
+        let plane = sz * sz;
 
         for dy in 0..new_h {
             for dx in 0..new_w {
@@ -121,14 +137,13 @@ impl CpuYoloDetector {
                 let ox = (pad_x_i + dx) as usize;
                 let oy = (pad_y_i + dy) as usize;
 
-                let plane = sz * sz;
-                rgb_chw[oy * sz + ox] = r / 255.0;
-                rgb_chw[plane + oy * sz + ox] = g / 255.0;
-                rgb_chw[2 * plane + oy * sz + ox] = b / 255.0;
+                self.rgb_chw_buf[oy * sz + ox] = r / 255.0;
+                self.rgb_chw_buf[plane + oy * sz + ox] = g / 255.0;
+                self.rgb_chw_buf[2 * plane + oy * sz + ox] = b / 255.0;
             }
         }
 
-        (rgb_chw, scale, pad_x, pad_y)
+        (scale, pad_x, pad_y)
     }
 }
 
@@ -164,25 +179,28 @@ impl CpuYoloDetector {
     ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("yolo_detect");
 
-        let (rgb_chw, scale, pad_x, pad_y) = self.preprocess(frame);
+        let (scale, pad_x, pad_y) = self.preprocess(frame);
 
         let sz = self.input_size as usize;
-        let input_tensor = Tensor::from_array(([1, 3, sz, sz], rgb_chw))
-            .map_err(|e| DetectorError::InferenceFailed(format!("tensor build: {e}")))?;
+        let input_tensor =
+            TensorRef::from_array_view(([1, 3, sz, sz], self.rgb_chw_buf.as_slice()))
+                .map_err(|e| DetectorError::InferenceFailed(format!("tensor build: {e}")))?;
 
         let outputs = self
             .session
             .run(ort::inputs![input_tensor])
             .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?;
 
-        let (n, data) = outputs[0]
+        // Borrow the output tensor's backing buffer instead of cloning
+        // it into a Vec. `outputs` owns it; postprocess finishes before
+        // the drop below. (plan M7 item 5)
+        let (shape, slice) = outputs[0]
             .try_extract_tensor::<f32>()
-            .map(|(shape, slice)| (shape[1] as usize, slice.to_vec()))
             .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
-        drop(outputs);
+        let n = shape[1] as usize;
 
         let detections = postprocess(
-            &data,
+            slice,
             n,
             camera,
             self.confidence_threshold,
@@ -192,6 +210,7 @@ impl CpuYoloDetector {
             frame.width,
             frame.height,
         );
+        drop(outputs);
 
         if !detections.is_empty() {
             log::debug!(
