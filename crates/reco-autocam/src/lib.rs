@@ -35,10 +35,16 @@ mod roi_filter;
 mod smoother;
 
 // Re-export detector types from reco-detect for backwards compatibility.
+// Ort-backed detectors are only available when the `ort` feature is
+// enabled on this crate (passed through to reco-detect). Builds that
+// opt out of ort (e.g. Jetson with glibc-incompatible prebuilt ort-sys)
+// and rely on tensorrt-native + .engine models don't see these
+// re-exports.
+#[cfg(feature = "ort")]
 pub use reco_detect::CpuYoloDetector;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "ort", target_os = "macos"))]
 pub use reco_detect::MetalYoloDetector;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(feature = "ort", any(target_os = "linux", target_os = "windows")))]
 pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
@@ -191,7 +197,10 @@ pub fn setup_autocam(
     // Load class names from the model to resolve label -> class_id for directors.
     // Skip ORT session creation for non-ONNX models (.engine files,
     // NCNN model directories). ORT can only parse .onnx files.
+    // When ort is disabled entirely, fall through to empty names —
+    // directors use defaults or a sidecar labels file.
     let is_onnx = model_path.ends_with(".onnx");
+    #[cfg(feature = "ort")]
     let class_names = if is_onnx {
         match reco_detect::create_ort_session(Path::new(model_path), Vec::new()) {
             Ok((_, _, names)) => names,
@@ -202,6 +211,19 @@ pub fn setup_autocam(
         }
     } else {
         Vec::new() // Labels from sidecar file or defaults
+    };
+    #[cfg(not(feature = "ort"))]
+    let class_names: Vec<String> = {
+        // Without ort, we can't parse .onnx metadata. Log once, use
+        // defaults. TrtGpuDetector pulls labels from a sidecar
+        // .labels file (handled in its init path below).
+        if is_onnx {
+            log::warn!(
+                "Autocam: ort feature disabled; can't parse ONNX class names from {model_path}. \
+                 Using COCO defaults. For .engine models, place a <name>.labels sidecar."
+            );
+        }
+        Vec::new()
     };
 
     // Check if ROI filtering should be applied.
@@ -257,7 +279,7 @@ pub fn setup_autocam(
     }
 
     // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(feature = "ort", any(target_os = "linux", target_os = "windows")))]
     if !detection_active && use_zero_copy {
         match OrtGpuDetector::try_new(
             model_path,
@@ -287,7 +309,7 @@ pub fn setup_autocam(
         }
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(feature = "ort", target_os = "macos"))]
     if use_zero_copy {
         match MetalYoloDetector::try_new(
             model_path,
@@ -344,6 +366,7 @@ pub fn setup_autocam(
     }
 
     // ORT CPU fallback for .onnx files.
+    #[cfg(feature = "ort")]
     if !detection_active && !use_zero_copy {
         let yolo = CpuYoloDetector::from_file(model_path)?;
         let detector: Box<dyn reco_core::detector::UnifiedDetector> =
@@ -355,6 +378,17 @@ pub fn setup_autocam(
         session.set_detector(detector);
         detection_active = true;
         log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
+    }
+    // Without ort feature, detection only activates via the
+    // tensorrt-native or ncnn branches above. If we still don't
+    // have a detector here, log so the user understands why.
+    #[cfg(not(feature = "ort"))]
+    if !detection_active {
+        log::warn!(
+            "Autocam: no detector attached. Build has `ort` disabled; only `.engine` \
+             (tensorrt-native) and NCNN `_ncnn_model` directories are supported. \
+             Received model_path={model_path}"
+        );
     }
 
     // Sweep director doesn't need detection - attach it regardless.
