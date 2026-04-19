@@ -57,13 +57,12 @@ pub struct TrtGpuDetector {
     // P010 (10-bit NV12) conversion scratch buffers.
     nv12_8bit_y: CUdeviceptr,
     nv12_8bit_uv: CUdeviceptr,
-    // CPU-upload fallback buffers. Lazy-allocated on the first
-    // `DetectorFrame::Cpu` call. Lets live-camera Nv12 flows
-    // (nvarguscamerasrc + appsink → CPU Nv12) reuse the same
-    // TRT inference path as NVDEC zero-copy, paying only a
-    // ~1-2ms host→device memcpy per frame instead of routing
-    // through the rare CPU detection backends. Zero-cost when
-    // the caller never sends Cpu frames (buffers stay 0).
+    // Live-camera NV12 upload buffers. Lazy-allocated on the
+    // first `DetectorFrame::Cpu` call. nvarguscamerasrc +
+    // appsink delivers CPU-resident NV12; a ~1-2 ms H2D memcpy
+    // per frame lets that flow reuse the same TRT inference
+    // path as NVDEC zero-copy. Zero-cost when the caller only
+    // sends Cuda frames (buffers stay 0).
     cpu_upload_y: CUdeviceptr,
     cpu_upload_uv: CUdeviceptr,
     // TRT output buffer (drop before context).
@@ -556,16 +555,14 @@ impl UnifiedDetector for TrtGpuDetector {
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 impl TrtGpuDetector {
-    /// CPU-upload fallback: copy a host-resident NV12 frame to CUDA
-    /// buffers, then reuse [`Self::detect_gpu_raw`]. Buffers are
-    /// allocated lazily on first call and reused for the lifetime
-    /// of the detector; subsequent calls pay only the host→device
-    /// memcpy cost (~1-2 ms for a 1080p frame on Orin Nano).
-    ///
-    /// Kept self-contained in this file (no changes to
-    /// `setup_autocam` / `session::detection` dispatch) so the
-    /// whole CPU-upload feature is revertable with a single
-    /// `git revert` on this commit.
+    /// Live-camera NV12 detection path: copy a host-resident NV12
+    /// frame to CUDA buffers, then reuse [`Self::detect_gpu_raw`].
+    /// Buffers are allocated lazily on first call and reused for
+    /// the lifetime of the detector; subsequent calls pay only the
+    /// host→device memcpy cost (~1-2 ms for a 1080p frame on Orin
+    /// Nano). This is the primary path for CSI-origin frames
+    /// (nvarguscamerasrc + appsink); NVDEC-sourced frames continue
+    /// to use the zero-copy [`DetectorFrame::Cuda`] route.
     fn detect_cpu_nv12_upload(
         &mut self,
         camera: CameraId,
