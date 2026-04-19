@@ -165,3 +165,51 @@ fn pack_v(@builtin(global_invocation_id) gid: vec3<u32>) {
         + ((params.tile_y_col_offset / 2u) + base_col);
     atlas[params.v_plane_u32_offset + (byte_offset >> 2u)] = packed;
 }
+
+// --- NV12 variants ---
+//
+// When the source came from NVDEC / Jetson ISP, chroma is stored as
+// one Rg8Unorm texture at half resolution where .r = U and .g = V.
+// pack_uv_from_nv12 samples that single texture once per output
+// chroma pixel and writes both the U and V planes of the atlas in
+// one dispatch.
+//
+// The `src_u` binding is reused for the Rg8 UV texture; `src_v` is
+// unused (the caller binds a 1×1 dummy to keep the bind group
+// layout stable with the YUV420P kernels).
+
+fn sample_uv_nv12(uv: vec2<f32>) -> vec2<f32> {
+    // Rg8Unorm returns normalized .rg; .r is U sample, .g is V.
+    return textureSampleLevel(src_u, src_sampler, uv, 0.0).rg;
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn pack_uv_from_nv12(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let quad_x = gid.x;
+    let row    = gid.y;
+    let uv_height = params.out_tile_height / 2u;
+    if (row >= uv_height) { return; }
+    let uv_width = params.out_tile_width / 2u;
+    let quad_count = uv_width / 4u;
+    if (quad_x >= quad_count) { return; }
+
+    let base_col = quad_x * 4u;
+    let uv_w_f = f32(uv_width);
+    let uv_h_f = f32(uv_height);
+    let y_norm = (f32(row) + 0.5) / uv_h_f;
+
+    let s0 = sample_uv_nv12(vec2<f32>((f32(base_col + 0u) + 0.5) / uv_w_f, y_norm));
+    let s1 = sample_uv_nv12(vec2<f32>((f32(base_col + 1u) + 0.5) / uv_w_f, y_norm));
+    let s2 = sample_uv_nv12(vec2<f32>((f32(base_col + 2u) + 0.5) / uv_w_f, y_norm));
+    let s3 = sample_uv_nv12(vec2<f32>((f32(base_col + 3u) + 0.5) / uv_w_f, y_norm));
+
+    let packed_u = pack4(s0.x, s1.x, s2.x, s3.x);
+    let packed_v = pack4(s0.y, s1.y, s2.y, s3.y);
+
+    let byte_offset =
+          ((params.tile_y_row_offset / 2u) + row) * params.atlas_uv_stride
+        + ((params.tile_y_col_offset / 2u) + base_col);
+    let u32_offset = byte_offset >> 2u;
+    atlas[params.u_plane_u32_offset + u32_offset] = packed_u;
+    atlas[params.v_plane_u32_offset + u32_offset] = packed_v;
+}

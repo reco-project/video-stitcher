@@ -135,6 +135,24 @@ struct PackParams {
 /// guaranteed-done on the GPU two frames later.
 const STAGING_SLOTS: usize = 3;
 
+/// Source plane layout the packer consumes.
+///
+/// The kernels dispatched by [`YuvStackPacker::pack_tile`] branch on
+/// this so one module covers both the YUV420P and NV12 GPU-resident
+/// pipelines. The NVDEC / Jetson ISP zero-copy path uses NV12; the
+/// CPU-decode-then-upload path uses YUV420P.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceFormat {
+    /// Three separate R8Unorm textures (Y full-res, U half-res,
+    /// V half-res). Matches `InputFormat::Yuv420p`.
+    Yuv420p,
+    /// Y as R8Unorm (full-res) + UV interleaved as Rg8Unorm
+    /// (half-res). The third texture slot is a 1×1 dummy; the
+    /// pack shader never samples it. Matches `InputFormat::Nv12`
+    /// and NVDEC / Jetson ISP GPU-resident decode output.
+    Nv12,
+}
+
 /// Output tile dimensions after optional downscale.
 ///
 /// When `output == source_dims` the sampler returns exact byte
@@ -206,10 +224,15 @@ pub struct StackedAtlas {
 /// if let Some(atlas) = packer.poll_ready(&gpu) { /* encode it */ }
 /// ```
 pub struct YuvStackPacker {
-    /// Pipelines for the three plane-packing kernels.
+    /// Which source format the kernels are configured for.
+    source_format: SourceFormat,
+    /// Pipelines for the plane-packing kernels. For Yuv420p all
+    /// three (Y/U/V) are dispatched; for Nv12 only `pipeline_y`
+    /// and `pipeline_uv_nv12` are dispatched.
     pipeline_y: wgpu::ComputePipeline,
     pipeline_u: wgpu::ComputePipeline,
     pipeline_v: wgpu::ComputePipeline,
+    pipeline_uv_nv12: wgpu::ComputePipeline,
     /// Shared bind group layout — same for all three kernels.
     bind_group_layout: wgpu::BindGroupLayout,
     /// Linear-filter sampler for the downscale path. Also used for
@@ -247,10 +270,15 @@ pub struct YuvStackPacker {
 
 impl YuvStackPacker {
     /// Create a packer for a given layout and output tile size.
+    /// `source_format` selects which kernels get dispatched at
+    /// submission time; both pipeline variants are always built so
+    /// a session that switches source paths (e.g. hot-swap between
+    /// NVDEC and CPU decode) can reconfigure the packer in-place.
     pub fn new(
         gpu: &GpuContext,
         layout: StackGridLayout,
         output: OutputTileSize,
+        source_format: SourceFormat,
     ) -> Result<Self, PackerError> {
         if !output.width.is_multiple_of(4) {
             return Err(PackerError::InvalidDimensions(format!(
@@ -370,6 +398,14 @@ impl YuvStackPacker {
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
+        let pipeline_uv_nv12 = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("yuv_stack_pack_uv_nv12"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("pack_uv_from_nv12"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        });
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("yuv_stack_pack_sampler"),
@@ -423,9 +459,11 @@ impl YuvStackPacker {
         let (map_tx, map_rx) = std::sync::mpsc::sync_channel(STAGING_SLOTS);
 
         Ok(Self {
+            source_format,
             pipeline_y,
             pipeline_u,
             pipeline_v,
+            pipeline_uv_nv12,
             bind_group_layout,
             sampler,
             params_buffers,
@@ -558,10 +596,25 @@ impl YuvStackPacker {
         pass.set_bind_group(0, &bind_group, &[]);
         pass.set_pipeline(&self.pipeline_y);
         pass.dispatch_workgroups(y_groups_x, y_groups_y, 1);
-        pass.set_pipeline(&self.pipeline_u);
-        pass.dispatch_workgroups(uv_groups_x, uv_groups_y, 1);
-        pass.set_pipeline(&self.pipeline_v);
-        pass.dispatch_workgroups(uv_groups_x, uv_groups_y, 1);
+
+        match self.source_format {
+            SourceFormat::Yuv420p => {
+                pass.set_pipeline(&self.pipeline_u);
+                pass.dispatch_workgroups(uv_groups_x, uv_groups_y, 1);
+                pass.set_pipeline(&self.pipeline_v);
+                pass.dispatch_workgroups(uv_groups_x, uv_groups_y, 1);
+            }
+            SourceFormat::Nv12 => {
+                // One NV12-UV dispatch writes both U and V planes.
+                pass.set_pipeline(&self.pipeline_uv_nv12);
+                pass.dispatch_workgroups(uv_groups_x, uv_groups_y, 1);
+            }
+        }
+    }
+
+    /// Which source format this packer was built for.
+    pub fn source_format(&self) -> SourceFormat {
+        self.source_format
     }
 
     /// Queue a GPU copy from the atlas buffer into the current
@@ -707,7 +760,8 @@ mod tests {
         let gpu = GpuContext::new_blocking().expect("GPU init");
         let layout = StackGridLayout::vstack(8, 8, 2).expect("layout");
         let out = OutputTileSize::unscaled(8, 8);
-        let mut packer = YuvStackPacker::new(&gpu, layout, out).expect("packer");
+        let mut packer =
+            YuvStackPacker::new(&gpu, layout, out, SourceFormat::Yuv420p).expect("packer");
 
         let left_y = make_filled_r8(&gpu, 8, 8, 100);
         let left_u = make_filled_r8(&gpu, 4, 4, 110);
@@ -760,7 +814,8 @@ mod tests {
         // output × grid. Source textures can be arbitrary larger dims.
         let layout = StackGridLayout::vstack(8, 8, 2).expect("layout");
         let out = OutputTileSize::scaled(8, 8);
-        let mut packer = YuvStackPacker::new(&gpu, layout, out).expect("packer");
+        let mut packer =
+            YuvStackPacker::new(&gpu, layout, out, SourceFormat::Yuv420p).expect("packer");
 
         // Source textures at 16x16 (double the output tile).
         let left_y = make_filled_r8(&gpu, 16, 16, 77);
@@ -783,5 +838,82 @@ mod tests {
         assert!(atlas.u[16..].iter().all(|&b| b == 188));
         assert!(atlas.v[..16].iter().all(|&b| b == 99));
         assert!(atlas.v[16..].iter().all(|&b| b == 199));
+    }
+
+    /// Fill an Rg8Unorm texture with constant (U, V) bytes. For the
+    /// NV12 test where chroma is interleaved into one texture.
+    fn make_filled_rg8(gpu: &GpuContext, w: u32, h: u32, u: u8, v: u8) -> wgpu::TextureView {
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("test_filled_rg8"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rg8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let mut data = Vec::with_capacity((w * h * 2) as usize);
+        for _ in 0..(w * h) {
+            data.push(u);
+            data.push(v);
+        }
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(w * 2),
+                rows_per_image: Some(h),
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    /// NV12 path: Y as R8, UV as Rg8. One dispatch handles both
+    /// chroma planes via pack_uv_from_nv12.
+    #[test]
+    #[ignore = "requires a GPU (wgpu adapter init)"]
+    fn nv12_vstack_constants_round_trip() {
+        let gpu = GpuContext::new_blocking().expect("GPU init");
+        let layout = StackGridLayout::vstack(8, 8, 2).expect("layout");
+        let out = OutputTileSize::unscaled(8, 8);
+        let mut packer =
+            YuvStackPacker::new(&gpu, layout, out, SourceFormat::Nv12).expect("packer");
+
+        let left_y = make_filled_r8(&gpu, 8, 8, 50);
+        let left_uv = make_filled_rg8(&gpu, 4, 4, 60, 70);
+        let right_y = make_filled_r8(&gpu, 8, 8, 150);
+        let right_uv = make_filled_rg8(&gpu, 4, 4, 160, 170);
+        // V slot is unused for NV12; bind a 1x1 dummy to keep the
+        // bind-group layout stable.
+        let dummy_v = make_filled_r8(&gpu, 1, 1, 0);
+
+        let atlas = pump_packer(&mut packer, &gpu, |enc, p| {
+            p.pack_tile(&gpu, enc, 0, &left_y, &left_uv, &dummy_v);
+            p.pack_tile(&gpu, enc, 1, &right_y, &right_uv, &dummy_v);
+        });
+
+        assert_eq!((atlas.width, atlas.height), (8, 16));
+        assert!(atlas.y[..64].iter().all(|&b| b == 50));
+        assert!(atlas.y[64..].iter().all(|&b| b == 150));
+        assert!(atlas.u[..16].iter().all(|&b| b == 60));
+        assert!(atlas.u[16..].iter().all(|&b| b == 160));
+        assert!(atlas.v[..16].iter().all(|&b| b == 70));
+        assert!(atlas.v[16..].iter().all(|&b| b == 170));
     }
 }
