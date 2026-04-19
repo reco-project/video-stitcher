@@ -43,6 +43,12 @@ pub struct CameraRunConfig<'a> {
     /// Pick `mkv` or `fmp4` for streamable tee via external
     /// `ffmpeg -c copy -f flv rtmp://...`.
     pub container: Option<&'a str>,
+    /// Tracking director: `ball`, `field`, `sweep`. Sweep mode
+    /// bypasses detection entirely (no --model needed).
+    pub tracking: &'a str,
+    /// Disable coverage-boundary clamp on the director output.
+    /// Useful in sweep mode to cover the full panorama width.
+    pub unconstrained: bool,
     /// Optional path for M7 stacked-replay recording. Same feature
     /// as `StitchJob::with_replay_recording`. Requires the `replay`
     /// feature flag on reco-cli.
@@ -74,6 +80,8 @@ pub fn run_camera(
         crf,
         preset,
         container,
+        tracking,
+        unconstrained,
         replay_path,
         replay_scale,
     } = config;
@@ -118,25 +126,60 @@ pub fn run_camera(
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
-    // Set up autocam (detector + director) if model provided.
+    // Constrained-look clamp (FRICTION A13). Default on; `--unconstrained`
+    // flips it off so sweep / debug views can pan past the coverage
+    // boundary.
+    if unconstrained {
+        session.core_mut().set_constrained_look(false);
+        log::info!("constrained_look: disabled (unconstrained viewport)");
+    }
+
+    // Parse tracking mode. Sweep is useful without detection.
     #[cfg(feature = "autocam")]
-    if let Some(model) = model_path {
-        match reco_autocam::setup_autocam(
-            &mut session,
-            model,
-            capture_width,
-            capture_height,
-            capture_fps as f32,
-            use_nv12_capture,
-            detection_interval,
-            0.0,
-            reco_autocam::TrackingMode::Ball,
-            None,
-            false, // V4L2 captures are always 8-bit NV12
-        ) {
-            Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
-            Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),
-            Err(e) => eprintln!("Warning: autocam setup failed ({e}), continuing without tracking"),
+    let tracking_mode = match tracking {
+        "ball" => reco_autocam::TrackingMode::Ball,
+        "field" => reco_autocam::TrackingMode::Field,
+        "sweep" => reco_autocam::TrackingMode::Sweep,
+        other => {
+            log::warn!("unknown tracking mode '{other}', defaulting to 'ball'");
+            reco_autocam::TrackingMode::Ball
+        }
+    };
+
+    // Set up autocam (detector + director). Model path is optional in
+    // sweep mode — SweepDirector needs no detector.
+    #[cfg(feature = "autocam")]
+    {
+        let effective_model = if tracking_mode == reco_autocam::TrackingMode::Sweep {
+            // Sweep bypasses detection entirely.
+            model_path.unwrap_or("")
+        } else {
+            model_path.unwrap_or("")
+        };
+        if !effective_model.is_empty()
+            || tracking_mode == reco_autocam::TrackingMode::Sweep
+        {
+            match reco_autocam::setup_autocam(
+                &mut session,
+                effective_model,
+                capture_width,
+                capture_height,
+                capture_fps as f32,
+                use_nv12_capture,
+                detection_interval,
+                0.0,
+                tracking_mode,
+                None,
+                false, // V4L2 captures are always 8-bit NV12
+            ) {
+                Ok(true) => println!("Autocam: {tracking_mode:?} director attached"),
+                Ok(false) => {
+                    eprintln!("Warning: tracking unavailable in current capture mode")
+                }
+                Err(e) => eprintln!(
+                    "Warning: autocam setup failed ({e}), continuing without tracking"
+                ),
+            }
         }
     }
     #[cfg(not(feature = "autocam"))]

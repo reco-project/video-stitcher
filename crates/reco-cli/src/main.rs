@@ -338,6 +338,21 @@ enum Commands {
         #[arg(long)]
         container: Option<String>,
 
+        /// Tracking director mode. `ball` (default): YOLO ball
+        /// tracking via BallDirector. `field`: ball + players
+        /// (FieldDirector, for multi-class models). `sweep`:
+        /// no AI, slow left-right pan across the full coverage
+        /// (debug / demo). Sweep mode doesn't require `--model`.
+        #[arg(long, default_value = "ball")]
+        tracking: String,
+
+        /// Disable the constrained-look coverage clamp
+        /// (FRICTION A13). When off, the viewport can pan into
+        /// black panorama edges — useful for sweeping the full
+        /// coverage or debugging the coverage boundary itself.
+        #[arg(long, default_value_t = false)]
+        unconstrained: bool,
+
         /// Record pre-stitch source frames to this path as a
         /// stacked-video file. Same M7 replay feature as
         /// `stitch --replay`. Requires `--features replay`.
@@ -710,6 +725,8 @@ fn main() -> anyhow::Result<()> {
             crf,
             preset,
             container,
+            tracking,
+            unconstrained,
             replay,
             replay_scale,
         } => {
@@ -752,6 +769,8 @@ fn main() -> anyhow::Result<()> {
                     crf,
                     preset,
                     container: container.as_deref(),
+                    tracking: &tracking,
+                    unconstrained,
                     replay_path: replay.as_deref(),
                     replay_scale,
                 },
