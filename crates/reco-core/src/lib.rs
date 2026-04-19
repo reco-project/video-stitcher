@@ -87,6 +87,10 @@ pub mod cuda_kernels;
 pub mod detector;
 pub mod director;
 pub mod encoder;
+/// M4 timestamped multi-source ingest buffer. See
+/// [`framesync::TimestampedIngestBuffer`] for the dual-source
+/// pairing case and the N-source livestream-sync foundation.
+pub mod framesync;
 pub mod gpu;
 pub mod lens;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
