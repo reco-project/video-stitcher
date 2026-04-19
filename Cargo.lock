@@ -5277,6 +5277,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reco-control"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "reco-core",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "reco-core"
 version = "0.1.0"
 dependencies = [
