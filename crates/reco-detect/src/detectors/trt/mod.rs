@@ -27,8 +27,9 @@ use crate::cuda_kernels::normalize_hwc_to_chw;
 use crate::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 use reco_core::cuda_interop::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memcpy_dtoh,
-    cuda_memset_d8, cuda_synchronize,
+    cuda_memcpy_htod_2d, cuda_memset_d8, cuda_synchronize,
 };
+use reco_core::detector::ChromaFormat;
 use reco_core::detector::{
     CameraId, Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
 };
@@ -56,6 +57,15 @@ pub struct TrtGpuDetector {
     // P010 (10-bit NV12) conversion scratch buffers.
     nv12_8bit_y: CUdeviceptr,
     nv12_8bit_uv: CUdeviceptr,
+    // CPU-upload fallback buffers. Lazy-allocated on the first
+    // `DetectorFrame::Cpu` call. Lets live-camera Nv12 flows
+    // (nvarguscamerasrc + appsink → CPU Nv12) reuse the same
+    // TRT inference path as NVDEC zero-copy, paying only a
+    // ~1-2ms host→device memcpy per frame instead of routing
+    // through the rare CPU detection backends. Zero-cost when
+    // the caller never sends Cpu frames (buffers stay 0).
+    cpu_upload_y: CUdeviceptr,
+    cpu_upload_uv: CUdeviceptr,
     // TRT output buffer (drop before context).
     output_buf: CudaBuffer,
     output_host: Vec<u8>,
@@ -241,6 +251,8 @@ impl TrtGpuDetector {
             tensor_f32,
             nv12_8bit_y,
             nv12_8bit_uv,
+            cpu_upload_y: 0,
+            cpu_upload_uv: 0,
             output_buf,
             output_host,
             output_floats,
@@ -515,20 +527,119 @@ impl UnifiedDetector for TrtGpuDetector {
         camera: CameraId,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
-        // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` and
-        // route everything else to `UnsupportedFrameKind` so the
-        // dispatcher can fall back to a CPU backend for `Cpu(_)`.
-        // The wildcard arm keeps this stable against future
-        // `#[non_exhaustive]` additions to `DetectorFrame`.
+        // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` for
+        // the zero-copy fast path, AND accept `Cpu(RawFrame)` with
+        // NV12 chroma via a transparent host→device upload so live
+        // camera sources (nvarguscamerasrc + appsink delivering
+        // CPU-resident NV12) can drive detection without a parallel
+        // CPU backend. Yuv420p Cpu frames and other variants fall
+        // through to `UnsupportedFrameKind` for the dispatcher to
+        // route elsewhere.
         match frame {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             DetectorFrame::Cuda(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            DetectorFrame::Cpu(raw) => match &raw.chroma {
+                ChromaFormat::Nv12 { uv } => {
+                    self.detect_cpu_nv12_upload(camera, raw.y, uv, raw.width, raw.height)
+                }
+                ChromaFormat::Yuv420p { .. } => Err(DetectorError::UnsupportedFrameKind),
+            },
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }
 
     fn class_names(&self) -> Option<&[String]> {
         Some(&self.labels)
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+impl TrtGpuDetector {
+    /// CPU-upload fallback: copy a host-resident NV12 frame to CUDA
+    /// buffers, then reuse [`Self::detect_gpu_raw`]. Buffers are
+    /// allocated lazily on first call and reused for the lifetime
+    /// of the detector; subsequent calls pay only the host→device
+    /// memcpy cost (~1-2 ms for a 1080p frame on Orin Nano).
+    ///
+    /// Kept self-contained in this file (no changes to
+    /// `setup_autocam` / `session::detection` dispatch) so the
+    /// whole CPU-upload feature is revertable with a single
+    /// `git revert` on this commit.
+    fn detect_cpu_nv12_upload(
+        &mut self,
+        camera: CameraId,
+        y_host: &[u8],
+        uv_host: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        let width_usize = width as usize;
+        let height_usize = height as usize;
+        let y_bytes = width_usize * height_usize;
+        let uv_bytes = width_usize * (height_usize / 2);
+
+        if y_host.len() < y_bytes || uv_host.len() < uv_bytes {
+            return Err(DetectorError::InferenceFailed(format!(
+                "CPU NV12 upload: plane sizes too small (Y {}<{}, UV {}<{})",
+                y_host.len(),
+                y_bytes,
+                uv_host.len(),
+                uv_bytes
+            )));
+        }
+
+        cuda_ensure_context().map_err(|e| {
+            DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}"))
+        })?;
+
+        // Lazy-allocate upload buffers. Tight pitch (pitch == width).
+        if self.cpu_upload_y == 0 {
+            self.cpu_upload_y = cuda_mem_alloc(y_bytes).map_err(|e| {
+                DetectorError::InferenceFailed(format!("cpu_upload_y alloc: {e}"))
+            })?;
+            log::info!(
+                "TrtGpuDetector: allocated CPU-upload buffers ({} B Y + {} B UV) for live-camera NV12 path",
+                y_bytes,
+                uv_bytes
+            );
+        }
+        if self.cpu_upload_uv == 0 {
+            self.cpu_upload_uv = cuda_mem_alloc(uv_bytes).map_err(|e| {
+                DetectorError::InferenceFailed(format!("cpu_upload_uv alloc: {e}"))
+            })?;
+        }
+
+        cuda_memcpy_htod_2d(
+            self.cpu_upload_y,
+            width_usize,
+            y_host.as_ptr(),
+            width_usize,
+            width_usize,
+            height_usize,
+        )
+        .map_err(|e| DetectorError::InferenceFailed(format!("Y H2D memcpy: {e}")))?;
+        cuda_memcpy_htod_2d(
+            self.cpu_upload_uv,
+            width_usize,
+            uv_host.as_ptr(),
+            width_usize,
+            width_usize,
+            height_usize / 2,
+        )
+        .map_err(|e| DetectorError::InferenceFailed(format!("UV H2D memcpy: {e}")))?;
+
+        let gpu_frame = GpuNv12Frame {
+            y_ptr: self.cpu_upload_y,
+            uv_ptr: self.cpu_upload_uv,
+            y_pitch: width_usize,
+            uv_pitch: width_usize,
+            width,
+            height,
+            rotation: 0,
+            is_10bit: false,
+        };
+        self.detect_gpu_raw(camera, &gpu_frame)
     }
 }
 
@@ -546,6 +657,8 @@ impl Drop for TrtGpuDetector {
             ("tensor_f32", self.tensor_f32),
             ("nv12_8bit_y", self.nv12_8bit_y),
             ("nv12_8bit_uv", self.nv12_8bit_uv),
+            ("cpu_upload_y", self.cpu_upload_y),
+            ("cpu_upload_uv", self.cpu_upload_uv),
         ] {
             if ptr != 0 {
                 if let Err(e) = cuda_mem_free(ptr) {
