@@ -26,8 +26,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::MatchCalibration;
 use reco_core::core::{RenderOutcome, StitchCore, StitchCoreConfig};
+use reco_core::director::ViewportPosition;
 use reco_core::gpu::GpuContext;
 use reco_core::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
+use reco_core::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::renderer::InputFormat;
 use reco_core::viewport::ViewportConfig;
 
@@ -155,11 +157,13 @@ struct RecoSource {
     input_width: u32,
     input_height: u32,
 
-    /// Camera yaw in degrees (converted to radians for the pipeline).
-    yaw_degrees: f64,
-
-    /// Camera pitch in degrees (converted to radians for the pipeline).
-    pitch_degrees: f64,
+    /// Shared pan/zoom state machine from reco-core. Handles drag
+    /// sensitivity, wheel ticks, FOV clamping, and pose smoothing
+    /// so reco-obs doesn't duplicate those concerns. Target pose is
+    /// set from the yaw/pitch sliders in Properties and mutated by
+    /// Interact drag/wheel events; `current_*` is the interpolated
+    /// pose that actually gets submitted to the pipeline each tick.
+    pose: PoseControl,
 
     /// Interactive drag state. `true` between mouse-left-down and
     /// mouse-left-up events. When true, mouse_move deltas translate to
@@ -233,8 +237,17 @@ impl RecoSource {
             output_height: 1080,
             input_width: 1920,
             input_height: 1080,
-            yaw_degrees: 0.0,
-            pitch_degrees: 0.0,
+            // PoseControl with reco-obs-specific feel: drag right
+            // moves the camera right (PTZ-head / invert_drag_x), drag
+            // down pitches the camera up (reco-core baseline
+            // invert_drag_y=false). Smoothing kept at the reco-core
+            // default (0.3) so drag/zoom ease into target rather
+            // than snap.
+            pose: PoseControl::new(PoseControlConfig {
+                invert_drag_x: true,
+                invert_drag_y: false,
+                ..Default::default()
+            }),
             dragging: false,
             last_mouse_x: 0,
             last_mouse_y: 0,
@@ -690,8 +703,20 @@ impl RecoSource {
                 self.try_init_pipeline();
                 self.warned_unsupported_format = false;
             } else {
-                let yaw = (self.yaw_degrees as f32).to_radians();
-                let pitch = (self.pitch_degrees as f32).to_radians();
+                // Advance the PoseControl interpolation once per
+                // tick and push the current pose / FOV into the
+                // pipeline. Smoothing means the actual submitted
+                // pose lags one tick behind the most recent drag or
+                // scroll, which gives the visible output a natural
+                // ease-in rather than jittering on every mouse
+                // event.
+                self.pose.tick();
+                let yaw = self.pose.current_yaw_rad();
+                let pitch = self.pose.current_pitch_rad();
+                let fov = self.pose.current_fov_deg();
+                if let Some(core) = self.core.as_mut() {
+                    core.pipeline_mut().set_fov(fov);
+                }
                 let result = match self.input_format {
                     InputFormat::Yuv420p => {
                         // Wrap OBS planes as StridedYuvPlanes and repack
@@ -1184,23 +1209,19 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
 // Interactive mouse callbacks (click-drag to pan, wheel to zoom)
 // ---------------------------------------------------------------------------
 
-/// Degrees of yaw/pitch per pixel of mouse drag.
-const DRAG_SENSITIVITY_DEG_PER_PIXEL: f64 = 0.1;
-/// Degrees of FOV change per wheel tick. Small for granular zoom;
-/// users expect wheel to feel smooth, not jumpy.
-/// FOV change per standard mouse-wheel notch (one "click"), in
-/// degrees. OBS passes `y_delta` in eighths of a degree of wheel
-/// rotation (Qt convention — see
-/// https://doc.qt.io/qt-6/qwheelevent.html#angleDelta); a standard
-/// notch is 15° of rotation = 120 `y_delta` units, which we divide
-/// out below. 1° of FOV per notch feels close to the granularity of
-/// most photo/video apps and matches user expectation from first
-/// in-OBS run.
-const WHEEL_FOV_STEP_DEG: f32 = 1.0;
-/// `y_delta` units that make one standard wheel notch under the Qt
-/// convention OBS inherits. Smooth-scroll devices emit smaller
-/// values (fractional notches), which naturally translate to a
-/// fraction of `WHEEL_FOV_STEP_DEG`.
+// Drag sensitivity and wheel-tick FOV step are owned by
+// `reco_core::pose_control::PoseControlConfig` (drag_deg_per_pixel,
+// wheel_fov_per_tick). Overriding either is a one-line tweak at
+// construction time in RecoSource::new.
+
+/// `y_delta` units per standard mouse-wheel notch under the Qt
+/// convention OBS inherits (see
+/// https://doc.qt.io/qt-6/qwheelevent.html#angleDelta). A standard
+/// notch is 15° of wheel rotation = 120 `y_delta` units. Dividing
+/// `y_delta` by this gives reco-core's expected tick-count unit;
+/// smooth-scroll devices send smaller values and naturally produce
+/// fractional notches. This constant stays local to reco-obs
+/// because it encodes an OBS/Qt convention, not a reco-core one.
 const WHEEL_NOTCHES_PER_DELTA: f32 = 120.0;
 
 /// `mouse_click`: start/end a drag for pan.
@@ -1257,23 +1278,17 @@ unsafe extern "C" fn source_mouse_move(
             return;
         }
         let ev = unsafe { &*event };
-        let dx = (ev.x - src.last_mouse_x) as f64;
-        let dy = (ev.y - src.last_mouse_y) as f64;
+        let dx = (ev.x - src.last_mouse_x) as f32;
+        let dy = (ev.y - src.last_mouse_y) as f32;
         src.last_mouse_x = ev.x;
         src.last_mouse_y = ev.y;
 
-        // "Drag the camera" mapping (user feedback 2026-04-19): drag
-        // left -> video appears to move right on screen (camera
-        // yaws left, revealing content from that side). Drag down
-        // -> video appears to move up (camera pitches down). Both
-        // axes inverted relative to the "drag the scene" convention
-        // a browser map would use; the stitcher feels more like a
-        // physical PTZ head this way.
-        //
-        // Clamp pitch to [-89, 89] to avoid pole flip.
-        src.yaw_degrees += dx * DRAG_SENSITIVITY_DEG_PER_PIXEL;
-        src.pitch_degrees =
-            (src.pitch_degrees - dy * DRAG_SENSITIVITY_DEG_PER_PIXEL).clamp(-89.0, 89.0);
+        // Delegate to `reco_core::pose_control::PoseControl`. The
+        // per-axis invert flags were chosen at construction
+        // (invert_drag_x = true for PTZ-head feel, invert_drag_y =
+        // false for drag-scene Y). No local math or clamp logic to
+        // maintain.
+        src.pose.apply_drag(dx, dy);
     })
 }
 
@@ -1289,20 +1304,14 @@ unsafe extern "C" fn source_mouse_wheel(
             return;
         }
         let src = unsafe { &mut *(data as *mut RecoSource) };
-        let session = match &mut src.core {
-            Some(s) => s,
-            None => return,
-        };
-        // y_delta is integer "ticks" from OBS (positive = wheel forward, which
-        // conventionally means zoom IN -> narrower FOV -> subtract).
-        let current = session.pipeline().fov();
-        // y_delta is in eighths of a degree of wheel rotation; divide
-        // by 120 to get notches (one standard click), then scale by
-        // WHEEL_FOV_STEP_DEG. Smooth-scroll devices send smaller
-        // y_delta values and naturally produce fractional notches.
+        // y_delta is in eighths of a degree of wheel rotation
+        // (Qt's QWheelEvent::angleDelta convention, inherited
+        // through OBS). Divide by 120 to normalize to "notches"
+        // (one standard mouse-wheel click); smooth-scroll devices
+        // produce fractional notches. PoseControl handles sign
+        // conventions, FOV sensitivity, and clamping internally.
         let notches = (y_delta as f32) / WHEEL_NOTCHES_PER_DELTA;
-        let new_fov = (current - notches * WHEEL_FOV_STEP_DEG).clamp(10.0, 150.0);
-        session.pipeline_mut().set_fov(new_fov);
+        src.pose.apply_wheel(notches);
     })
 }
 
@@ -1519,8 +1528,18 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         }
 
         // Viewport position - property-driven yaw/pitch sliders.
-        src.yaw_degrees = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr());
-        src.pitch_degrees = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr());
+        // Yaw/pitch sliders drive the pose target; PoseControl eases
+        // current toward it on each tick. Consumers who scrubber-
+        // jump the slider see a smooth 1-2 frame ease into position
+        // rather than an instantaneous snap (reco-core default
+        // smoothing 0.3).
+        let target_yaw_deg = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr()) as f32;
+        let target_pitch_deg = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr()) as f32;
+        src.pose.set_target(ViewportPosition {
+            yaw: target_yaw_deg.to_radians(),
+            pitch: target_pitch_deg.to_radians(),
+            fov_degrees: None,
+        });
 
         // Replay recording toggle + path (M6.5 item 3). Recorder
         // attachment itself happens in `try_init_pipeline` /

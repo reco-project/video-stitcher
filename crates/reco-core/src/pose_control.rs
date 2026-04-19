@@ -121,8 +121,19 @@ pub struct PoseControlConfig {
     /// black panorama edges.
     pub fov_max_degrees: f32,
 
-    /// Whether drag deltas on the Y axis are inverted (useful for
-    /// UIs where positive-Y is down).
+    /// Whether drag deltas on the X axis are inverted. Off
+    /// ([`false`], default) follows the "drag the scene" convention
+    /// (drag right → content moves right → camera yaws left), same
+    /// as Google Maps / photo viewers. Turn on ([`true`]) for the
+    /// "drag the camera" / PTZ-head convention (drag right → camera
+    /// yaws right → content moves left). reco-obs uses `true`.
+    pub invert_drag_x: bool,
+
+    /// Whether drag deltas on the Y axis are inverted. Off
+    /// ([`false`], default) follows the "drag the scene" convention
+    /// (drag down → content moves down → camera pitches up). Turn on
+    /// ([`true`]) for the "drag the camera" convention (drag down →
+    /// camera pitches down → content moves up).
     pub invert_drag_y: bool,
 
     /// Hotkey yaw step in radians per intent. `5.0 deg` default.
@@ -146,6 +157,7 @@ impl Default for PoseControlConfig {
             smoothing: 0.3,
             fov_min_degrees: 20.0,
             fov_max_degrees: 150.0,
+            invert_drag_x: false,
             invert_drag_y: false,
             hotkey_yaw_step_rad: (5.0_f32).to_radians(),
             hotkey_pitch_step_rad: (5.0_f32).to_radians(),
@@ -214,12 +226,22 @@ impl PoseControl {
     /// standard panning-camera conventions.
     pub fn apply_drag(&mut self, dx_pixels: f32, dy_pixels: f32) {
         let deg_per_pixel = self.config.drag_deg_per_pixel;
-        let dx_rad = -dx_pixels * deg_per_pixel.to_radians();
+        // The baseline convention is "drag the scene": drag right
+        // (positive dx) yaws the camera left (yaw decreases), drag
+        // down (positive dy) pitches the camera up (pitch increases).
+        // `invert_drag_x` / `invert_drag_y` flip each axis
+        // independently for consumers that prefer PTZ-head semantics.
+        let raw_dx = if self.config.invert_drag_x {
+            dx_pixels
+        } else {
+            -dx_pixels
+        };
         let raw_dy = if self.config.invert_drag_y {
             -dy_pixels
         } else {
             dy_pixels
         };
+        let dx_rad = raw_dx * deg_per_pixel.to_radians();
         let dy_rad = raw_dy * deg_per_pixel.to_radians();
         self.target_yaw_rad += dx_rad;
         self.target_pitch_rad += dy_rad;
