@@ -188,8 +188,7 @@ pub enum DetectorFrame<'a> {
     /// remote backend's responsibility.
     Cpu(RawFrame<'a>),
 
-    /// CUDA device-pointer NV12 frame. Local only; see
-    /// [`GpuNv12Frame`](crate::detector::GpuNv12Frame).
+    /// CUDA device-pointer NV12 frame. Local only; see [`GpuNv12Frame`].
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     Cuda(GpuNv12Frame),
 
@@ -218,15 +217,13 @@ impl DetectorFrame<'_> {
     }
 }
 
-/// Unified detector trait that collapses [`Detector`] / [`GpuDetector`]
-/// / [`MetalDetector`] into a single contract.
+/// Unified detector trait that collapses the former per-platform
+/// `Detector` / `GpuDetector` / `MetalDetector` into a single contract.
 ///
 /// Consumers call one method and pass whatever residency the current
 /// frame has via [`DetectorFrame`]. The backend either accepts the
 /// variant or returns [`DetectorError::UnsupportedFrameKind`]. This
-/// is what the M3 StitchCore refactor will use to plug detectors into
-/// the session; the three per-platform traits above remain in place
-/// for now so existing impls keep compiling.
+/// is the trait `StitchCore` plugs into the session.
 ///
 /// # Rationale
 ///
@@ -292,7 +289,7 @@ pub trait UnifiedDetector: Send {
 ///
 /// Wraps the raw pointer/pitch/dimension parameters needed to locate the
 /// Y and UV planes of an NV12 frame in GPU memory. Passed by reference
-/// to [`GpuDetector::detect_gpu`] instead of many loose arguments.
+/// to detection backends instead of many loose arguments.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 #[derive(Debug, Clone, Copy)]
 pub struct GpuNv12Frame {

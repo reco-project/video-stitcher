@@ -156,9 +156,7 @@ pub fn run_camera(
         } else {
             model_path.unwrap_or("")
         };
-        if !effective_model.is_empty()
-            || tracking_mode == reco_autocam::TrackingMode::Sweep
-        {
+        if !effective_model.is_empty() || tracking_mode == reco_autocam::TrackingMode::Sweep {
             match reco_autocam::setup_autocam(
                 &mut session,
                 effective_model,
@@ -176,9 +174,9 @@ pub fn run_camera(
                 Ok(false) => {
                     eprintln!("Warning: tracking unavailable in current capture mode")
                 }
-                Err(e) => eprintln!(
-                    "Warning: autocam setup failed ({e}), continuing without tracking"
-                ),
+                Err(e) => {
+                    eprintln!("Warning: autocam setup failed ({e}), continuing without tracking")
+                }
             }
         }
     }

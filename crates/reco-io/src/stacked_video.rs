@@ -16,8 +16,8 @@
 //!
 //! # Grid layout
 //!
-//! [`GridLayout`] describes how tiles fit in the packed frame.
-//! [`GridLayout::vstack(w, h, n)`] gives a vertical stack for any N
+//! `GridLayout` describes how tiles fit in the packed frame.
+//! `GridLayout::vstack(w, h, n)` gives a vertical stack for any N
 //! (most common case: N=2, left on top of right). For irregular
 //! counts use [`GridLayout::grid(w, h, rows, cols)`] and fill unused
 //! tiles with `Tile::Empty`.
@@ -671,7 +671,7 @@ pub mod encoder {
 /// Enables the "professional replay" capability from the M6.5 plan
 /// with zero plumbing in the consumer: call
 /// [`crate::StitchJob::with_replay_recording`] and the library wires
-/// a [`ReplayRecordingSource`] in front of the real source. Each
+/// a `ReplayRecordingSource` in front of the real source. Each
 /// frame is passed through to the stitch pipeline unmodified while a
 /// copy is packed into the replay encoder on the same thread.
 ///
@@ -883,11 +883,11 @@ pub mod replay {
     /// [`reco_core::session::StitchSession`] can attach a recording
     /// file with a single call.
     ///
-    /// Packs each submitted YUV plane pair into a
-    /// [`super::super::GridLayout`] and feeds the encoder. Uses the
-    /// same [`StackedEncoder`] + [`StackedEncoderConfig`] the pull
-    /// side uses, so behavior, container defaults, and GOP cadence
-    /// are identical across the two APIs.
+    /// Packs each submitted YUV plane pair into a [`GridLayout`] and
+    /// feeds the encoder. Uses the same [`StackedEncoder`] +
+    /// [`StackedEncoderConfig`] the pull side uses, so behavior,
+    /// container defaults, and GOP cadence are identical across the
+    /// two APIs.
     pub struct SessionStackedRecorder {
         encoder: Option<StackedEncoder>,
         width: u32,

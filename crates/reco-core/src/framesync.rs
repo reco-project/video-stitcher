@@ -32,7 +32,7 @@
 //! or just a slot index the raw source will re-look-up. Reco-core
 //! takes no opinion on frame ownership because the right answer
 //! varies between OBS refcounted async frames, V4L2 mmap slots,
-//! and WebRTC-decoded Vec<u8>.
+//! and WebRTC-decoded `Vec<u8>`.
 //!
 //! Timestamps are a caller-supplied `Duration` relative to an
 //! implicit source-local anchor. Using `Instant` directly would

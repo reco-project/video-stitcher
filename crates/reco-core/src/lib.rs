@@ -31,7 +31,7 @@
 //!
 //! The crate defines traits for pluggable components:
 //! - [`source::FrameSource`] — delivers stereo frame pairs (files, cameras, streams)
-//! - [`detector::Detector`] — detects objects in raw frames (e.g. ball tracking)
+//! - [`detector::UnifiedDetector`] — detects objects in raw frames (e.g. ball tracking)
 //! - [`director::Director`] — controls where the virtual camera pans
 //! - [`encoder::Encoder`] — receives stitched GPU frames for encoding
 //!

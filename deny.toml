@@ -29,17 +29,11 @@ targets = [
 # ---------------------------------------------------------------------------
 
 [advisories]
-# Warn on unmaintained/yanked deps (Agent 1 flagged bincode 2.0.1 and
-# paste 1.0.15 both unmaintained). Do not hard-deny yet because the
-# upstream crates we depend on still pull them in; hard-deny once we
-# can resolve those. Reassess at M8.
 yanked = "deny"
 ignore = [
-    # Agent 1 findings as of 2026-04-18 - the reco-project ones are
-    # `cargo update`-able, the rest are transitive. Revisit on every
-    # dep bump.
-    #
-    # "RUSTSEC-YYYY-NNNN",  # description / tracking issue
+    # paste 1.0.15 — archived upstream. Transitively pulled by wgpu /
+    # slint. Hard-deny once those upstreams migrate. Revisit at M8.
+    "RUSTSEC-2024-0436",
 ]
 
 # ---------------------------------------------------------------------------
@@ -47,27 +41,64 @@ ignore = [
 # ---------------------------------------------------------------------------
 
 [licenses]
+# Policy: keep third-party deps dual-license-friendly. The project
+# itself is AGPL-3.0-only today, but leadership wants the OPTION to
+# relicense or offer a commercial track, so we do NOT accept GPL/AGPL
+# third-party crates in the base allow-list. Any GPL/AGPL code that
+# ships today is whitelisted per-crate with a documented reason so
+# the dual-license cost is visible.
 allow = [
-    # The project itself. SPDX 2023 renamed "AGPL-3.0" to "AGPL-3.0-only"
-    # but cargo-deny's pinned spdx crate version here predates the
-    # rename and rejects "-only". Use the older identifier until we
-    # bump the cargo-deny action SHA past that change.
-    "AGPL-3.0",
-    "Apache-2.0",      # compatible with AGPL-3.0 distribution
+    # Project's own crates. Modern SPDX uses "AGPL-3.0-only"; the old
+    # "AGPL-3.0" form is no longer needed since all reco-* Cargo.toml
+    # files use the current identifier.
+    "AGPL-3.0-only",
+    # Permissive third-party licenses — all AGPL-compatible AND
+    # dual-license-friendly.
+    "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "BSL-1.0",            # Boost Software License — permissive
     "CC0-1.0",
+    "CDLA-Permissive-2.0",# Community Data License (ONNX metadata) — permissive
     "ISC",
     "MIT",
-    "MPL-2.0",         # weak copyleft, AGPL-compatible
-    "Unicode-3.0",     # unicode crates
-    "Unicode-DFS-2016",
+    "MPL-2.0",            # weak copyleft, file-scope — still dual-license-friendly
+    "Unicode-3.0",
+    "WTFPL",              # permissive ("do what the fuck you want")
     "Zlib",
     "0BSD",
 ]
 # Permit multi-license crates to resolve to any allowed license.
 confidence-threshold = 0.93
+
+# Per-crate GPL/AGPL exceptions. Each entry is a concession against
+# the dual-license policy above. Keep this list short and audited.
+exceptions = [
+    # ---------------------------------------------------------------
+    # Slint (tri-licensed GPL-3.0-only OR LicenseRef-Slint-Royalty-
+    # free-2.0 OR LicenseRef-Slint-Software-3.0). cargo-deny picks
+    # the SPDX-standard option (GPL-3.0-only), which blocks dual-
+    # licensing of reco-gui. Options before dual-license ships:
+    #   1. Commercial Slint license (paid)
+    #   2. Replace Slint in reco-gui (egui / iced / native Qt)
+    #   3. Ship reco-gui under GPL-only while keeping reco-core +
+    #      other crates dual-licensable (likely the shortest path)
+    # Tracked in the dual-license planning doc.
+    # ---------------------------------------------------------------
+    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-qt" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-selector" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-winit" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-common" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-compiler" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-core" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-core-macros" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-renderer-femtovg" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-renderer-software" },
+    { allow = ["GPL-3.0-only"], crate = "slint" },
+    { allow = ["GPL-3.0-only"], crate = "slint-build" },
+    { allow = ["GPL-3.0-only"], crate = "slint-macros" },
+]
 
 # ---------------------------------------------------------------------------
 # Bans: duplicate major versions + specific disallowed crates
@@ -76,6 +107,10 @@ confidence-threshold = 0.93
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace path deps have no version field — that's a legitimate
+# wildcard cargo-deny would otherwise flag. This lets internal path
+# deps pass while still denying wildcard versions on external crates.
+allow-wildcard-paths = true
 # Valid values: "simplest-path" | "lowest-version" | "all".
 highlight = "all"
 # Crates we explicitly never want - e.g. alternate crypto impls,
@@ -100,8 +135,9 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
-    # telemetry-parser is an unpinned git dep in reco-calibrate per
-    # Agent 1 - pin to a rev and narrow this list at M8. Listed here
-    # so cargo-deny doesn't hard-fail on it today.
+    # telemetry-parser is pinned to rev=2f4218b in reco-calibrate.
     "https://github.com/AdrianEddy/telemetry-parser",
+    # Transitive deps of telemetry-parser — both pinned upstream.
+    "https://github.com/AdrianEddy/mp4parse-rust",
+    "https://github.com/ilya-epifanov/fc-blackbox",
 ]

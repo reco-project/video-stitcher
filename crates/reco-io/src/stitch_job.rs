@@ -709,8 +709,7 @@ impl StitchJob {
                     .map_err(|e| StitchError::Other(format!("enable GPU stacked replay: {e}")))?;
                 let (atlas_w, atlas_h) = session.stacked_atlas_dims().ok_or_else(|| {
                     StitchError::Other(
-                        "stacked_atlas_dims returned None right after enable; internal bug"
-                            .into(),
+                        "stacked_atlas_dims returned None right after enable; internal bug".into(),
                     )
                 })?;
                 let recorder = crate::stacked_video::replay::session_gpu_recorder(
@@ -722,8 +721,10 @@ impl StitchJob {
                 .map_err(|e| StitchError::Other(format!("open GPU replay recorder: {e}")))?;
                 session.set_stacked_gpu_recorder(recorder);
                 let scale_note = if cfg.scale.is_some() {
-                    format!(" [A19 downscale: source {}x{} -> tile {}x{}]",
-                            info.width, info.height, out_w, out_h)
+                    format!(
+                        " [A19 downscale: source {}x{} -> tile {}x{}]",
+                        info.width, info.height, out_w, out_h
+                    )
                 } else {
                     String::new()
                 };
@@ -749,7 +750,8 @@ impl StitchJob {
                          CPU ReplayRecordingSource decorator doesn't support downscale today. \
                          Recording at source dims {}x{} instead. Use a GPU-resident source \
                          (zero-copy NVDEC) or disable --replay-scale.",
-                        info.width, info.height,
+                        info.width,
+                        info.height,
                     );
                 }
                 log::info!(

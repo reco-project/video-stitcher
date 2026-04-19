@@ -104,9 +104,10 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         job = job.preset(preset);
     }
     if let Some(container) = args.container {
-        let c = reco_io::ffmpeg::encoder::Container::from_str_loose(container).ok_or_else(
-            || anyhow::anyhow!("unknown container '{container}' (expected mp4, fmp4, or mkv)"),
-        )?;
+        let c =
+            reco_io::ffmpeg::encoder::Container::from_str_loose(container).ok_or_else(|| {
+                anyhow::anyhow!("unknown container '{container}' (expected mp4, fmp4, or mkv)")
+            })?;
         job = job.format(match c {
             reco_io::ffmpeg::encoder::Container::Mp4 => reco_io::output::Format::Mp4,
             reco_io::ffmpeg::encoder::Container::Mp4Fragmented => {

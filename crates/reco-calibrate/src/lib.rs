@@ -66,11 +66,11 @@ pub mod features;
 pub mod filter;
 pub mod geometry;
 pub mod lens_database;
-/// M6 live calibration — drive the calibration pipeline from a
-/// live frame-pair source (OBS, V4L2, WebRTC, etc.). See
-/// [`live::calibrate_from_live`] and [`live::LiveFramePairSource`].
-/// Does not require the `io` feature — the source is a trait object
-/// supplied by the consumer, not a file.
+/// M6 live calibration — drive the calibration pipeline from a live
+/// frame-pair source (OBS, V4L2, WebRTC, etc.). See the `live` module's
+/// `calibrate_from_live` function and `LiveFramePairSource` trait. Does
+/// not require the `io` feature — the source is a trait object supplied
+/// by the consumer, not a file.
 pub mod live;
 pub mod optimizer;
 pub mod pipeline;

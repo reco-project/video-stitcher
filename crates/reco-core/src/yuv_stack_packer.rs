@@ -2,7 +2,7 @@
 //!
 //! Produces a grid-packed YUV420P atlas from N source tiles that are
 //! already GPU-resident, skipping the CPU memcpy that
-//! [`reco_io::stacked_video::pack_yuv420p`] would otherwise do on
+//! `reco_io::stacked_video::pack_yuv420p` would otherwise do on
 //! inputs that flow CPU-side (~8 ms/frame at 4K). Optional linear
 //! downscale is free because the sampler handles it — so this also
 //! subsumes FRICTION reco-obs A19 (replay resolution dropdown).
@@ -12,12 +12,12 @@
 //! The packer only helps when the source tiles are already on the
 //! GPU. For FFmpeg software decode → CPU `YuvPlanes<'_>` inputs,
 //! copying them to the GPU just to pack would lose to the existing
-//! CPU pack. [`StitchPipeline`] chooses the path explicitly and
+//! CPU pack. `StitchPipeline` chooses the path explicitly and
 //! logs the decision once per session (see the integration site).
 //!
 //! # Threading model
 //!
-//! Single-thread, mirrors [`Nv12Converter`]. The pipeline's owning
+//! Single-thread, mirrors `Nv12Converter`. The pipeline's owning
 //! thread dispatches the compute kernels and polls readbacks.
 //! Triple-buffered staging so the CPU reads from 2-frames-old
 //! storage — guaranteed complete on the GPU and does not need a
@@ -30,7 +30,7 @@ use thiserror::Error;
 /// Grid layout describing how source tiles map into the atlas.
 ///
 /// Mirrors the shape of
-/// [`reco_io::stacked_video::GridLayout`] intentionally: consumers
+/// `reco_io::stacked_video::GridLayout` intentionally: consumers
 /// who opt into GPU packing should be able to pass the same layout
 /// value they would pass to the CPU `pack_yuv420p` helper. The
 /// duplicate type lives in reco-core so this module has no reco-io
@@ -224,7 +224,7 @@ pub enum StackedPackSource<'a> {
 
 /// A fully-packed readback: atlas bytes split into Y/U/V planes in
 /// the exact layout
-/// [`reco_io::stacked_video::pack_yuv420p`] produces on the CPU
+/// `reco_io::stacked_video::pack_yuv420p` produces on the CPU
 /// path. Consumers pass these straight to
 /// `VideoEncoder::write_yuv420p_planes`.
 pub struct StackedAtlas {
@@ -521,8 +521,7 @@ impl YuvStackPacker {
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let dummy_v_view =
-            dummy_v_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let dummy_v_view = dummy_v_texture.create_view(&wgpu::TextureViewDescriptor::default());
         // The view holds a strong reference to the texture's inner
         // state; `dummy_v_texture` itself can drop here.
         drop(dummy_v_texture);
@@ -786,9 +785,7 @@ impl YuvStackPacker {
                 // device until it does. Typical wait is
                 // microseconds on a real GPU; this is the same
                 // fallback RgbaReadback uses.
-                gpu.device
-                    .poll(wgpu::PollType::wait_indefinitely())
-                    .ok()?;
+                gpu.device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
                 self.map_rx.recv().ok()?
             }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => return None,

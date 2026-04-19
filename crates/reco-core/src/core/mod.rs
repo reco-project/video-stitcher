@@ -1,24 +1,15 @@
 //! `StitchCore` — push-first canonical entry point for the stitching engine.
 //!
-//! `StitchCore` is the M3 unification of [`StitchSession`](crate::session::StitchSession)
-//! (pull, batch-oriented) and [`LiveStitchSession`](crate::session::LiveStitchSession)
-//! (push, live-oriented). Live sports production is the primary use case,
-//! so the canonical API is push-based: consumers call
-//! [`StitchCore::submit_frame_yuv`] / [`StitchCore::submit_frame_bgra`]
+//! `StitchCore` is the M3 unification of what used to be two parallel
+//! session APIs: `StitchSession` (pull, batch-oriented) and the former
+//! `LiveStitchSession` (push, live-oriented, since deleted). Live sports
+//! production is the primary use case, so the canonical API is push-based:
+//! consumers call `StitchCore::submit_frame_yuv` / `submit_frame_bgra`
 //! whenever a new frame pair is ready, and the core owns the pipeline,
 //! readback, director, detection, coverage, and replay ring buffer.
 //!
 //! Batch file processing layers a thin pull-adapter on top
-//! (landing in a later tranche as a rewrite of `StitchSession::run`).
-//!
-//! ## Why a new module alongside the old two
-//!
-//! This initial landing introduces `StitchCore` **without** deleting
-//! [`LiveStitchSession`] or breaking the existing [`StitchSession`] API.
-//! The reco-obs / reco-gui migration, the `LiveStitchSession` deletion,
-//! and the `StitchSession::run` pull-adapter rewrite happen in follow-up
-//! tranches so this commit stays reviewable. The plan-execution-2026-04-18
-//! doc §3 M3 steps 2+3 capture the migration sequence.
+//! ([`StitchSession`](crate::session::StitchSession)::run).
 //!
 //! ## Foundation traits
 //!
@@ -35,12 +26,12 @@
 //! - [`crate::detector::UnifiedDetector`] — collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
 //!
-//! The first two are consumed at construction (see [`StitchCoreConfig`]).
-//! `UnifiedDetector` is wired via [`StitchCore::set_detector`]; detection
+//! The first two are consumed at construction (see `StitchCoreConfig`).
+//! `UnifiedDetector` is wired via `StitchCore::set_detector`; detection
 //! runs on every `submit_frame_*` whose frame count is a multiple of
-//! [`StitchCore::detection_interval`], and raw detections are mapped to
+//! `StitchCore::detection_interval`, and raw detections are mapped to
 //! panorama coordinates before reaching the director. `PipelineStage`
-//! slots in via [`StitchCore::push_pipeline_stage`] but has no registered
+//! slots in via `StitchCore::push_pipeline_stage` but has no registered
 //! stages yet.
 //!
 //! ## Usage (push, live)
@@ -326,7 +317,7 @@ impl StitchCoreConfig {
 /// - An optional [`ReplayBuffer`].
 ///
 /// Detection is wired through the [`UnifiedDetector`] trait: attach
-/// one via [`Self::set_detector`] and the core will run it on every
+/// one via [`StitchCore::set_detector`] and the core will run it on every
 /// CPU-resident frame submitted (CUDA / Metal residency dispatch
 /// lands in a later tranche that adds GPU-frame `submit_*` methods).
 /// Raw detections are mapped to panorama coordinates and fed to the
@@ -833,10 +824,9 @@ impl StitchCore {
     /// Render from four pre-imported textures at an explicit pose.
     ///
     /// Used by the macOS zero-copy path where `CVPixelBuffer` Y/UV
-    /// planes are imported as wgpu textures via
-    /// [`MetalTextureCache`](crate::metal_interop::MetalTextureCache),
-    /// and the Linux zero-copy path that shares textures through the
-    /// bind-group variant below.
+    /// planes are imported as wgpu textures via `MetalTextureCache`
+    /// (in `metal_interop`), and the Linux zero-copy path that shares
+    /// textures through the bind-group variant below.
     pub fn render_imported_textures_at_pose(
         &mut self,
         left_y: &wgpu::Texture,
@@ -983,8 +973,7 @@ impl StitchCore {
                 ));
             }
         };
-        let packer =
-            YuvStackPacker::new(self.pipeline.gpu(), layout, output_size, source_format)?;
+        let packer = YuvStackPacker::new(self.pipeline.gpu(), layout, output_size, source_format)?;
         let (atlas_w, atlas_h) = packer.atlas_dims();
         log::info!(
             "reco-core: replay pack path = GPU shader (tiles {}x{} out, N={}, atlas {}x{}, source_format={:?})",
@@ -1020,10 +1009,7 @@ impl StitchCore {
     /// [`Self::enable_gpu_stacked_replay`] for the pack output to
     /// reach disk — without a recorder the packer still runs but
     /// the readback bytes are dropped.
-    pub fn set_stacked_gpu_recorder(
-        &mut self,
-        recorder: Box<dyn StackedReplayGpuRecorder>,
-    ) {
+    pub fn set_stacked_gpu_recorder(&mut self, recorder: Box<dyn StackedReplayGpuRecorder>) {
         if self.stacked_gpu_recorder.is_some() {
             log::warn!(
                 "StitchCore::set_stacked_gpu_recorder replacing an existing GPU recorder; \
@@ -1157,14 +1143,8 @@ impl StitchCore {
                 },
             ),
             InputFormat::Nv12 => (
-                StackedPackSource::Nv12 {
-                    y: &ly,
-                    uv: &lu,
-                },
-                StackedPackSource::Nv12 {
-                    y: &ry,
-                    uv: &ru,
-                },
+                StackedPackSource::Nv12 { y: &ly, uv: &lu },
+                StackedPackSource::Nv12 { y: &ry, uv: &ru },
             ),
             InputFormat::Bgra => {
                 // Shouldn't happen: enable_gpu_stacked_replay

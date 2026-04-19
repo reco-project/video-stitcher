@@ -1,18 +1,19 @@
 //! Detection pipeline used by [`StitchSession`](crate::session::StitchSession).
 //!
-//! Owns the [`UnifiedDetector`] backend, detection interval, sink,
-//! and cached panorama-mapped detections. Exposes CPU and CUDA run
-//! paths so the session's decode loop (CPU-resident file sources)
-//! and zero-copy loop (GPU-resident shared textures) share one
+//! Owns the [`UnifiedDetector`](crate::detector::UnifiedDetector) backend,
+//! detection interval, sink, and cached panorama-mapped detections. Exposes
+//! CPU and CUDA run paths so the session's decode loop (CPU-resident file
+//! sources) and zero-copy loop (GPU-resident shared textures) share one
 //! detection state.
 //!
 //! After the M3 trait-collapse commit there is **one** detector slot
 //! here: `Box<dyn UnifiedDetector>`. The backend is responsible for
-//! declaring which [`DetectorFrame`] residencies it accepts; calling
-//! a backend with the wrong variant yields
-//! [`DetectorError::UnsupportedFrameKind`] which this module logs at
-//! `warn!` and drops (so a flaky frame does not abort the render
-//! loop; typed error propagation lives at the StitchCore boundary).
+//! declaring which [`DetectorFrame`](crate::detector::DetectorFrame)
+//! residencies it accepts; calling a backend with the wrong variant
+//! yields [`DetectorError::UnsupportedFrameKind`](crate::detector::DetectorError::UnsupportedFrameKind)
+//! which this module logs at `warn!` and drops (so a flaky frame does
+//! not abort the render loop; typed error propagation lives at the
+//! StitchCore boundary).
 //!
 //! Also available as a standalone component for consumers that want
 //! detection without the full stitch+encode pipeline (e.g. the
@@ -97,10 +98,10 @@ impl DetectionPipeline {
 
     /// Run detection on a CPU-resident stereo frame (YUV420P / NV12).
     ///
-    /// Wraps each camera's planes as [`DetectorFrame::Cpu(RawFrame)`]
-    /// and dispatches through the unified trait, once per camera.
-    /// GPU-resident variants return an empty vec (use
-    /// [`Self::run_gpu_detection`] for the CUDA zero-copy path).
+    /// Wraps each camera's planes as `DetectorFrame::Cpu(RawFrame)` and
+    /// dispatches through the unified trait, once per camera. GPU-resident
+    /// variants return an empty vec (see `run_gpu_detection` for the CUDA
+    /// zero-copy path).
     pub fn run_detection(
         &mut self,
         frame: &crate::source::StereoFrame,

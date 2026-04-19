@@ -276,8 +276,8 @@ impl NppFunctions {
                 .rev()
                 .find_map(|v| libloading::Library::new(format!("cudart64_{v}0.dll")).ok());
 
-            let (stream_ctx, stream_destroy) =
-                create_npp_stream_ctx(lib_cudart.as_ref()).unwrap_or_else(|reason| {
+            let (stream_ctx, stream_destroy) = create_npp_stream_ctx(lib_cudart.as_ref())
+                .unwrap_or_else(|reason| {
                     log::warn!(
                         "NPP: dedicated stream unavailable ({reason}); falling back to \
                          default CUDA stream. NPP calls will serialize with NVDEC work \

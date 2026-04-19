@@ -11,13 +11,12 @@
 //!
 //! # Usage
 //!
-//! Consumers instantiate a [`PoseControl`] per session, feed it
-//! input events via [`apply_drag`], [`apply_wheel`], [`apply_hotkey`],
-//! and [`set_target`], then call [`tick`] once per frame to ease the
-//! *current* pose toward the *target* pose. The current pose is what
-//! the renderer submits; the target is what the input layer wanted.
-//! Optional coverage-based clamping keeps the viewport inside the
-//! no-black region.
+//! Consumers instantiate a `PoseControl` per session, feed it input events
+//! via `apply_drag`, `apply_wheel`, `apply_hotkey`, and `set_target`, then
+//! call `tick` once per frame to ease the *current* pose toward the
+//! *target* pose. The current pose is what the renderer submits; the
+//! target is what the input layer wanted. Optional coverage-based
+//! clamping keeps the viewport inside the no-black region.
 //!
 //! ```rust,ignore
 //! use reco_core::pose_control::{PoseControl, PoseControlConfig};
@@ -41,8 +40,8 @@
 //! Per plan-execution §3 M4: **radians internal** for yaw/pitch;
 //! **degrees** for FOV (matches the rest of the reco-core pipeline
 //! and the viewport config). Conversion helpers live on
-//! [`PoseControl::apply_drag`] / [`apply_wheel`] where the UI layer
-//! hands over pixel or tick deltas.
+//! `apply_drag` / `apply_wheel` where the UI layer hands over pixel or
+//! tick deltas.
 //!
 //! # Thread safety
 //!
@@ -84,7 +83,7 @@ pub enum HotkeyIntent {
     /// Toggle the "constrained look" mode. Consumers listen for this
     /// intent and flip a boolean that gates coverage-clamp behavior;
     /// PoseControl itself stays stateless on the toggle (it is merely
-    /// forwarded through [`apply_hotkey`] so the consumer can react).
+    /// forwarded through [`PoseControl::apply_hotkey`] so the consumer can react).
     ToggleConstrained,
 }
 
@@ -349,7 +348,7 @@ impl PoseControl {
     /// `rig_tilt` is the per-session tilt the renderer applies in
     /// world space; PoseControl undoes that when writing the clamp
     /// back so the target stays in user-space (matching how
-    /// [`StitchCore::safe_clamp`] returns it).
+    /// `StitchCore::safe_clamp` returns it).
     pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32, rig_tilt: f32) {
         let max_fov = coverage.max_fov_degrees();
         self.config.fov_max_degrees = self.config.fov_max_degrees.min(max_fov);
@@ -422,14 +421,14 @@ impl PoseControl {
     }
 
     /// Replace the config. Does not re-clamp the current pose —
-    /// call [`clamp_via_coverage`] or [`tick`] afterward if needed.
+    /// call [`PoseControl::clamp_via_coverage`] or [`PoseControl::tick`] afterward if needed.
     pub fn set_config(&mut self, config: PoseControlConfig) {
         self.config = config;
     }
 
     /// Set the max-FOV ceiling directly (e.g. after computing
     /// `coverage.max_fov_degrees()` without running the full
-    /// [`clamp_via_coverage`]).
+    /// [`PoseControl::clamp_via_coverage`]).
     pub fn set_fov_max_degrees(&mut self, max_deg: f32) {
         self.config.fov_max_degrees = max_deg;
         self.target_fov_deg = self.target_fov_deg.min(max_deg);

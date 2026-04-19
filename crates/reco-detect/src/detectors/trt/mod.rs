@@ -586,15 +586,13 @@ impl TrtGpuDetector {
             )));
         }
 
-        cuda_ensure_context().map_err(|e| {
-            DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}"))
-        })?;
+        cuda_ensure_context()
+            .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
 
         // Lazy-allocate upload buffers. Tight pitch (pitch == width).
         if self.cpu_upload_y == 0 {
-            self.cpu_upload_y = cuda_mem_alloc(y_bytes).map_err(|e| {
-                DetectorError::InferenceFailed(format!("cpu_upload_y alloc: {e}"))
-            })?;
+            self.cpu_upload_y = cuda_mem_alloc(y_bytes)
+                .map_err(|e| DetectorError::InferenceFailed(format!("cpu_upload_y alloc: {e}")))?;
             log::info!(
                 "TrtGpuDetector: allocated CPU-upload buffers ({} B Y + {} B UV) for live-camera NV12 path",
                 y_bytes,
@@ -602,9 +600,8 @@ impl TrtGpuDetector {
             );
         }
         if self.cpu_upload_uv == 0 {
-            self.cpu_upload_uv = cuda_mem_alloc(uv_bytes).map_err(|e| {
-                DetectorError::InferenceFailed(format!("cpu_upload_uv alloc: {e}"))
-            })?;
+            self.cpu_upload_uv = cuda_mem_alloc(uv_bytes)
+                .map_err(|e| DetectorError::InferenceFailed(format!("cpu_upload_uv alloc: {e}")))?;
         }
 
         cuda_memcpy_htod_2d(

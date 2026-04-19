@@ -4,9 +4,9 @@
 //! YUV420P frame pairs (a OBS plugin's dual-source buffer, a Jetson
 //! V4L2 capture, a WebRTC ingest, the `TimestampedIngestBuffer`
 //! from `reco-core::framesync`). Consumers implement
-//! [`LiveFramePairSource`] on whatever their upstream source is and
-//! pass it to [`calibrate_from_live`]; the function pulls N pairs
-//! and feeds them to the existing [`calibrate`](super::calibrate)
+//! `LiveFramePairSource` on whatever their upstream source is and
+//! pass it to `calibrate_from_live`; the function pulls N pairs
+//! and feeds them to the existing [`calibrate`](crate::calibrate)
 //! primitive.
 //!
 //! # When to use this vs. `calibrate_videos`
@@ -29,7 +29,7 @@
 //!
 //! The canonical live source is `TimestampedIngestBuffer<H>` from
 //! reco-core's M4 frame-sync module. Consumers wrap it in a small
-//! adapter that implements [`LiveFramePairSource`]:
+//! adapter that implements `LiveFramePairSource`:
 //!
 //! ```ignore
 //! struct ObsCalibSource<'a> {

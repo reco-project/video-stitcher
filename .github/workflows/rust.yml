@@ -89,8 +89,8 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
           packages: ${{ env.APT_PACKAGES }}
-      - name: Build docs (profiling + gstreamer + load-dynamic)
-        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic
+      - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + reco-control transports)
+        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,keyboard,gopro,mobile,websocket
         env:
           RUSTDOCFLAGS: "-D warnings"
 
