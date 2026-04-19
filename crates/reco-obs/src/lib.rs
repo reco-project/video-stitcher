@@ -25,7 +25,9 @@ mod obs_log;
 mod source;
 
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+#[cfg(feature = "replay")]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 /// Global state shared between the frontend-event callback and the
 /// source instance. `true` whenever OBS is actively recording or
