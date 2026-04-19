@@ -101,6 +101,11 @@ pub mod metal_interop;
 pub mod npp_interop;
 pub mod nv12_converter;
 pub mod pipeline;
+/// M4 unified pose-control primitive. See [`pose_control::PoseControl`]
+/// and [`pose_control::HotkeyIntent`] — the single source of truth for
+/// mouse/drag/wheel/keyboard → yaw/pitch/FOV translation across
+/// consumers.
+pub mod pose_control;
 pub mod projection;
 pub mod renderer;
 pub mod rgba_readback;
