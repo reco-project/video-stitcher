@@ -694,6 +694,67 @@ impl Renderer {
         self.flip_180 = [left, right];
     }
 
+    /// Create fresh `TextureView`s for the left plane's Y/U/V
+    /// textures. Needed by [`crate::yuv_stack_packer::YuvStackPacker`]
+    /// when replay recording is enabled: the packer samples the same
+    /// uploaded source data the stitch shader reads, producing a
+    /// tiled atlas in parallel with the panorama render.
+    ///
+    /// For NV12 inputs the returned `U` view is the interleaved UV
+    /// texture (Rg8Unorm) and the `V` view is the 1×1 dummy; the
+    /// packer's NV12 kernel ignores the V binding.
+    #[allow(
+        dead_code,
+        reason = "consumed by StitchCore's GPU stacked-replay wiring in the next commit of the M7 sprint"
+    )]
+    pub(crate) fn left_plane_views(
+        &self,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        Self::plane_views(&self.left)
+    }
+
+    /// Right-side counterpart to [`Self::left_plane_views`].
+    #[allow(
+        dead_code,
+        reason = "consumed by StitchCore's GPU stacked-replay wiring in the next commit of the M7 sprint"
+    )]
+    pub(crate) fn right_plane_views(
+        &self,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        Self::plane_views(&self.right)
+    }
+
+    #[allow(
+        dead_code,
+        reason = "only consumed by left_plane_views / right_plane_views which are themselves staged for the next commit"
+    )]
+    fn plane_views(
+        plane: &PlaneResources,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        (
+            plane
+                .y_texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            plane
+                .u_texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            plane
+                .v_texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+        )
+    }
+
+    /// Input format the renderer was built for. Surfaced so the
+    /// stacked-video packer can pick the right shader variant
+    /// (YUV420P vs NV12) at session setup.
+    #[allow(
+        dead_code,
+        reason = "consumed by StitchCore's GPU stacked-replay wiring in the next commit of the M7 sprint"
+    )]
+    pub(crate) fn input_format(&self) -> InputFormat {
+        self.input_format
+    }
+
     /// Encode the shared stitch render pass: projection, uniforms, and draw calls.
     ///
     /// Returns the command encoder with the render pass already recorded.
