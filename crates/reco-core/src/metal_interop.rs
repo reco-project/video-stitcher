@@ -98,7 +98,7 @@ const K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE: u32 = 0x34323066; /
 // ---------------------------------------------------------------------------
 
 /// Errors from Metal/VideoToolbox interop operations.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum MetalInteropError {
     /// The wgpu backend is not Metal.
     #[error("wgpu backend is not Metal")]

@@ -56,6 +56,11 @@ pub use roi_filter::RoiFilteredDetector;
 // because it wraps `Box<dyn UnifiedDetector>`.
 pub use smoother::{SmoothedDirector, TrajectorySmoother};
 
+// Path is only used in the ort-backed class-name lookup
+// (reco_detect::create_ort_session) and the CpuYoloDetector
+// fallback. Both are cfg'd behind `feature = "ort"`, so this
+// import follows the same gate.
+#[cfg(feature = "ort")]
 use std::path::Path;
 
 use reco_core::calibration::FieldRoi;
