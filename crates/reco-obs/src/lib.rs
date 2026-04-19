@@ -24,7 +24,25 @@ mod ffi;
 mod source;
 
 use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+
+/// Global state shared between the frontend-event callback and the
+/// source instance. `true` whenever OBS is actively recording or
+/// streaming. Consulted by the replay recorder when the source is
+/// configured to "follow OBS record/stream" mode (FRICTION A20).
+///
+/// Using atomics (no mutex) because writers come from a single OBS
+/// thread (the frontend event loop) and readers are source ticks;
+/// relaxed ordering is fine since the worst-case miss is one
+/// recorder tick of stale state.
+#[cfg(all(feature = "replay", have_frontend_api))]
+pub(crate) static OBS_RECORDING_OR_STREAMING: AtomicBool = AtomicBool::new(false);
+
+/// Stub constant for builds without the frontend-api. In that case
+/// the replay recorder always falls through to its "independent"
+/// mode regardless of what the source thinks.
+#[cfg(all(feature = "replay", not(have_frontend_api)))]
+pub(crate) static OBS_RECORDING_OR_STREAMING: AtomicBool = AtomicBool::new(true);
 
 /// Wrap the body of an `unsafe extern "C"` callback with
 /// `std::panic::catch_unwind` so a panic inside the callback cannot
@@ -183,6 +201,61 @@ pub unsafe extern "C" fn obs_module_load() -> bool {
 
         log::info!("reco-obs: source registered as 'reco_stitcher'");
         true
+    })
+}
+
+/// Called by OBS after all modules have finished loading. This is
+/// the documented hook point for registering frontend event
+/// callbacks (the frontend-api is only safe to call once every
+/// module's `obs_module_load` has returned).
+///
+/// Only compiled when bindgen found `obs-frontend-api.h`; builds
+/// against bare libobs skip the auto-follow and leave
+/// `OBS_RECORDING_OR_STREAMING` pinned `true` so the replay
+/// recorder always runs when enabled (fallback behavior preserves
+/// the pre-A20 UX).
+#[cfg(all(feature = "replay", have_frontend_api))]
+#[unsafe(no_mangle)]
+pub extern "C" fn obs_module_post_load() {
+    ffi_catch!((), {
+        unsafe {
+            ffi::obs_frontend_add_event_callback(Some(on_frontend_event), ptr::null_mut());
+        }
+        log::info!(
+            "reco-obs: frontend event callback registered \
+             (replay will auto-follow OBS Record/Stream)"
+        );
+    })
+}
+
+#[cfg(all(feature = "replay", have_frontend_api))]
+unsafe extern "C" fn on_frontend_event(
+    event: ffi::obs_frontend_event,
+    _private_data: *mut std::os::raw::c_void,
+) {
+    ffi_catch!((), {
+        // Only four events of interest: the two start/stop pairs
+        // for Record and Stream. Everything else ignored.
+        match event {
+            ffi::obs_frontend_event_OBS_FRONTEND_EVENT_RECORDING_STARTED
+            | ffi::obs_frontend_event_OBS_FRONTEND_EVENT_STREAMING_STARTED => {
+                OBS_RECORDING_OR_STREAMING.store(true, Ordering::Relaxed);
+                log::info!("reco-obs: OBS Record/Stream STARTED — replay follow active");
+            }
+            ffi::obs_frontend_event_OBS_FRONTEND_EVENT_RECORDING_STOPPED
+            | ffi::obs_frontend_event_OBS_FRONTEND_EVENT_STREAMING_STOPPED => {
+                // Only flip off when BOTH are idle; streaming could
+                // be stopping while recording continues, and the
+                // replay should keep going in that case.
+                let still_recording = unsafe { ffi::obs_frontend_recording_active() };
+                let still_streaming = unsafe { ffi::obs_frontend_streaming_active() };
+                if !still_recording && !still_streaming {
+                    OBS_RECORDING_OR_STREAMING.store(false, Ordering::Relaxed);
+                    log::info!("reco-obs: OBS Record/Stream STOPPED — replay follow idle");
+                }
+            }
+            _ => {}
+        }
     })
 }
 

@@ -56,8 +56,21 @@ fn main() {
         println!("cargo:rerun-if-changed={}", entry.path().display());
     }
 
-    let bindings = bindgen::Builder::default()
-        .header(obs_header.to_string_lossy().into_owned())
+    // Also pull in the frontend API header so we can hook
+    // OBS_FRONTEND_EVENT_RECORDING_STARTED / STOPPED and mirror
+    // OBS's global record/stream state to the replay recorder
+    // (FRICTION reco-obs A20 — replay follows OBS Record/Stream
+    // button by default). Optional: if the header is missing we
+    // skip it and the replay feature falls back to the
+    // "always record" mode.
+    let frontend_header = PathBuf::from(&include_dir).join("obs-frontend-api.h");
+    let have_frontend = frontend_header.exists();
+
+    let mut builder = bindgen::Builder::default().header(obs_header.to_string_lossy().into_owned());
+    if have_frontend {
+        builder = builder.header(frontend_header.to_string_lossy().into_owned());
+    }
+    let bindings = builder
         .clang_arg(format!("-I{include_dir}"))
         // libobs headers are C, and we want standard types (not ptrdiff).
         .clang_arg("-std=c11")
@@ -119,4 +132,19 @@ fn main() {
     bindings
         .write_to_file(&out_path)
         .unwrap_or_else(|e| panic!("failed to write bindings to {out_path:?}: {e}"));
+
+    // Link the frontend-api shared library so symbols like
+    // `obs_frontend_add_event_callback` resolve at plugin-load
+    // time. libobs itself is loaded by OBS and doesn't need an
+    // explicit link line here, but the frontend API is a separate
+    // shared object (`libobs-frontend-api.so`) that plugins link
+    // against explicitly. Only emit the link line when the header
+    // was found, so builds against bare libobs installations still
+    // succeed (they'll miss the OBS-record auto-follow behavior
+    // but the plugin still loads).
+    if have_frontend {
+        println!("cargo:rustc-link-lib=obs-frontend-api");
+        println!("cargo:rustc-cfg=have_frontend_api");
+    }
+    println!("cargo:rustc-check-cfg=cfg(have_frontend_api)");
 }

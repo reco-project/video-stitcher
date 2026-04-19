@@ -71,6 +71,22 @@ const INPUT_FORMAT_BGRA: &CStr = c"bgra";
 const PROP_REPLAY_ENABLED: &CStr = c"replay_enabled";
 #[cfg(feature = "replay")]
 const PROP_REPLAY_PATH: &CStr = c"replay_path";
+/// Replay trigger mode. String-valued because OBS combos pass
+/// strings; numeric would be less readable in the settings JSON.
+/// - `"follow_obs"` (default): record only while OBS itself is
+///   recording or streaming. Closest to the user's mental model
+///   ("the OBS Record button controls everything the plugin
+///   writes") and the M6.5 A20 decision.
+/// - `"always"`: record whenever the checkbox is ticked,
+///   independently of OBS state. The pre-A20 behavior, kept as a
+///   hidden-feel option for users who genuinely want replay
+///   without running an OBS recording.
+#[cfg(feature = "replay")]
+const PROP_REPLAY_MODE: &CStr = c"replay_mode";
+#[cfg(feature = "replay")]
+const REPLAY_MODE_FOLLOW_OBS: &CStr = c"follow_obs";
+#[cfg(feature = "replay")]
+const REPLAY_MODE_ALWAYS: &CStr = c"always";
 
 // ---------------------------------------------------------------------------
 // Source state
@@ -176,6 +192,13 @@ struct RecoSource {
     /// both `replay_enabled` is true and this is non-empty.
     #[cfg(feature = "replay")]
     replay_path: String,
+    /// Whether to follow OBS's Record/Stream state. `true` by
+    /// default (A20 resolution) - the checkbox expresses intent,
+    /// the actual recording only runs when OBS is also recording
+    /// or streaming. Flip to `false` via the hidden "Record
+    /// independently" mode for the pre-A20 behavior.
+    #[cfg(feature = "replay")]
+    replay_follow_obs: bool,
     /// Whether the `StitchCore` currently has a stacked-video
     /// recorder attached. Tracked here because `StitchCore` does
     /// not expose a getter (and shouldn't - attachment state is a
@@ -222,6 +245,8 @@ impl RecoSource {
             replay_enabled: false,
             #[cfg(feature = "replay")]
             replay_path: String::new(),
+            #[cfg(feature = "replay")]
+            replay_follow_obs: true,
             #[cfg(feature = "replay")]
             replay_recorder_attached: false,
         }
@@ -391,8 +416,18 @@ impl RecoSource {
     /// path, failed to open file, etc.).
     #[cfg(feature = "replay")]
     fn update_replay_recorder(&mut self) {
-        let want_recording =
-            self.replay_enabled && !self.replay_path.is_empty() && self.core.is_some();
+        // Gate 1: intent — user has ticked the checkbox and given a path.
+        let intent_on = self.replay_enabled && !self.replay_path.is_empty();
+        // Gate 2: trigger — follow-OBS mode waits for OBS to start
+        // recording/streaming; always-mode runs the moment the
+        // pipeline is up. Builds without frontend-api keep the
+        // always-on semantics (the global defaults to true there).
+        let trigger_on = if self.replay_follow_obs {
+            crate::OBS_RECORDING_OR_STREAMING.load(std::sync::atomic::Ordering::Relaxed)
+        } else {
+            true
+        };
+        let want_recording = intent_on && trigger_on && self.core.is_some();
         if want_recording && !self.replay_recorder_attached {
             // Transition: off -> on. Open the encoder and attach.
             let Some(core) = self.core.as_mut() else {
@@ -507,6 +542,15 @@ impl RecoSource {
                     RecoSource::set_source_slot(&mut self.right_source, &name);
                 }
             }
+            // Also re-evaluate replay attachment state here (every
+            // 0.5s). The global `OBS_RECORDING_OR_STREAMING` atomic
+            // is flipped from the frontend event callback, which
+            // runs on a different thread; per-source state lives
+            // here, so a periodic poll is how we bridge the two.
+            // Cheap: one atomic load + one bool compare in the
+            // common case where nothing changed.
+            #[cfg(feature = "replay")]
+            self.update_replay_recorder();
         }
         // Every ~60 ticks (~1-2 seconds) flush a diagnostic heartbeat so
         // users can tell "plugin running but no render" from "plugin hung".
@@ -595,18 +639,16 @@ impl RecoSource {
                     );
                     self.warned_unsupported_format = true;
                 }
-            } else if l.width != self.input_width
-                || l.height != self.input_height
-                || r.width != self.input_width
-                || r.height != self.input_height
-            {
+            } else if l.width != r.width || l.height != r.height {
+                // Left and right disagree with each other — we can't
+                // stitch two different sizes in a single pipeline
+                // (the shader samples matched-size textures). One-shot
+                // warn; submission stays blocked until both sides match.
                 if !self.warned_unsupported_format {
                     log::warn!(
-                        "reco-obs: input-dim mismatch (configured {}x{}, left={}x{}, \
-                         right={}x{}). Update the 'Input width/height' properties to match \
-                         your camera.",
-                        self.input_width,
-                        self.input_height,
+                        "reco-obs: asymmetric input dims (left={}x{}, right={}x{}). \
+                         Both upstream sources must have the same resolution. Switch one \
+                         of them or add a scale filter so both sides agree.",
                         l.width,
                         l.height,
                         r.width,
@@ -614,6 +656,39 @@ impl RecoSource {
                     );
                     self.warned_unsupported_format = true;
                 }
+            } else if l.width != self.input_width || l.height != self.input_height {
+                // Left and right match each other but differ from the
+                // declared Input W/H. Auto-detect and rebuild the
+                // pipeline (A22 fix). Story-telling log so the user
+                // sees the transition explicitly: what was configured,
+                // what was detected, what we're doing about it.
+                log::info!(
+                    "reco-obs: detected input {}x{} on both sources (Properties said {}x{}); \
+                     rebuilding pipeline to match. Stutter for one tick.",
+                    l.width,
+                    l.height,
+                    self.input_width,
+                    self.input_height,
+                );
+                self.input_width = l.width;
+                self.input_height = l.height;
+                // Drop the current session so `try_init_pipeline`
+                // rebuilds with the new dims on the next update path.
+                // Run the rebuild immediately so the very next tick
+                // can render rather than waiting another property
+                // change. This is expensive (~100ms GPU init) but
+                // only runs once per source change.
+                self.core = None;
+                #[cfg(feature = "replay")]
+                {
+                    // The old core dropped the recorder along with
+                    // itself; clear the tracking flag so
+                    // update_replay_recorder re-attaches on the
+                    // rebuild with the new tile dims.
+                    self.replay_recorder_attached = false;
+                }
+                self.try_init_pipeline();
+                self.warned_unsupported_format = false;
             } else {
                 let yaw = (self.yaw_degrees as f32).to_radians();
                 let pitch = (self.pitch_degrees as f32).to_radians();
@@ -822,6 +897,11 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
             {
                 ffi::obs_data_set_default_bool(settings, PROP_REPLAY_ENABLED.as_ptr(), false);
                 ffi::obs_data_set_default_string(settings, PROP_REPLAY_PATH.as_ptr(), c"".as_ptr());
+                ffi::obs_data_set_default_string(
+                    settings,
+                    PROP_REPLAY_MODE.as_ptr(),
+                    REPLAY_MODE_FOLLOW_OBS.as_ptr(),
+                );
             }
             ffi::obs_data_set_default_string(
                 settings,
@@ -958,6 +1038,23 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
                     ffi::obs_path_type::OBS_PATH_FILE_SAVE,
                     c"Matroska video (*.mkv)".as_ptr(),
                     ptr::null(),
+                );
+                let mode_list = ffi::obs_properties_add_list(
+                    props,
+                    PROP_REPLAY_MODE.as_ptr(),
+                    c"Replay trigger".as_ptr(),
+                    ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
+                    ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
+                );
+                ffi::obs_property_list_add_string(
+                    mode_list,
+                    c"Follow OBS Record / Stream".as_ptr(),
+                    REPLAY_MODE_FOLLOW_OBS.as_ptr(),
+                );
+                ffi::obs_property_list_add_string(
+                    mode_list,
+                    c"Record independently (advanced)".as_ptr(),
+                    REPLAY_MODE_ALWAYS.as_ptr(),
                 );
             }
 
@@ -1421,6 +1518,15 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
                 CStr::from_ptr(replay_path_ptr)
                     .to_string_lossy()
                     .into_owned()
+            };
+            let mode_ptr = ffi::obs_data_get_string(settings, PROP_REPLAY_MODE.as_ptr());
+            src.replay_follow_obs = if mode_ptr.is_null() {
+                true
+            } else {
+                // Anything other than the explicit "always" string
+                // falls back to follow-OBS. Keeps future mode
+                // additions safe by default.
+                !matches!(CStr::from_ptr(mode_ptr).to_str(), Ok("always"))
             };
         }
     }
