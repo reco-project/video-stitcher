@@ -29,12 +29,17 @@ use std::path::Path;
 use std::ptr;
 use thiserror::Error;
 
-/// Errors from the video decoder.
-#[derive(Debug, Error)]
+/// Errors from the video decoder. `Clone + Send + Sync` so the
+/// calibration background thread can send the full result through
+/// an mpsc channel to the UI thread with the typed error preserved.
+/// `ffmpeg::Error` is not `Clone`, so it is stringified at the
+/// `From` boundary.
+#[derive(Debug, Clone, Error)]
 pub enum DecodeError {
-    /// FFmpeg error.
+    /// FFmpeg error (text message; original `ffmpeg::Error` is
+    /// stringified at the `From` boundary because it is not `Clone`).
     #[error("FFmpeg: {0}")]
-    Ffmpeg(#[from] ffmpeg::Error),
+    Ffmpeg(String),
 
     /// No video stream found in the file.
     #[error("no video stream found")]
@@ -52,6 +57,12 @@ pub enum DecodeError {
     /// Pixel format conversion failed.
     #[error("format conversion: {0}")]
     ConversionError(String),
+}
+
+impl From<ffmpeg::Error> for DecodeError {
+    fn from(e: ffmpeg::Error) -> Self {
+        Self::Ffmpeg(e.to_string())
+    }
 }
 
 /// A decoded NV12 frame still on the GPU (CUDA device memory).

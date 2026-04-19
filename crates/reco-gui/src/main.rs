@@ -100,8 +100,12 @@ struct CalibrationOutput {
     right_lens_profile: Option<LensProfileInfo>,
 }
 
-/// Result sent from the calibration background thread.
-type CalibrationResult = Result<CalibrationOutput, String>;
+/// Result sent from the calibration background thread. The error is
+/// the typed [`reco_calibrate::video::CalibrateVideosError`] now that
+/// it is `Clone + Send + Sync` (plan step 7), so the UI thread can
+/// pattern-match specific failure modes (`Cancelled`, `NoFrames`,
+/// `Io(...)`, etc.) instead of parsing a stringified message.
+type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::CalibrateVideosError>;
 
 /// Application state shared between Slint callbacks.
 struct AppState {
@@ -1212,7 +1216,7 @@ fn main() -> anyhow::Result<()> {
                         right_lens_profile: r.right_lens_profile,
                     })
                 }
-                Err(e) => Err(format!("{e}")),
+                Err(e) => Err(e),
             };
             tx.send(cal_result).ok();
         });
@@ -2266,9 +2270,11 @@ fn handle_calibration_result(
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(false);
                 app.set_status_text("Calibration failed".into());
+                // Toast wants a display-ready message; stringify at
+                // the UI boundary (not across the mpsc channel).
                 state
                     .toasts
-                    .push(Severity::Error, "Auto-calibration failed", e.clone());
+                    .push(Severity::Error, "Auto-calibration failed", e.to_string());
                 crate::toast::sync_to_ui(&state.toasts, &app);
             }
         }

@@ -17,8 +17,9 @@ use thiserror::Error;
 
 use super::decoder::{DecodeError, VideoDecoder};
 
-/// Errors from calibration I/O operations.
-#[derive(Debug, Error)]
+/// Errors from calibration I/O operations. `Clone + Send + Sync`
+/// so they can cross the calibration-worker-thread boundary.
+#[derive(Debug, Clone, Error)]
 pub enum CalibrationIoError {
     /// Video decode error.
     #[error("decode: {0}")]

@@ -62,8 +62,10 @@ pub struct CalibrateVideosOptions {
     pub sync_offset: Option<i64>,
 }
 
-/// Errors from [`calibrate_videos`].
-#[derive(Debug, thiserror::Error)]
+/// Errors from [`calibrate_videos`]. `Clone + Send + Sync` so a
+/// calibration worker can post the typed result back to the UI
+/// thread through an mpsc channel without stringifying.
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum CalibrateVideosError {
     /// Video I/O error (probe, decode, audio extraction).
     #[error("I/O: {0}")]
@@ -85,6 +87,15 @@ pub enum CalibrateVideosError {
     #[error("calibration cancelled")]
     Cancelled,
 }
+
+// Compile-time assertion (plan step 7 tail): `CalibrateVideosError`
+// and its transitive inner types are `Clone + Send + Sync`. Regresses
+// if a future variant introduces a non-Clone `#[from]` wrap.
+const _: fn() = || {
+    fn assert_clone_send_sync<T: Clone + Send + Sync + 'static>() {}
+    assert_clone_send_sync::<CalibrateVideosError>();
+    assert_clone_send_sync::<crate::error::CalibrateError>();
+};
 
 /// Check the interrupted flag and return `Cancelled` if set.
 fn check_interrupted(interrupted: &AtomicBool) -> Result<(), CalibrateVideosError> {
