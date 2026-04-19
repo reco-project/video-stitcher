@@ -64,7 +64,10 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         .resolution(args.width, args.height)
         .blend_width(args.blend)
         .on_progress(move |p: &reco_core::session::FrameProgress| {
-            progress.report(p.frames_completed);
+            // Use the session's own elapsed clock so the reported
+            // rate excludes one-time GPU / encoder / ORT init and
+            // reflects only the decode → stitch → encode loop.
+            progress.report_with_elapsed(p.frames_completed, p.elapsed);
         });
 
     if let Some(d) = args.duration {
