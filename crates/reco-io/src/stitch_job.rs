@@ -362,6 +362,21 @@ impl StitchJob {
     /// frames (GPU-resident, NV12), the replay file gracefully
     /// stops recording while the stitch output completes.
     ///
+    /// # Pack path
+    ///
+    /// `StitchJob` uses the CPU `ReplayRecordingSource` decorator
+    /// today. For CPU-resident YUV420P sources this is
+    /// byte-efficient (no upload, no GPU round-trip). For GPU-
+    /// resident sources (NVDEC zero-copy, Metal CVPixelBuffer) the
+    /// CPU decorator can't record Nv12 frames: the M7 GPU-pack path
+    /// exists in reco-core and works for push-API consumers that
+    /// call `StitchCore::submit_frame_yuv*` with CPU YUV planes,
+    /// but it isn't yet wired to zero-copy submit paths
+    /// (tracked in issue #270). Until that lands, replay recording
+    /// on zero-copy sources produces an empty file and
+    /// `StitchJob::run` emits a loud warn so the failure mode is
+    /// visible.
+    ///
     /// # Example
     ///
     /// ```rust,ignore
@@ -603,6 +618,41 @@ impl StitchJob {
 
         #[cfg(feature = "stacked-output")]
         if let Some(cfg) = replay_cfg {
+            // Pack-path selection. Today the GPU-pack path (wired
+            // through StitchCore::submit_frame_yuv* in reco-core
+            // commit 7281bd9) only activates for CPU-upload submit
+            // paths: consumers that call submit_frame_yuv* with
+            // YuvPlanes references. Zero-copy (NVDEC / Metal)
+            // sources take the submit_render_output path which
+            // doesn't go through the renderer's internal plane
+            // textures the GPU packer currently reads from, so
+            // enabling the GPU pack there would record empty
+            // atlases. Issue #270 tracks the wiring plan.
+            //
+            // Until that lands, StitchJob stays on the CPU
+            // ReplayRecordingSource decorator path regardless of
+            // source residency. For CPU-resident sources this is
+            // correct and efficient. For GPU-resident sources the
+            // CPU decorator will warn-once and skip Nv12 frames
+            // (pre-M7 behavior), so replay recording isn't usable
+            // on zero-copy runs yet. A loud warn makes that
+            // visible instead of silently producing an empty file.
+            if source.is_gpu_resident() {
+                log::warn!(
+                    "Replay recording requested on a GPU-resident source (zero-copy decode). \
+                     GPU-pack replay isn't wired to zero-copy submit paths yet (issue #270), \
+                     and the CPU recorder can't record Nv12 frames, so the replay file will \
+                     be empty. To record replay today, disable zero-copy decode. Output: {}",
+                    cfg.path.display(),
+                );
+            } else {
+                log::info!(
+                    "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
+                    info.width,
+                    info.height,
+                    cfg.path.display(),
+                );
+            }
             let inner: Box<dyn FrameSource> = Box::new(source);
             let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
                 inner,
