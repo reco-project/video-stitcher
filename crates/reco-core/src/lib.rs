@@ -78,18 +78,14 @@ pub mod calibration;
 /// M3 push-first `StitchCore` shell — the canonical entry point.
 /// See [`core::StitchCore`] for details.
 pub mod core;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub use reco_gpu_interop::coreml_inference;
-// CUDA / NPP modules migrated to the `reco-gpu-interop` crate per
-// plan M5 (phase 1). Re-exported here so existing
-// `reco_core::cuda_interop::*` / `reco_core::cuda_kernels::*` /
-// `reco_core::npp_interop::*` consumer paths keep working.
-// Follow-up tranches migrate `metal_*`, `coreml_inference`,
-// `vulkan_interop`, and `zero_copy` the same way.
+// `coreml_inference`, `cuda_kernels`, `npp_interop`, `metal_compute`
+// moved to reco-detect (the only consumer) — per the revised M5
+// analysis: those four are detection-preprocess, not GPU pipeline
+// infrastructure. reco-core keeps `cuda_interop`, `metal_interop`,
+// `vulkan_interop`, `zero_copy`, which are wgpu-native platform
+// paths used by the stitch pipeline's zero-copy bridge.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use reco_gpu_interop::cuda_interop;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use reco_gpu_interop::cuda_kernels;
+pub mod cuda_interop;
 pub mod detector;
 pub mod director;
 pub mod encoder;
@@ -100,11 +96,7 @@ pub mod framesync;
 pub mod gpu;
 pub mod lens;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod metal_compute;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use reco_gpu_interop::npp_interop;
 pub mod nv12_converter;
 pub mod pipeline;
 /// M4 unified pose-control primitive. See [`pose_control::PoseControl`]

@@ -15,7 +15,7 @@
 
 use std::sync::OnceLock;
 
-use crate::cuda_interop::CUdeviceptr;
+use reco_core::cuda_interop::CUdeviceptr;
 
 /// Errors from NPP operations.
 #[derive(Debug, thiserror::Error)]

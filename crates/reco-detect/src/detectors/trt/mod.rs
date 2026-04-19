@@ -23,15 +23,15 @@ mod sys;
 use std::ffi::c_void;
 use std::path::Path;
 
+use crate::cuda_kernels::normalize_hwc_to_chw;
+use crate::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 use reco_core::cuda_interop::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memcpy_dtoh,
     cuda_memset_d8, cuda_synchronize,
 };
-use reco_core::cuda_kernels::normalize_hwc_to_chw;
 use reco_core::detector::{
     CameraId, Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
 };
-use reco_core::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 
 use self::cuda::{CudaBuffer, CudaStream};
 use self::engine::{TrtContext, TrtEngine, TrtError};
@@ -107,7 +107,7 @@ impl TrtGpuDetector {
         labels: Vec<String>,
         is_10bit: bool,
     ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
-        if !reco_core::npp_interop::is_npp_available() {
+        if !crate::npp_interop::is_npp_available() {
             log::warn!("TrtGpuDetector: NPP not available, GPU detection disabled");
             return Ok(None);
         }
@@ -341,7 +341,7 @@ impl TrtGpuDetector {
                     "P010 frame received but no conversion buffers allocated".into(),
                 ));
             }
-            reco_core::cuda_kernels::p010_plane_to_nv12(
+            crate::cuda_kernels::p010_plane_to_nv12(
                 y_ptr,
                 y_pitch,
                 self.nv12_8bit_y,
@@ -349,7 +349,7 @@ impl TrtGpuDetector {
                 height,
             )
             .map_err(|e| DetectorError::InferenceFailed(format!("P010->NV12 Y conversion: {e}")))?;
-            reco_core::cuda_kernels::p010_plane_to_nv12(
+            crate::cuda_kernels::p010_plane_to_nv12(
                 uv_ptr,
                 uv_pitch,
                 self.nv12_8bit_uv,

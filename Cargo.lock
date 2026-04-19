@@ -5296,7 +5296,6 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-metal 0.3.2",
  "pollster",
- "reco-gpu-interop",
  "serde",
  "serde_json",
  "tempfile",
@@ -5309,21 +5308,21 @@ dependencies = [
 name = "reco-detect"
 version = "0.1.0"
 dependencies = [
+ "block2 0.6.2",
  "cc",
  "dirs",
- "log",
- "ort",
- "reco-core",
- "tracing",
-]
-
-[[package]]
-name = "reco-gpu-interop"
-version = "0.1.0"
-dependencies = [
+ "foreign-types 0.5.0",
  "libloading 0.9.0",
  "log",
+ "metal 0.33.0",
+ "objc2 0.6.4",
+ "objc2-core-ml",
+ "objc2-foundation 0.3.2",
+ "objc2-metal 0.3.2",
+ "ort",
+ "reco-core",
  "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

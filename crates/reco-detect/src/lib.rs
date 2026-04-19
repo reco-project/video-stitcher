@@ -18,6 +18,31 @@ pub mod ort_session;
 #[cfg(feature = "ort")]
 pub mod probe;
 
+// GPU preprocessing primitives consumed by the backends above. These
+// used to live in reco-core but are detection-only concerns (YOLO
+// input preprocess + CoreML inference wrap); hosting them here makes
+// reco-core's responsibilities narrower and removes an unnecessary
+// split. See plan M5 revised analysis (commit 42d54af message).
+//
+// Types used by these that remain in reco-core:
+//   - `reco_core::cuda_interop::*` — CUDA FFI + context mgmt; shared
+//     with reco-core's zero-copy bridge.
+//   - `reco_core::gpu::GpuContext` — used by `metal_compute`.
+//   - `reco_core::metal_interop::*` — shared Metal texture cache.
+//
+// CUDA kernels (normalize + HWC→CHW, P010→NV12) for GPU YOLO preprocess.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub mod cuda_kernels;
+// NPP (NVIDIA Performance Primitives) color conversion + resize.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub mod npp_interop;
+// CoreML inference wrap (Apple Neural Engine / GPU / CPU).
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub mod coreml_inference;
+// Metal compute pipeline (NV12 → CHW f32 preprocess).
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub mod metal_compute;
+
 // Re-export detector types at crate root for convenience.
 #[cfg(feature = "ort")]
 pub use detectors::cpu::CpuYoloDetector;
