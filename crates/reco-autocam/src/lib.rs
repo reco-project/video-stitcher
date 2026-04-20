@@ -37,6 +37,7 @@
 #![forbid(unsafe_code)]
 
 mod directors;
+pub mod panners;
 mod roi_filter;
 mod smoother;
 pub mod trackers;
