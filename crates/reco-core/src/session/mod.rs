@@ -1102,7 +1102,16 @@ impl StitchSession {
         // applies coverage clamping.
         if self.panner.is_some() {
             let mut world = crate::tracker::WorldState::default();
+            // Order matters: players first, then ball. The ball tracker's
+            // `observe_world` sees the just-computed player positions so
+            // a player-anchor filter can run against the current frame
+            // rather than the previous one. See StitchCore for the same
+            // pattern.
+            if let Some(ref mut t) = self.player_tracker {
+                world.players = t.update(&self.detection.last_detections, timestamp_ms);
+            }
             if let Some(ref mut t) = self.ball_tracker {
+                t.observe_world(&world);
                 let ents = t.update(&self.detection.last_detections, timestamp_ms);
                 if ents.len() > 1 {
                     log::warn!(
@@ -1111,9 +1120,6 @@ impl StitchSession {
                     );
                 }
                 world.ball = ents.into_iter().next();
-            }
-            if let Some(ref mut t) = self.player_tracker {
-                world.players = t.update(&self.detection.last_detections, timestamp_ms);
             }
             let calibration = self.core.pipeline().calibration();
             let pan_ctx = crate::panner::PanContext {

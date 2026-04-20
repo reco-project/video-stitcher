@@ -1508,7 +1508,16 @@ impl StitchCore {
         // detections into a pose.
         let raw = if let Some(panner) = self.panner.as_mut() {
             let mut world = WorldState::default();
+            // Order matters: players first, then ball. This lets the
+            // ball tracker apply a player-anchor filter against the
+            // current frame's players via `observe_world`. Without that
+            // ordering, `observe_world` would only ever see the previous
+            // frame's world, which defeats the purpose.
+            if let Some(t) = self.player_tracker.as_mut() {
+                world.players = t.update(&self.last_detections, timestamp_ms);
+            }
             if let Some(t) = self.ball_tracker.as_mut() {
+                t.observe_world(&world);
                 let ents = t.update(&self.last_detections, timestamp_ms);
                 // Singleton: take the first entity; more than one
                 // from a singleton tracker is a bug we fail-soft on.
@@ -1519,9 +1528,6 @@ impl StitchCore {
                     );
                 }
                 world.ball = ents.into_iter().next();
-            }
-            if let Some(t) = self.player_tracker.as_mut() {
-                world.players = t.update(&self.last_detections, timestamp_ms);
             }
             let pan_ctx = PanContext {
                 frame_index: self.frame_count,

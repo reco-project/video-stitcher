@@ -366,6 +366,21 @@ impl Tracker for BallTracker {
     fn class_id(&self) -> u16 {
         self.class_id
     }
+
+    /// Snapshot the current frame's players into the player-anchor
+    /// filter. The session runs the player tracker before the ball
+    /// tracker and hands the ball tracker a [`WorldState`] whose
+    /// `players` field is already populated for this frame.
+    ///
+    /// A player tracker that is not registered leaves `world.players`
+    /// empty, which `set_players` accepts — the downstream anchor
+    /// filter short-circuits to "accept" when no players are known,
+    /// preserving the Phase 2c behavior.
+    ///
+    /// [`WorldState`]: reco_core::tracker::WorldState
+    fn observe_world(&mut self, world: &reco_core::tracker::WorldState) {
+        self.set_players(&world.players);
+    }
 }
 
 #[cfg(test)]
@@ -540,6 +555,57 @@ mod tests {
     fn class_id_accessor() {
         let t = BallTracker::new(32);
         assert_eq!(t.class_id(), 32);
+    }
+
+    #[test]
+    fn observe_world_populates_player_anchors() {
+        use reco_core::tracker::WorldState;
+        let mut t = BallTracker::new(0).with_player_anchor_rad(0.1);
+        let player = TrackedEntity {
+            id: 7,
+            class_id: 0,
+            yaw: 1.0,
+            pitch: 0.0,
+            velocity: None,
+            confidence: 0.9,
+            state: TrackState::Tracking,
+            age_frames: 3,
+            origin: CameraId::Right,
+        };
+        let world = WorldState {
+            ball: None,
+            players: vec![player],
+        };
+        t.observe_world(&world);
+        // A ball far from the (only) player must be rejected by the
+        // anchor filter — proves observe_world propagated players.
+        let d = det(CameraId::Left, 0.2, 0.0, 0.9, 0.5, 0.5);
+        let out = t.update(&[d], 0.0);
+        assert!(out.is_empty(), "observe_world did not populate anchors");
+    }
+
+    #[test]
+    fn observe_world_empty_players_leaves_filter_as_noop() {
+        use reco_core::tracker::WorldState;
+        let mut t = BallTracker::new(0).with_player_anchor_rad(0.1);
+        // Pre-seed with anchors, then observe an empty world: set_players
+        // replaces (does not accumulate), so the filter becomes a no-op.
+        let player = TrackedEntity {
+            id: 1,
+            class_id: 0,
+            yaw: 1.0,
+            pitch: 0.0,
+            velocity: None,
+            confidence: 0.9,
+            state: TrackState::Tracking,
+            age_frames: 1,
+            origin: CameraId::Right,
+        };
+        t.set_players(&[player]);
+        t.observe_world(&WorldState::default());
+        let d = det(CameraId::Left, 0.2, 0.0, 0.9, 0.5, 0.5);
+        let out = t.update(&[d], 0.0);
+        assert_eq!(out.len(), 1, "empty world should reset anchors");
     }
 
     #[test]
