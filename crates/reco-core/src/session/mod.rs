@@ -862,8 +862,11 @@ impl StitchSession {
             .map_or(ViewportPosition::default(), |d| d.position());
 
         // The director outputs world-space coordinates (from ball detections).
-        // Clamp in world space, then convert to user space for the renderer
-        // (which applies rig_tilt internally in its view matrix).
+        // Clamp in world space, then convert to user space for the renderer.
+        // Rig-tilt conversion is a SIMPLE offset (`user = world - rig_tilt`);
+        // the yaw-weighted horizon correction is a separate compensation
+        // applied at the render site (see Model 3 rationale in
+        // `PoseControl::render_pose`). Validated empirically 2026-04-20.
         if let Some(coverage) = self.core.coverage() {
             if let Some(ref mut fov) = pos.fov_degrees {
                 *fov = fov.min(coverage.max_fov_degrees());
@@ -872,14 +875,11 @@ impl StitchSession {
                 .fov_degrees
                 .unwrap_or_else(|| self.core.pipeline().fov());
             let aspect = self.core.pipeline().viewport().aspect_ratio();
-            // Clamp in world space (no rig_tilt transform needed).
+            // safe_clamp with rig_tilt=0 keeps inputs+outputs in world-space.
             let clamped = coverage.safe_clamp(pos.yaw, pos.pitch, fov, aspect, 0.0);
             pos.yaw = clamped.yaw;
-            // Convert world -> user: the renderer applies rig_tilt as
-            // a rotation, so the effective world pitch at a given yaw is
-            // user_pitch + rig_tilt * cos(yaw). Invert to get user_pitch.
             let rig_tilt = self.core.pipeline().viewport().rig_tilt;
-            pos.pitch = clamped.pitch - rig_tilt * clamped.yaw.cos();
+            pos.pitch = clamped.pitch - rig_tilt;
         }
 
         if let Some(fov) = pos.fov_degrees {

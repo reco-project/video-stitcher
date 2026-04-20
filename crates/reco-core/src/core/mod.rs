@@ -1202,6 +1202,12 @@ impl StitchCore {
     /// coverage boundary. No-op if no coverage is available (e.g. the
     /// calibration produced a degenerate boundary). `fov_degrees: None`
     /// uses the pipeline's current FOV.
+    ///
+    /// Input is treated as world-space (matches the director-output
+    /// contract). Output is user-space via a simple
+    /// `user_pitch = world_pitch - rig_tilt` transform. The yaw-weighted
+    /// horizon correction is a render-site concern (see Model 3 in
+    /// `PoseControl::render_pose`).
     pub fn safe_clamp(&self, pose: ViewportPosition) -> ViewportPosition {
         let Some(coverage) = &self.coverage else {
             return pose;
@@ -1215,7 +1221,7 @@ impl StitchCore {
         let rig_tilt = self.pipeline.viewport().rig_tilt;
         ViewportPosition {
             yaw: clamped.yaw,
-            pitch: clamped.pitch - rig_tilt * clamped.yaw.cos(),
+            pitch: clamped.pitch - rig_tilt,
             fov_degrees: Some(fov),
         }
     }

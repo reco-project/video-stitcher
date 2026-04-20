@@ -355,21 +355,15 @@ impl PoseControl {
         self.target_fov_deg = self.target_fov_deg.min(self.config.fov_max_degrees);
         self.current_fov_deg = self.current_fov_deg.min(self.config.fov_max_degrees);
 
-        // The inputs (target_*, current_*) are user-space: the renderer
-        // applies rig_tilt as a quaternion rotation of the reference
-        // frame, so for pitch the world/user conversion is yaw-weighted
-        // (full tilt at yaw=0, zero tilt at yaw=±π/2). Clamp is done in
-        // world-space against world-space coverage; round-trip preserves
-        // user-space storage.
+        // The inputs (target_*, current_*) are user-space. Coverage is
+        // world-space. `safe_clamp` with `rig_tilt` argument does the
+        // round-trip internally (simple `world = user + rig_tilt`
+        // offset, clamp, then `user = world - rig_tilt`). This matches
+        // the preview/GUI consumer pattern and the Model 3 render-site
+        // compensation in `render_pose`.
         let clamp = |yaw: f32, pitch: f32, fov: f32| -> (f32, f32) {
-            let world_pitch = pitch + rig_tilt * yaw.cos();
-            // safe_clamp with rig_tilt=0 keeps coverage's world-space
-            // interpretation (we handle the cos(yaw) transform ourselves
-            // because safe_clamp's built-in path uses a simpler
-            // non-yaw-weighted offset).
-            let clamped = coverage.safe_clamp(yaw, world_pitch, fov, aspect, 0.0);
-            let user_pitch = clamped.pitch - rig_tilt * clamped.yaw.cos();
-            (clamped.yaw, user_pitch)
+            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect, rig_tilt);
+            (clamped.yaw, clamped.pitch)
         };
         let (ty, tp) = clamp(
             self.target_yaw_rad,
@@ -406,6 +400,28 @@ impl PoseControl {
         ViewportPosition {
             yaw: self.current_yaw_rad,
             pitch: self.current_pitch_rad,
+            fov_degrees: Some(self.current_fov_deg),
+        }
+    }
+
+    /// Current pose with Model 3 rig_tilt render-site compensation
+    /// applied: `pitch + rig_tilt * (1 - cos(yaw))`.
+    ///
+    /// The renderer applies `rig_tilt` as a quaternion rotation of the
+    /// reference frame (renderer.rs view_matrix). Without this
+    /// compensation, the quaternion folds the tilt into pitch at yaw=0
+    /// and into roll at yaw=±π/2, making the horizon dip as the camera
+    /// pans. Pre-adding `rig_tilt * (1 - cos(yaw))` to the rendered
+    /// pitch keeps the effective world pitch constant across yaw —
+    /// i.e. the horizon stays level under pan. Validated empirically
+    /// on rig_tilt=15° XTU footage 2026-04-20.
+    ///
+    /// Consumers pass this pose's `yaw` and returned `pitch` directly
+    /// to `StitchRenderer::render_yuv` / render_to_target.
+    pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
+        ViewportPosition {
+            yaw: self.current_yaw_rad,
+            pitch: self.current_pitch_rad + rig_tilt * (1.0 - self.current_yaw_rad.cos()),
             fov_degrees: Some(self.current_fov_deg),
         }
     }

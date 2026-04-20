@@ -31,10 +31,9 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 // ---- Preview constants ----
 
-/// Yaw/pitch increment per arrow key press (radians).
+/// Yaw/pitch increment per arrow key press (radians). Also the
+/// PoseControl hotkey step for the preview window.
 const ARROW_PAN_STEP: f32 = 0.05;
-/// Mouse drag sensitivity: radians per pixel of cursor movement.
-const MOUSE_SENSITIVITY: f32 = 0.005;
 /// FOV change per +/- key press (degrees).
 const FOV_KEY_STEP: f32 = 5.0;
 /// FOV change per scroll tick (degrees).
@@ -156,8 +155,31 @@ pub fn run_preview(
         current_left: first_left,
         current_right: first_right,
 
-        yaw: 0.0,
-        pitch: 0.0,
+        pose: {
+            use reco_core::director::ViewportPosition;
+            use reco_core::pose_control::{PoseControl, PoseControlConfig};
+            // Match preview's historical feel: 0.005 rad/px drag,
+            // 0.05 rad arrow step, 3.0 deg scroll step, 0.3 smoothing.
+            // `invert_drag_x = true` reproduces preview's "drag right
+            // increases yaw" convention (opposite of PoseControl default).
+            PoseControl::new(PoseControlConfig {
+                drag_deg_per_pixel: 0.005_f32.to_degrees(),
+                wheel_fov_per_tick: FOV_SCROLL_STEP,
+                smoothing: 0.3,
+                fov_min_degrees: FOV_MIN,
+                fov_max_degrees: max_fov.min(FOV_MAX),
+                invert_drag_x: true,
+                invert_drag_y: false,
+                hotkey_yaw_step_rad: ARROW_PAN_STEP,
+                hotkey_pitch_step_rad: ARROW_PAN_STEP,
+                hotkey_fov_step_deg: FOV_KEY_STEP,
+                rest_pose: ViewportPosition {
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    fov_degrees: Some(initial_fov),
+                },
+            })
+        },
         frame_count: 1,
         playing: false,
         needs_redraw: false,
@@ -165,9 +187,6 @@ pub fn run_preview(
         last_frame_time: Instant::now(),
         mouse_dragging: false,
         last_mouse_pos: None,
-        target_yaw: 0.0,
-        target_pitch: 0.0,
-        target_fov: initial_fov,
         blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
         rig_roll,
@@ -203,8 +222,13 @@ struct App {
     height: u32,
     current_left: YuvData,
     current_right: YuvData,
-    yaw: f32,
-    pitch: f32,
+    /// Unified pose state (target + current yaw/pitch/FOV with smoothing).
+    /// Drives every pan / zoom input; the renderer's pitch gets a
+    /// Model 3 compensation via `pose.render_pose(rig_tilt)` so the
+    /// horizon stays level as yaw changes. Replaced the hand-rolled
+    /// (target_yaw, target_pitch, target_fov, yaw, pitch) state
+    /// machine 2026-04-20.
+    pose: reco_core::pose_control::PoseControl,
     frame_count: u64,
     playing: bool,
     needs_redraw: bool,
@@ -213,10 +237,6 @@ struct App {
     // Mouse drag state
     mouse_dragging: bool,
     last_mouse_pos: Option<(f64, f64)>,
-    // Smoothed camera: target values that yaw/pitch/fov lerp toward
-    target_yaw: f32,
-    target_pitch: f32,
-    target_fov: f32,
     blend_width: f32,
     rig_tilt: f32,
     rig_roll: f32,
@@ -323,7 +343,18 @@ impl App {
             r.update_calibration(self.cal.clone());
             self.max_fov = r.coverage().max_fov_degrees().min(FOV_MAX);
             if self.clamp_enabled {
-                self.target_fov = self.target_fov.min(self.max_fov);
+                // Narrow PoseControl's FOV ceiling so the target FOV
+                // can't exceed what coverage allows.
+                let mut cfg = *self.pose.config();
+                cfg.fov_max_degrees = self.max_fov;
+                self.pose.set_config(cfg);
+                self.pose.set_target_fov(
+                    self.pose
+                        .target_pose()
+                        .fov_degrees
+                        .unwrap_or(self.max_fov)
+                        .min(self.max_fov),
+                );
             }
         }
         self.needs_redraw = true;
@@ -372,68 +403,36 @@ impl App {
         }
     }
 
-    /// Interpolate yaw/pitch/fov toward their targets for smooth camera.
-    /// Returns `true` if any values changed (needs redraw).
+    /// Step PoseControl one tick + optional coverage clamp + push
+    /// the resolved FOV onto the pipeline. Returns `true` if the
+    /// pose moved (needs redraw). Replaces the hand-rolled
+    /// target/current lerp 2026-04-20.
     fn smooth_camera(&mut self) -> bool {
-        const SMOOTHING: f32 = 0.3;
         const EPSILON: f32 = 0.0001;
         const FOV_EPSILON: f32 = 0.01;
 
-        let dy = self.target_yaw - self.yaw;
-        let dp = self.target_pitch - self.pitch;
-        let current_fov = self.renderer.as_ref().map_or(90.0, |r| r.pipeline().fov());
-        let df = self.target_fov - current_fov;
+        let before = self.pose.current_pose();
+        self.pose.tick();
 
-        if dy.abs() < EPSILON && dp.abs() < EPSILON && df.abs() < FOV_EPSILON {
-            return false;
-        }
-
-        self.yaw += dy * SMOOTHING;
-        self.pitch += dp * SMOOTHING;
-
-        if let Some(r) = &mut self.renderer {
-            let new_fov = r.pipeline().fov() + df * SMOOTHING;
-            let capped = if self.clamp_enabled {
-                new_fov.min(self.max_fov)
-            } else {
-                new_fov
-            };
-            r.pipeline_mut().set_fov(capped.clamp(1.0, FOV_MAX));
-            if (self.target_fov - r.pipeline().fov()).abs() < FOV_EPSILON {
-                r.pipeline_mut().set_fov(self.target_fov);
-            }
-        }
-
-        if (self.target_yaw - self.yaw).abs() < EPSILON {
-            self.yaw = self.target_yaw;
-        }
-        if (self.target_pitch - self.pitch).abs() < EPSILON {
-            self.pitch = self.target_pitch;
-        }
-
-        // Clamp to coverage boundary so no black edges appear
         if self.clamp_enabled
             && let Some(ref renderer) = self.renderer
         {
             let coverage = renderer.coverage();
-            let current_fov = renderer.pipeline().fov();
             let aspect = self.width as f32 / self.height as f32;
-            let clamped =
-                coverage.safe_clamp(self.yaw, self.pitch, current_fov, aspect, self.rig_tilt);
-            self.yaw = clamped.yaw;
-            self.pitch = clamped.pitch;
-            let target_clamped = coverage.safe_clamp(
-                self.target_yaw,
-                self.target_pitch,
-                current_fov,
-                aspect,
-                self.rig_tilt,
-            );
-            self.target_yaw = target_clamped.yaw;
-            self.target_pitch = target_clamped.pitch;
+            self.pose
+                .clamp_via_coverage(coverage, aspect, self.rig_tilt);
         }
 
-        true
+        if let Some(r) = &mut self.renderer {
+            let target_fov = self.pose.current_fov_deg();
+            r.pipeline_mut().set_fov(target_fov.clamp(1.0, FOV_MAX));
+        }
+
+        let after = self.pose.current_pose();
+        let dy = (after.yaw - before.yaw).abs();
+        let dp = (after.pitch - before.pitch).abs();
+        let df = after.fov_degrees.unwrap_or(0.0) - before.fov_degrees.unwrap_or(0.0);
+        dy > EPSILON || dp > EPSILON || df.abs() > FOV_EPSILON
     }
 }
 
@@ -576,19 +575,29 @@ impl ApplicationHandler for App {
                             event_loop.exit();
                         }
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            self.target_yaw += ARROW_PAN_STEP;
+                            // Preview convention: ArrowLeft increases yaw
+                            // (matches historical preview behavior).
+                            let mut t = self.pose.target_pose();
+                            t.yaw += ARROW_PAN_STEP;
+                            self.pose.set_target(t);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            self.target_yaw -= ARROW_PAN_STEP;
+                            let mut t = self.pose.target_pose();
+                            t.yaw -= ARROW_PAN_STEP;
+                            self.pose.set_target(t);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            self.target_pitch += ARROW_PAN_STEP;
+                            let mut t = self.pose.target_pose();
+                            t.pitch += ARROW_PAN_STEP;
+                            self.pose.set_target(t);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            self.target_pitch -= ARROW_PAN_STEP;
+                            let mut t = self.pose.target_pose();
+                            t.pitch -= ARROW_PAN_STEP;
+                            self.pose.set_target(t);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Space) => {
@@ -613,17 +622,15 @@ impl ApplicationHandler for App {
                             }
                         }
                         PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            let min = FOV_MIN.min(self.max_fov);
-                            self.target_fov = (self.target_fov - FOV_KEY_STEP).max(min);
+                            // Zoom in (narrow FOV). PoseControl clamps to its
+                            // configured [fov_min, fov_max] automatically.
+                            self.pose
+                                .apply_hotkey(reco_core::pose_control::HotkeyIntent::ZoomIn);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            let limit = if self.clamp_enabled {
-                                self.max_fov
-                            } else {
-                                FOV_MAX
-                            };
-                            self.target_fov = (self.target_fov + FOV_KEY_STEP).min(limit);
+                            self.pose
+                                .apply_hotkey(reco_core::pose_control::HotkeyIntent::ZoomOut);
                             self.needs_redraw = true;
                         }
                         // Calibration adjustment keys
@@ -780,11 +787,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } if self.mouse_dragging => {
                 if let Some((prev_x, prev_y)) = self.last_mouse_pos {
-                    let dx = position.x - prev_x;
-                    let dy = position.y - prev_y;
-                    // Accumulate into smoothing targets (raw deltas)
-                    self.target_yaw += dx as f32 * MOUSE_SENSITIVITY;
-                    self.target_pitch += dy as f32 * MOUSE_SENSITIVITY;
+                    let dx = (position.x - prev_x) as f32;
+                    let dy = (position.y - prev_y) as f32;
+                    self.pose.apply_drag(dx, dy);
                 } else {
                     // First move after click - switch to Poll for smooth updates
                     event_loop.set_control_flow(ControlFlow::Poll);
@@ -793,16 +798,10 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scroll = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64,
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y / 30.0,
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.y / 30.0) as f32,
                 };
-                let limit = if self.clamp_enabled {
-                    self.max_fov
-                } else {
-                    FOV_MAX
-                };
-                self.target_fov = (self.target_fov - scroll as f32 * FOV_SCROLL_STEP)
-                    .clamp(FOV_MIN.min(limit), limit);
+                self.pose.apply_wheel(scroll);
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {
@@ -846,17 +845,21 @@ impl ApplicationHandler for App {
                     u: &self.current_right.u,
                     v: &self.current_right.v,
                 };
-                // Apply rig tilt yaw-pitch coupling: adjust pitch so the
-                // view stays level on the field as yaw changes.
-                let render_pitch = self.pitch + self.rig_tilt * (1.0 - self.yaw.cos());
-                if let Err(e) = renderer.render_yuv(&left, &right, self.yaw, render_pitch, &view) {
+                // PoseControl::render_pose applies the Model 3
+                // rig_tilt yaw-pitch coupling so the horizon stays
+                // level as yaw changes. See pose_control.rs docs.
+                let render = self.pose.render_pose(self.rig_tilt);
+                let (render_yaw, render_pitch) = (render.yaw, render.pitch);
+                if let Err(e) = renderer.render_yuv(&left, &right, render_yaw, render_pitch, &view)
+                {
                     log::error!("Render failed: {e}");
                     return;
                 }
 
                 // Record: render to internal target + NV12 readback.
                 if self.recording.is_some() {
-                    match renderer.render_and_readback_nv12(&left, &right, self.yaw, render_pitch) {
+                    match renderer.render_and_readback_nv12(&left, &right, render_yaw, render_pitch)
+                    {
                         Ok(Some(nv12)) => {
                             let pts_us =
                                 (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64;
@@ -908,14 +911,13 @@ impl ApplicationHandler for App {
             return;
         }
 
-        // Keep animating while smoothing hasn't converged
-        let current_fov = self
-            .renderer
-            .as_ref()
-            .map_or(self.target_fov, |r| r.pipeline().fov());
-        let smoothing_active = (self.target_yaw - self.yaw).abs() > 0.0001
-            || (self.target_pitch - self.pitch).abs() > 0.0001
-            || (self.target_fov - current_fov).abs() > 0.01;
+        // Keep animating while PoseControl smoothing hasn't converged.
+        let target = self.pose.target_pose();
+        let current = self.pose.current_pose();
+        let smoothing_active = (target.yaw - current.yaw).abs() > 0.0001
+            || (target.pitch - current.pitch).abs() > 0.0001
+            || (target.fov_degrees.unwrap_or(0.0) - current.fov_degrees.unwrap_or(0.0)).abs()
+                > 0.01;
 
         // Execute coalesced seek: rapid key presses accumulate into
         // pending_seek; only the final target runs here (one seek
