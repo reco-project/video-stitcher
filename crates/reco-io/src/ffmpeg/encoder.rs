@@ -1070,49 +1070,55 @@ fn build_encoder_opts(
 
     match name {
         "h264_nvenc" => {
-            let (preset, cq) = match quality {
-                Quality::Fast => ("p3", "28"),
-                Quality::Balanced => ("p4", "23"),
-                Quality::High => ("p5", "19"),
+            // NVENC VBR with per-quality bitrate ceiling. Prior defaults
+            // (10M / 15M across all quality presets) artificially capped
+            // High output at ~15 Mbps even with cq=19. Scale the ceilings
+            // with quality so "high" actually delivers the visual bump.
+            let (preset, cq, bv, maxrate) = match quality {
+                Quality::Fast => ("p3", "28", "8M", "12M"),
+                Quality::Balanced => ("p4", "23", "12M", "18M"),
+                Quality::High => ("p5", "19", "20M", "30M"),
             };
             opts.set("preset", preset);
             opts.set("tune", "hq");
             opts.set("rc", "vbr");
             opts.set("cq", cq);
-            opts.set("b:v", "10M");
-            opts.set("maxrate", "15M");
+            opts.set("b:v", bv);
+            opts.set("maxrate", maxrate);
             opts.set("profile", "high");
             opts.set("spatial-aq", "1");
             opts.set("temporal-aq", "1");
         }
         "hevc_nvenc" => {
-            let (preset, cq) = match quality {
-                Quality::Fast => ("p3", "28"),
-                Quality::Balanced => ("p4", "23"),
-                Quality::High => ("p5", "19"),
+            // HEVC ~30% more efficient than H264, so ceilings scale down.
+            let (preset, cq, bv, maxrate) = match quality {
+                Quality::Fast => ("p3", "28", "6M", "10M"),
+                Quality::Balanced => ("p4", "23", "9M", "14M"),
+                Quality::High => ("p5", "19", "15M", "22M"),
             };
             opts.set("preset", preset);
             opts.set("tune", "hq");
             opts.set("rc", "vbr");
             opts.set("cq", cq);
-            opts.set("b:v", "10M");
-            opts.set("maxrate", "15M");
+            opts.set("b:v", bv);
+            opts.set("maxrate", maxrate);
             opts.set("profile", "main");
             opts.set("spatial-aq", "1");
             opts.set("temporal-aq", "1");
         }
         "av1_nvenc" => {
-            let (preset, cq) = match quality {
-                Quality::Fast => ("p3", "32"),
-                Quality::Balanced => ("p4", "27"),
-                Quality::High => ("p5", "22"),
+            // AV1 another ~20% tighter than HEVC.
+            let (preset, cq, bv, maxrate) = match quality {
+                Quality::Fast => ("p3", "32", "5M", "8M"),
+                Quality::Balanced => ("p4", "27", "7M", "11M"),
+                Quality::High => ("p5", "22", "12M", "18M"),
             };
             opts.set("preset", preset);
             opts.set("tune", "hq");
             opts.set("rc", "vbr");
             opts.set("cq", cq);
-            opts.set("b:v", "8M");
-            opts.set("maxrate", "12M");
+            opts.set("b:v", bv);
+            opts.set("maxrate", maxrate);
         }
         "h264_qsv" => {
             let gq = match quality {
