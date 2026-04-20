@@ -7,8 +7,8 @@
 
 use reco_core::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 
-use super::clustering;
 use super::util::{self, DIRECTOR_DEFAULT_FOV, MIN_PLAYER_CONFIDENCE};
+use crate::clustering;
 
 // ── Constants ────────────────────────────────────────────────────────
 

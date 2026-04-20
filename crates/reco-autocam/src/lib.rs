@@ -36,6 +36,7 @@
 
 #![forbid(unsafe_code)]
 
+pub(crate) mod clustering;
 mod directors;
 pub mod panners;
 mod roi_filter;

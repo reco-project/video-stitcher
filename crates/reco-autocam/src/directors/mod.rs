@@ -10,7 +10,6 @@
 
 mod anticipation;
 mod ball;
-pub(crate) mod clustering;
 mod deadzone;
 mod field;
 mod sweep;

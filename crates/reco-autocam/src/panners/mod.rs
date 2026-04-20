@@ -19,16 +19,17 @@
 //! BallPanner → Smoother → Anticipator → DeadZone
 //! ```
 //!
-//! Upcoming (Phase 6 of the tracker/panner migration):
-//! `field` — `FieldPanner`, blends ball with the player cluster
-//! centroid.
+//! - [`field`] — [`FieldPanner`], tracks the densest player cluster
+//!   with optional ball blending and dynamic FOV.
 
 pub mod anticipator;
 pub mod ball;
 pub mod deadzone;
+pub mod field;
 pub mod smoother;
 
 pub use anticipator::Anticipator;
 pub use ball::BallPanner;
 pub use deadzone::DeadZone;
+pub use field::FieldPanner;
 pub use smoother::Smoother;
