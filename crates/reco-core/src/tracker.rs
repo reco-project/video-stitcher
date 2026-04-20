@@ -159,6 +159,18 @@ pub struct WorldState {
 /// loop may also pre-filter for zero-allocation dispatch, but the
 /// self-filter is the safety net.
 pub trait Tracker: Send {
+    /// Pre-update hook called by the session with the [`WorldState`]
+    /// accumulated so far from earlier-running trackers. Default
+    /// implementation does nothing.
+    ///
+    /// Override when a tracker needs cross-class context each
+    /// frame — e.g. a ball tracker that applies a player-anchor
+    /// filter needs to see the current frame's player positions.
+    /// The session runs the player tracker before the ball tracker
+    /// and calls `observe_world` on the ball with a world state that
+    /// already contains [`WorldState::players`] from this frame.
+    fn observe_world(&mut self, _world: &WorldState) {}
+
     /// Incorporate the current frame's mapped detections and return
     /// the updated set of tracked entities for this tracker's class.
     ///

@@ -20,5 +20,7 @@
 
 pub mod ball;
 pub mod filters;
+pub mod player;
 
 pub use ball::BallTracker;
+pub use player::PlayerTracker;
