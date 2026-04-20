@@ -90,11 +90,14 @@ mod tests {
         assert_eq!(buf.len(), 2);
         assert_eq!(t.pending(), 0, "poll drains the queue");
 
-        matches!(buf[0], ControlIntent::Hotkey(HotkeyIntent::ZoomIn));
-        matches!(
+        assert!(matches!(
+            buf[0],
+            ControlIntent::Hotkey(HotkeyIntent::ZoomIn)
+        ));
+        assert!(matches!(
             buf[1],
             ControlIntent::Capture(crate::CaptureIntent::Snapshot)
-        );
+        ));
     }
 
     #[test]

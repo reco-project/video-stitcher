@@ -324,9 +324,14 @@ impl YuvStackPacker {
         output: OutputTileSize,
         source_format: SourceFormat,
     ) -> Result<Self, PackerError> {
-        if !output.width.is_multiple_of(4) {
+        // UV pack kernels (`pack_u` / `pack_v` / `pack_uv_from_nv12`) dispatch
+        // `uv_width / 4` workgroup-x lanes where `uv_width = width / 2`, so
+        // `width` must be divisible by 8 — not just 4. A width-%-4 check was
+        // silently corrupting chroma at widths like 4, 12, 20, ... (Y packed
+        // fine but UV dropped 2 of 6 samples per row or dispatched 0 groups).
+        if !output.width.is_multiple_of(8) {
             return Err(PackerError::InvalidDimensions(format!(
-                "output tile width must be divisible by 4 (packed 4-to-u32), got {}",
+                "output tile width must be divisible by 8 (Y 4-to-u32, UV 4-to-u32 over half-width), got {}",
                 output.width
             )));
         }

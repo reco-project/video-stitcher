@@ -555,13 +555,14 @@ impl StitchCore {
         // Detection first, so the director's `update` tick in
         // resolve_current_pose sees the latest tracked objects. Skipped
         // frames reuse last_detections so the director still has context.
-        if self.detector.is_some() && self.should_run_detection() {
+        let ran_detection = self.detector.is_some() && self.should_run_detection();
+        if ran_detection {
             let (src_w, src_h) = self.pipeline.source_info();
             let dets = self.run_yuv_detection(left, right, src_w, src_h);
             self.last_detections = self.map_detections_to_panorama(dets);
         }
 
-        let pose = self.resolve_current_pose();
+        let pose = self.resolve_current_pose(ran_detection);
         let cmd = self
             .pipeline
             .render_to_target(left, right, pose.yaw, pose.pitch)?;
@@ -628,6 +629,10 @@ impl StitchCore {
             recorder.record_yuv(left, right, src_w, src_h);
         }
 
+        // `submit_frame_yuv_at_pose` bypasses resolve_current_pose (caller
+        // provides the pose directly), but detection still runs on the
+        // schedule so directors stay populated for a later `current_pose()`
+        // peek or a regular `submit_frame_yuv` submit.
         if self.detector.is_some() && self.should_run_detection() {
             let (src_w, src_h) = self.pipeline.source_info();
             let dets = self.run_yuv_detection(left, right, src_w, src_h);
@@ -720,7 +725,11 @@ impl StitchCore {
         // detections (potentially from earlier YUV submits) but do
         // not run detection themselves.
 
-        let pose = self.resolve_current_pose();
+        // `fresh_detection = false`: BGRA submits never run detection by
+        // design (see comment above). Directors must see this frame as
+        // "reusing cached detections" even on interval ticks, otherwise
+        // hysteresis counters over-fire.
+        let pose = self.resolve_current_pose(false);
         let cmd = self
             .pipeline
             .render_to_target_bgra(left, right, pose.yaw, pose.pitch)?;
@@ -1182,7 +1191,11 @@ impl StitchCore {
     /// (OBS pan/zoom, GUI drag) can preview where the core *would*
     /// render if they submit right now.
     pub fn current_pose(&mut self) -> ViewportPosition {
-        self.resolve_current_pose()
+        // A peek does no detection work of its own, so the director
+        // sees `fresh_detection = false`. The next real submit will
+        // fire the schedule-driven detection path and pass the actual
+        // run result.
+        self.resolve_current_pose(false)
     }
 
     /// Clamp a prospective `(yaw, pitch, fov)` triple through the
@@ -1376,16 +1389,21 @@ impl StitchCore {
         }
     }
 
-    fn resolve_current_pose(&mut self) -> ViewportPosition {
+    fn resolve_current_pose(&mut self, fresh_detection: bool) -> ViewportPosition {
         // Pull raw director output (or default) and clamp through
         // coverage. Then write the resolved FOV back onto the pipeline
         // so the upcoming render uses it.
+        //
+        // `fresh_detection` is the ACTUAL run decision for this frame,
+        // not the schedule-would-fire predicate. The BGRA submit path
+        // deliberately skips detection (no BGRA-aware backend exists
+        // today) so it must pass `false` even when the interval would
+        // have fired — otherwise directors over-count hysteresis on
+        // stale cached detections.
         let timestamp_ms = self
             .session_start
             .map(|s| s.elapsed().as_secs_f64() * 1000.0)
             .unwrap_or(0.0);
-
-        let fresh_detection = self.detector.is_some() && self.should_run_detection();
 
         if let Some(director) = self.director.as_mut() {
             let ctx = DirectorContext {

@@ -355,9 +355,19 @@ impl PoseControl {
         self.target_fov_deg = self.target_fov_deg.min(self.config.fov_max_degrees);
         self.current_fov_deg = self.current_fov_deg.min(self.config.fov_max_degrees);
 
-        let clamp = |yaw, pitch, fov| -> (f32, f32) {
-            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect, 0.0);
-            // world -> user pitch (renderer applies rig_tilt).
+        // The inputs (target_*, current_*) are user-space: the renderer
+        // applies rig_tilt as a quaternion rotation of the reference
+        // frame, so for pitch the world/user conversion is yaw-weighted
+        // (full tilt at yaw=0, zero tilt at yaw=±π/2). Clamp is done in
+        // world-space against world-space coverage; round-trip preserves
+        // user-space storage.
+        let clamp = |yaw: f32, pitch: f32, fov: f32| -> (f32, f32) {
+            let world_pitch = pitch + rig_tilt * yaw.cos();
+            // safe_clamp with rig_tilt=0 keeps coverage's world-space
+            // interpretation (we handle the cos(yaw) transform ourselves
+            // because safe_clamp's built-in path uses a simpler
+            // non-yaw-weighted offset).
+            let clamped = coverage.safe_clamp(yaw, world_pitch, fov, aspect, 0.0);
             let user_pitch = clamped.pitch - rig_tilt * clamped.yaw.cos();
             (clamped.yaw, user_pitch)
         };
