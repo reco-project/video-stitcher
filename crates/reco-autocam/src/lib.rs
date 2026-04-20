@@ -448,69 +448,75 @@ pub fn setup_autocam(
             class_names.len()
         );
 
-        let director: Box<dyn reco_core::director::Director> = match tracking_mode {
-            TrackingMode::Ball => {
-                // With an ROI partitioning the pitch by camera, off-field
-                // false positives can't reach the director, so:
-                //   * the last-camera tie-breaker adds no signal and can
-                //     delay valid left<->right switches,
-                //   * the default plausibility jump threshold (0.09 rad)
-                //     and search radius (0.70 rad) are too tight — the
-                //     ball legitimately swings from one half of the pitch
-                //     to the other, and without wider gates the director
-                //     locks onto whichever side detected first and
-                //     refuses to cross back.
-                let has_roi = has_effective_roi;
-                let camera_bias = !has_roi;
-                let (max_jump, search_radius) = if has_roi {
-                    (0.35_f32, std::f32::consts::PI)
-                } else {
-                    (0.09_f32, 0.70_f32)
-                };
-                let mut d = BallDirector::new(fps)
-                    .with_class_id(ball_id)
-                    .with_camera_bias(camera_bias)
-                    .with_max_jump(max_jump)
-                    .with_search_max_radius(search_radius);
-                if detection_interval > 1 {
-                    d.set_detection_interval(detection_interval as u32);
-                }
-                log::info!(
-                    "Tracking mode: ball (camera_bias={camera_bias}, \
-                     max_jump={max_jump:.3}, search_radius={search_radius:.3})"
-                );
-                Box::new(d)
-            }
-            TrackingMode::Field => {
-                let d = FieldDirector::new()
-                    .with_ball_class_id(ball_id)
-                    .with_player_class_id(person_id);
-                log::info!("Tracking mode: field (ball + players)");
-                Box::new(d)
-            }
-            TrackingMode::Sweep => unreachable!("handled above"),
-        };
-
+        // Lookahead is shared between both paths: panner-side (Ball)
+        // uses it inside the Smoother decorator; director-side (Field)
+        // uses it via SmoothedDirector.
         let lookahead = if lead_time > 0.0 && !use_zero_copy {
             let frames = (fps as f64 * lead_time).round() as usize;
             if frames > 0 {
                 session.set_lookahead(frames);
-                log::info!("Director lead time: {lead_time:.1}s ({frames} frames)");
+                log::info!("Lookahead: {lead_time:.1}s ({frames} frames)");
             }
             frames
         } else {
             0
         };
 
-        // Composition order: inner -> smoothing -> anticipation -> dead-zone.
-        // Smoother cleans the raw director output; anticipation projects
-        // forward along the smoothed velocity so the camera arrives at
-        // the ball instead of trailing it; the dead-zone runs last and
-        // hides sub-pixel residual jitter when the ball is at rest.
-        let smoothed = SmoothedDirector::new(director, fps, lookahead);
-        let anticipated = AnticipatingDirector::new(Box::new(smoothed));
-        let deadzone = DeadZoneDirector::new(Box::new(anticipated));
-        session.set_director(Box::new(deadzone));
+        match tracking_mode {
+            TrackingMode::Ball => {
+                // New tracker/panner path. The old BallDirector's jobs
+                // (detection selection, plausibility, search-state
+                // machine, cross-cam handoff) now live in BallTracker;
+                // camera motion decisions live in BallPanner wrapped
+                // by Smoother → Anticipator → DeadZone decorators.
+                //
+                // ROI presence tunes the tracker's max-jump gate the
+                // same way it used to tune BallDirector: wider gates
+                // are safe when ROI filtering has already removed
+                // off-pitch false positives.
+                let has_roi = has_effective_roi;
+                let max_jump = if has_roi {
+                    0.35_f32
+                } else {
+                    crate::trackers::ball::DEFAULT_MAX_JUMP_RAD
+                };
+                let tracker =
+                    crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(max_jump);
+                log::info!(
+                    "Tracking mode: ball (tracker/panner path, \
+                     max_jump={max_jump:.3}, roi={has_roi})"
+                );
+
+                // Panner chain: BallPanner → Smoother → Anticipator → DeadZone.
+                let ball_panner = crate::panners::BallPanner::new();
+                let smoothed = crate::panners::Smoother::new(Box::new(ball_panner), fps, lookahead);
+                let anticipated = crate::panners::Anticipator::new(Box::new(smoothed));
+                let deadzone = crate::panners::DeadZone::new(Box::new(anticipated));
+
+                session.set_ball_tracker(Box::new(tracker));
+                session.set_panner(Box::new(deadzone));
+            }
+            TrackingMode::Field | TrackingMode::Sweep => {
+                // Legacy director path. Stays until Phase 6 (FieldPanner)
+                // + Phase 7 (migration + delete) of the
+                // tracker/panner refactor complete.
+                let director: Box<dyn reco_core::director::Director> = match tracking_mode {
+                    TrackingMode::Field => {
+                        let d = FieldDirector::new()
+                            .with_ball_class_id(ball_id)
+                            .with_player_class_id(person_id);
+                        log::info!("Tracking mode: field (legacy director path)");
+                        Box::new(d)
+                    }
+                    TrackingMode::Sweep => unreachable!("handled above"),
+                    TrackingMode::Ball => unreachable!("handled above"),
+                };
+                let smoothed = SmoothedDirector::new(director, fps, lookahead);
+                let anticipated = AnticipatingDirector::new(Box::new(smoothed));
+                let deadzone = DeadZoneDirector::new(Box::new(anticipated));
+                session.set_director(Box::new(deadzone));
+            }
+        }
     }
 
     Ok(detection_active)
