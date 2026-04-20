@@ -1,9 +1,9 @@
 //! Adaptive dead-zone decorator for [`Panner`].
 //!
-//! Port of [`crate::directors::DeadZoneDirector`] to the [`Panner`]
-//! contract. The math (EMA-tracked angular velocity, radius scales
-//! inversely with velocity) is identical; only the wrapping
-//! interface changed.
+//! EMA-tracked angular velocity drives an inverse-velocity dead-zone
+//! radius: the camera locks while idle and unlocks the instant the
+//! inner panner starts moving at `velocity_threshold_rad_per_s` or
+//! more.
 //!
 //! The dead-zone suppresses sub-pixel oscillation on idle frames
 //! without affecting intentional pans: the radius shrinks to zero

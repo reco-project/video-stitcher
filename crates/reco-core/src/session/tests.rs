@@ -12,9 +12,11 @@ use std::sync::{Arc, Mutex};
 use super::*;
 use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
 use crate::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
-use crate::director::{Director, DirectorContext, ViewportPosition};
+use crate::director::{MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, OutputFrame};
+use crate::panner::{PanContext, Panner};
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
+use crate::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::viewport::ViewportConfig;
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -135,41 +137,62 @@ impl UnifiedDetector for MockDetector {
     }
 }
 
-// ─── MockDirector ──────────────────────────────────────────────────────
+// ─── MockTracker / MockPanner ──────────────────────────────────────────
 
-/// Mock director that records received contexts and returns a fixed position.
-struct MockDirector {
-    position: ViewportPosition,
-    update_log: Arc<Mutex<Vec<DirectorSnapshot>>>,
+/// Mock tracker that records how many detections it received each
+/// frame and returns a single "ball" entity.
+struct MockTracker {
+    log: Arc<Mutex<Vec<TrackerSnapshot>>>,
+    class_id: u16,
 }
 
-/// Snapshot of what the director received in a single `update()` call.
+/// Snapshot of what a tracker saw on a single `update()` call.
 #[derive(Debug)]
-struct DirectorSnapshot {
+struct TrackerSnapshot {
     frame_index: u64,
     detection_count: usize,
-    fresh_detection: bool,
 }
 
-impl MockDirector {
-    fn new(position: ViewportPosition, log: Arc<Mutex<Vec<DirectorSnapshot>>>) -> Self {
-        Self {
-            position,
-            update_log: log,
-        }
+impl MockTracker {
+    fn new(class_id: u16, log: Arc<Mutex<Vec<TrackerSnapshot>>>) -> Self {
+        Self { class_id, log }
     }
 }
 
-impl Director for MockDirector {
-    fn update(&mut self, ctx: &DirectorContext<'_>) {
-        self.update_log.lock().unwrap().push(DirectorSnapshot {
-            frame_index: ctx.frame_index,
-            detection_count: ctx.detections.len(),
-            fresh_detection: ctx.fresh_detection,
+impl Tracker for MockTracker {
+    fn update(&mut self, detections: &[MappedDetection], _timestamp_ms: f64) -> Vec<TrackedEntity> {
+        // Session bumps frame_count after dispatch, so `log.len()` is
+        // the per-call frame_index we see.
+        let frame_index = self.log.lock().unwrap().len() as u64;
+        self.log.lock().unwrap().push(TrackerSnapshot {
+            frame_index,
+            detection_count: detections.len(),
         });
+        vec![TrackedEntity {
+            id: 0,
+            class_id: self.class_id,
+            yaw: 0.0,
+            pitch: 0.0,
+            velocity: None,
+            confidence: 1.0,
+            state: TrackState::Tracking,
+            age_frames: 1,
+            origin: CameraId::Left,
+        }]
     }
 
-    fn position(&self) -> ViewportPosition {
+    fn class_id(&self) -> u16 {
+        self.class_id
+    }
+}
+
+/// Mock panner that returns a fixed position regardless of the world.
+struct MockPanner {
+    position: ViewportPosition,
+}
+
+impl Panner for MockPanner {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
         self.position
     }
 }
@@ -201,15 +224,13 @@ impl Encoder for MockEncoder {
     }
 }
 
-// ─── NaN Director ──────────────────────────────────────────────────────
+// ─── NaN Panner ────────────────────────────────────────────────────────
 
-/// Director that returns NaN yaw/pitch to test coverage clamping resilience.
-struct NanDirector;
+/// Panner that returns NaN yaw/pitch to test coverage clamping resilience.
+struct NanPanner;
 
-impl Director for NanDirector {
-    fn update(&mut self, _ctx: &DirectorContext<'_>) {}
-
-    fn position(&self) -> ViewportPosition {
+impl Panner for NanPanner {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
         ViewportPosition {
             yaw: f32::NAN,
             pitch: f32::NAN,
@@ -221,10 +242,11 @@ impl Director for NanDirector {
 // ─── Tests ─────────────────────────────────────────────────────────────
 
 /// Build a session using the builder pattern with test defaults.
+/// Trackers and panners are attached post-build (they have their own
+/// setters and aren't part of the builder API).
 fn build_test_session(
     encoder: Option<Box<dyn Encoder + Send>>,
     detector: Option<Box<dyn UnifiedDetector>>,
-    director: Option<Box<dyn Director>>,
     detection_interval: u64,
 ) -> Result<StitchSession, SessionError> {
     let mut builder = StitchSession::builder()
@@ -246,9 +268,6 @@ fn build_test_session(
     if let Some(det) = detector {
         builder = builder.detector(det);
     }
-    if let Some(dir) = director {
-        builder = builder.director(dir);
-    }
 
     builder.build()
 }
@@ -259,8 +278,7 @@ fn basic_frame_loop() {
     let submitted = Arc::new(AtomicU64::new(0));
     let encoder = MockEncoder::new(Arc::clone(&submitted));
 
-    let mut session =
-        build_test_session(Some(Box::new(encoder)), None, None, 1).expect("session build");
+    let mut session = build_test_session(Some(Box::new(encoder)), None, 1).expect("session build");
 
     let mut source = MockSource::new(10);
     let interrupted = AtomicBool::new(false);
@@ -284,7 +302,7 @@ fn basic_frame_loop() {
 
 #[test]
 #[ignore] // requires GPU
-fn director_receives_detections() {
+fn tracker_receives_detections() {
     let call_count = Arc::new(AtomicU64::new(0));
     let canned = vec![
         Detection {
@@ -308,20 +326,18 @@ fn director_receives_detections() {
     ];
 
     let detector = MockDetector::new(canned, Arc::clone(&call_count));
-
-    let director_log = Arc::new(Mutex::new(Vec::new()));
-    let director = MockDirector::new(ViewportPosition::default(), Arc::clone(&director_log));
+    let tracker_log = Arc::new(Mutex::new(Vec::new()));
+    let tracker = MockTracker::new(0, Arc::clone(&tracker_log));
 
     let submitted = Arc::new(AtomicU64::new(0));
     let encoder = MockEncoder::new(Arc::clone(&submitted));
 
-    let mut session = build_test_session(
-        Some(Box::new(encoder)),
-        Some(Box::new(detector)),
-        Some(Box::new(director)),
-        1,
-    )
-    .expect("session build");
+    let mut session = build_test_session(Some(Box::new(encoder)), Some(Box::new(detector)), 1)
+        .expect("session build");
+    session.set_ball_tracker(Box::new(tracker));
+    session.set_panner(Box::new(MockPanner {
+        position: ViewportPosition::default(),
+    }));
 
     let mut source = MockSource::new(3);
     let interrupted = AtomicBool::new(false);
@@ -334,22 +350,18 @@ fn director_receives_detections() {
 
     assert_eq!(processed, 3);
 
-    let log = director_log.lock().unwrap();
-    assert_eq!(log.len(), 3, "director should be updated once per frame");
+    let log = tracker_log.lock().unwrap();
+    assert_eq!(log.len(), 3, "tracker should be updated once per frame");
 
     // The detector returns 2 detections per detect() call, and the session
     // calls detect() twice per frame (once for left, once for right camera).
-    // So each frame produces 4 mapped detections.
+    // So each frame produces 4 mapped detections the tracker observes.
     for (i, snapshot) in log.iter().enumerate() {
         assert_eq!(snapshot.frame_index, i as u64);
         assert!(
             snapshot.detection_count > 0,
-            "frame {i}: director should receive non-empty detections, got {}",
+            "frame {i}: tracker should receive non-empty detections, got {}",
             snapshot.detection_count,
-        );
-        assert!(
-            snapshot.fresh_detection,
-            "frame {i}: detection_interval=1 so every frame should be fresh"
         );
     }
 }
@@ -373,9 +385,8 @@ fn detection_interval_respected() {
     let submitted = Arc::new(AtomicU64::new(0));
     let encoder = MockEncoder::new(Arc::clone(&submitted));
 
-    let mut session =
-        build_test_session(Some(Box::new(encoder)), Some(Box::new(detector)), None, 3)
-            .expect("session build");
+    let mut session = build_test_session(Some(Box::new(encoder)), Some(Box::new(detector)), 3)
+        .expect("session build");
 
     let mut source = MockSource::new(10);
     let interrupted = AtomicBool::new(false);
@@ -401,17 +412,12 @@ fn detection_interval_respected() {
 
 #[test]
 #[ignore] // requires GPU
-fn nan_director_does_not_crash() {
+fn nan_panner_does_not_crash() {
     let submitted = Arc::new(AtomicU64::new(0));
     let encoder = MockEncoder::new(Arc::clone(&submitted));
 
-    let mut session = build_test_session(
-        Some(Box::new(encoder)),
-        None,
-        Some(Box::new(NanDirector)),
-        1,
-    )
-    .expect("session build");
+    let mut session = build_test_session(Some(Box::new(encoder)), None, 1).expect("session build");
+    session.set_panner(Box::new(NanPanner));
 
     let mut source = MockSource::new(5);
     let interrupted = AtomicBool::new(false);
@@ -419,7 +425,7 @@ fn nan_director_does_not_crash() {
     // This should not panic. Coverage clamping handles NaN gracefully.
     let processed = session
         .run(&mut source, u64::MAX, &interrupted, None)
-        .expect("run should succeed even with NaN director output");
+        .expect("run should succeed even with NaN panner output");
 
     session.finish().expect("finish");
 

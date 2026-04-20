@@ -1,7 +1,7 @@
 //! Field-aware panner following the densest player cluster,
 //! optionally blending the ball position.
 //!
-//! Port of [`FieldDirector`](crate::directors::FieldDirector) to the
+//! Port of `FieldDirector` (predecessor) to the
 //! [`Panner`] contract: identical clustering + EMA + edge-push + FOV
 //! math, but reading from a [`WorldState`] populated by the
 //! [`PlayerTracker`](crate::trackers::PlayerTracker) and
@@ -12,18 +12,16 @@
 //!
 //! 1. Take the current-frame tracked players from `world.players`.
 //!    The tracker already enforces class filtering and stable IDs;
-//!    a light spatial merge (within [`DEDUP_RADIUS`]) still runs here
-//!    to collapse near-duplicate tracklets that seam-overlapping
-//!    cameras can spawn on the very first detection frame.
+//!    entities in [`TrackState::Lost`] are dropped before clustering.
 //! 2. DBSCAN on (yaw, pitch) in panorama space, keeping the largest
 //!    cluster. Outliers (goalkeeper, substitutes) fall to the -1
 //!    "noise" label.
-//! 3. Trim to the closest [`TRIM_FRACTION`] members to the rough
-//!    centroid so a few loose wingers do not drag the centroid away
-//!    from the action.
+//! 3. Trim to the closest half of members to the rough centroid so
+//!    a few loose wingers do not drag the centroid away from the
+//!    action.
 //! 4. Confidence-weighted centroid + EMA smoothing.
-//! 5. Edge-push (yaw *= 1 + [`EDGE_PUSH`]) exaggerates side-of-pitch
-//!    motion so the camera leads into the direction of play.
+//! 5. Edge-push (yaw *= 1.15) exaggerates side-of-pitch motion so
+//!    the camera leads into the direction of play.
 //! 6. Optional ball blend: weighted linear combination with
 //!    `world.ball.yaw/pitch` when both are available.
 //! 7. Dynamic FOV from cluster spread, pitch (distance proxy), and
@@ -130,7 +128,7 @@ pub struct FieldPanner {
 
 impl FieldPanner {
     /// Build a field panner with defaults (identical envelope to
-    /// [`FieldDirector`](crate::directors::FieldDirector)).
+    /// `FieldDirector` (predecessor)).
     pub fn new() -> Self {
         Self {
             yaw: 0.0,
@@ -192,9 +190,9 @@ impl FieldPanner {
             .collect()
     }
 
-    /// Run DBSCAN, keep the largest cluster, trim to closest
-    /// [`TRIM_FRACTION`]. Unchanged from
-    /// [`FieldDirector`](crate::directors::FieldDirector) — same
+    /// Run DBSCAN, keep the largest cluster, trim to the closest
+    /// half to the rough centroid. Unchanged from
+    /// `FieldDirector` (predecessor) — same
     /// inputs produce the same output.
     fn cluster_and_trim(&self, points: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
         if points.len() < self.min_players {

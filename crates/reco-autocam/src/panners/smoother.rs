@@ -1,11 +1,6 @@
 //! Forward/backward One Euro trajectory smoother wrapped as a
 //! [`Panner`] decorator.
 //!
-//! Wraps an inner [`Panner`] and applies the same bidirectional One
-//! Euro filter that `SmoothedDirector` used on the director side —
-//! the math is delegated to [`crate::smoother::TrajectorySmoother`]
-//! which is shared between both paths.
-//!
 //! Two smoothing modes are selected by the `lookahead_frames`
 //! parameter:
 //! - `lookahead_frames <= 1`: persistent causal (forward-only) One
@@ -18,6 +13,10 @@
 //! The causal filter always runs so its state stays warm; when the
 //! buffer is full, the bidirectional result replaces it for the
 //! frame we publish.
+//!
+//! Reference: Casiez, Roussel, Vogel. "1 Euro Filter: A Simple
+//! Speed-based Low-pass Filter for Noisy Input in Interactive
+//! Systems." CHI 2012.
 
 use std::collections::VecDeque;
 
@@ -25,13 +24,12 @@ use reco_core::director::ViewportPosition;
 use reco_core::panner::{PanContext, Panner};
 use reco_core::tracker::WorldState;
 
-use crate::directors::util::DIRECTOR_DEFAULT_FOV;
-use crate::smoother::TrajectorySmoother;
+/// Fallback FOV (degrees) when an inner panner publishes
+/// `fov_degrees = None`. The pipeline defaults to 75°; tracking FOV
+/// is intentionally narrower for a tighter view of the action.
+const FALLBACK_FOV: f32 = 55.0;
 
-/// One-axis One Euro filter state (copy of the private helper from
-/// `smoother.rs`; the old module doesn't re-export it so we
-/// duplicate the 15-line struct to avoid a cross-module refactor
-/// that Phase 7 will collapse away anyway).
+/// Single-axis One Euro filter state.
 struct OneEuroAxis {
     x_prev: f32,
     dx_prev: f32,
@@ -68,6 +66,89 @@ impl OneEuroAxis {
         self.x_prev = x_hat;
         self.dx_prev = dx_hat;
         x_hat
+    }
+}
+
+/// Bidirectional One Euro filter for trajectory smoothing.
+///
+/// Given a window of raw `ViewportPosition`s, applies a forward One Euro
+/// pass, then a backward One Euro pass, and returns the smoothed position
+/// for the oldest frame. The bidirectional pass approximately cancels
+/// phase lag: forward introduces lag, backward introduces equal lag in
+/// the opposite direction. The result is a zero-phase-lag smoothed
+/// signal with squared amplitude response.
+struct TrajectorySmoother {
+    min_cutoff: f32,
+    beta: f32,
+    d_cutoff: f32,
+    fps: f32,
+}
+
+impl TrajectorySmoother {
+    fn new(fps: f32) -> Self {
+        Self {
+            min_cutoff: 0.5,
+            beta: 0.007,
+            d_cutoff: 1.0,
+            fps: fps.clamp(1.0, 1000.0),
+        }
+    }
+
+    /// Smooth a window of positions and return the position for the
+    /// oldest frame (index 0). Input must be ordered oldest-to-newest.
+    fn smooth(&self, positions: &[ViewportPosition]) -> ViewportPosition {
+        if positions.is_empty() {
+            return ViewportPosition::default();
+        }
+        if positions.len() == 1 {
+            return positions[0];
+        }
+
+        let dt = 1.0 / self.fps;
+        let n = positions.len();
+
+        let mut fwd_yaw = OneEuroAxis::new();
+        let mut fwd_pitch = OneEuroAxis::new();
+        let mut fwd_fov = OneEuroAxis::new();
+        let mut forward: Vec<(f32, f32, f32)> = Vec::with_capacity(n);
+        for pos in positions {
+            let y = fwd_yaw.filter(pos.yaw, dt, self.min_cutoff, self.beta, self.d_cutoff);
+            let p = fwd_pitch.filter(pos.pitch, dt, self.min_cutoff, self.beta, self.d_cutoff);
+            let f = fwd_fov.filter(
+                pos.fov_degrees.unwrap_or(FALLBACK_FOV),
+                dt,
+                self.min_cutoff,
+                self.beta,
+                self.d_cutoff,
+            );
+            forward.push((y, p, f));
+        }
+
+        let mut bwd_yaw = OneEuroAxis::new();
+        let mut bwd_pitch = OneEuroAxis::new();
+        let mut bwd_fov = OneEuroAxis::new();
+        let mut backward: Vec<(f32, f32, f32)> = Vec::with_capacity(n);
+        for pos in positions.iter().rev() {
+            let y = bwd_yaw.filter(pos.yaw, dt, self.min_cutoff, self.beta, self.d_cutoff);
+            let p = bwd_pitch.filter(pos.pitch, dt, self.min_cutoff, self.beta, self.d_cutoff);
+            let f = bwd_fov.filter(
+                pos.fov_degrees.unwrap_or(FALLBACK_FOV),
+                dt,
+                self.min_cutoff,
+                self.beta,
+                self.d_cutoff,
+            );
+            backward.push((y, p, f));
+        }
+        backward.reverse();
+
+        let (fy, fp, ff) = forward[0];
+        let (by, bp, bf) = backward[0];
+        ViewportPosition {
+            yaw: (fy + by) * 0.5,
+            pitch: (fp + bp) * 0.5,
+            fov_degrees: Some((ff + bf) * 0.5),
+        }
     }
 }
 
@@ -138,7 +219,7 @@ impl Panner for Smoother {
             self.d_cutoff,
         );
         let cf = self.causal_fov.filter(
-            raw.fov_degrees.unwrap_or(DIRECTOR_DEFAULT_FOV),
+            raw.fov_degrees.unwrap_or(FALLBACK_FOV),
             self.dt,
             self.min_cutoff,
             self.beta,

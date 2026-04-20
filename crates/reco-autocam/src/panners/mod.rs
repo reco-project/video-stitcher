@@ -21,15 +21,19 @@
 //!
 //! - [`field`] — [`FieldPanner`], tracks the densest player cluster
 //!   with optional ball blending and dynamic FOV.
+//! - [`sweep`] — [`SweepPanner`], deterministic sinusoidal debug pan
+//!   that ignores the world state.
 
 pub mod anticipator;
 pub mod ball;
 pub mod deadzone;
 pub mod field;
 pub mod smoother;
+pub mod sweep;
 
 pub use anticipator::Anticipator;
 pub use ball::BallPanner;
 pub use deadzone::DeadZone;
 pub use field::FieldPanner;
 pub use smoother::Smoother;
+pub use sweep::SweepPanner;

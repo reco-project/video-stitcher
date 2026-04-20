@@ -1,17 +1,24 @@
 //! Automatic camera control for reco.
 //!
-//! The intelligence layer: directors decide where the virtual camera
-//! points, detectors feed them what's on screen. Detector backends
-//! live in [`reco_detect`]; they are re-exported at crate root for
-//! convenience but not owned here.
+//! The intelligence layer. [`trackers`] turn noisy per-frame detections
+//! into a clean [`WorldState`](reco_core::tracker::WorldState) with
+//! stable identities and lifecycle flags; [`panners`] turn that world
+//! state into a virtual-camera [`ViewportPosition`](reco_core::director::ViewportPosition).
+//! Detector backends live in [`reco_detect`] and are re-exported at
+//! crate root for convenience but are not owned here.
 //!
 //! # What this crate owns
 //!
-//! - [`BallDirector`] - single-ball follower with plausibility rejection
-//! - [`FieldDirector`] - ball + player DBSCAN clustering, broadcast style
-//! - [`SweepDirector`] - constrained pan sweep when no trackable subject exists
-//! - [`SmoothedDirector`] - One Euro decorator around any inner director
-//! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any `UnifiedDetector`
+//! - [`trackers::BallTracker`] / [`trackers::PlayerTracker`] - per-class
+//!   trackers implementing [`Tracker`](reco_core::tracker::Tracker).
+//! - [`panners::BallPanner`] / [`panners::FieldPanner`] /
+//!   [`panners::SweepPanner`] - camera-motion policies implementing
+//!   [`Panner`](reco_core::panner::Panner).
+//! - [`panners::Smoother`] / [`panners::Anticipator`] /
+//!   [`panners::DeadZone`] - composable panner decorators.
+//! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
+//!   `UnifiedDetector`, pre-filtering detections before they reach a
+//!   tracker.
 //! - [`TrackingMode`] + [`AutocamConfig`] + [`setup_autocam`] -
 //!   orchestration glue a consumer calls once per session.
 //!
@@ -26,22 +33,23 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! use reco_autocam::{CpuYoloDetector, BallDirector, SmoothedDirector};
+//! use reco_autocam::{AutocamConfig, TrackingMode};
 //!
-//! let detector = CpuYoloDetector::from_file("ball_v0.onnx")?;
-//! let director = BallDirector::new(30.0); // fps
-//! let smoothed = SmoothedDirector::new(Box::new(director), 30.0, 15);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let mut session: reco_core::session::StitchSession = todo!();
+//! let config = AutocamConfig::new("ball_v0.onnx")
+//!     .with_tracking_mode(TrackingMode::Ball);
+//! reco_autocam::setup_autocam_from_config(&mut session, &config)?;
+//! # Ok(()) }
 //! ```
 
 #![forbid(unsafe_code)]
 
 pub(crate) mod clustering;
-mod directors;
 pub mod panners;
 mod roi_filter;
-mod smoother;
 pub mod trackers;
+mod tracking_mode;
 
 // Re-export detector types from reco-detect for backwards compatibility.
 // Ort-backed detectors are only available when the `ort` feature is
@@ -58,15 +66,11 @@ pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
-pub use directors::{
-    AnticipatingDirector, BallDirector, DeadZoneDirector, FieldDirector, SweepDirector,
-    TrackingMode,
-};
 pub use roi_filter::RoiFilteredDetector;
 // `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
 // deleted: the unified `RoiFilteredDetector` covers every residency
 // because it wraps `Box<dyn UnifiedDetector>`.
-pub use smoother::{SmoothedDirector, TrajectorySmoother};
+pub use tracking_mode::TrackingMode;
 
 // Path is only used in the ort-backed class-name lookup
 // (reco_detect::create_ort_session) and the CpuYoloDetector
@@ -80,9 +84,9 @@ use reco_core::session::StitchSession;
 
 /// Set up automatic camera control on a [`StitchSession`].
 ///
-/// Configures the appropriate detector (CPU, GPU/CUDA, or Metal) based on
-/// the current platform and zero-copy mode, then attaches a [`BallDirector`]
-/// for ball-following camera automation.
+/// Configures the appropriate detector (CPU, GPU/CUDA, or Metal) based
+/// on the current platform and zero-copy mode, then attaches the
+/// tracker(s) and panner chain selected by [`TrackingMode`].
 ///
 /// When `field_roi` is provided, the detector is wrapped in an ROI filter
 /// that discards detections outside the playing field polygon before they
@@ -427,11 +431,11 @@ pub fn setup_autocam(
         );
     }
 
-    // Sweep director doesn't need detection - attach it regardless.
+    // Sweep panner doesn't need detection - attach it regardless.
     if tracking_mode == TrackingMode::Sweep {
         log::info!("Tracking mode: sweep (debug, no AI)");
-        let director = Box::new(directors::SweepDirector::new(0.8, 10.0));
-        session.set_director(director);
+        let panner = Box::new(crate::panners::SweepPanner::new(0.8, 10.0));
+        session.set_panner(panner);
         return Ok(true);
     }
 
@@ -449,9 +453,11 @@ pub fn setup_autocam(
             class_names.len()
         );
 
-        // Lookahead is shared between both paths: panner-side (Ball)
-        // uses it inside the Smoother decorator; director-side (Field)
-        // uses it via SmoothedDirector.
+        // Lookahead feeds the Smoother decorator's one-euro bidirectional
+        // filter with enough forward samples to attenuate sudden jumps
+        // without introducing visible lag. Zero-copy sources produce
+        // frames synchronously and cannot buffer, so lookahead is
+        // disabled there.
         let lookahead = if lead_time > 0.0 && !use_zero_copy {
             let frames = (fps as f64 * lead_time).round() as usize;
             if frames > 0 {
@@ -465,16 +471,11 @@ pub fn setup_autocam(
 
         match tracking_mode {
             TrackingMode::Ball => {
-                // New tracker/panner path. The old BallDirector's jobs
-                // (detection selection, plausibility, search-state
-                // machine, cross-cam handoff) now live in BallTracker;
-                // camera motion decisions live in BallPanner wrapped
-                // by Smoother → Anticipator → DeadZone decorators.
-                //
-                // ROI presence tunes the tracker's max-jump gate the
-                // same way it used to tune BallDirector: wider gates
-                // are safe when ROI filtering has already removed
-                // off-pitch false positives.
+                // Ball tracker picks one detection per frame with
+                // plausibility + cross-cam handoff. ROI presence widens
+                // the max-jump gate since the ROI has already removed
+                // off-pitch false positives that the gate would
+                // otherwise guard against.
                 let has_roi = has_effective_roi;
                 let max_jump = if has_roi {
                     0.35_f32
@@ -484,11 +485,11 @@ pub fn setup_autocam(
                 let tracker =
                     crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(max_jump);
                 log::info!(
-                    "Tracking mode: ball (tracker/panner path, \
+                    "Tracking mode: ball (BallTracker + BallPanner, \
                      max_jump={max_jump:.3}, roi={has_roi})"
                 );
 
-                // Panner chain: BallPanner → Smoother → Anticipator → DeadZone.
+                // BallPanner → Smoother → Anticipator → DeadZone.
                 let ball_panner = crate::panners::BallPanner::new();
                 let smoothed = crate::panners::Smoother::new(Box::new(ball_panner), fps, lookahead);
                 let anticipated = crate::panners::Anticipator::new(Box::new(smoothed));
@@ -497,26 +498,33 @@ pub fn setup_autocam(
                 session.set_ball_tracker(Box::new(tracker));
                 session.set_panner(Box::new(deadzone));
             }
-            TrackingMode::Field | TrackingMode::Sweep => {
-                // Legacy director path. Stays until Phase 6 (FieldPanner)
-                // + Phase 7 (migration + delete) of the
-                // tracker/panner refactor complete.
-                let director: Box<dyn reco_core::director::Director> = match tracking_mode {
-                    TrackingMode::Field => {
-                        let d = FieldDirector::new()
-                            .with_ball_class_id(ball_id)
-                            .with_player_class_id(person_id);
-                        log::info!("Tracking mode: field (legacy director path)");
-                        Box::new(d)
-                    }
-                    TrackingMode::Sweep => unreachable!("handled above"),
-                    TrackingMode::Ball => unreachable!("handled above"),
-                };
-                let smoothed = SmoothedDirector::new(director, fps, lookahead);
-                let anticipated = AnticipatingDirector::new(Box::new(smoothed));
-                let deadzone = DeadZoneDirector::new(Box::new(anticipated));
-                session.set_director(Box::new(deadzone));
+            TrackingMode::Field => {
+                // Player tracker populates world.players; FieldPanner
+                // clusters them and emits the centroid. The same
+                // Smoother → Anticipator → DeadZone chain the Ball mode
+                // uses wraps the field panner — identical trajectory
+                // smoothing math, different inner camera-motion policy.
+                //
+                // Class IDs come from the model label list so the same
+                // binary works with COCO-indexed (person=0) or custom
+                // (person=<whatever>) models.
+                let _ = ball_id; // BallTracker is not wired for Field by default (ball_weight=0).
+                let player_tracker = crate::trackers::PlayerTracker::new(person_id);
+                log::info!(
+                    "Tracking mode: field (PlayerTracker + FieldPanner, \
+                     player_class={person_id}, ball_class={ball_id})"
+                );
+
+                let field_panner = crate::panners::FieldPanner::new();
+                let smoothed =
+                    crate::panners::Smoother::new(Box::new(field_panner), fps, lookahead);
+                let anticipated = crate::panners::Anticipator::new(Box::new(smoothed));
+                let deadzone = crate::panners::DeadZone::new(Box::new(anticipated));
+
+                session.set_player_tracker(Box::new(player_tracker));
+                session.set_panner(Box::new(deadzone));
             }
+            TrackingMode::Sweep => unreachable!("handled before detection block"),
         }
     }
 

@@ -1,31 +1,18 @@
-//! Director trait for controlling virtual camera panning.
+//! Value types shared by every pose-resolution path.
 //!
-//! A director determines where the virtual camera looks for each frame.
-//! This is the primary extension point for AI-driven auto-panning
-//! (e.g. ball tracking) and scripted camera movements.
+//! [`ViewportPosition`] is the camera's yaw / pitch / FOV triple, the
+//! output of any [`Panner`](crate::panner::Panner) and the input the
+//! renderer crops the panorama with. [`MappedDetection`] is a raw
+//! detection enriched with panorama-space coordinates; trackers
+//! consume it and emit [`TrackedEntity`](crate::tracker::TrackedEntity)
+//! values, and external detection sinks can observe it directly via
+//! [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink)
+//! without going through a tracker.
 //!
-//! ## Data Flow
-//!
-//! ```text
-//! Detector (raw detections)
-//!   -> coordinate mapping (camera pixels -> panorama yaw/pitch)
-//!     -> Director (panning decisions)
-//!     -> External consumers (coaching, stats, VAR)
-//! ```
-//!
-//! Directors receive [`MappedDetection`]s (detections enriched with panorama
-//! coordinates) via [`DirectorContext`], and output a [`ViewportPosition`]
-//! that controls where the virtual camera pans. Tracking (persistent object
-//! identity) is not part of the pipeline - directors that need it can use
-//! tracking utilities internally.
-//!
-//! ## External Consumers
-//!
-//! Detection data isn't just for the director. The same [`MappedDetection`]s
-//! are available to external consumers via
-//! [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink).
-//! This enables building coaching assistants, VAR systems, and stats
-//! pipelines on top of the detection data without modifying the director.
+//! The module is named `director` for historical reasons — the old
+//! `Director` trait lived here before the tracker/panner split. The
+//! trait is gone; only these value types remain. Rename deferred to
+//! avoid a repo-wide import churn.
 
 use crate::detector::CameraId;
 
@@ -66,13 +53,12 @@ impl Default for ViewportPosition {
 
 /// A detection mapped to panorama coordinates.
 ///
-/// This is the primary data type that flows to both the [`Director`] and
-/// external consumers. It enriches the raw camera-space detection with
-/// panorama-space coordinates (yaw/pitch, computed via
-/// [`camera_to_panorama`](crate::projection::camera_to_panorama)).
-///
-/// External consumers (coaching, VAR, stats) receive these via the
-/// detection callback on [`StitchSession`](crate::session::StitchSession).
+/// Consumed by every [`Tracker`](crate::tracker::Tracker) each frame
+/// and by external detection sinks (coaching, VAR, stats) via
+/// [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink).
+/// Wraps a raw camera-space detection with a panorama-space
+/// [`ViewportPosition`] computed via
+/// [`camera_to_panorama`](crate::projection::camera_to_panorama).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MappedDetection {
     /// Which camera this detection came from.
@@ -97,70 +83,4 @@ pub struct MappedDetection {
     /// Position in panorama space (yaw/pitch).
     /// `None` if the detection couldn't be mapped (e.g. outside camera FOV).
     pub position: Option<ViewportPosition>,
-}
-
-/// Context passed to [`Director::update`] each frame.
-///
-/// Provides everything a director needs to make panning decisions:
-/// tracked objects with panorama coordinates and timing information.
-/// Viewport constraining (coverage clamping) is handled by the session,
-/// not the director.
-#[derive(Debug)]
-pub struct DirectorContext<'a> {
-    /// Current frame index (0-based).
-    pub frame_index: u64,
-
-    /// Elapsed time since the start of processing, in milliseconds.
-    pub timestamp_ms: f64,
-
-    /// Detections mapped to panorama coordinates for this frame.
-    /// Empty if no detector is configured or detection was skipped.
-    pub detections: &'a [MappedDetection],
-
-    /// Whether this frame ran fresh detection (true) or is reusing
-    /// cached detections from a previous frame (false). Directors
-    /// should only count detection confirmations on fresh frames.
-    pub fresh_detection: bool,
-}
-
-/// Trait for virtual camera direction control.
-///
-/// Implement this trait to create custom panning behaviors:
-/// - **Static**: fixed viewport position (debugging, manual override)
-/// - **Scripted**: keyframed pan/tilt over time (replays, highlights)
-/// - **AI**: follows tracked objects using smoothing, prediction, rules
-///
-/// Directors receive context via [`DirectorContext`] including
-/// tracked objects with panorama coordinates and timing.
-///
-/// # Example
-///
-/// ```rust
-/// use reco_core::director::{Director, DirectorContext, ViewportPosition};
-///
-/// struct StaticDirector {
-///     position: ViewportPosition,
-/// }
-///
-/// impl Director for StaticDirector {
-///     fn update(&mut self, _ctx: &DirectorContext<'_>) {}
-///
-///     fn position(&self) -> ViewportPosition {
-///         self.position
-///     }
-/// }
-/// ```
-pub trait Director: Send {
-    /// Update the director state with new frame context.
-    ///
-    /// Called once per frame. The context includes tracked objects
-    /// (may be empty), viewport bounds, and timing. The director
-    /// should update its internal state and be ready for a
-    /// [`position`](Self::position) call.
-    fn update(&mut self, ctx: &DirectorContext<'_>);
-
-    /// Get the current viewport position.
-    ///
-    /// Called by the renderer to determine where to crop the panorama.
-    fn position(&self) -> ViewportPosition;
 }

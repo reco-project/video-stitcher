@@ -66,7 +66,7 @@ use crate::calibration::MatchCalibration;
 use crate::detector::{
     CameraId, ChromaFormat, Detection, DetectorFrame, RawFrame, UnifiedDetector,
 };
-use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
+use crate::director::{MappedDetection, ViewportPosition};
 use crate::gpu::GpuContext;
 use crate::panner::{PanContext, Panner};
 use crate::pipeline::{BgraPlanes, PipelineError, StitchPipeline, YuvPlanes};
@@ -315,7 +315,8 @@ impl StitchCoreConfig {
 /// - A coverage boundary precomputed from calibration for `safe_clamp`.
 /// - The active [`Projection`] and [`CameraInput`] (for future
 ///   N-input / alt-projection variants).
-/// - An optional [`Director`] and pipeline-stage chain.
+/// - Optional [`Tracker`]s and an optional [`Panner`] that together
+///   drive the viewport pose, plus a pipeline-stage chain.
 /// - An optional [`ReplayBuffer`].
 ///
 /// Detection is wired through the [`UnifiedDetector`] trait: attach
@@ -414,22 +415,21 @@ pub struct StitchCore {
     stages: Vec<Box<dyn PipelineStage>>,
 
     coverage: Option<CoverageBoundary>,
-    director: Option<Box<dyn Director>>,
 
     /// Per-class trackers that feed a shared [`WorldState`](crate::tracker::WorldState)
     /// consumed by [`StitchCore::panner`]. Slot-based on purpose:
     /// `ball_tracker` fills `world.ball`, `player_tracker` fills
     /// `world.players`. More slots land with future entity classes.
     ///
-    /// When [`StitchCore::panner`] is set, this path supersedes the
-    /// legacy [`Director`] path. When it is unset, trackers still
-    /// run (so detection sinks see consistent output) but their
-    /// results do not drive the pose — the director does.
+    /// The panner only runs when at least one tracker is registered
+    /// AND a panner is set. Otherwise the pose stays at the pipeline
+    /// default.
     ball_tracker: Option<Box<dyn Tracker>>,
     player_tracker: Option<Box<dyn Tracker>>,
-    /// When set, the panner decides the pose each frame from the
-    /// assembled [`WorldState`](crate::tracker::WorldState); when
-    /// unset, the legacy director path runs instead.
+    /// Camera-motion policy. Consumes the assembled
+    /// [`WorldState`](crate::tracker::WorldState) each frame and emits
+    /// a [`ViewportPosition`]. When unset, the pose stays at the
+    /// pipeline default.
     panner: Option<Box<dyn Panner>>,
     /// Previous frame's resolved pose, passed to the panner in its
     /// [`PanContext`](crate::panner::PanContext) so panners can
@@ -532,7 +532,6 @@ impl StitchCore {
             camera_input,
             stages: Vec::new(),
             coverage: Some(coverage),
-            director: None,
             ball_tracker: None,
             player_tracker: None,
             panner: None,
@@ -896,26 +895,15 @@ impl StitchCore {
     }
 
     // -----------------------------------------------------------------
-    // Director / pose
+    // Tracker / panner wiring
     // -----------------------------------------------------------------
-
-    /// Attach a director for pose selection. Replaces any existing one.
-    pub fn set_director(&mut self, director: Box<dyn Director>) {
-        self.director = Some(director);
-    }
-
-    /// Remove the currently attached director.
-    pub fn clear_director(&mut self) {
-        self.director = None;
-    }
 
     /// Attach a singleton ball tracker. Replaces any existing one.
     ///
-    /// When a [`Panner`] is also set via
-    /// [`set_panner`](Self::set_panner), its output drives the
-    /// camera pose; when no panner is set, the tracker still runs
-    /// so detection sinks see consistent output but the legacy
-    /// [`Director`] path owns the pose.
+    /// The tracker only drives the pose when a [`Panner`] is also
+    /// attached via [`set_panner`](Self::set_panner); attached without
+    /// a panner it still runs so detection sinks see consistent output
+    /// but the pose stays at the pipeline default.
     pub fn set_ball_tracker(&mut self, tracker: Box<dyn Tracker>) {
         log::info!(
             "StitchCore: ball tracker attached (class_id={})",
@@ -950,20 +938,20 @@ impl StitchCore {
 
     /// Attach a panner. Replaces any existing one.
     ///
-    /// Setting a panner switches the pose-resolution path from the
-    /// legacy [`Director`] to the new tracker/panner split. When a
-    /// panner is set, `resolve_current_pose` runs trackers, builds a
-    /// [`WorldState`], and delegates to
-    /// `panner.decide`. The director is ignored in this mode; clear
-    /// the panner with [`clear_panner`](Self::clear_panner) to revert.
+    /// Each frame, `resolve_current_pose` runs the registered trackers,
+    /// builds a [`WorldState`], and delegates to [`Panner::decide`].
+    /// Without a panner the pose stays at the pipeline default.
+    ///
+    /// [`WorldState`]: crate::tracker::WorldState
     pub fn set_panner(&mut self, panner: Box<dyn Panner>) {
-        log::info!("StitchCore: panner attached (tracker/panner path active)");
+        log::info!("StitchCore: panner attached");
         self.panner = Some(panner);
     }
 
-    /// Remove the currently attached panner (reverts to director path).
+    /// Remove the currently attached panner. Pose reverts to the
+    /// pipeline default until a new panner is set.
     pub fn clear_panner(&mut self) {
-        log::info!("StitchCore: panner detached (director path active)");
+        log::info!("StitchCore: panner detached");
         self.panner = None;
     }
 
@@ -971,10 +959,10 @@ impl StitchCore {
     ///
     /// The detector runs on every `submit_frame_*` call whose frame
     /// count matches [`Self::detection_interval`]. Raw detections are
-    /// mapped to panorama coordinates and handed to the director via
-    /// [`DirectorContext::detections`]. Detection errors are logged
-    /// (at `warn!` level) and swallowed so a transient inference
-    /// failure does not abort the render loop.
+    /// mapped to panorama coordinates, then handed to each registered
+    /// [`Tracker`] and to the detection sink (if any). Detection errors
+    /// are logged (at `warn!` level) and swallowed so a transient
+    /// inference failure does not abort the render loop.
     pub fn set_detector(&mut self, detector: Box<dyn UnifiedDetector>) {
         self.detector = Some(detector);
     }
@@ -1495,17 +1483,10 @@ impl StitchCore {
             .map(|s| s.elapsed().as_secs_f64() * 1000.0)
             .unwrap_or(0.0);
 
-        // Pose resolution has two paths:
-        //
-        // 1. New: run all registered trackers, assemble a WorldState,
-        //    and let the panner decide. When any panner is attached,
-        //    this path owns the pose.
-        // 2. Legacy: feed detections into the director, read its
-        //    position. Used whenever no panner is set.
-        //
-        // Both paths run detectors the same way (upstream of this
-        // function). The only difference is which component turns
-        // detections into a pose.
+        // Pose resolution: run all registered trackers in order, assemble
+        // a [`WorldState`], and let the panner decide. When no panner
+        // is attached the pose stays at the pipeline default.
+        let _ = fresh_detection; // reserved for future freshness-aware panners
         let raw = if let Some(panner) = self.panner.as_mut() {
             let mut world = WorldState::default();
             // Order matters: players first, then ball. This lets the
@@ -1537,21 +1518,9 @@ impl StitchCore {
             };
             let out = panner.decide(&world, &pan_ctx);
             self.previous_panner_pose = out;
-            let _ = fresh_detection; // reserved for future freshness-aware panners
             out
         } else {
-            if let Some(director) = self.director.as_mut() {
-                let ctx = DirectorContext {
-                    frame_index: self.frame_count,
-                    timestamp_ms,
-                    detections: &self.last_detections,
-                    fresh_detection,
-                };
-                director.update(&ctx);
-            }
-            self.director
-                .as_ref()
-                .map_or(ViewportPosition::default(), |d| d.position())
+            ViewportPosition::default()
         };
         // Constrained-look (FRICTION A13): when on (default), clamp
         // the pose through the coverage boundary so the viewport

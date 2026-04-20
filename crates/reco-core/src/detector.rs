@@ -2,7 +2,8 @@
 //!
 //! Detectors run on raw (pre-stitch) camera frames to find objects of interest
 //! (e.g. a ball). Detections are mapped to panorama-space coordinates and fed
-//! to a [`crate::director::Director`] for panning decisions.
+//! to a [`crate::tracker::Tracker`] which stabilizes identities, after which a
+//! [`crate::panner::Panner`] turns the tracked world state into a viewport pose.
 //!
 //! ## Why Raw Frames?
 //!

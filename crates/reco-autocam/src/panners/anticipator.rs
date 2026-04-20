@@ -1,16 +1,12 @@
 //! Velocity-anticipation decorator for [`Panner`].
 //!
-//! Port of [`crate::directors::AnticipatingDirector`] to the
-//! [`Panner`] contract. On each frame:
+//! On each frame:
 //! 1. Forward to inner panner for the "raw" target.
 //! 2. Record `(yaw, pitch, t_ms)` into a short history.
 //! 3. Estimate instantaneous velocity via least-squares fit.
 //! 4. Damp the lead contribution by estimated trajectory curvature
 //!    so cut-backs don't cause the camera to over-extrapolate.
 //! 5. Publish `raw + lead * velocity`, hard-capped per axis.
-//!
-//! Math is identical to the director-side version; only the
-//! interface changed.
 
 use std::collections::VecDeque;
 
