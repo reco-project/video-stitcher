@@ -98,6 +98,12 @@ pub mod lens;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
 pub mod nv12_converter;
+/// Camera-motion policy contract — see [`Panner`](panner::Panner).
+/// The panner half of the tracker/panner split: consumes a clean
+/// [`WorldState`](tracker::WorldState) and decides where to point
+/// the virtual camera. Camera smoothing, anticipation, and dead-zone
+/// handling layer as panner decorators in `reco-autocam`.
+pub mod panner;
 pub mod pipeline;
 /// M4 unified pose-control primitive. See [`pose_control::PoseControl`]
 /// and [`pose_control::HotkeyIntent`] — the single source of truth for
@@ -112,6 +118,14 @@ pub mod session;
 pub mod source;
 pub mod stage;
 pub mod stitch_renderer;
+/// Tracker contract — see [`Tracker`](tracker::Tracker),
+/// [`WorldState`](tracker::WorldState), and
+/// [`TrackedEntity`](tracker::TrackedEntity). The tracker half of
+/// the tracker/panner split: turns noisy per-frame detections into
+/// stable tracked entities with velocity and lifecycle state.
+/// Implementations (BallTracker, PlayerTracker, …) live in
+/// `reco-autocam`.
+pub mod tracker;
 pub mod undistort;
 pub mod viewport;
 #[cfg(target_os = "linux")]
