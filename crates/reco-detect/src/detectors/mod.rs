@@ -54,7 +54,10 @@ pub fn postprocess(
     for i in 0..n {
         let base = i * 6;
         let conf = data[base + 4];
-        if conf < confidence_threshold {
+        // NaN-safe filter: `NaN < x` is always false, so a naive comparison
+        // would let NaN confidences through and poison the director's EMA
+        // (`f32::clamp` preserves NaN). Reject non-finite confidence first.
+        if !conf.is_finite() || conf < confidence_threshold {
             continue;
         }
 
@@ -62,7 +65,16 @@ pub fn postprocess(
         let y1 = data[base + 1];
         let x2 = data[base + 2];
         let y2 = data[base + 3];
-        let class_id = data[base + 5] as u16;
+        if !x1.is_finite() || !y1.is_finite() || !x2.is_finite() || !y2.is_finite() {
+            continue;
+        }
+        // `f32 as u16` is saturating in release but UB-adjacent for NaN in
+        // some toolchains; reject explicitly.
+        let class_id_f = data[base + 5];
+        if !class_id_f.is_finite() || !(0.0..=u16::MAX as f32).contains(&class_id_f) {
+            continue;
+        }
+        let class_id = class_id_f as u16;
 
         // Un-letterbox: map from padded input coords to original frame coords.
         let orig_x1 = (x1 - pad_x) / scale;
@@ -344,6 +356,105 @@ mod tests {
             "center_y should be ~0.5, got {}",
             dets[0].center_y
         );
+    }
+
+    #[test]
+    fn postprocess_rejects_nan_confidence() {
+        // B-28 regression: NaN confidence must not pass the threshold check.
+        // `NaN < threshold` is false, so without an explicit is_finite guard
+        // the row would be kept and NaN would propagate into the director EMA.
+        let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, f32::NAN, 0.0]]);
+        let dets = postprocess(
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
+        );
+        assert!(
+            dets.is_empty(),
+            "NaN confidence must be filtered, got {dets:?}"
+        );
+    }
+
+    #[test]
+    fn postprocess_rejects_infinite_confidence() {
+        let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, f32::INFINITY, 0.0]]);
+        let dets = postprocess(
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
+        );
+        assert!(dets.is_empty());
+    }
+
+    #[test]
+    fn postprocess_rejects_nan_bbox_coords() {
+        for bad_idx in 0..4 {
+            let mut row = [300.0, 300.0, 340.0, 340.0, 0.80, 0.0];
+            row[bad_idx] = f32::NAN;
+            let data = make_tensor(&[row]);
+            let dets = postprocess(
+                &data,
+                1,
+                CameraId::Left,
+                0.10,
+                scale(),
+                pad_x(),
+                pad_y(),
+                FRAME_W,
+                FRAME_H,
+            );
+            assert!(
+                dets.is_empty(),
+                "NaN at bbox index {bad_idx} must be filtered"
+            );
+        }
+    }
+
+    #[test]
+    fn postprocess_rejects_nan_class_id() {
+        let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.80, f32::NAN]]);
+        let dets = postprocess(
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
+        );
+        assert!(dets.is_empty());
+    }
+
+    #[test]
+    fn postprocess_rejects_out_of_range_class_id() {
+        // Class id that would saturate u16 on cast; reject rather than pretend.
+        let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, 0.80, 1e9]]);
+        let dets = postprocess(
+            &data,
+            1,
+            CameraId::Left,
+            0.10,
+            scale(),
+            pad_x(),
+            pad_y(),
+            FRAME_W,
+            FRAME_H,
+        );
+        assert!(dets.is_empty());
     }
 
     #[test]

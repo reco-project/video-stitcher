@@ -57,6 +57,30 @@ pub struct StitchJob {
     // Callbacks
     on_progress: Option<ProgressCallback>,
     on_session: Option<SessionCallback>,
+
+    // Replay recording (M6.5 stacked-video). Opt-in, gated by the
+    // `stacked-output` feature so consumers not building it pay
+    // nothing.
+    #[cfg(feature = "stacked-output")]
+    replay_recording: Option<ReplayRecordingConfig>,
+}
+
+/// Configuration for optional replay recording (see
+/// [`StitchJob::with_replay_recording`]). Stored rather than eagerly
+/// opened so `StitchJob::run` is the single allocation / error
+/// boundary for the replay file.
+#[cfg(feature = "stacked-output")]
+struct ReplayRecordingConfig {
+    path: PathBuf,
+    encoder_config: Box<crate::stacked_video::encoder::StackedEncoderConfig>,
+    /// Optional replay tile downscale `(width, height)`. When
+    /// `None`, replay tiles match the source tile dims. When
+    /// `Some`, the GPU pack shader downscales each tile via the
+    /// sampler's linear filter (free on the GPU path) and the CPU
+    /// decorator rejects the config with a warn (CPU path has no
+    /// free downscale today; use the GPU path for A19). FRICTION
+    /// reco-obs A19.
+    scale: Option<(u32, u32)>,
 }
 
 /// Boxed progress callback type alias to satisfy clippy::type_complexity.
@@ -213,6 +237,8 @@ impl StitchJob {
             blend_width: 0.15,
             on_progress: None,
             on_session: None,
+            #[cfg(feature = "stacked-output")]
+            replay_recording: None,
         }
     }
 
@@ -322,6 +348,107 @@ impl StitchJob {
     /// Set the blend width for seam blending (0.0 - 1.0). Default: 0.15.
     pub fn blend_width(mut self, blend: f32) -> Self {
         self.blend_width = blend;
+        self
+    }
+
+    // ── Replay recording (M6.5 stacked-video) ──
+
+    /// Record pre-stitch source frames to a stacked-video file at
+    /// `path` while the job runs. The file is a grid-layout video
+    /// (vertical stack for the default N=2 layout) that can be read
+    /// back via [`crate::stacked_video::source::StackedSource`] for
+    /// professional replay, web panorama generation, or cloud
+    /// deployment.
+    ///
+    /// Defaults to Matroska container, libx264, 30-frame GOP - see
+    /// [`crate::stacked_video::encoder::StackedEncoderConfig`] for
+    /// the full default and use [`Self::replay_recording_config`]
+    /// to override.
+    ///
+    /// Recording is best-effort and never fails the stitch run: if
+    /// the encoder can't keep up, the replay file gracefully stops
+    /// recording while the stitch output completes.
+    ///
+    /// # Pack path
+    ///
+    /// At [`Self::run`] time, `StitchJob` picks between two pack
+    /// paths based on whether the source delivers frames on CPU or
+    /// GPU. The choice is logged explicitly once per run so it's
+    /// never a silent decision:
+    ///
+    /// - **GPU path** (`source.is_gpu_resident() == true`): the
+    ///   stacked-video compute shader packs the same GPU textures
+    ///   the stitch pipeline samples, then triple-buffers a
+    ///   readback of the packed atlas. Used by NVDEC zero-copy
+    ///   today; Metal / Jetson ISP will follow the same path once
+    ///   wired. No extra upload, no CPU memcpy.
+    /// - **CPU path** (default for software-decoded YUV): wraps
+    ///   the source in
+    ///   [`crate::stacked_video::replay::ReplayRecordingSource`]
+    ///   which packs YUV planes on the CPU. Uploading them just
+    ///   to pack would lose to this path.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// StitchJob::new("left.mp4", "right.mp4", "match.json", "out.mp4")
+    ///     .with_replay_recording("replay.mkv")
+    ///     .run(&interrupted)?;
+    /// ```
+    #[cfg(feature = "stacked-output")]
+    pub fn with_replay_recording(mut self, path: impl AsRef<Path>) -> Self {
+        self.replay_recording = Some(ReplayRecordingConfig {
+            path: path.as_ref().to_path_buf(),
+            encoder_config: Box::new(
+                crate::stacked_video::encoder::StackedEncoderConfig::default(),
+            ),
+            scale: None,
+        });
+        self
+    }
+
+    /// Set the replay tile downscale (FRICTION reco-obs A19). Must
+    /// be called AFTER [`Self::with_replay_recording`] — no-op with
+    /// a warn if replay recording wasn't enabled first.
+    ///
+    /// `(width, height)` are the per-tile dims after scale; the
+    /// atlas height becomes `height * N` for an N-vstack layout. A
+    /// 1080p source with `.with_replay_scale(1280, 720)` produces
+    /// a 1280x1440 atlas (two 720p tiles stacked).
+    ///
+    /// The GPU pack path folds this into the compute shader's
+    /// sampler at no extra cost (linear filter handles the scale).
+    /// The CPU path doesn't support downscale today — enabling it
+    /// on a CPU-resident source logs a warn and the replay file
+    /// keeps the source dims.
+    ///
+    /// Dimensions must be YUV420P-aligned: `width` divisible by 4
+    /// (pack shader quirk), `height` even.
+    #[cfg(feature = "stacked-output")]
+    pub fn with_replay_scale(mut self, width: u32, height: u32) -> Self {
+        if let Some(ref mut cfg) = self.replay_recording {
+            cfg.scale = Some((width, height));
+        } else {
+            log::warn!(
+                "with_replay_scale({width}x{height}) called without with_replay_recording \
+                 - ignored; call with_replay_recording(path) first"
+            );
+        }
+        self
+    }
+
+    /// Override the encoder configuration used for replay recording.
+    /// Only meaningful in combination with [`Self::with_replay_recording`].
+    #[cfg(feature = "stacked-output")]
+    pub fn replay_recording_config(
+        mut self,
+        config: crate::stacked_video::encoder::StackedEncoderConfig,
+    ) -> Self {
+        if let Some(ref mut cfg) = self.replay_recording {
+            *cfg.encoder_config = config;
+        } else {
+            log::warn!("replay_recording_config called without with_replay_recording - ignored");
+        }
         self
     }
 
@@ -470,6 +597,16 @@ impl StitchJob {
             crf: self.crf,
             preset: self.preset.clone(),
             audio_source,
+            container: match self.format {
+                crate::output::Format::Mp4 | crate::output::Format::Mov => {
+                    crate::ffmpeg::encoder::Container::Mp4
+                }
+                crate::output::Format::Mp4Fragmented => {
+                    crate::ffmpeg::encoder::Container::Mp4Fragmented
+                }
+                crate::output::Format::Mkv => crate::ffmpeg::encoder::Container::Matroska,
+            },
+            gop_size: None,
         };
         let encoder = crate::adapters::FfmpegFileEncoder::new(
             &self.output,
@@ -511,14 +648,168 @@ impl StitchJob {
         let frame_limit =
             reco_core::session::compute_frame_limit(self.duration, self.max_frames, info.fps);
 
-        // Run the frame loop
-        let frame_count = session.run(
-            &mut source,
-            frame_limit,
-            interrupted,
-            self.on_progress.take(),
-        )?;
+        // Optional replay recording: wrap the source with a
+        // decorator that writes pre-stitch frames to a stacked-video
+        // file alongside the main encode. Replay starts from this
+        // point so the recording aligns with the exported window
+        // (frames skipped via `start_frame` are already past).
+        //
+        // Two arms so the replay branch can take ownership of
+        // `source` via `Box::new`, while the non-replay arm keeps
+        // the borrowed `&mut source` already set up.
+        #[cfg(feature = "stacked-output")]
+        let replay_cfg = self.replay_recording.take();
+        #[cfg(not(feature = "stacked-output"))]
+        let replay_cfg: Option<()> = None;
+
+        let frame_count;
+        // Tracks a CPU-path replay decorator when that arm is
+        // chosen; the finalizer below calls `finish()` after the
+        // run. GPU path finalizes via
+        // `session.clear_stacked_gpu_recorder()` below.
+        #[cfg(feature = "stacked-output")]
+        let mut replay_src: Option<crate::stacked_video::replay::ReplayRecordingSource> = None;
+
+        #[cfg(feature = "stacked-output")]
+        if let Some(cfg) = replay_cfg {
+            // Pack-path selection. GPU-resident sources (NVDEC
+            // zero-copy, future Metal / Jetson ISP) send frames
+            // through `submit_render_output`; the session's
+            // zero-copy driver now taps the pack shader directly
+            // against those shared textures (post-#270 wiring in
+            // reco-core). CPU-resident sources continue through
+            // the `ReplayRecordingSource` decorator: uploading
+            // just-to-pack would lose to a straight CPU memcpy.
+            //
+            // Both arms log the decision explicitly so the pack
+            // path is never a silent choice.
+            if source.is_gpu_resident() {
+                // Resolve the output tile size. `scale` is the
+                // per-tile dims after downscale; the layout stays
+                // sized by the source tile dims (layout.capacity
+                // is N, atlas h = output.height * rows).
+                let (out_w, out_h) = cfg.scale.unwrap_or((info.width, info.height));
+                let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(
+                    out_w, out_h, 2,
+                )
+                .ok_or_else(|| {
+                    StitchError::Other(format!(
+                        "GPU stacked replay: replay tile dims {out_w}x{out_h} are not YUV420P-aligned \
+                         (width must be divisible by 4, height must be even). Source: {}x{}",
+                        info.width, info.height,
+                    ))
+                })?;
+                let output_size = if cfg.scale.is_some() {
+                    reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+                } else {
+                    reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+                };
+                session
+                    .enable_gpu_stacked_replay(layout, output_size)
+                    .map_err(|e| StitchError::Other(format!("enable GPU stacked replay: {e}")))?;
+                let (atlas_w, atlas_h) = session.stacked_atlas_dims().ok_or_else(|| {
+                    StitchError::Other(
+                        "stacked_atlas_dims returned None right after enable; internal bug".into(),
+                    )
+                })?;
+                let recorder = crate::stacked_video::replay::session_gpu_recorder(
+                    &cfg.path,
+                    *cfg.encoder_config,
+                    atlas_w,
+                    atlas_h,
+                )
+                .map_err(|e| StitchError::Other(format!("open GPU replay recorder: {e}")))?;
+                session.set_stacked_gpu_recorder(recorder);
+                let scale_note = if cfg.scale.is_some() {
+                    format!(
+                        " [A19 downscale: source {}x{} -> tile {}x{}]",
+                        info.width, info.height, out_w, out_h
+                    )
+                } else {
+                    String::new()
+                };
+                log::info!(
+                    "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}){} -> {}",
+                    out_w,
+                    out_h,
+                    atlas_w,
+                    atlas_h,
+                    scale_note,
+                    cfg.path.display(),
+                );
+                frame_count = session.run(
+                    &mut source,
+                    frame_limit,
+                    interrupted,
+                    self.on_progress.take(),
+                )?;
+            } else {
+                if cfg.scale.is_some() {
+                    log::warn!(
+                        "reco-io: --replay-scale requested on a CPU-resident source, but the \
+                         CPU ReplayRecordingSource decorator doesn't support downscale today. \
+                         Recording at source dims {}x{} instead. Use a GPU-resident source \
+                         (zero-copy NVDEC) or disable --replay-scale.",
+                        info.width,
+                        info.height,
+                    );
+                }
+                log::info!(
+                    "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
+                    info.width,
+                    info.height,
+                    cfg.path.display(),
+                );
+                let inner: Box<dyn FrameSource> = Box::new(source);
+                let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
+                    inner,
+                    &cfg.path,
+                    *cfg.encoder_config,
+                )
+                .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
+                frame_count = session.run(
+                    &mut replay,
+                    frame_limit,
+                    interrupted,
+                    self.on_progress.take(),
+                )?;
+                replay_src = Some(replay);
+            }
+        } else {
+            frame_count = session.run(
+                &mut source,
+                frame_limit,
+                interrupted,
+                self.on_progress.take(),
+            )?;
+        }
+        #[cfg(not(feature = "stacked-output"))]
+        {
+            // Without the stacked-output feature, replay recording
+            // is unavailable and `replay_cfg` is always None.
+            let _ = replay_cfg;
+            frame_count = session.run(
+                &mut source,
+                frame_limit,
+                interrupted,
+                self.on_progress.take(),
+            )?;
+        }
+
+        // GPU-path finalize: drop the atlas recorder (its `finish`
+        // closes the encoder file) before `session.finish()` so
+        // the replay file lands before the main encoder's trailer.
+        // No-op when the GPU path wasn't selected.
+        #[cfg(feature = "stacked-output")]
+        session.clear_stacked_gpu_recorder();
         session.finish()?;
+
+        #[cfg(feature = "stacked-output")]
+        if let Some(mut replay) = replay_src.take()
+            && let Err(e) = replay.finish()
+        {
+            log::warn!("replay recording finalize failed ({e}); stitch output still valid");
+        }
 
         // Post-run sanity check: re-open the output file and verify it
         // actually contains a video stream. Catches silent encoder

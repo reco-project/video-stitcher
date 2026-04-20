@@ -42,19 +42,22 @@ use crate::director::MappedDetection;
 use crate::projection::{self, CoverageBoundary, PanoramaExtent};
 use crate::scene::SceneGeometry;
 use crate::session::detection::DetectionPipeline;
-use crate::session::{DetectionSink, DetectionSinkError, FrameProgress, ProgressCallback};
+use crate::session::{DetectionSink, FrameProgress, ProgressCallback};
 use crate::source::{FrameSource, SourceError, StereoFrame};
 
-/// Errors from [`AnalyzePipeline::run`].
-#[derive(Debug, Error)]
+/// Errors from [`AnalyzePipeline::run`]. `Clone + Send + Sync` so a
+/// worker-thread analyze loop can send the result through an mpsc
+/// channel without stringifying at the boundary.
+#[derive(Debug, Clone, Error)]
 pub enum AnalyzeError {
     /// Frame source error.
     #[error("source: {0}")]
     Source(#[from] SourceError),
 
-    /// Detection sink error.
+    /// Detection sink error. Flattened to `String` because the
+    /// sink's `Box<dyn Error>` is not `Clone`.
     #[error("detection sink: {0}")]
-    DetectionSink(#[source] DetectionSinkError),
+    DetectionSink(String),
 }
 
 /// Detection-only pipeline that decodes frames and fires a sink without
@@ -94,8 +97,9 @@ impl AnalyzePipeline {
         }
     }
 
-    /// Attach a CPU detector for object detection on decoded frames.
-    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::Detector>) {
+    /// Attach a unified-trait detector for object detection on
+    /// decoded frames.
+    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::UnifiedDetector>) {
         self.detection.set_detector(detector);
     }
 
@@ -174,7 +178,7 @@ impl AnalyzePipeline {
             let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
             self.detection
                 .fire_sink(self.frame_count, timestamp_ms)
-                .map_err(AnalyzeError::DetectionSink)?;
+                .map_err(|e| AnalyzeError::DetectionSink(e.to_string()))?;
 
             self.frame_count += 1;
 

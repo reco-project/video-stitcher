@@ -3597,6 +3597,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
 name = "matrixmultiply"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5040,9 +5049,9 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "rand"
-version = "0.9.2"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
+checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
  "rand_chacha",
  "rand_core",
@@ -5252,7 +5261,6 @@ dependencies = [
  "anyhow",
  "clap",
  "ctrlc",
- "env_logger",
  "image",
  "log",
  "pollster",
@@ -5263,8 +5271,18 @@ dependencies = [
  "serde_json",
  "tracing",
  "tracing-chrome",
+ "tracing-log",
  "tracing-subscriber",
  "winit",
+]
+
+[[package]]
+name = "reco-control"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "reco-core",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5299,11 +5317,20 @@ dependencies = [
 name = "reco-detect"
 version = "0.1.0"
 dependencies = [
+ "block2 0.6.2",
  "cc",
  "dirs",
+ "foreign-types 0.5.0",
+ "libloading 0.9.0",
  "log",
+ "metal 0.33.0",
+ "objc2 0.6.4",
+ "objc2-core-ml",
+ "objc2-foundation 0.3.2",
+ "objc2-metal 0.3.2",
  "ort",
  "reco-core",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -5312,7 +5339,6 @@ name = "reco-gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "env_logger",
  "log",
  "reco-autocam",
  "reco-calibrate",
@@ -5325,6 +5351,8 @@ dependencies = [
  "slint",
  "slint-build",
  "tracing",
+ "tracing-log",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5348,12 +5376,16 @@ dependencies = [
 name = "reco-obs"
 version = "0.1.0"
 dependencies = [
- "env_logger",
+ "bindgen",
+ "cc",
  "log",
  "reco-core",
+ "reco-io",
  "serde",
  "serde_json",
  "tracing",
+ "tracing-log",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -6592,17 +6624,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-serde"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1"
+dependencies = [
+ "serde",
+ "tracing-core",
+]
+
+[[package]]
 name = "tracing-subscriber"
 version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
+ "matchers",
  "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
+ "serde",
+ "serde_json",
  "sharded-slab",
  "smallvec",
  "thread_local",
+ "tracing",
  "tracing-core",
  "tracing-log",
+ "tracing-serde",
 ]
 
 [[package]]

@@ -1,8 +1,9 @@
 [package]
+publish = false
 name = "reco-io"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version.workspace = true
 description = "Pluggable frame I/O backends for Reco (FFmpeg, GStreamer, ...)"
 license = "AGPL-3.0-only"
 repository = "https://github.com/reco-project/video-stitcher"
@@ -18,6 +19,11 @@ profiling = ["tracing", "reco-core/profiling"]
 # directories (~150 kB of deps). Consumers that only need frame I/O
 # (headless stitching, test harnesses) can skip it.
 config = ["dep:serde", "dep:serde_json", "dep:directories"]
+# M6.5 stacked-video: enables the ffmpeg-backed StackedEncoder /
+# StackedSource wrappers around the pure pack/unpack primitives in
+# `stacked_video`. The primitives themselves have no feature gate.
+# Requires `ffmpeg`.
+stacked-output = ["ffmpeg"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }

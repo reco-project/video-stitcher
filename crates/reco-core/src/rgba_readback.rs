@@ -333,8 +333,8 @@ impl RgbaReadback {
     }
 }
 
-/// Errors from [`RgbaReadback`].
-#[derive(Debug, thiserror::Error)]
+/// Errors from [`RgbaReadback`]. `Clone + Send + Sync`.
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum RgbaReadbackError {
     /// GPU buffer mapping failed (device lost, timeout, ...).
     #[error("RGBA buffer mapping failed")]

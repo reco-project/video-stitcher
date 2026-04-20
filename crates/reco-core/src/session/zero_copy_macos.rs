@@ -28,7 +28,7 @@ impl StitchSession {
         use crate::metal_interop::MetalTextureCache;
 
         let start = std::time::Instant::now();
-        let cache = MetalTextureCache::new(self.pipeline.gpu())?;
+        let cache = MetalTextureCache::new(self.core.gpu())?;
 
         while !interrupted.load(std::sync::atomic::Ordering::Relaxed)
             && self.frame_count < frame_limit
@@ -43,12 +43,13 @@ impl StitchSession {
 
             // Import NV12 planes as Metal textures (zero-copy via IOSurface).
             // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
-            let (left_y, left_uv) = unsafe { cache.import_nv12(left_ptr, self.pipeline.gpu())? };
-            let (right_y, right_uv) = unsafe { cache.import_nv12(right_ptr, self.pipeline.gpu())? };
+            let (left_y, left_uv) = unsafe { cache.import_nv12(left_ptr, self.core.gpu())? };
+            let (right_y, right_uv) = unsafe { cache.import_nv12(right_ptr, self.core.gpu())? };
 
-            // Run detection on GPU if a Metal detector is attached,
-            // otherwise just update the director with empty state.
-            if self.detection.has_metal_detector() {
+            // Run detection on GPU if a detector is attached (UnifiedDetector
+            // handles Metal residency internally via DetectorFrame::Metal).
+            // Otherwise just update the director with empty state.
+            if self.detection.has_detector() {
                 let width = pair.left.width();
                 let height = pair.left.height();
                 self.detect_and_update_director_metal(
@@ -62,7 +63,7 @@ impl StitchSession {
                 self.update_director(start.elapsed())?;
             }
             let pos = self.director_position();
-            let render_buf = self.pipeline.render_imported_textures(
+            let render_buf = self.core.render_imported_textures_at_pose(
                 &left_y.texture,
                 &left_uv.texture,
                 &right_y.texture,

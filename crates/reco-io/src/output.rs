@@ -69,10 +69,19 @@ pub enum Quality {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum Format {
-    /// MPEG-4 Part 14. Widest compatibility.
+    /// MPEG-4 Part 14. Widest compatibility. `moov` atom finalized
+    /// at close — partial files are unreadable and external tools
+    /// can't stream the output while it's still being written.
     #[default]
     Mp4,
-    /// Matroska. Supports more codecs and features.
+    /// Fragmented MP4 (`.mp4` with empty_moov + frag_keyframe).
+    /// Readable mid-write, self-contained fragments on keyframes.
+    /// Use this or [`Self::Mkv`] if you need to tee the output
+    /// via `ffmpeg -c copy -f flv rtmp://...` while the stitch is
+    /// still running.
+    Mp4Fragmented,
+    /// Matroska (`.mkv`). Naturally streamable, crash-safe.
+    /// OBS's default for live recording.
     Mkv,
     /// QuickTime. Preferred on macOS.
     Mov,

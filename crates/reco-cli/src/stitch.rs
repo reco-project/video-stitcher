@@ -9,6 +9,13 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 /// Arguments for the stitch subcommand, collected from CLI parsing.
+///
+/// `detection_interval`, `lead_time`, and `tracking_mode` are only
+/// consumed inside `#[cfg(feature = "autocam")]` blocks below, so
+/// `--no-default-features` builds see them as dead. Silence the lint
+/// here instead of per-field gating to keep the struct shape stable
+/// across features.
+#[allow(dead_code)]
 pub struct StitchArgs<'a> {
     pub left: &'a str,
     pub right: &'a str,
@@ -29,6 +36,21 @@ pub struct StitchArgs<'a> {
     pub tracking_mode: &'a str,
     pub crf: Option<u8>,
     pub preset: Option<String>,
+    /// Output container selector (`mp4` / `fmp4` / `mkv`). None
+    /// means default (plain MP4, finalized at close). `mkv` or
+    /// `fmp4` for streamable tee use.
+    pub container: Option<&'a str>,
+    /// Optional replay-recording output path. When `Some`, the
+    /// stitch job writes a stacked-video copy of the source frames
+    /// alongside the stitched output (M6.5 feature, `replay`
+    /// feature flag on reco-cli).
+    pub replay_path: Option<&'a str>,
+    /// Optional replay-tile downscale `(width, height)`. When
+    /// `Some`, the GPU pack shader produces smaller replay tiles
+    /// (FRICTION reco-obs A19). Has no effect without
+    /// [`Self::replay_path`]. GPU path only — CPU-resident
+    /// sources log a warn and record at source dims.
+    pub replay_scale: Option<(u32, u32)>,
 }
 
 /// Run the stitch subcommand.
@@ -44,8 +66,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     let progress = crate::helpers::ProgressReporter::new(30);
 
     // Load calibration up front so we can extract field_roi for autocam
-    // and pass the pre-loaded calibration to StitchJob.
+    // and pass the pre-loaded calibration to StitchJob. `field_roi` is
+    // only consumed under the autocam feature; a leading underscore
+    // silences the unused-var lint on `--no-default-features` builds.
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(args.calibration))?;
+    #[cfg_attr(not(feature = "autocam"), allow(unused_variables))]
     let field_roi = cal.field_roi.clone();
 
     let mut job = reco_io::StitchJob::with_calibration(args.left, args.right, cal, args.output)
@@ -54,7 +79,10 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         .resolution(args.width, args.height)
         .blend_width(args.blend)
         .on_progress(move |p: &reco_core::session::FrameProgress| {
-            progress.report(p.frames_completed);
+            // Use the session's own elapsed clock so the reported
+            // rate excludes one-time GPU / encoder / ORT init and
+            // reflects only the decode → stitch → encode loop.
+            progress.report_with_elapsed(p.frames_completed, p.elapsed);
         });
 
     if let Some(d) = args.duration {
@@ -74,6 +102,44 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if let Some(ref preset) = args.preset {
         job = job.preset(preset);
+    }
+    if let Some(container) = args.container {
+        let c =
+            reco_io::ffmpeg::encoder::Container::from_str_loose(container).ok_or_else(|| {
+                anyhow::anyhow!("unknown container '{container}' (expected mp4, fmp4, or mkv)")
+            })?;
+        job = job.format(match c {
+            reco_io::ffmpeg::encoder::Container::Mp4 => reco_io::output::Format::Mp4,
+            reco_io::ffmpeg::encoder::Container::Mp4Fragmented => {
+                reco_io::output::Format::Mp4Fragmented
+            }
+            reco_io::ffmpeg::encoder::Container::Matroska => reco_io::output::Format::Mkv,
+        });
+    }
+
+    // Opt-in replay recording. The builder call is all the
+    // consumer needs - StitchJob owns the encoder lifecycle, the
+    // per-frame tap, and the finalize.
+    #[cfg(feature = "replay")]
+    if let Some(replay_path) = args.replay_path {
+        job = job.with_replay_recording(replay_path);
+        if let Some((w, h)) = args.replay_scale {
+            job = job.with_replay_scale(w, h);
+            println!("Replay recording: {replay_path} (scaled to {w}x{h} per tile)");
+        } else {
+            println!("Replay recording: {replay_path}");
+        }
+    }
+    #[cfg(feature = "replay")]
+    if args.replay_scale.is_some() && args.replay_path.is_none() {
+        log::warn!("--replay-scale specified without --replay; ignoring.");
+    }
+    #[cfg(not(feature = "replay"))]
+    if args.replay_path.is_some() {
+        log::warn!(
+            "--replay specified but `replay` feature is disabled. \
+             Build with --features replay to enable."
+        );
     }
 
     // Sweep director needs no model - attach it directly.

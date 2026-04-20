@@ -20,6 +20,192 @@ use crate::scene::SceneGeometry;
 
 use nalgebra::{Point3, Vector3};
 
+// ---------------------------------------------------------------------------
+// M3 foundation: Projection trait + LShapeProjection marker.
+// ---------------------------------------------------------------------------
+//
+// Plan-execution §2.5 + §7 decision 8: the future StitchCore takes a
+// `Box<dyn Projection>` instead of hardcoding the 2-plane L-shape
+// geometry. This makes alt-projections (cylindrical / flat-mixing-
+// shader / mono-single-plane / equirect / N-camera panoramic) drop-in
+// additions later without reshaping the core session API.
+//
+// This commit lands the trait + a marker implementation for today's
+// L-shape geometry. It does NOT move the existing `camera_to_panorama`
+// etc. free functions into the trait - that migration happens when
+// StitchCore is being written and the real method set emerges from
+// usage. Landing the shape first lets parallel design work on a
+// second projection (§7 decision 8, user-chosen form) start without
+// re-plumbing reco-core.
+
+/// A panoramic projection geometry.
+///
+/// Implemented by concrete projections (today's 2-plane L-shape,
+/// future cylindrical / flat-mix / mono / N-camera). Dispatched
+/// dynamically by StitchCore so swapping projections at session
+/// construction time does not require recompilation.
+///
+/// # Bounds
+///
+/// `Send + Sync` because StitchCore stores projections behind a
+/// shared reference and the render thread reads them concurrently.
+pub trait Projection: Send + Sync {
+    /// Short human-readable name for logs + diagnostic bundles.
+    fn name(&self) -> &'static str;
+
+    /// Number of input cameras this projection consumes. 1 for mono,
+    /// 2 for today's L-shape stereo, N>2 for future panoramic rigs.
+    fn camera_count(&self) -> u8;
+
+    /// WGSL fragment shader source for the composite pass that
+    /// transforms per-camera undistorted textures into the final
+    /// panorama output.
+    ///
+    /// Returned as a string so wgpu can compile it at pipeline
+    /// creation. Today's L-shape geometry returns an empty string:
+    /// its shader is still embedded in `stitch_renderer.rs`. The
+    /// migration happens when StitchCore takes over rendering and
+    /// dispatches composite via this trait.
+    fn wgsl_composite_source(&self) -> &str {
+        ""
+    }
+}
+
+/// Marker type for today's 2-plane L-shape stereo projection.
+///
+/// The geometry is documented in [`scene::SceneGeometry`](crate::scene::SceneGeometry).
+/// All the real math still lives in the free functions below and in
+/// `stitch_renderer.rs`; this struct carries no state today. It is
+/// here to make StitchCore's `Box<dyn Projection>` slot have a
+/// concrete default that matches shipping behavior.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LShapeProjection;
+
+impl Projection for LShapeProjection {
+    fn name(&self) -> &'static str {
+        "l-shape-stereo-2camera"
+    }
+
+    fn camera_count(&self) -> u8 {
+        2
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cylindrical single-input projection (plan step 9, second Projection impl).
+// ---------------------------------------------------------------------------
+//
+// Models a single video as a texture painted on the inside of a
+// cylinder of radius `focal_length`. The virtual camera sits on the
+// cylinder axis and looks outward; pan/tilt/zoom rotate the camera and
+// scale FOV. Matches the `gilbertchen/actionstitch-player` projection
+// (MIT-licensed 180-degree cylindrical video player) enough that
+// calibration files from that ecosystem could be consumed with small
+// adapter code.
+//
+// Design goal of landing this here (not just as a shader file):
+// proves the plan's claim that the `Projection` trait supports
+// camera_count() != 2 so future mono / N-camera / alt-projection
+// impls can plug in without reshaping StitchCore's API. Ships with:
+//
+//   - A configurable `CylindricalProjection` with defaults that
+//     mirror actionstitch's (focal_length=2400, sweep=PI = 180deg,
+//     screen_rotation=0, video_height sourced from the input).
+//   - A WGSL shader at `shaders/cylindrical_mono.wgsl` returned
+//     verbatim from `wgsl_composite_source()`.
+//   - camera_count() = 1.
+//
+// Deliberately NOT wired into `StitchCore` / `StitchPipeline` in this
+// commit - that migration is a follow-up that needs a mono submit
+// path (`submit_frame_yuv_mono`) and a different bind group layout.
+// The trait-side contract is the deliverable here.
+
+/// Configuration for a [`CylindricalProjection`]. Defaults match the
+/// `actionstitch-player` projection (180-degree sweep, 2400px focal
+/// length, no screen rotation).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CylindricalProjectionConfig {
+    /// Cylinder radius in world units. Larger values = narrower
+    /// cylindrical wrap per pixel, so the panorama feels flatter.
+    /// `actionstitch` defaults to `2400` and exposes a slider from
+    /// 1000 to 5000.
+    pub focal_length: f32,
+    /// Full horizontal angular sweep in radians. `std::f32::consts::PI`
+    /// (180 degrees) is the canonical action-camera case; 2π would be
+    /// a full 360-degree cylinder.
+    pub angular_sweep_rad: f32,
+    /// Screen tilt around the view axis in radians. `actionstitch`
+    /// exposes this as a ±30-degree slider labelled "Screen tilt" and
+    /// uses it to correct for a rig that is not level side-to-side.
+    pub screen_rotation_rad: f32,
+    /// Video height in world units. Defaults to `1.0` (normalized);
+    /// consumers with a known camera height can pass the actual value
+    /// so the cylinder has the right aspect.
+    pub video_height: f32,
+}
+
+impl Default for CylindricalProjectionConfig {
+    fn default() -> Self {
+        Self {
+            focal_length: 2400.0,
+            angular_sweep_rad: std::f32::consts::PI,
+            screen_rotation_rad: 0.0,
+            video_height: 1.0,
+        }
+    }
+}
+
+/// Single-input cylindrical projection.
+///
+/// Consumes one camera (`camera_count() == 1`) and renders it as if
+/// painted on the inside of a cylinder of radius `config.focal_length`.
+/// The virtual camera sits on the cylinder axis.
+///
+/// Attribution: the projection geometry (focal-length, angular-sweep,
+/// and screen-rotation tilt) is the one used by
+/// `gilbertchen/actionstitch-player` (MIT-licensed 180-degree
+/// cylindrical video player). The WGSL shader here is a from-scratch
+/// reimplementation of that model for wgpu; no code is copied.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CylindricalProjection {
+    /// Projection parameters. `Default` uses `actionstitch`-matching
+    /// values (see [`CylindricalProjectionConfig::default`]).
+    pub config: CylindricalProjectionConfig,
+}
+
+impl CylindricalProjection {
+    /// Build a new cylindrical projection with the given config.
+    pub fn new(config: CylindricalProjectionConfig) -> Self {
+        Self { config }
+    }
+
+    /// Compute the cylinder's `theta_start` angle in radians:
+    /// `PI/2 - angular_sweep/2`. This is where the video's left edge
+    /// lands on the cylinder surface and matches actionstitch's
+    /// `THREE.CylinderGeometry(..., Math.PI / 2 - s / 2, s)`.
+    pub fn theta_start_rad(&self) -> f32 {
+        std::f32::consts::FRAC_PI_2 - self.config.angular_sweep_rad * 0.5
+    }
+}
+
+/// WGSL source for the cylindrical-mono composite pass. Embedded at
+/// compile time so `wgsl_composite_source()` can return `&'static str`.
+const CYLINDRICAL_MONO_WGSL: &str = include_str!("shaders/cylindrical_mono.wgsl");
+
+impl Projection for CylindricalProjection {
+    fn name(&self) -> &'static str {
+        "cylindrical-mono-1camera"
+    }
+
+    fn camera_count(&self) -> u8 {
+        1
+    }
+
+    fn wgsl_composite_source(&self) -> &str {
+        CYLINDRICAL_MONO_WGSL
+    }
+}
+
 /// Maximum Newton-Raphson iterations for KB4 inverse distortion.
 const MAX_ITERATIONS: usize = 20;
 /// Convergence threshold for Newton-Raphson.
@@ -721,6 +907,23 @@ impl CoverageBoundary {
         fov_v_deg: f32,
         aspect: f32,
     ) -> ClampedPosition {
+        // B-30 defense: non-finite inputs would propagate through the
+        // clamp / comparisons and emit NaN, which then flows into the
+        // MVP matrix and produces a black or garbage frame. Upstream
+        // guards (B-28 detector boundary, B-29 director EMA) stop most
+        // NaN at the source, but user overrides and external clients
+        // can still hand us non-finite values. Fall back to the
+        // coverage center.
+        if !yaw.is_finite() || !pitch.is_finite() || !fov_v_deg.is_finite() || !aspect.is_finite() {
+            let safe_pitch = (self.pitch_min + self.pitch_max) * 0.5;
+            let (yaw_lo, yaw_hi) = self.yaw_range_at(safe_pitch);
+            let safe_yaw = (yaw_lo + yaw_hi) * 0.5;
+            return ClampedPosition {
+                yaw: safe_yaw,
+                pitch: safe_pitch,
+            };
+        }
+
         let half_vfov = (fov_v_deg * 0.5).to_radians();
         let half_hfov = (aspect * half_vfov.tan()).atan();
 
@@ -1278,5 +1481,163 @@ mod tests {
             pitch_max: 0.0,
         };
         assert!(ext.normalize(0.0, 0.0).is_none());
+    }
+
+    // ── B-30 NaN-resilience regression tests ─────────────────────────
+
+    #[test]
+    fn safe_clamp_rejects_nan_yaw() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(f32::NAN, 0.0, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite(), "yaw must be finite, got {}", out.yaw);
+        assert!(
+            out.pitch.is_finite(),
+            "pitch must be finite, got {}",
+            out.pitch
+        );
+    }
+
+    #[test]
+    fn safe_clamp_rejects_nan_pitch() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(0.0, f32::NAN, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
+    }
+
+    #[test]
+    fn safe_clamp_rejects_nan_fov() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(0.0, 0.0, f32::NAN, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
+    }
+
+    #[test]
+    fn safe_clamp_rejects_infinite_inputs() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let out = coverage.safe_clamp(f32::INFINITY, 0.0, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
+        let out = coverage.safe_clamp(0.0, f32::NEG_INFINITY, 75.0, 16.0 / 9.0, 0.0);
+        assert!(out.yaw.is_finite());
+        assert!(out.pitch.is_finite());
+    }
+
+    // ── M3 foundation: Projection trait tests ────────────────────────
+
+    #[test]
+    fn l_shape_projection_identifies_itself() {
+        let p = LShapeProjection;
+        assert_eq!(p.name(), "l-shape-stereo-2camera");
+        assert_eq!(p.camera_count(), 2);
+    }
+
+    #[test]
+    fn projection_is_dyn_compatible() {
+        // Core invariant: StitchCore will hold `Box<dyn Projection>`.
+        // Verify the trait bounds allow that today and that Send+Sync
+        // both hold.
+        let projections: Vec<Box<dyn Projection>> = vec![Box::new(LShapeProjection)];
+        fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+        assert_send_sync::<dyn Projection>();
+        assert_eq!(projections[0].camera_count(), 2);
+    }
+
+    #[test]
+    fn l_shape_projection_wgsl_composite_is_placeholder() {
+        // Today the composite shader is embedded in stitch_renderer.
+        // LShapeProjection returns "" until StitchCore migration
+        // moves that shader source out through this trait.
+        let p = LShapeProjection;
+        assert!(p.wgsl_composite_source().is_empty());
+    }
+
+    // ---- CylindricalProjection (plan step 9) -------------------------------
+
+    #[test]
+    fn cylindrical_defaults_match_actionstitch() {
+        // Reference values are the actionstitch-player defaults (focal
+        // length 2400, 180-deg sweep, no screen tilt, normalized video
+        // height). Regresses if someone silently changes the defaults.
+        let c = CylindricalProjectionConfig::default();
+        assert_eq!(c.focal_length, 2400.0);
+        assert!((c.angular_sweep_rad - std::f32::consts::PI).abs() < 1e-6);
+        assert_eq!(c.screen_rotation_rad, 0.0);
+        assert_eq!(c.video_height, 1.0);
+    }
+
+    #[test]
+    fn cylindrical_projection_reports_mono() {
+        let p = CylindricalProjection::default();
+        assert_eq!(p.name(), "cylindrical-mono-1camera");
+        assert_eq!(
+            p.camera_count(),
+            1,
+            "cylindrical projection consumes exactly one camera"
+        );
+    }
+
+    #[test]
+    fn cylindrical_theta_start_matches_actionstitch_formula() {
+        // actionstitch's CylinderGeometry uses thetaStart = PI/2 - s/2
+        // where s is the angular sweep. Verify for 180-deg (default)
+        // and for a 90-deg cylinder (quarter sweep).
+        let p180 = CylindricalProjection::default();
+        assert!(
+            (p180.theta_start_rad() - std::f32::consts::FRAC_PI_2 * 0.0).abs() < 1e-6,
+            "180-deg sweep: theta_start = PI/2 - PI/2 = 0"
+        );
+
+        let p90 = CylindricalProjection::new(CylindricalProjectionConfig {
+            angular_sweep_rad: std::f32::consts::FRAC_PI_2,
+            ..Default::default()
+        });
+        // 90-deg: theta_start = PI/2 - PI/4 = PI/4.
+        assert!((p90.theta_start_rad() - std::f32::consts::FRAC_PI_4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cylindrical_wgsl_source_is_nonempty_and_has_expected_entrypoints() {
+        // Sanity-check the embedded shader compiles in spirit: it must
+        // declare both the vertex + fragment entry points the composite
+        // pass expects. Full wgpu compilation lives in an integration
+        // test behind the GPU gate.
+        let p = CylindricalProjection::default();
+        let src = p.wgsl_composite_source();
+        assert!(!src.is_empty());
+        assert!(src.contains("fn vs_fullscreen"));
+        assert!(src.contains("fn fs_cylindrical_mono"));
+        assert!(src.contains("CylUniforms"));
+    }
+
+    #[test]
+    fn projection_dyn_dispatch_round_trip_with_mixed_camera_counts() {
+        // Compile-time: `Box<dyn Projection>` can hold concrete impls
+        // with different `camera_count()` results. Proves the trait
+        // API's claim that consumers can swap projections without a
+        // new type parameter on StitchCore.
+        let projections: Vec<Box<dyn Projection>> = vec![
+            Box::new(LShapeProjection),
+            Box::new(CylindricalProjection::default()),
+        ];
+        assert_eq!(projections[0].camera_count(), 2);
+        assert_eq!(projections[1].camera_count(), 1);
+        assert_ne!(projections[0].name(), projections[1].name());
+    }
+
+    #[test]
+    fn cylindrical_projection_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync + 'static>() {}
+        assert_send_sync::<CylindricalProjection>();
+        assert_send_sync::<CylindricalProjectionConfig>();
     }
 }

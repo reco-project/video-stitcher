@@ -1,12 +1,27 @@
 //! Automatic camera control for reco.
 //!
-//! This crate provides detection and direction for sports camera automation:
+//! The intelligence layer: directors decide where the virtual camera
+//! points, detectors feed them what's on screen. Detector backends
+//! live in [`reco_detect`]; they are re-exported at crate root for
+//! convenience but not owned here.
 //!
-//! - [`CpuYoloDetector`] - ONNX-based YOLO object detection on raw camera frames
-//! - [`BallDirector`] - Ball-following director with plausibility rejection
-//! - [`FieldDirector`] - Ball + player tracking for robust football coverage
-//! - [`SmoothedDirector`] - Decorator that adds One Euro trajectory smoothing
-//! - [`TrackingMode`] - Selects which director to use
+//! # What this crate owns
+//!
+//! - [`BallDirector`] - single-ball follower with plausibility rejection
+//! - [`FieldDirector`] - ball + player DBSCAN clustering, broadcast style
+//! - [`SweepDirector`] - constrained pan sweep when no trackable subject exists
+//! - [`SmoothedDirector`] - One Euro decorator around any inner director
+//! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any `UnifiedDetector`
+//! - [`TrackingMode`] + [`AutocamConfig`] + [`setup_autocam`] -
+//!   orchestration glue a consumer calls once per session.
+//!
+//! # Safety policy
+//!
+//! Zero `unsafe` code by construction. All platform / FFI boundaries
+//! live in reco-core (wgpu, zero-copy) or reco-detect (ORT, CUDA), so
+//! this crate stays in safe Rust. CI enforces via `#![forbid(unsafe_code)]`;
+//! introducing `unsafe` here requires a lint override + an explicit
+//! PR discussion.
 //!
 //! # Usage
 //!
@@ -19,27 +34,39 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+#![forbid(unsafe_code)]
+
 mod directors;
 mod roi_filter;
 mod smoother;
 
 // Re-export detector types from reco-detect for backwards compatibility.
+// Ort-backed detectors are only available when the `ort` feature is
+// enabled on this crate (passed through to reco-detect). Builds that
+// opt out of ort (e.g. Jetson with glibc-incompatible prebuilt ort-sys)
+// and rely on tensorrt-native + .engine models don't see these
+// re-exports.
+#[cfg(feature = "ort")]
 pub use reco_detect::CpuYoloDetector;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "ort", target_os = "macos"))]
 pub use reco_detect::MetalYoloDetector;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(feature = "ort", any(target_os = "linux", target_os = "windows")))]
 pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
 pub use directors::{BallDirector, FieldDirector, SweepDirector, TrackingMode};
 pub use roi_filter::RoiFilteredDetector;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use roi_filter::RoiFilteredGpuDetector;
-#[cfg(target_os = "macos")]
-pub use roi_filter::RoiFilteredMetalDetector;
+// `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
+// deleted: the unified `RoiFilteredDetector` covers every residency
+// because it wraps `Box<dyn UnifiedDetector>`.
 pub use smoother::{SmoothedDirector, TrajectorySmoother};
 
+// Path is only used in the ort-backed class-name lookup
+// (reco_detect::create_ort_session) and the CpuYoloDetector
+// fallback. Both are cfg'd behind `feature = "ort"`, so this
+// import follows the same gate.
+#[cfg(feature = "ort")]
 use std::path::Path;
 
 use reco_core::calibration::FieldRoi;
@@ -163,6 +190,10 @@ pub fn setup_autocam_from_config(
 /// detection could not be initialized (the session remains usable without
 /// autocam in that case).
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(
+    not(any(feature = "ort", feature = "tensorrt-native")),
+    allow(unused_variables, unused_mut)
+)]
 pub fn setup_autocam(
     session: &mut StitchSession,
     model_path: &str,
@@ -176,12 +207,29 @@ pub fn setup_autocam(
     field_roi: Option<&FieldRoi>,
     is_10bit: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    // No-detector-feature config: ort + tensorrt-native + ncnn all
+    // disabled. Every detector path below is cfg-gated out, so the
+    // frame loop runs without autocam. Log once and bail so the caller
+    // knows why detection stayed off.
+    #[cfg(not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")))]
+    {
+        log::warn!(
+            "Autocam: no detector backend compiled in (enable ort, tensorrt-native, or ncnn). \
+             Session will run without AI camera control."
+        );
+        return Ok(false);
+    }
+
+    #[allow(unreachable_code)]
     let mut detection_active = false;
 
     // Load class names from the model to resolve label -> class_id for directors.
     // Skip ORT session creation for non-ONNX models (.engine files,
     // NCNN model directories). ORT can only parse .onnx files.
+    // When ort is disabled entirely, fall through to empty names —
+    // directors use defaults or a sidecar labels file.
     let is_onnx = model_path.ends_with(".onnx");
+    #[cfg(feature = "ort")]
     let class_names = if is_onnx {
         match reco_detect::create_ort_session(Path::new(model_path), Vec::new()) {
             Ok((_, _, names)) => names,
@@ -192,6 +240,19 @@ pub fn setup_autocam(
         }
     } else {
         Vec::new() // Labels from sidecar file or defaults
+    };
+    #[cfg(not(feature = "ort"))]
+    let class_names: Vec<String> = {
+        // Without ort, we can't parse .onnx metadata. Log once, use
+        // defaults. TrtGpuDetector pulls labels from a sidecar
+        // .labels file (handled in its init path below).
+        if is_onnx {
+            log::warn!(
+                "Autocam: ort feature disabled; can't parse ONNX class names from {model_path}. \
+                 Using COCO defaults. For .engine models, place a <name>.labels sidecar."
+            );
+        }
+        Vec::new()
     };
 
     // Check if ROI filtering should be applied.
@@ -227,13 +288,13 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(trt_det)) => {
-                let detector: Box<dyn reco_core::detector::GpuDetector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredGpuDetector::new(Box::new(trt_det), roi))
+                        Box::new(RoiFilteredDetector::new(Box::new(trt_det), roi))
                     } else {
                         Box::new(trt_det)
                     };
-                session.set_gpu_detector(detector);
+                session.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: native TensorRT tracking enabled (engine: {model_path})");
             }
@@ -247,7 +308,7 @@ pub fn setup_autocam(
     }
 
     // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(feature = "ort", any(target_os = "linux", target_os = "windows")))]
     if !detection_active && use_zero_copy {
         match OrtGpuDetector::try_new(
             model_path,
@@ -258,13 +319,13 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(gpu_det)) => {
-                let detector: Box<dyn reco_core::detector::GpuDetector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredGpuDetector::new(Box::new(gpu_det), roi))
+                        Box::new(RoiFilteredDetector::new(Box::new(gpu_det), roi))
                     } else {
                         Box::new(gpu_det)
                     };
-                session.set_gpu_detector(detector);
+                session.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: GPU YOLO ball tracking enabled (model: {model_path})");
             }
@@ -277,7 +338,7 @@ pub fn setup_autocam(
         }
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(feature = "ort", target_os = "macos"))]
     if use_zero_copy {
         match MetalYoloDetector::try_new(
             model_path,
@@ -288,13 +349,13 @@ pub fn setup_autocam(
             Vec::new(),
         ) {
             Ok(metal_det) => {
-                let detector: Box<dyn reco_core::detector::MetalDetector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredMetalDetector::new(Box::new(metal_det), roi))
+                        Box::new(RoiFilteredDetector::new(Box::new(metal_det), roi))
                     } else {
                         Box::new(metal_det)
                     };
-                session.set_metal_detector(detector);
+                session.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: Metal YOLO ball tracking enabled (model: {model_path})");
             }
@@ -317,7 +378,7 @@ pub fn setup_autocam(
             Vec::new(), // labels loaded from sidecar if needed
         ) {
             Ok(ncnn_det) => {
-                let detector: Box<dyn reco_core::detector::Detector> =
+                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
                         Box::new(RoiFilteredDetector::new(Box::new(ncnn_det), roi))
                     } else {
@@ -334,16 +395,29 @@ pub fn setup_autocam(
     }
 
     // ORT CPU fallback for .onnx files.
+    #[cfg(feature = "ort")]
     if !detection_active && !use_zero_copy {
         let yolo = CpuYoloDetector::from_file(model_path)?;
-        let detector: Box<dyn reco_core::detector::Detector> = if let Some(roi) = effective_roi {
-            Box::new(RoiFilteredDetector::new(Box::new(yolo), roi))
-        } else {
-            Box::new(yolo)
-        };
+        let detector: Box<dyn reco_core::detector::UnifiedDetector> =
+            if let Some(roi) = effective_roi {
+                Box::new(RoiFilteredDetector::new(Box::new(yolo), roi))
+            } else {
+                Box::new(yolo)
+            };
         session.set_detector(detector);
         detection_active = true;
         log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
+    }
+    // Without ort feature, detection only activates via the
+    // tensorrt-native or ncnn branches above. If we still don't
+    // have a detector here, log so the user understands why.
+    #[cfg(not(feature = "ort"))]
+    if !detection_active {
+        log::warn!(
+            "Autocam: no detector attached. Build has `ort` disabled; only `.engine` \
+             (tensorrt-native) and NCNN `_ncnn_model` directories are supported. \
+             Received model_path={model_path}"
+        );
     }
 
     // Sweep director doesn't need detection - attach it regardless.

@@ -59,7 +59,7 @@ impl StitchSession {
     ) -> Result<SharedTextureSet, SessionError> {
         log::info!("Creating shared textures for zero-copy ({pixel_format:?})...");
 
-        let gpu = self.pipeline.gpu();
+        let gpu = self.core.gpu();
         let create_pair =
             |label: &str, slot: usize| -> Result<(SharedTexture, SharedTexture), SessionError> {
                 let y = create_nv12_shared_texture(
@@ -146,7 +146,7 @@ impl StitchSession {
         right_slot_free_tx.send(1).expect("seed slot channel");
 
         // Configure bind groups for GPU-resident shared textures
-        let bind_groups = self.pipeline.configure_gpu_source(
+        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
             [(&left_y_0, &left_uv_0), (&left_y_1, &left_uv_1)],
             [(&right_y_0, &right_uv_0), (&right_y_1, &right_uv_1)],
         );
@@ -204,12 +204,46 @@ impl StitchSession {
             Some(bg) => bg,
             None => {
                 let t = &textures;
-                self.pipeline.configure_gpu_source(
+                self.core.pipeline_mut().configure_gpu_source(
                     [(&t[0], &t[1]), (&t[2], &t[3])],
                     [(&t[4], &t[5]), (&t[6], &t[7])],
                 )
             }
         };
+
+        // Pre-build texture views for the GPU stacked-replay pack.
+        // Layout mirrors SharedTextureSet.textures:
+        //   [left_y_0, left_uv_0, left_y_1, left_uv_1,
+        //    right_y_0, right_uv_0, right_y_1, right_uv_1]
+        // Indexed per slot below via signal.left_slot / right_slot.
+        // Views are reused every frame — wgpu makes them cheap via
+        // Arc refcounting on the inner texture.
+        let shared_views: [wgpu::TextureView; 8] = [
+            textures[0]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[1]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[2]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[3]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[4]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[5]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[6]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[7]
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+        ];
 
         let frame_rx = decode_handles.frame_rx;
 
@@ -246,7 +280,7 @@ impl StitchSession {
                 start.elapsed(),
             )?;
             let pos = self.director_position();
-            let render_buf = self.pipeline.render_gpu_frame(
+            let render_buf = self.core.render_gpu_frame_at_pose(
                 &bind_groups,
                 signal.left_slot,
                 signal.right_slot,
@@ -254,6 +288,28 @@ impl StitchSession {
                 pos.pitch,
             );
             self.submit_render_output(render_buf)?;
+
+            // GPU stacked-replay pack on zero-copy sources.
+            // Reads the same shared textures the render just
+            // sampled; must complete before slot-free release so
+            // the decode thread doesn't overwrite mid-pack. Views
+            // indexed per slot:
+            //   left:  [left_slot * 2], [left_slot * 2 + 1]    (y, uv)
+            //   right: [4 + right_slot * 2], [4 + right_slot * 2 + 1]
+            // No-op when the packer isn't enabled (e.g. no replay
+            // requested for this run).
+            let ls = signal.left_slot as usize;
+            let rs = signal.right_slot as usize;
+            self.core.pack_gpu_stacked_replay_from_views(
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &shared_views[ls * 2],
+                    uv: &shared_views[ls * 2 + 1],
+                },
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &shared_views[4 + rs * 2],
+                    uv: &shared_views[4 + rs * 2 + 1],
+                },
+            );
 
             // Release slots for decode thread reuse.
             //

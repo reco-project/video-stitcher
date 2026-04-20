@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
-use crate::detector::{CameraId, Detection, Detector, RawFrame};
+use crate::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::director::{Director, DirectorContext, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, OutputFrame};
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
@@ -120,10 +120,18 @@ impl MockDetector {
     }
 }
 
-impl Detector for MockDetector {
-    fn detect(&mut self, _camera: CameraId, _frame: &RawFrame<'_>) -> Vec<Detection> {
+impl UnifiedDetector for MockDetector {
+    fn name(&self) -> &'static str {
+        "mock"
+    }
+
+    fn detect(
+        &mut self,
+        _camera: CameraId,
+        _frame: &DetectorFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
         self.call_count.fetch_add(1, Ordering::Relaxed);
-        self.detections.clone()
+        Ok(self.detections.clone())
     }
 }
 
@@ -215,7 +223,7 @@ impl Director for NanDirector {
 /// Build a session using the builder pattern with test defaults.
 fn build_test_session(
     encoder: Option<Box<dyn Encoder + Send>>,
-    detector: Option<Box<dyn Detector>>,
+    detector: Option<Box<dyn UnifiedDetector>>,
     director: Option<Box<dyn Director>>,
     detection_interval: u64,
 ) -> Result<StitchSession, SessionError> {

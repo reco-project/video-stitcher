@@ -51,7 +51,7 @@ const FAR_PLANE: f32 = 5.0;
 pub const PLANE_ASPECT: f32 = 16.0 / 9.0;
 
 /// Errors from the renderer.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum RenderError {
     /// Frame data has wrong size.
     #[error("frame data size mismatch: expected {expected} bytes, got {actual}")]
@@ -692,6 +692,51 @@ impl Renderer {
     /// equivalent to the CPU path's buffer reversal for rotated video.
     pub fn set_flip_180(&mut self, left: bool, right: bool) {
         self.flip_180 = [left, right];
+    }
+
+    /// Create fresh `TextureView`s for the left plane's Y/U/V
+    /// textures. Needed by [`crate::yuv_stack_packer::YuvStackPacker`]
+    /// when replay recording is enabled: the packer samples the same
+    /// uploaded source data the stitch shader reads, producing a
+    /// tiled atlas in parallel with the panorama render.
+    ///
+    /// For NV12 inputs the returned `U` view is the interleaved UV
+    /// texture (Rg8Unorm) and the `V` view is the 1×1 dummy; the
+    /// packer's NV12 kernel ignores the V binding.
+    pub(crate) fn left_plane_views(
+        &self,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        Self::plane_views(&self.left)
+    }
+
+    /// Right-side counterpart to [`Self::left_plane_views`].
+    pub(crate) fn right_plane_views(
+        &self,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        Self::plane_views(&self.right)
+    }
+
+    fn plane_views(
+        plane: &PlaneResources,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        (
+            plane
+                .y_texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            plane
+                .u_texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            plane
+                .v_texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+        )
+    }
+
+    /// Input format the renderer was built for. Surfaced so the
+    /// stacked-video packer can pick the right shader variant
+    /// (YUV420P vs NV12) at session setup.
+    pub(crate) fn input_format(&self) -> InputFormat {
+        self.input_format
     }
 
     /// Encode the shared stitch render pass: projection, uniforms, and draw calls.

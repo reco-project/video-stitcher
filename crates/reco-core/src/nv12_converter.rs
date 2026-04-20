@@ -498,7 +498,7 @@ impl Nv12Converter {
 }
 
 /// Errors from the NV12 converter.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Nv12Error {
     /// GPU buffer mapping failed.
     #[error("NV12 buffer mapping failed")]

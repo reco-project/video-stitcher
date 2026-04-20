@@ -15,7 +15,7 @@
 
 use std::sync::OnceLock;
 
-use crate::cuda_interop::CUdeviceptr;
+use reco_core::cuda_interop::CUdeviceptr;
 
 /// Errors from NPP operations.
 #[derive(Debug, thiserror::Error)]
@@ -64,9 +64,18 @@ const NPPI_AXIS_BOTH: i32 = 2;
 /// NPP stream context for `_Ctx` API variants.
 ///
 /// NPP 13 removed the non-Ctx functions; all calls require this struct.
-/// A zeroed context uses the default CUDA stream and works for synchronous
-/// operations. For production use, populate device properties via the
-/// CUDA runtime API.
+/// Prior to 2026-04-19 we passed a zeroed context, which uses the
+/// **default (NULL) CUDA stream**. That causes every NPP call to
+/// implicitly serialize with all other CUDA work on every other
+/// stream — specifically the NVDEC decode stream — producing the
+/// "waving" 4K decode throughput pattern (100→60→100→70→100→50%)
+/// reported in issue #186.
+///
+/// Now populated with a dedicated non-default CUDA stream created
+/// at NPP init. Device property fields stay zeroed: NPP uses
+/// internally-queried defaults when these are zero, so populating
+/// them is unnecessary. The `h_stream` field is the only one that
+/// matters for the serialization fix.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct NppStreamContext {
@@ -92,13 +101,51 @@ struct NppStreamContext {
     n_reserved0: i32,
 }
 
+// SAFETY: NppStreamContext contains a raw pointer (h_stream) to a
+// CUDA stream. CUDA streams are thread-safe for queuing operations
+// (cuStreamQuery / cuLaunch* are documented as reentrant). The
+// pointer is owned by the NppFunctions singleton and lives for
+// the process lifetime, so sharing across threads is sound.
+unsafe impl Send for NppStreamContext {}
+unsafe impl Sync for NppStreamContext {}
+
+/// Default ctor is kept for tests / diagnostic callsites that
+/// legitimately want the default stream (e.g. one-shot synchronous
+/// probes). Production call sites use the streamed context stored
+/// on [`NppFunctions`].
 impl Default for NppStreamContext {
     fn default() -> Self {
         // Zero-initialized: default stream, zeroed device props.
-        // Works for synchronous NPP operations.
         unsafe { std::mem::zeroed() }
     }
 }
+
+// ── CUDA stream bindings (minimal, loaded alongside NPP) ───────────
+//
+// We use the CUDA **runtime** API (libcudart) rather than the
+// driver API (libcuda). The runtime's cudaSetDevice+cudaStreamCreate
+// auto-initialize a primary context on the calling thread if none
+// exists, which is critical: NPP's OnceLock init runs before any
+// other CUDA code in the process has had a chance to set up a
+// context. Using driver-API cuStreamCreate returned
+// CUDA_ERROR_INVALID_CONTEXT (201) in testing because nothing had
+// bound a context yet.
+//
+// cudaStream_t is a `void*` typedef matching CUstream, so the
+// resulting stream handle is interoperable with NPP's h_stream.
+
+type CudaStream = *mut std::ffi::c_void;
+type CudaError = i32;
+
+/// `cudaStreamCreateWithFlags(&mut stream, flags)` — creates a
+/// stream with explicit flags. `cudaStreamNonBlocking = 1` is
+/// what we want: NPP dispatches run in parallel with NVDEC's
+/// own stream, not serialized through the default null stream.
+const CUDA_STREAM_NON_BLOCKING: u32 = 1;
+
+type CudaSetDevice = unsafe extern "C" fn(i32) -> CudaError;
+type CudaStreamCreateWithFlags = unsafe extern "C" fn(*mut CudaStream, u32) -> CudaError;
+type CudaStreamDestroy = unsafe extern "C" fn(CudaStream) -> CudaError;
 
 // ── Dynamic loader ─────────────────────────────────────────────────
 
@@ -106,6 +153,24 @@ impl Default for NppStreamContext {
 struct NppFunctions {
     _lib_nppicc: libloading::Library,
     _lib_nppig: libloading::Library,
+    /// libcudart handle (kept alive for the process lifetime so
+    /// the stream created below stays valid). `None` when libcudart
+    /// isn't available — in that case `stream_ctx` is zeroed and
+    /// we're back to the pre-#186 default-stream behavior rather
+    /// than failing to load NPP entirely.
+    _lib_cudart: Option<libloading::Library>,
+
+    /// Preallocated stream context shared across all NPP calls.
+    /// Carries the non-default CUDA stream in `h_stream`. Built
+    /// once at load time; cheap to copy (a few words) so each
+    /// NPP call takes it by value with no synchronization.
+    stream_ctx: NppStreamContext,
+
+    /// `cudaStreamDestroy` handle. Held only so the OnceLock's
+    /// drop path (which never runs in practice) could release the
+    /// stream cleanly. Present also as documentation that the
+    /// stream is intentionally leaked for the process lifetime.
+    _stream_destroy: Option<CudaStreamDestroy>,
 
     /// `nppiNV12ToRGB_8u_P2C3R_Ctx(pSrc, nSrcStep, pDst, nDstStep, oSizeROI, nppStreamCtx)`
     ///
@@ -196,15 +261,126 @@ impl NppFunctions {
                 };
             }
 
+            // Load libcudart for stream management (#186 fix).
+            // Best-effort: on failure we keep the zero-stream
+            // context and log loudly. NPP still works, just with
+            // the pre-#186 serialization behavior.
+            #[cfg(target_os = "linux")]
+            let lib_cudart = libloading::Library::new("libcudart.so.13")
+                .or_else(|_| libloading::Library::new("libcudart.so.12"))
+                .or_else(|_| libloading::Library::new("libcudart.so.11"))
+                .or_else(|_| libloading::Library::new("libcudart.so"))
+                .ok();
+            #[cfg(target_os = "windows")]
+            let lib_cudart = (11..=13)
+                .rev()
+                .find_map(|v| libloading::Library::new(format!("cudart64_{v}0.dll")).ok());
+
+            let (stream_ctx, stream_destroy) = create_npp_stream_ctx(lib_cudart.as_ref())
+                .unwrap_or_else(|reason| {
+                    log::warn!(
+                        "NPP: dedicated stream unavailable ({reason}); falling back to \
+                         default CUDA stream. NPP calls will serialize with NVDEC work \
+                         (pre-#186 behavior, issue #186 mitigation disabled for this run)."
+                    );
+                    (NppStreamContext::default(), None)
+                });
+
             Ok(NppFunctions {
                 nppi_nv12_to_rgb: load_sym!(lib_nppicc, "nppiNV12ToRGB_8u_P2C3R_Ctx"),
                 nppi_resize_c3: load_sym!(lib_nppig, "nppiResize_8u_C3R_Ctx"),
                 nppi_mirror_c3: load_sym!(lib_nppig, "nppiMirror_8u_C3R_Ctx"),
                 _lib_nppicc: lib_nppicc,
                 _lib_nppig: lib_nppig,
+                _lib_cudart: lib_cudart,
+                stream_ctx,
+                _stream_destroy: stream_destroy,
             })
         }
     }
+}
+
+/// Build the NPP stream context + keep a destroy-fn handle. Returns
+/// `Err(reason)` on every failure path so the caller can log one
+/// unified warn line. Never panics.
+///
+/// Uses the CUDA runtime API so the context is auto-initialized on
+/// the calling thread (the driver API requires an already-bound
+/// context, which isn't guaranteed at NPP load time — NPP's
+/// OnceLock init typically runs before any other CUDA code).
+///
+/// Borrows `lib_cudart` so the returned `stream_destroy` fn pointer
+/// stays valid as long as NppFunctions holds `_lib_cudart`. The fn
+/// pointer is Copy so we extract and return it by value.
+unsafe fn create_npp_stream_ctx(
+    lib_cudart: Option<&libloading::Library>,
+) -> Result<(NppStreamContext, Option<CudaStreamDestroy>), String> {
+    let cudart = lib_cudart.ok_or_else(|| "libcudart not found".to_string())?;
+
+    // SAFETY: libloading::Library::get is unsafe because dereferencing
+    // the returned Symbol calls through an untrusted library. We only
+    // call these through the CUDA runtime API with well-defined
+    // signatures stable since CUDA 4.0; libcudart is the system-
+    // provided NVIDIA runtime. If libcudart is hostile, the entire
+    // process is already compromised.
+    let set_device: libloading::Symbol<CudaSetDevice> = unsafe {
+        cudart
+            .get(b"cudaSetDevice\0")
+            .map_err(|e| format!("cudaSetDevice: {e}"))?
+    };
+    let stream_create: libloading::Symbol<CudaStreamCreateWithFlags> = unsafe {
+        cudart
+            .get(b"cudaStreamCreateWithFlags\0")
+            .map_err(|e| format!("cudaStreamCreateWithFlags: {e}"))?
+    };
+    let stream_destroy: libloading::Symbol<CudaStreamDestroy> = unsafe {
+        cudart
+            .get(b"cudaStreamDestroy\0")
+            .map_err(|e| format!("cudaStreamDestroy: {e}"))?
+    };
+
+    // Bind device 0 (same one reco-core's cuda_interop + zero-copy
+    // path uses). This implicitly creates a primary CUDA context on
+    // this thread if one doesn't exist yet — which is the key
+    // difference vs the driver-API cuStreamCreate path that fails
+    // with CUDA_ERROR_INVALID_CONTEXT in a fresh thread.
+    //
+    // SAFETY: cudaSetDevice takes an i32 device ordinal and returns
+    // a cudaError; no pointer dereference, no UB even on bad input.
+    let rc_set = unsafe { (*set_device)(0) };
+    if rc_set != 0 {
+        return Err(format!("cudaSetDevice(0) returned {rc_set}"));
+    }
+
+    let mut stream: CudaStream = std::ptr::null_mut();
+    // SAFETY: out-ptr is valid; flag is the documented constant.
+    let rc = unsafe { (*stream_create)(&mut stream, CUDA_STREAM_NON_BLOCKING) };
+    if rc != 0 || stream.is_null() {
+        return Err(format!("cudaStreamCreateWithFlags returned {rc}"));
+    }
+
+    log::info!(
+        "NPP: created dedicated non-blocking CUDA stream (h_stream={:?}); NPP calls now run \
+         in parallel with NVDEC on its own stream (#186 fix active)",
+        stream,
+    );
+    // Construct the ctx directly with h_stream set; device props
+    // stay zeroed. NPP uses internal defaults when they are; the
+    // three functions we dispatch (NV12→RGB, resize, mirror) do
+    // not consult those fields per NPP 13 docs.
+    let ctx = NppStreamContext {
+        h_stream: stream,
+        n_cuda_device_id: 0,
+        n_multi_processor_count: 0,
+        n_max_threads_per_multi_processor: 0,
+        n_max_threads_per_block: 0,
+        n_shared_mem_per_block: 0,
+        n_cuda_dev_attr_compute_capability_major: 0,
+        n_cuda_dev_attr_compute_capability_minor: 0,
+        n_stream_flags: 0,
+        n_reserved0: 0,
+    };
+    Ok((ctx, Some(*stream_destroy)))
 }
 
 fn npp() -> Result<&'static NppFunctions, NppError> {
@@ -284,7 +460,7 @@ pub fn npp_nv12_to_rgb(
                 dst as *mut u8,
                 dst_step,
                 roi,
-                NppStreamContext::default(),
+                npp.stream_ctx,
             ),
         )?;
     }
@@ -336,7 +512,7 @@ pub fn npp_resize_c3(
                 dst_size,
                 dst_roi,
                 NPPI_INTER_LINEAR,
-                NppStreamContext::default(),
+                npp.stream_ctx,
             ),
         )?;
     }
@@ -374,7 +550,7 @@ pub fn npp_mirror_c3(
                 step,
                 roi,
                 NPPI_AXIS_BOTH,
-                NppStreamContext::default(),
+                npp.stream_ctx,
             ),
         )?;
     }

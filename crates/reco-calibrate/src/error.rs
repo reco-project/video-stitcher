@@ -2,8 +2,11 @@
 
 use thiserror::Error;
 
-/// Errors from the calibration pipeline.
-#[derive(Debug, Error)]
+/// Errors from the calibration pipeline. `Clone + Send + Sync` so
+/// the calibration background thread can post results back to the
+/// UI thread with typed errors (no stringification at the mpsc
+/// boundary).
+#[derive(Debug, Clone, Error)]
 pub enum CalibrateError {
     /// No keypoints were detected in a frame.
     #[error("no keypoints detected in {camera} frame {frame_idx}")]

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "reco-obs"
 version = "0.1.0"
 edition.workspace = true
@@ -11,12 +12,38 @@ repository.workspace = true
 crate-type = ["cdylib"]
 
 [features]
-profiling = ["reco-core/profiling", "tracing"]
+profiling = ["reco-core/profiling"]
+# Enables the M6.5 replay-recording UI (two OBS properties: toggle +
+# output path). Pulls in reco-io for the stacked-video encoder.
+# Opt-in so builds that don't want the replay path keep a smaller
+# plugin `.so` footprint.
+replay = ["dep:reco-io"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
+reco-io = { path = "../reco-io", features = ["stacked-output"], optional = true }
+# M2 tracing migration: tracing-subscriber replaces env_logger.
+# tracing-log bridges legacy `log::*` calls. Critical for the OBS
+# plugin: post-deployment we rely on log files for bug diagnosis, and
+# structured tracing events give per-frame context that plain log lines
+# can't (spans for video_tick, camera ID attributes, etc.).
 log = "0.4"
-env_logger = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tracing = { workspace = true, optional = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-log = { workspace = true }
+
+[build-dependencies]
+# Generates FFI bindings from the installed libobs headers at build time.
+# Replaces ~600 lines of hand-written, drift-prone struct layouts in
+# src/ffi.rs. In particular this fixes the `obs_source_frame::refs`
+# size mismatch (Rust AtomicI32 = 4 bytes vs C `volatile long` = 8 bytes
+# on LP64). See deep-review-2026-04-18 T-2 / C2.
+bindgen = "0.72"
+# Compiles the tiny `blog_shim.c` helper that wraps OBS's variadic
+# `blog(...)` function behind a fixed-arity C entry point we can call
+# from Rust. Required to surface plugin diagnostic messages in OBS's
+# own log pane (Help → Log Files → View Current Log) rather than only
+# in the captured stderr that most users never see.
+cc = "1"

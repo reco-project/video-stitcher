@@ -300,6 +300,58 @@ know our plugin's internal ring-buffer state.
 
 Estimated 4-6 hours plus memory-budget discussion.
 
+### A22. Input dimensions are declared, not detected — mismatched sources silently freeze the output
+
+**Impact**: High UX. Surfaced 2026-04-19 during second in-OBS test. `Input width` and `Input height` in the Reco source Properties dialog are user-declared values that must match the actual frames coming from both upstream OBS sources. If they drift out of sync (e.g. user swaps one source from a 1080p Media Source to a 4K Media Source without also updating Input W/H), the plugin logs `input-dim mismatch (configured WxH, left=..., right=...)` once and then refuses to submit frames. The last rendered frame stays on screen, OBS keeps polling, and the user sees a hang.
+
+Observed symptom: `diag_tick` keeps advancing while `submitted` plateaus. Only visible in stderr/log; Properties UI gives no hint.
+
+Root cause: the pipeline's GPU textures are sized at `StitchCore::new` time using the declared Input W/H. When the actual incoming frame dimensions differ, the submit path (`StitchCore::submit_frame_yuv_at_pose`) correctly rejects — but reco-obs does not rebuild the session to match the new input.
+
+**Suggested direction**: on every successful upstream-source bind, peek the first frame's reported width/height, compare against `self.input_width` / `self.input_height`, and if they differ:
+
+1. Log the detected dims at `info!` level so the story is obvious: "reco-obs: detected input 5312x2988 on right, rebuilding pipeline."
+2. Update `self.input_width` / `self.input_height` from the detection (probably also write them back to the OBS settings dict so the Properties UI reflects reality next time the user opens it).
+3. Invalidate the current `core` (set to `None`) and call `try_init_pipeline` to rebuild with the new dimensions.
+4. Handle the mismatch case (left=1080p, right=4K) explicitly: log a clear error, maybe grey out the source preview with an overlay, and wait for both sides to match instead of silently refusing.
+
+Bonus: a scale / downscale option in Properties (tied to A19) would let users mix 1080p + 4K intentionally by requesting the output scale to the lower of the two.
+
+**Blocks**: nothing urgent in production, but the first time any user changes sources they hit this and assume the plugin crashed.
+
+**Impact**: Medium. Surfaced 2026-04-19 during first in-OBS test. Replay tiles are written at the exact input resolution (the stacked composite is `width × 2*height` for N=2), with no way to request a smaller recording. Consequences:
+
+- Two 5K cameras produce a 5120×5760 composite. libx264 software encode at this size struggles to keep up on modest hardware, the file grows at several GB/min, and disk I/O may stall the OBS video_tick.
+- A user who wants replay for review purposes (not archival) has no way to trade quality for size.
+
+Today we emit a `warn!` when the input exceeds 4K per tile so the user isn't silently blindsided, but the proper fix is a UI-visible `Replay scale` dropdown (Full / 1080p / 720p) and a `Replay quality` dropdown (Fast / Balanced / High). Both map onto `StackedEncoderConfig.inner.{resolution, quality, crf}` which already exist.
+
+**Suggested direction**: add two dropdowns in the reco-obs properties UI and thread them through `StackedEncoderConfig`. A GPU-resident downscale (once the future wgpu pack path lands) would avoid the CPU hit entirely.
+
+### A20. Replay record toggle is fully decoupled from OBS Stream / Record buttons
+
+**Impact**: Medium UX. Surfaced 2026-04-19 during first in-OBS test, revisited same-day. The "Record replay (stacked video)" checkbox in the Reco source Properties dialog is a pure plugin-side toggle - it starts and stops writing the `.mkv` file on its own, with no connection to OBS's global "Start Recording" or "Start Streaming" buttons. Two surprises in both directions:
+
+- Enabling the checkbox while OBS isn't recording anything still writes a replay file (probably unexpected; the user may assume "OBS isn't recording" means nothing is being written to disk).
+- Clicking OBS's "Start Recording" does NOT also start the replay (and conversely "Stop Recording" doesn't stop it). Users have to toggle the replay checkbox separately, each time.
+
+The mental model users carry is closer to "OBS's record button controls everything the plugin writes." Ours doesn't match that.
+
+**Suggested direction** (two alternatives):
+
+1. **Follow OBS state**: the replay toggle becomes "Enable replay recording" (intent), and the actual file is opened when OBS starts recording/streaming AND the checkbox is ticked, closed when OBS stops. Cleanest from a user-expectation standpoint.
+2. **Surface a dedicated button**: add a "Record replay" button in OBS's main UI alongside the existing Start Recording / Start Streaming. Requires registering a hotkey or dock. More work but gives the user a clear separate control when they genuinely want replay independent of OBS recording.
+
+Option 1 is the lower-friction default, but loses the use case "record replay for post-match review without also doing an OBS recording of the stitched output." Option 2 preserves both flows at the cost of UI weight. Leaning toward shipping option 1 + documenting that option 2 is available as a toggle in Advanced settings.
+
+**Blocks**: nothing urgent, but every user who tries replay hits this on first run.
+
+### A21. Live Matroska replay is hard to scrub in general-purpose players
+
+**Impact**: Low. Surfaced 2026-04-19 during first in-OBS test. A Matroska file that's still being written has unstable duration metadata - VLC, mpv, and OBS itself treat the duration as `N/A` and won't scrub backwards past a few seconds. This is a generic streaming-container limitation, not a reco bug: finalized files (after the user unticks the toggle) scrub normally.
+
+**Suggested direction**: either accept it (replay is replay, not scrub), or write a parallel "chunked" file (rotate every N seconds into a new .mkv) so recent chunks are always complete and seekable. Low priority - real-time replay in a stitcher UI is future work anyway.
+
 ### A17. No AI auto-pan access in the OBS plugin
 
 See also A10 (deeper architectural notes). Short version: reco-obs
@@ -327,6 +379,25 @@ wgpu, which it hasn't.
 
 Tracking here as a known limit; not actionable at the reco-core
 level without a specific interop target.
+
+### N9. FOV accessors still require pipeline[_mut]()
+
+**Impact**: Low. Hit every time the plugin changes FOV from a UI
+event.
+
+Post-M3, `StitchCore` owns the pipeline and exposes `pipeline_mut()`
+for direct access, but there's no `StitchCore::set_fov(f32)` /
+`fov_degrees()` shortcut. Consumers go through
+`core.pipeline_mut().set_fov(v)` and `core.pipeline().viewport_config().fov_degrees`.
+Three public surfaces for a single hot-path operation.
+
+A `StitchCore::set_fov` + `StitchCore::fov_degrees` pair would match
+the `set_rig_tilt` / `rig_tilt` pattern already on the core. Same
+shape extension applies to `blend_width` and `rig_roll` — currently
+reached via the same pipeline detour.
+
+Plan disposition: K6 (post-M3 ergonomics; defer until a second
+consumer hits the same pain).
 
 ## Resolved (archived)
 
@@ -363,6 +434,18 @@ level without a specific interop target.
   Source, screen capture and WebRTC feeds that deliver BGRA/BGRX/RGBA
   are accepted, swizzle-to-RGBA happens once per frame into a cached
   buffer.
+- **A18. No push-API entry point for disk-based replay recording**
+  Resolved 2026-04-19 alongside M6.5 item 3 wiring. Added
+  `reco_core::core::StackedReplayRecorder` trait and
+  `StitchSession::{set,clear,flush}_stacked_recorder` on the push
+  API. reco-io provides `stacked_video::replay::session_recorder(path,
+  config, width, height)` that returns a `Box<dyn StackedReplayRecorder>`
+  ready for `session.set_stacked_recorder(...)`. Mirrors the pull-side
+  `StitchJob::with_replay_recording` builder: one line for the
+  consumer, the session owns the per-frame tap + encoder lifecycle.
+  Integration test `session_recorder_records_planes` in
+  `reco-io/tests/stacked_video_roundtrip.rs` verifies a round trip
+  through the trait path.
 
 ## Notes on plugin status
 

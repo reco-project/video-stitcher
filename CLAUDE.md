@@ -2,6 +2,20 @@
 
 Open-source GPU-accelerated panoramic sports camera software.
 
+## Current phase (read first)
+
+**Focus: live sports production via OBS Studio.** Tier 1 of the OBS
+plugin landed 2026-04-18 (PR #267). Next phase priorities are AI
+auto-pan, live calibration from OBS sources, and sync-source support
+(Browser / Screen / WebRTC). Full state + proposed batches in
+`~/Documents/knowledge/projects/video-stitcher/architecture/session-handoff-2026-04-18.md`
+— read that before planning.
+
+Active FRICTION: 13 in `crates/reco-obs/FRICTION.md`, 4 in
+`crates/reco-gui/FRICTION.md`. User's rule: **document friction,
+don't work around**; reco-core API gaps get a FRICTION entry, not a
+consumer-side hack.
+
 ## v2 Architecture (Rust + wgpu)
 
 - `crates/reco-core/` — GPU stitching engine (library crate, no I/O deps)
@@ -10,6 +24,8 @@ Open-source GPU-accelerated panoramic sports camera software.
 - `crates/reco-detect/` — AI detection backends (ORT CPU/GPU, TensorRT, NCNN, CoreML/Metal)
 - `crates/reco-autocam/` — AI camera control (directors, trajectory smoothing, ROI filtering)
 - `crates/reco-calibrate/` — Stereo camera calibration (AKAZE features, optimization)
+- `crates/reco-gui/` — Slint GUI consumer (wgpu 28 zero-copy preview)
+- `crates/reco-obs/` — OBS Studio source plugin (async-frame ingestion + BGRA + interactive pan/zoom)
 
 ## Key commands
 

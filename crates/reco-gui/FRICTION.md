@@ -73,6 +73,107 @@ that want to batch our render with their own copy commands already
 work with the current API. Leaving this as a note for anyone hitting
 the old asymmetry - the Batch A outcome enum was the right abstraction.
 
+### N5. ExportOutcome::Failed loses structured StitchError variants
+
+**Impact**: Medium. Hit while wiring the export-error toast/dialog.
+
+The cross-thread channel from the export worker back to the UI
+flattens `StitchError` into `ExportOutcome::Failed(String)`. The UI
+can show "something broke" but can't branch on the variant (e.g.
+retry-friendly FFmpegDecode vs hard-fail BadCalibration). Fixing it
+requires `StitchError: Clone + Send + Sync` so a rich variant can
+cross the channel boundary.
+
+Plan disposition: K3 / E5 (cross-thread error propagation cleanup).
+
+### N6. Calibration thread loses reco_calibrate::Error variants
+
+**Impact**: Medium. Sibling of N5 for the calibrate path.
+
+The calibration worker surfaces failures as a flat string via
+`CalibrationProgress::Failed`. Low-level context (AKAZE threshold
+too strict, RANSAC under-8 pairs, telemetry parse failure) gets
+collapsed. Users see "calibration failed" without actionable
+guidance. Same fix vector as N5: Clone+Send+Sync on the error enum.
+
+### N7. FfmpegFileSource opens the whole container just to read total_frames
+
+**Impact**: Low. Hit in the export dialog init.
+
+The GUI wants total_frames up front to render the progress bar
+scale. Today it constructs a full `FfmpegFileSource`, reads
+`.total_frames()`, and drops it. That's two muxer opens per export
+(init + real read). A lightweight `reco_io::probe_duration(path)`
+that only opens the muxer, reads stream metadata, and closes would
+remove one open.
+
+Plan disposition: K6 (E6-adjacent).
+
+### N8. Slint wgpu 28 rendering notifier does not expose AdapterInfo
+
+**Impact**: Low (diagnostics). Hit while writing the "GPU info" footer.
+
+`reco-core::GpuContext::adapter_info()` is available everywhere
+_except_ inside the Slint rendering notifier closure, because Slint
+1.15 hands consumers a `wgpu::Device` without the parent `Adapter`.
+The GUI currently falls back to "unknown GPU" in its diagnostics
+panel. Upstream Slint feature request, blocked on them exposing
+the adapter reference.
+
+Plan disposition: K8 (Slint upstream; out of scope for this branch).
+
+### N10. setup_autocam positional-11-arg signature
+
+**Impact**: Low-Medium. Pain on every autocam feature addition.
+
+`reco_autocam::setup_autocam(session, model, w, h, fps, use_zero_copy,
+interval, lead, mode, roi, is_10bit)` is an 11-positional-arg call.
+Consumers that only want to change the detection interval have to
+re-type every arg. `setup_autocam_from_config(&mut session, &config)`
+with `AutocamConfig::new(path).with_*()` landed alongside it, but the
+old signature is still the public path for the CLI/OBS.
+
+Plan disposition: K6 / E11. Deprecate `setup_autocam` once all
+consumers migrate to `AutocamConfig`.
+
+### N11. Codec / Quality string parsing duplicated across consumers
+
+**Impact**: Low. Hit when a new codec variant lands.
+
+Each consumer (reco-cli `stitch`/`camera`/`preview`, reco-gui export
+dropdown) hand-rolls a `match` for `"h264" | "x264" | ...` to build
+`reco_io::Codec`. Four copies, and they drift on obscure names. A
+`Codec::from_str_loose` / `Quality::from_str_loose` helper in reco-io
+would collapse them into one.
+
+Plan disposition: K6 / E9.
+
+### N12. YuvPlanes hand-constructed in every render call site
+
+**Impact**: Low. API ergonomics.
+
+To call `StitchCore::submit_frame_yuv`, each consumer builds
+`YuvPlanes { y: &[..], u: &[..], v: &[..], width, height }` from
+whatever shape its source delivers. That's 6 field accesses and an
+aspect-ratio compute spread across the GUI playback path and the CLI
+stitch path. A `YuvData::planes()` method that returns
+`YuvPlanes<'_>` directly would remove the per-call boilerplate.
+
+Plan disposition: K6 / E7.
+
+### N13. StereoFrame::into_yuv420p is missing
+
+**Impact**: Low. Sibling of N12.
+
+`StereoFrame` has `Yuv420p`, `Nv12`, and `Bgra` variants but no
+accessor to produce a `(YuvPlanes, YuvPlanes)` tuple from a Yuv420p
+variant. Consumers match on the variant themselves and destructure
+the inner pair — which is fine once, awkward when five sites do it.
+`as_yuv420p()` returning `Option<(YuvPlanes, YuvPlanes)>` would
+centralize the destructure.
+
+Plan disposition: K6 / E7. Lands with N12.
+
 ## Resolved (archived)
 
 Items pruned from Active once the reco-core / reco-io API added what

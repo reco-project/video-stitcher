@@ -31,6 +31,63 @@ fn init_profiling() -> tracing_chrome::FlushGuard {
     guard
 }
 
+/// Install the standard tracing subscriber for the non-profiling path.
+///
+/// Routes legacy `log::*` macro calls from reco-core / reco-io /
+/// reco-calibrate into the tracing pipeline so a single structured
+/// source of truth carries every event. Reads `RUST_LOG` for level
+/// filtering; defaults to `info` if unset.
+///
+/// M2 migration: replaces the previous `env_logger::init()`.
+#[cfg(not(feature = "profiling"))]
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+    // Bridge legacy `log::*` calls into tracing. Ignores "already set"
+    // errors so tests that construct multiple CLIs don't panic.
+    let _ = tracing_log::LogTracer::init();
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let fmt_layer = fmt::layer().with_target(true).with_level(true);
+
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt_layer)
+        .try_init();
+}
+
+/// Install a panic hook that captures the panic context (location,
+/// payload) as a structured `tracing::error!` event before the default
+/// hook runs. When a user reports a bug post-deployment with a log
+/// file, the panic context is immediately searchable alongside regular
+/// log lines.
+///
+/// M2 addition: required for the post-deployment diagnostic story the
+/// user flagged during the plan iteration on 2026-04-18.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".into());
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".into()
+        };
+        tracing::error!(
+            target: "panic",
+            location = %location,
+            payload = %payload,
+            "panic caught by tracing panic hook"
+        );
+        default_hook(info);
+    }));
+}
+
 #[derive(Parser)]
 #[command(
     name = "reco",
@@ -130,6 +187,31 @@ enum Commands {
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
         #[arg(long)]
         preset: Option<String>,
+
+        /// Output container format. One of: `mp4` (default,
+        /// finalized at close), `fmp4` (fragmented MP4, readable
+        /// mid-write), `mkv` (Matroska, crash-safe + streamable).
+        /// Pick `mkv` or `fmp4` if you plan to tee the output to
+        /// RTMP via a second ffmpeg with `-c copy` while the
+        /// stitch is still running.
+        #[arg(long)]
+        container: Option<String>,
+
+        /// Record pre-stitch source frames to this path as a
+        /// stacked-video file for later replay or cloud upload.
+        /// Requires building with `--features replay`.
+        #[arg(long)]
+        replay: Option<String>,
+
+        /// Downscale replay tiles to `WIDTHxHEIGHT` (e.g.
+        /// `1280x720`, `854x480`). Reduces replay file size and
+        /// CPU encode cost (libx264 at 1080p stacked crawls on
+        /// ARM / Jetson). GPU pack path only: CPU-resident
+        /// sources log a warn and record at source dims. Width
+        /// must be divisible by 4; height must be even. Requires
+        /// `--replay`.
+        #[arg(long, value_parser = parse_wxh)]
+        replay_scale: Option<(u32, u32)>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -246,6 +328,42 @@ enum Commands {
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
         #[arg(long)]
         preset: Option<String>,
+
+        /// Output container format. One of: `mp4` (default, needs
+        /// close-time finalize), `fmp4` (fragmented MP4, streamable
+        /// mid-write), `mkv` (Matroska, crash-safe + streamable).
+        /// Use `mkv` or `fmp4` if you plan to stream the output
+        /// via an external `ffmpeg -c copy -f flv rtmp://...`
+        /// tee while the capture is still running.
+        #[arg(long)]
+        container: Option<String>,
+
+        /// Tracking director mode. `ball` (default): YOLO ball
+        /// tracking via BallDirector. `field`: ball + players
+        /// (FieldDirector, for multi-class models). `sweep`:
+        /// no AI, slow left-right pan across the full coverage
+        /// (debug / demo). Sweep mode doesn't require `--model`.
+        #[arg(long, default_value = "ball")]
+        tracking: String,
+
+        /// Disable the constrained-look coverage clamp
+        /// (FRICTION A13). When off, the viewport can pan into
+        /// black panorama edges — useful for sweeping the full
+        /// coverage or debugging the coverage boundary itself.
+        #[arg(long, default_value_t = false)]
+        unconstrained: bool,
+
+        /// Record pre-stitch source frames to this path as a
+        /// stacked-video file. Same M7 replay feature as
+        /// `stitch --replay`. Requires `--features replay`.
+        #[arg(long)]
+        replay: Option<String>,
+
+        /// Downscale replay tiles to `WIDTHxHEIGHT` (e.g.
+        /// `1280x720`, `856x480`). GPU pack path only; width
+        /// divisible by 4, height even. Requires `--replay`.
+        #[arg(long, value_parser = parse_wxh)]
+        replay_scale: Option<(u32, u32)>,
     },
 
     /// Stitch live RPi CSI camera feeds via libcamera (rpicam-vid).
@@ -445,13 +563,42 @@ fn parse_blend(s: &str) -> Result<f32, String> {
     }
 }
 
+/// Parse a `WIDTHxHEIGHT` string (e.g. `1280x720`, `854x480`) into
+/// `(u32, u32)`. Used by `--replay-scale`. Validates YUV420P
+/// alignment: width divisible by 4, height even.
+fn parse_wxh(s: &str) -> Result<(u32, u32), String> {
+    let (w, h) = s
+        .split_once(['x', 'X'])
+        .ok_or_else(|| format!("expected WIDTHxHEIGHT, got {s:?}"))?;
+    let w: u32 = w.parse().map_err(|e| format!("invalid width {w:?}: {e}"))?;
+    let h: u32 = h
+        .parse()
+        .map_err(|e| format!("invalid height {h:?}: {e}"))?;
+    if w == 0 || h == 0 {
+        return Err(format!("dimensions must be > 0, got {w}x{h}"));
+    }
+    if !w.is_multiple_of(4) {
+        return Err(format!(
+            "width must be divisible by 4 (pack shader packs 4 pixels per u32 write), got {w}"
+        ));
+    }
+    if !h.is_multiple_of(2) {
+        return Err(format!(
+            "height must be even (YUV420P chroma subsampling), got {h}"
+        ));
+    }
+    Ok((w, h))
+}
+
 fn main() -> anyhow::Result<()> {
-    // When profiling, tracing-subscriber owns the global logger;
-    // otherwise, use env_logger for RUST_LOG filtering.
+    // When profiling, tracing-subscriber is owned by the chrome layer
+    // (one global subscriber per process). Otherwise, install our fmt
+    // subscriber + log bridge for normal structured output.
     #[cfg(feature = "profiling")]
     let _profiling_guard = init_profiling();
     #[cfg(not(feature = "profiling"))]
-    env_logger::init();
+    init_tracing();
+    install_panic_hook();
 
     // Set up Ctrl-C handler so stitch can finalize the output file
     let interrupted = Arc::new(AtomicBool::new(false));
@@ -491,6 +638,9 @@ fn main() -> anyhow::Result<()> {
             tracking,
             crf,
             preset,
+            container,
+            replay,
+            replay_scale,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -512,6 +662,9 @@ fn main() -> anyhow::Result<()> {
                 tracking_mode: &tracking,
                 crf,
                 preset,
+                container: container.as_deref(),
+                replay_path: replay.as_deref(),
+                replay_scale,
             },
             &interrupted,
         ),
@@ -569,6 +722,11 @@ fn main() -> anyhow::Result<()> {
             detection_interval,
             crf,
             preset,
+            container,
+            tracking,
+            unconstrained,
+            replay,
+            replay_scale,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -608,6 +766,11 @@ fn main() -> anyhow::Result<()> {
                     detection_interval,
                     crf,
                     preset,
+                    container: container.as_deref(),
+                    tracking: &tracking,
+                    unconstrained,
+                    replay_path: replay.as_deref(),
+                    replay_scale,
                 },
                 &interrupted,
             )

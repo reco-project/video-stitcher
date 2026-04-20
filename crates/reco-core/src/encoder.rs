@@ -11,8 +11,10 @@
 
 use thiserror::Error;
 
-/// Errors that can occur during encoding.
-#[derive(Debug, Error)]
+/// Errors that can occur during encoding. `Clone + Send + Sync` so a
+/// background encoder thread can send the result through an mpsc
+/// channel without forcing the consumer to stringify.
+#[derive(Debug, Clone, Error)]
 pub enum EncodeError {
     /// The encoder failed to initialize.
     #[error("encoder initialization failed: {reason}")]

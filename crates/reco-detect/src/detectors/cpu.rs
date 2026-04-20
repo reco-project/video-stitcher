@@ -8,8 +8,10 @@
 use std::path::Path;
 
 use ort::session::Session;
-use ort::value::Tensor;
-use reco_core::detector::{CameraId, ChromaFormat, Detection, Detector, RawFrame};
+use ort::value::TensorRef;
+use reco_core::detector::{
+    CameraId, ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
+};
 
 use super::postprocess;
 
@@ -24,6 +26,11 @@ pub struct CpuYoloDetector {
     input_size: u32,
     confidence_threshold: f32,
     labels: Vec<String>,
+    /// Pre-allocated preprocess scratch for `3 * input_size * input_size`
+    /// f32 (4.9 MB at sz=640). Fresh allocation per frame was one of the
+    /// M7 plan §M7.5 hotspots; this buffer is filled in place and handed
+    /// to `TensorRef::from_array_view` without moving ownership.
+    rgb_chw_buf: Vec<f32>,
 }
 
 impl CpuYoloDetector {
@@ -58,11 +65,15 @@ impl CpuYoloDetector {
             confidence_threshold,
         );
 
+        let sz = input_size as usize;
+        let rgb_chw_buf = vec![114.0 / 255.0_f32; 3 * sz * sz];
+
         Ok(Self {
             session,
             input_size,
             confidence_threshold,
             labels,
+            rgb_chw_buf,
         })
     }
 
@@ -75,12 +86,14 @@ impl CpuYoloDetector {
         &self.labels
     }
 
-    /// Convert a raw YUV frame to a flat RGB float32 buffer in CHW layout,
-    /// letterboxed to `input_size x input_size`, normalized to `[0, 1]`.
+    /// Fill `self.rgb_chw_buf` from a raw YUV frame: flat RGB float32 in
+    /// CHW layout, letterboxed to `input_size x input_size`, normalized
+    /// to `[0, 1]`. The buffer is reused across frames so no allocation
+    /// happens per call.
     ///
-    /// Returns `(rgb_chw, scale, pad_x, pad_y)` where scale and padding are
-    /// needed to map detection coordinates back to the original frame.
-    fn preprocess(&self, frame: &RawFrame<'_>) -> (Vec<f32>, f32, f32, f32) {
+    /// Returns `(scale, pad_x, pad_y)` for mapping detection coordinates
+    /// back to the original frame.
+    fn preprocess(&mut self, frame: &RawFrame<'_>) -> (f32, f32, f32) {
         let (fw, fh) = (frame.width as f32, frame.height as f32);
         let is = self.input_size as f32;
 
@@ -92,12 +105,17 @@ impl CpuYoloDetector {
         let pad_y = (self.input_size - new_h) as f32 / 2.0;
 
         let sz = self.input_size as usize;
-        let mut rgb_chw = vec![114.0 / 255.0_f32; 3 * sz * sz]; // grey fill
 
-        // For each pixel in the letterboxed region, sample from the source frame
-        // with nearest-neighbor, convert YUV->RGB inline.
+        // Refill grey pad. Resetting the whole buffer is cheaper than
+        // tracking which pixels were last written — at 640×640×3 f32
+        // this is a single ~5 MB contiguous write ~2× / sec at 30 fps
+        // on the detection interval, not per-frame.
+        let grey = 114.0 / 255.0_f32;
+        self.rgb_chw_buf.fill(grey);
+
         let pad_x_i = pad_x as u32;
         let pad_y_i = pad_y as u32;
+        let plane = sz * sz;
 
         for dy in 0..new_h {
             for dx in 0..new_w {
@@ -119,14 +137,13 @@ impl CpuYoloDetector {
                 let ox = (pad_x_i + dx) as usize;
                 let oy = (pad_y_i + dy) as usize;
 
-                let plane = sz * sz;
-                rgb_chw[oy * sz + ox] = r / 255.0;
-                rgb_chw[plane + oy * sz + ox] = g / 255.0;
-                rgb_chw[2 * plane + oy * sz + ox] = b / 255.0;
+                self.rgb_chw_buf[oy * sz + ox] = r / 255.0;
+                self.rgb_chw_buf[plane + oy * sz + ox] = g / 255.0;
+                self.rgb_chw_buf[2 * plane + oy * sz + ox] = b / 255.0;
             }
         }
 
-        (rgb_chw, scale, pad_x, pad_y)
+        (scale, pad_x, pad_y)
     }
 }
 
@@ -149,43 +166,41 @@ fn chroma_sample(frame: &RawFrame<'_>, x: u32, y: u32) -> (f32, f32) {
     }
 }
 
-impl Detector for CpuYoloDetector {
-    fn detect(&mut self, camera: CameraId, frame: &RawFrame<'_>) -> Vec<Detection> {
+impl CpuYoloDetector {
+    /// Core inference path shared by the legacy [`Detector`] impl and
+    /// the [`UnifiedDetector`] impl. Returns a typed
+    /// [`DetectorError`] so the unified-trait consumer can react to
+    /// failure; the legacy impl collapses the error to a log + empty
+    /// vec for backwards compatibility.
+    fn detect_raw(
+        &mut self,
+        camera: CameraId,
+        frame: &RawFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("yolo_detect");
 
-        let (rgb_chw, scale, pad_x, pad_y) = self.preprocess(frame);
+        let (scale, pad_x, pad_y) = self.preprocess(frame);
 
         let sz = self.input_size as usize;
-        let input_tensor = match Tensor::from_array(([1, 3, sz, sz], rgb_chw)) {
-            Ok(t) => t,
-            Err(e) => {
-                log::error!("Failed to create input tensor: {e}");
-                return Vec::new();
-            }
-        };
+        let input_tensor =
+            TensorRef::from_array_view(([1, 3, sz, sz], self.rgb_chw_buf.as_slice()))
+                .map_err(|e| DetectorError::InferenceFailed(format!("tensor build: {e}")))?;
 
-        let outputs = match self.session.run(ort::inputs![input_tensor]) {
-            Ok(o) => o,
-            Err(e) => {
-                log::error!("YOLO inference failed: {e}");
-                return Vec::new();
-            }
-        };
+        let outputs = self
+            .session
+            .run(ort::inputs![input_tensor])
+            .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?;
 
-        let (n, data) = match outputs[0].try_extract_tensor::<f32>() {
-            Ok((shape, slice)) => {
-                // Output shape: [1, N, 6]. Copy to owned vec to release borrow.
-                (shape[1] as usize, slice.to_vec())
-            }
-            Err(e) => {
-                log::error!("Failed to extract YOLO output tensor: {e}");
-                return Vec::new();
-            }
-        };
-        drop(outputs);
+        // Borrow the output tensor's backing buffer instead of cloning
+        // it into a Vec. `outputs` owns it; postprocess finishes before
+        // the drop below. (plan M7 item 5)
+        let (shape, slice) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
+        let n = shape[1] as usize;
 
         let detections = postprocess(
-            &data,
+            slice,
             n,
             camera,
             self.confidence_threshold,
@@ -195,6 +210,7 @@ impl Detector for CpuYoloDetector {
             frame.width,
             frame.height,
         );
+        drop(outputs);
 
         if !detections.is_empty() {
             log::debug!(
@@ -222,7 +238,35 @@ impl Detector for CpuYoloDetector {
             );
         }
 
-        detections
+        Ok(detections)
+    }
+}
+
+impl UnifiedDetector for CpuYoloDetector {
+    fn name(&self) -> &'static str {
+        "ort-cpu"
+    }
+
+    fn detect(
+        &mut self,
+        camera: CameraId,
+        frame: &DetectorFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        // `DetectorFrame` is `#[non_exhaustive]`, so we pattern-match
+        // the variants we can handle and catch everything else (today:
+        // CUDA on Linux/Windows, Metal on macOS/iOS; tomorrow: any
+        // new residency variant) with a single wildcard arm that
+        // returns a typed "not my frame" error. A future `StitchCore`
+        // dispatch layer routes the frame to a GPU backend instead of
+        // silently producing zero detections.
+        match frame {
+            DetectorFrame::Cpu(raw) => self.detect_raw(camera, raw),
+            _ => Err(DetectorError::UnsupportedFrameKind),
+        }
+    }
+
+    fn class_names(&self) -> Option<&[String]> {
+        Some(&self.labels)
     }
 }
 
@@ -235,7 +279,34 @@ impl Detector for CpuYoloDetector {
 pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
     let metadata = session.metadata().ok()?;
     let names_str = metadata.custom("names")?;
+    parse_names_dict_string(&names_str)
+}
 
+/// Maximum class count accepted when building a dense label vector.
+///
+/// N-C1 (deep-review-2026-04-18): the ONNX `names` metadata is
+/// attacker-controlled (user-supplied model file). A crafted entry
+/// like `{9999999999: 'ball'}` would drive a multi-GB
+/// `Vec::with_capacity` and a matching loop. Cap the dense index at
+/// a generous ceiling - realistic models top out at ~1200 classes
+/// (LVIS); 10_000 leaves comfortable headroom while rejecting the
+/// OOM primitive.
+const MAX_CLASS_COUNT: usize = 10_000;
+
+/// Fuzz entry point: drives [`parse_names_dict_string`] without
+/// requiring a real ONNX session. See `fuzz/fuzz_targets/onnx_names.rs`
+/// and the N-C1 OOM cap fix. `__` prefix + `doc(hidden)` keeps this
+/// out of the normal public API.
+#[doc(hidden)]
+pub fn __fuzz_parse_names_dict_string(names_str: &str) -> Option<Vec<String>> {
+    parse_names_dict_string(names_str)
+}
+
+/// Pure string parser for Ultralytics-style `names` metadata.
+///
+/// Extracted from [`parse_onnx_names`] so the OOM guard can be
+/// exercised without spinning up an ONNX session.
+fn parse_names_dict_string(names_str: &str) -> Option<Vec<String>> {
     // Parse Python-dict-style string: {0: 'person', 1: 'bicycle', ...}
     let inner = names_str.trim().strip_prefix('{')?.strip_suffix('}')?;
     if inner.is_empty() {
@@ -255,8 +326,14 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
 
     labels.sort_by_key(|(idx, _)| *idx);
 
-    // Build a dense label vector (fill gaps with "class_N").
     let max_idx = labels.last()?.0;
+    if max_idx >= MAX_CLASS_COUNT {
+        log::warn!(
+            "parse_onnx_names: max class index {max_idx} exceeds cap {MAX_CLASS_COUNT}; \
+             refusing to build dense label vector (possible malicious model metadata)"
+        );
+        return None;
+    }
     let mut result = Vec::with_capacity(max_idx + 1);
     let mut label_iter = labels.into_iter().peekable();
     for i in 0..=max_idx {
@@ -272,4 +349,76 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
         result.len()
     );
     Some(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_names_dict_string_happy_path() {
+        let input = "{0: 'person', 1: 'bicycle', 2: 'car'}";
+        let labels = parse_names_dict_string(input).unwrap();
+        assert_eq!(labels, vec!["person", "bicycle", "car"]);
+    }
+
+    #[test]
+    fn parse_names_dict_string_fills_gaps() {
+        let input = "{0: 'ball', 3: 'goal'}";
+        let labels = parse_names_dict_string(input).unwrap();
+        assert_eq!(labels, vec!["ball", "class_1", "class_2", "goal"]);
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_oom_index() {
+        // N-C1 regression: attacker-crafted ONNX metadata with an
+        // enormous class index would drive Vec::with_capacity(idx+1)
+        // into a multi-GB allocation and a billion-iteration loop.
+        // Guard rejects the dense build instead of allocating.
+        let input = "{9999999999: 'ball'}";
+        assert!(
+            parse_names_dict_string(input).is_none(),
+            "must refuse huge class index"
+        );
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_index_at_cap() {
+        // Exact boundary: MAX_CLASS_COUNT itself is the rejection point
+        // (cap is exclusive). Anything >= 10_000 refused.
+        let input = format!("{{{MAX_CLASS_COUNT}: 'class'}}");
+        assert!(parse_names_dict_string(&input).is_none());
+    }
+
+    #[test]
+    fn parse_names_dict_string_accepts_just_below_cap() {
+        let just_below = MAX_CLASS_COUNT - 1;
+        let input = format!("{{0: 'a', {just_below}: 'b'}}");
+        let labels = parse_names_dict_string(&input).unwrap();
+        assert_eq!(labels.len(), MAX_CLASS_COUNT);
+        assert_eq!(labels[0], "a");
+        assert_eq!(labels[just_below], "b");
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_empty() {
+        assert!(parse_names_dict_string("{}").is_none());
+    }
+
+    #[test]
+    fn parse_names_dict_string_rejects_non_dict() {
+        assert!(parse_names_dict_string("[0: 'x']").is_none());
+        assert!(parse_names_dict_string("random garbage").is_none());
+    }
+
+    /// Compile-time: `CpuYoloDetector` must satisfy the `UnifiedDetector`
+    /// bounds so a future `StitchCore::set_detector` signature taking
+    /// `Box<dyn UnifiedDetector>` accepts it. This catches a regression
+    /// where a field accidentally becomes non-`Send` (shared mutable
+    /// state, raw pointer, etc.).
+    #[test]
+    fn cpu_yolo_detector_is_unified_detector_send() {
+        fn assert_unified_send<T: UnifiedDetector + Send + 'static>() {}
+        assert_unified_send::<CpuYoloDetector>();
+    }
 }

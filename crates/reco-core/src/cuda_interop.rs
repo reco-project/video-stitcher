@@ -566,6 +566,47 @@ pub fn cuda_ensure_context() -> Result<(), CudaInteropError> {
     Ok(())
 }
 
+/// Copy a 2D region from host memory (CPU) to a CUDA device pointer.
+///
+/// Used by detector CPU-upload fallbacks (live camera → TrtGpuDetector)
+/// where the source buffer lives in system memory but the detector
+/// needs a CUDA device pointer. Cost is the PCIe/bus transfer time —
+/// about 1-2 ms for a 1080p NV12 Y+UV plane on Jetson.
+pub fn cuda_memcpy_htod_2d(
+    dst: CUdeviceptr,
+    dst_pitch: usize,
+    src: *const u8,
+    src_pitch: usize,
+    width_bytes: usize,
+    height: usize,
+) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+
+    let desc = CudaMemcpy2D {
+        src_x_in_bytes: 0,
+        src_y: 0,
+        src_memory_type: CU_MEMORYTYPE_HOST,
+        src_host: src as *const c_void,
+        src_device: 0,
+        src_array: std::ptr::null(),
+        src_pitch,
+        dst_x_in_bytes: 0,
+        dst_y: 0,
+        dst_memory_type: CU_MEMORYTYPE_DEVICE,
+        dst_host: std::ptr::null_mut(),
+        dst_device: dst,
+        dst_array: std::ptr::null(),
+        dst_pitch,
+        width_in_bytes: width_bytes,
+        height,
+    };
+
+    unsafe {
+        check_cuda("cuMemcpy2D_v2 (H2D)", (cuda.cu_memcpy_2d_v2)(&desc))?;
+    }
+    Ok(())
+}
+
 /// Copy a 2D region between CUDA device pointers (GPU-to-GPU, no CPU involved).
 ///
 /// This replaces the CPU round-trip (`av_hwframe_transfer_data` → swscale → upload).

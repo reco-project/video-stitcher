@@ -178,8 +178,31 @@ impl TrtEngine {
             let raw_dtype = unsafe { sys::trt_get_binding_data_type(self.engine, i) };
             let data_type = TrtDataType::from_raw(raw_dtype)?;
 
-            let num_elements: usize = dims.iter().map(|&d| d.max(1) as usize).product();
-            let byte_size = num_elements * data_type.byte_size();
+            // N-C2 (deep-review-2026-04-18): TRT binding dims come from
+            // a loaded engine file; a crafted or corrupt engine could
+            // carry dims whose `product()` overflows usize. Silent wrap
+            // would yield a tiny `byte_size`, then a too-small GPU
+            // buffer allocation, then out-of-bounds GPU reads/writes
+            // when the inference context writes according to the real
+            // tensor size. Use checked_mul and error out explicitly.
+            let num_elements = dims
+                .iter()
+                .try_fold(1usize, |acc, &d| acc.checked_mul(d.max(1) as usize))
+                .ok_or_else(|| {
+                    TrtError::Runtime(format!(
+                        "TRT binding {i} ('{name}') dims {dims:?} overflow usize \
+                         when computing element count (possibly malicious engine)"
+                    ))
+                })?;
+            let byte_size = num_elements
+                .checked_mul(data_type.byte_size())
+                .ok_or_else(|| {
+                    TrtError::Runtime(format!(
+                        "TRT binding {i} ('{name}') byte_size overflow: \
+                         {num_elements} elements * {} bytes per element",
+                        data_type.byte_size()
+                    ))
+                })?;
 
             bindings.push(BindingInfo {
                 name,

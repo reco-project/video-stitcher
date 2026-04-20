@@ -42,7 +42,14 @@ impl From<OutputFormat> for wgpu::TextureFormat {
 }
 
 /// Errors that can occur during GPU initialization.
-#[derive(Debug, Error)]
+///
+/// All variants are `Clone + Send + Sync` so callers that post
+/// results to worker-thread channels (reco-gui export thread,
+/// live-calibration worker) can carry the error as a typed enum
+/// rather than the legacy `Result<_, String>` pattern. The wgpu
+/// request errors are flattened to `String` at the `From` boundary
+/// because `wgpu::Request*Error` is not `Clone`.
+#[derive(Debug, Clone, Error)]
 pub enum GpuError {
     /// No compatible GPU adapter found.
     #[error("no compatible GPU adapter found")]
@@ -50,11 +57,23 @@ pub enum GpuError {
 
     /// Failed to request a GPU adapter.
     #[error("failed to request GPU adapter: {0}")]
-    AdapterRequest(#[from] wgpu::RequestAdapterError),
+    AdapterRequest(String),
 
     /// Failed to request a GPU device.
     #[error("failed to request GPU device: {0}")]
-    DeviceRequest(#[from] wgpu::RequestDeviceError),
+    DeviceRequest(String),
+}
+
+impl From<wgpu::RequestAdapterError> for GpuError {
+    fn from(e: wgpu::RequestAdapterError) -> Self {
+        Self::AdapterRequest(e.to_string())
+    }
+}
+
+impl From<wgpu::RequestDeviceError> for GpuError {
+    fn from(e: wgpu::RequestDeviceError) -> Self {
+        Self::DeviceRequest(e.to_string())
+    }
 }
 
 /// Information about a surface's capabilities, returned by

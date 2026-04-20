@@ -1,0 +1,150 @@
+# cargo-deny configuration for reco-video-stitcher.
+#
+# Run via `cargo deny check` locally or in CI. Four gates:
+#   - advisories: refuse known vulnerabilities (RUSTSEC advisory DB)
+#   - licenses:   only permit licenses compatible with AGPL-3.0-only
+#   - bans:       refuse duplicate major versions and specific banned crates
+#   - sources:    only crates.io + the upstream gfx-rs / reco org repos
+#
+# See deep-review-2026-04-18 T-1 batch and the Agent 4 F5 / Agent 1
+# "missing supply-chain policy" findings for context.
+
+[graph]
+all-features = false
+no-default-features = false
+# Platforms we actively ship to; deny ignores platform-specific deps
+# whose cfg doesn't match any target below.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "aarch64-pc-windows-msvc" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "aarch64-linux-android" },
+]
+
+# ---------------------------------------------------------------------------
+# Advisories: RUSTSEC database
+# ---------------------------------------------------------------------------
+
+[advisories]
+yanked = "deny"
+ignore = [
+    # paste 1.0.15 — archived upstream. Transitively pulled by wgpu /
+    # slint. Hard-deny once those upstreams migrate. Revisit at M8.
+    "RUSTSEC-2024-0436",
+]
+
+# ---------------------------------------------------------------------------
+# Licenses: compatible with AGPL-3.0-only distribution
+# ---------------------------------------------------------------------------
+
+[licenses]
+# Policy: keep third-party deps dual-license-friendly. The project
+# is AGPL-3.0-only today but we want the OPTION to relicense or offer
+# a commercial track. So the base `allow` list contains ONLY permissive
+# licenses compatible with both AGPL and a future proprietary/commercial
+# track. The project's own crates get per-crate AGPL exceptions below —
+# that way a transitive third-party AGPL dep can NEVER slip in unnoticed.
+allow = [
+    # Permissive third-party licenses — compatible with AGPL today AND
+    # with a future dual-license / commercial track.
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",            # Boost Software License — permissive
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",# Community Data License (ONNX metadata) — permissive
+    "ISC",
+    "MIT",
+    "MPL-2.0",            # weak copyleft, file-scope — dual-license-friendly
+    "Unicode-3.0",
+    "WTFPL",              # permissive ("do what the fuck you want")
+    "Zlib",
+    "0BSD",
+]
+# Permit multi-license crates to resolve to any allowed license.
+confidence-threshold = 0.93
+
+# Per-crate exceptions. Each entry is a DELIBERATE concession: the
+# crate ships under a license that would otherwise be rejected, and
+# we accept it for a specific documented reason.
+exceptions = [
+    # --- Project's own crates (declared AGPL-3.0-only). Listed here
+    # instead of the base `allow` so a transitive third-party AGPL
+    # dep can't slip in through the same gate. ---
+    { allow = ["AGPL-3.0-only"], crate = "reco-core" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-cli" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-io" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-autocam" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-calibrate" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-control" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-detect" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-gui" },
+    { allow = ["AGPL-3.0-only"], crate = "reco-obs" },
+
+    # --- Slint (tri-licensed GPL-3.0-only OR LicenseRef-Slint-Royalty-
+    # free-2.0 OR LicenseRef-Slint-Software-3.0). We hold a Slint
+    # proprietary royalty-free license for desktop (non-embedded) use,
+    # which selects the LicenseRef-Slint-Royalty-free-2.0 option.
+    # cargo-deny doesn't recognize LicenseRef-* identifiers, so we
+    # pin GPL-3.0 here to make the lint pass; the ACTUAL license we
+    # distribute under is the Slint royalty-free one. Revisit if we
+    # ever plan embedded-hardware distribution (not scheduled). ---
+    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-qt" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-selector" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-backend-winit" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-common" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-compiler" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-core" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-core-macros" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-renderer-femtovg" },
+    { allow = ["GPL-3.0-only"], crate = "i-slint-renderer-software" },
+    { allow = ["GPL-3.0-only"], crate = "slint" },
+    { allow = ["GPL-3.0-only"], crate = "slint-build" },
+    { allow = ["GPL-3.0-only"], crate = "slint-macros" },
+]
+
+# ---------------------------------------------------------------------------
+# Bans: duplicate major versions + specific disallowed crates
+# ---------------------------------------------------------------------------
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace path deps have no version field — that's a legitimate
+# wildcard cargo-deny would otherwise flag. This lets internal path
+# deps pass while still denying wildcard versions on external crates.
+allow-wildcard-paths = true
+# Valid values: "simplest-path" | "lowest-version" | "all".
+highlight = "all"
+# Crates we explicitly never want - e.g. alternate crypto impls,
+# unmaintained forks. Empty for now; populate as the review flags
+# specific cases.
+deny = []
+# Allow duplicates that are genuinely unresolvable (different crates
+# that transitively depend on incompatible major versions of a common
+# crate). Keep this list short and reviewed.
+skip = []
+# Specific exception: libloading 0.9.0 exists as a 3-way duplicate per
+# Agent 1 - the Nov-2025 pin in reco-core vs older pulls from wgpu
+# and nvml-wrapper. Remove when the transitive deps catch up.
+skip-tree = []
+
+# ---------------------------------------------------------------------------
+# Sources: crates.io + explicit git allowlist
+# ---------------------------------------------------------------------------
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # telemetry-parser is pinned to rev=2f4218b in reco-calibrate.
+    "https://github.com/AdrianEddy/telemetry-parser",
+    # Transitive deps of telemetry-parser — both pinned upstream.
+    "https://github.com/AdrianEddy/mp4parse-rust",
+    "https://github.com/ilya-epifanov/fc-blackbox",
+]

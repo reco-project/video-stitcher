@@ -1,5 +1,17 @@
 //! Stereo camera calibration for reco.
 //!
+//! # Safety policy
+//!
+//! This crate deny's `unsafe_code` by default. The only existing
+//! exceptions are SIMD hot paths inside the AKAZE feature detector
+//! (`akaze/nonlinear_diffusion.rs`, `akaze/derivatives.rs`) which
+//! carry targeted `#[allow(unsafe_code)]` annotations with SAFETY
+//! comments. Any new `unsafe` in this crate must follow that pattern:
+//! narrow scope, justified in a comment, reviewed in the PR.
+
+#![deny(unsafe_code)]
+
+//!
 //! Computes the relative positioning of two camera planes by detecting
 //! features in overlapping footage and optimizing placement parameters
 //! to minimize reprojection error between matched points.
@@ -54,6 +66,12 @@ pub mod features;
 pub mod filter;
 pub mod geometry;
 pub mod lens_database;
+/// M6 live calibration — drive the calibration pipeline from a live
+/// frame-pair source (OBS, V4L2, WebRTC, etc.). See the `live` module's
+/// `calibrate_from_live` function and `LiveFramePairSource` trait. Does
+/// not require the `io` feature — the source is a trait object supplied
+/// by the consumer, not a file.
+pub mod live;
 pub mod optimizer;
 pub mod pipeline;
 mod ransac;

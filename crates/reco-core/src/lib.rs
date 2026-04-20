@@ -31,7 +31,7 @@
 //!
 //! The crate defines traits for pluggable components:
 //! - [`source::FrameSource`] — delivers stereo frame pairs (files, cameras, streams)
-//! - [`detector::Detector`] — detects objects in raw frames (e.g. ball tracking)
+//! - [`detector::UnifiedDetector`] — detects objects in raw frames (e.g. ball tracking)
 //! - [`director::Director`] — controls where the virtual camera pans
 //! - [`encoder::Encoder`] — receives stitched GPU frames for encoding
 //!
@@ -75,34 +75,46 @@ pub use wgpu;
 pub mod analyze;
 pub(crate) mod async_encode;
 pub mod calibration;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod coreml_inference;
+/// M3 push-first `StitchCore` shell — the canonical entry point.
+/// See [`core::StitchCore`] for details.
+pub mod core;
+// `coreml_inference`, `cuda_kernels`, `npp_interop`, `metal_compute`
+// moved to reco-detect (the only consumer) — per the revised M5
+// analysis: those four are detection-preprocess, not GPU pipeline
+// infrastructure. reco-core keeps `cuda_interop`, `metal_interop`,
+// `vulkan_interop`, `zero_copy`, which are wgpu-native platform
+// paths used by the stitch pipeline's zero-copy bridge.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod cuda_kernels;
 pub mod detector;
 pub mod director;
 pub mod encoder;
+/// M4 timestamped multi-source ingest buffer. See
+/// [`framesync::TimestampedIngestBuffer`] for the dual-source
+/// pairing case and the N-source livestream-sync foundation.
+pub mod framesync;
 pub mod gpu;
 pub mod lens;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod metal_compute;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod npp_interop;
 pub mod nv12_converter;
 pub mod pipeline;
+/// M4 unified pose-control primitive. See [`pose_control::PoseControl`]
+/// and [`pose_control::HotkeyIntent`] — the single source of truth for
+/// mouse/drag/wheel/keyboard → yaw/pitch/FOV translation across
+/// consumers.
+pub mod pose_control;
 pub mod projection;
 pub mod renderer;
 pub mod rgba_readback;
 pub mod scene;
 pub mod session;
 pub mod source;
+pub mod stage;
 pub mod stitch_renderer;
 pub mod undistort;
 pub mod viewport;
 #[cfg(target_os = "linux")]
 pub mod vulkan_interop;
+pub mod yuv_stack_packer;
 pub mod zero_copy;

@@ -26,7 +26,7 @@
 use thiserror::Error;
 
 /// Errors from frame sources.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum SourceError {
     /// The source failed to open or initialize.
     #[error("source init ({path}): {reason}")]
@@ -405,6 +405,75 @@ pub trait FrameSource: Send {
     }
 }
 
+// ---------------------------------------------------------------------------
+// M3 foundation: CameraInput trait + placeholder impls.
+// ---------------------------------------------------------------------------
+//
+// Plan-execution §2.6: today's stack hardcodes N=2 stereo input
+// everywhere (StereoFrame, FramePair, submit_frame(left, right)).
+// Future 1-video mode (§8 table) and N-camera panoramic rigs need a
+// trait that expresses input cardinality independently of the frame
+// delivery path.
+//
+// CameraInput is the input-cardinality contract. It complements
+// Projection (output geometry) so StitchCore can enforce that input
+// and projection agree on camera_count at construction time. The
+// existing FrameSource trait stays in place as the concrete
+// stereo-only frame delivery interface; CameraInput is the more
+// general trait that N-camera work (and MonoCameraInput) will
+// implement in later tranches.
+
+/// Input-cardinality marker trait.
+///
+/// Concrete impls encode how many camera streams feed the stitch
+/// pipeline. Used by StitchCore (M3 refactor) to verify its
+/// [`Projection`](crate::projection::Projection) matches the input
+/// contract at construction time.
+///
+/// `Send` bound only (mobile-friendly per plan-execution §2.8). A
+/// concrete impl that needs to be shared across threads adds the
+/// `Sync` bound itself.
+pub trait CameraInput: Send {
+    /// Short human-readable name for logs + diagnostic bundles
+    /// (e.g. `"stereo-2camera"`, `"mono"`, `"panoramic-6camera"`).
+    fn name(&self) -> &'static str;
+
+    /// How many camera streams this input provides. Must equal the
+    /// paired [`Projection::camera_count`](crate::projection::Projection::camera_count).
+    fn camera_count(&self) -> u8;
+}
+
+/// Placeholder impl for today's 2-camera stereo input. Carries no
+/// state; matches the hardcoded N=2 assumption everywhere the
+/// existing code paths use.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StereoCameraInput;
+
+impl CameraInput for StereoCameraInput {
+    fn name(&self) -> &'static str {
+        "stereo-2camera"
+    }
+    fn camera_count(&self) -> u8 {
+        2
+    }
+}
+
+/// Reserved slot for future 1-video mode (single-lens undistort +
+/// viewport, no stitch). No impl ships today; the marker exists so
+/// MonoProjection work can land alongside its matching input type
+/// when the user picks the second-projection form (§7 decision 8).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MonoCameraInput;
+
+impl CameraInput for MonoCameraInput {
+    fn name(&self) -> &'static str {
+        "mono-1camera"
+    }
+    fn camera_count(&self) -> u8 {
+        1
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,5 +526,41 @@ mod tests {
             }) => {}
             other => panic!("expected Empty, got {other:?}"),
         }
+    }
+
+    // ── M3 foundation: CameraInput trait tests ───────────────────────
+
+    #[test]
+    fn stereo_camera_input_is_two_camera() {
+        let s = StereoCameraInput;
+        assert_eq!(s.name(), "stereo-2camera");
+        assert_eq!(s.camera_count(), 2);
+    }
+
+    #[test]
+    fn mono_camera_input_is_one_camera() {
+        let m = MonoCameraInput;
+        assert_eq!(m.name(), "mono-1camera");
+        assert_eq!(m.camera_count(), 1);
+    }
+
+    #[test]
+    fn camera_input_is_dyn_compatible() {
+        // StitchCore (M3) will hold a `Box<dyn CameraInput>` slot.
+        // Verify the trait bounds support that today.
+        let inputs: Vec<Box<dyn CameraInput>> =
+            vec![Box::new(StereoCameraInput), Box::new(MonoCameraInput)];
+        assert_eq!(inputs[0].camera_count(), 2);
+        assert_eq!(inputs[1].camera_count(), 1);
+    }
+
+    #[test]
+    fn camera_count_matches_projection_contract() {
+        // Core invariant for StitchCore construction: the paired
+        // CameraInput and Projection must agree on camera_count.
+        use crate::projection::{LShapeProjection, Projection};
+        let input = StereoCameraInput;
+        let proj = LShapeProjection;
+        assert_eq!(input.camera_count(), proj.camera_count());
     }
 }

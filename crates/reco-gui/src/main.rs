@@ -100,8 +100,12 @@ struct CalibrationOutput {
     right_lens_profile: Option<LensProfileInfo>,
 }
 
-/// Result sent from the calibration background thread.
-type CalibrationResult = Result<CalibrationOutput, String>;
+/// Result sent from the calibration background thread. The error is
+/// the typed [`reco_calibrate::video::CalibrateVideosError`] now that
+/// it is `Clone + Send + Sync` (plan step 7), so the UI thread can
+/// pattern-match specific failure modes (`Cancelled`, `NoFrames`,
+/// `Io(...)`, etc.) instead of parsing a stringified message.
+type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::CalibrateVideosError>;
 
 /// Application state shared between Slint callbacks.
 struct AppState {
@@ -719,8 +723,55 @@ fn sync_recent_paths(settings: &settings::GuiSettings, app: &RecoApp) {
     app.set_recent_calibration_paths(to_model(settings.recent_calibration.entries()));
 }
 
+/// Install the standard tracing subscriber + log bridge.
+///
+/// Replaces the previous `env_logger::init()`. Bridges `log::*` calls
+/// from reco-core / reco-io / reco-calibrate into tracing so user bug
+/// reports arrive as one structured event stream instead of two
+/// loggers writing to the same stderr.
+///
+/// M2 migration (deep-review-2026-04-18 decision 11).
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+    let _ = tracing_log::LogTracer::init();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_target(true).with_level(true))
+        .try_init();
+}
+
+/// Panic hook: emit panic location + payload as a `tracing::error!`
+/// before the default hook runs, so a user-reported log file contains
+/// the panic context alongside surrounding events.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".into());
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".into()
+        };
+        tracing::error!(
+            target: "panic",
+            location = %location,
+            payload = %payload,
+            "panic caught by tracing panic hook"
+        );
+        default_hook(info);
+    }));
+}
+
 fn main() -> anyhow::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    init_tracing();
+    install_panic_hook();
 
     reco_io::init();
 
@@ -1165,7 +1216,7 @@ fn main() -> anyhow::Result<()> {
                         right_lens_profile: r.right_lens_profile,
                     })
                 }
-                Err(e) => Err(format!("{e}")),
+                Err(e) => Err(e),
             };
             tx.send(cal_result).ok();
         });
@@ -2219,9 +2270,11 @@ fn handle_calibration_result(
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(false);
                 app.set_status_text("Calibration failed".into());
+                // Toast wants a display-ready message; stringify at
+                // the UI boundary (not across the mpsc channel).
                 state
                     .toasts
-                    .push(Severity::Error, "Auto-calibration failed", e.clone());
+                    .push(Severity::Error, "Auto-calibration failed", e.to_string());
                 crate::toast::sync_to_ui(&state.toasts, &app);
             }
         }

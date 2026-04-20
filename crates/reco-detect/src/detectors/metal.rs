@@ -14,10 +14,10 @@
 
 use std::path::Path;
 
-use reco_core::coreml_inference::CoreMlModel;
-use reco_core::detector::{CameraId, Detection, MetalDetector};
+use crate::coreml_inference::CoreMlModel;
+use crate::metal_compute::MetalPreprocessPipeline;
+use reco_core::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use reco_core::gpu::GpuContext;
-use reco_core::metal_compute::MetalPreprocessPipeline;
 use reco_core::metal_interop::CVPixelBufferRef;
 
 use super::postprocess;
@@ -43,6 +43,13 @@ enum InferenceBackend {
 ///
 /// Created via [`MetalYoloDetector::try_new`].
 pub struct MetalYoloDetector {
+    /// Owned clone of the session's `GpuContext`. Needed by the Metal
+    /// preprocess pipeline on every `detect()` call; before the M3
+    /// trait collapse the session passed a `&GpuContext` parameter
+    /// but `UnifiedDetector::detect` has no such parameter, so the
+    /// detector now owns its own handle. Cloning is cheap (wgpu
+    /// types are reference-counted).
+    gpu: GpuContext,
     backend: InferenceBackend,
     preprocess: MetalPreprocessPipeline,
     input_size: u32,
@@ -140,6 +147,7 @@ impl MetalYoloDetector {
         );
 
         Ok(Self {
+            gpu: gpu.clone(),
             backend,
             preprocess,
             input_size,
@@ -202,38 +210,52 @@ impl MetalYoloDetector {
     }
 }
 
-impl MetalDetector for MetalYoloDetector {
-    fn detect_metal(
+impl UnifiedDetector for MetalYoloDetector {
+    fn name(&self) -> &'static str {
+        "metal-coreml"
+    }
+
+    fn detect(
         &mut self,
         camera: CameraId,
-        cv_pixel_buffer: CVPixelBufferRef,
-        width: u32,
-        height: u32,
-        gpu: &GpuContext,
-    ) -> Vec<Detection> {
+        frame: &DetectorFrame<'_>,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        // Metal-residency backend: matches `Metal { cv_pixel_buffer,
+        // width, height }`; all other residencies (Cpu, Cuda, future
+        // `#[non_exhaustive]` additions) are routed to
+        // `UnsupportedFrameKind` via a single wildcard arm so the
+        // dispatcher picks a different backend.
+        //
+        // The `GpuContext` needed by `MetalPreprocessPipeline` is
+        // owned by this struct (cloned at construction time); wgpu
+        // types are reference-counted so the clone is cheap and shares
+        // the session's device/queue.
+        let (cv_pixel_buffer, width, height) = match frame {
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            DetectorFrame::Metal {
+                cv_pixel_buffer,
+                width,
+                height,
+            } => (*cv_pixel_buffer, *width, *height),
+            _ => return Err(DetectorError::UnsupportedFrameKind),
+        };
+
         reco_core::profile_scope!("metal_yolo_detect");
 
         // Step 1: Metal compute preprocess (NV12 -> CHW f32 tensor).
         let tensor_data = {
             reco_core::profile_scope!("metal_preprocess");
-            // SAFETY: caller guarantees cv_pixel_buffer is valid (from RetainedCVPixelBuffer).
-            match unsafe { self.preprocess.preprocess(cv_pixel_buffer, gpu) } {
-                Ok(data) => data,
-                Err(e) => {
-                    log::error!("Metal preprocess failed: {e}");
-                    return Vec::new();
-                }
-            }
+            // SAFETY: caller guarantees cv_pixel_buffer is valid
+            // (session wraps it as a RetainedCVPixelBuffer).
+            unsafe { self.preprocess.preprocess(cv_pixel_buffer, &self.gpu) }
+                .map_err(|e| DetectorError::InferenceFailed(format!("metal preprocess: {e}")))?
         };
 
         // Step 2: Run inference (CoreML native or ORT).
-        // Copy tensor data to release the mutable borrow on self.preprocess
-        // before calling self.run_inference (which borrows other parts of self).
         let mut tensor_owned = tensor_data.to_vec();
-        let (n, data) = match self.run_inference(&mut tensor_owned) {
-            Some(result) => result,
-            None => return Vec::new(),
-        };
+        let (n, data) = self.run_inference(&mut tensor_owned).ok_or_else(|| {
+            DetectorError::InferenceFailed("metal inference returned None".into())
+        })?;
 
         // Step 3: Postprocess on CPU (shared between all backends).
         let detections = postprocess(
@@ -280,7 +302,11 @@ impl MetalDetector for MetalYoloDetector {
             self.preprocess.flush_cache();
         }
 
-        detections
+        Ok(detections)
+    }
+
+    fn class_names(&self) -> Option<&[String]> {
+        Some(&self.labels)
     }
 }
 

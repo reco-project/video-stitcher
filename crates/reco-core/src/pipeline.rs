@@ -108,12 +108,49 @@ impl StridedYuvPlanes<'_> {
 ///
 /// `dst` must be exactly `src.width * src.height` bytes long.
 /// Rows where `stride == width` are copied in a single `copy_from_slice`.
+///
+/// B-24 (deep-review-2026-04-18): the loop below slices
+/// `src.data[row*stride..row*stride + width]`, which panics if
+/// `stride < width` (overlaps next row) or if the source data is
+/// shorter than `stride*height` (out of bounds). Previously these
+/// preconditions were only `debug_assert!`, so release builds
+/// produced a panic deep in the render path instead of a safe
+/// fallback. Now the preconditions are runtime-checked and a
+/// malformed plane falls back to zero-filling the destination plus a
+/// warn log so the pipeline continues with a black plane rather than
+/// aborting.
 fn copy_plane_tight(src: &FramePlaneView<'_>, dst: &mut [u8]) {
     let width = src.width as usize;
     let height = src.height as usize;
     let stride = src.stride as usize;
-    debug_assert_eq!(dst.len(), width * height);
-    debug_assert!(src.data.len() >= stride.saturating_mul(height));
+
+    if dst.len() != width.saturating_mul(height) {
+        log::warn!(
+            "copy_plane_tight: dst {} bytes != width*height {} bytes; zero-filling",
+            dst.len(),
+            width.saturating_mul(height),
+        );
+        dst.fill(0);
+        return;
+    }
+    if stride < width {
+        log::warn!(
+            "copy_plane_tight: stride {stride} < width {width}; malformed FramePlaneView, \
+             zero-filling plane",
+        );
+        dst.fill(0);
+        return;
+    }
+    if src.data.len() < stride.saturating_mul(height) {
+        log::warn!(
+            "copy_plane_tight: source buffer {} bytes < stride*height {} bytes; \
+             zero-filling plane",
+            src.data.len(),
+            stride.saturating_mul(height),
+        );
+        dst.fill(0);
+        return;
+    }
 
     if stride == width {
         // Fast path: source is already tight; one memcpy.
@@ -181,8 +218,9 @@ impl<'a> BgraPlanes<'a> {
     }
 }
 
-/// Errors from the stitch pipeline.
-#[derive(Debug, Error)]
+/// Errors from the stitch pipeline. `Clone + Send + Sync` so consumers
+/// posting results to worker threads can carry the typed error.
+#[derive(Debug, Clone, Error)]
 pub enum PipelineError {
     /// GPU initialization failed.
     #[error("GPU error: {0}")]
@@ -328,6 +366,34 @@ impl StitchPipeline {
     /// Input frame dimensions as `(width, height)`.
     pub fn source_info(&self) -> (u32, u32) {
         (self.input_width, self.input_height)
+    }
+
+    /// Input pixel format the pipeline was built for. Needed by the
+    /// stacked-video GPU packer so it can pick the matching shader
+    /// kernel variant (separate R8 planes for YUV420P vs interleaved
+    /// Rg8 UV for NV12) without the consumer passing the format
+    /// through a second time.
+    pub(crate) fn input_format(&self) -> crate::renderer::InputFormat {
+        self.renderer.input_format()
+    }
+
+    /// Left-side source plane views (Y/U/V texture views). Used by
+    /// the stacked-video GPU packer to read the same uploaded
+    /// source data the stitch shader samples; the pack runs in
+    /// parallel with the panorama render into its own atlas buffer.
+    /// For NV12 inputs the `U` view is the interleaved UV texture
+    /// and the `V` view is a 1×1 dummy.
+    pub(crate) fn left_plane_views(
+        &self,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        self.renderer.left_plane_views()
+    }
+
+    /// Right-side counterpart to [`Self::left_plane_views`].
+    pub(crate) fn right_plane_views(
+        &self,
+    ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+        self.renderer.right_plane_views()
     }
 
     /// Update the viewport metadata (aspect ratio, projection matrix).
@@ -907,5 +973,69 @@ mod tests {
         // Second call with same dims: still no realloc.
         let _tight2 = strided.copy_into(&mut buffer);
         assert_eq!(buffer.capacity(), cap_before);
+    }
+
+    // ── B-24 regression: copy_plane_tight must not panic on malformed input
+
+    #[test]
+    fn copy_plane_tight_handles_stride_less_than_width() {
+        // Pathological: caller declares width=8 but stride=4.
+        // Before B-24 this would overlap rows and panic on slice
+        // index. Now it zero-fills and logs.
+        let data = vec![0xAA_u8; 16]; // 4 rows * 4 stride
+        let src = FramePlaneView {
+            data: &data,
+            stride: 4,
+            width: 8,
+            height: 4,
+        };
+        let mut dst = vec![0xFF_u8; 32]; // 8*4
+        copy_plane_tight(&src, &mut dst);
+        assert!(
+            dst.iter().all(|&b| b == 0),
+            "zero-fill expected on stride<width"
+        );
+    }
+
+    #[test]
+    fn copy_plane_tight_handles_short_source_buffer() {
+        let data = vec![0x77_u8; 4]; // Way too small for 8*4 claim.
+        let src = FramePlaneView {
+            data: &data,
+            stride: 8,
+            width: 8,
+            height: 4,
+        };
+        let mut dst = vec![0xFF_u8; 32];
+        copy_plane_tight(&src, &mut dst);
+        assert!(dst.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn copy_plane_tight_handles_dst_size_mismatch() {
+        let data = vec![0xAB_u8; 32];
+        let src = FramePlaneView {
+            data: &data,
+            stride: 8,
+            width: 8,
+            height: 4,
+        };
+        let mut dst = vec![0xFF_u8; 16]; // half of what's claimed
+        copy_plane_tight(&src, &mut dst);
+        assert!(dst.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn copy_plane_tight_still_fast_path_when_tight() {
+        let data: Vec<u8> = (0..32).collect();
+        let src = FramePlaneView {
+            data: &data,
+            stride: 8,
+            width: 8,
+            height: 4,
+        };
+        let mut dst = vec![0; 32];
+        copy_plane_tight(&src, &mut dst);
+        assert_eq!(dst.as_slice(), data.as_slice());
     }
 }

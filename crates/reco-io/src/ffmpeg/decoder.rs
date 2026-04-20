@@ -29,12 +29,17 @@ use std::path::Path;
 use std::ptr;
 use thiserror::Error;
 
-/// Errors from the video decoder.
-#[derive(Debug, Error)]
+/// Errors from the video decoder. `Clone + Send + Sync` so the
+/// calibration background thread can send the full result through
+/// an mpsc channel to the UI thread with the typed error preserved.
+/// `ffmpeg::Error` is not `Clone`, so it is stringified at the
+/// `From` boundary.
+#[derive(Debug, Clone, Error)]
 pub enum DecodeError {
-    /// FFmpeg error.
+    /// FFmpeg error (text message; original `ffmpeg::Error` is
+    /// stringified at the `From` boundary because it is not `Clone`).
     #[error("FFmpeg: {0}")]
-    Ffmpeg(#[from] ffmpeg::Error),
+    Ffmpeg(String),
 
     /// No video stream found in the file.
     #[error("no video stream found")]
@@ -52,6 +57,12 @@ pub enum DecodeError {
     /// Pixel format conversion failed.
     #[error("format conversion: {0}")]
     ConversionError(String),
+}
+
+impl From<ffmpeg::Error> for DecodeError {
+    fn from(e: ffmpeg::Error) -> Self {
+        Self::Ffmpeg(e.to_string())
+    }
 }
 
 /// A decoded NV12 frame still on the GPU (CUDA device memory).
@@ -416,7 +427,16 @@ impl VideoDecoder {
         tracing::instrument(skip_all, name = "decode_frame")
     )]
     pub fn next_frame(&mut self) -> Result<Option<YuvFrame>, DecodeError> {
+        // After EOF we still may have buffered frames in the decoder
+        // (multi-slice encoders like libx264 with `slices=7` or
+        // multi-reference H.264 with long GOPs hold several frames in
+        // the reorder queue). Keep draining until `receive_frame`
+        // stops returning frames — only then signal real end-of-stream.
         if self.eof_sent {
+            profile_scope!("h264_decode");
+            if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                return Ok(Some(self.extract_yuv()?));
+            }
             return Ok(None);
         }
 
@@ -444,6 +464,9 @@ impl VideoDecoder {
             if !found_packet {
                 self.eof_sent = true;
                 self.decoder.send_eof()?;
+                // Fall through to the `eof_sent` branch on subsequent
+                // calls; drain one frame now to keep the caller's
+                // "poll one at a time" loop moving forward.
                 if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
                     return Ok(Some(self.extract_yuv()?));
                 }

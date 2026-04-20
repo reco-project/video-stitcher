@@ -18,8 +18,6 @@
 
 /// Detection pipeline - also usable standalone without StitchSession.
 pub mod detection;
-/// Live push-based stitching for compositor consumers (OBS, V4L2, WebRTC).
-pub mod live;
 #[cfg(test)]
 mod tests;
 #[cfg(target_os = "linux")]
@@ -30,13 +28,19 @@ mod zero_copy_macos;
 #[cfg(target_os = "linux")]
 pub use zero_copy_linux::SharedTextureSet;
 
-pub use live::{LiveSessionConfig, LiveSessionError, LiveStitchSession};
+// `LiveStitchSession` + `LiveSessionConfig` + `LiveSessionError` were
+// deleted 2026-04-19 (plan-execution §3 M3 step 3). Consumers that
+// previously held a `LiveStitchSession` migrate to `StitchCore` (via
+// `reco_core::core::StitchCore`) and call `submit_frame_*_at_pose`
+// for explicit-pose inputs. reco-obs completed the migration in the
+// same commit.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
-use crate::detector::{Detection, Detector};
+use crate::core::{StitchCore, StitchCoreConfig, StitchCoreError};
+use crate::detector::Detection;
 use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, GpuEncoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
@@ -104,12 +108,15 @@ pub struct FrameProgress {
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
 /// Result from [`StitchSession::step`] - one frame with full session features.
+///
+/// Detections are not returned here — consumers that need them should
+/// attach a [`DetectionSink`] at construction. Keeping detections off
+/// the per-frame return path avoids a `Vec<MappedDetection>` clone that
+/// showed up on the plan §M7.5 alloc audit with no in-tree consumer.
 #[derive(Debug, Clone)]
 pub struct StepResult {
     /// Where the virtual camera pointed for this frame.
     pub viewport: ViewportPosition,
-    /// Detections mapped to panorama coordinates (empty if no detector or skipped frame).
-    pub detections: Vec<MappedDetection>,
     /// Frame index (0-based).
     pub frame_index: u64,
 }
@@ -204,8 +211,11 @@ where
     }
 }
 
-/// Errors from [`StitchSession`].
-#[derive(Debug, Error)]
+/// Errors from [`StitchSession`]. `Clone + Send + Sync` so consumers
+/// posting session results across thread boundaries (reco-gui export
+/// thread, reco-obs async init) can keep the typed enum instead of
+/// falling back to `Result<_, String>`.
+#[derive(Debug, Clone, Error)]
 pub enum SessionError {
     /// GPU initialization error.
     #[error("GPU: {0}")]
@@ -214,6 +224,10 @@ pub enum SessionError {
     /// GPU pipeline error.
     #[error("pipeline: {0}")]
     Pipeline(#[from] PipelineError),
+
+    /// `StitchCore` error (wraps pipeline / readback / config).
+    #[error("core: {0}")]
+    Core(#[from] StitchCoreError),
 
     /// NV12 conversion error.
     #[error("NV12 converter: {0}")]
@@ -243,11 +257,33 @@ pub enum SessionError {
     /// A [`DetectionSink`] returned an error.
     ///
     /// Surfaces I/O failures from user-supplied sinks (CSV writers,
-    /// network senders, ...) so they are not silently swallowed. The
-    /// inner error is whatever the sink returned.
+    /// network senders, ...) so they are not silently swallowed.
+    /// The sink's typed error is stringified at this boundary
+    /// because the sink trait uses `Box<dyn Error + Send + Sync>`
+    /// which is not `Clone`. Consumers that need the typed
+    /// underlying error should catch it before returning from the
+    /// sink closure; anything that reaches here is already formatted.
     #[error("detection sink: {0}")]
-    DetectionSink(#[source] DetectionSinkError),
+    DetectionSink(String),
 }
+
+// Compile-time assertion (plan step 7): every error type reachable
+// from the public session API is `Clone + Send + Sync`, so consumers
+// that post results to worker-thread channels (reco-gui export
+// thread, reco-obs async init) carry the typed error across the
+// boundary instead of stringifying. Regresses if a future variant
+// introduces a non-Clone wrapped error.
+const _: fn() = || {
+    fn assert_clone_send_sync<T: Clone + Send + Sync + 'static>() {}
+    assert_clone_send_sync::<SessionError>();
+    assert_clone_send_sync::<GpuError>();
+    assert_clone_send_sync::<PipelineError>();
+    assert_clone_send_sync::<StitchCoreError>();
+    assert_clone_send_sync::<Nv12Error>();
+    assert_clone_send_sync::<EncodeError>();
+    assert_clone_send_sync::<SourceError>();
+    assert_clone_send_sync::<crate::detector::DetectorError>();
+};
 
 /// Builder for constructing a [`StitchSession`] with sensible defaults.
 ///
@@ -272,12 +308,8 @@ pub struct StitchSessionBuilder {
     gpu: Option<GpuContext>,
     encoder: Option<(Box<dyn Encoder + Send>, usize)>,
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
-    detector: Option<Box<dyn Detector>>,
+    detector: Option<Box<dyn crate::detector::UnifiedDetector>>,
     director: Option<Box<dyn Director>>,
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    gpu_detector: Option<Box<dyn crate::detector::GpuDetector>>,
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    metal_detector: Option<Box<dyn crate::detector::MetalDetector>>,
     detection_interval: u64,
     lookahead_frames: usize,
 }
@@ -345,8 +377,8 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach a detector for object detection on raw frames.
-    pub fn detector(mut self, detector: Box<dyn Detector>) -> Self {
+    /// Attach a [`UnifiedDetector`](crate::detector::UnifiedDetector).
+    pub fn detector(mut self, detector: Box<dyn crate::detector::UnifiedDetector>) -> Self {
         self.detector = Some(detector);
         self
     }
@@ -354,20 +386,6 @@ impl StitchSessionBuilder {
     /// Attach a director for camera panning.
     pub fn director(mut self, director: Box<dyn Director>) -> Self {
         self.director = Some(director);
-        self
-    }
-
-    /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn gpu_detector(mut self, detector: Box<dyn crate::detector::GpuDetector>) -> Self {
-        self.gpu_detector = Some(detector);
-        self
-    }
-
-    /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub fn metal_detector(mut self, detector: Box<dyn crate::detector::MetalDetector>) -> Self {
-        self.metal_detector = Some(detector);
         self
     }
 
@@ -446,15 +464,6 @@ impl StitchSessionBuilder {
         if let Some(dir) = self.director {
             session.set_director(dir);
         }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        if let Some(gpu_det) = self.gpu_detector {
-            session.set_gpu_detector(gpu_det);
-        }
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        if let Some(metal_det) = self.metal_detector {
-            session.set_metal_detector(metal_det);
-        }
-
         Ok(session)
     }
 }
@@ -469,7 +478,13 @@ impl StitchSessionBuilder {
 /// Call [`finish`](Self::finish) to flush the last frame and finalize
 /// encoding.
 pub struct StitchSession {
-    pub(crate) pipeline: StitchPipeline,
+    /// The canonical push-first core. Owns the `StitchPipeline`,
+    /// readback staging, coverage boundary, and director slot. The
+    /// session's director + legacy-detector path delegates pose +
+    /// coverage decisions to `self.core` during the plan-step-2
+    /// transition; later tranches will migrate the legacy
+    /// `DetectionPipeline` into the core too.
+    pub(crate) core: StitchCore,
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
     /// Additional encoders for multi-output (stream + record).
@@ -505,16 +520,21 @@ pub struct StitchSession {
     /// CUDA buffer info for GPU detection (GPU zero-copy).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
+    /// Texture views for the 8 shared zero-copy textures, layout
+    /// `[left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0,
+    /// right_uv_0, right_y_1, right_uv_1]`. Stashed at
+    /// `setup_gpu_source` time so `step_gpu_with_bufs` can hand
+    /// slot-indexed views to the GPU stacked-replay pack without
+    /// rebuilding views every frame. TextureView holds an Arc on
+    /// the underlying texture so the shared-memory lifetime is
+    /// still bound to the SharedTextureSet the source owns.
+    #[cfg(target_os = "linux")]
+    gpu_shared_views: Option<[wgpu::TextureView; 8]>,
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
-
-    /// Precomputed coverage boundary for "no-black" viewport constraining.
-    /// Built from calibration at session creation. In world space.
-    /// Rig tilt correction is applied per-corner inside `safe_clamp`.
-    coverage: Option<crate::projection::CoverageBoundary>,
 
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
@@ -541,10 +561,6 @@ impl StitchSession {
             gpu_encoder: None,
             detector: None,
             director: None,
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
-            gpu_detector: None,
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            metal_detector: None,
             detection_interval: 1,
             lookahead_frames: 0,
         }
@@ -564,33 +580,41 @@ impl StitchSession {
         let output_width = config.viewport.width;
         let output_height = config.viewport.height;
 
-        let pipeline = StitchPipeline::with_gpu(
-            gpu,
-            config.calibration,
-            config.viewport,
-            config.input_width,
-            config.input_height,
-            config.output_format,
-            config.input_format,
-        )?;
-
+        // Build a `StitchCore` as the session's rendering foundation.
+        // Core owns the pipeline + readback + coverage + projection +
+        // camera_input. The session layers on NV12 conversion, async
+        // encoding, lookahead, and the legacy per-platform detection
+        // pipeline (until the unified-detector migration of the
+        // session body completes).
+        //
         // Rotation is NOT applied here. It's handled by:
         // - CPU path: decoder reverses buffers in extract_yuv()
         // - GPU path: configure_from_source() sets shader UV flip in run()
         // SessionConfig.left_rotation/right_rotation are kept for Layer 1
         // consumers who call set_flip_180() manually.
+        let core = StitchCore::new(
+            gpu,
+            StitchCoreConfig {
+                calibration: config.calibration,
+                viewport: config.viewport,
+                input_width: config.input_width,
+                input_height: config.input_height,
+                // `OutputFormat` -> `wgpu::TextureFormat` via the
+                // `From` impl in `crate::gpu`; covers all three
+                // session-facing variants (Rgba8Unorm, Rgba8UnormSrgb,
+                // Bgra8UnormSrgb).
+                output_format: config.output_format.into(),
+                input_format: config.input_format,
+                projection: None,
+                camera_input: None,
+                replay_buffer_duration: None,
+            },
+        )?;
 
-        let nv12_converter = Nv12Converter::new(pipeline.gpu(), output_width, output_height)?;
-
-        // Compute world-space coverage boundary from calibration (cheap, <1ms).
-        // Rig tilt correction is applied per-corner inside safe_clamp.
-        let coverage = crate::projection::CoverageBoundary::from_calibration(
-            pipeline.calibration(),
-            &pipeline.scene,
-        );
+        let nv12_converter = Nv12Converter::new(core.gpu(), output_width, output_height)?;
 
         Ok(Self {
-            pipeline,
+            core,
             nv12_converter,
             encoder: None,
             gpu_encoder: None,
@@ -608,9 +632,10 @@ impl StitchSession {
             gpu_slot_free_tx: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
+            #[cfg(target_os = "linux")]
+            gpu_shared_views: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
-            coverage: Some(coverage),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -620,10 +645,13 @@ impl StitchSession {
 
     /// The precomputed coverage boundary for "no-black" viewport constraining.
     ///
-    /// Use [`CoverageBoundary::safe_clamp`](crate::projection::CoverageBoundary::safe_clamp) to constrain viewport positions,
-    /// or [`CoverageBoundary::max_fov_degrees`](crate::projection::CoverageBoundary::max_fov_degrees) for the zoom-out ceiling.
+    /// Delegates to [`StitchCore::coverage`]; use
+    /// [`CoverageBoundary::safe_clamp`](crate::projection::CoverageBoundary::safe_clamp) to
+    /// constrain viewport positions, or
+    /// [`CoverageBoundary::max_fov_degrees`](crate::projection::CoverageBoundary::max_fov_degrees)
+    /// for the zoom-out ceiling.
     pub fn coverage(&self) -> Option<&crate::projection::CoverageBoundary> {
-        self.coverage.as_ref()
+        self.core.coverage()
     }
 
     /// Full angular extent of the stitched panorama.
@@ -634,7 +662,7 @@ impl StitchSession {
     /// `None` if the session has no coverage boundary (should not happen
     /// for sessions built from a valid calibration).
     pub fn panorama_extent(&self) -> Option<crate::projection::PanoramaExtent> {
-        self.coverage.as_ref().map(|c| {
+        self.core.coverage().map(|c| {
             let (yaw_min, yaw_max) = c.yaw_range();
             let (pitch_min, pitch_max) = c.pitch_range();
             crate::projection::PanoramaExtent {
@@ -660,33 +688,16 @@ impl StitchSession {
         self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
     }
 
-    /// Attach a detector for object detection on raw camera frames.
+    /// Attach a [`UnifiedDetector`](crate::detector::UnifiedDetector)
+    /// for object detection on raw camera frames.
     ///
-    /// When set, the CPU batch loop ([`Self::run`]) runs detection on each
-    /// frame's raw YUV data and maps results to panorama coordinates
-    /// to the director. Zero-copy paths skip detection (no CPU-accessible
-    /// frame data).
-    pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
+    /// The backend declares which [`DetectorFrame`](crate::detector::DetectorFrame)
+    /// residencies it accepts. Session dispatches CPU frames (YUV /
+    /// NV12) and CUDA frames (shared textures) through the same
+    /// detector; backends return `UnsupportedFrameKind` for residencies
+    /// they cannot handle and session logs+drops those at the boundary.
+    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::UnifiedDetector>) {
         self.detection.set_detector(detector);
-    }
-
-    /// Attach a GPU detector for zero-copy detection on CUDA device pointers.
-    ///
-    /// When set, the zero-copy frame loop runs detection entirely on GPU
-    /// using NV12 device pointers from shared textures. Only the small
-    /// detection output is read back to CPU.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn set_gpu_detector(&mut self, detector: Box<dyn crate::detector::GpuDetector>) {
-        self.detection.set_gpu_detector(detector);
-    }
-
-    /// Attach a Metal detector for zero-copy detection on CVPixelBuffers.
-    ///
-    /// When set, the macOS zero-copy frame loop runs detection using
-    /// Metal compute shaders for preprocessing and CoreML for inference.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub fn set_metal_detector(&mut self, detector: Box<dyn crate::detector::MetalDetector>) {
-        self.detection.set_metal_detector(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
@@ -722,6 +733,97 @@ impl StitchSession {
     /// tracked objects with panorama coordinates and valid panning bounds.
     pub fn set_director(&mut self, director: Box<dyn Director>) {
         self.director = Some(director);
+    }
+
+    /// Attach a stacked-video replay recorder.
+    ///
+    /// Forwards to [`StitchCore::set_stacked_recorder`] on the
+    /// session's underlying core. Push-based consumers (OBS,
+    /// GStreamer bridge) that wire this get the same replay-recording
+    /// ergonomics the pull-side `StitchJob::with_replay_recording`
+    /// already provides: one method call, the session handles the
+    /// per-frame tap + encoder lifecycle internally. Closes FRICTION
+    /// A18 on the reco-obs side.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // reco-io exposes a constructor that returns the concrete
+    /// // `Box<dyn StackedReplayRecorder>`; consumers don't touch
+    /// // the encoder type directly.
+    /// let recorder = reco_io::stacked_video::replay::session_recorder(
+    ///     "replay.mkv",
+    ///     reco_io::stacked_video::encoder::StackedEncoderConfig::default(),
+    ///     info.width,
+    ///     info.height,
+    /// )?;
+    /// session.set_stacked_recorder(recorder);
+    /// ```
+    pub fn set_stacked_recorder(&mut self, recorder: Box<dyn crate::core::StackedReplayRecorder>) {
+        self.core.set_stacked_recorder(recorder);
+    }
+
+    /// Finalize and drop the currently attached replay recorder.
+    /// No-op if no recorder is attached.
+    pub fn clear_stacked_recorder(&mut self) {
+        self.core.clear_stacked_recorder();
+    }
+
+    /// Flush the replay recorder's buffered bytes to disk. Call
+    /// periodically (e.g. once per second) so a concurrent reader
+    /// sees recent frames. No-op if no recorder is attached.
+    pub fn flush_stacked_recorder(&mut self) {
+        self.core.flush_stacked_recorder();
+    }
+
+    /// Enable the GPU-pack replay path (M7 pivot item 1).
+    ///
+    /// Forwards to [`crate::core::StitchCore::enable_gpu_stacked_replay`].
+    /// After enabling, attach a
+    /// [`crate::core::StackedReplayGpuRecorder`] via
+    /// [`Self::set_stacked_gpu_recorder`] to route the packed atlas
+    /// to an encoder. The pack runs on every YUV submit and logs
+    /// its path choice once at enable time.
+    pub fn enable_gpu_stacked_replay(
+        &mut self,
+        layout: crate::yuv_stack_packer::StackGridLayout,
+        output_size: crate::yuv_stack_packer::OutputTileSize,
+    ) -> Result<(), crate::core::StitchCoreError> {
+        self.core.enable_gpu_stacked_replay(layout, output_size)
+    }
+
+    /// Disable the GPU-pack replay path. Also finalizes any
+    /// attached GPU recorder.
+    pub fn disable_gpu_stacked_replay(&mut self) {
+        self.core.disable_gpu_stacked_replay();
+    }
+
+    /// Attach a GPU-pack atlas recorder. Call after
+    /// [`Self::enable_gpu_stacked_replay`].
+    pub fn set_stacked_gpu_recorder(
+        &mut self,
+        recorder: Box<dyn crate::core::StackedReplayGpuRecorder>,
+    ) {
+        self.core.set_stacked_gpu_recorder(recorder);
+    }
+
+    /// Finalize and drop the GPU-pack atlas recorder. No-op if none
+    /// is attached.
+    pub fn clear_stacked_gpu_recorder(&mut self) {
+        self.core.clear_stacked_gpu_recorder();
+    }
+
+    /// Flush the GPU-pack recorder's buffered bytes to disk. No-op
+    /// if none is attached.
+    pub fn flush_stacked_gpu_recorder(&mut self) {
+        self.core.flush_stacked_gpu_recorder();
+    }
+
+    /// Atlas dimensions the active GPU packer produces, or `None` if
+    /// the GPU-pack path is not enabled. Consumers use this to open
+    /// an encoder sized for the atlas.
+    pub fn stacked_atlas_dims(&self) -> Option<(u32, u32)> {
+        self.core.stacked_atlas_dims()
     }
 
     /// Set the sink that receives tracked detection data each frame.
@@ -760,26 +862,28 @@ impl StitchSession {
             .map_or(ViewportPosition::default(), |d| d.position());
 
         // The director outputs world-space coordinates (from ball detections).
-        // Clamp in world space, then convert to user space for the renderer
-        // (which applies rig_tilt internally in its view matrix).
-        if let Some(ref coverage) = self.coverage {
+        // Clamp in world space, then convert to user space for the renderer.
+        // Rig-tilt conversion is a SIMPLE offset (`user = world - rig_tilt`);
+        // the yaw-weighted horizon correction is a separate compensation
+        // applied at the render site (see Model 3 rationale in
+        // `PoseControl::render_pose`). Validated empirically 2026-04-20.
+        if let Some(coverage) = self.core.coverage() {
             if let Some(ref mut fov) = pos.fov_degrees {
                 *fov = fov.min(coverage.max_fov_degrees());
             }
-            let fov = pos.fov_degrees.unwrap_or_else(|| self.pipeline.fov());
-            let aspect = self.pipeline.viewport().aspect_ratio();
-            // Clamp in world space (no rig_tilt transform needed).
+            let fov = pos
+                .fov_degrees
+                .unwrap_or_else(|| self.core.pipeline().fov());
+            let aspect = self.core.pipeline().viewport().aspect_ratio();
+            // safe_clamp with rig_tilt=0 keeps inputs+outputs in world-space.
             let clamped = coverage.safe_clamp(pos.yaw, pos.pitch, fov, aspect, 0.0);
             pos.yaw = clamped.yaw;
-            // Convert world -> user: the renderer applies rig_tilt as
-            // a rotation, so the effective world pitch at a given yaw is
-            // user_pitch + rig_tilt * cos(yaw). Invert to get user_pitch.
-            let rig_tilt = self.pipeline.viewport().rig_tilt;
-            pos.pitch = clamped.pitch - rig_tilt * clamped.yaw.cos();
+            let rig_tilt = self.core.pipeline().viewport().rig_tilt;
+            pos.pitch = clamped.pitch - rig_tilt;
         }
 
         if let Some(fov) = pos.fov_degrees {
-            self.pipeline.set_fov(fov);
+            self.core.pipeline_mut().set_fov(fov);
         }
         pos
     }
@@ -798,7 +902,7 @@ impl StitchSession {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect {
-            let (width, height) = self.pipeline.source_info();
+            let (width, height) = self.core.pipeline().source_info();
             let detections = self.detection.run_detection(frame, width, height);
             self.detection.last_detections = self.map_detections(detections);
         }
@@ -841,7 +945,7 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         let should_detect = self.detection.should_detect(self.frame_count);
 
-        if should_detect && self.detection.has_gpu_detector() {
+        if should_detect && self.detection.has_detector() {
             let detections = self.detection.run_gpu_detection(
                 left_buf,
                 right_buf,
@@ -858,13 +962,10 @@ impl StitchSession {
 
     /// Run Metal-resident detection and update the director.
     ///
-    /// Uses the [`MetalDetector`](crate::detector::MetalDetector) to detect
-    /// objects directly from CVPixelBuffers via Metal compute shaders,
-    /// avoiding any GPU-to-CPU frame readback. Only the small detection
-    /// output is transferred to CPU for tracking and director updates.
-    ///
-    /// Falls back to [`update_director`](Self::update_director) if no
-    /// Metal detector is attached.
+    /// Dispatches to the attached unified detector through
+    /// [`DetectorFrame::Metal`](crate::detector::DetectorFrame::Metal).
+    /// The backend (e.g. `MetalYoloDetector`) owns the `GpuContext`
+    /// clone it needs for CVPixelBuffer import.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn detect_and_update_director_metal(
         &mut self,
@@ -874,14 +975,26 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
+        use crate::detector::{CameraId, DetectorFrame};
+
         let should_detect = self.detection.should_detect(self.frame_count);
 
-        if should_detect && self.detection.has_metal_detector() {
-            let gpu = self.pipeline.gpu();
-            let detections = self
-                .detection
-                .run_metal_detection(left_cvpb, right_cvpb, width, height, gpu);
-            self.detection.last_detections = self.map_detections(detections);
+        if should_detect && self.detection.has_detector() {
+            if let Some(ref mut detector) = self.detection.detector {
+                let mut raw = Vec::new();
+                for (camera, cvpb) in [(CameraId::Left, left_cvpb), (CameraId::Right, right_cvpb)] {
+                    let frame = DetectorFrame::Metal {
+                        cv_pixel_buffer: cvpb,
+                        width,
+                        height,
+                    };
+                    match detector.detect(camera, &frame) {
+                        Ok(v) => raw.extend(v),
+                        Err(e) => log::warn!("detector '{}' {camera:?}: {e}", detector.name()),
+                    }
+                }
+                self.detection.last_detections = self.map_detections(raw);
+            }
         }
 
         self.fire_sink_and_update_director(elapsed, should_detect)
@@ -907,7 +1020,7 @@ impl StitchSession {
         // Fire sink for external consumers.
         self.detection
             .fire_sink(self.frame_count, timestamp_ms)
-            .map_err(SessionError::DetectionSink)?;
+            .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
 
         // Update director with detections and timing only.
         // Coverage clamping is applied later in director_position().
@@ -932,8 +1045,8 @@ impl StitchSession {
     /// handled at the detector level by `reco-autocam`'s `RoiFilteredDetector`
     /// decorators, so this method is pure coordinate mapping.
     fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
-        let calibration = self.pipeline.calibration();
-        let scene = &self.pipeline.scene;
+        let calibration = self.core.pipeline().calibration();
+        let scene = &self.core.pipeline().scene;
 
         detections
             .iter()
@@ -989,15 +1102,13 @@ impl StitchSession {
         // Get viewport position (from director or override).
         let pos = if let Some(ovr) = override_position {
             if let Some(fov) = ovr.fov_degrees {
-                self.pipeline.set_fov(fov);
+                self.core.pipeline_mut().set_fov(fov);
             }
             ovr
         } else {
             self.director_position()
         };
 
-        // Capture detections before render (they'll be overwritten on next detect).
-        let detections = self.detection.last_detections.clone();
         let frame_index = self.frame_count;
 
         // Render + encode.
@@ -1005,7 +1116,6 @@ impl StitchSession {
 
         Ok(StepResult {
             viewport: pos,
-            detections,
             frame_index,
         })
     }
@@ -1033,8 +1143,17 @@ impl StitchSession {
             return self.process_metal_frame(left, right, yaw, pitch);
         }
 
-        let render_buf = self.pipeline.render_stereo_frame(frame, yaw, pitch)?;
-        self.submit_render_output(render_buf)
+        let render_buf = self.core.render_stereo_frame_at_pose(frame, yaw, pitch)?;
+        self.submit_render_output(render_buf)?;
+        // GPU stacked-replay pack tap (M7). `render_stereo_frame_at_pose`
+        // has just populated the renderer's internal plane textures
+        // via `queue.write_texture`, so the packer's pipeline-view
+        // path can read them. No-op when the packer isn't enabled.
+        // Zero-copy `StereoFrame::GpuResident` goes through
+        // `step_gpu_with_bufs` (Linux) which taps the pack with
+        // external views instead.
+        self.core.drive_gpu_stacked_pack();
+        Ok(())
     }
 
     /// Process a MetalResident frame: import CVPixelBuffers as textures, render.
@@ -1049,18 +1168,17 @@ impl StitchSession {
         // Lazily create the texture cache on first MetalResident frame.
         if self.metal_texture_cache.is_none() {
             self.metal_texture_cache = Some(crate::metal_interop::MetalTextureCache::new(
-                self.pipeline.gpu(),
+                self.core.gpu(),
             )?);
             log::info!("Metal zero-copy: texture cache initialized");
         }
         let cache = self.metal_texture_cache.as_ref().unwrap();
 
         // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
-        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.pipeline.gpu())? };
-        let (right_y, right_uv) =
-            unsafe { cache.import_nv12(right.as_ptr(), self.pipeline.gpu())? };
+        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
+        let (right_y, right_uv) = unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
 
-        let render_buf = self.pipeline.render_imported_textures(
+        let render_buf = self.core.render_imported_textures_at_pose(
             &left_y.texture,
             &left_uv.texture,
             &right_y.texture,
@@ -1068,7 +1186,40 @@ impl StitchSession {
             yaw,
             pitch,
         );
-        self.submit_render_output(render_buf)
+        self.submit_render_output(render_buf)?;
+
+        // TODO(M7 macOS Metal): wire GPU stacked-replay pack here
+        // for feature parity with the Linux zero-copy path that
+        // already taps after `submit_render_output` in
+        // `step_gpu_with_bufs`. The shape mirrors exactly:
+        //
+        //   let left_y_view  = left_y.texture.create_view(&..);
+        //   let left_uv_view = left_uv.texture.create_view(&..);
+        //   let right_y_view  = right_y.texture.create_view(&..);
+        //   let right_uv_view = right_uv.texture.create_view(&..);
+        //   self.core.pack_gpu_stacked_replay_from_views(
+        //       StackedPackSource::Nv12 { y: &left_y_view,  uv: &left_uv_view },
+        //       StackedPackSource::Nv12 { y: &right_y_view, uv: &right_uv_view },
+        //   );
+        //
+        // Caveat on MetalTextureCache: `import_nv12` returns
+        // `MetalTextureHandle` which holds its own wgpu::Texture;
+        // creating views every frame is a non-trivial cost on
+        // Metal. Linux stashes 8 views once at `setup_gpu_source`
+        // time because the decode slots are known in advance. On
+        // Metal the CVPixelBuffer pool rotates dynamically — the
+        // cleanest equivalent is caching views inside
+        // `MetalTextureHandle` itself rather than here.
+        //
+        // Tracking: not yet filed as an issue; opens when a macOS
+        // consumer wants GPU stacked replay end-to-end. Today the
+        // CPU `ReplayRecordingSource` decorator handles the CPU-
+        // resident arm of replay recording and the Metal path
+        // doesn't fire it either (`StereoFrame::MetalResident`
+        // isn't handled by the decorator). So macOS replay is
+        // currently no-op regardless of source residency — a
+        // separate gap from #270.
+        Ok(())
     }
 
     /// Render from GPU-resident textures and submit to the async encoder.
@@ -1087,8 +1238,8 @@ impl StitchSession {
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
         let nv12_data = self.nv12_converter.convert_and_readback(
-            self.pipeline.gpu(),
-            self.pipeline.render_target(),
+            self.core.gpu(),
+            self.core.pipeline().render_target(),
             render_commands,
         )?;
 
@@ -1132,10 +1283,33 @@ impl StitchSession {
                 "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
             )
         })?;
-        let render_buf =
-            self.pipeline
-                .render_gpu_frame(bind_groups, left_slot, right_slot, pos.yaw, pos.pitch);
+        let render_buf = self.core.render_gpu_frame_at_pose(
+            bind_groups,
+            left_slot,
+            right_slot,
+            pos.yaw,
+            pos.pitch,
+        );
         self.submit_render_output(render_buf)?;
+
+        // GPU stacked-replay pack on zero-copy sources. No-op when
+        // the packer isn't enabled. Must complete before slot-free
+        // release so the decode thread doesn't overwrite the
+        // shared textures mid-pack.
+        if let Some(ref views) = self.gpu_shared_views {
+            let ls = left_slot as usize;
+            let rs = right_slot as usize;
+            self.core.pack_gpu_stacked_replay_from_views(
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[ls * 2],
+                    uv: &views[ls * 2 + 1],
+                },
+                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[4 + rs * 2],
+                    uv: &views[4 + rs * 2 + 1],
+                },
+            );
+        }
 
         // Release slots for decode thread to reuse
         if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
@@ -1165,7 +1339,7 @@ impl StitchSession {
         if source.is_gpu_resident() {
             let (lr, rr) = (source.left_rotation(), source.right_rotation());
             if lr == 180 || rr == 180 {
-                self.pipeline.set_flip_180(lr == 180, rr == 180);
+                self.core.pipeline_mut().set_flip_180(lr == 180, rr == 180);
                 log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
             }
             // Store rotation for the GPU detector preprocessing path.
@@ -1190,7 +1364,7 @@ impl StitchSession {
     #[cfg(target_os = "linux")]
     pub fn setup_gpu_source(&mut self, shared: &SharedTextureSet) {
         let t = &shared.textures;
-        let bind_groups = self.pipeline.configure_gpu_source(
+        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
             [(&t[0], &t[1]), (&t[2], &t[3])],
             [(&t[4], &t[5]), (&t[6], &t[7])],
         );
@@ -1200,6 +1374,24 @@ impl StitchSession {
             shared.right_slot_free_tx.clone(),
         ));
         self.gpu_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
+        // Pre-build the 8 shared texture views for the GPU
+        // stacked-replay pack shader. Same order as `t` above so
+        // `step_gpu_with_bufs` can index per slot:
+        //   left  y: [ls * 2],     uv: [ls * 2 + 1]
+        //   right y: [4 + rs * 2], uv: [4 + rs * 2 + 1]
+        // Views hold Arcs to the underlying textures, so the
+        // SharedTextureSet still owns the lifetime.
+        let desc = wgpu::TextureViewDescriptor::default();
+        self.gpu_shared_views = Some([
+            t[0].texture.create_view(&desc),
+            t[1].texture.create_view(&desc),
+            t[2].texture.create_view(&desc),
+            t[3].texture.create_view(&desc),
+            t[4].texture.create_view(&desc),
+            t[5].texture.create_view(&desc),
+            t[6].texture.create_view(&desc),
+            t[7].texture.create_view(&desc),
+        ]);
         log::info!("Session configured for GPU-resident source");
     }
 
@@ -1395,7 +1587,7 @@ impl StitchSession {
     /// and calls [`Encoder::finish`]. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
         // Flush remaining frames from the NV12 triple-buffer.
-        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.pipeline.gpu())? {
+        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.core.gpu())? {
             if let Some(ref encoder) = self.encoder {
                 encoder.submit(nv12_data, self.frame_count as i64)?;
             }
@@ -1430,8 +1622,8 @@ impl StitchSession {
         render_commands: wgpu::CommandBuffer,
     ) -> Result<Option<&[u8]>, SessionError> {
         let nv12_data = self.nv12_converter.convert_and_readback(
-            self.pipeline.gpu(),
-            self.pipeline.render_target(),
+            self.core.gpu(),
+            self.core.pipeline().render_target(),
             render_commands,
         )?;
         self.frame_count += 1;
@@ -1443,27 +1635,40 @@ impl StitchSession {
         self.frame_count
     }
 
-    /// Shared reference to the underlying pipeline.
+    /// Shared reference to the underlying pipeline (via `StitchCore`).
     pub fn pipeline(&self) -> &StitchPipeline {
-        &self.pipeline
+        self.core.pipeline()
     }
 
-    /// Mutable reference to the underlying pipeline.
+    /// Mutable reference to the underlying pipeline (via `StitchCore`).
     ///
     /// Needed for zero-copy setup (configure_gpu_source) and viewport
     /// changes (resize, set_fov).
     pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
-        &mut self.pipeline
+        self.core.pipeline_mut()
+    }
+
+    /// Borrow the underlying [`StitchCore`]. Useful for consumers that
+    /// want to reach through to the push-first API
+    /// (`submit_frame_*`, replay buffer, etc.) without giving up the
+    /// session's encode-loop features.
+    pub fn core(&self) -> &StitchCore {
+        &self.core
+    }
+
+    /// Mutable borrow of the underlying [`StitchCore`].
+    pub fn core_mut(&mut self) -> &mut StitchCore {
+        &mut self.core
     }
 
     /// Shared reference to the GPU context.
     pub fn gpu(&self) -> &GpuContext {
-        self.pipeline.gpu()
+        self.core.gpu()
     }
 
     /// The name of the GPU this session is running on.
     pub fn gpu_name(&self) -> &str {
-        self.pipeline.gpu_name()
+        self.core.pipeline().gpu_name()
     }
 
     /// Get current session performance metrics.
@@ -1501,12 +1706,10 @@ impl StitchSession {
     /// Update calibration parameters and recompute coverage boundary.
     ///
     /// Takes effect on the next render call. For interactive calibration
-    /// tweaking during preview or live operation.
+    /// tweaking during preview or live operation. Delegates to
+    /// [`StitchCore::update_calibration`] which re-derives the coverage
+    /// boundary in one call.
     pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
-        self.pipeline.update_calibration(calibration);
-        self.coverage = Some(crate::projection::CoverageBoundary::from_calibration(
-            self.pipeline.calibration(),
-            &self.pipeline.scene,
-        ));
+        self.core.update_calibration(calibration);
     }
 }

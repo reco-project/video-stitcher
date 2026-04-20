@@ -39,6 +39,23 @@ pub struct CameraRunConfig<'a> {
     pub detection_interval: u64,
     pub crf: Option<u8>,
     pub preset: Option<String>,
+    /// Output container (`mp4` / `fmp4` / `mkv`). None → `mp4`.
+    /// Pick `mkv` or `fmp4` for streamable tee via external
+    /// `ffmpeg -c copy -f flv rtmp://...`.
+    pub container: Option<&'a str>,
+    /// Tracking director: `ball`, `field`, `sweep`. Sweep mode
+    /// bypasses detection entirely (no --model needed).
+    pub tracking: &'a str,
+    /// Disable coverage-boundary clamp on the director output.
+    /// Useful in sweep mode to cover the full panorama width.
+    pub unconstrained: bool,
+    /// Optional path for M7 stacked-replay recording. Same feature
+    /// as `StitchJob::with_replay_recording`. Requires the `replay`
+    /// feature flag on reco-cli.
+    pub replay_path: Option<&'a str>,
+    /// Optional downscaled replay tile dims `(width, height)`.
+    /// GPU-pack path only; no-op when replay_path is None.
+    pub replay_scale: Option<(u32, u32)>,
 }
 
 pub fn run_camera(
@@ -62,6 +79,11 @@ pub fn run_camera(
         detection_interval,
         crf,
         preset,
+        container,
+        tracking,
+        unconstrained,
+        replay_path,
+        replay_scale,
     } = config;
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
@@ -104,25 +126,58 @@ pub fn run_camera(
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
-    // Set up autocam (detector + director) if model provided.
+    // Constrained-look clamp (FRICTION A13). Default on; `--unconstrained`
+    // flips it off so sweep / debug views can pan past the coverage
+    // boundary.
+    if unconstrained {
+        session.core_mut().set_constrained_look(false);
+        log::info!("constrained_look: disabled (unconstrained viewport)");
+    }
+
+    // Parse tracking mode. Sweep is useful without detection.
     #[cfg(feature = "autocam")]
-    if let Some(model) = model_path {
-        match reco_autocam::setup_autocam(
-            &mut session,
-            model,
-            capture_width,
-            capture_height,
-            capture_fps as f32,
-            use_nv12_capture,
-            detection_interval,
-            0.0,
-            reco_autocam::TrackingMode::Ball,
-            None,
-            false, // V4L2 captures are always 8-bit NV12
-        ) {
-            Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
-            Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),
-            Err(e) => eprintln!("Warning: autocam setup failed ({e}), continuing without tracking"),
+    let tracking_mode = match tracking {
+        "ball" => reco_autocam::TrackingMode::Ball,
+        "field" => reco_autocam::TrackingMode::Field,
+        "sweep" => reco_autocam::TrackingMode::Sweep,
+        other => {
+            log::warn!("unknown tracking mode '{other}', defaulting to 'ball'");
+            reco_autocam::TrackingMode::Ball
+        }
+    };
+
+    // Set up autocam (detector + director). Model path is optional in
+    // sweep mode — SweepDirector needs no detector.
+    #[cfg(feature = "autocam")]
+    {
+        let effective_model = if tracking_mode == reco_autocam::TrackingMode::Sweep {
+            // Sweep bypasses detection entirely.
+            model_path.unwrap_or("")
+        } else {
+            model_path.unwrap_or("")
+        };
+        if !effective_model.is_empty() || tracking_mode == reco_autocam::TrackingMode::Sweep {
+            match reco_autocam::setup_autocam(
+                &mut session,
+                effective_model,
+                capture_width,
+                capture_height,
+                capture_fps as f32,
+                use_nv12_capture,
+                detection_interval,
+                0.0,
+                tracking_mode,
+                None,
+                false, // V4L2 captures are always 8-bit NV12
+            ) {
+                Ok(true) => println!("Autocam: {tracking_mode:?} director attached"),
+                Ok(false) => {
+                    eprintln!("Warning: tracking unavailable in current capture mode")
+                }
+                Err(e) => {
+                    eprintln!("Warning: autocam setup failed ({e}), continuing without tracking")
+                }
+            }
         }
     }
     #[cfg(not(feature = "autocam"))]
@@ -142,6 +197,79 @@ pub fn run_camera(
         height
     );
 
+    // M7 replay recording on live cams (closes #273). Live capture
+    // runs through `session.process_frame` → CPU-upload render
+    // path; the GPU pack tap in `process_frame` reads from the
+    // renderer's internal plane textures (populated by
+    // `queue.write_texture` on each frame), so replay works
+    // regardless of whether the source is NV12 or I420.
+    #[cfg(feature = "replay")]
+    let _replay_attached = if let Some(replay_path) = replay_path {
+        let (out_w, out_h) = replay_scale.unwrap_or((capture_width, capture_height));
+        let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "replay tile dims {out_w}x{out_h} not YUV420P-aligned \
+                     (width divisible by 4, height even)"
+                )
+            })?;
+        let output_size = if replay_scale.is_some() {
+            reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+        } else {
+            reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+        };
+        session
+            .enable_gpu_stacked_replay(layout, output_size)
+            .map_err(|e| anyhow::anyhow!("enable GPU stacked replay: {e}"))?;
+        let (atlas_w, atlas_h) = session
+            .stacked_atlas_dims()
+            .ok_or_else(|| anyhow::anyhow!("stacked_atlas_dims returned None after enable"))?;
+        // Jetson has no NVENC; libx264 default is what we have. On
+        // non-Jetson the same default applies per session discussion
+        // (NVENC + NV12 pack shader combo deferred to #271).
+        let encoder_config = reco_io::stacked_video::encoder::StackedEncoderConfig {
+            fps: (capture_fps as i32, 1),
+            ..Default::default()
+        };
+        let recorder = reco_io::stacked_video::replay::session_gpu_recorder(
+            std::path::Path::new(replay_path),
+            encoder_config,
+            atlas_w,
+            atlas_h,
+        )
+        .map_err(|e| anyhow::anyhow!("open GPU replay recorder: {e}"))?;
+        session.set_stacked_gpu_recorder(recorder);
+        let scale_note = if replay_scale.is_some() {
+            format!(
+                " [A19 downscale: source {}x{} -> tile {}x{}]",
+                capture_width, capture_height, out_w, out_h
+            )
+        } else {
+            String::new()
+        };
+        log::info!(
+            "reco-cli: camera replay pack path = GPU (tile {}x{}, N=2, atlas {}x{}){} -> {}",
+            out_w,
+            out_h,
+            atlas_w,
+            atlas_h,
+            scale_note,
+            replay_path,
+        );
+        println!("Replay recording: {replay_path}");
+        true
+    } else {
+        false
+    };
+    #[cfg(not(feature = "replay"))]
+    {
+        let _ = replay_path;
+        let _ = replay_scale;
+        if replay_path.is_some() {
+            log::warn!("--replay specified but `replay` feature is disabled.");
+        }
+    }
+
     reco_io::init();
     let quality = match quality {
         "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
@@ -157,12 +285,20 @@ pub fn run_camera(
             eprintln!("Unknown codec '{codec}', defaulting to H.264");
             reco_io::ffmpeg::encoder::VideoCodec::H264
         });
+    let container_choice = if let Some(c) = container {
+        reco_io::ffmpeg::encoder::Container::from_str_loose(c).ok_or_else(|| {
+            anyhow::anyhow!("unknown container '{c}' (expected mp4, fmp4, or mkv)")
+        })?
+    } else {
+        reco_io::ffmpeg::encoder::Container::default()
+    };
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
         codec: video_codec,
         quality,
         crf,
         preset,
+        container: container_choice,
         ..Default::default()
     };
 
@@ -221,6 +357,8 @@ pub fn run_camera(
 
         // Stop cameras gracefully before finishing encoder
         source.stop();
+        #[cfg(feature = "replay")]
+        session.clear_stacked_gpu_recorder();
         session.finish()?;
 
         progress.finish(frame_count, output);
@@ -250,6 +388,8 @@ pub fn run_camera(
             progress.report(frame_count);
         }
 
+        #[cfg(feature = "replay")]
+        session.clear_stacked_gpu_recorder();
         session.finish()?;
 
         progress.finish(frame_count, output);

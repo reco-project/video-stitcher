@@ -62,8 +62,10 @@ pub struct CalibrateVideosOptions {
     pub sync_offset: Option<i64>,
 }
 
-/// Errors from [`calibrate_videos`].
-#[derive(Debug, thiserror::Error)]
+/// Errors from [`calibrate_videos`]. `Clone + Send + Sync` so a
+/// calibration worker can post the typed result back to the UI
+/// thread through an mpsc channel without stringifying.
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum CalibrateVideosError {
     /// Video I/O error (probe, decode, audio extraction).
     #[error("I/O: {0}")]
@@ -86,12 +88,66 @@ pub enum CalibrateVideosError {
     Cancelled,
 }
 
+// Compile-time assertion (plan step 7 tail): `CalibrateVideosError`
+// and its transitive inner types are `Clone + Send + Sync`. Regresses
+// if a future variant introduces a non-Clone `#[from]` wrap.
+const _: fn() = || {
+    fn assert_clone_send_sync<T: Clone + Send + Sync + 'static>() {}
+    assert_clone_send_sync::<CalibrateVideosError>();
+    assert_clone_send_sync::<crate::error::CalibrateError>();
+};
+
 /// Check the interrupted flag and return `Cancelled` if set.
 fn check_interrupted(interrupted: &AtomicBool) -> Result<(), CalibrateVideosError> {
     if interrupted.load(Ordering::Relaxed) {
         Err(CalibrateVideosError::Cancelled)
     } else {
         Ok(())
+    }
+}
+
+/// Try audio cross-correlation sync, logging each failure reason.
+///
+/// N-1 (deep-review-2026-04-18): this used to swallow three distinct
+/// error paths (extract_audio_pcm for left, for right, and
+/// pipeline.audio_sync itself) via `let (Ok, Ok) = ...` +
+/// `let _ = audio_sync`. A silent fall-through to sync_offset=0 made
+/// calibration look blurry in the output without any hint in the
+/// logs. Each path now logs a warn with specifics so post-deployment
+/// diagnostic bundles carry the failure reason.
+fn try_audio_sync(
+    pipeline: &mut crate::pipeline::CalibrationPipeline,
+    left_video: &std::path::Path,
+    right_video: &std::path::Path,
+) {
+    let sample_rate = 44100;
+    let left_audio = match calibration_io::extract_audio_pcm(left_video, sample_rate) {
+        Ok(a) => a,
+        Err(e) => {
+            log::warn!(
+                "sync: audio extraction failed for left={} ({e}); sync_offset stays at 0",
+                left_video.display()
+            );
+            return;
+        }
+    };
+    let right_audio = match calibration_io::extract_audio_pcm(right_video, sample_rate) {
+        Ok(a) => a,
+        Err(e) => {
+            log::warn!(
+                "sync: audio extraction failed for right={} ({e}); sync_offset stays at 0",
+                right_video.display()
+            );
+            return;
+        }
+    };
+    match pipeline.audio_sync(&left_audio, &right_audio, sample_rate) {
+        Ok(offset) => {
+            log::info!("sync: audio cross-correlation produced offset={offset} frames");
+        }
+        Err(e) => {
+            log::warn!("sync: audio_sync failed ({e}); sync_offset stays at 0");
+        }
     }
 }
 
@@ -198,17 +254,28 @@ pub fn calibrate_videos(
         "Detecting sync offset",
     );
     if let Some(offset) = options.sync_offset {
+        log::info!("sync: manual override {offset} frames");
         pipeline.set_sync_offset(offset);
     } else {
-        let imu_ok = pipeline.imu_sync().ok().flatten().is_some();
-        if !imu_ok {
-            let sample_rate = 44100;
-            let left_ok = calibration_io::extract_audio_pcm(left_video, sample_rate);
-            let right_ok = calibration_io::extract_audio_pcm(right_video, sample_rate);
-            if let (Ok(left_audio), Ok(right_audio)) = (left_ok, right_ok) {
-                let _ = pipeline.audio_sync(&left_audio, &right_audio, sample_rate);
+        // N-1 (deep-review-2026-04-18): the fallback used to drop every
+        // error silently and leave sync_offset at 0, producing visibly
+        // blurry calibration with no explanation in the logs. Surface
+        // each failure so post-deployment diagnostic bundles carry the
+        // reason.
+        match pipeline.imu_sync() {
+            Ok(Some(offset)) => {
+                log::info!("sync: IMU produced offset={offset} frames");
             }
-            // If audio sync also fails, offset stays at 0
+            Ok(None) => {
+                log::warn!(
+                    "sync: IMU returned no offset (one or both telemetry streams missing); trying audio"
+                );
+                try_audio_sync(&mut pipeline, left_video, right_video);
+            }
+            Err(e) => {
+                log::warn!("sync: IMU path failed ({e}); trying audio");
+                try_audio_sync(&mut pipeline, left_video, right_video);
+            }
         }
     }
 
