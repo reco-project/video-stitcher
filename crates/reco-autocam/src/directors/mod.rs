@@ -8,13 +8,17 @@
 //!
 //! Use [`TrackingMode`] to select which director to create in [`setup_autocam`](crate::setup_autocam).
 
+mod anticipation;
 mod ball;
 pub(crate) mod clustering;
+mod deadzone;
 mod field;
 mod sweep;
 pub(crate) mod util;
 
+pub use anticipation::AnticipatingDirector;
 pub use ball::BallDirector;
+pub use deadzone::DeadZoneDirector;
 pub use field::FieldDirector;
 pub use sweep::SweepDirector;
 

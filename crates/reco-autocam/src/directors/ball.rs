@@ -65,6 +65,11 @@ pub struct BallDirector {
     /// Maximum distance (rad) from the camera to consider a detection
     /// during Searching. Prevents chasing false positives across the panorama.
     search_max_radius: f32,
+    /// When true, detection selection favors the last-accepted camera
+    /// (breaks ties in the seam overlap). Turn off when detections from
+    /// different cameras are spatially disjoint (e.g. a field ROI
+    /// partitions left/right), since the bonus no longer aids selection.
+    camera_bias_enabled: bool,
 }
 
 impl BallDirector {
@@ -92,6 +97,7 @@ impl BallDirector {
             search_confirm_count: 0,
             search_confirm_needed: 3,
             search_max_radius: 0.70,
+            camera_bias_enabled: true,
         }
     }
 
@@ -109,6 +115,40 @@ impl BallDirector {
     /// can legitimately move further between checks.
     pub fn set_detection_interval(&mut self, interval: u32) {
         self.detection_interval = interval.max(1);
+    }
+
+    /// Toggle the last-camera tie-breaker in detection selection.
+    ///
+    /// Default is `true`. Set to `false` when the detection stream is
+    /// already spatially partitioned between cameras (e.g. left/right
+    /// field ROIs cover disjoint pitch halves), so the camera-history
+    /// bonus adds no information and can bias against a correct switch.
+    pub fn with_camera_bias(mut self, enabled: bool) -> Self {
+        self.camera_bias_enabled = enabled;
+        self
+    }
+
+    /// Override the per-frame plausibility jump threshold (radians).
+    ///
+    /// Default is `0.09` rad (~5°). When upstream ROI filtering is
+    /// pre-filtering false positives (no crowd / no off-pitch), the
+    /// threshold can be widened significantly so the camera accepts
+    /// legitimate long passes without flipping into Searching.
+    pub fn with_max_jump(mut self, max_jump: f32) -> Self {
+        self.max_jump = max_jump.max(1e-3);
+        self
+    }
+
+    /// Override the search-state max radius (radians).
+    ///
+    /// Default is `0.70` rad (~40°). When the ball can legitimately
+    /// reappear anywhere on the pitch (e.g. after a goal-kick or
+    /// switch play), raise this to the panoramic coverage — an ROI-
+    /// filtered stream has no off-pitch false positives to guard
+    /// against.
+    pub fn with_search_max_radius(mut self, radius: f32) -> Self {
+        self.search_max_radius = radius.max(1e-3);
+        self
     }
 
     /// Find the best ball detection from mapped detections.
@@ -142,9 +182,16 @@ impl BallDirector {
     /// Score a detection for ball selection.
     ///
     /// Higher = better. Factors: confidence, center proximity (less
-    /// fisheye distortion), camera consistency (reduces oscillation).
+    /// fisheye distortion), and (optionally) camera consistency. The
+    /// camera bias is opt-out via [`with_camera_bias`](Self::with_camera_bias)
+    /// when spatial partitioning makes it redundant.
     fn detection_score(&self, det: &MappedDetection) -> f32 {
-        super::util::detection_score(det, self.last_camera)
+        let bias = if self.camera_bias_enabled {
+            self.last_camera
+        } else {
+            None
+        };
+        super::util::detection_score(det, bias)
     }
 
     /// Compute target FOV based on ball's panorama-space pitch.
@@ -283,10 +330,14 @@ impl Director for BallDirector {
     }
 
     fn position(&self) -> ViewportPosition {
-        // Negate yaw: the projection maps left-camera-left-edge to negative
-        // yaw, but the renderer pans in the opposite direction.
+        // Yaw sign convention matches `SweepDirector` and the renderer's
+        // viewport expectation: `camera_to_panorama` already produces yaw
+        // in the same frame as the virtual camera control. Negating here
+        // inverts left/right tracking in dual-camera ROI-partitioned
+        // runs (the negation was a compensating hack for a latent bug
+        // further up the pipeline that only showed on the left camera).
         ViewportPosition {
-            yaw: -self.yaw,
+            yaw: self.yaw,
             pitch: self.pitch,
             fov_degrees: Some(self.current_fov),
         }
@@ -552,15 +603,16 @@ mod tests {
     // ---- Position output ----
 
     #[test]
-    fn position_negates_yaw() {
+    fn position_passes_yaw_through() {
         let mut dir = BallDirector::new(30.0);
         drive_to_tracking(&mut dir, 0.5, 0.1);
 
         let pos = dir.position();
-        assert!(pos.yaw < 0.0, "output yaw should be negated: {}", pos.yaw);
         assert!(
-            (pos.yaw + dir.yaw).abs() < 1e-6,
-            "pos.yaw should be -dir.yaw"
+            (pos.yaw - dir.yaw).abs() < 1e-6,
+            "output yaw should match internal yaw: out={}, internal={}",
+            pos.yaw,
+            dir.yaw
         );
     }
 

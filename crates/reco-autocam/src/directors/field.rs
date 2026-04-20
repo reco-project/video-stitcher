@@ -376,9 +376,11 @@ impl Director for FieldDirector {
     }
 
     fn position(&self) -> ViewportPosition {
-        // Negate yaw: projection convention (see BallDirector::position).
+        // Yaw passed through unchanged. See BallDirector::position for
+        // the reasoning: earlier negation compensated for a left-camera
+        // pipeline bug and inverted tracking once both cameras detected.
         ViewportPosition {
-            yaw: -self.yaw,
+            yaw: self.yaw,
             pitch: self.pitch,
             fov_degrees: Some(self.current_fov),
         }
@@ -564,11 +566,11 @@ mod tests {
     }
 
     #[test]
-    fn position_negates_yaw() {
+    fn position_passes_yaw_through() {
         let mut dir = FieldDirector::new();
         dir.yaw = 0.5;
         let pos = dir.position();
-        assert!((pos.yaw + 0.5).abs() < 1e-6);
+        assert!((pos.yaw - 0.5).abs() < 1e-6);
     }
 
     #[test]
