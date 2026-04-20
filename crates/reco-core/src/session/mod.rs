@@ -495,6 +495,16 @@ pub struct StitchSession {
     /// Detection backends, interval, callback, and cached detections.
     pub(crate) detection: DetectionPipeline,
     pub(crate) director: Option<Box<dyn Director>>,
+    /// Tracker/panner path. When `panner` is set, it owns pose
+    /// resolution each frame; trackers are still fed with mapped
+    /// detections whether or not a panner is present so a future
+    /// detection sink can observe their output.
+    pub(crate) ball_tracker: Option<Box<dyn crate::tracker::Tracker>>,
+    pub(crate) player_tracker: Option<Box<dyn crate::tracker::Tracker>>,
+    pub(crate) panner: Option<Box<dyn crate::panner::Panner>>,
+    /// Previous frame's resolved pose (post-clamping), handed to the
+    /// panner via [`PanContext::previous_position`](crate::panner::PanContext::previous_position).
+    pub(crate) previous_panner_pose: ViewportPosition,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -620,6 +630,10 @@ impl StitchSession {
             gpu_encoder: None,
             detection: DetectionPipeline::new(),
             director: None,
+            ball_tracker: None,
+            player_tracker: None,
+            panner: None,
+            previous_panner_pose: ViewportPosition::default(),
             frame_count: 0,
             extra_encoders: Vec::new(),
             session_start: None,
@@ -733,6 +747,52 @@ impl StitchSession {
     /// tracked objects with panorama coordinates and valid panning bounds.
     pub fn set_director(&mut self, director: Box<dyn Director>) {
         self.director = Some(director);
+    }
+
+    /// Attach a singleton ball tracker. See
+    /// [`StitchCore::set_ball_tracker`](crate::core::StitchCore::set_ball_tracker)
+    /// for semantics — the session mirrors the core's API so push
+    /// and pull consumers stay symmetric.
+    pub fn set_ball_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
+        log::info!(
+            "StitchSession: ball tracker attached (class_id={})",
+            tracker.class_id()
+        );
+        self.ball_tracker = Some(tracker);
+    }
+
+    /// Remove the currently attached ball tracker.
+    pub fn clear_ball_tracker(&mut self) {
+        self.ball_tracker = None;
+    }
+
+    /// Attach a multi-entity player tracker. Mirror of
+    /// [`StitchCore::set_player_tracker`](crate::core::StitchCore::set_player_tracker).
+    pub fn set_player_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
+        log::info!(
+            "StitchSession: player tracker attached (class_id={})",
+            tracker.class_id()
+        );
+        self.player_tracker = Some(tracker);
+    }
+
+    /// Remove the currently attached player tracker.
+    pub fn clear_player_tracker(&mut self) {
+        self.player_tracker = None;
+    }
+
+    /// Attach a panner. When set, the tracker/panner path owns
+    /// pose resolution and [`StitchSession::director_position`]
+    /// dispatches to it instead of the legacy [`Director`].
+    pub fn set_panner(&mut self, panner: Box<dyn crate::panner::Panner>) {
+        log::info!("StitchSession: panner attached (tracker/panner path active)");
+        self.panner = Some(panner);
+    }
+
+    /// Remove the currently attached panner (reverts to director path).
+    pub fn clear_panner(&mut self) {
+        log::info!("StitchSession: panner detached (director path active)");
+        self.panner = None;
     }
 
     /// Attach a stacked-video replay recorder.
@@ -856,10 +916,16 @@ impl StitchSession {
     /// region) and applies FOV limits. This keeps all viewport constraining
     /// in the session, so directors can output unconstrained positions.
     pub fn director_position(&mut self) -> ViewportPosition {
-        let mut pos = self
-            .director
-            .as_ref()
-            .map_or(ViewportPosition::default(), |d| d.position());
+        // Source the raw pre-clamp pose from whichever path is active:
+        // the panner's most recent output when the new path is wired,
+        // otherwise the legacy director's position.
+        let mut pos = if self.panner.is_some() {
+            self.previous_panner_pose
+        } else {
+            self.director
+                .as_ref()
+                .map_or(ViewportPosition::default(), |d| d.position())
+        };
 
         // The director outputs world-space coordinates (from ball detections).
         // Clamp in world space, then convert to user space for the renderer.
@@ -1022,9 +1088,50 @@ impl StitchSession {
             .fire_sink(self.frame_count, timestamp_ms)
             .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
 
-        // Update director with detections and timing only.
-        // Coverage clamping is applied later in director_position().
-        if let Some(ref mut director) = self.director {
+        // Drive pose resolution. Two paths, mutually exclusive:
+        //
+        // 1. Panner path (new): run all registered trackers to build
+        //    a WorldState, hand it to the panner, store the result
+        //    for director_position() to retrieve and clamp. Runs
+        //    even when the detections list is empty so trackers get
+        //    their coast / loss ticks.
+        // 2. Director path (legacy): update the director as before.
+        //
+        // Both paths leave `previous_panner_pose` / director state
+        // ready for the downstream director_position() call that
+        // applies coverage clamping.
+        if self.panner.is_some() {
+            let mut world = crate::tracker::WorldState::default();
+            if let Some(ref mut t) = self.ball_tracker {
+                let ents = t.update(&self.detection.last_detections, timestamp_ms);
+                if ents.len() > 1 {
+                    log::warn!(
+                        "StitchSession: ball tracker returned {} entities (expected ≤1); taking first",
+                        ents.len()
+                    );
+                }
+                world.ball = ents.into_iter().next();
+            }
+            if let Some(ref mut t) = self.player_tracker {
+                world.players = t.update(&self.detection.last_detections, timestamp_ms);
+            }
+            let calibration = self.core.pipeline().calibration();
+            let pan_ctx = crate::panner::PanContext {
+                frame_index: self.frame_count,
+                timestamp_ms,
+                previous_position: self.previous_panner_pose,
+                calibration,
+            };
+            // `fresh_detection` is unused by panner decisions today —
+            // trackers manage their own freshness via detection cadence.
+            let _ = fresh_detection;
+            let pose = self
+                .panner
+                .as_mut()
+                .expect("panner is_some checked above")
+                .decide(&world, &pan_ctx);
+            self.previous_panner_pose = pose;
+        } else if let Some(ref mut director) = self.director {
             let ctx = DirectorContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
