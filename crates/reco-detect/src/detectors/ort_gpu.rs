@@ -26,7 +26,8 @@ use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
 use ort::session::Session;
 use ort::value::{Shape, TensorRefMut};
 use reco_core::cuda_interop::{
-    CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
+    CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memcpy_dtoh,
+    cuda_memset_d8, cuda_synchronize,
 };
 use reco_core::detector::{
     CameraId, Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
@@ -55,6 +56,11 @@ pub struct OrtGpuDetector {
     pad_y: f32,
     // Pre-allocated GPU scratch buffers.
     rgb_u8: CUdeviceptr,
+    /// Separate destination for the 180-degree mirror step. NPP's
+    /// `nppiMirror_8u_C3R` with `NPPI_AXIS_BOTH` is *not* safe in-place
+    /// (the top half gets overwritten before the bottom half is read),
+    /// so a distinct scratch is required. Same size as `rgb_u8`.
+    rgb_scratch: CUdeviceptr,
     resized_u8: CUdeviceptr,
     tensor_f32: CUdeviceptr,
     // P010 (10-bit NV12) conversion scratch buffers.
@@ -135,6 +141,7 @@ impl OrtGpuDetector {
             .ok_or_else(|| ort::Error::new("input dimensions overflow for tensor_size"))?;
 
         let rgb_u8 = cuda_mem_alloc(rgb_size)?;
+        let rgb_scratch = cuda_mem_alloc(rgb_size)?;
         let resized_u8 = cuda_mem_alloc(resized_size)?;
         let tensor_f32 = cuda_mem_alloc(tensor_size)?;
 
@@ -191,6 +198,7 @@ impl OrtGpuDetector {
             pad_x,
             pad_y,
             rgb_u8,
+            rgb_scratch,
             resized_u8,
             tensor_f32,
             nv12_8bit_y,
@@ -305,26 +313,46 @@ impl OrtGpuDetector {
             .map_err(|e| DetectorError::InferenceFailed(format!("NPP NV12->RGB: {e}")))?;
         }
 
+        // Step 1a-dump: optional RGB dump BEFORE mirror, for diagnostics.
+        maybe_dump_rgb(self.rgb_u8, width, height, camera, "pre_mirror")?;
+
         // Step 1b: Flip 180 degrees if the source has rotation metadata.
         // NVDEC decodes without applying rotation; the render shader flips
         // UV for display, but the detector sees raw upside-down frames.
-        // Mirror the RGB buffer in-place via NPP before resize.
-        if rotation == 180 {
+        //
+        // Mirror OUT-OF-PLACE into `rgb_scratch`. `nppiMirror_8u_C3R` with
+        // `NPPI_AXIS_BOTH` is not safe in-place — writes to the top half
+        // overlap reads from the bottom half, corrupting the output into a
+        // half-mirrored image that the detector silently misreads.
+        let resize_src = if rotation == 180 {
             reco_core::profile_scope!("npp_mirror_180");
-            npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height).map_err(|e| {
+            npp_mirror_c3(self.rgb_u8, self.rgb_scratch, width, height).map_err(|e| {
                 DetectorError::InferenceFailed(format!("NPP mirror (rotation=180): {e}"))
             })?;
-        }
+            self.rgb_scratch
+        } else {
+            self.rgb_u8
+        };
 
-        // Step 2: Resize to letterboxed region within the pre-filled grey buffer.
-        // Re-fill grey padding each frame (NPP resize only writes the dst_roi region).
+        // Step 1c-dump: optional RGB dump AFTER mirror, for diagnostics.
+        maybe_dump_rgb(resize_src, width, height, camera, "post_mirror")?;
+
+        // Step 2: Resize into the pre-letterboxed scratch buffer.
+        //
+        // The letterbox grey padding is written ONCE at detector init time
+        // (see the `cuda_memset_d8` in `try_new`). Since `dst_roi` is fixed
+        // for a given (frame_width, frame_height, input_size), the grey
+        // border never changes, so re-filling per frame is redundant.
+        //
+        // The earlier per-frame memset also raced with `npp_resize_c3`:
+        // the memset used the default CUDA stream while NPP ran on its
+        // dedicated stream, and with the mirror step pushing extra work
+        // onto the NPP stream the memset could complete *after* the
+        // resize, wiping freshly-written pitch pixels back to grey. This
+        // asymmetrically starved detection on rotated streams only.
         {
             reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
-            let resized_size = (is as usize) * (is as usize) * 3;
-            cuda_memset_d8(self.resized_u8, 114, resized_size)
-                .map_err(|e| DetectorError::InferenceFailed(format!("grey fill: {e}")))?;
-
             let pad_x_i = self.pad_x as u32;
             let pad_y_i = self.pad_y as u32;
             let dst_roi = NppiRect {
@@ -334,9 +362,20 @@ impl OrtGpuDetector {
                 height: self.new_h as i32,
             };
 
-            npp_resize_c3(self.rgb_u8, width, height, self.resized_u8, is, is, dst_roi)
+            npp_resize_c3(resize_src, width, height, self.resized_u8, is, is, dst_roi)
                 .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
         }
+
+        // Diagnostic dump of the resized letterboxed buffer — this is the
+        // actual input to the normalize kernel → ORT tensor. Useful for
+        // confirming the pipeline is producing the expected model input.
+        maybe_dump_rgb(
+            self.resized_u8,
+            self.input_size,
+            self.input_size,
+            camera,
+            "resized",
+        )?;
 
         // Step 3: Normalize u8 HWC -> f32 CHW with /255.0 via CUDA kernel.
         {
@@ -421,6 +460,53 @@ impl OrtGpuDetector {
     }
 }
 
+/// Dump an RGB8 GPU buffer to a `.ppm` file when `RECO_DETECT_DUMP_DIR`
+/// is set. Writes once per `(camera, tag)` pair (subsequent calls no-op)
+/// to avoid flooding disk during a long run. Disabled when the env var
+/// is unset so there is zero cost on the hot path.
+fn maybe_dump_rgb(
+    rgb_dev: CUdeviceptr,
+    width: u32,
+    height: u32,
+    camera: CameraId,
+    tag: &str,
+) -> Result<(), DetectorError> {
+    use std::io::Write;
+    use std::sync::Mutex;
+    use std::sync::OnceLock;
+
+    static DUMPED: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    let dir = match std::env::var("RECO_DETECT_DUMP_DIR") {
+        Ok(d) => d,
+        Err(_) => return Ok(()),
+    };
+    let key = format!("{camera:?}_{tag}");
+    let set = DUMPED.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    {
+        let mut g = set.lock().unwrap();
+        if !g.insert(key.clone()) {
+            return Ok(());
+        }
+    }
+    let n = (width as usize) * (height as usize) * 3;
+    let mut host = vec![0u8; n];
+    // SAFETY: rgb_dev is a valid device pointer with at least `n` bytes.
+    unsafe {
+        cuda_memcpy_dtoh(host.as_mut_ptr() as *mut std::ffi::c_void, rgb_dev, n)
+            .map_err(|e| DetectorError::InferenceFailed(format!("dump dtoh: {e}")))?;
+    }
+    cuda_synchronize().map_err(|e| DetectorError::InferenceFailed(format!("dump sync: {e}")))?;
+    let path = format!("{dir}/{key}.ppm");
+    let mut f = std::fs::File::create(&path)
+        .map_err(|e| DetectorError::InferenceFailed(format!("dump create: {e}")))?;
+    writeln!(f, "P6\n{width} {height}\n255")
+        .map_err(|e| DetectorError::InferenceFailed(format!("dump header: {e}")))?;
+    f.write_all(&host)
+        .map_err(|e| DetectorError::InferenceFailed(format!("dump bytes: {e}")))?;
+    log::info!("RECO_DETECT_DUMP_DIR: wrote {path}");
+    Ok(())
+}
+
 impl UnifiedDetector for OrtGpuDetector {
     fn name(&self) -> &'static str {
         "ort-cuda"
@@ -459,6 +545,7 @@ impl Drop for OrtGpuDetector {
         // Free GPU scratch buffers. Log errors but don't panic in Drop.
         for (name, ptr) in [
             ("rgb_u8", self.rgb_u8),
+            ("rgb_scratch", self.rgb_scratch),
             ("resized_u8", self.resized_u8),
             ("tensor_f32", self.tensor_f32),
             ("nv12_8bit_y", self.nv12_8bit_y),
