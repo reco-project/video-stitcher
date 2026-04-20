@@ -10,13 +10,15 @@
 //! Layout:
 //! - [`filters`] — shared filter building blocks (flicker, coaster).
 //!   Each filter is self-contained and independently testable.
-//!
-//! Upcoming modules (landing incrementally in the tracker/panner
-//! migration, see `~/.claude/plans/zesty-mixing-firefly.md`):
-//! - `ball` — `BallTracker`, the singleton ball tracker composing
-//!   the filters in POC order: flicker → player-anchor →
+//! - [`ball`] — [`BallTracker`], the singleton ball tracker that
+//!   composes the filters in POC order: flicker → player-anchor →
 //!   nearest-to-last with cross-cam handoff → coast.
-//! - `player` and `ensemble` — multi-entity tracking with
-//!   Hungarian-matched stable IDs (Phase 5).
+//!
+//! Upcoming (Phase 5, see `~/.claude/plans/zesty-mixing-firefly.md`):
+//! `player` and `ensemble` — multi-entity tracking with
+//! Hungarian-matched stable IDs.
 
+pub mod ball;
 pub mod filters;
+
+pub use ball::BallTracker;
