@@ -39,6 +39,7 @@
 mod directors;
 mod roi_filter;
 mod smoother;
+pub mod trackers;
 
 // Re-export detector types from reco-detect for backwards compatibility.
 // Ort-backed detectors are only available when the `ort` feature is
@@ -55,7 +56,10 @@ pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
-pub use directors::{BallDirector, FieldDirector, SweepDirector, TrackingMode};
+pub use directors::{
+    AnticipatingDirector, BallDirector, DeadZoneDirector, FieldDirector, SweepDirector,
+    TrackingMode,
+};
 pub use roi_filter::RoiFilteredDetector;
 // `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
 // deleted: the unified `RoiFilteredDetector` covers every residency
@@ -260,7 +264,8 @@ pub fn setup_autocam(
     let effective_roi = field_roi
         .filter(|roi| roi.left.len() >= 3 || roi.right.len() >= 3)
         .cloned();
-    if effective_roi.is_some() {
+    let has_effective_roi = effective_roi.is_some();
+    if has_effective_roi {
         log::info!("Autocam: field ROI filtering enabled");
     }
 
@@ -444,11 +449,35 @@ pub fn setup_autocam(
 
         let director: Box<dyn reco_core::director::Director> = match tracking_mode {
             TrackingMode::Ball => {
-                let mut d = BallDirector::new(fps).with_class_id(ball_id);
+                // With an ROI partitioning the pitch by camera, off-field
+                // false positives can't reach the director, so:
+                //   * the last-camera tie-breaker adds no signal and can
+                //     delay valid left<->right switches,
+                //   * the default plausibility jump threshold (0.09 rad)
+                //     and search radius (0.70 rad) are too tight — the
+                //     ball legitimately swings from one half of the pitch
+                //     to the other, and without wider gates the director
+                //     locks onto whichever side detected first and
+                //     refuses to cross back.
+                let has_roi = has_effective_roi;
+                let camera_bias = !has_roi;
+                let (max_jump, search_radius) = if has_roi {
+                    (0.35_f32, std::f32::consts::PI)
+                } else {
+                    (0.09_f32, 0.70_f32)
+                };
+                let mut d = BallDirector::new(fps)
+                    .with_class_id(ball_id)
+                    .with_camera_bias(camera_bias)
+                    .with_max_jump(max_jump)
+                    .with_search_max_radius(search_radius);
                 if detection_interval > 1 {
                     d.set_detection_interval(detection_interval as u32);
                 }
-                log::info!("Tracking mode: ball");
+                log::info!(
+                    "Tracking mode: ball (camera_bias={camera_bias}, \
+                     max_jump={max_jump:.3}, search_radius={search_radius:.3})"
+                );
                 Box::new(d)
             }
             TrackingMode::Field => {
@@ -472,8 +501,15 @@ pub fn setup_autocam(
             0
         };
 
+        // Composition order: inner -> smoothing -> anticipation -> dead-zone.
+        // Smoother cleans the raw director output; anticipation projects
+        // forward along the smoothed velocity so the camera arrives at
+        // the ball instead of trailing it; the dead-zone runs last and
+        // hides sub-pixel residual jitter when the ball is at rest.
         let smoothed = SmoothedDirector::new(director, fps, lookahead);
-        session.set_director(Box::new(smoothed));
+        let anticipated = AnticipatingDirector::new(Box::new(smoothed));
+        let deadzone = DeadZoneDirector::new(Box::new(anticipated));
+        session.set_director(Box::new(deadzone));
     }
 
     Ok(detection_active)
