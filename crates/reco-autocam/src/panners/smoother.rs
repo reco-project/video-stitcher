@@ -86,9 +86,14 @@ struct TrajectorySmoother {
 
 impl TrajectorySmoother {
     fn new(fps: f32) -> Self {
+        // Defaults tuned for "keep ball in center with heavy damping":
+        // low min_cutoff and small beta produce a slow, stable camera
+        // at rest and still allow a reasonable response on fast plays.
+        // Previous (0.5 / 0.007) produced visible step-response on
+        // tracker plateaus - see m8 pose trace analysis.
         Self {
-            min_cutoff: 0.5,
-            beta: 0.007,
+            min_cutoff: 0.3,
+            beta: 0.003,
             d_cutoff: 1.0,
             fps: fps.clamp(1.0, 1000.0),
         }
@@ -185,8 +190,8 @@ impl Smoother {
             // Parameters match TrajectorySmoother defaults; keeping
             // them local so the causal filter can evolve without
             // touching the bidirectional helper.
-            min_cutoff: 0.5,
-            beta: 0.007,
+            min_cutoff: 0.3,
+            beta: 0.003,
             d_cutoff: 1.0,
             smoother,
             buffer: VecDeque::with_capacity(capacity + 1),

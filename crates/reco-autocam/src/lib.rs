@@ -476,9 +476,14 @@ pub fn setup_autocam(
                 // the max-jump gate since the ROI has already removed
                 // off-pitch false positives that the gate would
                 // otherwise guard against.
+                // With ROI pre-filtering the off-pitch false positives,
+                // the plausibility gate can be permissive enough to
+                // accept long passes without rejecting legitimate
+                // detections. ~45° / 0.8 rad captures most real ball
+                // trajectories between detection intervals.
                 let has_roi = has_effective_roi;
                 let max_jump = if has_roi {
-                    0.35_f32
+                    0.8_f32
                 } else {
                     crate::trackers::ball::DEFAULT_MAX_JUMP_RAD
                 };
@@ -489,21 +494,24 @@ pub fn setup_autocam(
                      max_jump={max_jump:.3}, roi={has_roi})"
                 );
 
-                // BallPanner → Smoother → Anticipator → DeadZone.
+                // BallPanner → Smoother → DeadZone. Anticipator was
+                // removed after pose-trace analysis showed it overshot
+                // every tracker plateau transition (ball tracker
+                // output is piecewise-constant between acquisitions,
+                // which velocity-lead extrapolation rings on). Heavy
+                // smoothing keeps the ball centered without the ring.
                 let ball_panner = crate::panners::BallPanner::new();
                 let smoothed = crate::panners::Smoother::new(Box::new(ball_panner), fps, lookahead);
-                let anticipated = crate::panners::Anticipator::new(Box::new(smoothed));
-                let deadzone = crate::panners::DeadZone::new(Box::new(anticipated));
+                let deadzone = crate::panners::DeadZone::new(Box::new(smoothed));
 
                 session.set_ball_tracker(Box::new(tracker));
                 session.set_panner(Box::new(deadzone));
             }
             TrackingMode::Field => {
                 // Player tracker populates world.players; FieldPanner
-                // clusters them and emits the centroid. The same
-                // Smoother → Anticipator → DeadZone chain the Ball mode
-                // uses wraps the field panner — identical trajectory
-                // smoothing math, different inner camera-motion policy.
+                // clusters them and emits the centroid. Same heavy-
+                // smoothing chain as Ball mode (BallPanner was the
+                // only difference): FieldPanner → Smoother → DeadZone.
                 //
                 // Class IDs come from the model label list so the same
                 // binary works with COCO-indexed (person=0) or custom
@@ -518,8 +526,7 @@ pub fn setup_autocam(
                 let field_panner = crate::panners::FieldPanner::new();
                 let smoothed =
                     crate::panners::Smoother::new(Box::new(field_panner), fps, lookahead);
-                let anticipated = crate::panners::Anticipator::new(Box::new(smoothed));
-                let deadzone = crate::panners::DeadZone::new(Box::new(anticipated));
+                let deadzone = crate::panners::DeadZone::new(Box::new(smoothed));
 
                 session.set_player_tracker(Box::new(player_tracker));
                 session.set_panner(Box::new(deadzone));

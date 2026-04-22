@@ -121,8 +121,8 @@ impl Panner for BallPanner {
                     pos
                 }
                 TrackState::Lost => {
-                    // Track was just lost this frame — emit one
-                    // held frame, then subsequent calls will see
+                    // Track was just lost this frame — emit one held
+                    // frame, then subsequent calls will see
                     // `world.ball = None` and keep holding.
                     self.last
                 }
