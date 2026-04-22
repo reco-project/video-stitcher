@@ -1082,6 +1082,9 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) ->
 /// yaw that, when passed to `view_matrix`, pans the virtual camera
 /// toward that ball. Trackers and panners never need to know that
 /// two camera planes exist — they see a unified panorama space.
+///
+/// Does not apply `rig_tilt` / `rig_roll`; those live in `view_matrix`.
+/// Unification is Step 4 of the camera-stack plan (`RigCorrection`).
 fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> ViewportPosition {
     let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
     let base_forward = (-eye).normalize();
@@ -1108,6 +1111,31 @@ fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> Vie
         pitch,
         fov_degrees: None,
     }
+}
+
+/// Exact inverse of [`direction_to_yaw_pitch`].
+///
+/// Rebuilds a unit direction from a (yaw, pitch) pair using the same
+/// diagonal virtual-camera basis (`base_forward = -eye/|eye|`,
+/// `base_right = base_forward × world_up`). The naïve "+Z-forward"
+/// formula inlined in `panorama_to_camera` does NOT match; using this
+/// helper there would fix the Forward A vs Forward C mismatch the
+/// audit flagged. That rewrite lands in Step 2 / Step 4 of the
+/// camera-stack plan.
+///
+/// `pitch` is expected in `(-π/2, π/2)`; at the poles yaw is
+/// undefined and the round-trip through `direction_to_yaw_pitch`
+/// collapses.
+#[cfg(test)]
+fn yaw_pitch_to_direction(yaw: f32, pitch: f32, camera_position: &[f32; 3]) -> Vector3<f32> {
+    let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
+    let base_forward = (-eye).normalize();
+    let world_up = Vector3::new(0.0, 1.0, 0.0);
+    let base_right = base_forward.cross(&world_up).normalize();
+
+    let cos_pitch = pitch.cos();
+    let horizontal = base_forward * (cos_pitch * yaw.cos()) + base_right * (cos_pitch * yaw.sin());
+    Vector3::new(horizontal.x, pitch.sin(), horizontal.z)
 }
 
 /// Test whether a point lies inside a polygon using the ray-casting algorithm.
@@ -1245,6 +1273,45 @@ mod tests {
             left_center.yaw,
             right_center.yaw
         );
+    }
+
+    #[test]
+    fn yaw_pitch_to_direction_roundtrips_with_direction_to_yaw_pitch() {
+        // Step 1a: the two helpers must form an exact bijection on the
+        // (yaw, pitch) grid used by panners and directors. All
+        // shipping scenes set `camera_position = [d, 0, d]` (see
+        // SceneGeometry::from_layout_with_aspect), so eye.y = 0 is
+        // the real invariant; test positions honor that. Pitch stays
+        // clear of ±π/2 where yaw is undefined.
+        let camera_positions: [[f32; 3]; 3] = [[0.24, 0.0, 0.24], [0.3, 0.0, 0.2], [0.1, 0.0, 0.5]];
+
+        let yaw_steps = [-1.2_f32, -0.6, -0.2, 0.0, 0.2, 0.6, 1.2];
+        let pitch_steps = [-0.9_f32, -0.4, -0.1, 0.0, 0.1, 0.4, 0.9];
+
+        for cam in &camera_positions {
+            for &yaw in &yaw_steps {
+                for &pitch in &pitch_steps {
+                    let dir = yaw_pitch_to_direction(yaw, pitch, cam);
+                    let norm = dir.norm();
+                    assert!(
+                        (norm - 1.0).abs() < 1e-5,
+                        "direction must be unit, got |dir| = {norm} for cam={cam:?} yaw={yaw} pitch={pitch}"
+                    );
+
+                    let pos = direction_to_yaw_pitch(&dir, cam);
+                    assert!(
+                        (pos.yaw - yaw).abs() < 1e-4,
+                        "yaw mismatch for cam={cam:?}: sent {yaw}, got {} (dir={dir:?})",
+                        pos.yaw
+                    );
+                    assert!(
+                        (pos.pitch - pitch).abs() < 1e-4,
+                        "pitch mismatch for cam={cam:?}: sent {pitch}, got {} (dir={dir:?})",
+                        pos.pitch
+                    );
+                }
+            }
+        }
     }
 
     #[test]
