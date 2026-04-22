@@ -981,6 +981,42 @@ impl CoverageBoundary {
 
 // ---- Internal functions ----
 
+/// Forward KB4 fisheye: undistorted plane UV → distorted camera pixel [0,1].
+///
+/// Mirror of [`inverse_fisheye`] in the same normalized-intrinsic
+/// convention and the same extended-UV plane space (the shader's
+/// `uv * 2.0 - 0.5` remap output). Matches the WGSL fragment at
+/// `shaders/fisheye.wgsl` line 161 lines, which Step 3 will point
+/// at the canonical `reco_core::lens::kb4` module.
+#[cfg(test)]
+fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
+    let w = params.width as f64;
+    let h = params.height as f64;
+    let fx = params.fx / w;
+    let fy = params.fy / h;
+    let cx = params.cx / w;
+    let cy = params.cy / h;
+    let k = params.d;
+
+    let x = (uv_x - cx) / fx;
+    let y = (uv_y - cy) / fy;
+    let r = (x * x + y * y).sqrt();
+
+    if r < 1e-12 {
+        return (cx, cy);
+    }
+
+    let theta = r.atan();
+    let t2 = theta * theta;
+    let t4 = t2 * t2;
+    let t6 = t4 * t2;
+    let t8 = t4 * t4;
+    let theta_d = theta * (1.0 + k[0] * t2 + k[1] * t4 + k[2] * t6 + k[3] * t8);
+    let scale = theta_d / r;
+
+    (fx * x * scale + cx, fy * y * scale + cy)
+}
+
 /// Inverse KB4 fisheye: distorted camera pixel [0,1] → undistorted plane UV.
 ///
 /// Inverts the forward KB4 model used in the shader:
@@ -1377,6 +1413,51 @@ mod tests {
                         back.1
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_fisheye_roundtrips_with_forward_fisheye_on_pixel_grid() {
+        // Step 1c: normalized distorted pixel → extended plane UV →
+        // back to normalized distorted pixel must be the identity on
+        // a 10x10 grid inside the valid image area. Realistic KB4
+        // coefficients (the GoPro HERO10 4K test calibration) make
+        // this representative of shipping workloads.
+        let params = CameraParams {
+            width: 3840,
+            height: 2160,
+            fx: 1796.32,
+            fy: 1797.22,
+            cx: 1919.37,
+            cy: 1063.17,
+            d: [0.0342, 0.0677, -0.0741, 0.0299],
+        };
+
+        let steps = 10;
+        // Stay inside [0.1, 0.9] to avoid extreme fisheye corners where
+        // Newton-Raphson may refuse to converge (documented in
+        // `inverse_fisheye`'s None return).
+        let lo = 0.1_f64;
+        let hi = 0.9_f64;
+
+        for ix in 0..=steps {
+            for iy in 0..=steps {
+                let nx = lo + (hi - lo) * (ix as f64 / steps as f64);
+                let ny = lo + (hi - lo) * (iy as f64 / steps as f64);
+
+                let plane_uv = inverse_fisheye(nx, ny, &params)
+                    .expect("inverse_fisheye should converge inside valid area");
+                let (back_x, back_y) = forward_fisheye(plane_uv.0, plane_uv.1, &params);
+
+                assert!(
+                    (back_x - nx).abs() < 1e-6,
+                    "x mismatch at ({nx}, {ny}): got {back_x}, plane_uv={plane_uv:?}"
+                );
+                assert!(
+                    (back_y - ny).abs() < 1e-6,
+                    "y mismatch at ({nx}, {ny}): got {back_y}, plane_uv={plane_uv:?}"
+                );
             }
         }
     }
