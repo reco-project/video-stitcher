@@ -13,27 +13,55 @@
 
 use crate::calibration::CameraParams;
 
-/// Apply the forward KB4 distortion model.
+pub(crate) use kb4::kb4_forward_scale;
+
+/// Canonical Rust implementation of the KB4 polynomial.
 ///
-/// Given an undistorted radius `r` in normalized camera coordinates,
-/// returns the distorted radius `r_d` and the scale factor `theta_d / r`.
-///
-/// Forward formula:
-/// ```text
-/// theta = atan(r)
-/// theta_d = theta * (1 + k1*theta^2 + k2*theta^4 + k3*theta^6 + k4*theta^8)
-/// scale = theta_d / r
-/// ```
-#[inline]
-fn kb4_forward_scale(r: f64, d: &[f64; 4]) -> f64 {
-    if r < 1e-10 {
-        return 1.0;
+/// Callers that need the polynomial (inverse_fisheye's Newton-Raphson
+/// iteration, forward_fisheye, `kb4_forward_scale`) all delegate here
+/// so the formula lives in exactly one place Rust-side. The WGSL
+/// mirror at `shaders/fisheye.wgsl` lines 164-170 can't cross-
+/// language-link; the `wgsl_kb4_matches_rust_kb4_on_theta_grid`
+/// compute-dispatch test locks the two sides together numerically.
+pub(crate) mod kb4 {
+    /// Evaluate `θ_d = θ * (1 + k₁θ² + k₂θ⁴ + k₃θ⁶ + k₄θ⁸)`.
+    ///
+    /// SYNC_WITH `shaders/fisheye.wgsl` lines 164-170. Any edit here
+    /// must stay numerically in agreement with the WGSL fragment; the
+    /// `wgsl_kb4_matches_rust_kb4_on_theta_grid` test will catch
+    /// f32-vs-f64 drift within 1e-5.
+    #[inline]
+    pub fn theta_d(theta: f64, d: &[f64; 4]) -> f64 {
+        let t2 = theta * theta;
+        let t4 = t2 * t2;
+        let t6 = t4 * t2;
+        let t8 = t4 * t4;
+        theta * (1.0 + d[0] * t2 + d[1] * t4 + d[2] * t6 + d[3] * t8)
     }
-    let theta = r.atan();
-    let t2 = theta * theta;
-    let theta_d =
-        theta * (1.0 + d[0] * t2 + d[1] * t2 * t2 + d[2] * t2 * t2 * t2 + d[3] * t2 * t2 * t2 * t2);
-    theta_d / r
+
+    /// Derivative of [`theta_d`] with respect to `theta`. Used by
+    /// the Newton-Raphson step in `projection::inverse_fisheye`:
+    /// ```text
+    /// d/dθ θ_d = 1 + 3 k₁ θ² + 5 k₂ θ⁴ + 7 k₃ θ⁶ + 9 k₄ θ⁸
+    /// ```
+    #[inline]
+    pub fn theta_d_prime(theta: f64, d: &[f64; 4]) -> f64 {
+        let t2 = theta * theta;
+        let t4 = t2 * t2;
+        let t6 = t4 * t2;
+        let t8 = t4 * t4;
+        1.0 + 3.0 * d[0] * t2 + 5.0 * d[1] * t4 + 7.0 * d[2] * t6 + 9.0 * d[3] * t8
+    }
+
+    /// Forward KB4 scale factor `θ_d / r`. Returns `1.0` at the
+    /// optical center (`r ≈ 0`) where the polynomial degenerates.
+    #[inline]
+    pub fn kb4_forward_scale(r: f64, d: &[f64; 4]) -> f64 {
+        if r < 1e-10 {
+            return 1.0;
+        }
+        theta_d(r.atan(), d) / r
+    }
 }
 
 /// Undistort a grayscale frame using the KB4 fisheye model.

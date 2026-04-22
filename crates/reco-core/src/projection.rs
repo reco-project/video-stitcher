@@ -977,9 +977,9 @@ impl CoverageBoundary {
 ///
 /// Mirror of [`inverse_fisheye`] in the same normalized-intrinsic
 /// convention and the same extended-UV plane space (the shader's
-/// `uv * 2.0 - 0.5` remap output). Matches the WGSL fragment at
-/// `shaders/fisheye.wgsl` line 161 lines, which Step 3 will point
-/// at the canonical `reco_core::lens::kb4` module.
+/// `uv * 2.0 - 0.5` remap output). The polynomial delegates to
+/// `reco_core::lens::kb4`, same canonical source as the
+/// Newton-Raphson step in [`inverse_fisheye`].
 fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
     let w = params.width as f64;
     let h = params.height as f64;
@@ -987,7 +987,6 @@ fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
     let fy = params.fy / h;
     let cx = params.cx / w;
     let cy = params.cy / h;
-    let k = params.d;
 
     let x = (uv_x - cx) / fx;
     let y = (uv_y - cy) / fy;
@@ -997,14 +996,7 @@ fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
         return (cx, cy);
     }
 
-    let theta = r.atan();
-    let t2 = theta * theta;
-    let t4 = t2 * t2;
-    let t6 = t4 * t2;
-    let t8 = t4 * t4;
-    let theta_d = theta * (1.0 + k[0] * t2 + k[1] * t4 + k[2] * t6 + k[3] * t8);
-    let scale = theta_d / r;
-
+    let scale = crate::lens::kb4::kb4_forward_scale(r, &params.d);
     (fx * x * scale + cx, fy * y * scale + cy)
 }
 
@@ -1034,16 +1026,12 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f
         return Some((cx, cy));
     }
 
-    // Newton-Raphson: solve f(θ) = θ(1 + k₁θ² + k₂θ⁴ + k₃θ⁶ + k₄θ⁸) - θ_d = 0
+    // Newton-Raphson: solve f(θ) = θ_d_poly(θ) - θ_d = 0, where
+    // θ_d_poly lives in `reco_core::lens::kb4` (SYNC_WITH WGSL).
     let mut theta = theta_d; // initial guess
     for _ in 0..MAX_ITERATIONS {
-        let t2 = theta * theta;
-        let t4 = t2 * t2;
-        let t6 = t4 * t2;
-        let t8 = t4 * t4;
-
-        let f = theta * (1.0 + k[0] * t2 + k[1] * t4 + k[2] * t6 + k[3] * t8) - theta_d;
-        let f_prime = 1.0 + 3.0 * k[0] * t2 + 5.0 * k[1] * t4 + 7.0 * k[2] * t6 + 9.0 * k[3] * t8;
+        let f = crate::lens::kb4::theta_d(theta, &k) - theta_d;
+        let f_prime = crate::lens::kb4::theta_d_prime(theta, &k);
 
         if f_prime.abs() < 1e-15 {
             return None; // degenerate
