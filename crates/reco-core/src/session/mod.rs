@@ -497,6 +497,11 @@ pub struct StitchSession {
     /// See [`set_event_sink`](Self::set_event_sink) and
     /// [`crate::pipeline_event`] for the vocabulary.
     event_sink: Option<Box<dyn crate::pipeline_event::PipelineEventSink>>,
+    /// Ordered pre-tracker detection filters. Empty by default; each
+    /// stage transforms `detection.last_detections` in place before
+    /// the trackers run. Emission of the before/after event is gated
+    /// on `event_sink`.
+    detection_filters: Vec<Box<dyn crate::detection_filter::DetectionFilter>>,
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
@@ -618,6 +623,7 @@ impl StitchSession {
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
             event_sink: None,
+            detection_filters: Vec::new(),
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
             #[cfg(target_os = "linux")]
@@ -723,6 +729,23 @@ impl StitchSession {
     pub fn set_event_sink(&mut self, sink: Box<dyn crate::pipeline_event::PipelineEventSink>) {
         log::info!("StitchSession: event sink attached");
         self.event_sink = Some(sink);
+    }
+
+    /// Append a [`DetectionFilter`](crate::detection_filter::DetectionFilter)
+    /// to the pre-tracker chain. Filters run in insertion order before
+    /// the trackers see the detection list. With an event sink
+    /// attached, each stage emits
+    /// `PipelineEvent::DetectionFilter { before, after, filter_name }`.
+    ///
+    /// Typical chain:
+    /// 1. `FlickerFilter` (recurrent static false-positive rejection).
+    /// 2. Class-specific filters (feet-in-ROI, hands-raised, etc).
+    pub fn add_detection_filter(
+        &mut self,
+        filter: Box<dyn crate::detection_filter::DetectionFilter>,
+    ) {
+        log::info!("StitchSession: detection filter '{}' added", filter.name());
+        self.detection_filters.push(filter);
     }
 
     /// Attach a singleton ball tracker. See
@@ -1075,6 +1098,36 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 detections: self.detection.last_detections.clone(),
             });
+        }
+
+        // Pre-tracker detection-filter chain. Each stage mutates
+        // `last_detections` in place; with a sink attached, the
+        // before/after snapshot is emitted so a user can audit what
+        // each filter changed.
+        if !self.detection_filters.is_empty() {
+            let calibration = self.core.pipeline().calibration();
+            let filter_ctx = crate::detection_filter::FilterContext {
+                frame_index: self.frame_count,
+                timestamp_ms,
+                calibration,
+            };
+            let trace_enabled = self.event_sink.is_some();
+            for filter in self.detection_filters.iter_mut() {
+                let before = if trace_enabled {
+                    Some(self.detection.last_detections.clone())
+                } else {
+                    None
+                };
+                filter.filter(&mut self.detection.last_detections, &filter_ctx);
+                if let (Some(before), Some(sink)) = (before, self.event_sink.as_deref_mut()) {
+                    sink.emit(crate::pipeline_event::PipelineEvent::DetectionFilter {
+                        frame_index: self.frame_count,
+                        filter_name: filter.name(),
+                        before,
+                        after: self.detection.last_detections.clone(),
+                    });
+                }
+            }
         }
 
         // Drive pose resolution via the shared panner dispatch.
