@@ -133,9 +133,122 @@ pub trait PipelineEventSink: Send {
     fn emit(&mut self, event: PipelineEvent);
 }
 
+/// Non-blocking wrapper around an arbitrary [`PipelineEventSink`].
+///
+/// Events flow through a bounded mpsc channel to a background thread
+/// that calls the inner sink. On overflow the event is dropped and
+/// a counter is incremented; `log::warn` fires at power-of-two
+/// milestones so a slow inner sink shows up without drowning the log.
+///
+/// The render thread never blocks on the sink: `emit` is always
+/// `try_send` + a branch.
+///
+/// # Sample-rate gate
+///
+/// `every_n_frames = Some(n)` records events only when
+/// `event.frame_index() % n == 0`. Useful for long sessions where a
+/// full per-frame trace would be wasteful. `None` (or `Some(1)`)
+/// records every event.
+///
+/// # Drop semantics
+///
+/// On drop the sender is closed first (causing the background thread's
+/// `recv` to return `Err`), then the thread is joined. That drains the
+/// channel so already-queued events reach the inner sink before the
+/// process exits.
+pub struct BackpressuredSink {
+    tx: Option<std::sync::mpsc::SyncSender<PipelineEvent>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    dropped: u64,
+    every_n_frames: Option<u32>,
+}
+
+impl BackpressuredSink {
+    /// Wrap `inner` so calls to [`emit`](PipelineEventSink::emit) never
+    /// block. `capacity` is the bounded channel size; `every_n_frames`
+    /// is the optional sample-rate gate (see type doc).
+    ///
+    /// `capacity` of `256` is plenty for most sinks - a JSONL writer
+    /// can keep up at hundreds of events per frame. Raise it if the
+    /// inner sink does heavy I/O (network, compressed output).
+    pub fn new(
+        mut inner: Box<dyn PipelineEventSink>,
+        capacity: usize,
+        every_n_frames: Option<u32>,
+    ) -> Self {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<PipelineEvent>(capacity);
+        let thread = std::thread::Builder::new()
+            .name("pipeline-event-sink".into())
+            .spawn(move || {
+                while let Ok(event) = rx.recv() {
+                    inner.emit(event);
+                }
+            })
+            .expect("spawn background event-sink thread");
+        Self {
+            tx: Some(tx),
+            thread: Some(thread),
+            dropped: 0,
+            every_n_frames,
+        }
+    }
+
+    /// Total events dropped due to channel overflow since construction.
+    /// Test-only; production code watches the `log::warn` stream.
+    #[cfg(test)]
+    pub(crate) fn dropped(&self) -> u64 {
+        self.dropped
+    }
+}
+
+impl PipelineEventSink for BackpressuredSink {
+    fn emit(&mut self, event: PipelineEvent) {
+        // Sample-rate gate. `Some(1)` behaves like `None` (every frame).
+        if let Some(n) = self.every_n_frames
+            && n > 1
+            && !event.frame_index().is_multiple_of(n as u64)
+        {
+            return;
+        }
+        let Some(tx) = self.tx.as_ref() else {
+            return;
+        };
+        match tx.try_send(event) {
+            Ok(()) => {}
+            Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                self.dropped += 1;
+                if self.dropped.is_power_of_two() {
+                    log::warn!(
+                        "PipelineEventSink lagging: dropped {} events total",
+                        self.dropped
+                    );
+                }
+            }
+            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                // Background thread exited; silently ignore.
+            }
+        }
+    }
+}
+
+impl Drop for BackpressuredSink {
+    fn drop(&mut self) {
+        // Close the channel first so the background thread's recv()
+        // breaks; then join so queued events get written out.
+        drop(self.tx.take());
+        if let Some(t) = self.thread.take() {
+            // If the thread panicked we ignore the error here - the
+            // process is either already unwinding or intentionally
+            // tearing down.
+            let _ = t.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     /// Captures events into a Vec for assertions in later tests.
     #[derive(Default)]
@@ -144,6 +257,23 @@ mod tests {
     impl PipelineEventSink for VecSink {
         fn emit(&mut self, event: PipelineEvent) {
             self.0.push(event);
+        }
+    }
+
+    /// Thread-safe capture sink for BackpressuredSink tests.
+    #[derive(Default, Clone)]
+    struct SharedVecSink(Arc<Mutex<Vec<PipelineEvent>>>);
+
+    impl PipelineEventSink for SharedVecSink {
+        fn emit(&mut self, event: PipelineEvent) {
+            self.0.lock().unwrap().push(event);
+        }
+    }
+
+    fn mk_frame(i: u64) -> PipelineEvent {
+        PipelineEvent::FrameStart {
+            frame_index: i,
+            timestamp_ms: i as f64,
         }
     }
 
@@ -193,6 +323,67 @@ mod tests {
             frame_index: 0,
             timestamp_ms: 0.0,
         });
+    }
+
+    #[test]
+    fn backpressured_sink_delivers_all_events_under_capacity() {
+        let captured = SharedVecSink::default();
+        {
+            let mut sink = BackpressuredSink::new(Box::new(captured.clone()), 64, None);
+            for i in 0..50 {
+                sink.emit(mk_frame(i));
+            }
+            // Drop joins the thread and drains.
+        }
+        let events = captured.0.lock().unwrap();
+        assert_eq!(events.len(), 50, "all 50 events should be delivered");
+        for (i, ev) in events.iter().enumerate() {
+            assert_eq!(ev.frame_index(), i as u64);
+        }
+    }
+
+    #[test]
+    fn backpressured_sink_sample_rate_gate_drops_off_beats() {
+        let captured = SharedVecSink::default();
+        {
+            let mut sink = BackpressuredSink::new(Box::new(captured.clone()), 64, Some(5));
+            for i in 0..20 {
+                sink.emit(mk_frame(i));
+            }
+        }
+        let events = captured.0.lock().unwrap();
+        // every_n=5 keeps frame_index in {0, 5, 10, 15} = 4 events.
+        let indices: Vec<u64> = events.iter().map(|e| e.frame_index()).collect();
+        assert_eq!(indices, vec![0, 5, 10, 15]);
+    }
+
+    #[test]
+    fn backpressured_sink_drops_on_overflow_instead_of_blocking() {
+        // A slow sink + tiny capacity + a burst: overflow path must
+        // increment the dropped counter without wedging the caller.
+        struct SlowSink;
+        impl PipelineEventSink for SlowSink {
+            fn emit(&mut self, _event: PipelineEvent) {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+
+        let mut sink = BackpressuredSink::new(Box::new(SlowSink), 2, None);
+        let start = std::time::Instant::now();
+        for i in 0..100 {
+            sink.emit(mk_frame(i));
+        }
+        let elapsed = start.elapsed();
+        // 100 events with a 20ms sink and capacity 2 would take >2s
+        // if emit blocked. Non-blocking emit must finish promptly.
+        assert!(
+            elapsed.as_millis() < 500,
+            "emit burst should not block on sink; took {elapsed:?}"
+        );
+        assert!(
+            sink.dropped() > 0,
+            "overflow path must have dropped at least one event"
+        );
     }
 
     #[test]
