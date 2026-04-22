@@ -74,8 +74,20 @@ const DEFAULT_FOV_TIGHT: f32 = 38.0;
 const DEFAULT_FOV_WIDE: f32 = 55.0;
 const DEFAULT_FOV: f32 = 48.0;
 
-/// EMA alpha for centroid smoothing (lower = smoother).
+/// EMA alpha for yaw centroid smoothing (lower = smoother).
 const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
+
+/// EMA alpha for pitch centroid. Pitch lags when a distant (tight)
+/// cluster appears briefly — a faster alpha lets the camera commit to
+/// the elevation change quickly so the tight-cluster FOV zoom actually
+/// reaches its target before the play moves on.
+const DEFAULT_PITCH_ALPHA: f32 = 0.03;
+
+/// Hard cap on per-frame EMA delta for both yaw and pitch (radians).
+/// Kills "mini-teleport" jitter produced by DBSCAN flipping between
+/// cluster compositions frame-to-frame. 0.015 rad/frame ≈ 0.85°,
+/// which comfortably covers real-play motion without freezing.
+const MAX_POSE_DELTA_RAD: f32 = 0.015;
 
 /// DBSCAN parameters.
 const DEFAULT_DBSCAN_EPS: f32 = 0.07;
@@ -115,8 +127,15 @@ pub struct FieldPanner {
     ema_pitch: f32,
     ema_initialized: bool,
 
-    /// EMA alpha for cluster centroid.
+    /// EMA alpha for yaw centroid.
     cluster_alpha: f32,
+    /// EMA alpha for pitch centroid — faster than yaw so the zoom
+    /// commitment follows distant clusters in time.
+    pitch_alpha: f32,
+    /// Max delta applied to the published pose per frame. Caps both
+    /// yaw and pitch motion so a cluster-membership flip cannot
+    /// teleport the camera.
+    max_pose_delta: f32,
 
     /// DBSCAN parameters.
     dbscan_eps: f32,
@@ -142,6 +161,8 @@ impl FieldPanner {
             ema_pitch: 0.0,
             ema_initialized: false,
             cluster_alpha: DEFAULT_CLUSTER_ALPHA,
+            pitch_alpha: DEFAULT_PITCH_ALPHA,
+            max_pose_delta: MAX_POSE_DELTA_RAD,
             dbscan_eps: DEFAULT_DBSCAN_EPS,
             dbscan_min_neighbors: DEFAULT_DBSCAN_MIN_NEIGHBORS,
             frame_index: 0,
@@ -245,7 +266,7 @@ impl FieldPanner {
             self.ema_initialized = true;
         } else {
             self.ema_yaw += self.cluster_alpha * (raw_yaw - self.ema_yaw);
-            self.ema_pitch += self.cluster_alpha * (raw_pitch - self.ema_pitch);
+            self.ema_pitch += self.pitch_alpha * (raw_pitch - self.ema_pitch);
         }
 
         (self.ema_yaw, self.ema_pitch)
@@ -332,8 +353,15 @@ impl Panner for FieldPanner {
             }
 
             if target_yaw.is_finite() && target_pitch.is_finite() {
-                self.yaw = target_yaw;
-                self.pitch = target_pitch;
+                // Clamp per-frame delta so a cluster-membership flip
+                // cannot teleport the camera; smooth glide is preserved
+                // because any sustained target is reached within a few
+                // frames at max_pose_delta rad/frame.
+                let dy = (target_yaw - self.yaw).clamp(-self.max_pose_delta, self.max_pose_delta);
+                let dp =
+                    (target_pitch - self.pitch).clamp(-self.max_pose_delta, self.max_pose_delta);
+                self.yaw += dy;
+                self.pitch += dp;
             } else {
                 log::warn!(
                     "FieldPanner: non-finite target yaw={target_yaw} pitch={target_pitch}; \
@@ -483,9 +511,13 @@ mod tests {
         let mut p = FieldPanner::new();
         let cal = cal();
         let w = tight_world();
-        let out = p.decide(&w, &ctx(0, &cal));
-        // Same maths as FieldDirector: closest-half centroid at ~0.36,
-        // edge push 15% -> ~0.414.
+        // Per-frame delta clamp (0.015 rad) means the pose needs many
+        // frames to converge on the target. Run until it settles.
+        let mut out = p.decide(&w, &ctx(0, &cal));
+        for i in 1..200 {
+            out = p.decide(&w, &ctx(i, &cal));
+        }
+        // Closest-half centroid at ~0.36, edge push 15% -> ~0.414.
         assert!(
             (out.yaw - 0.414).abs() < 0.03,
             "expected ~0.414, got {}",
@@ -539,7 +571,10 @@ mod tests {
         let cal = cal();
         let mut w = tight_world();
         w.ball = Some(ball(0.80, 0.0));
-        let out = p.decide(&w, &ctx(0, &cal));
+        let mut out = p.decide(&w, &ctx(0, &cal));
+        for i in 1..200 {
+            out = p.decide(&w, &ctx(i, &cal));
+        }
         // Ball at 0.80 pulls toward it, but not all the way.
         assert!(out.yaw > 0.414, "ball should pull yaw up, got {}", out.yaw);
         assert!(out.yaw < 0.80, "ball should not dominate, got {}", out.yaw);
@@ -553,7 +588,10 @@ mod tests {
         let mut lost = ball(0.80, 0.0);
         lost.state = TrackState::Lost;
         w.ball = Some(lost);
-        let out = p.decide(&w, &ctx(0, &cal));
+        let mut out = p.decide(&w, &ctx(0, &cal));
+        for i in 1..200 {
+            out = p.decide(&w, &ctx(i, &cal));
+        }
         // Lost ball must not pull the centroid — output should match
         // pure-cluster output for the same players.
         assert!(
