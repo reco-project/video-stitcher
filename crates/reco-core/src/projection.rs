@@ -1054,6 +1054,39 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f
     Some((uv_x, uv_y))
 }
 
+/// Exact inverse of [`plane_uv_to_world`].
+///
+/// Given a world-space point that lies on the named camera's plane,
+/// returns its extended-UV coordinate (shader space `[-0.5, 1.5]`).
+/// Off-plane points project via the model-matrix inverse: the z
+/// component of the model-local position is discarded, so the result
+/// is the orthographic projection onto the plane, NOT the ray-plane
+/// intersection that `panorama_to_camera` computes. The ray-plane
+/// layer stays a separate concern and gets consolidated in Step 2.
+#[cfg(test)]
+fn world_to_plane_uv(
+    world: nalgebra::Point3<f32>,
+    camera: CameraId,
+    scene: &SceneGeometry,
+) -> Option<(f64, f64)> {
+    let model = match camera {
+        CameraId::Left => scene.model_matrix_left(),
+        CameraId::Right => scene.model_matrix_right(),
+    };
+    let inv_model = model.try_inverse()?;
+    let local = inv_model.transform_point(&world);
+
+    // local → texture UV [0,1] (inverse of plane_uv_to_world's inner
+    // texture→local step, with plane_width = 1.0 baked in).
+    let tex_u = local.x / scene.plane_width + 0.5;
+    let tex_v = 0.5 - local.y * scene.plane_aspect / scene.plane_width;
+
+    // Texture UV → extended shader UV (inverse of `uv * 2.0 - 0.5`).
+    let uv_x = (tex_u * 2.0 - 0.5) as f64;
+    let uv_y = (tex_v * 2.0 - 0.5) as f64;
+    Some((uv_x, uv_y))
+}
+
 /// Convert a plane UV (in extended shader space) to a 3D world point.
 fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) -> Point3<f32> {
     // Extended UV → texture UV [0,1]
@@ -1308,6 +1341,40 @@ mod tests {
                         (pos.pitch - pitch).abs() < 1e-4,
                         "pitch mismatch for cam={cam:?}: sent {pitch}, got {} (dir={dir:?})",
                         pos.pitch
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn world_to_plane_uv_roundtrips_with_plane_uv_to_world() {
+        // Step 1b: extended UV → world → extended UV must be the
+        // identity. Covers both camera planes and a grid spanning the
+        // shader's extended range [-0.5, 1.5] (including points
+        // outside the [0,1] texture box so we catch any implicit
+        // clamp).
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+
+        let uv_steps = [-0.3_f64, -0.1, 0.0, 0.25, 0.5, 0.75, 1.0, 1.1, 1.4];
+
+        for &camera in &[CameraId::Left, CameraId::Right] {
+            for &u in &uv_steps {
+                for &v in &uv_steps {
+                    let world = plane_uv_to_world((u, v), camera, &scene);
+                    let back = world_to_plane_uv(world, camera, &scene)
+                        .expect("model matrix should be invertible");
+
+                    assert!(
+                        (back.0 - u).abs() < 1e-5,
+                        "uv.x mismatch for camera={camera:?}: sent {u}, got {} (world={world:?})",
+                        back.0
+                    );
+                    assert!(
+                        (back.1 - v).abs() < 1e-5,
+                        "uv.y mismatch for camera={camera:?}: sent {v}, got {} (world={world:?})",
+                        back.1
                     );
                 }
             }
