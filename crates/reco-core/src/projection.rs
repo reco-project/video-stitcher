@@ -1463,6 +1463,66 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "known failure: panorama_to_camera has stacked bugs \
+                (naive +Z-forward basis; passes [0,1] texture UV to \
+                lens::undistorted_to_distorted which expects pixels). \
+                Documented in camera-stack-handoff-2026-04-22. Fixed in \
+                Step 2 (unify basis via VirtualCamera) + Step 4 \
+                (RigCorrection). Run via `cargo test -- --ignored`."]
+    fn camera_to_panorama_roundtrips_with_panorama_to_camera() {
+        // Step 1d: the full forward chain (camera_to_panorama) then
+        // backward chain (panorama_to_camera) must return the same
+        // normalized pixel position for points that lie unambiguously
+        // within one camera's coverage.
+        //
+        // Expected to fail pre-refactor. Observed failure mode today:
+        // panorama_to_camera returns None for in-coverage points
+        // because the naive +Z-forward ray does not hit the diagonal
+        // L-shape plane at the expected spot, AND the result (if it
+        // did return) would be scaled wrong because [0,1] texture UV
+        // is passed to a pixel-space lens helper.
+        //
+        // Un-ignore after Step 2 (VirtualCamera basis unified) +
+        // Step 4 (RigCorrection) land.
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+
+        let steps = 5;
+        let lo = 0.3_f32;
+        let hi = 0.7_f32;
+
+        for &camera in &[CameraId::Left, CameraId::Right] {
+            for ix in 0..=steps {
+                for iy in 0..=steps {
+                    let nx = lo + (hi - lo) * (ix as f32 / steps as f32);
+                    let ny = lo + (hi - lo) * (iy as f32 / steps as f32);
+
+                    let pos = camera_to_panorama(camera, nx, ny, &cal, &scene)
+                        .expect("forward projection should succeed inside coverage");
+
+                    let back = panorama_to_camera(pos.yaw, pos.pitch, camera, &cal, &scene)
+                        .expect("backward projection should land on the same camera");
+
+                    assert!(
+                        (back.0 - nx).abs() < 1e-3,
+                        "x mismatch for camera={camera:?}: sent {nx}, got {} (yaw={}, pitch={})",
+                        back.0,
+                        pos.yaw,
+                        pos.pitch
+                    );
+                    assert!(
+                        (back.1 - ny).abs() < 1e-3,
+                        "y mismatch for camera={camera:?}: sent {ny}, got {} (yaw={}, pitch={})",
+                        back.1,
+                        pos.yaw,
+                        pos.pitch
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn inverse_fisheye_roundtrip_at_center() {
         let params = CameraParams {
             width: 3840,
