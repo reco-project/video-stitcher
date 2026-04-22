@@ -68,14 +68,14 @@ use crate::detector::{
 };
 use crate::director::{MappedDetection, ViewportPosition};
 use crate::gpu::GpuContext;
-use crate::panner::{PanContext, Panner};
+use crate::panner::Panner;
 use crate::pipeline::{BgraPlanes, PipelineError, StitchPipeline, YuvPlanes};
 use crate::projection::{self, CoverageBoundary, LShapeProjection, PanoramaExtent, Projection};
 use crate::renderer::InputFormat;
 use crate::rgba_readback::{RgbaReadback, RgbaReadbackError};
 use crate::source::{CameraInput, StereoCameraInput};
 use crate::stage::PipelineStage;
-use crate::tracker::{Tracker, WorldState};
+use crate::tracker::Tracker;
 use crate::viewport::ViewportConfig;
 use crate::yuv_stack_packer::{
     OutputTileSize, PackerError, SourceFormat, StackGridLayout, StackedAtlas, StackedPackSource,
@@ -1484,44 +1484,24 @@ impl StitchCore {
             .unwrap_or(0.0);
 
         // Pose resolution: run all registered trackers in order, assemble
-        // a [`WorldState`], and let the panner decide. When no panner
-        // is attached the pose stays at the pipeline default.
+        // a [`WorldState`], and let the panner decide via the shared
+        // `panner::dispatch` helper. When no panner is attached the pose
+        // stays at the pipeline default.
         let _ = fresh_detection; // reserved for future freshness-aware panners
-        let raw = if let Some(panner) = self.panner.as_mut() {
-            let mut world = WorldState::default();
-            // Order matters: players first, then ball. This lets the
-            // ball tracker apply a player-anchor filter against the
-            // current frame's players via `observe_world`. Without that
-            // ordering, `observe_world` would only ever see the previous
-            // frame's world, which defeats the purpose.
-            if let Some(t) = self.player_tracker.as_mut() {
-                world.players = t.update(&self.last_detections, timestamp_ms);
-            }
-            if let Some(t) = self.ball_tracker.as_mut() {
-                t.observe_world(&world);
-                let ents = t.update(&self.last_detections, timestamp_ms);
-                // Singleton: take the first entity; more than one
-                // from a singleton tracker is a bug we fail-soft on.
-                if ents.len() > 1 {
-                    log::warn!(
-                        "StitchCore: ball_tracker returned {} entities (expected ≤1); taking first",
-                        ents.len()
-                    );
-                }
-                world.ball = ents.into_iter().next();
-            }
-            let pan_ctx = PanContext {
+        let raw = crate::panner::dispatch(
+            self.panner.as_mut(),
+            self.player_tracker.as_mut(),
+            self.ball_tracker.as_mut(),
+            &mut self.previous_panner_pose,
+            crate::panner::DispatchContext {
+                detections: &self.last_detections,
+                calibration: &self.pipeline.calibration,
                 frame_index: self.frame_count,
                 timestamp_ms,
-                previous_position: self.previous_panner_pose,
-                calibration: &self.pipeline.calibration,
-            };
-            let out = panner.decide(&world, &pan_ctx);
-            self.previous_panner_pose = out;
-            out
-        } else {
-            ViewportPosition::default()
-        };
+                caller: "StitchCore",
+            },
+        )
+        .unwrap_or_default();
         // Constrained-look (FRICTION A13): when on (default), clamp
         // the pose through the coverage boundary so the viewport
         // never reveals black panorama edges. When off, pass the

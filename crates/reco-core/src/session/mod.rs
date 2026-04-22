@@ -1060,50 +1060,27 @@ impl StitchSession {
             .fire_sink(self.frame_count, timestamp_ms)
             .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
 
-        // Drive pose resolution. Run all registered trackers to build
-        // a WorldState, hand it to the panner, store the result for
-        // director_position() to retrieve and clamp. Runs even when
-        // the detections list is empty so trackers get their
-        // coast / loss ticks.
+        // Drive pose resolution via the shared panner dispatch.
+        // Runs even when the detections list is empty so trackers get
+        // their coast / loss ticks.
         //
         // `fresh_detection` is unused by panner decisions today —
         // trackers manage their own freshness via detection cadence.
         let _ = fresh_detection;
-        if self.panner.is_some() {
-            let mut world = crate::tracker::WorldState::default();
-            // Order matters: players first, then ball. The ball tracker's
-            // `observe_world` sees the just-computed player positions so
-            // a player-anchor filter can run against the current frame
-            // rather than the previous one. See StitchCore for the same
-            // pattern.
-            if let Some(ref mut t) = self.player_tracker {
-                world.players = t.update(&self.detection.last_detections, timestamp_ms);
-            }
-            if let Some(ref mut t) = self.ball_tracker {
-                t.observe_world(&world);
-                let ents = t.update(&self.detection.last_detections, timestamp_ms);
-                if ents.len() > 1 {
-                    log::warn!(
-                        "StitchSession: ball tracker returned {} entities (expected ≤1); taking first",
-                        ents.len()
-                    );
-                }
-                world.ball = ents.into_iter().next();
-            }
-            let calibration = self.core.pipeline().calibration();
-            let pan_ctx = crate::panner::PanContext {
+        let calibration = self.core.pipeline().calibration();
+        crate::panner::dispatch(
+            self.panner.as_mut(),
+            self.player_tracker.as_mut(),
+            self.ball_tracker.as_mut(),
+            &mut self.previous_panner_pose,
+            crate::panner::DispatchContext {
+                detections: &self.detection.last_detections,
+                calibration,
                 frame_index: self.frame_count,
                 timestamp_ms,
-                previous_position: self.previous_panner_pose,
-                calibration,
-            };
-            let pose = self
-                .panner
-                .as_mut()
-                .expect("panner is_some checked above")
-                .decide(&world, &pan_ctx);
-            self.previous_panner_pose = pose;
-        }
+                caller: "StitchSession",
+            },
+        );
         Ok(())
     }
 

@@ -33,8 +33,8 @@
 //! layer because they transform camera *motion*, not detections.
 
 use crate::calibration::MatchCalibration;
-use crate::director::ViewportPosition;
-use crate::tracker::WorldState;
+use crate::director::{MappedDetection, ViewportPosition};
+use crate::tracker::{Tracker, WorldState};
 
 /// Per-frame context a [`Panner`] receives alongside the world state.
 ///
@@ -78,6 +78,83 @@ pub struct PanContext<'a> {
 pub trait Panner: Send {
     /// Decide where the virtual camera should look this frame.
     fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition;
+}
+
+/// Scalar inputs to [`dispatch`] bundled so the function stays under
+/// `clippy::too_many_arguments`. The mutable pose + the three
+/// `Option<&mut Box<dyn …>>` slots are the only moving parts per
+/// caller; everything else fits here.
+pub(crate) struct DispatchContext<'a> {
+    /// Raw mapped detections the trackers should consume this frame.
+    pub detections: &'a [MappedDetection],
+    /// Shared calibration handed to the panner via [`PanContext`].
+    pub calibration: &'a MatchCalibration,
+    /// Current frame index (0-based, monotonically increasing).
+    pub frame_index: u64,
+    /// Elapsed milliseconds since session start.
+    pub timestamp_ms: f64,
+    /// Short label used only for the >1-ball warning so log output
+    /// still says which caller ran the dispatch.
+    pub caller: &'static str,
+}
+
+/// Run the shared tracker → panner dispatch one frame's worth.
+///
+/// Both `StitchCore::resolve_current_pose` and
+/// `StitchSession::fire_sink_and_update_director` used to inline this
+/// ~50-line algorithm. They still differ on what they do around the
+/// dispatch (clamp, fire sinks, return vs. store), but the dispatch
+/// itself is identical:
+///
+/// 1. Build an empty [`WorldState`].
+/// 2. Run the player tracker, store into `world.players`.
+/// 3. Let the ball tracker `observe_world` (so it sees this frame's
+///    players for anchor gating), then `update`; take the first
+///    entity (warn if more than one) into `world.ball`.
+/// 4. Build a [`PanContext`] carrying the caller's previous pose.
+/// 5. Ask the panner to `decide`; update `previous_panner_pose` in
+///    place; return the decided pose.
+///
+/// Returns `None` when no panner is attached.
+pub(crate) fn dispatch(
+    panner: Option<&mut Box<dyn Panner>>,
+    player_tracker: Option<&mut Box<dyn Tracker>>,
+    ball_tracker: Option<&mut Box<dyn Tracker>>,
+    previous_panner_pose: &mut ViewportPosition,
+    ctx: DispatchContext<'_>,
+) -> Option<ViewportPosition> {
+    let panner = panner?;
+    let mut world = WorldState::default();
+
+    // Order matters: players first, then ball. The ball tracker's
+    // `observe_world` sees the just-computed player positions so a
+    // player-anchor gate can run against the current frame rather
+    // than the previous one.
+    if let Some(t) = player_tracker {
+        world.players = t.update(ctx.detections, ctx.timestamp_ms);
+    }
+    if let Some(t) = ball_tracker {
+        t.observe_world(&world);
+        let ents = t.update(ctx.detections, ctx.timestamp_ms);
+        if ents.len() > 1 {
+            log::warn!(
+                "{}: ball_tracker returned {} entities (expected <=1); taking first",
+                ctx.caller,
+                ents.len()
+            );
+        }
+        world.ball = ents.into_iter().next();
+    }
+
+    let pan_ctx = PanContext {
+        frame_index: ctx.frame_index,
+        timestamp_ms: ctx.timestamp_ms,
+        previous_position: *previous_panner_pose,
+        calibration: ctx.calibration,
+    };
+    let pose = panner.decide(&world, &pan_ctx);
+    *previous_panner_pose = pose;
+    Some(pose)
 }
 
 #[cfg(test)]
