@@ -67,7 +67,7 @@ pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
-pub use roi_filter::RoiFilteredDetector;
+pub use roi_filter::{RoiAnchor, RoiFilteredDetector};
 // `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
 // deleted: the unified `RoiFilteredDetector` covers every residency
 // because it wraps `Box<dyn UnifiedDetector>`.
@@ -276,6 +276,23 @@ pub fn setup_autocam(
         log::info!("Autocam: field ROI filtering enabled");
     }
 
+    // Resolved once up front so each RoiFilteredDetector wrap below
+    // can install the Step 7c per-class anchor policy (player = Bottom
+    // so feet + 75th-pctile must both lie inside the ROI; ball stays
+    // on the Center default).
+    let person_id_for_roi = resolve_class_id(&class_names, &["person"], 0);
+
+    // Tiny helper so each backend's "wrap the detector in
+    // RoiFilteredDetector if ROI is present" site stays one line.
+    let wrap_with_roi = |inner: Box<dyn reco_core::detector::UnifiedDetector>,
+                         roi: reco_core::calibration::FieldRoi|
+     -> Box<dyn reco_core::detector::UnifiedDetector> {
+        Box::new(
+            RoiFilteredDetector::new(inner, roi)
+                .with_class_anchor(person_id_for_roi, RoiAnchor::Bottom),
+        )
+    };
+
     // Native TensorRT path: if the model is a .engine file and the feature
     // is enabled, use TrtGpuDetector directly (no ORT dependency).
     #[cfg(feature = "tensorrt-native")]
@@ -302,7 +319,7 @@ pub fn setup_autocam(
             Ok(Some(trt_det)) => {
                 let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredDetector::new(Box::new(trt_det), roi))
+                        wrap_with_roi(Box::new(trt_det), roi)
                     } else {
                         Box::new(trt_det)
                     };
@@ -333,7 +350,7 @@ pub fn setup_autocam(
             Ok(Some(gpu_det)) => {
                 let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredDetector::new(Box::new(gpu_det), roi))
+                        wrap_with_roi(Box::new(gpu_det), roi)
                     } else {
                         Box::new(gpu_det)
                     };
@@ -363,7 +380,7 @@ pub fn setup_autocam(
             Ok(metal_det) => {
                 let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredDetector::new(Box::new(metal_det), roi))
+                        wrap_with_roi(Box::new(metal_det), roi)
                     } else {
                         Box::new(metal_det)
                     };
@@ -392,7 +409,7 @@ pub fn setup_autocam(
             Ok(ncnn_det) => {
                 let detector: Box<dyn reco_core::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
-                        Box::new(RoiFilteredDetector::new(Box::new(ncnn_det), roi))
+                        wrap_with_roi(Box::new(ncnn_det), roi)
                     } else {
                         Box::new(ncnn_det)
                     };
@@ -412,7 +429,7 @@ pub fn setup_autocam(
         let yolo = CpuYoloDetector::from_file(model_path)?;
         let detector: Box<dyn reco_core::detector::UnifiedDetector> =
             if let Some(roi) = effective_roi {
-                Box::new(RoiFilteredDetector::new(Box::new(yolo), roi))
+                wrap_with_roi(Box::new(yolo), roi)
             } else {
                 Box::new(yolo)
             };
