@@ -453,16 +453,17 @@ pub fn setup_autocam(
             class_names.len()
         );
 
-        // Lookahead feeds the Smoother decorator's one-euro bidirectional
-        // filter with enough forward samples to attenuate sudden jumps
-        // without introducing visible lag. Zero-copy sources produce
-        // frames synchronously and cannot buffer, so lookahead is
-        // disabled there.
+        // Smoother decorator's one-euro bidirectional filter window.
+        // Zero-copy sources cannot buffer, so the window is disabled
+        // there. This used to also toggle `session.set_lookahead(frames)`
+        // on the decode side; that CPU-pre-decode path was removed as
+        // part of the Step 5 cleanup since it was never enabled on any
+        // shipped consumer and masked scheduling issues we'd rather
+        // surface directly.
         let lookahead = if lead_time > 0.0 && !use_zero_copy {
             let frames = (fps as f64 * lead_time).round() as usize;
             if frames > 0 {
-                session.set_lookahead(frames);
-                log::info!("Lookahead: {lead_time:.1}s ({frames} frames)");
+                log::info!("Smoother lookahead: {lead_time:.1}s ({frames} frames)");
             }
             frames
         } else {

@@ -310,7 +310,6 @@ pub struct StitchSessionBuilder {
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
     detector: Option<Box<dyn crate::detector::UnifiedDetector>>,
     detection_interval: u64,
-    lookahead_frames: usize,
 }
 
 impl StitchSessionBuilder {
@@ -393,14 +392,6 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Set the number of frames to buffer ahead for lookahead.
-    ///
-    /// See [`StitchSession::set_lookahead`] for details.
-    pub fn lookahead(mut self, frames: usize) -> Self {
-        self.lookahead_frames = frames;
-        self
-    }
-
     /// Build the session, initializing GPU if not provided.
     ///
     /// # Errors
@@ -445,7 +436,6 @@ impl StitchSessionBuilder {
         session
             .detection
             .set_detection_interval(self.detection_interval);
-        session.lookahead_frames = self.lookahead_frames;
 
         if let Some((enc, buf_count)) = self.encoder {
             session.set_encoder(enc, buf_count);
@@ -502,10 +492,6 @@ pub struct StitchSession {
     error_policy: ErrorPolicy,
     /// Dropped frame counter (for metrics).
     frames_dropped: u64,
-    /// Number of frames to buffer ahead for lookahead.
-    /// When > 0, detection runs ahead of rendering so the director
-    /// anticipates action before it reaches the encoder.
-    lookahead_frames: usize,
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
@@ -561,7 +547,6 @@ impl StitchSession {
             gpu_encoder: None,
             detector: None,
             detection_interval: 1,
-            lookahead_frames: 0,
         }
     }
 
@@ -627,7 +612,6 @@ impl StitchSession {
             session_start: None,
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
-            lookahead_frames: 0,
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
             #[cfg(target_os = "linux")]
@@ -709,20 +693,6 @@ impl StitchSession {
     /// the last known tracked objects on skipped frames.
     pub fn set_detection_interval(&mut self, interval: u64) {
         self.detection.set_detection_interval(interval);
-    }
-
-    /// Set the number of frames to buffer ahead for lookahead.
-    ///
-    /// When > 0, the CPU batch loop decodes and runs detection on frames
-    /// ahead of rendering, so the director "sees" the future relative to
-    /// what's being encoded. This makes the camera anticipate action
-    /// rather than react to it.
-    ///
-    /// Typical value: `(fps * 0.5) as usize` for 0.5s lead time.
-    /// Only affects the CPU path ([`Self::run`]). Zero-copy paths are
-    /// not supported (frames are GPU-resident and can't be buffered).
-    pub fn set_lookahead(&mut self, frames: usize) {
-        self.lookahead_frames = frames;
     }
 
     /// Attach a singleton ball tracker. See
@@ -1453,11 +1423,6 @@ impl StitchSession {
     /// - CPU frames (Yuv420p, Nv12): uploaded to GPU, rendered, encoded
     /// - GPU frames (GpuResident): rendered directly from shared textures
     ///
-    /// When [`lookahead_frames`](Self::set_lookahead) > 0, decodes and
-    /// runs detection on frames ahead of rendering. The director "sees"
-    /// N frames into the future, so the camera anticipates action before
-    /// it reaches the encoder.
-    ///
     /// Does NOT call [`Self::finish`] - the caller must do that after this
     /// returns to flush the last frame and finalize encoding.
     #[cfg_attr(
@@ -1473,11 +1438,7 @@ impl StitchSession {
     ) -> Result<u64, SessionError> {
         self.configure_from_source(source);
 
-        let result = if self.lookahead_frames > 0 {
-            self.run_with_lookahead(source, frame_limit, interrupted, &mut on_progress)
-        } else {
-            self.run_immediate(source, frame_limit, interrupted, &mut on_progress)
-        };
+        let result = self.run_immediate(source, frame_limit, interrupted, &mut on_progress);
 
         // Drop GPU slot senders so decode threads can exit gracefully.
         // Without this, SmartFileSource::drop() deadlocks because the
@@ -1490,9 +1451,8 @@ impl StitchSession {
         result
     }
 
-    /// Standard frame loop without lookahead.
-    ///
-    /// Handles both CPU-resident and GPU-resident frames transparently.
+    /// Standard frame loop. Handles CPU-resident and GPU-resident
+    /// frames transparently.
     fn run_immediate(
         &mut self,
         source: &mut dyn FrameSource,
@@ -1537,85 +1497,6 @@ impl StitchSession {
                     self.process_frame(&frame, pos.yaw, pos.pitch)?;
                 }
             }
-
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&FrameProgress {
-                    frames_completed: self.frame_count,
-                    elapsed: start.elapsed(),
-                });
-            }
-        }
-
-        Ok(self.frame_count)
-    }
-
-    /// Frame loop with lookahead buffering.
-    ///
-    /// Decodes `lookahead_frames` ahead of rendering so the director
-    /// has seen future frames by the time each frame is rendered.
-    fn run_with_lookahead(
-        &mut self,
-        source: &mut dyn FrameSource,
-        frame_limit: u64,
-        interrupted: &AtomicBool,
-        on_progress: &mut Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
-        use std::collections::VecDeque;
-
-        let start = std::time::Instant::now();
-        let lookahead = self.lookahead_frames;
-        let mut buffer: VecDeque<StereoFrame> = VecDeque::with_capacity(lookahead + 1);
-
-        // Track how many frames have been decoded (for frame_limit).
-        let mut decoded_count: u64 = 0;
-
-        // Pre-fill: decode lookahead frames and run detection on each,
-        // but don't render yet. This advances the director ahead.
-        for _ in 0..lookahead {
-            if interrupted.load(Ordering::Relaxed) {
-                break;
-            }
-            let frame = {
-                crate::profile_scope!("wait_decode");
-                match source.next_frame()? {
-                    Some(f) => f,
-                    None => break,
-                }
-            };
-            decoded_count += 1;
-            self.detect_and_update_director(&frame, start.elapsed())?;
-            buffer.push_back(frame);
-        }
-
-        log::info!(
-            "Lookahead: pre-filled {} frames (requested {})",
-            buffer.len(),
-            lookahead,
-        );
-
-        // Main loop: decode one new frame, detect on it (advancing director),
-        // then render+encode the oldest buffered frame with the current
-        // director position.
-        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            // Try to decode one more frame to keep the buffer full.
-            if decoded_count < frame_limit {
-                let frame = {
-                    crate::profile_scope!("wait_decode");
-                    source.next_frame()?
-                };
-                if let Some(f) = frame {
-                    decoded_count += 1;
-                    self.detect_and_update_director(&f, start.elapsed())?;
-                    buffer.push_back(f);
-                }
-            }
-
-            // Render the oldest buffered frame with the current director state.
-            let Some(render_frame) = buffer.pop_front() else {
-                break;
-            };
-            let pos = self.director_position();
-            self.process_frame(&render_frame, pos.yaw, pos.pitch)?;
 
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
