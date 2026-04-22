@@ -114,6 +114,7 @@ pub mod pose_control;
 pub mod projection;
 pub mod renderer;
 pub mod rgba_readback;
+pub mod rig_correction;
 pub mod scene;
 pub mod session;
 pub mod source;
