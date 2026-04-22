@@ -23,6 +23,10 @@ pub mod gstreamer;
 pub mod libcamera;
 
 pub mod adapters;
+/// Default shipping [`reco_core::pipeline_event::PipelineEventSink`]:
+/// writes each event as one JSON line. Wrap in `BackpressuredSink`
+/// to keep serialization off the render thread.
+pub mod jsonl_sink;
 pub mod output;
 
 #[cfg(feature = "ffmpeg")]

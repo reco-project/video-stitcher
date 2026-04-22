@@ -15,10 +15,10 @@ rpi = ["ffmpeg", "ffmpeg-next/rpi"]
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
 libcamera = []
 profiling = ["tracing", "reco-core/profiling"]
-# Opt-in user-preference persistence for consumers. Pulls in serde +
-# directories (~150 kB of deps). Consumers that only need frame I/O
-# (headless stitching, test harnesses) can skip it.
-config = ["dep:serde", "dep:serde_json", "dep:directories"]
+# Opt-in user-preference persistence for consumers. Serde +
+# serde_json are unconditional (JsonlSink uses them); this flag
+# only gates the `directories` crate and the config plumbing.
+config = ["dep:directories"]
 # M6.5 stacked-video: enables the ffmpeg-backed StackedEncoder /
 # StackedSource wrappers around the pure pack/unpack primitives in
 # `stacked_video`. The primitives themselves have no feature gate.
@@ -38,9 +38,11 @@ ffmpeg-next = { version = "8", default-features = false, features = ["codec", "f
 gstreamer = { version = "0.25", optional = true }
 gstreamer-app = { version = "0.25", optional = true }
 
-# `config` feature deps.
-serde = { version = "1", features = ["derive"], optional = true }
-serde_json = { version = "1", optional = true }
+# Serde + serde_json are unconditional because `JsonlSink` (the
+# default shipping `PipelineEventSink`) serializes events to JSON
+# Lines. `config` also uses them.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 directories = { version = "6", optional = true }
 
 [dev-dependencies]
