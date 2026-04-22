@@ -868,16 +868,10 @@ impl CoverageBoundary {
 
     /// Clamp a viewport position to the safe panning region for a given FOV.
     ///
-    /// `rig_tilt` (radians) accounts for the renderer's rig tilt.
-    /// The caller passes user-space (yaw, pitch); this method uses
-    /// `RigCorrection::user_to_world_pose` to round-trip through
-    /// world space (where the coverage boundary lives). Pass 0.0
-    /// when there is no rig tilt.
-    ///
-    /// Pre-Step-4 this used a constant `pitch + rig_tilt` offset
-    /// (audit Model 2), which disagreed with the render-site Model 3
-    /// formula at any non-zero yaw. `RigCorrection` is the one source
-    /// of truth now — safe_clamp and render_pose agree exactly.
+    /// `rig_tilt` (radians) accounts for the renderer's rig tilt rotation.
+    /// The caller passes user-space (yaw, pitch); this method transforms
+    /// to world space (+rig_tilt), clamps against coverage, then transforms
+    /// back. Pass 0.0 when there is no rig tilt.
     ///
     /// `self` must be the **world-space** coverage boundary.
     pub fn safe_clamp(
@@ -888,11 +882,13 @@ impl CoverageBoundary {
         aspect: f32,
         rig_tilt: f32,
     ) -> ClampedPosition {
-        let rig = crate::rig_correction::RigCorrection::new(rig_tilt, 0.0);
-        let (wy, wp) = rig.user_to_world_pose(yaw, pitch);
-        let clamped = self.safe_clamp_world(wy, wp, fov_v_deg, aspect);
-        let (uy, up) = rig.world_to_user_pose(clamped.yaw, clamped.pitch);
-        ClampedPosition { yaw: uy, pitch: up }
+        // Transform to world space, clamp there, transform back.
+        let world_pitch = pitch + rig_tilt;
+        let clamped = self.safe_clamp_world(yaw, world_pitch, fov_v_deg, aspect);
+        ClampedPosition {
+            yaw: clamped.yaw,
+            pitch: clamped.pitch - rig_tilt,
+        }
     }
 
     /// Clamp viewport center to coverage with perspective-correct margins.

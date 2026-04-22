@@ -404,23 +404,24 @@ impl PoseControl {
         }
     }
 
-    /// Current pose converted into the world-space `(yaw, pitch)` the
-    /// renderer needs to produce a level horizon across pans.
+    /// Current pose with Model 3 rig_tilt render-site compensation
+    /// applied: `pitch + rig_tilt * (1 - cos(yaw))`.
     ///
-    /// Delegates to [`RigCorrection::user_to_world_pose`] so
-    /// render_pose, safe_clamp, and the Step-2 direction helpers all
-    /// agree on the same correction formula. The underlying math
-    /// (`pitch + rig_tilt * (1 - cos(yaw))`) was validated empirically
+    /// The renderer applies `rig_tilt` as a quaternion rotation of the
+    /// reference frame (renderer.rs view_matrix). Without this
+    /// compensation, the quaternion folds the tilt into pitch at yaw=0
+    /// and into roll at yaw=±π/2, making the horizon dip as the camera
+    /// pans. Pre-adding `rig_tilt * (1 - cos(yaw))` to the rendered
+    /// pitch keeps the effective world pitch constant across yaw —
+    /// i.e. the horizon stays level under pan. Validated empirically
     /// on rig_tilt=15° XTU footage 2026-04-20.
     ///
     /// Consumers pass this pose's `yaw` and returned `pitch` directly
     /// to `StitchRenderer::render_yuv` / render_to_target.
     pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
-        let rig = crate::rig_correction::RigCorrection::new(rig_tilt, 0.0);
-        let (yaw, pitch) = rig.user_to_world_pose(self.current_yaw_rad, self.current_pitch_rad);
         ViewportPosition {
-            yaw,
-            pitch,
+            yaw: self.current_yaw_rad,
+            pitch: self.current_pitch_rad + rig_tilt * (1.0 - self.current_yaw_rad.cos()),
             fov_degrees: Some(self.current_fov_deg),
         }
     }
