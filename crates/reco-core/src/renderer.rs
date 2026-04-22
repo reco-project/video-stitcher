@@ -29,7 +29,7 @@ use crate::scene::SceneGeometry;
 use crate::viewport::ResolvedViewport;
 
 use bytemuck::{Pod, Zeroable};
-use nalgebra::{Matrix4, Perspective3, Point3, UnitQuaternion, Vector3};
+use nalgebra::{Matrix4, Perspective3, Point3, UnitQuaternion};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
@@ -1074,14 +1074,16 @@ fn view_matrix(
     rig_tilt: f32,
     rig_roll: f32,
 ) -> Matrix4<f32> {
-    let eye = Point3::new(position[0], position[1], position[2]);
-    // Base direction: eye → origin (the L-shape corner)
-    let mut base_forward = -eye.coords.normalize();
-    let mut world_up = Vector3::new(0.0, 1.0, 0.0);
-
-    // Camera's base right axis — perpendicular to view in the horizontal plane.
-    // This accounts for the camera being at 45° in the XZ plane.
-    let base_right = base_forward.cross(&world_up).normalize();
+    // Basis is owned by VirtualCamera so view_matrix and the yaw/pitch
+    // decomposition in projection.rs share a single source of truth.
+    // The right-handed `(base_forward, base_right, world_up)` triple
+    // makes view_matrix's yaw sign agree with
+    // `direction_to_yaw_pitch` without any downstream sign reconciliation.
+    let cam = crate::projection::VirtualCamera::new(position);
+    let eye = Point3::from(cam.eye);
+    let mut base_forward = cam.base_forward;
+    let base_right = cam.base_right;
+    let mut world_up = crate::projection::VirtualCamera::world_up();
 
     // Rig tilt: rotate the entire reference frame around the base right axis.
     // This tilts "up" and "forward" so that yaw/pitch operate in the tilted
@@ -1228,31 +1230,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "known failure: yaw sign is flipped between \
-                direction_to_yaw_pitch and view_matrix because \
-                base_right = base_forward x world_up makes \
-                (base_forward, base_right, world_up) a left-handed \
-                triple. view_matrix's right-hand yaw rotation moves \
-                toward -base_right, while direction_to_yaw_pitch's \
-                atan2(h*base_right, h*base_forward) reads the \
-                opposite sign. Pitch is consistent. Root-cause fix \
-                lives in Step 2 (unify VirtualCamera basis). \
-                Un-ignore there. Run via `cargo test -- --ignored`."]
     fn view_matrix_self_consistent_with_direction_to_yaw_pitch() {
-        // Step 1e: directions synthesized at a known (yaw, pitch),
-        // run through direction_to_yaw_pitch, then fed to
-        // view_matrix, must transform a point on the dir ray to the
-        // camera's -Z axis (the right-hand convention
-        // nalgebra::Isometry3::look_at_rh uses). This is the
-        // self-consistency check the handoff's "Model 4: nothing"
-        // cross-cutting finding lives on.
-        //
-        // Observed sign flip (yaw only):
-        //   view_matrix(yaw=+θ) * base_forward
-        //     == yaw_pitch_to_direction(yaw=-θ, ...)
-        // i.e. the helpers disagree only on yaw orientation.
-        // Confirmed empirically with nalgebra (not a pitch-basis or
-        // pitch-sign issue - pitch round-trips exactly).
+        // Step 1e (un-ignored by Step 2's VirtualCamera basis fix):
+        // directions synthesized at a known (yaw, pitch), run through
+        // direction_to_yaw_pitch, then fed to view_matrix, must
+        // transform a point on the dir ray to the camera's -Z axis
+        // (the right-hand convention nalgebra::Isometry3::look_at_rh
+        // uses).
         //
         // rig_tilt and rig_roll are both zero here: direction_to_yaw_pitch
         // does not take them (Model 4), so any non-zero tilt/roll

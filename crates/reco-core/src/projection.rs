@@ -284,25 +284,24 @@ pub fn panorama_to_camera(
         CameraId::Right => &calibration.right,
     };
 
-    // Step 1: yaw/pitch -> world ray direction
-    let cam_pos = Point3::from(Vector3::from(scene.camera_position));
-    let cos_pitch = pitch.cos();
-    let dir = Vector3::new(cos_pitch * yaw.sin(), pitch.sin(), -cos_pitch * yaw.cos());
+    // Step 1: yaw/pitch -> world ray direction, through the same
+    // VirtualCamera basis camera_to_panorama uses. Step 2 replaced
+    // the previous naive "+Z forward" formula that broke the
+    // Forward A vs Forward C roundtrip.
+    let cam = VirtualCamera::new(&scene.camera_position);
+    let dir = cam.yaw_pitch_to_direction(yaw, pitch);
+    let cam_pos = Point3::from(cam.eye);
 
-    // Step 2: Ray-plane intersection -> plane UV
-    // Get the model matrix for this camera's plane
+    // Step 2: ray-plane intersection.
     let model = match camera {
         CameraId::Left => scene.model_matrix_left(),
         CameraId::Right => scene.model_matrix_right(),
     };
-
-    // The plane is at z=0 in model space, facing +Z. Transform to world space.
     let plane_origin = model.transform_point(&Point3::new(0.0, 0.0, 0.0));
     let plane_normal = model
         .transform_vector(&Vector3::new(0.0, 0.0, 1.0))
         .normalize();
 
-    // Ray: cam_pos + t * dir. Intersect with plane.
     let denom = plane_normal.dot(&dir);
     if denom.abs() < 1e-6 {
         return None; // Ray parallel to plane
@@ -311,32 +310,25 @@ pub fn panorama_to_camera(
     if t <= 0.0 {
         return None; // Behind camera
     }
-
     let hit = cam_pos + dir * t;
 
-    // Transform hit to model-local coordinates
-    let inv_model = model.try_inverse()?;
-    let local = inv_model.transform_point(&hit);
-
-    // Model-local plane spans [-w/2, w/2] x [-h/2, h/2] where w = plane_width, h = plane_width/aspect
-    let half_w = scene.plane_width * 0.5;
-    let half_h = half_w / scene.plane_aspect;
-
-    // UV in [0, 1]
-    let u = (local.x / half_w * 0.5 + 0.5) as f64;
-    let v = (0.5 - local.y / half_h * 0.5) as f64;
-
-    if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
-        return None; // Outside the camera plane
+    // Step 3: world hit -> extended plane UV. Reject hits outside
+    // the plane's renderable region (texture UV [0, 1], equivalently
+    // extended UV [-0.5, 1.5] is the full valid range but the plane
+    // only covers [0, 1] inside that).
+    let (uv_x, uv_y) = world_to_plane_uv(hit, camera, scene)?;
+    let tex_u = (uv_x + 0.5) * 0.5;
+    let tex_v = (uv_y + 0.5) * 0.5;
+    if !(0.0..=1.0).contains(&tex_u) || !(0.0..=1.0).contains(&tex_v) {
+        return None;
     }
 
-    // Step 3: Plane UV -> camera pixel via fisheye projection (forward model)
-    let pixel = crate::lens::undistorted_to_distorted(u, v, params.width, params.height, params);
-
-    // Normalize to [0, 1]
-    let norm_x = pixel.0 / params.width as f64;
-    let norm_y = pixel.1 / params.height as f64;
-
+    // Step 4: extended plane UV -> distorted normalized pixel via
+    // the forward KB4 model. The previous implementation passed
+    // texture UV in [0, 1] to `lens::undistorted_to_distorted` which
+    // expects pixel coordinates; that blew up the lens math and
+    // filtered almost every in-coverage point back out as None.
+    let (norm_x, norm_y) = forward_fisheye(uv_x, uv_y, params);
     if (0.0..=1.0).contains(&norm_x) && (0.0..=1.0).contains(&norm_y) {
         Some((norm_x as f32, norm_y as f32))
     } else {
@@ -988,7 +980,6 @@ impl CoverageBoundary {
 /// `uv * 2.0 - 0.5` remap output). Matches the WGSL fragment at
 /// `shaders/fisheye.wgsl` line 161 lines, which Step 3 will point
 /// at the canonical `reco_core::lens::kb4` module.
-#[cfg(test)]
 fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
     let w = params.width as f64;
     let h = params.height as f64;
@@ -1097,9 +1088,7 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f
 /// Off-plane points project via the model-matrix inverse: the z
 /// component of the model-local position is discarded, so the result
 /// is the orthographic projection onto the plane, NOT the ray-plane
-/// intersection that `panorama_to_camera` computes. The ray-plane
-/// layer stays a separate concern and gets consolidated in Step 2.
-#[cfg(test)]
+/// intersection that `panorama_to_camera` does as a prior step.
 fn world_to_plane_uv(
     world: nalgebra::Point3<f32>,
     camera: CameraId,
@@ -1143,75 +1132,124 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) ->
     Point3::new(world.x, world.y, world.z)
 }
 
+/// The virtual camera's orthonormal basis: single source of truth for
+/// `(base_forward, base_right, world_up)` shared by `view_matrix` and
+/// yaw/pitch decomposition.
+///
+/// `base_right = base_forward × world_up` so it semantically points
+/// to the viewer's right (intuitive). That makes the triple
+/// left-handed, which on its own inverts yaw sign between a right-
+/// hand rotation around `world_up` (what `view_matrix` does) and the
+/// naive `atan2(h · base_right, h · base_forward)` decomposition.
+/// The yaw API compensates by negating `h · base_right` in the
+/// atan2, so `direction_to_yaw_pitch` and `view_matrix` agree on
+/// yaw sign without any downstream reconciliation. `yaw_pitch_to_direction`
+/// mirrors the same negation for symmetry.
+///
+/// Pre-Step-2 the two APIs used the literal `atan2(h · base_right,
+/// h · base_forward)` and `cos(yaw)*bf + sin(yaw)*br` forms, so a
+/// `yaw=+θ` on one side meant `yaw=-θ` on the other. The Step 1e
+/// regression test locked that bug in; this type's yaw convention
+/// un-ignores it.
+///
+/// Rig tilt and rig roll are NOT part of this type. `view_matrix`
+/// layers them on top; Step 4 unifies them under `RigCorrection`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct VirtualCamera {
+    /// World-space camera eye position (copy of `camera_position`).
+    pub eye: Vector3<f32>,
+    /// Unit vector from eye toward the scene origin (the L-shape corner).
+    pub base_forward: Vector3<f32>,
+    /// Unit vector to the viewer's right (`base_forward × world_up`,
+    /// left-handed triple). The yaw API compensates for the
+    /// handedness so there is no sign divergence downstream.
+    pub base_right: Vector3<f32>,
+}
+
+impl VirtualCamera {
+    /// World up axis. Constant `+Y`; exposed as an associated method
+    /// rather than a field because every VirtualCamera agrees on it.
+    pub fn world_up() -> Vector3<f32> {
+        Vector3::new(0.0, 1.0, 0.0)
+    }
+
+    /// Build the basis from a world-space camera position.
+    pub fn new(camera_position: &[f32; 3]) -> Self {
+        let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
+        let base_forward = (-eye).normalize();
+        let base_right = base_forward.cross(&Self::world_up()).normalize();
+        Self {
+            eye,
+            base_forward,
+            base_right,
+        }
+    }
+
+    /// Decompose a world-space direction into yaw/pitch relative to
+    /// the base forward axis.
+    pub fn direction_to_yaw_pitch(&self, dir: &Vector3<f32>) -> ViewportPosition {
+        // Pitch: elevation angle from the horizontal plane.
+        let pitch = dir.y.clamp(-1.0, 1.0).asin();
+
+        // Yaw: horizontal angle relative to base_forward. The minus
+        // sign on (h . base_right) compensates for the left-handed
+        // basis so yaw matches view_matrix's right-hand rotation
+        // around world_up (see type doc comment).
+        let horizontal = Vector3::new(dir.x, 0.0, dir.z);
+        let h_len = horizontal.norm();
+        let yaw = if h_len > 1e-6 {
+            let h = horizontal / h_len;
+            let cos_yaw = h.dot(&self.base_forward).clamp(-1.0, 1.0);
+            let sin_yaw = -h.dot(&self.base_right);
+            sin_yaw.atan2(cos_yaw)
+        } else {
+            0.0
+        };
+
+        ViewportPosition {
+            yaw,
+            pitch,
+            fov_degrees: None,
+        }
+    }
+
+    /// Exact inverse of [`direction_to_yaw_pitch`]. `pitch` is
+    /// expected in `(-π/2, π/2)`; at the poles yaw is undefined and
+    /// the round-trip through `direction_to_yaw_pitch` collapses.
+    pub fn yaw_pitch_to_direction(&self, yaw: f32, pitch: f32) -> Vector3<f32> {
+        let cos_pitch = pitch.cos();
+        // Matching sign compensation: `-sin(yaw) * base_right` pairs
+        // with the `-h . base_right` in direction_to_yaw_pitch so the
+        // round-trip is exact.
+        let horizontal =
+            self.base_forward * (cos_pitch * yaw.cos()) - self.base_right * (cos_pitch * yaw.sin());
+        Vector3::new(horizontal.x, pitch.sin(), horizontal.z)
+    }
+}
+
 /// Decompose a direction vector into yaw/pitch relative to the virtual camera.
 ///
-/// Matches the inverse of `view_matrix` in renderer.rs. The output
-/// yaw/pitch feeds straight into the renderer without any further
-/// sign reconciliation: a ball on the scene's left side produces a
-/// yaw that, when passed to `view_matrix`, pans the virtual camera
-/// toward that ball. Trackers and panners never need to know that
-/// two camera planes exist — they see a unified panorama space.
-///
-/// Does not apply `rig_tilt` / `rig_roll`; those live in `view_matrix`.
-/// Unification is Step 4 of the camera-stack plan (`RigCorrection`).
+/// Thin wrapper over [`VirtualCamera::direction_to_yaw_pitch`] kept
+/// for the existing call sites until they carry a `VirtualCamera`
+/// directly. Panners, directors, and the render loop all share the
+/// same basis through this path.
 pub(crate) fn direction_to_yaw_pitch(
     dir: &Vector3<f32>,
     camera_position: &[f32; 3],
 ) -> ViewportPosition {
-    let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
-    let base_forward = (-eye).normalize();
-    let world_up = Vector3::new(0.0, 1.0, 0.0);
-    let base_right = base_forward.cross(&world_up).normalize();
-
-    // Pitch: elevation angle from horizontal plane
-    let pitch = dir.y.clamp(-1.0, 1.0).asin();
-
-    // Yaw: horizontal angle relative to base_forward.
-    let horizontal = Vector3::new(dir.x, 0.0, dir.z);
-    let h_len = horizontal.norm();
-    let yaw = if h_len > 1e-6 {
-        let h = horizontal / h_len;
-        let cos_yaw = h.dot(&base_forward).clamp(-1.0, 1.0);
-        let sin_yaw = h.dot(&base_right);
-        sin_yaw.atan2(cos_yaw)
-    } else {
-        0.0
-    };
-
-    ViewportPosition {
-        yaw,
-        pitch,
-        fov_degrees: None,
-    }
+    VirtualCamera::new(camera_position).direction_to_yaw_pitch(dir)
 }
 
-/// Exact inverse of [`direction_to_yaw_pitch`].
-///
-/// Rebuilds a unit direction from a (yaw, pitch) pair using the same
-/// diagonal virtual-camera basis (`base_forward = -eye/|eye|`,
-/// `base_right = base_forward × world_up`). The naïve "+Z-forward"
-/// formula inlined in `panorama_to_camera` does NOT match; using this
-/// helper there would fix the Forward A vs Forward C mismatch the
-/// audit flagged. That rewrite lands in Step 2 / Step 4 of the
-/// camera-stack plan.
-///
-/// `pitch` is expected in `(-π/2, π/2)`; at the poles yaw is
-/// undefined and the round-trip through `direction_to_yaw_pitch`
-/// collapses.
+/// Exact inverse of [`direction_to_yaw_pitch`]. Only called from
+/// tests today; production panorama_to_camera uses the method on
+/// [`VirtualCamera`] directly.
 #[cfg(test)]
 pub(crate) fn yaw_pitch_to_direction(
     yaw: f32,
     pitch: f32,
     camera_position: &[f32; 3],
 ) -> Vector3<f32> {
-    let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
-    let base_forward = (-eye).normalize();
-    let world_up = Vector3::new(0.0, 1.0, 0.0);
-    let base_right = base_forward.cross(&world_up).normalize();
-
-    let cos_pitch = pitch.cos();
-    let horizontal = base_forward * (cos_pitch * yaw.cos()) + base_right * (cos_pitch * yaw.sin());
-    Vector3::new(horizontal.x, pitch.sin(), horizontal.z)
+    VirtualCamera::new(camera_position).yaw_pitch_to_direction(yaw, pitch)
 }
 
 /// Test whether a point lies inside a polygon using the ray-casting algorithm.
@@ -1470,27 +1508,17 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "known failure: panorama_to_camera has stacked bugs \
-                (naive +Z-forward basis; passes [0,1] texture UV to \
-                lens::undistorted_to_distorted which expects pixels). \
-                Documented in camera-stack-handoff-2026-04-22. Fixed in \
-                Step 2 (unify basis via VirtualCamera) + Step 4 \
-                (RigCorrection). Run via `cargo test -- --ignored`."]
     fn camera_to_panorama_roundtrips_with_panorama_to_camera() {
-        // Step 1d: the full forward chain (camera_to_panorama) then
-        // backward chain (panorama_to_camera) must return the same
-        // normalized pixel position for points that lie unambiguously
-        // within one camera's coverage.
+        // Step 1d (un-ignored by Step 2): the full forward chain
+        // (camera_to_panorama) then backward chain (panorama_to_camera)
+        // must return the same normalized pixel position for points
+        // that lie unambiguously within one camera's coverage.
         //
-        // Expected to fail pre-refactor. Observed failure mode today:
-        // panorama_to_camera returns None for in-coverage points
-        // because the naive +Z-forward ray does not hit the diagonal
-        // L-shape plane at the expected spot, AND the result (if it
-        // did return) would be scaled wrong because [0,1] texture UV
-        // is passed to a pixel-space lens helper.
-        //
-        // Un-ignore after Step 2 (VirtualCamera basis unified) +
-        // Step 4 (RigCorrection) land.
+        // Pre-Step-2 panorama_to_camera used a naive "+Z forward" ray
+        // (breaking the Forward A vs Forward C agreement) AND passed
+        // texture UV to a pixel-space lens helper (filtering
+        // in-coverage results back out as None). Step 2 replaced
+        // both with VirtualCamera + world_to_plane_uv + forward_fisheye.
         let cal = test_calibration();
         let scene = test_scene(&cal);
 
