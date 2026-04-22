@@ -46,6 +46,7 @@
 #![forbid(unsafe_code)]
 
 pub(crate) mod clustering;
+pub mod detection_filters;
 pub mod panners;
 mod roi_filter;
 pub mod trackers;
@@ -452,6 +453,15 @@ pub fn setup_autocam(
             "Class IDs: ball={ball_id}, person={person_id} (from {} model labels)",
             class_names.len()
         );
+
+        // Pre-tracker flicker rejection: class-keyed bucketed-spatial
+        // histogram that drops recurrent static mimics (line
+        // intersections, logos, corner flags). Session-wide because
+        // the filter is class-aware, so it helps every tracker we
+        // might attach, not just BallTracker.
+        session.add_detection_filter(Box::new(
+            crate::detection_filters::FlickerDetectionFilter::with_defaults(),
+        ));
 
         // Smoother decorator's one-euro bidirectional filter window.
         // Zero-copy sources cannot buffer, so the window is disabled

@@ -53,10 +53,17 @@ use reco_core::detector::CameraId;
 /// A smaller `bucket_norm` means tighter bucketing (more fragments,
 /// fewer flicker flags); larger means coarser (faster merges, more
 /// flags).
+///
+/// `class_id` keeps separate spatial histograms per detector class
+/// so when the filter runs before the trackers (Step 7b), a ball
+/// flicker at bucket X doesn't count against a player that happens
+/// to stand still at the same bucket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FlickerKey {
     /// Which camera produced the detection.
     pub camera: CameraId,
+    /// Detector class that produced the detection.
+    pub class_id: u16,
     /// Integer bucket x-coordinate.
     pub bx: i32,
     /// Integer bucket y-coordinate.
@@ -111,10 +118,11 @@ impl FlickerFilter {
         }
     }
 
-    /// Bucketize a normalized camera-frame position.
-    pub fn key(&self, camera: CameraId, cx: f32, cy: f32) -> FlickerKey {
+    /// Bucketize a normalized camera-frame position for a class.
+    pub fn key(&self, camera: CameraId, class_id: u16, cx: f32, cy: f32) -> FlickerKey {
         FlickerKey {
             camera,
+            class_id,
             bx: (cx / self.bucket_norm) as i32,
             by: (cy / self.bucket_norm) as i32,
         }
@@ -125,13 +133,20 @@ impl FlickerFilter {
     /// rolling window).
     ///
     /// - `camera`: the detection's camera.
+    /// - `class_id`: detector class (separate histogram per class).
     /// - `center`: normalized camera-frame `(cx, cy)` in `[0, 1]`.
     /// - `t_ms`: monotonic timestamp; samples older than
     ///   `t_ms - window_ms` are evicted.
     #[must_use]
-    pub fn record_and_check(&mut self, camera: CameraId, center: (f32, f32), t_ms: f64) -> bool {
+    pub fn record_and_check(
+        &mut self,
+        camera: CameraId,
+        class_id: u16,
+        center: (f32, f32),
+        t_ms: f64,
+    ) -> bool {
         self.evict(t_ms);
-        let key = self.key(camera, center.0, center.1);
+        let key = self.key(camera, class_id, center.0, center.1);
         self.samples.push_back(Sample { key, t_ms });
         let hits = self.samples.iter().filter(|s| s.key == key).count() as u32;
         hits >= self.min_hits
@@ -159,49 +174,61 @@ impl FlickerFilter {
 mod tests {
     use super::*;
 
+    const CLASS_BALL: u16 = 0;
+    const CLASS_PLAYER: u16 = 1;
+
     #[test]
     fn single_hit_not_flicker() {
         let mut f = FlickerFilter::new(0.02, 1_000.0, 3);
-        assert!(!f.record_and_check(CameraId::Left, (0.5, 0.5), 0.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.5, 0.5), 0.0));
     }
 
     #[test]
     fn three_hits_same_bucket_flag() {
         let mut f = FlickerFilter::new(0.02, 1_000.0, 3);
-        assert!(!f.record_and_check(CameraId::Left, (0.50, 0.50), 0.0));
-        assert!(!f.record_and_check(CameraId::Left, (0.51, 0.51), 100.0));
-        assert!(f.record_and_check(CameraId::Left, (0.500, 0.500), 200.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.50, 0.50), 0.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.51, 0.51), 100.0));
+        assert!(f.record_and_check(CameraId::Left, CLASS_BALL, (0.500, 0.500), 200.0));
     }
 
     #[test]
     fn different_buckets_do_not_accumulate() {
         let mut f = FlickerFilter::new(0.02, 1_000.0, 2);
-        assert!(!f.record_and_check(CameraId::Left, (0.10, 0.10), 0.0));
-        assert!(!f.record_and_check(CameraId::Left, (0.90, 0.90), 100.0));
-        assert!(!f.record_and_check(CameraId::Left, (0.50, 0.50), 200.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.10, 0.10), 0.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.90, 0.90), 100.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.50, 0.50), 200.0));
     }
 
     #[test]
     fn different_cameras_do_not_accumulate() {
         let mut f = FlickerFilter::new(0.02, 1_000.0, 2);
-        assert!(!f.record_and_check(CameraId::Left, (0.50, 0.50), 0.0));
-        assert!(!f.record_and_check(CameraId::Right, (0.50, 0.50), 100.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.50, 0.50), 0.0));
+        assert!(!f.record_and_check(CameraId::Right, CLASS_BALL, (0.50, 0.50), 100.0));
+    }
+
+    #[test]
+    fn different_classes_do_not_accumulate() {
+        // Step 7b: a ball flickering at (0.5, 0.5) must not count
+        // against a player standing still at the same camera-pixel.
+        let mut f = FlickerFilter::new(0.02, 1_000.0, 2);
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.50, 0.50), 0.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_PLAYER, (0.50, 0.50), 100.0));
     }
 
     #[test]
     fn window_eviction_resets_flicker() {
         let mut f = FlickerFilter::new(0.02, 500.0, 2);
-        assert!(!f.record_and_check(CameraId::Left, (0.50, 0.50), 0.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.50, 0.50), 0.0));
         // Second hit inside window triggers.
-        assert!(f.record_and_check(CameraId::Left, (0.50, 0.50), 100.0));
+        assert!(f.record_and_check(CameraId::Left, CLASS_BALL, (0.50, 0.50), 100.0));
         // After window elapses, next hit is single again.
-        assert!(!f.record_and_check(CameraId::Left, (0.50, 0.50), 1_000.0));
+        assert!(!f.record_and_check(CameraId::Left, CLASS_BALL, (0.50, 0.50), 1_000.0));
     }
 
     #[test]
     fn bucket_key_matches_manual_compute() {
         let f = FlickerFilter::new(0.02, 1_000.0, 2);
-        let k = f.key(CameraId::Left, 0.58, 0.39);
+        let k = f.key(CameraId::Left, CLASS_BALL, 0.58, 0.39);
         assert_eq!(k.bx, 29);
         assert_eq!(k.by, 19);
     }

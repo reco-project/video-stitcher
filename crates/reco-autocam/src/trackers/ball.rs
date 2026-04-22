@@ -46,7 +46,7 @@ use reco_core::detector::CameraId;
 use reco_core::director::MappedDetection;
 use reco_core::tracker::{TrackState, TrackedEntity, Tracker};
 
-use crate::trackers::filters::{CoastStatus, Coaster, FlickerFilter};
+use crate::trackers::filters::{CoastStatus, Coaster};
 
 /// Default angular gate on jumps between frames (radians).
 ///
@@ -70,14 +70,15 @@ pub const DEFAULT_PLAYER_ANCHOR_RAD: f32 = 0.20;
 /// Singleton ball tracker emitting at most one
 /// [`TrackedEntity`] per frame.
 ///
-/// Internal state is just the last accepted measurement, a flicker
-/// history buffer, a coaster, and the optional current-frame player
-/// anchors. Construct with [`BallTracker::new`], optionally tune
-/// via the `with_*` builders, and hand to the session as a
+/// Internal state is the last accepted measurement, a coaster, and
+/// the optional current-frame player anchors. Flicker rejection is
+/// no longer the tracker's job - it runs session-wide in
+/// `FlickerDetectionFilter` (Step 7b) so it benefits every tracker,
+/// not just this one. Construct with [`BallTracker::new`], optionally
+/// tune via the `with_*` builders, and hand to the session as a
 /// `Box<dyn Tracker>`.
 pub struct BallTracker {
     class_id: u16,
-    flicker: FlickerFilter,
     coaster: Coaster,
     last: Option<LastKnown>,
     max_jump_rad: f32,
@@ -106,7 +107,6 @@ impl BallTracker {
     pub fn new(class_id: u16) -> Self {
         Self {
             class_id,
-            flicker: FlickerFilter::with_defaults(),
             coaster: Coaster::new(DEFAULT_COAST_FRAMES),
             last: None,
             max_jump_rad: DEFAULT_MAX_JUMP_RAD,
@@ -139,13 +139,6 @@ impl BallTracker {
     /// keeping the code path active.
     pub fn with_player_anchor_rad(mut self, rad: f32) -> Self {
         self.player_anchor_max_rad = rad.max(0.0);
-        self
-    }
-
-    /// Override the flicker filter entirely (parameters usually
-    /// tuned via [`FlickerFilter::new`]).
-    pub fn with_flicker(mut self, filter: FlickerFilter) -> Self {
-        self.flicker = filter;
         self
     }
 
@@ -199,12 +192,6 @@ impl BallTracker {
             (dy * dy + dp * dp).sqrt() <= self.player_anchor_max_rad
         })
     }
-
-    /// Number of samples currently in the flicker rolling window
-    /// (diagnostic).
-    pub fn flicker_sample_count(&self) -> usize {
-        self.flicker.sample_count()
-    }
 }
 
 impl Tracker for BallTracker {
@@ -223,21 +210,10 @@ impl Tracker for BallTracker {
                 );
                 continue;
             };
-            // Flicker: always record (even rejections keep the
-            // spatial histogram accurate).
-            if self
-                .flicker
-                .record_and_check(det.camera, det.camera_center, timestamp_ms)
-            {
-                log::trace!(
-                    "BallTracker: drop flicker — cam={:?} center=({:.3},{:.3}) conf={:.2}",
-                    det.camera,
-                    det.camera_center.0,
-                    det.camera_center.1,
-                    det.confidence
-                );
-                continue;
-            }
+            // Flicker rejection now runs upstream in the session's
+            // DetectionFilter chain (Step 7b), so by the time a
+            // detection reaches the tracker it has already passed
+            // the bucketed-spatial test.
             if !self.passes_player_anchor(pos.yaw, pos.pitch) {
                 log::trace!(
                     "BallTracker: drop off-player — yaw={:.3} pitch={:.3} nearest player > {:.3}rad",
@@ -487,20 +463,9 @@ mod tests {
         assert_eq!(out[0].yaw, 0.0);
     }
 
-    #[test]
-    fn flicker_bucket_rejected_after_threshold() {
-        // Tight flicker: bucket=0.5 (so anywhere around 0.5, 0.5 is the
-        // same bucket), window 1000ms, min_hits=2.
-        let mut t = BallTracker::new(0).with_flicker(FlickerFilter::new(0.5, 1_000.0, 2));
-        // First hit accepted.
-        let d1 = det(CameraId::Left, 0.5, 0.0, 0.8, 0.55, 0.55);
-        let out1 = t.update(&[d1], 0.0);
-        assert_eq!(out1[0].state, TrackState::Tracking);
-        // Second hit same bucket → flicker rejection → coasting.
-        let d2 = det(CameraId::Left, 0.5, 0.0, 0.8, 0.56, 0.56);
-        let out2 = t.update(&[d2], 100.0);
-        assert_eq!(out2[0].state, TrackState::Coasting);
-    }
+    // Flicker-rejection is no longer the tracker's job. The
+    // equivalent coverage lives in `detection_filters::tests`
+    // (see `drops_recurrent_bucket_hits_across_frames`).
 
     #[test]
     fn cross_camera_handoff_tracks() {
