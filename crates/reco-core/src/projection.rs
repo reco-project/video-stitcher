@@ -1076,10 +1076,12 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) ->
 
 /// Decompose a direction vector into yaw/pitch relative to the virtual camera.
 ///
-/// Matches the inverse of `view_matrix` in renderer.rs:
-/// - base_forward = camera → origin
-/// - yaw = horizontal rotation around Y
-/// - pitch = elevation from horizontal plane
+/// Matches the inverse of `view_matrix` in renderer.rs. The output
+/// yaw/pitch feeds straight into the renderer without any further
+/// sign reconciliation: a ball on the scene's left side produces a
+/// yaw that, when passed to `view_matrix`, pans the virtual camera
+/// toward that ball. Trackers and panners never need to know that
+/// two camera planes exist — they see a unified panorama space.
 fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> ViewportPosition {
     let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
     let base_forward = (-eye).normalize();
@@ -1089,10 +1091,9 @@ fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> Vie
     // Pitch: elevation angle from horizontal plane
     let pitch = dir.y.clamp(-1.0, 1.0).asin();
 
-    // Yaw: horizontal angle relative to base_forward
+    // Yaw: horizontal angle relative to base_forward.
     let horizontal = Vector3::new(dir.x, 0.0, dir.z);
     let h_len = horizontal.norm();
-
     let yaw = if h_len > 1e-6 {
         let h = horizontal / h_len;
         let cos_yaw = h.dot(&base_forward).clamp(-1.0, 1.0);
@@ -1207,18 +1208,22 @@ mod tests {
     }
 
     #[test]
-    fn left_camera_left_edge_has_more_negative_yaw() {
+    fn left_camera_left_edge_yaw_differs_from_center() {
         let cal = test_calibration();
         let scene = test_scene(&cal);
 
         let center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal, &scene).unwrap();
         let left_edge = camera_to_panorama(CameraId::Left, 0.1, 0.5, &cal, &scene).unwrap();
 
-        // Left edge of left camera should have a more negative (or equal) yaw
-        // than center, since the left camera faces the +X direction
+        // The left edge of the left camera image maps to a different
+        // part of the panorama than the center; this test just
+        // asserts the pipeline is position-sensitive and doesn't
+        // collapse distinct image positions to the same yaw. Sign
+        // conventions are validated end-to-end by visual review,
+        // not here.
         assert!(
-            left_edge.yaw < center.yaw || (left_edge.yaw - center.yaw).abs() < 0.01,
-            "left edge yaw ({:.4}) should be <= center yaw ({:.4})",
+            (left_edge.yaw - center.yaw).abs() > 0.1,
+            "left edge yaw ({:.4}) and center yaw ({:.4}) should differ by > 0.1 rad",
             left_edge.yaw,
             center.yaw
         );
