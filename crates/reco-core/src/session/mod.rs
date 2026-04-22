@@ -492,6 +492,11 @@ pub struct StitchSession {
     error_policy: ErrorPolicy,
     /// Dropped frame counter (for metrics).
     frames_dropped: u64,
+    /// Optional pipeline event sink for structured observability.
+    /// When `None` (default), every emit site is a single branch.
+    /// See [`set_event_sink`](Self::set_event_sink) and
+    /// [`crate::pipeline_event`] for the vocabulary.
+    event_sink: Option<Box<dyn crate::pipeline_event::PipelineEventSink>>,
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
@@ -612,6 +617,7 @@ impl StitchSession {
             session_start: None,
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
+            event_sink: None,
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
             #[cfg(target_os = "linux")]
@@ -693,6 +699,30 @@ impl StitchSession {
     /// the last known tracked objects on skipped frames.
     pub fn set_detection_interval(&mut self, interval: u64) {
         self.detection.set_detection_interval(interval);
+    }
+
+    /// Attach a pipeline event sink for structured observability.
+    ///
+    /// See [`crate::pipeline_event`] for the event vocabulary and the
+    /// `BackpressuredSink` wrapper that keeps emission off the render
+    /// thread. Typical usage:
+    ///
+    /// ```rust,ignore
+    /// use reco_core::pipeline_event::BackpressuredSink;
+    /// use reco_io::jsonl_sink::JsonlSink;
+    ///
+    /// let inner = JsonlSink::create("trace.jsonl")?;
+    /// let sink = BackpressuredSink::new(Box::new(inner), 256, None);
+    /// session.set_event_sink(Box::new(sink));
+    /// ```
+    ///
+    /// Pass [`None`](Option::None) equivalent by not calling this at
+    /// all. There is deliberately no `clear_event_sink` - in a
+    /// <1.0.0 codebase we re-create the session for that. When an
+    /// external consumer hits this friction we'll add one.
+    pub fn set_event_sink(&mut self, sink: Box<dyn crate::pipeline_event::PipelineEventSink>) {
+        log::info!("StitchSession: event sink attached");
+        self.event_sink = Some(sink);
     }
 
     /// Attach a singleton ball tracker. See
@@ -889,6 +919,15 @@ impl StitchSession {
             pos.pitch = clamped.pitch - rig_tilt;
         }
 
+        // Trace: PosePresented. This is the pose the renderer will
+        // actually consume for this frame (post-clamp, post-FOV-cap).
+        if let Some(sink) = self.event_sink.as_deref_mut() {
+            sink.emit(crate::pipeline_event::PipelineEvent::PosePresented {
+                frame_index: self.frame_count,
+                pose: pos,
+            });
+        }
+
         if let Some(fov) = pos.fov_degrees {
             self.core.pipeline_mut().set_fov(fov);
         }
@@ -1025,10 +1064,18 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
-        // Fire sink for external consumers.
+        // Fire the legacy per-detection sink for external consumers.
         self.detection
             .fire_sink(self.frame_count, timestamp_ms)
             .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
+
+        // Trace: DetectionsRaw. Only clones when an event sink is attached.
+        if let Some(sink) = self.event_sink.as_deref_mut() {
+            sink.emit(crate::pipeline_event::PipelineEvent::DetectionsRaw {
+                frame_index: self.frame_count,
+                detections: self.detection.last_detections.clone(),
+            });
+        }
 
         // Drive pose resolution via the shared panner dispatch.
         // Runs even when the detections list is empty so trackers get
@@ -1043,6 +1090,7 @@ impl StitchSession {
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
             &mut self.previous_panner_pose,
+            self.event_sink.as_deref_mut(),
             crate::panner::DispatchContext {
                 detections: &self.detection.last_detections,
                 calibration,
@@ -1476,6 +1524,15 @@ impl StitchSession {
                     None => break,
                 }
             };
+
+            // Trace: FrameStart fires once per frame at the top of the
+            // loop, before detection / pose / render work.
+            if let Some(sink) = self.event_sink.as_deref_mut() {
+                sink.emit(crate::pipeline_event::PipelineEvent::FrameStart {
+                    frame_index: self.frame_count,
+                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
+                });
+            }
 
             match &frame {
                 #[cfg(target_os = "linux")]

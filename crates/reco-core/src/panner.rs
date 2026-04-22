@@ -34,6 +34,7 @@
 
 use crate::calibration::MatchCalibration;
 use crate::director::{MappedDetection, ViewportPosition};
+use crate::pipeline_event::{PipelineEvent, PipelineEventSink};
 use crate::tracker::{Tracker, WorldState};
 
 /// Per-frame context a [`Panner`] receives alongside the world state.
@@ -116,11 +117,17 @@ pub(crate) struct DispatchContext<'a> {
 ///    place; return the decided pose.
 ///
 /// Returns `None` when no panner is attached.
+///
+/// When a [`PipelineEventSink`] is supplied via `event_sink`, emits a
+/// [`PipelineEvent::WorldState`] right before `panner.decide` and a
+/// [`PipelineEvent::PanDecision`] right after. Both sites are part
+/// of the Step 6 trace vocabulary.
 pub(crate) fn dispatch(
     panner: Option<&mut Box<dyn Panner>>,
     player_tracker: Option<&mut Box<dyn Tracker>>,
     ball_tracker: Option<&mut Box<dyn Tracker>>,
     previous_panner_pose: &mut ViewportPosition,
+    mut event_sink: Option<&mut (dyn PipelineEventSink + '_)>,
     ctx: DispatchContext<'_>,
 ) -> Option<ViewportPosition> {
     let panner = panner?;
@@ -146,6 +153,16 @@ pub(crate) fn dispatch(
         world.ball = ents.into_iter().next();
     }
 
+    // Trace: WorldState (only pays for the clone when a sink exists).
+    if let Some(sink) = event_sink.as_mut() {
+        sink.emit(PipelineEvent::WorldState {
+            frame_index: ctx.frame_index,
+            timestamp_ms: ctx.timestamp_ms,
+            players: world.players.clone(),
+            ball: world.ball,
+        });
+    }
+
     let pan_ctx = PanContext {
         frame_index: ctx.frame_index,
         timestamp_ms: ctx.timestamp_ms,
@@ -154,6 +171,15 @@ pub(crate) fn dispatch(
     };
     let pose = panner.decide(&world, &pan_ctx);
     *previous_panner_pose = pose;
+
+    // Trace: PanDecision.
+    if let Some(sink) = event_sink.as_mut() {
+        sink.emit(PipelineEvent::PanDecision {
+            frame_index: ctx.frame_index,
+            pose,
+        });
+    }
+
     Some(pose)
 }
 
