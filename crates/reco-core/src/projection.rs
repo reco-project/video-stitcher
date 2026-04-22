@@ -1154,7 +1154,10 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) ->
 ///
 /// Does not apply `rig_tilt` / `rig_roll`; those live in `view_matrix`.
 /// Unification is Step 4 of the camera-stack plan (`RigCorrection`).
-fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> ViewportPosition {
+pub(crate) fn direction_to_yaw_pitch(
+    dir: &Vector3<f32>,
+    camera_position: &[f32; 3],
+) -> ViewportPosition {
     let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
     let base_forward = (-eye).normalize();
     let world_up = Vector3::new(0.0, 1.0, 0.0);
@@ -1196,7 +1199,11 @@ fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> Vie
 /// undefined and the round-trip through `direction_to_yaw_pitch`
 /// collapses.
 #[cfg(test)]
-fn yaw_pitch_to_direction(yaw: f32, pitch: f32, camera_position: &[f32; 3]) -> Vector3<f32> {
+pub(crate) fn yaw_pitch_to_direction(
+    yaw: f32,
+    pitch: f32,
+    camera_position: &[f32; 3],
+) -> Vector3<f32> {
     let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
     let base_forward = (-eye).normalize();
     let world_up = Vector3::new(0.0, 1.0, 0.0);

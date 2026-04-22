@@ -1226,4 +1226,76 @@ mod tests {
         let p = m * nalgebra::Vector4::new(0.0, 0.0, 1.0, 1.0);
         assert!((p.z - 1.0).abs() < 1e-5);
     }
+
+    #[test]
+    #[ignore = "known failure: yaw sign is flipped between \
+                direction_to_yaw_pitch and view_matrix because \
+                base_right = base_forward x world_up makes \
+                (base_forward, base_right, world_up) a left-handed \
+                triple. view_matrix's right-hand yaw rotation moves \
+                toward -base_right, while direction_to_yaw_pitch's \
+                atan2(h*base_right, h*base_forward) reads the \
+                opposite sign. Pitch is consistent. Root-cause fix \
+                lives in Step 2 (unify VirtualCamera basis). \
+                Un-ignore there. Run via `cargo test -- --ignored`."]
+    fn view_matrix_self_consistent_with_direction_to_yaw_pitch() {
+        // Step 1e: directions synthesized at a known (yaw, pitch),
+        // run through direction_to_yaw_pitch, then fed to
+        // view_matrix, must transform a point on the dir ray to the
+        // camera's -Z axis (the right-hand convention
+        // nalgebra::Isometry3::look_at_rh uses). This is the
+        // self-consistency check the handoff's "Model 4: nothing"
+        // cross-cutting finding lives on.
+        //
+        // Observed sign flip (yaw only):
+        //   view_matrix(yaw=+θ) * base_forward
+        //     == yaw_pitch_to_direction(yaw=-θ, ...)
+        // i.e. the helpers disagree only on yaw orientation.
+        // Confirmed empirically with nalgebra (not a pitch-basis or
+        // pitch-sign issue - pitch round-trips exactly).
+        //
+        // rig_tilt and rig_roll are both zero here: direction_to_yaw_pitch
+        // does not take them (Model 4), so any non-zero tilt/roll
+        // would break the round-trip by definition. Step 4 lands
+        // RigCorrection and unblocks the full (yaw, pitch, tilt, roll)
+        // version of this test.
+        let camera_position = [0.24_f32, 0.0, 0.24];
+        let yaw_steps = [-1.0_f32, -0.5, -0.1, 0.0, 0.1, 0.5, 1.0];
+        let pitch_steps = [-0.6_f32, -0.2, 0.0, 0.2, 0.6];
+
+        for &yaw in &yaw_steps {
+            for &pitch in &pitch_steps {
+                let dir = crate::projection::yaw_pitch_to_direction(yaw, pitch, &camera_position);
+                let pos = crate::projection::direction_to_yaw_pitch(&dir, &camera_position);
+
+                let view = view_matrix(&camera_position, pos.yaw, pos.pitch, 0.0, 0.0);
+
+                // A point at eye + dir (unit step along the direction)
+                // must land on camera-space -Z at distance 1.
+                let target = nalgebra::Vector4::new(
+                    camera_position[0] + dir.x,
+                    camera_position[1] + dir.y,
+                    camera_position[2] + dir.z,
+                    1.0,
+                );
+                let cam = view * target;
+
+                assert!(
+                    cam.x.abs() < 1e-4,
+                    "x should be zero (on camera forward axis), got {} at yaw={yaw} pitch={pitch}",
+                    cam.x
+                );
+                assert!(
+                    cam.y.abs() < 1e-4,
+                    "y should be zero (on camera forward axis), got {} at yaw={yaw} pitch={pitch}",
+                    cam.y
+                );
+                assert!(
+                    (cam.z + 1.0).abs() < 1e-4,
+                    "z should be -1 (camera looks down -Z), got {} at yaw={yaw} pitch={pitch}",
+                    cam.z
+                );
+            }
+        }
+    }
 }
