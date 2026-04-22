@@ -360,9 +360,16 @@ impl RecoSource {
         };
         log::info!("reco-obs: GPU initialized: {}", gpu.gpu_name());
 
+        // Forward calibration's rig tilt + roll into the viewport.
+        // Pre-Step-4b this used `..ViewportConfig::default()` which
+        // silently zeroed both, so OBS rendered tilted-rig footage
+        // with a skewed horizon while cli/preview did not.
+        // RigCorrection in reco-core handles the rest.
         let viewport = ViewportConfig {
             width: self.output_width,
             height: self.output_height,
+            rig_tilt: calibration.rig_tilt as f32,
+            rig_roll: calibration.rig_roll as f32,
             ..ViewportConfig::default()
         };
 
