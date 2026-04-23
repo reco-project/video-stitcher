@@ -63,7 +63,8 @@ use reco_core::projection::CoverageBoundary;
 ///
 /// `#[non_exhaustive]` so new intents can be added without a breaking
 /// change (e.g. `SetFov(f32)`, `PresetRecall(u8)`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum HotkeyIntent {
     /// Pan the target yaw left by [`PoseControlConfig::hotkey_yaw_step_rad`].

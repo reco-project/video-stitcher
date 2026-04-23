@@ -61,7 +61,8 @@ use pose_control::HotkeyIntent;
 /// `#[non_exhaustive]` so new intent categories can be added without
 /// breaking every consumer's match arm. Consumers already write
 /// `_ =>` fallbacks per Rust's non-exhaustive rule.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ControlIntent {
     /// Pan / zoom / reset driven by a hotkey binding. Wraps
@@ -88,7 +89,8 @@ pub enum ControlIntent {
 /// Pose-direct intents. Angles in radians for yaw/pitch, degrees
 /// for FOV — same convention as
 /// [`reco_core::pose_control::PoseControl`].
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "action", content = "value", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum PoseIntent {
     /// Set target yaw (radians) to an absolute value.
@@ -110,7 +112,8 @@ pub enum PoseIntent {
 /// Encoder / quality intents. String fields are the vocabulary the
 /// encoder crate (reco-io) understands (codec names, preset names);
 /// reco-control stays framework-agnostic.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "action", content = "value", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum QualityIntent {
     /// Change the active codec (e.g. `"h264"`, `"hevc"`, `"av1"`).
@@ -131,7 +134,8 @@ pub enum QualityIntent {
 }
 
 /// Recording / replay / snapshot intents.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum CaptureIntent {
     /// Begin encoding to the configured output path.
@@ -149,7 +153,8 @@ pub enum CaptureIntent {
 }
 
 /// Detector / model selection intents.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "action", content = "value", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ModelSelectIntent {
     /// Switch to a detector model at the given path (or bundle
@@ -275,5 +280,34 @@ mod tests {
             }
         }
         assert_eq!(handle(&intent), "snapshot");
+    }
+
+    #[test]
+    fn serde_roundtrip_hotkey() {
+        let intent = ControlIntent::Hotkey(HotkeyIntent::ZoomIn);
+        let json = serde_json::to_string(&intent).unwrap();
+        assert!(json.contains("\"kind\":\"hotkey\""));
+        let back: ControlIntent = serde_json::from_str(&json).unwrap();
+        assert_eq!(intent, back);
+    }
+
+    #[test]
+    fn serde_roundtrip_pose_delta() {
+        let intent = ControlIntent::Pose(PoseIntent::DeltaYawRad(0.1));
+        let json = serde_json::to_string(&intent).unwrap();
+        assert!(json.contains("\"kind\":\"pose\""));
+        let back: ControlIntent = serde_json::from_str(&json).unwrap();
+        assert_eq!(intent, back);
+    }
+
+    #[test]
+    fn serde_roundtrip_quality_resolution() {
+        let intent = ControlIntent::Quality(QualityIntent::SetResolution {
+            width: 1920,
+            height: 1080,
+        });
+        let json = serde_json::to_string(&intent).unwrap();
+        let back: ControlIntent = serde_json::from_str(&json).unwrap();
+        assert_eq!(intent, back);
     }
 }
