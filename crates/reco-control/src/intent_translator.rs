@@ -7,12 +7,12 @@
 //!
 //! Every consumer (reco-gui, reco-cli preview, reco-obs) turns a
 //! transport's [`ControlIntent`] stream into calls on
-//! [`PoseControl`] plus domain-specific side effects (start encoder,
+//! [`PoseControl`](crate::pose_control::PoseControl) plus domain-specific side effects (start encoder,
 //! swap detector model, change codec). Before this type, each
 //! consumer wrote that dispatch inline. [`IntentTranslator`] owns
 //! the translation once.
 //!
-//! Pose intents route directly to the borrowed [`PoseControl`].
+//! Pose intents route directly to the borrowed [`PoseControl`](crate::pose_control::PoseControl).
 //! Non-pose intents (quality / capture / model-select) route to
 //! consumer-provided closures; those slots are `Option<Box<dyn FnMut>>`
 //! rather than trait objects on the translator itself, matching the

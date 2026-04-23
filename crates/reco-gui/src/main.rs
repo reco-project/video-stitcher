@@ -524,7 +524,7 @@ impl AppState {
         IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(PoseIntent::Reset));
     }
 
-    /// Dispatch a batch of control intents from any [`ControlTransport`].
+    /// Dispatch a batch of control intents from any [`ControlTransport`](reco_control::ControlTransport).
     /// Routes through [`IntentTranslator`], then runs the coverage
     /// clamp once for the whole batch.
     #[allow(dead_code)] // called once transports are wired

@@ -1,4 +1,4 @@
-//! Singleton ball tracker composing [`FlickerFilter`] + player-anchor
+//! Singleton ball tracker composing [`FlickerFilter`](super::filters::FlickerFilter) + player-anchor
 //! + nearest-to-last selection + [`Coaster`].
 //!
 //! Port of the Python POC at `/tmp/reco-ai-eval/build_tracker_video.py`
@@ -13,7 +13,7 @@
 //! 2. **Position required** — detections whose
 //!    [`MappedDetection::position`] is `None` (failed panorama
 //!    projection) are dropped.
-//! 3. **Flicker filter** — see [`FlickerFilter`]. Buckets recurring
+//! 3. **Flicker filter** — see [`FlickerFilter`](super::filters::FlickerFilter). Buckets recurring
 //!    at the same camera-frame pixel in a rolling window are tagged
 //!    as static mimics and rejected.
 //! 4. **Player anchor** (optional) — if player anchors have been

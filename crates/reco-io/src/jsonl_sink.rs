@@ -1,6 +1,6 @@
-//! JSON Lines [`PipelineEventSink`] - the default shipping sink.
+//! JSON Lines [`PipelineEventSink`](reco_core::pipeline_event::PipelineEventSink) - the default shipping sink.
 //!
-//! Opens a file, serializes each [`PipelineEvent`] to JSON, and writes
+//! Opens a file, serializes each [`PipelineEvent`](reco_core::pipeline_event::PipelineEvent) to JSON, and writes
 //! one event per line terminated by `\n`. Compatible with the usual
 //! jq / streaming parsers: every line is a complete JSON object.
 //!

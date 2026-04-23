@@ -66,7 +66,7 @@ use pose_control::HotkeyIntent;
 #[non_exhaustive]
 pub enum ControlIntent {
     /// Pan / zoom / reset driven by a hotkey binding. Wraps
-    /// [`reco_core::pose_control::HotkeyIntent`] so consumers that
+    /// [`HotkeyIntent`] so consumers that
     /// already dispatch HotkeyIntents (via `PoseControl::apply_hotkey`)
     /// can forward directly.
     Hotkey(HotkeyIntent),
@@ -88,7 +88,7 @@ pub enum ControlIntent {
 
 /// Pose-direct intents. Angles in radians for yaw/pitch, degrees
 /// for FOV — same convention as
-/// [`reco_core::pose_control::PoseControl`].
+/// [`PoseControl`](crate::pose_control::PoseControl).
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "action", content = "value", rename_all = "snake_case")]
 #[non_exhaustive]

@@ -108,9 +108,9 @@ pub mod nv12_converter;
 pub mod panner;
 pub mod pipeline;
 /// Structured observability: optional sink that records a
-/// per-frame [`pipeline_event::PipelineEvent`] stream from the
-/// stitch loop. See [`pipeline_event`] for the event vocabulary
-/// and the non-blocking `BackpressuredSink` wrapper (Step 6b).
+/// per-frame [`PipelineEvent`](crate::pipeline_event::PipelineEvent) stream from the
+/// stitch loop. See [`pipeline_event`](crate::pipeline_event) for the event vocabulary
+/// and the non-blocking [`BackpressuredSink`](crate::pipeline_event::BackpressuredSink) wrapper (Step 6b).
 pub mod pipeline_event;
 pub mod projection;
 pub mod renderer;

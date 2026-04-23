@@ -1334,7 +1334,7 @@ impl StitchCore {
     }
 
     /// Toggle the constrained-look flag. Returns the new value.
-    /// Consumers handling [`HotkeyIntent::ToggleConstrained`](crate::pose_control::HotkeyIntent::ToggleConstrained)
+    /// Consumers handling `HotkeyIntent::ToggleConstrained`
     /// wire it to this method.
     pub fn toggle_constrained_look(&mut self) -> bool {
         self.constrained_look = !self.constrained_look;

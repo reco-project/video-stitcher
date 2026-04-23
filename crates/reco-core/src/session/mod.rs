@@ -722,7 +722,7 @@ impl StitchSession {
     /// session.set_event_sink(Box::new(sink));
     /// ```
     ///
-    /// Pass [`None`](Option::None) equivalent by not calling this at
+    /// Pass [`None`] equivalent by not calling this at
     /// all. There is deliberately no `clear_event_sink` - in a
     /// <1.0.0 codebase we re-create the session for that. When an
     /// external consumer hits this friction we'll add one.
