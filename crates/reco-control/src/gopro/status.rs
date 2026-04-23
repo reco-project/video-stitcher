@@ -37,12 +37,8 @@ impl GoProStatus {
     /// We extract the `status` map and look up known status IDs.
     pub(crate) fn from_state_json(json: &serde_json::Value) -> Self {
         let status = json.get("status").and_then(|v| v.as_object());
-        let get_u64 = |id: u8| -> Option<u64> {
-            status?.get(&id.to_string())?.as_u64()
-        };
-        let get_bool = |id: u8| -> Option<bool> {
-            Some(get_u64(id)? != 0)
-        };
+        let get_u64 = |id: u8| -> Option<u64> { status?.get(&id.to_string())?.as_u64() };
+        let get_bool = |id: u8| -> Option<bool> { Some(get_u64(id)? != 0) };
 
         use super::constants::StatusId;
         Self {
@@ -64,9 +60,8 @@ impl GoProStatus {
 impl GoProInfo {
     /// Parse info from the JSON response of `GET /gopro/camera/info`.
     pub(crate) fn from_info_json(json: &serde_json::Value) -> Self {
-        let get_str = |key: &str| -> Option<String> {
-            json.get(key)?.as_str().map(|s| s.to_string())
-        };
+        let get_str =
+            |key: &str| -> Option<String> { json.get(key)?.as_str().map(|s| s.to_string()) };
         Self {
             model_number: json
                 .get("info")

@@ -29,10 +29,11 @@
 //! use reco_core::detector::CameraId;
 //! # let det_center = (0.58, 0.39);
 //! # let t_ms = 120.0;
+//! # let class_id = 0_u16;
 //!
 //! let mut f = FlickerFilter::with_defaults();
 //! // For each candidate detection in this frame:
-//! let is_flicker = f.record_and_check(CameraId::Left, det_center, t_ms);
+//! let is_flicker = f.record_and_check(CameraId::Left, class_id, det_center, t_ms);
 //! if is_flicker {
 //!     // drop — recurrent static mimic
 //! }

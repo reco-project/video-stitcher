@@ -967,9 +967,18 @@ fn main() -> anyhow::Result<()> {
             };
 
             if let Some(info) = cam.info() {
-                println!("Model:    {}", info.model_name.as_deref().unwrap_or("unknown"));
-                println!("Firmware: {}", info.firmware_version.as_deref().unwrap_or("unknown"));
-                println!("Serial:   {}", info.serial_number.as_deref().unwrap_or("unknown"));
+                println!(
+                    "Model:    {}",
+                    info.model_name.as_deref().unwrap_or("unknown")
+                );
+                println!(
+                    "Firmware: {}",
+                    info.firmware_version.as_deref().unwrap_or("unknown")
+                );
+                println!(
+                    "Serial:   {}",
+                    info.serial_number.as_deref().unwrap_or("unknown")
+                );
                 println!("AP SSID:  {}", info.ap_ssid.as_deref().unwrap_or("unknown"));
             }
 

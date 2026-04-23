@@ -188,9 +188,7 @@ impl GoProCamera {
         fps: Fps,
         lens: VideoLens,
     ) -> Result<(), GoProError> {
-        log::info!(
-            "GoPro: applying sports preset: {resolution:?} @ {fps:?}, lens={lens:?}"
-        );
+        log::info!("GoPro: applying sports preset: {resolution:?} @ {fps:?}, lens={lens:?}");
         self.set_preset_group(PresetGroup::Video)?;
         self.set_setting(SettingId::VideoResolution, resolution as u32)?;
         self.set_setting(SettingId::FramesPerSecond, fps as u32)?;
@@ -213,11 +211,8 @@ impl GoProCamera {
         port: u16,
         protocol: WebcamProtocol,
     ) -> Result<String, GoProError> {
-        log::info!(
-            "GoPro: starting webcam: {resolution:?}, {fov:?}, port={port}, {protocol:?}"
-        );
-        self.client
-            .webcam_start(resolution, fov, port, protocol)?;
+        log::info!("GoPro: starting webcam: {resolution:?}, {fov:?}, port={port}, {protocol:?}");
+        self.client.webcam_start(resolution, fov, port, protocol)?;
         let addr = match protocol {
             WebcamProtocol::Ts => format!("udp://0.0.0.0:{port}"),
             WebcamProtocol::Rtsp => format!("rtsp://{}:{port}/live", self.client.base_url()),

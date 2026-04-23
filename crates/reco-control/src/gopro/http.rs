@@ -69,9 +69,7 @@ impl GoProHttpClient {
 
     /// `GET /gopro/camera/presets/set_group?id={group_id}` - switch preset group.
     pub fn set_preset_group(&self, group_id: u16) -> Result<(), GoProError> {
-        self.get_ok(&format!(
-            "/gopro/camera/presets/set_group?id={group_id}"
-        ))
+        self.get_ok(&format!("/gopro/camera/presets/set_group?id={group_id}"))
     }
 
     /// `GET /gopro/camera/digital_zoom?percent={n}` - digital zoom (0-100).

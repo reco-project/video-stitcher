@@ -219,8 +219,10 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                     }
                 }
                 Err(e) => {
-                    let msg = format!("Autocam setup failed: {e}. \
-                                       Pass --allow-no-tracking to continue without tracking.");
+                    let msg = format!(
+                        "Autocam setup failed: {e}. \
+                                       Pass --allow-no-tracking to continue without tracking."
+                    );
                     if allow_fallback {
                         log::warn!("{msg}");
                     } else {
