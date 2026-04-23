@@ -577,23 +577,27 @@ impl ApplicationHandler for App {
                             event_loop.exit();
                         }
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Pose(PoseIntent::DeltaYawRad(ARROW_PAN_STEP)));
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaYawRad(ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Pose(PoseIntent::DeltaYawRad(-ARROW_PAN_STEP)));
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaYawRad(-ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Pose(PoseIntent::DeltaPitchRad(ARROW_PAN_STEP)));
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaPitchRad(ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Pose(PoseIntent::DeltaPitchRad(-ARROW_PAN_STEP)));
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaPitchRad(-ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Space) => {

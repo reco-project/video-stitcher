@@ -521,8 +521,7 @@ impl AppState {
     /// the translator so the same intent path works for both Slint
     /// callbacks and future remote transports.
     fn reset_view(&mut self) {
-        IntentTranslator::new(&mut self.pose)
-            .dispatch(ControlIntent::Pose(PoseIntent::Reset));
+        IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(PoseIntent::Reset));
     }
 
     /// Dispatch a batch of control intents from any [`ControlTransport`].
