@@ -421,7 +421,11 @@ impl PoseControl {
     pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
         ViewportPosition {
             yaw: self.current_yaw_rad,
-            pitch: self.current_pitch_rad + rig_tilt * (1.0 - self.current_yaw_rad.cos()),
+            pitch: reco_core::rig_correction::render_pitch(
+                self.current_yaw_rad,
+                self.current_pitch_rad,
+                rig_tilt,
+            ),
             fov_degrees: Some(self.current_fov_deg),
         }
     }

@@ -557,6 +557,10 @@ pub struct CoverageBoundary {
     /// Minimum pitch range across all yaw positions.
     /// Determines the maximum safe FOV.
     min_pitch_range: f32,
+    /// Camera position from the scene geometry. Stored so
+    /// `safe_clamp` can construct a `VirtualCamera` for the exact
+    /// user-to-world rig correction mapping.
+    camera_position: [f32; 3],
 }
 
 /// Result of clamping a viewport position to the safe panning region.
@@ -683,6 +687,7 @@ impl CoverageBoundary {
                 left_slices: vec![(0.0, 0.0); n_slices],
                 right_slices: vec![(0.0, 0.0); n_slices],
                 min_pitch_range: 0.0,
+                camera_position: scene.camera_position,
             };
         }
 
@@ -801,6 +806,7 @@ impl CoverageBoundary {
             left_slices,
             right_slices,
             min_pitch_range,
+            camera_position: scene.camera_position,
         }
     }
 
@@ -882,12 +888,19 @@ impl CoverageBoundary {
         aspect: f32,
         rig_tilt: f32,
     ) -> ClampedPosition {
-        // Transform to world space, clamp there, transform back.
-        let world_pitch = pitch + rig_tilt;
+        // Transform human-frame pitch to world-space pitch using the
+        // exact tilt coupling factor. Pre-v2 this used the constant
+        // `pitch + rig_tilt` approximation which was wrong at yaw != 0.
+        let world_pitch =
+            crate::rig_correction::human_to_world_pitch(yaw, pitch, rig_tilt);
         let clamped = self.safe_clamp_world(yaw, world_pitch, fov_v_deg, aspect);
         ClampedPosition {
             yaw: clamped.yaw,
-            pitch: clamped.pitch - rig_tilt,
+            pitch: crate::rig_correction::world_to_human_pitch(
+                clamped.yaw,
+                clamped.pitch,
+                rig_tilt,
+            ),
         }
     }
 
@@ -967,6 +980,7 @@ impl CoverageBoundary {
             left_slices: self.left_slices.clone(),
             right_slices: self.right_slices.clone(),
             min_pitch_range: self.min_pitch_range,
+            camera_position: self.camera_position,
         }
     }
 }

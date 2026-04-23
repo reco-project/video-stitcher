@@ -114,6 +114,7 @@ pub mod pipeline;
 pub mod pipeline_event;
 pub mod projection;
 pub mod renderer;
+pub mod rig_correction;
 pub mod rgba_readback;
 pub mod scene;
 pub mod session;
