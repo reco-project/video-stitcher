@@ -41,6 +41,12 @@
 /// Relocated from reco-core in Step 13 of the camera-stack plan.
 pub mod pose_control;
 
+/// Central dispatcher from [`ControlIntent`] to
+/// [`pose_control::PoseControl`] and consumer-supplied handlers for
+/// non-pose categories. See the Step 12 design note.
+pub mod intent_translator;
+
+pub use intent_translator::IntentTranslator;
 use pose_control::HotkeyIntent;
 
 // ---------------------------------------------------------------------------
