@@ -129,7 +129,7 @@ pub mod stitch_renderer;
 /// [`WorldState`](tracker::WorldState), and
 /// [`TrackedEntity`](tracker::TrackedEntity). The tracker half of
 /// the tracker/panner split: turns noisy per-frame detections into
-/// stable tracked entities with velocity and lifecycle state.
+/// stable tracked entities with lifecycle state.
 /// Implementations (BallTracker, PlayerTracker, …) live in
 /// `reco-autocam`.
 pub mod tracker;

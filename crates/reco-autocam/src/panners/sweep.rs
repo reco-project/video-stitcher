@@ -161,7 +161,6 @@ mod tests {
                 class_id: 0,
                 yaw: 1.5,
                 pitch: 0.3,
-                velocity: None,
                 confidence: 1.0,
                 state: reco_core::tracker::TrackState::Tracking,
                 age_frames: 1,

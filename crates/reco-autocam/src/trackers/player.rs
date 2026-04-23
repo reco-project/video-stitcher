@@ -283,17 +283,11 @@ impl Tracker for PlayerTracker {
             } else {
                 TrackState::Coasting
             };
-            let velocity = if t.last_t_ms.is_some() {
-                Some((t.vyaw, t.vpitch))
-            } else {
-                None
-            };
             out.push(TrackedEntity {
                 id: t.id,
                 class_id: self.class_id,
                 yaw: t.yaw,
                 pitch: t.pitch,
-                velocity,
                 confidence: if matches!(state, TrackState::Tracking) {
                     t.confidence
                 } else {
@@ -316,7 +310,6 @@ impl Tracker for PlayerTracker {
                 class_id: self.class_id,
                 yaw: *yaw,
                 pitch: *pitch,
-                velocity: None,
                 confidence: 0.0,
                 state: TrackState::Lost,
                 age_frames: 0,

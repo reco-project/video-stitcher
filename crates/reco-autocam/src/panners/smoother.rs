@@ -310,7 +310,6 @@ mod tests {
             class_id: 0,
             yaw,
             pitch: 0.0,
-            velocity: None,
             confidence: 0.8,
             state: TrackState::Tracking,
             age_frames: 1,

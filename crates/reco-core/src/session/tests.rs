@@ -173,7 +173,6 @@ impl Tracker for MockTracker {
             class_id: self.class_id,
             yaw: 0.0,
             pitch: 0.0,
-            velocity: None,
             confidence: 1.0,
             state: TrackState::Tracking,
             age_frames: 1,

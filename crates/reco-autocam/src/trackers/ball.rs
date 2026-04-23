@@ -244,7 +244,7 @@ impl Tracker for BallTracker {
                 pitch: pos.pitch,
                 origin: det.camera,
             });
-            let _ = timestamp_ms; // reserved for future velocity estimation
+            let _ = timestamp_ms;
             self.age_frames = self.age_frames.saturating_add(1);
 
             if was_new_track {
@@ -270,7 +270,6 @@ impl Tracker for BallTracker {
                 class_id: self.class_id,
                 yaw: pos.yaw,
                 pitch: pos.pitch,
-                velocity: None, // wired in Phase 3 if a smoother wants velocity
                 confidence: det.confidence,
                 state: TrackState::Tracking,
                 age_frames: self.age_frames,
@@ -294,7 +293,6 @@ impl Tracker for BallTracker {
                         class_id: self.class_id,
                         yaw: last.yaw,
                         pitch: last.pitch,
-                        velocity: None,
                         confidence: 0.0,
                         state: TrackState::Coasting,
                         age_frames: self.age_frames,
@@ -325,7 +323,6 @@ impl Tracker for BallTracker {
                         class_id: self.class_id,
                         yaw: last.yaw,
                         pitch: last.pitch,
-                        velocity: None,
                         confidence: 0.0,
                         state: TrackState::Lost,
                         age_frames: 0,
@@ -493,7 +490,6 @@ mod tests {
             class_id: 0,
             yaw: 1.0,
             pitch: 0.0,
-            velocity: None,
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 5,
@@ -531,7 +527,6 @@ mod tests {
             class_id: 0,
             yaw: 1.0,
             pitch: 0.0,
-            velocity: None,
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 3,
@@ -560,7 +555,6 @@ mod tests {
             class_id: 0,
             yaw: 1.0,
             pitch: 0.0,
-            velocity: None,
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 1,

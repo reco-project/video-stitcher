@@ -190,7 +190,6 @@ mod tests {
             class_id: 0,
             yaw,
             pitch,
-            velocity: None,
             confidence: 0.8,
             state,
             age_frames: 3,

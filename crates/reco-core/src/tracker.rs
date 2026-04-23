@@ -2,8 +2,8 @@
 //!
 //! A `Tracker` turns a per-frame stream of noisy `MappedDetection`s
 //! (from [`crate::director`]) into a clean list of `TrackedEntity`s
-//! with stable identities, velocity estimates, and a tri-valued
-//! lifecycle (`TrackState`). Trackers are single-responsibility:
+//! with stable identities and a tri-valued lifecycle (`TrackState`).
+//! Trackers are single-responsibility:
 //! one class (ball, player, …) per tracker. Multiple trackers run
 //! in parallel each frame and the session merges their outputs into
 //! a `WorldState` that a [`Panner`](crate::panner::Panner) consumes.
@@ -41,8 +41,8 @@ use crate::director::MappedDetection;
 /// consumers (panners, diagnostics, replays) only read it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TrackState {
-    /// A fresh detection was accepted this frame. Position, velocity,
-    /// and confidence reflect the new measurement.
+    /// A fresh detection was accepted this frame. Position and
+    /// confidence reflect the new measurement.
     Tracking,
     /// No fresh detection passed the tracker's filters this frame,
     /// but the entity is recently-enough seen that the tracker is
@@ -63,13 +63,15 @@ pub enum TrackState {
 /// for diagnostics and quality-assurance overlays only — panner
 /// logic should not branch on it.
 ///
-/// Velocity is optional because:
-/// - new tracks with only one measurement have no velocity estimate,
-/// - some trackers may opt out of velocity estimation entirely.
-///
 /// `id` is persistent across frames. Singleton classes (ball) report
 /// `id = 0` every frame; multi-entity classes (players) assign stable
 /// per-entity IDs for the tracklet's lifetime.
+///
+/// A previous `velocity: Option<(f32, f32)>` field was removed in
+/// Step 10: no tracker populated it and no consumer read it. When a
+/// future tracker needs angular velocity the field comes back here
+/// (single source of truth); decorators that want smoothing
+/// derivatives compute them locally for now.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct TrackedEntity {
     /// Persistent ID across frames for this tracklet. Singleton
@@ -85,9 +87,6 @@ pub struct TrackedEntity {
     /// Vertical tilt angle in radians, panorama frame.
     /// `0.0` = level; positive = looking up.
     pub pitch: f32,
-    /// Angular velocity estimate `(d_yaw, d_pitch)` per second, or
-    /// `None` when the tracker has insufficient history.
-    pub velocity: Option<(f32, f32)>,
     /// Last-measurement confidence in `[0.0, 1.0]`. Meaning depends
     /// on the tracker: fresh-detection confidence during `Tracking`,
     /// typically `0.0` during `Coasting`.
@@ -212,7 +211,6 @@ mod tests {
             class_id: 0,
             yaw,
             pitch: 0.0,
-            velocity: None,
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 1,
