@@ -56,6 +56,8 @@ pub struct StitchArgs<'a> {
     /// false: error out so the user knows tracking was requested but
     /// not delivered.
     pub allow_no_tracking: bool,
+    /// Force CPU decode to enable ORT CPU detection without TensorRT.
+    pub no_zero_copy: bool,
 }
 
 /// Run the stitch subcommand.
@@ -98,6 +100,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if args.sync_offset != 0 {
         job = job.sync_offset(args.sync_offset);
+    }
+    if args.no_zero_copy {
+        job = job.force_cpu_decode();
     }
     if let Some(ref enc) = args.encoder_name {
         job = job.encoder_name(enc);

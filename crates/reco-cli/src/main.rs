@@ -219,6 +219,12 @@ enum Commands {
         /// initialize, since silent fallback hides a broken setup.
         #[arg(long, default_value_t = false)]
         allow_no_tracking: bool,
+
+        /// Force CPU video decode instead of GPU zero-copy (NVDEC).
+        /// Needed when AI tracking uses ORT CPU detection without
+        /// TensorRT. Slower but lets the detector see the frames.
+        #[arg(long, default_value_t = false)]
+        no_zero_copy: bool,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -674,6 +680,7 @@ fn main() -> anyhow::Result<()> {
             replay,
             replay_scale,
             allow_no_tracking,
+            no_zero_copy,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -699,6 +706,7 @@ fn main() -> anyhow::Result<()> {
                 replay_path: replay.as_deref(),
                 replay_scale,
                 allow_no_tracking,
+                no_zero_copy,
             },
             &interrupted,
         ),
