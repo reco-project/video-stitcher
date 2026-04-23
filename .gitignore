@@ -34,6 +34,8 @@ out/
 # Calibration artifacts
 calibrate_debug/
 calibration_adjusted.json
+# Repo-root scratch calibration (preview-driven debugging only).
+/match.json
 
 # Logs
 *.log
