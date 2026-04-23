@@ -27,10 +27,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use reco_calibrate::{LensProfileInfo, ProfileSource};
+use reco_control::pose_control::{HotkeyIntent, PoseControl, PoseControlConfig};
 use reco_core::calibration::MatchCalibration;
 use reco_core::director::ViewportPosition;
 use reco_core::pipeline::YuvPlanes;
-use reco_core::pose_control::{HotkeyIntent, PoseControl, PoseControlConfig};
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};

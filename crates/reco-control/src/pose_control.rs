@@ -49,8 +49,8 @@
 //! cross-thread access wrap in `Mutex`. Send-only is sufficient for
 //! the worker / UI split every consumer actually needs.
 
-use crate::director::ViewportPosition;
-use crate::projection::CoverageBoundary;
+use reco_core::director::ViewportPosition;
+use reco_core::projection::CoverageBoundary;
 
 /// Hotkey actions consumers bind to their input system (OBS hotkey
 /// API, Slint key events, CLI keyboard, future SDL3 game-pad sidecar,

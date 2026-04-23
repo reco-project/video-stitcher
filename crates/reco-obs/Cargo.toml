@@ -21,6 +21,7 @@ replay = ["dep:reco-io"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
+reco-control = { path = "../reco-control" }
 reco-io = { path = "../reco-io", features = ["stacked-output"], optional = true }
 # M2 tracing migration: tracing-subscriber replaces env_logger.
 # tracing-log bridges legacy `log::*` calls. Critical for the OBS

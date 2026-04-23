@@ -24,12 +24,12 @@ use std::path::Path;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::MatchCalibration;
 use reco_core::core::{RenderOutcome, StitchCore, StitchCoreConfig};
 use reco_core::director::ViewportPosition;
 use reco_core::gpu::GpuContext;
 use reco_core::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
-use reco_core::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::renderer::InputFormat;
 use reco_core::viewport::ViewportConfig;
 
@@ -1217,7 +1217,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
 // ---------------------------------------------------------------------------
 
 // Drag sensitivity and wheel-tick FOV step are owned by
-// `reco_core::pose_control::PoseControlConfig` (drag_deg_per_pixel,
+// `reco_control::pose_control::PoseControlConfig` (drag_deg_per_pixel,
 // wheel_fov_per_tick). Overriding either is a one-line tweak at
 // construction time in RecoSource::new.
 
@@ -1290,7 +1290,7 @@ unsafe extern "C" fn source_mouse_move(
         src.last_mouse_x = ev.x;
         src.last_mouse_y = ev.y;
 
-        // Delegate to `reco_core::pose_control::PoseControl`. The
+        // Delegate to `reco_control::pose_control::PoseControl`. The
         // per-axis invert flags were chosen at construction
         // (invert_drag_x = true for PTZ-head feel, invert_drag_y =
         // false for drag-scene Y). No local math or clamp logic to

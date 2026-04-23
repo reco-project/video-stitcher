@@ -156,8 +156,8 @@ pub fn run_preview(
         current_right: first_right,
 
         pose: {
+            use reco_control::pose_control::{PoseControl, PoseControlConfig};
             use reco_core::director::ViewportPosition;
-            use reco_core::pose_control::{PoseControl, PoseControlConfig};
             // Match preview's historical feel: 0.005 rad/px drag,
             // 0.05 rad arrow step, 3.0 deg scroll step, 0.3 smoothing.
             // `invert_drag_x = true` reproduces preview's "drag right
@@ -228,7 +228,7 @@ struct App {
     /// horizon stays level as yaw changes. Replaced the hand-rolled
     /// (target_yaw, target_pitch, target_fov, yaw, pitch) state
     /// machine 2026-04-20.
-    pose: reco_core::pose_control::PoseControl,
+    pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
     playing: bool,
     needs_redraw: bool,
@@ -625,12 +625,12 @@ impl ApplicationHandler for App {
                             // Zoom in (narrow FOV). PoseControl clamps to its
                             // configured [fov_min, fov_max] automatically.
                             self.pose
-                                .apply_hotkey(reco_core::pose_control::HotkeyIntent::ZoomIn);
+                                .apply_hotkey(reco_control::pose_control::HotkeyIntent::ZoomIn);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
                             self.pose
-                                .apply_hotkey(reco_core::pose_control::HotkeyIntent::ZoomOut);
+                                .apply_hotkey(reco_control::pose_control::HotkeyIntent::ZoomOut);
                             self.needs_redraw = true;
                         }
                         // Calibration adjustment keys

@@ -14,7 +14,7 @@
 //! The deep-review 2026-04-18 Agent 8 finding: consumer input paths
 //! are duplicated three ways across reco-cli/preview, reco-gui, and
 //! reco-obs (different key mappings, different pan sensitivity,
-//! different units). M4's [`PoseControl`](reco_core::pose_control::PoseControl)
+//! different units). [`PoseControl`](pose_control::PoseControl)
 //! fixed the *state-machine* duplication; this crate fixes the
 //! *vocabulary* duplication. A single `ControlIntent` enum describes
 //! every operator action the pipeline cares about; transports
@@ -35,7 +35,13 @@
 
 #![deny(unsafe_code)]
 
-use reco_core::pose_control::HotkeyIntent;
+/// Unified pose-control primitive: `PoseControl` + `PoseControlConfig`
+/// + `HotkeyIntent`. Single source of truth for mouse/drag/wheel/
+/// keyboard -> yaw/pitch/FOV translation across consumers.
+/// Relocated from reco-core in Step 13 of the camera-stack plan.
+pub mod pose_control;
+
+use pose_control::HotkeyIntent;
 
 // ---------------------------------------------------------------------------
 // Intent vocabulary

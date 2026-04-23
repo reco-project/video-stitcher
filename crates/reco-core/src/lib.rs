@@ -112,11 +112,6 @@ pub mod pipeline;
 /// stitch loop. See [`pipeline_event`] for the event vocabulary
 /// and the non-blocking `BackpressuredSink` wrapper (Step 6b).
 pub mod pipeline_event;
-/// M4 unified pose-control primitive. See [`pose_control::PoseControl`]
-/// and [`pose_control::HotkeyIntent`] — the single source of truth for
-/// mouse/drag/wheel/keyboard → yaw/pitch/FOV translation across
-/// consumers.
-pub mod pose_control;
 pub mod projection;
 pub mod renderer;
 pub mod rgba_readback;
