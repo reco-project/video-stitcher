@@ -51,6 +51,11 @@ pub struct StitchArgs<'a> {
     /// [`Self::replay_path`]. GPU path only — CPU-resident
     /// sources log a warn and record at source dims.
     pub replay_scale: Option<(u32, u32)>,
+    /// When true, silently continue without tracking if detection
+    /// cannot run (e.g. zero-copy mode without TensorRT). Default
+    /// false: error out so the user knows tracking was requested but
+    /// not delivered.
+    pub allow_no_tracking: bool,
 }
 
 /// Run the stitch subcommand.
@@ -156,6 +161,13 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         });
     }
 
+    // Flag set inside the on_session callback when tracking was requested
+    // but couldn't be initialized. Checked after job.run() to produce a
+    // clean error exit without segfaulting (process::exit inside a GPU
+    // callback crashes NVDEC/Vulkan teardown).
+    #[cfg(feature = "autocam")]
+    let tracking_failed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
     // Wire up autocam via the on_session callback if a model is provided.
     #[cfg(feature = "autocam")]
     if args.tracking_mode != "sweep"
@@ -165,6 +177,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         let interval = args.detection_interval;
         let lead = args.lead_time;
         let mode_str = args.tracking_mode.to_owned();
+        let allow_fallback = args.allow_no_tracking;
+        let tracking_failed = Arc::clone(&tracking_failed);
         job = job.on_session(move |session, source| {
             let info = source.info();
             let mode = match mode_str.as_str() {
@@ -188,13 +202,26 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             ) {
                 Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
                 Ok(false) => {
-                    eprintln!(
-                        "Warning: ball tracking unavailable (build with --features tensorrt \
-                         for GPU detection, or use CPU decode)"
-                    );
+                    let msg = "Tracking requested but detection cannot run in zero-copy mode. \
+                               Build with --features tensorrt for GPU detection, \
+                               or use CPU decode (--no-zero-copy). \
+                               Pass --allow-no-tracking to continue without tracking.";
+                    if allow_fallback {
+                        log::warn!("{msg}");
+                    } else {
+                        log::error!("{msg}");
+                        tracking_failed.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
                 Err(e) => {
-                    eprintln!("Warning: autocam setup failed ({e}), continuing without tracking")
+                    let msg = format!("Autocam setup failed: {e}. \
+                                       Pass --allow-no-tracking to continue without tracking.");
+                    if allow_fallback {
+                        log::warn!("{msg}");
+                    } else {
+                        log::error!("{msg}");
+                        tracking_failed.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
             }
         });
@@ -207,6 +234,15 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
 
     let result = job.run(interrupted)?;
+
+    #[cfg(feature = "autocam")]
+    if tracking_failed.load(std::sync::atomic::Ordering::Relaxed) {
+        anyhow::bail!(
+            "Tracking was requested but could not run. \
+             Pass --allow-no-tracking to continue without tracking."
+        );
+    }
+
     println!(
         "\nDone: {} frames in {:.1}s ({:.1} fps) -> {}",
         result.frames_processed,

@@ -212,6 +212,13 @@ enum Commands {
         /// `--replay`.
         #[arg(long, value_parser = parse_wxh)]
         replay_scale: Option<(u32, u32)>,
+
+        /// Continue without tracking if detection cannot run (e.g.
+        /// zero-copy mode without TensorRT). By default the CLI
+        /// errors out when --model is given but detection fails to
+        /// initialize, since silent fallback hides a broken setup.
+        #[arg(long, default_value_t = false)]
+        allow_no_tracking: bool,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -666,6 +673,7 @@ fn main() -> anyhow::Result<()> {
             container,
             replay,
             replay_scale,
+            allow_no_tracking,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -690,6 +698,7 @@ fn main() -> anyhow::Result<()> {
                 container: container.as_deref(),
                 replay_path: replay.as_deref(),
                 replay_scale,
+                allow_no_tracking,
             },
             &interrupted,
         ),
