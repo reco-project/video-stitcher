@@ -45,7 +45,6 @@
 
 #![forbid(unsafe_code)]
 
-pub(crate) mod clustering;
 pub mod detection_filters;
 pub mod panners;
 mod roi_filter;

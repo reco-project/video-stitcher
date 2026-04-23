@@ -1,34 +1,23 @@
 //! Field-aware panner following the densest player cluster,
 //! optionally blending the ball position.
 //!
-//! Port of `FieldDirector` (predecessor) to the
-//! [`Panner`] contract: identical clustering + EMA + edge-push + FOV
-//! math, but reading from a [`WorldState`] populated by the
-//! [`PlayerTracker`](crate::trackers::PlayerTracker) and
-//! [`BallTracker`](crate::trackers::BallTracker) instead of re-walking
-//! raw detections and deduplicating cross-camera.
-//!
 //! # Pipeline (per `decide` call)
 //!
 //! 1. Take the current-frame tracked players from `world.players`.
 //!    The tracker already enforces class filtering and stable IDs;
 //!    entities in [`TrackState::Lost`] are dropped before clustering.
-//! 2. DBSCAN on (yaw, pitch) in panorama space, keeping the largest
-//!    cluster. Outliers (goalkeeper, substitutes) fall to the -1
-//!    "noise" label.
-//! 3. Trim to the closest half of members to the rough centroid so
-//!    a few loose wingers do not drag the centroid away from the
-//!    action.
-//! 4. Confidence-weighted centroid + EMA smoothing.
-//! 5. Edge-push (yaw *= 1.15) exaggerates side-of-pitch motion so
+//! 2. Huber-weighted robust centroid on (yaw, pitch) in panorama
+//!    space. Outliers (goalkeeper, substitutes) get down-weighted
+//!    smoothly via IRLS rather than binary-accepted or -rejected,
+//!    so frame-to-frame cluster membership flips can no longer
+//!    teleport the centroid.
+//! 3. Confidence-weighted centroid + EMA smoothing.
+//! 4. Edge-push (yaw *= 1.15) exaggerates side-of-pitch motion so
 //!    the camera leads into the direction of play.
-//! 6. Optional ball blend: weighted linear combination with
+//! 5. Optional ball blend: weighted linear combination with
 //!    `world.ball.yaw/pitch` when both are available.
-//! 7. Dynamic FOV from cluster spread, pitch (distance proxy), and
+//! 6. Dynamic FOV from cluster spread, pitch (distance proxy), and
 //!    absolute yaw (panorama-edge bias), all EMA-smoothed.
-//!
-//! The math is intentionally byte-identical to `FieldDirector` so
-//! Phase 6 is a pure rehoming, not a behavior change.
 //!
 //! # Logging
 //!
@@ -41,12 +30,28 @@ use reco_core::director::ViewportPosition;
 use reco_core::panner::{PanContext, Panner};
 use reco_core::tracker::{TrackState, TrackedEntity, WorldState};
 
-use crate::clustering;
+/// Huber tuning constant. Residuals greater than `c * scale` get
+/// a weight of `c * scale / r` instead of 1. `1.345` gives ~95%
+/// asymptotic efficiency under Gaussian noise (standard choice).
+const HUBER_C: f32 = 1.345;
 
-/// Fraction of cluster members to keep (closest to rough centroid).
-const TRIM_FRACTION: f32 = 0.5;
+/// Floor for the robust scale estimate to avoid divide-by-tiny when
+/// every player sits on top of the centroid (degenerate cluster).
+/// `0.02` rad ≈ 1.15° - below that, the weight of every point
+/// collapses to 1 anyway.
+const HUBER_SCALE_FLOOR: f32 = 0.02;
 
-/// Minimum cluster size. Below this, no camera update happens.
+/// IRLS iteration budget. Huber converges fast; 8 is comfortable
+/// even on 20-player frames.
+const HUBER_ITERS: usize = 8;
+
+/// Residual change below this ends IRLS early (squared-distance in
+/// rad^2). ~0.2% of a typical cluster spread.
+const HUBER_CONVERGE_EPS: f32 = 1e-6;
+
+/// Minimum effective cluster size. Below this, no camera update
+/// happens. The effective count is the number of points whose final
+/// Huber weight equals 1 (i.e., residual within the inlier band).
 const MIN_CLUSTER: usize = 3;
 
 /// Edge exaggeration factor: yaw is pushed 15% further from center.
@@ -84,14 +89,9 @@ const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
 const DEFAULT_PITCH_ALPHA: f32 = 0.03;
 
 /// Hard cap on per-frame EMA delta for both yaw and pitch (radians).
-/// Kills "mini-teleport" jitter produced by DBSCAN flipping between
-/// cluster compositions frame-to-frame. 0.015 rad/frame ≈ 0.85°,
-/// which comfortably covers real-play motion without freezing.
+/// 0.015 rad/frame ≈ 0.85°, which comfortably covers real-play
+/// motion without freezing.
 const MAX_POSE_DELTA_RAD: f32 = 0.015;
-
-/// DBSCAN parameters.
-const DEFAULT_DBSCAN_EPS: f32 = 0.07;
-const DEFAULT_DBSCAN_MIN_NEIGHBORS: usize = 2;
 
 /// Log interval in frames.
 const LOG_INTERVAL: u64 = 30;
@@ -137,10 +137,6 @@ pub struct FieldPanner {
     /// teleport the camera.
     max_pose_delta: f32,
 
-    /// DBSCAN parameters.
-    dbscan_eps: f32,
-    dbscan_min_neighbors: usize,
-
     /// Frame counter for log throttling.
     frame_index: u64,
 }
@@ -163,8 +159,6 @@ impl FieldPanner {
             cluster_alpha: DEFAULT_CLUSTER_ALPHA,
             pitch_alpha: DEFAULT_PITCH_ALPHA,
             max_pose_delta: MAX_POSE_DELTA_RAD,
-            dbscan_eps: DEFAULT_DBSCAN_EPS,
-            dbscan_min_neighbors: DEFAULT_DBSCAN_MIN_NEIGHBORS,
             frame_index: 0,
         }
     }
@@ -189,12 +183,6 @@ impl FieldPanner {
         self
     }
 
-    /// Override the DBSCAN neighborhood radius in radians.
-    pub fn with_dbscan_eps(mut self, eps: f32) -> Self {
-        self.dbscan_eps = eps.clamp(0.01, 1.0);
-        self
-    }
-
     /// Convert live tracked players to `(yaw, pitch, confidence)`
     /// tuples for the clustering pipeline.
     ///
@@ -211,34 +199,109 @@ impl FieldPanner {
             .collect()
     }
 
-    /// Run DBSCAN, keep the largest cluster, trim to the closest
-    /// half to the rough centroid. Unchanged from
-    /// `FieldDirector` (predecessor) — same
-    /// inputs produce the same output.
+    /// Huber-weighted robust centroid. Returns the inlier set
+    /// (weight=1) after IRLS convergence.
+    ///
+    /// Replaces the older DBSCAN + trim-to-closest-half pipeline.
+    /// The old one binary-accepted or -rejected each point based
+    /// on neighborhood density, so a marginal player on the
+    /// cluster's boundary could flip in / out between frames and
+    /// teleport the centroid. Huber weights shrink smoothly with
+    /// residual, so a boundary point's influence changes by 1% per
+    /// frame instead of 100%.
     fn cluster_and_trim(&self, points: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
         if points.len() < self.min_players {
             return Vec::new();
         }
-        let positions: Vec<(f32, f32)> = points.iter().map(|&(y, p, _)| (y, p)).collect();
-        let labels = clustering::dbscan(&positions, self.dbscan_eps, self.dbscan_min_neighbors);
-        let largest = clustering::largest_cluster_indices(&labels);
-        let mut members: Vec<(f32, f32, f32)> = largest.iter().map(|&i| points[i]).collect();
-        if members.len() < self.min_players {
+
+        // Seed centroid at the confidence-weighted mean.
+        let total_conf: f32 = points.iter().map(|(_, _, c)| c).sum();
+        if total_conf <= 0.0 {
             return Vec::new();
         }
+        let mut cy: f32 = points.iter().map(|(y, _, c)| y * c).sum::<f32>() / total_conf;
+        let mut cp: f32 = points.iter().map(|(_, p, c)| p * c).sum::<f32>() / total_conf;
 
-        let n = members.len() as f32;
-        let rough_yaw: f32 = members.iter().map(|m| m.0).sum::<f32>() / n;
-        let rough_pitch: f32 = members.iter().map(|m| m.1).sum::<f32>() / n;
+        // IRLS: residual -> robust scale (MAD * 1.4826) -> Huber
+        // weight * confidence -> new centroid. 8 iterations is
+        // plenty for Huber; early-exit on sub-epsilon centroid shift.
+        let mut residuals = vec![0.0_f32; points.len()];
+        let mut abs_r = Vec::with_capacity(points.len());
+        let mut weights = vec![0.0_f32; points.len()];
+        for _ in 0..HUBER_ITERS {
+            for (i, &(y, p, _)) in points.iter().enumerate() {
+                let dy = y - cy;
+                let dp = p - cp;
+                residuals[i] = (dy * dy + dp * dp).sqrt();
+            }
+            abs_r.clear();
+            abs_r.extend_from_slice(&residuals);
+            abs_r.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let mad = abs_r[abs_r.len() / 2];
+            let scale = (1.4826 * mad).max(HUBER_SCALE_FLOOR);
+            let threshold = HUBER_C * scale;
 
-        members.sort_by(|a, b| {
-            let da = (a.0 - rough_yaw).powi(2) + (a.1 - rough_pitch).powi(2);
-            let db = (b.0 - rough_yaw).powi(2) + (b.1 - rough_pitch).powi(2);
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        let keep = (members.len() as f32 * TRIM_FRACTION).ceil() as usize;
-        members.truncate(keep.max(self.min_players).min(members.len()));
-        members
+            let mut total_w = 0.0_f32;
+            for (i, &(_, _, conf)) in points.iter().enumerate() {
+                let r = residuals[i];
+                let huber = if r <= threshold {
+                    1.0
+                } else {
+                    threshold / r.max(1e-6)
+                };
+                let w = conf * huber;
+                weights[i] = w;
+                total_w += w;
+            }
+            if total_w <= 0.0 {
+                break;
+            }
+
+            let new_cy: f32 = points
+                .iter()
+                .zip(weights.iter())
+                .map(|((y, _, _), w)| y * w)
+                .sum::<f32>()
+                / total_w;
+            let new_cp: f32 = points
+                .iter()
+                .zip(weights.iter())
+                .map(|((_, p, _), w)| p * w)
+                .sum::<f32>()
+                / total_w;
+
+            let shift_sq = (new_cy - cy).powi(2) + (new_cp - cp).powi(2);
+            cy = new_cy;
+            cp = new_cp;
+            if shift_sq < HUBER_CONVERGE_EPS {
+                break;
+            }
+        }
+
+        // Final inlier set: points whose residual at the converged
+        // centroid is within the robust band.
+        for (i, &(y, p, _)) in points.iter().enumerate() {
+            let dy = y - cy;
+            let dp = p - cp;
+            residuals[i] = (dy * dy + dp * dp).sqrt();
+        }
+        abs_r.clear();
+        abs_r.extend_from_slice(&residuals);
+        abs_r.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mad = abs_r[abs_r.len() / 2];
+        let scale = (1.4826 * mad).max(HUBER_SCALE_FLOOR);
+        let threshold = HUBER_C * scale;
+
+        let inliers: Vec<(f32, f32, f32)> = points
+            .iter()
+            .zip(residuals.iter())
+            .filter_map(|(&pt, &r)| if r <= threshold { Some(pt) } else { None })
+            .collect();
+
+        if inliers.len() < self.min_players {
+            return Vec::new();
+        }
+        inliers
     }
 
     /// Confidence-weighted centroid + EMA smoothing.
@@ -517,7 +580,8 @@ mod tests {
         for i in 1..200 {
             out = p.decide(&w, &ctx(i, &cal));
         }
-        // Closest-half centroid at ~0.36, edge push 15% -> ~0.414.
+        // Huber centroid on 5 evenly-spaced players at 0.28..0.44
+        // converges on the mean 0.36. Edge push 15% -> 0.414.
         assert!(
             (out.yaw - 0.414).abs() < 0.03,
             "expected ~0.414, got {}",
@@ -544,7 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn dbscan_excludes_goalkeeper_outlier() {
+    fn huber_excludes_goalkeeper_outlier() {
         let mut p = FieldPanner::new();
         let cal = cal();
         let w = WorldState {
