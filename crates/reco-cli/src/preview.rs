@@ -21,6 +21,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use reco_control::pose_control::HotkeyIntent;
+use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
 use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
 use reco_core::source::{FrameSource, YuvData};
 use reco_core::stitch_renderer::StitchRenderer;
@@ -156,8 +158,8 @@ pub fn run_preview(
         current_right: first_right,
 
         pose: {
+            use reco_control::pose_control::{PoseControl, PoseControlConfig};
             use reco_core::director::ViewportPosition;
-            use reco_core::pose_control::{PoseControl, PoseControlConfig};
             // Match preview's historical feel: 0.005 rad/px drag,
             // 0.05 rad arrow step, 3.0 deg scroll step, 0.3 smoothing.
             // `invert_drag_x = true` reproduces preview's "drag right
@@ -228,7 +230,7 @@ struct App {
     /// horizon stays level as yaw changes. Replaced the hand-rolled
     /// (target_yaw, target_pitch, target_fov, yaw, pitch) state
     /// machine 2026-04-20.
-    pose: reco_core::pose_control::PoseControl,
+    pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
     playing: bool,
     needs_redraw: bool,
@@ -575,29 +577,27 @@ impl ApplicationHandler for App {
                             event_loop.exit();
                         }
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            // Preview convention: ArrowLeft increases yaw
-                            // (matches historical preview behavior).
-                            let mut t = self.pose.target_pose();
-                            t.yaw += ARROW_PAN_STEP;
-                            self.pose.set_target(t);
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaYawRad(ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            let mut t = self.pose.target_pose();
-                            t.yaw -= ARROW_PAN_STEP;
-                            self.pose.set_target(t);
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaYawRad(-ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            let mut t = self.pose.target_pose();
-                            t.pitch += ARROW_PAN_STEP;
-                            self.pose.set_target(t);
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaPitchRad(ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            let mut t = self.pose.target_pose();
-                            t.pitch -= ARROW_PAN_STEP;
-                            self.pose.set_target(t);
+                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
+                                PoseIntent::DeltaPitchRad(-ARROW_PAN_STEP),
+                            ));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Space) => {
@@ -622,15 +622,13 @@ impl ApplicationHandler for App {
                             }
                         }
                         PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            // Zoom in (narrow FOV). PoseControl clamps to its
-                            // configured [fov_min, fov_max] automatically.
-                            self.pose
-                                .apply_hotkey(reco_core::pose_control::HotkeyIntent::ZoomIn);
+                            IntentTranslator::new(&mut self.pose)
+                                .dispatch(ControlIntent::Hotkey(HotkeyIntent::ZoomIn));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            self.pose
-                                .apply_hotkey(reco_core::pose_control::HotkeyIntent::ZoomOut);
+                            IntentTranslator::new(&mut self.pose)
+                                .dispatch(ControlIntent::Hotkey(HotkeyIntent::ZoomOut));
                             self.needs_redraw = true;
                         }
                         // Calibration adjustment keys

@@ -69,7 +69,7 @@ impl ControlTransport for KeyboardTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::pose_control::HotkeyIntent;
+    use crate::pose_control::HotkeyIntent;
 
     #[test]
     fn name_is_stable() {

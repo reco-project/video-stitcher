@@ -49,8 +49,8 @@
 //! cross-thread access wrap in `Mutex`. Send-only is sufficient for
 //! the worker / UI split every consumer actually needs.
 
-use crate::director::ViewportPosition;
-use crate::projection::CoverageBoundary;
+use reco_core::director::ViewportPosition;
+use reco_core::projection::CoverageBoundary;
 
 /// Hotkey actions consumers bind to their input system (OBS hotkey
 /// API, Slint key events, CLI keyboard, future SDL3 game-pad sidecar,
@@ -63,7 +63,8 @@ use crate::projection::CoverageBoundary;
 ///
 /// `#[non_exhaustive]` so new intents can be added without a breaking
 /// change (e.g. `SetFov(f32)`, `PresetRecall(u8)`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum HotkeyIntent {
     /// Pan the target yaw left by [`PoseControlConfig::hotkey_yaw_step_rad`].
@@ -421,7 +422,11 @@ impl PoseControl {
     pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
         ViewportPosition {
             yaw: self.current_yaw_rad,
-            pitch: self.current_pitch_rad + rig_tilt * (1.0 - self.current_yaw_rad.cos()),
+            pitch: reco_core::rig_correction::render_pitch(
+                self.current_yaw_rad,
+                self.current_pitch_rad,
+                rig_tilt,
+            ),
             fov_degrees: Some(self.current_fov_deg),
         }
     }

@@ -27,6 +27,7 @@ coreml = ["autocam", "reco-autocam/coreml"]
 load-dynamic = ["autocam", "reco-autocam/load-dynamic"]
 tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
 ncnn = ["autocam", "reco-autocam/ncnn"]
+gopro = ["reco-control/gopro"]
 gstreamer = ["reco-io/gstreamer"]
 libcamera = ["reco-io/libcamera"]
 rpi = ["reco-io/rpi"]
@@ -34,6 +35,7 @@ profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profili
 
 [dependencies]
 reco-core = { path = "../reco-core" }
+reco-control = { path = "../reco-control" }
 reco-io = { path = "../reco-io", features = ["ffmpeg"] }
 # default-features = false so autocam's own default (ort) doesn't
 # force ort on Jetson / tensorrt-native builds. reco-cli's default

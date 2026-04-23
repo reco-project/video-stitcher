@@ -20,7 +20,7 @@ description = "Transport-agnostic control vocabulary for Reco (keyboard, gamepad
 [features]
 default = ["keyboard"]
 keyboard = []
-gopro = []
+gopro = ["dep:reqwest", "dep:tokio"]
 mobile = []
 websocket = []
 
@@ -28,3 +28,7 @@ websocket = []
 reco-core = { path = "../reco-core" }
 log = "0.4"
 thiserror = "2"
+reqwest = { version = "0.12", features = ["rustls-tls", "json", "blocking"], default-features = false, optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt"], optional = true }

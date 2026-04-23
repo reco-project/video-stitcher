@@ -41,7 +41,7 @@ use crate::async_encode::AsyncEncodeThread;
 use crate::calibration::MatchCalibration;
 use crate::core::{StitchCore, StitchCoreConfig, StitchCoreError};
 use crate::detector::Detection;
-use crate::director::{Director, DirectorContext, MappedDetection, ViewportPosition};
+use crate::director::{MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder, GpuEncoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::{Nv12Converter, Nv12Error};
@@ -309,9 +309,7 @@ pub struct StitchSessionBuilder {
     encoder: Option<(Box<dyn Encoder + Send>, usize)>,
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
     detector: Option<Box<dyn crate::detector::UnifiedDetector>>,
-    director: Option<Box<dyn Director>>,
     detection_interval: u64,
-    lookahead_frames: usize,
 }
 
 impl StitchSessionBuilder {
@@ -383,12 +381,6 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach a director for camera panning.
-    pub fn director(mut self, director: Box<dyn Director>) -> Self {
-        self.director = Some(director);
-        self
-    }
-
     /// Set the detection interval (run detection every N frames).
     ///
     /// `1` = every frame (default), `3` = every 3rd frame, etc.
@@ -397,14 +389,6 @@ impl StitchSessionBuilder {
     /// interpolates using the latest detections.
     pub fn detection_interval(mut self, interval: u64) -> Self {
         self.detection_interval = interval.max(1);
-        self
-    }
-
-    /// Set the number of frames to buffer ahead for lookahead.
-    ///
-    /// See [`StitchSession::set_lookahead`] for details.
-    pub fn lookahead(mut self, frames: usize) -> Self {
-        self.lookahead_frames = frames;
         self
     }
 
@@ -452,7 +436,6 @@ impl StitchSessionBuilder {
         session
             .detection
             .set_detection_interval(self.detection_interval);
-        session.lookahead_frames = self.lookahead_frames;
 
         if let Some((enc, buf_count)) = self.encoder {
             session.set_encoder(enc, buf_count);
@@ -460,9 +443,6 @@ impl StitchSessionBuilder {
         session.gpu_encoder = self.gpu_encoder;
         if let Some(det) = self.detector {
             session.set_detector(det);
-        }
-        if let Some(dir) = self.director {
-            session.set_director(dir);
         }
         Ok(session)
     }
@@ -494,7 +474,17 @@ pub struct StitchSession {
     gpu_encoder: Option<Box<dyn GpuEncoder>>,
     /// Detection backends, interval, callback, and cached detections.
     pub(crate) detection: DetectionPipeline,
-    pub(crate) director: Option<Box<dyn Director>>,
+    /// Tracker/panner pose resolution. When `panner` is set, it owns
+    /// pose resolution each frame; when unset the pose stays at the
+    /// pipeline default. Trackers are wired here rather than inside
+    /// the panner so multiple panners can share the same tracker
+    /// output (e.g. replay + live from the same WorldState).
+    pub(crate) ball_tracker: Option<Box<dyn crate::tracker::Tracker>>,
+    pub(crate) player_tracker: Option<Box<dyn crate::tracker::Tracker>>,
+    pub(crate) panner: Option<Box<dyn crate::panner::Panner>>,
+    /// Previous frame's resolved pose (post-clamping), handed to the
+    /// panner via [`PanContext::previous_position`](crate::panner::PanContext::previous_position).
+    pub(crate) previous_panner_pose: ViewportPosition,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -502,10 +492,16 @@ pub struct StitchSession {
     error_policy: ErrorPolicy,
     /// Dropped frame counter (for metrics).
     frames_dropped: u64,
-    /// Number of frames to buffer ahead for lookahead.
-    /// When > 0, detection runs ahead of rendering so the director
-    /// anticipates action before it reaches the encoder.
-    lookahead_frames: usize,
+    /// Optional pipeline event sink for structured observability.
+    /// When `None` (default), every emit site is a single branch.
+    /// See [`set_event_sink`](Self::set_event_sink) and
+    /// [`crate::pipeline_event`] for the vocabulary.
+    event_sink: Option<Box<dyn crate::pipeline_event::PipelineEventSink>>,
+    /// Ordered pre-tracker detection filters. Empty by default; each
+    /// stage transforms `detection.last_detections` in place before
+    /// the trackers run. Emission of the before/after event is gated
+    /// on `event_sink`.
+    detection_filters: Vec<Box<dyn crate::detection_filter::DetectionFilter>>,
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
@@ -560,9 +556,7 @@ impl StitchSession {
             encoder: None,
             gpu_encoder: None,
             detector: None,
-            director: None,
             detection_interval: 1,
-            lookahead_frames: 0,
         }
     }
 
@@ -619,13 +613,17 @@ impl StitchSession {
             encoder: None,
             gpu_encoder: None,
             detection: DetectionPipeline::new(),
-            director: None,
+            ball_tracker: None,
+            player_tracker: None,
+            panner: None,
+            previous_panner_pose: ViewportPosition::default(),
             frame_count: 0,
             extra_encoders: Vec::new(),
             session_start: None,
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
-            lookahead_frames: 0,
+            event_sink: None,
+            detection_filters: Vec::new(),
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
             #[cfg(target_os = "linux")]
@@ -709,30 +707,91 @@ impl StitchSession {
         self.detection.set_detection_interval(interval);
     }
 
-    /// Set the number of frames to buffer ahead for lookahead.
+    /// Attach a pipeline event sink for structured observability.
     ///
-    /// When > 0, the CPU batch loop decodes and runs detection on frames
-    /// ahead of rendering, so the director "sees" the future relative to
-    /// what's being encoded. This makes the camera anticipate action
-    /// rather than react to it.
+    /// See [`crate::pipeline_event`] for the event vocabulary and the
+    /// `BackpressuredSink` wrapper that keeps emission off the render
+    /// thread. Typical usage:
     ///
-    /// Typical value: `(fps * 0.5) as usize` for 0.5s lead time.
-    /// Only affects the CPU path ([`Self::run`]). Zero-copy paths are
-    /// not supported (frames are GPU-resident and can't be buffered).
-    pub fn set_lookahead(&mut self, frames: usize) {
-        self.lookahead_frames = frames;
+    /// ```rust,ignore
+    /// use reco_core::pipeline_event::BackpressuredSink;
+    /// use reco_io::jsonl_sink::JsonlSink;
+    ///
+    /// let inner = JsonlSink::create("trace.jsonl")?;
+    /// let sink = BackpressuredSink::new(Box::new(inner), 256, None);
+    /// session.set_event_sink(Box::new(sink));
+    /// ```
+    ///
+    /// Pass [`None`] equivalent by not calling this at
+    /// all. There is deliberately no `clear_event_sink` - in a
+    /// <1.0.0 codebase we re-create the session for that. When an
+    /// external consumer hits this friction we'll add one.
+    pub fn set_event_sink(&mut self, sink: Box<dyn crate::pipeline_event::PipelineEventSink>) {
+        log::info!("StitchSession: event sink attached");
+        self.event_sink = Some(sink);
     }
 
-    /// Attach a director for AI-driven or scripted camera panning.
+    /// Append a [`DetectionFilter`](crate::detection_filter::DetectionFilter)
+    /// to the pre-tracker chain. Filters run in insertion order before
+    /// the trackers see the detection list. With an event sink
+    /// attached, each stage emits
+    /// `PipelineEvent::DetectionFilter { before, after, filter_name }`.
     ///
-    /// When set, batch methods (`run`, `run_zero_copy_linux`,
-    /// `run_zero_copy_macos`) use the director's viewport position
-    /// instead of the default centered view.
-    ///
-    /// The director receives a [`DirectorContext`] each frame containing
-    /// tracked objects with panorama coordinates and valid panning bounds.
-    pub fn set_director(&mut self, director: Box<dyn Director>) {
-        self.director = Some(director);
+    /// Typical chain:
+    /// 1. `FlickerFilter` (recurrent static false-positive rejection).
+    /// 2. Class-specific filters (feet-in-ROI, hands-raised, etc).
+    pub fn add_detection_filter(
+        &mut self,
+        filter: Box<dyn crate::detection_filter::DetectionFilter>,
+    ) {
+        log::info!("StitchSession: detection filter '{}' added", filter.name());
+        self.detection_filters.push(filter);
+    }
+
+    /// Attach a singleton ball tracker. See
+    /// [`StitchCore::set_ball_tracker`](crate::core::StitchCore::set_ball_tracker)
+    /// for semantics — the session mirrors the core's API so push
+    /// and pull consumers stay symmetric.
+    pub fn set_ball_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
+        log::info!(
+            "StitchSession: ball tracker attached (class_id={})",
+            tracker.class_id()
+        );
+        self.ball_tracker = Some(tracker);
+    }
+
+    /// Remove the currently attached ball tracker.
+    pub fn clear_ball_tracker(&mut self) {
+        self.ball_tracker = None;
+    }
+
+    /// Attach a multi-entity player tracker. Mirror of
+    /// [`StitchCore::set_player_tracker`](crate::core::StitchCore::set_player_tracker).
+    pub fn set_player_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
+        log::info!(
+            "StitchSession: player tracker attached (class_id={})",
+            tracker.class_id()
+        );
+        self.player_tracker = Some(tracker);
+    }
+
+    /// Remove the currently attached player tracker.
+    pub fn clear_player_tracker(&mut self) {
+        self.player_tracker = None;
+    }
+
+    /// Attach a panner. When set, the tracker/panner path owns
+    /// pose resolution each frame; without a panner the pose stays at
+    /// the pipeline default.
+    pub fn set_panner(&mut self, panner: Box<dyn crate::panner::Panner>) {
+        log::info!("StitchSession: panner attached");
+        self.panner = Some(panner);
+    }
+
+    /// Remove the currently attached panner.
+    pub fn clear_panner(&mut self) {
+        log::info!("StitchSession: panner detached");
+        self.panner = None;
     }
 
     /// Attach a stacked-video replay recorder.
@@ -852,16 +911,17 @@ impl StitchSession {
 
     /// Get the current viewport position from the director, or default.
     ///
-    /// Clamps the director's raw output to the coverage boundary (no-black
-    /// region) and applies FOV limits. This keeps all viewport constraining
-    /// in the session, so directors can output unconstrained positions.
+    /// Clamps the panner's raw output to the coverage boundary (no-black
+    /// region) and applies FOV limits. This keeps all viewport
+    /// constraining in the session, so panners can output unconstrained
+    /// positions.
     pub fn director_position(&mut self) -> ViewportPosition {
-        let mut pos = self
-            .director
-            .as_ref()
-            .map_or(ViewportPosition::default(), |d| d.position());
+        // Source the raw pre-clamp pose from the panner's most recent
+        // decision. When no panner is attached the previous pose stays
+        // at its default (identity) value so the viewport centers.
+        let mut pos = self.previous_panner_pose;
 
-        // The director outputs world-space coordinates (from ball detections).
+        // The panner outputs world-space coordinates (from ball detections).
         // Clamp in world space, then convert to user space for the renderer.
         // Rig-tilt conversion is a SIMPLE offset (`user = world - rig_tilt`);
         // the yaw-weighted horizon correction is a separate compensation
@@ -880,6 +940,15 @@ impl StitchSession {
             pos.yaw = clamped.yaw;
             let rig_tilt = self.core.pipeline().viewport().rig_tilt;
             pos.pitch = clamped.pitch - rig_tilt;
+        }
+
+        // Trace: PosePresented. This is the pose the renderer will
+        // actually consume for this frame (post-clamp, post-FOV-cap).
+        if let Some(sink) = self.event_sink.as_deref_mut() {
+            sink.emit(crate::pipeline_event::PipelineEvent::PosePresented {
+                frame_index: self.frame_count,
+                pose: pos,
+            });
         }
 
         if let Some(fov) = pos.fov_degrees {
@@ -1000,13 +1069,14 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
-    /// Fire the detection sink and update the director with current state.
+    /// Fire the detection sink and drive the tracker/panner chain.
     ///
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
     /// Fires the sink with `last_detections` (which may be empty if no
-    /// detector ran this frame) and passes a [`DirectorContext`] to the
-    /// director. Viewport constraining is handled separately by
-    /// [`director_position`](Self::director_position).
+    /// detector ran this frame), runs every registered tracker to build
+    /// a [`WorldState`](crate::tracker::WorldState), then lets the
+    /// panner decide the next pose. Viewport constraining is handled
+    /// separately by [`director_position`](Self::director_position).
     ///
     /// Sink errors surface as [`SessionError::DetectionSink`] and abort the
     /// current session call.
@@ -1017,22 +1087,71 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
-        // Fire sink for external consumers.
+        // Fire the legacy per-detection sink for external consumers.
         self.detection
             .fire_sink(self.frame_count, timestamp_ms)
             .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
 
-        // Update director with detections and timing only.
-        // Coverage clamping is applied later in director_position().
-        if let Some(ref mut director) = self.director {
-            let ctx = DirectorContext {
+        // Trace: DetectionsRaw. Only clones when an event sink is attached.
+        if let Some(sink) = self.event_sink.as_deref_mut() {
+            sink.emit(crate::pipeline_event::PipelineEvent::DetectionsRaw {
+                frame_index: self.frame_count,
+                detections: self.detection.last_detections.clone(),
+            });
+        }
+
+        // Pre-tracker detection-filter chain. Each stage mutates
+        // `last_detections` in place; with a sink attached, the
+        // before/after snapshot is emitted so a user can audit what
+        // each filter changed.
+        if !self.detection_filters.is_empty() {
+            let calibration = self.core.pipeline().calibration();
+            let filter_ctx = crate::detection_filter::FilterContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
-                detections: &self.detection.last_detections,
-                fresh_detection,
+                calibration,
             };
-            director.update(&ctx);
+            let trace_enabled = self.event_sink.is_some();
+            for filter in self.detection_filters.iter_mut() {
+                let before = if trace_enabled {
+                    Some(self.detection.last_detections.clone())
+                } else {
+                    None
+                };
+                filter.filter(&mut self.detection.last_detections, &filter_ctx);
+                if let (Some(before), Some(sink)) = (before, self.event_sink.as_deref_mut()) {
+                    sink.emit(crate::pipeline_event::PipelineEvent::DetectionFilter {
+                        frame_index: self.frame_count,
+                        filter_name: filter.name(),
+                        before,
+                        after: self.detection.last_detections.clone(),
+                    });
+                }
+            }
         }
+
+        // Drive pose resolution via the shared panner dispatch.
+        // Runs even when the detections list is empty so trackers get
+        // their coast / loss ticks.
+        //
+        // `fresh_detection` is unused by panner decisions today —
+        // trackers manage their own freshness via detection cadence.
+        let _ = fresh_detection;
+        let calibration = self.core.pipeline().calibration();
+        crate::panner::dispatch(
+            self.panner.as_mut(),
+            self.player_tracker.as_mut(),
+            self.ball_tracker.as_mut(),
+            &mut self.previous_panner_pose,
+            self.event_sink.as_deref_mut(),
+            crate::panner::DispatchContext {
+                detections: &self.detection.last_detections,
+                calibration,
+                frame_index: self.frame_count,
+                timestamp_ms,
+                caller: "StitchSession",
+            },
+        );
         Ok(())
     }
 
@@ -1405,11 +1524,6 @@ impl StitchSession {
     /// - CPU frames (Yuv420p, Nv12): uploaded to GPU, rendered, encoded
     /// - GPU frames (GpuResident): rendered directly from shared textures
     ///
-    /// When [`lookahead_frames`](Self::set_lookahead) > 0, decodes and
-    /// runs detection on frames ahead of rendering. The director "sees"
-    /// N frames into the future, so the camera anticipates action before
-    /// it reaches the encoder.
-    ///
     /// Does NOT call [`Self::finish`] - the caller must do that after this
     /// returns to flush the last frame and finalize encoding.
     #[cfg_attr(
@@ -1425,11 +1539,7 @@ impl StitchSession {
     ) -> Result<u64, SessionError> {
         self.configure_from_source(source);
 
-        let result = if self.lookahead_frames > 0 {
-            self.run_with_lookahead(source, frame_limit, interrupted, &mut on_progress)
-        } else {
-            self.run_immediate(source, frame_limit, interrupted, &mut on_progress)
-        };
+        let result = self.run_immediate(source, frame_limit, interrupted, &mut on_progress);
 
         // Drop GPU slot senders so decode threads can exit gracefully.
         // Without this, SmartFileSource::drop() deadlocks because the
@@ -1442,9 +1552,8 @@ impl StitchSession {
         result
     }
 
-    /// Standard frame loop without lookahead.
-    ///
-    /// Handles both CPU-resident and GPU-resident frames transparently.
+    /// Standard frame loop. Handles CPU-resident and GPU-resident
+    /// frames transparently.
     fn run_immediate(
         &mut self,
         source: &mut dyn FrameSource,
@@ -1469,6 +1578,15 @@ impl StitchSession {
                 }
             };
 
+            // Trace: FrameStart fires once per frame at the top of the
+            // loop, before detection / pose / render work.
+            if let Some(sink) = self.event_sink.as_deref_mut() {
+                sink.emit(crate::pipeline_event::PipelineEvent::FrameStart {
+                    frame_index: self.frame_count,
+                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
+                });
+            }
+
             match &frame {
                 #[cfg(target_os = "linux")]
                 StereoFrame::GpuResident {
@@ -1489,85 +1607,6 @@ impl StitchSession {
                     self.process_frame(&frame, pos.yaw, pos.pitch)?;
                 }
             }
-
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&FrameProgress {
-                    frames_completed: self.frame_count,
-                    elapsed: start.elapsed(),
-                });
-            }
-        }
-
-        Ok(self.frame_count)
-    }
-
-    /// Frame loop with lookahead buffering.
-    ///
-    /// Decodes `lookahead_frames` ahead of rendering so the director
-    /// has seen future frames by the time each frame is rendered.
-    fn run_with_lookahead(
-        &mut self,
-        source: &mut dyn FrameSource,
-        frame_limit: u64,
-        interrupted: &AtomicBool,
-        on_progress: &mut Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
-        use std::collections::VecDeque;
-
-        let start = std::time::Instant::now();
-        let lookahead = self.lookahead_frames;
-        let mut buffer: VecDeque<StereoFrame> = VecDeque::with_capacity(lookahead + 1);
-
-        // Track how many frames have been decoded (for frame_limit).
-        let mut decoded_count: u64 = 0;
-
-        // Pre-fill: decode lookahead frames and run detection on each,
-        // but don't render yet. This advances the director ahead.
-        for _ in 0..lookahead {
-            if interrupted.load(Ordering::Relaxed) {
-                break;
-            }
-            let frame = {
-                crate::profile_scope!("wait_decode");
-                match source.next_frame()? {
-                    Some(f) => f,
-                    None => break,
-                }
-            };
-            decoded_count += 1;
-            self.detect_and_update_director(&frame, start.elapsed())?;
-            buffer.push_back(frame);
-        }
-
-        log::info!(
-            "Lookahead: pre-filled {} frames (requested {})",
-            buffer.len(),
-            lookahead,
-        );
-
-        // Main loop: decode one new frame, detect on it (advancing director),
-        // then render+encode the oldest buffered frame with the current
-        // director position.
-        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            // Try to decode one more frame to keep the buffer full.
-            if decoded_count < frame_limit {
-                let frame = {
-                    crate::profile_scope!("wait_decode");
-                    source.next_frame()?
-                };
-                if let Some(f) = frame {
-                    decoded_count += 1;
-                    self.detect_and_update_director(&f, start.elapsed())?;
-                    buffer.push_back(f);
-                }
-            }
-
-            // Render the oldest buffered frame with the current director state.
-            let Some(render_frame) = buffer.pop_front() else {
-                break;
-            };
-            let pos = self.director_position();
-            self.process_frame(&render_frame, pos.yaw, pos.pitch)?;
 
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {

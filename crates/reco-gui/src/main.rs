@@ -27,7 +27,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use reco_calibrate::{LensProfileInfo, ProfileSource};
+use reco_control::pose_control::{PoseControl, PoseControlConfig};
+use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
 use reco_core::calibration::MatchCalibration;
+use reco_core::director::ViewportPosition;
 use reco_core::pipeline::YuvPlanes;
 use reco_core::wgpu;
 
@@ -59,14 +62,22 @@ const PREVIEW_HEIGHT: u32 = 1080;
 /// no frame advance is due.
 const TICK_INTERVAL_MS: i64 = 2;
 
-/// Mouse drag sensitivity: radians per pixel of cursor movement.
-/// Matches the CLI preview (`MOUSE_SENSITIVITY` in crates/reco-cli/src/preview.rs).
-const MOUSE_SENSITIVITY: f32 = 0.005;
-
 /// FOV clamp range (degrees), matching CLI preview.
 const FOV_MIN: f32 = 20.0;
 const FOV_MAX: f32 = 150.0;
 const FOV_DEFAULT: f32 = 75.0;
+
+/// Mouse drag sensitivity passed to `PoseControlConfig`. `0.287`
+/// deg/px = 0.005 rad/px - matches the pre-migration GUI constant
+/// (`MOUSE_SENSITIVITY = 0.005`) and the CLI preview's
+/// `drag_deg_per_pixel`.
+const DRAG_DEG_PER_PIXEL: f32 = 0.287;
+
+/// Exponential smoothing factor passed to `PoseControlConfig`. `0.25`
+/// gives a time constant of ~3-4 ticks at 60Hz render rate - fast
+/// enough to track input, soft enough to hide per-pixel jitter.
+/// Matches the pre-migration GUI constant `CAMERA_SMOOTHING`.
+const POSE_SMOOTHING: f32 = 0.25;
 
 /// How long the seek-slider fraction must stay stable before we
 /// actually execute the seek. Debouncing is required because every
@@ -74,16 +85,6 @@ const FOV_DEFAULT: f32 = 75.0;
 /// NVDEC codec reinit that costs ~50ms. Without debouncing, a drag
 /// saturates the GPU with hundreds of pending reinits.
 const SEEK_DEBOUNCE_MS: u64 = 120;
-
-/// Exponential smoothing factor for camera moves. Each tick, current
-/// moves SMOOTHING of the way toward target. 0.25 gives a time
-/// constant of ~3-4 ticks at 60Hz render rate — fast enough to track
-/// input, soft enough to hide per-pixel jitter.
-const CAMERA_SMOOTHING: f32 = 0.25;
-
-/// Below this threshold (radians / degrees), current is snapped to
-/// target to avoid lerping forever on float rounding error.
-const CAMERA_EPSILON: f32 = 0.0005;
 
 /// Default number of frame pairs for auto-calibration. The reco-core
 /// default is 2 which is thin for high-resolution footage; 4 gives a
@@ -120,18 +121,12 @@ struct AppState {
     /// wgpu handles captured from Slint's rendering notifier. `None`
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
-    /// Current displayed camera pose (radians). Lerped each tick
-    /// toward `target_yaw`/`target_pitch`, then fed to `render_frame`.
-    yaw: f32,
-    pitch: f32,
-    /// Target camera pose — where pan/arrow inputs want the camera to be.
-    /// Current eases toward this at `CAMERA_SMOOTHING` per tick so per-
-    /// pixel drag inputs produce visually continuous motion.
-    target_yaw: f32,
-    target_pitch: f32,
-    /// Target FOV (degrees). Current FOV lives on the renderer; this is
-    /// where zoom events land before being lerped in.
-    target_fov: f32,
+    /// Unified pose state machine (target + current + smoothing +
+    /// coverage clamping). Replaces the earlier hand-rolled
+    /// `yaw/pitch/target_*` fields; all input events (drag, wheel,
+    /// slider, reset) feed `PoseControl` and the render loop reads
+    /// `pose.current_pose()`.
+    pose: PoseControl,
     /// Pending debounced seek: (fraction, time the request was made).
     /// The timer tick executes the seek once the fraction has stopped
     /// changing for `SEEK_DEBOUNCE_MS`.
@@ -266,11 +261,22 @@ impl AppState {
             bridge: None,
             cal_rx: None,
             shared_gpu: None,
-            yaw: 0.0,
-            pitch: 0.0,
-            target_yaw: 0.0,
-            target_pitch: 0.0,
-            target_fov: FOV_DEFAULT,
+            pose: PoseControl::new(PoseControlConfig {
+                drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
+                smoothing: POSE_SMOOTHING,
+                fov_min_degrees: FOV_MIN,
+                fov_max_degrees: FOV_MAX,
+                // Pre-migration GUI: drag-right -> target_yaw +=,
+                // i.e. PTZ-head convention. `invert_drag_x = true`
+                // keeps that exact feel.
+                invert_drag_x: true,
+                rest_pose: ViewportPosition {
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    fov_degrees: Some(FOV_DEFAULT),
+                },
+                ..PoseControlConfig::default()
+            }),
             pending_seek: None,
             last_render_at: None,
             preview_dirty: false,
@@ -433,7 +439,8 @@ impl AppState {
             v: &frame.right.v,
         };
 
-        match bridge.render_frame(&left, &right, self.yaw, self.pitch) {
+        let pose = self.pose.current_pose();
+        match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
             Ok(img) => Some(img),
             Err(e) => {
                 log::error!("Render error: {e}");
@@ -442,12 +449,11 @@ impl AppState {
         }
     }
 
-    /// Apply a pixel-space pan delta — updates the *target* only. The
-    /// timer tick lerps the displayed yaw/pitch toward the target, so
-    /// per-pixel drag inputs produce smooth visible motion.
+    /// Apply a pixel-space pan delta. Feeds `PoseControl::apply_drag`
+    /// then runs the coverage clamp so the resulting target stays
+    /// inside the no-black region.
     fn apply_pan(&mut self, dx_px: f32, dy_px: f32) {
-        self.target_yaw += dx_px * MOUSE_SENSITIVITY;
-        self.target_pitch += dy_px * MOUSE_SENSITIVITY;
+        self.pose.apply_drag(dx_px, dy_px);
         self.clamp_targets();
         // Flag dirty so the playback timer requests redraws until the
         // smoothing lerp settles. Without this, when paused, the lerp
@@ -456,64 +462,43 @@ impl AppState {
         self.preview_dirty = true;
     }
 
-    /// Apply a FOV delta (degrees). Clamps the target; lerp handles smoothing.
+    /// Apply a FOV delta (degrees). Clamps the target; tick handles smoothing.
     fn apply_zoom(&mut self, delta_deg: f32) {
-        self.target_fov = (self.target_fov + delta_deg).clamp(FOV_MIN, FOV_MAX);
+        IntentTranslator::new(&mut self.pose)
+            .dispatch(ControlIntent::Pose(PoseIntent::DeltaFovDeg(delta_deg)));
         self.clamp_targets();
         self.preview_dirty = true;
     }
 
-    /// Set FOV absolute (from the slider). Updates target; lerp applies it.
+    /// Set FOV absolute (from the slider). Updates target; tick applies it.
     fn set_fov(&mut self, fov_deg: f32) {
-        self.target_fov = fov_deg.clamp(FOV_MIN, FOV_MAX);
+        IntentTranslator::new(&mut self.pose)
+            .dispatch(ControlIntent::Pose(PoseIntent::SetFovDeg(fov_deg)));
         self.clamp_targets();
         self.preview_dirty = true;
     }
 
-    /// Lerp current camera (yaw/pitch/fov) one step toward the targets.
-    /// Returns true if any value changed — the caller uses this to
-    /// decide whether to re-render. Small residuals below the epsilon
-    /// are snapped to zero so we don't lerp forever on float error.
+    /// Advance the PoseControl one smoothing step and push the
+    /// resulting FOV back to the renderer pipeline. Returns `true`
+    /// when the pose changed measurably (caller uses this to decide
+    /// whether to re-render).
     fn smooth_camera(&mut self) -> bool {
-        let mut changed = false;
+        let before = self.pose.current_pose();
+        self.pose.tick();
+        let after = self.pose.current_pose();
 
-        let dy = self.target_yaw - self.yaw;
-        if dy.abs() > CAMERA_EPSILON {
-            self.yaw += dy * CAMERA_SMOOTHING;
-            changed = true;
-        } else if self.yaw != self.target_yaw {
-            self.yaw = self.target_yaw;
-            changed = true;
+        let yaw_changed = (before.yaw - after.yaw).abs() > f32::EPSILON;
+        let pitch_changed = (before.pitch - after.pitch).abs() > f32::EPSILON;
+        let fov_changed = before.fov_degrees != after.fov_degrees;
+
+        if fov_changed
+            && let Some(fov) = after.fov_degrees
+            && let Some(bridge) = self.bridge.as_mut()
+        {
+            bridge.renderer_mut().pipeline_mut().set_fov(fov);
         }
 
-        let dp = self.target_pitch - self.pitch;
-        if dp.abs() > CAMERA_EPSILON {
-            self.pitch += dp * CAMERA_SMOOTHING;
-            changed = true;
-        } else if self.pitch != self.target_pitch {
-            self.pitch = self.target_pitch;
-            changed = true;
-        }
-
-        if let Some(bridge) = self.bridge.as_mut() {
-            let current_fov = bridge.renderer().pipeline().fov();
-            let df = self.target_fov - current_fov;
-            if df.abs() > CAMERA_EPSILON {
-                bridge
-                    .renderer_mut()
-                    .pipeline_mut()
-                    .set_fov(current_fov + df * CAMERA_SMOOTHING);
-                changed = true;
-            } else if (current_fov - self.target_fov).abs() > 0.0 {
-                bridge
-                    .renderer_mut()
-                    .pipeline_mut()
-                    .set_fov(self.target_fov);
-                changed = true;
-            }
-        }
-
-        changed
+        yaw_changed || pitch_changed || fov_changed
     }
 
     /// Set seam blend width. Reasonable range is 0.0 to 0.3.
@@ -532,23 +517,33 @@ impl AppState {
         }
     }
 
-    /// Reset yaw/pitch/fov targets to defaults. The lerp will ease the
-    /// currently displayed view back to zero rather than snapping.
+    /// Reset yaw/pitch/fov targets to the rest pose. Routes through
+    /// the translator so the same intent path works for both Slint
+    /// callbacks and future remote transports.
     fn reset_view(&mut self) {
-        self.target_yaw = 0.0;
-        self.target_pitch = 0.0;
-        self.target_fov = FOV_DEFAULT;
+        IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(PoseIntent::Reset));
     }
 
-    /// Clamp the *target* pose against the coverage boundary so pan
-    /// input can't set an unreachable goal. The current pose is
-    /// clamped implicitly as it lerps toward the clamped target.
+    /// Dispatch a batch of control intents from any [`ControlTransport`](reco_control::ControlTransport).
+    /// Routes through [`IntentTranslator`], then runs the coverage
+    /// clamp once for the whole batch.
+    #[allow(dead_code)] // called once transports are wired
+    fn dispatch_intents(&mut self, intents: &[ControlIntent]) {
+        if intents.is_empty() {
+            return;
+        }
+        IntentTranslator::new(&mut self.pose).dispatch_all(intents);
+        self.clamp_targets();
+        self.preview_dirty = true;
+    }
+
+    /// Clamp the pose through the coverage boundary so pan input
+    /// cannot set an unreachable goal. Delegates to
+    /// `PoseControl::clamp_via_coverage`.
     fn clamp_targets(&mut self) {
         // Constrained-look toggle: when the user disables it we let
         // yaw/pitch/fov roam freely (useful for calibration debug or
         // inspecting the black margins beyond the stitched region).
-        // When enabled - the default - we clamp both yaw/pitch AND fov
-        // so the viewport cannot display black at any zoom level.
         if !self.use_constrained_look {
             return;
         }
@@ -559,25 +554,8 @@ impl AppState {
         let (vw, vh) = bridge.viewport_size();
         let aspect = vw as f32 / vh as f32;
         let rig_tilt = renderer.pipeline().viewport().rig_tilt;
-
-        // FOV first: zooming out past what the coverage can contain
-        // produces black margins regardless of yaw/pitch, so clamp the
-        // target fov to the boundary's max before solving yaw/pitch
-        // (which depends on fov).
-        let max_fov = renderer.coverage().max_fov_degrees();
-        if max_fov > 0.0 {
-            self.target_fov = self.target_fov.min(max_fov);
-        }
-
-        let clamped = renderer.coverage().safe_clamp(
-            self.target_yaw,
-            self.target_pitch,
-            self.target_fov,
-            aspect,
-            rig_tilt,
-        );
-        self.target_yaw = clamped.yaw;
-        self.target_pitch = clamped.pitch;
+        self.pose
+            .clamp_via_coverage(renderer.coverage(), aspect, rig_tilt);
     }
 
     /// Seek by a relative number of seconds (positive = forward).
@@ -1993,13 +1971,15 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
                 app.set_status_text("Playback finished".into());
             }
         }
-        // Reflect camera targets to the UI properties so sliders and
+        // Reflect camera state to the UI properties so sliders and
         // the reset button stay in sync with what the user is
-        // actually seeing.
-        app.set_yaw(s.yaw);
-        app.set_pitch(s.pitch);
-        if let Some(bridge) = s.bridge.as_ref() {
-            app.set_fov(bridge.renderer().pipeline().fov());
+        // actually seeing. FOV comes from PoseControl's current (the
+        // renderer pipeline's fov is driven by `smooth_camera`).
+        let current = s.pose.current_pose();
+        app.set_yaw(current.yaw);
+        app.set_pitch(current.pitch);
+        if let Some(fov) = current.fov_degrees {
+            app.set_fov(fov);
         }
         return true;
     }

@@ -212,6 +212,19 @@ enum Commands {
         /// `--replay`.
         #[arg(long, value_parser = parse_wxh)]
         replay_scale: Option<(u32, u32)>,
+
+        /// Continue without tracking if detection cannot run (e.g.
+        /// zero-copy mode without TensorRT). By default the CLI
+        /// errors out when --model is given but detection fails to
+        /// initialize, since silent fallback hides a broken setup.
+        #[arg(long, default_value_t = false)]
+        allow_no_tracking: bool,
+
+        /// Force CPU video decode instead of GPU zero-copy (NVDEC).
+        /// Needed when AI tracking uses ORT CPU detection without
+        /// TensorRT. Slower but lets the detector see the frames.
+        #[arg(long, default_value_t = false)]
+        no_zero_copy: bool,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -551,6 +564,31 @@ enum Commands {
 
     /// Display information about the GPU and system capabilities.
     Info,
+
+    /// Query a connected GoPro camera via USB or WiFi.
+    #[cfg(feature = "gopro")]
+    Gopro {
+        /// GoPro serial number suffix (last 3 digits) for USB connection.
+        /// Omit to use WiFi AP mode (10.5.5.9).
+        #[arg(long)]
+        serial: Option<String>,
+
+        /// Connect via a custom URL instead of the default USB/WiFi address.
+        #[arg(long)]
+        url: Option<String>,
+
+        /// Start recording on the camera.
+        #[arg(long)]
+        start: bool,
+
+        /// Stop recording on the camera.
+        #[arg(long)]
+        stop: bool,
+
+        /// Apply the sports stereo preset (disables HyperSmooth + horizon leveling).
+        #[arg(long)]
+        sports_preset: bool,
+    },
 }
 
 /// Parse and validate blend width to [0.0, 1.0].
@@ -641,6 +679,8 @@ fn main() -> anyhow::Result<()> {
             container,
             replay,
             replay_scale,
+            allow_no_tracking,
+            no_zero_copy,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -665,6 +705,8 @@ fn main() -> anyhow::Result<()> {
                 container: container.as_deref(),
                 replay_path: replay.as_deref(),
                 replay_scale,
+                allow_no_tracking,
+                no_zero_copy,
             },
             &interrupted,
         ),
@@ -903,6 +945,75 @@ fn main() -> anyhow::Result<()> {
                     println!("  {} [{}] — {}", enc.name, tag, enc.description);
                 }
             }
+            Ok(())
+        }
+        #[cfg(feature = "gopro")]
+        Commands::Gopro {
+            serial,
+            url,
+            start,
+            stop,
+            sports_preset,
+        } => {
+            use reco_control::gopro::GoProCamera;
+
+            let cam = if let Some(url) = url {
+                GoProCamera::connect_url(&url)?
+            } else if let Some(serial) = serial {
+                GoProCamera::connect_usb(&serial)?
+            } else {
+                println!("Trying WiFi AP mode (10.5.5.9)...");
+                GoProCamera::connect_wifi()?
+            };
+
+            if let Some(info) = cam.info() {
+                println!(
+                    "Model:    {}",
+                    info.model_name.as_deref().unwrap_or("unknown")
+                );
+                println!(
+                    "Firmware: {}",
+                    info.firmware_version.as_deref().unwrap_or("unknown")
+                );
+                println!(
+                    "Serial:   {}",
+                    info.serial_number.as_deref().unwrap_or("unknown")
+                );
+                println!("AP SSID:  {}", info.ap_ssid.as_deref().unwrap_or("unknown"));
+            }
+
+            let status = cam.status()?;
+            println!("\nStatus:");
+            if let Some(pct) = status.battery_percent {
+                println!("  Battery:   {}%", pct);
+            }
+            if let Some(enc) = status.encoding {
+                println!("  Recording: {}", if enc { "yes" } else { "no" });
+            }
+            if let Some(hot) = status.overheating {
+                println!("  Overheat:  {}", if hot { "YES" } else { "no" });
+            }
+
+            if sports_preset {
+                println!("\nApplying sports stereo preset...");
+                cam.apply_sports_preset(
+                    reco_control::gopro::VideoResolution::Res1080p,
+                    reco_control::gopro::Fps::Fps30,
+                    reco_control::gopro::VideoLens::Linear,
+                )?;
+                println!("Done.");
+            }
+
+            if start {
+                cam.start_recording()?;
+                println!("Recording started.");
+            }
+
+            if stop {
+                cam.stop_recording()?;
+                println!("Recording stopped.");
+            }
+
             Ok(())
         }
     }

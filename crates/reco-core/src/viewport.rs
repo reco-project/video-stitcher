@@ -1,8 +1,9 @@
 //! Viewport cropping from the panoramic render.
 //!
 //! The viewport defines the 16:9 (or user-chosen) rectangle that is
-//! extracted from the full panoramic view. The [`crate::director::Director`]
-//! controls the viewport position via yaw/pitch.
+//! extracted from the full panoramic view. The
+//! [`crate::panner::Panner`] emits the per-frame yaw/pitch that
+//! positions this rectangle.
 
 use crate::director::ViewportPosition;
 

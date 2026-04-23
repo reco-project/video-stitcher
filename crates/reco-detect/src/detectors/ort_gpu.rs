@@ -55,6 +55,11 @@ pub struct OrtGpuDetector {
     pad_y: f32,
     // Pre-allocated GPU scratch buffers.
     rgb_u8: CUdeviceptr,
+    /// Separate destination for the 180-degree mirror step. NPP's
+    /// `nppiMirror_8u_C3R` with `NPPI_AXIS_BOTH` is *not* safe in-place
+    /// (the top half gets overwritten before the bottom half is read),
+    /// so a distinct scratch is required. Same size as `rgb_u8`.
+    rgb_scratch: CUdeviceptr,
     resized_u8: CUdeviceptr,
     tensor_f32: CUdeviceptr,
     // P010 (10-bit NV12) conversion scratch buffers.
@@ -135,6 +140,7 @@ impl OrtGpuDetector {
             .ok_or_else(|| ort::Error::new("input dimensions overflow for tensor_size"))?;
 
         let rgb_u8 = cuda_mem_alloc(rgb_size)?;
+        let rgb_scratch = cuda_mem_alloc(rgb_size)?;
         let resized_u8 = cuda_mem_alloc(resized_size)?;
         let tensor_f32 = cuda_mem_alloc(tensor_size)?;
 
@@ -191,6 +197,7 @@ impl OrtGpuDetector {
             pad_x,
             pad_y,
             rgb_u8,
+            rgb_scratch,
             resized_u8,
             tensor_f32,
             nv12_8bit_y,
@@ -308,23 +315,37 @@ impl OrtGpuDetector {
         // Step 1b: Flip 180 degrees if the source has rotation metadata.
         // NVDEC decodes without applying rotation; the render shader flips
         // UV for display, but the detector sees raw upside-down frames.
-        // Mirror the RGB buffer in-place via NPP before resize.
-        if rotation == 180 {
+        //
+        // Mirror OUT-OF-PLACE into `rgb_scratch`. `nppiMirror_8u_C3R` with
+        // `NPPI_AXIS_BOTH` is not safe in-place — writes to the top half
+        // overlap reads from the bottom half, corrupting the output into a
+        // half-mirrored image that the detector silently misreads.
+        let resize_src = if rotation == 180 {
             reco_core::profile_scope!("npp_mirror_180");
-            npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height).map_err(|e| {
+            npp_mirror_c3(self.rgb_u8, self.rgb_scratch, width, height).map_err(|e| {
                 DetectorError::InferenceFailed(format!("NPP mirror (rotation=180): {e}"))
             })?;
-        }
+            self.rgb_scratch
+        } else {
+            self.rgb_u8
+        };
 
-        // Step 2: Resize to letterboxed region within the pre-filled grey buffer.
-        // Re-fill grey padding each frame (NPP resize only writes the dst_roi region).
+        // Step 2: Resize into the pre-letterboxed scratch buffer.
+        //
+        // The letterbox grey padding is written ONCE at detector init time
+        // (see the `cuda_memset_d8` in `try_new`). Since `dst_roi` is fixed
+        // for a given (frame_width, frame_height, input_size), the grey
+        // border never changes, so re-filling per frame is redundant.
+        //
+        // The earlier per-frame memset also raced with `npp_resize_c3`:
+        // the memset used the default CUDA stream while NPP ran on its
+        // dedicated stream, and with the mirror step pushing extra work
+        // onto the NPP stream the memset could complete *after* the
+        // resize, wiping freshly-written pitch pixels back to grey. This
+        // asymmetrically starved detection on rotated streams only.
         {
             reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
-            let resized_size = (is as usize) * (is as usize) * 3;
-            cuda_memset_d8(self.resized_u8, 114, resized_size)
-                .map_err(|e| DetectorError::InferenceFailed(format!("grey fill: {e}")))?;
-
             let pad_x_i = self.pad_x as u32;
             let pad_y_i = self.pad_y as u32;
             let dst_roi = NppiRect {
@@ -334,7 +355,7 @@ impl OrtGpuDetector {
                 height: self.new_h as i32,
             };
 
-            npp_resize_c3(self.rgb_u8, width, height, self.resized_u8, is, is, dst_roi)
+            npp_resize_c3(resize_src, width, height, self.resized_u8, is, is, dst_roi)
                 .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
         }
 
@@ -459,6 +480,7 @@ impl Drop for OrtGpuDetector {
         // Free GPU scratch buffers. Log errors but don't panic in Drop.
         for (name, ptr) in [
             ("rgb_u8", self.rgb_u8),
+            ("rgb_scratch", self.rgb_scratch),
             ("resized_u8", self.resized_u8),
             ("tensor_f32", self.tensor_f32),
             ("nv12_8bit_y", self.nv12_8bit_y),

@@ -29,7 +29,7 @@ use crate::scene::SceneGeometry;
 use crate::viewport::ResolvedViewport;
 
 use bytemuck::{Pod, Zeroable};
-use nalgebra::{Matrix4, Perspective3, Point3, UnitQuaternion, Vector3};
+use nalgebra::{Matrix4, Perspective3, Point3, UnitQuaternion};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
@@ -1074,14 +1074,16 @@ fn view_matrix(
     rig_tilt: f32,
     rig_roll: f32,
 ) -> Matrix4<f32> {
-    let eye = Point3::new(position[0], position[1], position[2]);
-    // Base direction: eye → origin (the L-shape corner)
-    let mut base_forward = -eye.coords.normalize();
-    let mut world_up = Vector3::new(0.0, 1.0, 0.0);
-
-    // Camera's base right axis — perpendicular to view in the horizontal plane.
-    // This accounts for the camera being at 45° in the XZ plane.
-    let base_right = base_forward.cross(&world_up).normalize();
+    // Basis is owned by VirtualCamera so view_matrix and the yaw/pitch
+    // decomposition in projection.rs share a single source of truth.
+    // The right-handed `(base_forward, base_right, world_up)` triple
+    // makes view_matrix's yaw sign agree with
+    // `direction_to_yaw_pitch` without any downstream sign reconciliation.
+    let cam = crate::projection::VirtualCamera::new(position);
+    let eye = Point3::from(cam.eye);
+    let mut base_forward = cam.base_forward;
+    let base_right = cam.base_right;
+    let mut world_up = crate::projection::VirtualCamera::world_up();
 
     // Rig tilt: rotate the entire reference frame around the base right axis.
     // This tilts "up" and "forward" so that yaw/pitch operate in the tilted
@@ -1225,5 +1227,59 @@ mod tests {
         // Point at Z = 1 (OpenGL far) should map to Z = 1 (wgpu far)
         let p = m * nalgebra::Vector4::new(0.0, 0.0, 1.0, 1.0);
         assert!((p.z - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn view_matrix_self_consistent_with_direction_to_yaw_pitch() {
+        // Step 1e (un-ignored by Step 2's VirtualCamera basis fix):
+        // directions synthesized at a known (yaw, pitch), run through
+        // direction_to_yaw_pitch, then fed to view_matrix, must
+        // transform a point on the dir ray to the camera's -Z axis
+        // (the right-hand convention nalgebra::Isometry3::look_at_rh
+        // uses).
+        //
+        // rig_tilt and rig_roll are both zero here: direction_to_yaw_pitch
+        // does not take them (Model 4), so any non-zero tilt/roll
+        // would break the round-trip by definition. Step 4 lands
+        // RigCorrection and unblocks the full (yaw, pitch, tilt, roll)
+        // version of this test.
+        let camera_position = [0.24_f32, 0.0, 0.24];
+        let yaw_steps = [-1.0_f32, -0.5, -0.1, 0.0, 0.1, 0.5, 1.0];
+        let pitch_steps = [-0.6_f32, -0.2, 0.0, 0.2, 0.6];
+
+        for &yaw in &yaw_steps {
+            for &pitch in &pitch_steps {
+                let dir = crate::projection::yaw_pitch_to_direction(yaw, pitch, &camera_position);
+                let pos = crate::projection::direction_to_yaw_pitch(&dir, &camera_position);
+
+                let view = view_matrix(&camera_position, pos.yaw, pos.pitch, 0.0, 0.0);
+
+                // A point at eye + dir (unit step along the direction)
+                // must land on camera-space -Z at distance 1.
+                let target = nalgebra::Vector4::new(
+                    camera_position[0] + dir.x,
+                    camera_position[1] + dir.y,
+                    camera_position[2] + dir.z,
+                    1.0,
+                );
+                let cam = view * target;
+
+                assert!(
+                    cam.x.abs() < 1e-4,
+                    "x should be zero (on camera forward axis), got {} at yaw={yaw} pitch={pitch}",
+                    cam.x
+                );
+                assert!(
+                    cam.y.abs() < 1e-4,
+                    "y should be zero (on camera forward axis), got {} at yaw={yaw} pitch={pitch}",
+                    cam.y
+                );
+                assert!(
+                    (cam.z + 1.0).abs() < 1e-4,
+                    "z should be -1 (camera looks down -Z), got {} at yaw={yaw} pitch={pitch}",
+                    cam.z
+                );
+            }
+        }
     }
 }

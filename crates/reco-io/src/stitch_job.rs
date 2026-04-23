@@ -63,6 +63,10 @@ pub struct StitchJob {
     // nothing.
     #[cfg(feature = "stacked-output")]
     replay_recording: Option<ReplayRecordingConfig>,
+
+    /// Force CPU decode instead of GPU zero-copy. Needed when ORT
+    /// CPU detection is wanted but TensorRT is not available.
+    force_cpu_decode: bool,
 }
 
 /// Configuration for optional replay recording (see
@@ -239,6 +243,7 @@ impl StitchJob {
             on_session: None,
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
+            force_cpu_decode: false,
         }
     }
 
@@ -424,6 +429,15 @@ impl StitchJob {
     ///
     /// Dimensions must be YUV420P-aligned: `width` divisible by 4
     /// (pack shader quirk), `height` even.
+    /// Force CPU decode instead of GPU zero-copy (NVDEC). Required
+    /// when AI tracking uses ORT CPU detection and TensorRT is not
+    /// available. CPU decode is ~5-10x slower but gives the detector
+    /// access to the frames.
+    pub fn force_cpu_decode(mut self) -> Self {
+        self.force_cpu_decode = true;
+        self
+    }
+
     #[cfg(feature = "stacked-output")]
     pub fn with_replay_scale(mut self, width: u32, height: u32) -> Self {
         if let Some(ref mut cfg) = self.replay_recording {
@@ -514,13 +528,21 @@ impl StitchJob {
         let gpu = reco_core::gpu::GpuContext::new_blocking()?;
         let gpu_name = gpu.gpu_name().to_string();
 
-        // Open source with auto GPU detection
-        let mut source = crate::SmartFileSource::open(
-            self.left.primary(),
-            self.right.primary(),
-            &gpu,
-            effective_sync,
-        )?;
+        let mut source = if self.force_cpu_decode {
+            log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
+            crate::SmartFileSource::open_cpu_only(
+                self.left.primary(),
+                self.right.primary(),
+                effective_sync,
+            )?
+        } else {
+            crate::SmartFileSource::open(
+                self.left.primary(),
+                self.right.primary(),
+                &gpu,
+                effective_sync,
+            )?
+        };
         let info = source.info();
         let (out_w, out_h) = self.resolution.unwrap_or((1920, 1080));
         if self.resolution.is_none() {

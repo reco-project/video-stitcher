@@ -32,7 +32,8 @@
 //! The crate defines traits for pluggable components:
 //! - [`source::FrameSource`] — delivers stereo frame pairs (files, cameras, streams)
 //! - [`detector::UnifiedDetector`] — detects objects in raw frames (e.g. ball tracking)
-//! - [`director::Director`] — controls where the virtual camera pans
+//! - [`tracker::Tracker`] — turns detections into stable tracked entities
+//! - [`panner::Panner`] — turns the tracked world state into a viewport pose
 //! - [`encoder::Encoder`] — receives stitched GPU frames for encoding
 //!
 //! ## Usage
@@ -86,6 +87,7 @@ pub mod core;
 // paths used by the stitch pipeline's zero-copy bridge.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
+pub mod detection_filter;
 pub mod detector;
 pub mod director;
 pub mod encoder;
@@ -98,20 +100,35 @@ pub mod lens;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
 pub mod nv12_converter;
+/// Camera-motion policy contract — see [`Panner`](panner::Panner).
+/// The panner half of the tracker/panner split: consumes a clean
+/// [`WorldState`](tracker::WorldState) and decides where to point
+/// the virtual camera. Camera smoothing, anticipation, and dead-zone
+/// handling layer as panner decorators in `reco-autocam`.
+pub mod panner;
 pub mod pipeline;
-/// M4 unified pose-control primitive. See [`pose_control::PoseControl`]
-/// and [`pose_control::HotkeyIntent`] — the single source of truth for
-/// mouse/drag/wheel/keyboard → yaw/pitch/FOV translation across
-/// consumers.
-pub mod pose_control;
+/// Structured observability: optional sink that records a
+/// per-frame [`PipelineEvent`](crate::pipeline_event::PipelineEvent) stream from the
+/// stitch loop. See [`pipeline_event`](crate::pipeline_event) for the event vocabulary
+/// and the non-blocking [`BackpressuredSink`](crate::pipeline_event::BackpressuredSink) wrapper (Step 6b).
+pub mod pipeline_event;
 pub mod projection;
 pub mod renderer;
 pub mod rgba_readback;
+pub mod rig_correction;
 pub mod scene;
 pub mod session;
 pub mod source;
 pub mod stage;
 pub mod stitch_renderer;
+/// Tracker contract — see [`Tracker`](tracker::Tracker),
+/// [`WorldState`](tracker::WorldState), and
+/// [`TrackedEntity`](tracker::TrackedEntity). The tracker half of
+/// the tracker/panner split: turns noisy per-frame detections into
+/// stable tracked entities with lifecycle state.
+/// Implementations (BallTracker, PlayerTracker, …) live in
+/// `reco-autocam`.
+pub mod tracker;
 pub mod undistort;
 pub mod viewport;
 #[cfg(target_os = "linux")]
