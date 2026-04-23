@@ -27,7 +27,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use reco_calibrate::{LensProfileInfo, ProfileSource};
-use reco_control::pose_control::{HotkeyIntent, PoseControl, PoseControlConfig};
+use reco_control::pose_control::{PoseControl, PoseControlConfig};
+use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
 use reco_core::calibration::MatchCalibration;
 use reco_core::director::ViewportPosition;
 use reco_core::pipeline::YuvPlanes;
@@ -463,15 +464,16 @@ impl AppState {
 
     /// Apply a FOV delta (degrees). Clamps the target; tick handles smoothing.
     fn apply_zoom(&mut self, delta_deg: f32) {
-        let new_fov = self.pose.target_pose().fov_degrees.unwrap_or(FOV_DEFAULT) + delta_deg;
-        self.pose.set_target_fov(new_fov);
+        IntentTranslator::new(&mut self.pose)
+            .dispatch(ControlIntent::Pose(PoseIntent::DeltaFovDeg(delta_deg)));
         self.clamp_targets();
         self.preview_dirty = true;
     }
 
     /// Set FOV absolute (from the slider). Updates target; tick applies it.
     fn set_fov(&mut self, fov_deg: f32) {
-        self.pose.set_target_fov(fov_deg);
+        IntentTranslator::new(&mut self.pose)
+            .dispatch(ControlIntent::Pose(PoseIntent::SetFovDeg(fov_deg)));
         self.clamp_targets();
         self.preview_dirty = true;
     }
@@ -515,11 +517,25 @@ impl AppState {
         }
     }
 
-    /// Reset yaw/pitch/fov targets to the rest pose. PoseControl's
-    /// `HotkeyIntent::Reset` moves the target (not the current), so
-    /// the tick easing carries the displayed view smoothly back.
+    /// Reset yaw/pitch/fov targets to the rest pose. Routes through
+    /// the translator so the same intent path works for both Slint
+    /// callbacks and future remote transports.
     fn reset_view(&mut self) {
-        self.pose.apply_hotkey(HotkeyIntent::Reset);
+        IntentTranslator::new(&mut self.pose)
+            .dispatch(ControlIntent::Pose(PoseIntent::Reset));
+    }
+
+    /// Dispatch a batch of control intents from any [`ControlTransport`].
+    /// Routes through [`IntentTranslator`], then runs the coverage
+    /// clamp once for the whole batch.
+    #[allow(dead_code)] // called once transports are wired
+    fn dispatch_intents(&mut self, intents: &[ControlIntent]) {
+        if intents.is_empty() {
+            return;
+        }
+        IntentTranslator::new(&mut self.pose).dispatch_all(intents);
+        self.clamp_targets();
+        self.preview_dirty = true;
     }
 
     /// Clamp the pose through the coverage boundary so pan input
