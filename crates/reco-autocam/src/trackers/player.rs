@@ -52,9 +52,10 @@ use crate::trackers::filters::{CoastStatus, Coaster};
 pub const DEFAULT_MATCH_GATE_RAD: f32 = 0.20;
 
 /// Default coast budget for a tracklet that stops getting fresh
-/// detections. 10 frames at 30 fps ≈ 330 ms — covers typical
-/// one-player brief occlusions without letting dead tracks linger.
-pub const DEFAULT_MAX_COAST_FRAMES: u32 = 10;
+/// detections. Must exceed detection_interval so tracklets survive
+/// between detection cycles. 45 frames at 30 fps = 1.5s, covers
+/// detection_interval=30 with margin.
+pub const DEFAULT_MAX_COAST_FRAMES: u32 = 45;
 
 /// A multi-entity tracker with stable IDs.
 ///
