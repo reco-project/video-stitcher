@@ -75,6 +75,7 @@ pub use wgpu;
 
 pub mod analyze;
 pub mod bayer;
+pub mod color_grade;
 pub(crate) mod async_encode;
 pub mod calibration;
 /// M3 push-first `StitchCore` shell — the canonical entry point.

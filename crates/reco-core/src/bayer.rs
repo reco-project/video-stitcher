@@ -5,6 +5,7 @@
 //! pipeline's input plane via [`StitchRenderer::copy_texture_to_left`].
 //! No CPU readback in the hot path.
 
+use crate::color_grade::{ColorGradeParams, ColorGradePass};
 use crate::gpu::GpuContext;
 use wgpu::util::DeviceExt;
 
@@ -272,7 +273,11 @@ pub struct BayerDemosaic {
     bind_group_layout: wgpu::BindGroupLayout,
     params_buffer: wgpu::Buffer,
     input_texture: wgpu::Texture,
-    output_texture: wgpu::Texture,
+    /// Linear-light demosaic output (WB+CCM corrected, no gamma).
+    demosaic_output: wgpu::Texture,
+    /// Graded output (brightness + saturation + gamma applied).
+    graded_output: wgpu::Texture,
+    grade_pass: ColorGradePass,
     width: u32,
     height: u32,
 }
@@ -363,8 +368,24 @@ impl BayerDemosaic {
             view_formats: &[],
         });
 
-        let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("demosaic_output"),
+        let demosaic_output = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("demosaic_linear"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let graded_output = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("demosaic_graded"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -378,21 +399,34 @@ impl BayerDemosaic {
             view_formats: &[],
         });
 
+        let mut grade_params = ColorGradeParams::default();
+        grade_params.brightness = params.brightness;
+        grade_params.saturation = params.saturation;
+        grade_params.gamma = 0.5;
+        let grade_pass = ColorGradePass::new(gpu, &grade_params);
+
         Self {
             pipeline,
             bind_group_layout,
             params_buffer,
             input_texture,
-            output_texture,
+            demosaic_output,
+            graded_output,
+            grade_pass,
             width,
             height,
         }
     }
 
     /// Update ISP parameters (WB, CCM, etc.) without rebuilding the pipeline.
-    pub fn update_params(&self, gpu: &GpuContext, params: &IspParams) {
+    pub fn update_params(&mut self, gpu: &GpuContext, params: &IspParams) {
         gpu.queue
             .write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(params));
+        let mut grade_params = ColorGradeParams::default();
+        grade_params.brightness = params.brightness;
+        grade_params.saturation = params.saturation;
+        grade_params.gamma = 0.5;
+        self.grade_pass.update_params(gpu, &grade_params);
     }
 
     /// Upload raw Bayer data and encode the demosaic compute pass.
@@ -442,7 +476,7 @@ impl BayerDemosaic {
             .input_texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let output_view = self
-            .output_texture
+            .demosaic_output
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -477,10 +511,26 @@ impl BayerDemosaic {
                 1,
             );
         }
+
+        // Chain color grade pass (brightness + saturation + gamma).
+        // No-op when params are identity.
+        self.grade_pass.encode(
+            gpu,
+            encoder,
+            &self.demosaic_output,
+            &self.graded_output,
+        );
     }
 
-    /// Output texture reference (for use with renderer copy methods).
+    /// Output texture reference (graded, display-ready).
+    ///
+    /// Returns the graded output when color grading is active,
+    /// or the linear demosaic output when grading is identity.
     pub fn output_texture(&self) -> &wgpu::Texture {
-        &self.output_texture
+        if self.grade_pass.is_identity() {
+            &self.demosaic_output
+        } else {
+            &self.graded_output
+        }
     }
 }

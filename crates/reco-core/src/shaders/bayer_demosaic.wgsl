@@ -1,9 +1,11 @@
-// Bayer RGGB demosaic + minimal ISP pipeline (compute shader).
+// Bayer RGGB demosaic compute shader.
 //
 // Input:  raw 10-bit Bayer (R16Uint texture, RGGB pattern)
-// Output: RGBA8Unorm texture (demosaiced, color-corrected, gamma-encoded)
+// Output: Rgba8Unorm texture (linear-light, WB+CCM corrected, no gamma)
 //
-// Pipeline: black subtract -> LSC -> bilinear demosaic -> WB -> CCM -> sRGB gamma
+// Pipeline: black subtract -> LSC -> bilinear demosaic -> WB -> CCM
+// Color grading (brightness, saturation, gamma) is handled by the
+// separate color_grade.wgsl pass, which works on any input path.
 // Designed for IMX477 direct V4L2 capture (bypassing NVIDIA ISP).
 
 struct IspParams {
@@ -18,8 +20,8 @@ struct IspParams {
     ccm_row0: vec4<f32>,
     ccm_row1: vec4<f32>,
     ccm_row2: vec4<f32>,
-    saturation: f32,
-    brightness: f32,
+    _pad0: f32,
+    _pad1: f32,
 }
 
 @group(0) @binding(0) var bayer_in: texture_2d<u32>;
@@ -99,16 +101,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         dot(params.ccm_row2.xyz, rgb_in),
     );
 
-    // Brightness: higher = brighter (linear scale in linear space before gamma)
-    let scaled = corrected * params.brightness;
-
-    // Saturation in YCbCr
-    let y_luma = 0.2126 * scaled.x + 0.7152 * scaled.y + 0.0722 * scaled.z;
-    let saturated = mix(vec3<f32>(y_luma), scaled, params.saturation);
-
-    // Clamp and apply sqrt gamma (matches fieldkit preview server)
-    let clamped = clamp(saturated, vec3<f32>(0.0), vec3<f32>(1.0));
-    let gamma_out = sqrt(clamped);
-
-    textureStore(output, vec2<i32>(x, y), vec4<f32>(gamma_out, 1.0));
+    // Output linear-light WB+CCM corrected RGB (no gamma, no saturation).
+    // Color grading is applied by the separate ColorGradePass.
+    let clamped = clamp(corrected, vec3<f32>(0.0), vec3<f32>(1.0));
+    textureStore(output, vec2<i32>(x, y), vec4<f32>(clamped, 1.0));
 }

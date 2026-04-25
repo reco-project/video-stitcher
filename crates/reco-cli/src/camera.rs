@@ -359,9 +359,9 @@ pub fn run_camera(
             let right_v4l2 = make_v4l2_config(cam_config.right_device.clone());
 
             let mut isp = IspParams::imx477_default(capture_width, capture_height);
-            let demosaic_left =
+            let mut demosaic_left =
                 BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
-            let demosaic_right =
+            let mut demosaic_right =
                 BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
 
             let mut awb = AwbController::new(isp.wb_r, isp.wb_b, 15);
