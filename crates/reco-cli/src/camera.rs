@@ -344,54 +344,46 @@ pub fn run_camera(
 
         #[cfg(feature = "v4l2")]
         {
-            use reco_core::bayer::{BayerDemosaic, IspParams, compute_awb, compute_mean_brightness};
+            use reco_core::bayer::{AeController, AwbController, BayerDemosaic, IspParams};
             use reco_io::v4l2::{V4l2CameraConfig, V4l2StereoCameraSource};
 
-            let left_v4l2 = V4l2CameraConfig {
-                device: cam_config.left_device.clone(),
+            let make_v4l2_config = |device: String| V4l2CameraConfig {
+                device,
                 width: capture_width,
                 height: capture_height,
                 fps: capture_fps,
                 exposure,
                 gain: sensor_gain,
             };
-            let right_v4l2 = V4l2CameraConfig {
-                device: cam_config.right_device.clone(),
-                width: capture_width,
-                height: capture_height,
-                fps: capture_fps,
-                exposure,
-                gain: sensor_gain,
-            };
+            let left_v4l2 = make_v4l2_config(cam_config.left_device.clone());
+            let right_v4l2 = make_v4l2_config(cam_config.right_device.clone());
 
             let mut isp = IspParams::imx477_default(capture_width, capture_height);
             let demosaic_left =
                 BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
             let demosaic_right =
                 BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
+
+            let mut awb = AwbController::new(isp.wb_r, isp.wb_b, 15);
+            let mut ae = AeController::new(
+                exposure,
+                sensor_gain,
+                200.0,
+                vec![left_v4l2.device.clone(), right_v4l2.device.clone()],
+                15,
+            );
+
             println!(
-                "GPU demosaic ready ({}x{}, zero-copy, AWB enabled), exposure={}, gain={}",
+                "GPU demosaic ready ({}x{}, zero-copy, AE+AWB), exposure={}, gain={}",
                 capture_width, capture_height, exposure, sensor_gain,
             );
 
             let mut source = V4l2StereoCameraSource::open(&left_v4l2, &right_v4l2)?;
-
-            // Warm up: discard first frame (sensor ISP init)
             if source.next_pair()?.is_some() {
                 println!("Warmup complete, starting V4L2 Bayer capture...");
             }
 
             let progress = helpers::ProgressReporter::new(30);
-            let awb_interval = 15u64;
-            let isp_baseline_wb_r = isp.wb_r;
-            let isp_baseline_wb_b = isp.wb_b;
-
-            // AE state: target mean green ~200 in 10-bit (good for white=300 tonemap)
-            let ae_target = 200.0_f32;
-            let mut cur_exposure = exposure as f32;
-            let mut cur_gain = sensor_gain as f32;
-            let ae_device_left = left_v4l2.device.clone();
-            let ae_device_right = right_v4l2.device.clone();
 
             while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
                 let (left_bytes, right_bytes) = {
@@ -402,61 +394,13 @@ pub fn run_camera(
                     }
                 };
 
-                // Grey-world AWB: compute correction relative to baseline WB
-                // The baseline (wb_r=1.7, wb_b=2.0) compensates for the IMX477's
-                // IR-filterless blue deficit. AWB nudges on top of that based on
-                // scene content, smoothed to avoid flicker.
-                if frame_count % awb_interval == 0 {
-                    let (awb_r, awb_b) = compute_awb(
-                        &*left_bytes, capture_width, capture_height, 8,
-                    );
-                    let base_r = isp_baseline_wb_r;
-                    let base_b = isp_baseline_wb_b;
-                    let target_r = base_r * awb_r;
-                    let target_b = base_b * awb_b;
-                    // Smooth toward target (tau ~0.5s at 30fps / 15-frame interval)
-                    let alpha = 0.3_f32;
-                    isp.wb_r = isp.wb_r * (1.0 - alpha) + target_r * alpha;
-                    isp.wb_b = isp.wb_b * (1.0 - alpha) + target_b * alpha;
+                if let Some((r, b)) = awb.update(&*left_bytes, capture_width, capture_height) {
+                    isp.wb_r = r;
+                    isp.wb_b = b;
                     demosaic_left.update_params(session.gpu(), &isp);
                     demosaic_right.update_params(session.gpu(), &isp);
-                    if frame_count == 0 {
-                        log::info!(
-                            "AWB: raw=({awb_r:.2},{awb_b:.2}) applied=({:.2},{:.2})",
-                            isp.wb_r, isp.wb_b
-                        );
-                    }
                 }
-
-                // Auto-exposure: adjust sensor exposure/gain to hit target brightness.
-                // Runs on same interval as AWB. Prefers exposure over gain.
-                if frame_count % awb_interval == 0 {
-                    let mean_g = compute_mean_brightness(
-                        &*left_bytes, capture_width, capture_height, 16,
-                    );
-                    if frame_count <= 15 {
-                        log::info!("AE debug: mean_g={mean_g:.1} cur_exp={cur_exposure:.0} target={ae_target}");
-                    }
-                    if mean_g > 1.0 {
-                        let ratio = ae_target / mean_g;
-                        // Clamp adjustment to +/- 1/3 stop per update (~1.26x)
-                        let clamped_ratio = ratio.clamp(1.0 / 1.26, 1.26);
-                        // Prefer exposure adjustment; only touch gain at limits
-                        let new_exp = (cur_exposure * clamped_ratio).clamp(13.0, 30000.0);
-                        if (new_exp - cur_exposure).abs() > 1.0 {
-                            cur_exposure = new_exp;
-                            let exp_i = cur_exposure as u32;
-                            let gain_i = cur_gain as u32;
-                            for dev in [&ae_device_left, &ae_device_right] {
-                                let _ = std::process::Command::new("v4l2-ctl")
-                                    .args(["-d", dev, "--set-ctrl",
-                                           &format!("override_enable=1,exposure={exp_i},gain={gain_i}")])
-                                    .output();
-                            }
-                            log::info!("AE: mean_g={mean_g:.0} ratio={clamped_ratio:.2} -> exp={exp_i} gain={gain_i}");
-                        }
-                    }
-                }
+                ae.update(&*left_bytes, capture_width, capture_height);
 
                 {
                     reco_core::profile_scope!("demosaic");
@@ -471,19 +415,14 @@ pub fn run_camera(
                     gpu.queue().submit(std::iter::once(encoder.finish()));
                 }
 
-                // Advance director (sweep, etc.) without detection
                 session.update_director(start.elapsed())?;
                 let pos = session.director_position();
-                let render_buf = {
-                    reco_core::profile_scope!("stitch_render");
-                    session.core().render_gpu_rgba_at_pose(
-                        demosaic_left.output_texture(),
-                        demosaic_right.output_texture(),
-                        pos.yaw,
-                        pos.pitch,
-                    )
-                };
-                session.submit_render_output(render_buf)?;
+                session.process_frame_gpu_rgba(
+                    demosaic_left.output_texture(),
+                    demosaic_right.output_texture(),
+                    pos.yaw,
+                    pos.pitch,
+                )?;
                 frame_count += 1;
                 progress.report(frame_count);
             }

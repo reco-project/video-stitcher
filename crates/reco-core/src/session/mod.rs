@@ -1287,6 +1287,28 @@ impl StitchSession {
         Ok(())
     }
 
+    /// Process a frame from GPU-resident RGBA textures (e.g. Bayer demosaic output).
+    ///
+    /// Copies the RGBA textures into the stitch pipeline's input planes,
+    /// renders the stitch, converts to NV12, and submits to encoders.
+    /// This is the Bayer/GPU-RGBA equivalent of [`process_frame`] for
+    /// YUV/NV12 paths - session features (encoder fan-out, replay recording,
+    /// frame counting) work automatically.
+    pub fn process_frame_gpu_rgba(
+        &mut self,
+        left_rgba: &wgpu::Texture,
+        right_rgba: &wgpu::Texture,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        let render_buf = self.core.render_gpu_rgba_at_pose(
+            left_rgba, right_rgba, yaw, pitch,
+        );
+        self.submit_render_output(render_buf)?;
+        self.core.drive_gpu_stacked_pack();
+        Ok(())
+    }
+
     /// Process a MetalResident frame: import CVPixelBuffers as textures, render.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn process_metal_frame(

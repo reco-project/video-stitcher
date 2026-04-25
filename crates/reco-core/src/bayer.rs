@@ -142,6 +142,124 @@ pub fn compute_awb(raw_bytes: &[u8], width: u32, height: u32, stride: u32) -> (f
     (wb_r, wb_b)
 }
 
+/// Auto white balance controller with exponential smoothing.
+///
+/// Computes grey-world WB gains from raw Bayer data and applies them
+/// as corrections on top of a user-tuned baseline. Smoothing prevents
+/// flicker across frames.
+pub struct AwbController {
+    baseline_r: f32,
+    baseline_b: f32,
+    pub current_r: f32,
+    pub current_b: f32,
+    interval: u64,
+    alpha: f32,
+    stride: u32,
+    frame_count: u64,
+}
+
+impl AwbController {
+    pub fn new(baseline_r: f32, baseline_b: f32, interval: u64) -> Self {
+        Self {
+            baseline_r,
+            baseline_b,
+            current_r: baseline_r,
+            current_b: baseline_b,
+            interval,
+            alpha: 0.3,
+            stride: 8,
+            frame_count: 0,
+        }
+    }
+
+    /// Process a raw Bayer frame. Returns updated (wb_r, wb_b) if this
+    /// frame triggered an AWB update, None otherwise.
+    pub fn update(&mut self, raw_bytes: &[u8], width: u32, height: u32) -> Option<(f32, f32)> {
+        self.frame_count += 1;
+        if !(self.frame_count - 1).is_multiple_of(self.interval) {
+            return None;
+        }
+        let (awb_r, awb_b) = compute_awb(raw_bytes, width, height, self.stride);
+        let target_r = self.baseline_r * awb_r;
+        let target_b = self.baseline_b * awb_b;
+        self.current_r = self.current_r * (1.0 - self.alpha) + target_r * self.alpha;
+        self.current_b = self.current_b * (1.0 - self.alpha) + target_b * self.alpha;
+        if self.frame_count == 1 {
+            log::info!(
+                "AWB: baseline=({:.2},{:.2}) raw=({awb_r:.2},{awb_b:.2}) applied=({:.2},{:.2})",
+                self.baseline_r, self.baseline_b, self.current_r, self.current_b
+            );
+        }
+        Some((self.current_r, self.current_b))
+    }
+}
+
+/// Auto-exposure controller with 1/3-stop ramp clamp.
+///
+/// Measures mean green brightness from raw Bayer data and adjusts
+/// sensor exposure via v4l2-ctl. Prefers exposure over gain.
+pub struct AeController {
+    target: f32,
+    pub exposure: f32,
+    pub gain: f32,
+    max_exposure: f32,
+    interval: u64,
+    devices: Vec<String>,
+    frame_count: u64,
+}
+
+impl AeController {
+    pub fn new(
+        initial_exposure: u32,
+        initial_gain: u32,
+        target: f32,
+        devices: Vec<String>,
+        interval: u64,
+    ) -> Self {
+        Self {
+            target,
+            exposure: initial_exposure as f32,
+            gain: initial_gain as f32,
+            max_exposure: 30000.0,
+            interval,
+            devices,
+            frame_count: 0,
+        }
+    }
+
+    /// Process a raw Bayer frame. Adjusts exposure if needed, returns
+    /// true if an adjustment was made.
+    pub fn update(&mut self, raw_bytes: &[u8], width: u32, height: u32) -> bool {
+        self.frame_count += 1;
+        if !(self.frame_count - 1).is_multiple_of(self.interval) {
+            return false;
+        }
+        let mean_g = compute_mean_brightness(raw_bytes, width, height, 16);
+        if mean_g <= 1.0 {
+            return false;
+        }
+        let ratio = self.target / mean_g;
+        let clamped = ratio.clamp(1.0 / 1.26, 1.26);
+        let new_exp = (self.exposure * clamped).clamp(13.0, self.max_exposure);
+        if (new_exp - self.exposure).abs() <= 1.0 {
+            return false;
+        }
+        self.exposure = new_exp;
+        let exp_i = self.exposure as u32;
+        let gain_i = self.gain as u32;
+        for dev in &self.devices {
+            let _ = std::process::Command::new("v4l2-ctl")
+                .args([
+                    "-d", dev, "--set-ctrl",
+                    &format!("override_enable=1,exposure={exp_i},gain={gain_i}"),
+                ])
+                .output();
+        }
+        log::info!("AE: mean_g={mean_g:.0} ratio={clamped:.2} -> exp={exp_i} gain={gain_i}");
+        true
+    }
+}
+
 /// GPU pipeline for Bayer demosaic + ISP processing.
 ///
 /// The hot-path method [`process_gpu`](Self::process_gpu) uploads raw
@@ -354,8 +472,8 @@ impl BayerDemosaic {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(
-                (self.width + 15) / 16,
-                (self.height + 15) / 16,
+                self.width.div_ceil(16),
+                self.height.div_ceil(16),
                 1,
             );
         }

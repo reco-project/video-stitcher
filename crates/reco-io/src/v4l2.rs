@@ -123,6 +123,7 @@ pub struct V4l2Camera {
     streaming: bool,
 }
 
+#[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn v4l2_ioctl(fd: i32, request: libc::c_ulong, arg: *mut libc::c_void) -> io::Result<()> {
     if libc::ioctl(fd, request, arg) < 0 {
         Err(io::Error::last_os_error())
