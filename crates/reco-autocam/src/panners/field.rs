@@ -33,7 +33,7 @@ use reco_core::tracker::{TrackState, TrackedEntity, WorldState};
 /// Huber tuning constant. Residuals greater than `c * scale` get
 /// a weight of `c * scale / r` instead of 1. `1.345` gives ~95%
 /// asymptotic efficiency under Gaussian noise (standard choice).
-const HUBER_C: f32 = 1.345;
+const HUBER_C: f32 = 1.1;
 
 /// Floor for the robust scale estimate to avoid divide-by-tiny when
 /// every player sits on top of the centroid (degenerate cluster).
@@ -80,7 +80,7 @@ const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
 
 /// Maximum angular velocity in radians per second.
 /// ~14 deg/s - allows faster pans on long runs across the field.
-const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.25;
+const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.18;
 
 /// Velocity smoothing alpha. Controls how quickly the camera changes
 /// direction. Lower = smoother reversals, higher = snappier tracking.
@@ -88,6 +88,21 @@ const VELOCITY_ALPHA: f32 = 0.06;
 
 /// Pitch bias added to the cluster centroid (radians).
 const PITCH_BIAS: f32 = 0.05;
+
+/// Per-frame decay for ball presence (0.99 at 30fps ≈ 3s fade-out).
+const BALL_PRESENCE_DECAY: f32 = 0.99;
+
+/// Per-frame attack for ball presence (fast acquire, slow release).
+const BALL_PRESENCE_ATTACK: f32 = 0.15;
+
+/// Max FOV increase (degrees) when panning at full velocity.
+const VELOCITY_FOV_BIAS_MAX: f32 = 10.0;
+
+/// Margin (degrees) inside the frame edge for ball-in-frame constraint.
+const BALL_FRAME_MARGIN_DEG: f32 = 3.0;
+
+/// Reject ball detections further than this from the cluster centroid (radians, ~50 deg).
+const BALL_MAX_DIST_FROM_CLUSTER: f32 = 0.85;
 
 /// Log interval in frames.
 const LOG_INTERVAL: u64 = 30;
@@ -133,6 +148,14 @@ pub struct FieldPanner {
     /// Max velocity in rad/frame (derived from fps).
     max_velocity: f32,
 
+    /// Ball presence strength (0.0 = no ball, 1.0 = full confidence).
+    /// Ramps up on detection, decays smoothly when lost.
+    ball_presence: f32,
+
+    /// Last known ball position for decay blending.
+    last_ball_yaw: f32,
+    last_ball_pitch: f32,
+
     /// Frame counter for log throttling.
     frame_index: u64,
 }
@@ -157,6 +180,9 @@ impl FieldPanner {
             velocity_yaw: 0.0,
             velocity_pitch: 0.0,
             max_velocity: MAX_VELOCITY_RAD_PER_SEC / fps,
+            ball_presence: 0.0,
+            last_ball_yaw: 0.0,
+            last_ball_pitch: 0.0,
             frame_index: 0,
         }
     }
@@ -362,22 +388,32 @@ impl FieldPanner {
 }
 
 impl FieldPanner {
-    /// Dynamic FOV proportional to the cluster's angular extent.
-    ///
-    /// `spread` is the max inlier distance from the centroid (radians).
-    /// The viewport should be roughly `2 * spread` wide plus margin.
-    /// A 1.6x margin keeps players comfortably inside the frame.
-    fn target_fov(&self, spread: f32, pitch: f32) -> f32 {
+    /// Dynamic FOV: player spread + distance + edge + velocity biases,
+    /// then widened if needed to keep the ball in frame.
+    fn target_fov(&self, spread: f32, pitch: f32, velocity_mag: f32) -> f32 {
         let spread_deg = spread.to_degrees();
-        let fov_from_spread = (2.0 * spread_deg * 1.0).max(self.fov_tight);
+        let fov_from_spread = (2.0 * spread_deg).max(self.fov_tight);
 
         let t_dist = ((pitch - PITCH_NEAR) / (PITCH_FAR - PITCH_NEAR)).clamp(0.0, 1.0);
         let distance_bias = t_dist * DISTANCE_BIAS_MAX;
 
-        let yaw_abs = self.yaw.abs();
-        let edge_bias = (yaw_abs * 5.0).min(EDGE_BIAS_MAX);
+        let edge_bias = (self.yaw.abs() * 5.0).min(EDGE_BIAS_MAX);
 
-        (fov_from_spread + distance_bias + edge_bias).clamp(self.fov_tight, self.fov_wide)
+        let vel_ratio = (velocity_mag / self.max_velocity).clamp(0.0, 1.0);
+        let velocity_bias = vel_ratio * VELOCITY_FOV_BIAS_MAX;
+
+        let mut fov = fov_from_spread + distance_bias + edge_bias + velocity_bias;
+
+        if self.ball_presence > 0.01 {
+            let ball_offset = ((self.last_ball_yaw - self.yaw).powi(2)
+                + (self.last_ball_pitch - self.pitch).powi(2))
+            .sqrt()
+            .to_degrees();
+            let needed = (ball_offset + BALL_FRAME_MARGIN_DEG) * 2.0;
+            fov = fov.max(needed);
+        }
+
+        fov.clamp(self.fov_tight, self.fov_wide)
     }
 }
 
@@ -394,32 +430,39 @@ impl Panner for FieldPanner {
         self.frame_index = self.frame_index.wrapping_add(1);
         let cluster = self.compute_cluster(&world.players);
 
-        let ball_pos = if self.ball_weight > 0.0 {
-            world
+        let ball_detected = self.ball_weight > 0.0
+            && world
                 .ball
                 .as_ref()
-                .filter(|b| !matches!(b.state, TrackState::Lost))
-                .map(|b| (b.yaw, b.pitch))
+                .is_some_and(|b| !matches!(b.state, TrackState::Lost));
+
+        let ball_near_cluster = ball_detected
+            && cluster.as_ref().is_some_and(|c| {
+                let b = world.ball.as_ref().unwrap();
+                let dist = ((b.yaw - c.yaw).powi(2) + (b.pitch - c.pitch).powi(2)).sqrt();
+                dist < BALL_MAX_DIST_FROM_CLUSTER
+            });
+
+        if ball_near_cluster {
+            let b = world.ball.as_ref().unwrap();
+            self.last_ball_yaw = b.yaw;
+            self.last_ball_pitch = b.pitch;
+            self.ball_presence += BALL_PRESENCE_ATTACK * (1.0 - self.ball_presence);
         } else {
-            None
-        };
+            self.ball_presence *= BALL_PRESENCE_DECAY;
+        }
+        self.ball_presence = self.ball_presence.clamp(0.0, 1.0);
 
         if let Some(ref c) = cluster {
             let mut target_yaw = c.yaw * (1.0 + EDGE_PUSH);
             let mut target_pitch = c.pitch + PITCH_BIAS;
 
-            if let Some((by, bp)) = ball_pos {
-                let w = self.ball_weight;
-                target_yaw = target_yaw * (1.0 - w) + by * w;
-                target_pitch = target_pitch * (1.0 - w) + bp * w;
-                log::trace!(
-                    "FieldPanner: blend cluster({:.3},{:.3}) + ball({:.3},{:.3}) w={:.2}",
-                    c.yaw,
-                    c.pitch,
-                    by,
-                    bp,
-                    w
-                );
+            let effective_w = self.ball_weight * self.ball_presence;
+            if effective_w > 0.001 {
+                target_yaw = target_yaw * (1.0 - effective_w)
+                    + self.last_ball_yaw * effective_w;
+                target_pitch = target_pitch * (1.0 - effective_w)
+                    + self.last_ball_pitch * effective_w;
             }
 
             if target_yaw.is_finite() && target_pitch.is_finite() {
@@ -434,16 +477,10 @@ impl Panner for FieldPanner {
 
                 self.yaw += self.velocity_yaw;
                 self.pitch += self.velocity_pitch;
-            } else {
-                log::warn!(
-                    "FieldPanner: non-finite target yaw={target_yaw} pitch={target_pitch}; \
-                     keeping yaw={} pitch={}",
-                    self.yaw,
-                    self.pitch,
-                );
             }
 
-            let target_fov = self.target_fov(c.spread, c.pitch);
+            let vel_mag = (self.velocity_yaw.powi(2) + self.velocity_pitch.powi(2)).sqrt();
+            let target_fov = self.target_fov(c.spread, c.pitch, vel_mag);
             if target_fov.is_finite() {
                 self.current_fov += FOV_ALPHA * (target_fov - self.current_fov);
             } else {
@@ -473,7 +510,7 @@ impl Panner for FieldPanner {
                 cluster.as_ref().map_or(0, |c| c.count),
                 cluster.as_ref().map_or(0.0, |c| c.spread),
                 world.players.len(),
-                ball_pos.is_some()
+                self.ball_presence > 0.001
             );
         }
 
@@ -704,16 +741,16 @@ mod tests {
     #[test]
     fn fov_narrows_for_tight_cluster() {
         let p = FieldPanner::new(30.0);
-        let tight = p.target_fov(0.05, 0.0);
-        let wide = p.target_fov(0.40, 0.0);
+        let tight = p.target_fov(0.05, 0.0, 0.0);
+        let wide = p.target_fov(0.40, 0.0, 0.0);
         assert!(tight < wide, "tight={tight} wide={wide}");
     }
 
     #[test]
     fn fov_tighter_when_far() {
         let p = FieldPanner::new(30.0);
-        let near = p.target_fov(0.20, PITCH_NEAR);
-        let far = p.target_fov(0.20, PITCH_FAR);
+        let near = p.target_fov(0.20, PITCH_NEAR, 0.0);
+        let far = p.target_fov(0.20, PITCH_FAR, 0.0);
         assert!(far < near, "far={far} near={near}");
     }
 
