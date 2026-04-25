@@ -344,7 +344,7 @@ pub fn run_camera(
 
         #[cfg(feature = "v4l2")]
         {
-            use reco_core::bayer::{BayerDemosaic, IspParams};
+            use reco_core::bayer::{BayerDemosaic, IspParams, compute_awb};
             use reco_io::v4l2::{V4l2CameraConfig, V4l2StereoCameraSource};
 
             let left_v4l2 = V4l2CameraConfig {
@@ -364,13 +364,13 @@ pub fn run_camera(
                 gain: sensor_gain,
             };
 
-            let isp = IspParams::imx477_default(capture_width, capture_height);
+            let mut isp = IspParams::imx477_default(capture_width, capture_height);
             let demosaic_left =
                 BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
             let demosaic_right =
                 BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
             println!(
-                "GPU demosaic ready ({}x{}, zero-copy), exposure={}, gain={}",
+                "GPU demosaic ready ({}x{}, zero-copy, AWB enabled), exposure={}, gain={}",
                 capture_width, capture_height, exposure, sensor_gain,
             );
 
@@ -382,6 +382,9 @@ pub fn run_camera(
             }
 
             let progress = helpers::ProgressReporter::new(30);
+            let awb_interval = 15u64;
+            let isp_baseline_wb_r = isp.wb_r;
+            let isp_baseline_wb_b = isp.wb_b;
 
             while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
                 let (left_bytes, right_bytes) = {
@@ -392,8 +395,32 @@ pub fn run_camera(
                     }
                 };
 
-                // Upload + demosaic (two submits: write_texture is implicit,
-                // compute shader dispatched via encoder)
+                // Grey-world AWB: compute correction relative to baseline WB
+                // The baseline (wb_r=1.7, wb_b=2.0) compensates for the IMX477's
+                // IR-filterless blue deficit. AWB nudges on top of that based on
+                // scene content, smoothed to avoid flicker.
+                if frame_count % awb_interval == 0 {
+                    let (awb_r, awb_b) = compute_awb(
+                        &*left_bytes, capture_width, capture_height, 8,
+                    );
+                    let base_r = isp_baseline_wb_r;
+                    let base_b = isp_baseline_wb_b;
+                    let target_r = base_r * awb_r;
+                    let target_b = base_b * awb_b;
+                    // Smooth toward target (tau ~0.5s at 30fps / 15-frame interval)
+                    let alpha = 0.3_f32;
+                    isp.wb_r = isp.wb_r * (1.0 - alpha) + target_r * alpha;
+                    isp.wb_b = isp.wb_b * (1.0 - alpha) + target_b * alpha;
+                    demosaic_left.update_params(session.gpu(), &isp);
+                    demosaic_right.update_params(session.gpu(), &isp);
+                    if frame_count == 0 {
+                        log::info!(
+                            "AWB: raw=({awb_r:.2},{awb_b:.2}) applied=({:.2},{:.2})",
+                            isp.wb_r, isp.wb_b
+                        );
+                    }
+                }
+
                 {
                     reco_core::profile_scope!("demosaic");
                     let gpu = session.gpu();
@@ -407,7 +434,8 @@ pub fn run_camera(
                     gpu.queue().submit(std::iter::once(encoder.finish()));
                 }
 
-                // Copy demosaiced textures into stitch pipeline + render
+                // Advance director (sweep, etc.) without detection
+                session.update_director(start.elapsed())?;
                 let pos = session.director_position();
                 let render_buf = {
                     reco_core::profile_scope!("stitch_render");

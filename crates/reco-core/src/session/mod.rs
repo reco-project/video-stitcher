@@ -994,15 +994,12 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
-    /// Update the director without detection (zero-copy paths).
+    /// Update the director without detection.
     ///
-    /// No CPU-accessible frame data is available, so detection is skipped.
-    /// The director still receives context with empty objects and valid bounds.
-    #[cfg_attr(
-        any(target_os = "linux", target_os = "windows"),
-        allow(dead_code, reason = "used by macOS zero-copy path")
-    )]
-    pub(crate) fn update_director(
+    /// Advances the director state (e.g. sweep position) without running
+    /// object detection. Used by zero-copy paths and raw Bayer capture
+    /// where no CPU-accessible StereoFrame is available.
+    pub fn update_director(
         &mut self,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {

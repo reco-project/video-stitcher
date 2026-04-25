@@ -72,6 +72,46 @@ impl IspParams {
     }
 }
 
+/// Compute grey-world AWB gains from raw Bayer bytes (RGGB pattern).
+///
+/// Samples every `stride`-th pixel for speed. Returns `(wb_r, wb_b)`
+/// gains that make the average scene neutral grey. Call once per frame
+/// (or every N frames) and feed into `IspParams::wb_r / wb_b`.
+pub fn compute_awb(raw_bytes: &[u8], width: u32, height: u32, stride: u32) -> (f32, f32) {
+    let (mut sum_r, mut sum_g, mut sum_b) = (0u64, 0u64, 0u64);
+    let (mut count_r, mut count_g, mut count_b) = (0u32, 0u32, 0u32);
+
+    let w = width as usize;
+    for y in (0..height).step_by(stride as usize) {
+        for x in (0..width).step_by(stride as usize) {
+            let idx = (y as usize * w + x as usize) * 2;
+            if idx + 1 >= raw_bytes.len() {
+                continue;
+            }
+            let val = u16::from_le_bytes([raw_bytes[idx], raw_bytes[idx + 1]]) as u64;
+            // RGGB: (even_x, even_y)=R, (odd_x, even_y)=Gr, (even_x, odd_y)=Gb, (odd_x, odd_y)=B
+            match (x % 2, y % 2) {
+                (0, 0) => { sum_r += val; count_r += 1; }
+                (1, 1) => { sum_b += val; count_b += 1; }
+                _ => { sum_g += val; count_g += 1; }
+            }
+        }
+    }
+
+    if count_r == 0 || count_g == 0 || count_b == 0 {
+        return (1.0, 1.0);
+    }
+
+    let mean_r = sum_r as f64 / count_r as f64;
+    let mean_g = sum_g as f64 / count_g as f64;
+    let mean_b = sum_b as f64 / count_b as f64;
+
+    let wb_r = (mean_g / mean_r) as f32;
+    let wb_b = (mean_g / mean_b) as f32;
+
+    (wb_r, wb_b)
+}
+
 /// GPU pipeline for Bayer demosaic + ISP processing.
 ///
 /// The hot-path method [`process_gpu`](Self::process_gpu) uploads raw
