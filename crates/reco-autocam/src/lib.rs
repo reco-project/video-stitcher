@@ -209,7 +209,7 @@ pub fn setup_autocam(
     model_path: &str,
     input_width: u32,
     input_height: u32,
-    _fps: f32,
+    fps: f32,
     use_zero_copy: bool,
     detection_interval: u64,
     _lead_time: f64,
@@ -513,9 +513,7 @@ pub fn setup_autocam(
                 // output is piecewise-constant between acquisitions,
                 // which velocity-lead extrapolation rings on). Heavy
                 // smoothing keeps the ball centered without the ring.
-                // No Smoother/DeadZone: BallPanner now has its own
-                // velocity model with bounded acceleration.
-                let ball_panner = crate::panners::BallPanner::new();
+                let ball_panner = crate::panners::BallPanner::new(fps);
 
                 session.set_ball_tracker(Box::new(tracker));
                 session.set_panner(Box::new(ball_panner));
@@ -538,7 +536,7 @@ pub fn setup_autocam(
                 );
 
                 let field_panner =
-                    crate::panners::FieldPanner::new().with_ball_weight(0.15);
+                    crate::panners::FieldPanner::new(fps).with_ball_weight(0.15);
 
                 session.set_ball_tracker(Box::new(ball_tracker));
                 session.set_player_tracker(Box::new(player_tracker));

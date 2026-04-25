@@ -39,8 +39,8 @@ pub const DEFAULT_PITCH_FAR: f32 = 0.20;
 /// Default starting FOV when no ball has ever been seen.
 pub const DEFAULT_IDLE_FOV_DEG: f32 = 55.0;
 
-/// Maximum angular velocity in radians per frame (shared with FieldPanner).
-const MAX_VELOCITY: f32 = 0.004;
+/// Maximum angular velocity in radians per second.
+const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.12;
 /// Velocity smoothing alpha.
 const VELOCITY_ALPHA: f32 = 0.04;
 /// FOV EMA alpha.
@@ -61,12 +61,14 @@ pub struct BallPanner {
     velocity_yaw: f32,
     velocity_pitch: f32,
     current_fov: f32,
+    max_velocity: f32,
 }
 
 impl BallPanner {
     /// Build a ball panner with defaults (matches the old
     /// `BallDirector` FOV envelope).
-    pub fn new() -> Self {
+    pub fn new(fps: f32) -> Self {
+        let fps = fps.clamp(1.0, 1000.0);
         Self {
             fov_wide_deg: DEFAULT_FOV_WIDE_DEG,
             fov_tight_deg: DEFAULT_FOV_TIGHT_DEG,
@@ -80,6 +82,7 @@ impl BallPanner {
             velocity_yaw: 0.0,
             velocity_pitch: 0.0,
             current_fov: DEFAULT_IDLE_FOV_DEG,
+            max_velocity: MAX_VELOCITY_RAD_PER_SEC / fps,
         }
     }
 
@@ -116,7 +119,7 @@ impl BallPanner {
 
 impl Default for BallPanner {
     fn default() -> Self {
-        Self::new()
+        Self::new(30.0)
     }
 }
 
@@ -133,8 +136,8 @@ impl Panner for BallPanner {
             let err_yaw = ty - self.last.yaw;
             let err_pitch = tp - self.last.pitch;
 
-            let desired_yaw = err_yaw.clamp(-MAX_VELOCITY, MAX_VELOCITY);
-            let desired_pitch = err_pitch.clamp(-MAX_VELOCITY, MAX_VELOCITY);
+            let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
+            let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
 
             self.velocity_yaw += VELOCITY_ALPHA * (desired_yaw - self.velocity_yaw);
             self.velocity_pitch += VELOCITY_ALPHA * (desired_pitch - self.velocity_pitch);
@@ -222,7 +225,7 @@ mod tests {
 
     #[test]
     fn default_panner_starts_at_origin_with_idle_fov() {
-        let mut p = BallPanner::new();
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         let out = p.decide(
             &WorldState::default(),
@@ -235,7 +238,7 @@ mod tests {
 
     #[test]
     fn tracking_converges_to_ball() {
-        let mut p = BallPanner::new();
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         let world = WorldState {
             ball: Some(ball_at(0.4, 0.05, TrackState::Tracking)),
@@ -254,7 +257,7 @@ mod tests {
 
     #[test]
     fn coasting_still_moves_toward_ball() {
-        let mut p = BallPanner::new();
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         let world = WorldState {
             ball: Some(ball_at(0.1, 0.0, TrackState::Coasting)),
@@ -266,7 +269,7 @@ mod tests {
 
     #[test]
     fn lost_does_not_jump() {
-        let mut p = BallPanner::new();
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         let track_world = WorldState {
             ball: Some(ball_at(0.3, 0.05, TrackState::Tracking)),
@@ -292,7 +295,7 @@ mod tests {
 
     #[test]
     fn no_ball_in_world_holds_roughly() {
-        let mut p = BallPanner::new();
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         for _ in 0..200 {
             p.decide(
@@ -319,7 +322,7 @@ mod tests {
 
     #[test]
     fn fov_zooms_in_at_high_pitch() {
-        let p = BallPanner::new();
+        let p = BallPanner::new(30.0);
         let low = p.target_fov(DEFAULT_PITCH_NEAR);
         let high = p.target_fov(DEFAULT_PITCH_FAR);
         assert!(low > high, "low={low} high={high}");
@@ -329,7 +332,7 @@ mod tests {
 
     #[test]
     fn with_fov_overrides_envelope() {
-        let p = BallPanner::new().with_fov(80.0, 20.0, 0.0, 0.5);
+        let p = BallPanner::new(30.0).with_fov(80.0, 20.0, 0.0, 0.5);
         let fov = p.target_fov(0.0);
         assert!((fov - 80.0).abs() < 1e-3);
     }

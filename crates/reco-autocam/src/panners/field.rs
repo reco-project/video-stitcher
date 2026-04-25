@@ -78,9 +78,9 @@ const DEFAULT_FOV: f32 = 40.0;
 /// EMA alpha for yaw centroid smoothing (lower = smoother).
 const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
 
-/// Maximum angular velocity in radians per frame.
-/// At 30fps, 0.004 rad/frame = ~6.9 deg/s - comfortable broadcast pan.
-const MAX_VELOCITY: f32 = 0.004;
+/// Maximum angular velocity in radians per second.
+/// ~7 deg/s - comfortable broadcast pan speed.
+const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.12;
 
 /// Velocity smoothing alpha. Controls how quickly the camera changes
 /// direction. Lower = smoother reversals, higher = snappier tracking.
@@ -130,6 +130,9 @@ pub struct FieldPanner {
     velocity_yaw: f32,
     velocity_pitch: f32,
 
+    /// Max velocity in rad/frame (derived from fps).
+    max_velocity: f32,
+
     /// Frame counter for log throttling.
     frame_index: u64,
 }
@@ -137,7 +140,8 @@ pub struct FieldPanner {
 impl FieldPanner {
     /// Build a field panner with defaults (identical envelope to
     /// `FieldDirector` (predecessor)).
-    pub fn new() -> Self {
+    pub fn new(fps: f32) -> Self {
+        let fps = fps.clamp(1.0, 1000.0);
         Self {
             yaw: 0.0,
             pitch: 0.0,
@@ -152,6 +156,7 @@ impl FieldPanner {
             cluster_alpha: DEFAULT_CLUSTER_ALPHA,
             velocity_yaw: 0.0,
             velocity_pitch: 0.0,
+            max_velocity: MAX_VELOCITY_RAD_PER_SEC / fps,
             frame_index: 0,
         }
     }
@@ -380,7 +385,7 @@ impl FieldPanner {
 
 impl Default for FieldPanner {
     fn default() -> Self {
-        Self::new()
+        Self::new(30.0)
     }
 }
 
@@ -423,8 +428,8 @@ impl Panner for FieldPanner {
                 let err_yaw = target_yaw - self.yaw;
                 let err_pitch = target_pitch - self.pitch;
 
-                let desired_yaw = err_yaw.clamp(-MAX_VELOCITY, MAX_VELOCITY);
-                let desired_pitch = err_pitch.clamp(-MAX_VELOCITY, MAX_VELOCITY);
+                let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
+                let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
 
                 self.velocity_yaw += VELOCITY_ALPHA * (desired_yaw - self.velocity_yaw);
                 self.velocity_pitch += VELOCITY_ALPHA * (desired_pitch - self.velocity_pitch);
@@ -577,7 +582,7 @@ mod tests {
 
     #[test]
     fn follows_player_centroid() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let w = tight_world();
         // Per-frame delta clamp (0.015 rad) means the pose needs many
@@ -597,7 +602,7 @@ mod tests {
 
     #[test]
     fn no_cluster_holds_position() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         // Seed a pose then send an empty world — must not move.
         p.yaw = 0.3;
@@ -615,7 +620,7 @@ mod tests {
 
     #[test]
     fn huber_excludes_goalkeeper_outlier() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let w = WorldState {
             ball: None,
@@ -637,7 +642,7 @@ mod tests {
 
     #[test]
     fn ball_blend_pulls_toward_ball() {
-        let mut p = FieldPanner::new().with_ball_weight(0.3);
+        let mut p = FieldPanner::new(30.0).with_ball_weight(0.3);
         let cal = cal();
         let mut w = tight_world();
         w.ball = Some(ball(0.80, 0.0));
@@ -652,7 +657,7 @@ mod tests {
 
     #[test]
     fn ball_lost_ignored_in_blend() {
-        let mut p = FieldPanner::new().with_ball_weight(0.3);
+        let mut p = FieldPanner::new(30.0).with_ball_weight(0.3);
         let cal = cal();
         let mut w = tight_world();
         let mut lost = ball(0.80, 0.0);
@@ -673,7 +678,7 @@ mod tests {
 
     #[test]
     fn lost_players_excluded() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         // Four live players at tight cluster + one lost player far
         // away. The lost one must be ignored so it can't drag the
@@ -700,7 +705,7 @@ mod tests {
 
     #[test]
     fn fov_narrows_for_tight_cluster() {
-        let p = FieldPanner::new();
+        let p = FieldPanner::new(30.0);
         let tight = p.target_fov(0.05, 0.0);
         let wide = p.target_fov(0.40, 0.0);
         assert!(tight < wide, "tight={tight} wide={wide}");
@@ -708,7 +713,7 @@ mod tests {
 
     #[test]
     fn fov_tighter_when_far() {
-        let p = FieldPanner::new();
+        let p = FieldPanner::new(30.0);
         let near = p.target_fov(0.20, PITCH_NEAR);
         let far = p.target_fov(0.20, PITCH_FAR);
         assert!(far < near, "far={far} near={near}");
@@ -716,7 +721,7 @@ mod tests {
 
     #[test]
     fn fov_ema_does_not_latch_on_nan() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let baseline = p.current_fov;
         let nan_players: Vec<TrackedEntity> =
@@ -732,7 +737,7 @@ mod tests {
 
     #[test]
     fn yaw_pitch_do_not_latch_on_nan() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         p.yaw = 0.3;
         p.pitch = 0.05;
@@ -751,7 +756,7 @@ mod tests {
 
     #[test]
     fn position_includes_fov() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let out = p.decide(&tight_world(), &ctx(0, &cal));
         assert!(out.fov_degrees.is_some());
