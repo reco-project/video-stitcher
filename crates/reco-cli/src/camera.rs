@@ -317,6 +317,7 @@ pub fn run_camera(
         crf,
         preset,
         container: container_choice,
+        gop_size: Some(60),
         ..Default::default()
     };
 

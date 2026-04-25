@@ -240,6 +240,10 @@ impl AeController {
             return false;
         }
         let ratio = self.target / mean_g;
+        // Dead band: don't adjust when within 10% of target
+        if (ratio - 1.0).abs() < 0.1 {
+            return false;
+        }
         let clamped = ratio.clamp(1.0 / 1.26, 1.26);
         let new_exp = (self.exposure * clamped).clamp(13.0, self.max_exposure);
         if (new_exp - self.exposure).abs() <= 1.0 {
