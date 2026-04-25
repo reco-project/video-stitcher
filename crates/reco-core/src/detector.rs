@@ -203,6 +203,19 @@ pub enum DetectorFrame<'a> {
         height: u32,
     },
 
+    /// CUDA device-pointer RGBA frame (zero-copy from Bayer demosaic).
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    CudaRgba {
+        /// CUDA device pointer to packed RGBA data.
+        ptr: crate::cuda_interop::CUdeviceptr,
+        /// Row pitch in bytes (may differ from width*4 due to alignment).
+        pitch: usize,
+        /// Frame width in pixels.
+        width: u32,
+        /// Frame height in pixels.
+        height: u32,
+    },
+
     /// Metal / VideoToolbox `CVPixelBufferRef`. Local only.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     Metal {
@@ -223,6 +236,8 @@ impl DetectorFrame<'_> {
             Self::Rgba { .. } => "Rgba",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             Self::Cuda(_) => "Cuda",
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            Self::CudaRgba { .. } => "CudaRgba",
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             Self::Metal { .. } => "Metal",
         }

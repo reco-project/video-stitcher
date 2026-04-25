@@ -1025,6 +1025,33 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
+    /// Run detection on CUDA-resident RGBA frames and update the director.
+    ///
+    /// Zero-copy path for Bayer cameras: the RGBA data is already on
+    /// CUDA via Vulkan shared memory. No CPU readback needed.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn detect_and_update_director_cuda_rgba(
+        &mut self,
+        left_ptr: crate::cuda_interop::CUdeviceptr,
+        left_pitch: usize,
+        right_ptr: crate::cuda_interop::CUdeviceptr,
+        right_pitch: usize,
+        width: u32,
+        height: u32,
+        elapsed: std::time::Duration,
+    ) -> Result<(), SessionError> {
+        let should_detect = self.detection.should_detect(self.frame_count);
+
+        if should_detect {
+            let detections = self.detection.run_detection_cuda_rgba(
+                left_ptr, left_pitch, right_ptr, right_pitch, width, height,
+            );
+            self.detection.last_detections = self.map_detections(detections);
+        }
+
+        self.fire_sink_and_update_director(elapsed, should_detect)
+    }
+
     /// Update the director without detection.
     ///
     /// Advances the director state (e.g. sweep position) without running

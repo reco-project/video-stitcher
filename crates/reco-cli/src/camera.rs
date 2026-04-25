@@ -419,17 +419,38 @@ pub fn run_camera(
                     gpu.queue().submit(std::iter::once(encoder.finish()));
                 }
 
-                // Detection: readback RGBA from GPU when detection is due.
-                // Only pays the ~3ms readback cost every detection_interval frames.
+                // Detection: zero-copy CUDA path when available, CPU readback fallback.
                 if session.detection_should_run() {
-                    reco_core::profile_scope!("detection_readback");
-                    let left_rgba = demosaic_left.readback_rgba(session.gpu());
-                    let right_rgba = demosaic_right.readback_rgba(session.gpu());
-                    session.detect_and_update_director_rgba(
-                        &left_rgba, &right_rgba,
-                        capture_width, capture_height,
-                        start.elapsed(),
-                    )?;
+                    #[cfg(target_os = "linux")]
+                    {
+                        reco_core::profile_scope!("detection_zerocopy");
+                        let gpu = session.gpu();
+                        let mut det_encoder = gpu.device().create_command_encoder(
+                            &reco_core::wgpu::CommandEncoderDescriptor {
+                                label: Some("detection_copy"),
+                            },
+                        );
+                        let (l_ptr, l_pitch, w, h) =
+                            demosaic_left.copy_to_detection_shared(gpu, &mut det_encoder)?;
+                        let (r_ptr, r_pitch, _, _) =
+                            demosaic_right.copy_to_detection_shared(gpu, &mut det_encoder)?;
+                        gpu.queue().submit(std::iter::once(det_encoder.finish()));
+                        session.detect_and_update_director_cuda_rgba(
+                            l_ptr, l_pitch, r_ptr, r_pitch, w, h,
+                            start.elapsed(),
+                        )?;
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        reco_core::profile_scope!("detection_readback");
+                        let left_rgba = demosaic_left.readback_rgba(session.gpu());
+                        let right_rgba = demosaic_right.readback_rgba(session.gpu());
+                        session.detect_and_update_director_rgba(
+                            &left_rgba, &right_rgba,
+                            capture_width, capture_height,
+                            start.elapsed(),
+                        )?;
+                    }
                 } else {
                     session.update_director(start.elapsed())?;
                 }

@@ -7,6 +7,8 @@
 
 use crate::color_grade::{ColorGradeParams, ColorGradePass};
 use crate::gpu::GpuContext;
+#[cfg(target_os = "linux")]
+use crate::vulkan_interop::SharedTexture;
 use wgpu::util::DeviceExt;
 
 /// ISP tuning parameters passed to the demosaic compute shader.
@@ -282,6 +284,10 @@ pub struct BayerDemosaic {
     /// Graded output (brightness + saturation + gamma applied).
     graded_output: wgpu::Texture,
     grade_pass: ColorGradePass,
+    /// CUDA-shared texture for zero-copy detection readback.
+    /// Lazily initialized on first detection call.
+    #[cfg(target_os = "linux")]
+    detection_shared: Option<SharedTexture>,
     width: u32,
     height: u32,
 }
@@ -417,6 +423,8 @@ impl BayerDemosaic {
             demosaic_output,
             graded_output,
             grade_pass,
+            #[cfg(target_os = "linux")]
+            detection_shared: None,
             width,
             height,
         }
@@ -589,6 +597,57 @@ impl BayerDemosaic {
         drop(mapped);
         staging.unmap();
         result
+    }
+
+    /// Copy the graded output to a CUDA-shared texture for zero-copy detection.
+    ///
+    /// Returns `(cuda_ptr, pitch, width, height)`. The shared texture is
+    /// lazily allocated on first call. The GPU-to-GPU copy is ~0.5ms
+    /// at 4032x3040, vs 158ms for CPU readback.
+    #[cfg(target_os = "linux")]
+    pub fn copy_to_detection_shared(
+        &mut self,
+        gpu: &GpuContext,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> Result<(crate::cuda_interop::CUdeviceptr, usize, u32, u32), crate::cuda_interop::CudaInteropError> {
+        if self.detection_shared.is_none() {
+            let shared = crate::vulkan_interop::create_shared_texture(
+                gpu,
+                self.width,
+                self.height,
+                wgpu::TextureFormat::Rgba8Unorm,
+            )?;
+            log::info!(
+                "BayerDemosaic: created CUDA-shared detection texture ({}x{}, pitch={})",
+                self.width, self.height, shared.pitch
+            );
+            self.detection_shared = Some(shared);
+        }
+
+        let shared = self.detection_shared.as_ref().unwrap();
+        let src = self.output_texture();
+
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: src,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &shared.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        Ok((shared.cuda_ptr, shared.pitch, self.width, self.height))
     }
 
     /// Output texture reference (graded, display-ready).

@@ -213,6 +213,40 @@ impl DetectionPipeline {
         detections
     }
 
+    /// Run detection on CUDA-resident RGBA frames (zero-copy from Bayer demosaic).
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn run_detection_cuda_rgba(
+        &mut self,
+        left_ptr: crate::cuda_interop::CUdeviceptr,
+        left_pitch: usize,
+        right_ptr: crate::cuda_interop::CUdeviceptr,
+        right_pitch: usize,
+        width: u32,
+        height: u32,
+    ) -> Vec<Detection> {
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+
+        let mut detections = Vec::new();
+        for (camera, ptr, pitch) in [
+            (CameraId::Left, left_ptr, left_pitch),
+            (CameraId::Right, right_ptr, right_pitch),
+        ] {
+            let frame = DetectorFrame::CudaRgba { ptr, pitch, width, height };
+            match detector.detect(camera, &frame) {
+                Ok(v) => detections.extend(v),
+                Err(DetectorError::UnsupportedFrameKind) => {
+                    log::debug!("detector '{}' does not support CudaRgba frames", detector.name());
+                }
+                Err(e) => {
+                    log::warn!("detector '{}' {camera:?}: {e}", detector.name());
+                }
+            }
+        }
+        detections
+    }
+
     /// Run detection on a CUDA-resident stereo NV12 frame.
     ///
     /// Builds [`DetectorFrame::Cuda(GpuNv12Frame)`] for each camera

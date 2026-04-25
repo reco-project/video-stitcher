@@ -559,6 +559,13 @@ impl UnifiedDetector for TrtGpuDetector {
                 width,
                 height,
             } => self.detect_cpu_rgba_upload(camera, data, *width, *height),
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            DetectorFrame::CudaRgba {
+                ptr,
+                pitch: _,
+                width,
+                height,
+            } => self.detect_gpu_rgba(camera, *ptr, *width, *height),
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }
@@ -649,6 +656,62 @@ impl TrtGpuDetector {
             is_10bit: false,
         };
         self.detect_gpu_raw(camera, &gpu_frame)
+    }
+
+    /// Zero-copy RGBA detection: data is already on CUDA (shared texture).
+    /// NPP C4 resize + CUDA normalize only, no upload.
+    fn detect_gpu_rgba(
+        &mut self,
+        camera: CameraId,
+        rgba_ptr: CUdeviceptr,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        cuda_ensure_context()
+            .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
+
+        // Lazy-allocate resized RGBA buffer (reused across frames).
+        if self.resized_rgba == 0 {
+            let resized_size = (self.input_size as usize) * (self.input_size as usize) * 4;
+            self.resized_rgba = cuda_mem_alloc(resized_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("resized_rgba alloc: {e}")))?;
+            cuda_memset_d8(self.resized_rgba, 114, resized_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("rgba grey fill: {e}")))?;
+            log::info!(
+                "TrtGpuDetector: allocated resized_rgba buffer ({resized_size} B) for zero-copy detection"
+            );
+        }
+
+        // NPP C4 letterbox resize (already on GPU, no upload)
+        {
+            reco_core::profile_scope!("npp_resize_c4");
+            let is = self.input_size;
+            let dst_roi = crate::npp_interop::NppiRect {
+                x: self.pad_x as i32,
+                y: self.pad_y as i32,
+                width: self.new_w as i32,
+                height: self.new_h as i32,
+            };
+            crate::npp_interop::npp_resize_c4(
+                rgba_ptr, width, height,
+                self.resized_rgba, is, is, dst_roi,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("NPP C4 resize: {e}")))?;
+        }
+
+        // RGBA -> float32 CHW (alpha ignored)
+        {
+            reco_core::profile_scope!("cuda_normalize_rgba");
+            crate::cuda_kernels::normalize_rgba_to_chw(
+                self.resized_rgba,
+                self.tensor_f32,
+                self.input_size,
+                self.input_size,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA RGBA normalize: {e}")))?;
+        }
+
+        self.run_inference_and_postprocess(camera, width, height)
     }
 
     /// GPU-native RGBA detection: upload RGBA to CUDA, NPP C4 resize
