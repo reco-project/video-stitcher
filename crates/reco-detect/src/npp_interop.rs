@@ -199,6 +199,18 @@ struct NppFunctions {
         NppStreamContext, // nppStreamCtx
     ) -> i32,
 
+    /// `nppiCopy_8u_AC4C3R_Ctx(pSrc, nSrcStep, pDst, nDstStep, oSizeROI, nppStreamCtx)`
+    ///
+    /// Copies a 4-channel image to 3-channel, dropping the alpha channel.
+    nppi_copy_ac4c3: unsafe extern "C" fn(
+        *const u8,        // pSrc (RGBA packed)
+        i32,              // nSrcStep (width * 4)
+        *mut u8,          // pDst (RGB packed)
+        i32,              // nDstStep (width * 3)
+        NppiSize,         // oSizeROI
+        NppStreamContext, // nppStreamCtx
+    ) -> i32,
+
     /// `nppiMirror_8u_C3R_Ctx(pSrc, nSrcStep, pDst, nDstStep, oROI, flip, nppStreamCtx)`
     ///
     /// In-place operation is supported (pSrc == pDst with matching step).
@@ -288,6 +300,7 @@ impl NppFunctions {
 
             Ok(NppFunctions {
                 nppi_nv12_to_rgb: load_sym!(lib_nppicc, "nppiNV12ToRGB_8u_P2C3R_Ctx"),
+                nppi_copy_ac4c3: load_sym!(lib_nppicc, "nppiCopy_8u_AC4C3R_Ctx"),
                 nppi_resize_c3: load_sym!(lib_nppig, "nppiResize_8u_C3R_Ctx"),
                 nppi_mirror_c3: load_sym!(lib_nppig, "nppiMirror_8u_C3R_Ctx"),
                 _lib_nppicc: lib_nppicc,
@@ -465,6 +478,37 @@ pub fn npp_nv12_to_rgb(
         )?;
     }
 
+    Ok(())
+}
+
+/// Copy a 4-channel (RGBA) image to 3-channel (RGB), dropping alpha.
+///
+/// Both `src` and `dst` are CUDA device pointers. Source stride is
+/// `width * 4`, destination stride is `width * 3`.
+pub fn npp_rgba_to_rgb(
+    src: CUdeviceptr,
+    dst: CUdeviceptr,
+    width: u32,
+    height: u32,
+) -> Result<(), NppError> {
+    let npp = npp()?;
+    let roi = NppiSize {
+        width: width as i32,
+        height: height as i32,
+    };
+    unsafe {
+        check_npp(
+            "nppiCopy_8u_AC4C3R_Ctx",
+            (npp.nppi_copy_ac4c3)(
+                src as *const u8,
+                width as i32 * 4,
+                dst as *mut u8,
+                width as i32 * 3,
+                roi,
+                npp.stream_ctx,
+            ),
+        )?;
+    }
     Ok(())
 }
 

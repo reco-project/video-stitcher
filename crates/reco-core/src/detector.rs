@@ -193,6 +193,16 @@ pub enum DetectorFrame<'a> {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     Cuda(GpuNv12Frame),
 
+    /// CPU-resident packed RGBA frame (e.g. Bayer demosaic readback).
+    Rgba {
+        /// Packed RGBA bytes, `width * height * 4` length.
+        data: &'a [u8],
+        /// Frame width in pixels.
+        width: u32,
+        /// Frame height in pixels.
+        height: u32,
+    },
+
     /// Metal / VideoToolbox `CVPixelBufferRef`. Local only.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     Metal {
@@ -210,6 +220,7 @@ impl DetectorFrame<'_> {
     pub fn variant_name(&self) -> &'static str {
         match self {
             Self::Cpu(_) => "Cpu",
+            Self::Rgba { .. } => "Rgba",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             Self::Cuda(_) => "Cuda",
             #[cfg(any(target_os = "macos", target_os = "ios"))]

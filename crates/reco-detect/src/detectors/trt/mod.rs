@@ -66,6 +66,8 @@ pub struct TrtGpuDetector {
     // sends Cuda frames (buffers stay 0).
     cpu_upload_y: CUdeviceptr,
     cpu_upload_uv: CUdeviceptr,
+    // RGBA upload buffer for Bayer demosaic path. Lazy-allocated.
+    cpu_upload_rgba: CUdeviceptr,
     // TRT output buffer (drop before context).
     output_buf: CudaBuffer,
     output_host: Vec<u8>,
@@ -255,6 +257,7 @@ impl TrtGpuDetector {
             nv12_8bit_uv,
             cpu_upload_y: 0,
             cpu_upload_uv: 0,
+            cpu_upload_rgba: 0,
             output_buf,
             output_host,
             output_floats,
@@ -440,28 +443,31 @@ impl TrtGpuDetector {
             .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
         }
 
-        // Step 4: TensorRT inference (replaces ORT).
+        self.run_inference_and_postprocess(camera, width, height)
+    }
+
+    /// TRT inference + postprocess (shared by all detection paths).
+    /// Assumes `self.tensor_f32` is populated with the normalized input.
+    fn run_inference_and_postprocess(
+        &mut self,
+        camera: CameraId,
+        source_width: u32,
+        source_height: u32,
+    ) -> Result<Vec<Detection>, DetectorError> {
         {
             reco_core::profile_scope!("trt_inference");
-
-            // Synchronize default stream (preprocessing runs on NULL stream)
-            // before enqueuing TRT on our named stream.
             cuda_synchronize()
                 .map_err(|e| DetectorError::InferenceFailed(format!("CUDA sync pre-TRT: {e}")))?;
-
             let mut binding_ptrs = self.build_binding_ptrs();
             self.context
                 .enqueue(&mut binding_ptrs, &self.stream)
                 .map_err(|e| DetectorError::InferenceFailed(format!("TRT enqueue: {e}")))?;
-
             self.stream
                 .synchronize()
                 .map_err(|e| DetectorError::InferenceFailed(format!("TRT stream sync: {e}")))?;
         }
 
-        // Step 5: Copy output to host and postprocess.
         {
-            // Copy the small output buffer (~7KB) to CPU.
             self.output_buf
                 .copy_to_host(&mut self.output_host, &self.stream)
                 .map_err(|e| DetectorError::InferenceFailed(format!("TRT output D2H: {e}")))?;
@@ -470,14 +476,9 @@ impl TrtGpuDetector {
                 .map_err(|e| DetectorError::InferenceFailed(format!("TRT output sync: {e}")))?;
         }
 
-        // Reinterpret output bytes as f32 slice.
-        // SAFETY: output_host is properly aligned (Vec<u8> from vec![0u8; ...])
-        // and output_floats * 4 == output_host.len().
         let output_data: &[f32] = unsafe {
             std::slice::from_raw_parts(self.output_host.as_ptr() as *const f32, self.output_floats)
         };
-
-        // Output is [1, N, 6] - extract N from the dims.
         let n = self.output_floats / 6;
 
         let detections = postprocess(
@@ -488,8 +489,8 @@ impl TrtGpuDetector {
             self.scale,
             self.pad_x,
             self.pad_y,
-            width,
-            height,
+            source_width,
+            source_height,
         );
 
         if !detections.is_empty() {
@@ -550,6 +551,12 @@ impl UnifiedDetector for TrtGpuDetector {
                 }
                 ChromaFormat::Yuv420p { .. } => Err(DetectorError::UnsupportedFrameKind),
             },
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            DetectorFrame::Rgba {
+                data,
+                width,
+                height,
+            } => self.detect_cpu_rgba_upload(camera, data, *width, *height),
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }
@@ -641,6 +648,96 @@ impl TrtGpuDetector {
         };
         self.detect_gpu_raw(camera, &gpu_frame)
     }
+
+    /// RGBA detection path: upload CPU RGBA to CUDA, strip alpha via
+    /// NPP AC4C3R, then feed into the existing resize -> normalize ->
+    /// infer chain. The alpha-strip reuses the existing `rgb_u8` buffer.
+    fn detect_cpu_rgba_upload(
+        &mut self,
+        camera: CameraId,
+        rgba_host: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        let rgba_bytes = (width as usize) * (height as usize) * 4;
+        if rgba_host.len() < rgba_bytes {
+            return Err(DetectorError::InferenceFailed(format!(
+                "RGBA upload: buffer too small ({} < {rgba_bytes})", rgba_host.len()
+            )));
+        }
+
+        cuda_ensure_context()
+            .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
+
+        if self.cpu_upload_rgba == 0 {
+            self.cpu_upload_rgba = cuda_mem_alloc(rgba_bytes)
+                .map_err(|e| DetectorError::InferenceFailed(format!("rgba alloc: {e}")))?;
+            log::info!(
+                "TrtGpuDetector: allocated RGBA upload buffer ({rgba_bytes} B) for Bayer detection path"
+            );
+        }
+
+        // Upload RGBA to CUDA
+        {
+            reco_core::profile_scope!("rgba_h2d");
+            let row_bytes = width as usize * 4;
+            cuda_memcpy_htod_2d(
+                self.cpu_upload_rgba,
+                row_bytes,
+                rgba_host.as_ptr(),
+                row_bytes,
+                row_bytes,
+                height as usize,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("RGBA H2D: {e}")))?;
+        }
+
+        // Strip alpha: RGBA -> RGB via NPP (reuses self.rgb_u8)
+        {
+            reco_core::profile_scope!("npp_rgba_to_rgb");
+            crate::npp_interop::npp_rgba_to_rgb(
+                self.cpu_upload_rgba,
+                self.rgb_u8,
+                width,
+                height,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("NPP RGBA->RGB: {e}")))?;
+        }
+
+        // From here, the pipeline is identical to detect_gpu_raw steps 2-5:
+        // resize -> normalize -> infer -> postprocess.
+        // We jump into the pipeline at step 2 (resize), with rgb_u8 populated.
+
+        // Step 2: Resize to letterboxed region.
+        {
+            reco_core::profile_scope!("npp_resize");
+            let is = self.input_size;
+            let dst_roi = crate::npp_interop::NppiRect {
+                x: self.pad_x as i32,
+                y: self.pad_y as i32,
+                width: self.new_w as i32,
+                height: self.new_h as i32,
+            };
+            crate::npp_interop::npp_resize_c3(
+                self.rgb_u8, width, height,
+                self.resized_u8, is, is, dst_roi,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
+        }
+
+        // Step 3: Normalize u8 HWC -> f32 CHW.
+        {
+            reco_core::profile_scope!("cuda_normalize");
+            crate::cuda_kernels::normalize_hwc_to_chw(
+                self.resized_u8, self.tensor_f32,
+                self.input_size, self.input_size,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
+        }
+
+        // Step 4+5: TRT inference + postprocess (shared with detect_gpu_raw).
+        self.run_inference_and_postprocess(camera, width, height)
+    }
 }
 
 impl Drop for TrtGpuDetector {
@@ -660,6 +757,7 @@ impl Drop for TrtGpuDetector {
             ("nv12_8bit_uv", self.nv12_8bit_uv),
             ("cpu_upload_y", self.cpu_upload_y),
             ("cpu_upload_uv", self.cpu_upload_uv),
+            ("cpu_upload_rgba", self.cpu_upload_rgba),
         ] {
             if ptr != 0 {
                 if let Err(e) = cuda_mem_free(ptr) {
