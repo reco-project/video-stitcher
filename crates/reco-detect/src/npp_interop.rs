@@ -199,6 +199,13 @@ struct NppFunctions {
         NppStreamContext, // nppStreamCtx
     ) -> i32,
 
+    /// `nppiResize_8u_C4R_Ctx` - same as C3 but for 4-channel (RGBA).
+    nppi_resize_c4: unsafe extern "C" fn(
+        *const u8, i32, NppiSize, NppiRect,
+        *mut u8, i32, NppiSize, NppiRect,
+        i32, NppStreamContext,
+    ) -> i32,
+
     /// `nppiMirror_8u_C3R_Ctx(pSrc, nSrcStep, pDst, nDstStep, oROI, flip, nppStreamCtx)`
     ///
     /// In-place operation is supported (pSrc == pDst with matching step).
@@ -289,6 +296,7 @@ impl NppFunctions {
             Ok(NppFunctions {
                 nppi_nv12_to_rgb: load_sym!(lib_nppicc, "nppiNV12ToRGB_8u_P2C3R_Ctx"),
                 nppi_resize_c3: load_sym!(lib_nppig, "nppiResize_8u_C3R_Ctx"),
+                nppi_resize_c4: load_sym!(lib_nppig, "nppiResize_8u_C4R_Ctx"),
                 nppi_mirror_c3: load_sym!(lib_nppig, "nppiMirror_8u_C3R_Ctx"),
                 _lib_nppicc: lib_nppicc,
                 _lib_nppig: lib_nppig,
@@ -527,6 +535,54 @@ pub fn npp_resize_c3(
 /// rotation=180 metadata (e.g. DJI) in the GPU zero-copy detection path.
 ///
 /// Operates in-place: `src` and `dst` may be the same CUDA device pointer.
+/// Resize a 4-channel (RGBA) u8 image on the GPU with bilinear interpolation.
+///
+/// Same as [`npp_resize_c3`] but for RGBA data. Used by the Bayer
+/// detection path to letterbox-resize RGBA before normalize_rgba_to_chw.
+pub fn npp_resize_c4(
+    src: CUdeviceptr,
+    src_w: u32,
+    src_h: u32,
+    dst: CUdeviceptr,
+    dst_w: u32,
+    dst_h: u32,
+    dst_roi: NppiRect,
+) -> Result<(), NppError> {
+    let npp = npp()?;
+    let src_size = NppiSize {
+        width: src_w as i32,
+        height: src_h as i32,
+    };
+    let src_roi = NppiRect {
+        x: 0,
+        y: 0,
+        width: src_w as i32,
+        height: src_h as i32,
+    };
+    let dst_size = NppiSize {
+        width: dst_w as i32,
+        height: dst_h as i32,
+    };
+    unsafe {
+        check_npp(
+            "nppiResize_8u_C4R_Ctx",
+            (npp.nppi_resize_c4)(
+                src as *const u8,
+                src_w as i32 * 4,
+                src_size,
+                src_roi,
+                dst as *mut u8,
+                dst_w as i32 * 4,
+                dst_size,
+                dst_roi,
+                NPPI_INTER_LINEAR,
+                npp.stream_ctx,
+            ),
+        )?;
+    }
+    Ok(())
+}
+
 pub fn npp_mirror_c3(
     src: CUdeviceptr,
     dst: CUdeviceptr,
