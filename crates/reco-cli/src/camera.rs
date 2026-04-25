@@ -112,8 +112,11 @@ pub fn run_camera(
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
     let (use_nv12_capture, input_format) = if v4l2_direct {
-        // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path
-        (false, reco_core::renderer::InputFormat::Bgra)
+        // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path.
+        // Pass use_nv12=true so setup_autocam enables the TRT detector
+        // (it checks use_zero_copy which gates .engine loading). Detection
+        // runs via the RGBA readback path, not NV12.
+        (true, reco_core::renderer::InputFormat::Bgra)
     } else if helpers::is_tegra() {
         (true, reco_core::renderer::InputFormat::Nv12)
     } else {

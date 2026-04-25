@@ -995,8 +995,9 @@ impl StitchSession {
     }
 
     /// Whether detection should run on the current frame.
+    /// Returns false if no detector is attached.
     pub fn detection_should_run(&self) -> bool {
-        self.detection.should_detect(self.frame_count)
+        self.detection.has_detector() && self.detection.should_detect(self.frame_count)
     }
 
     /// Run detection on CPU-resident RGBA frames and update the director.
