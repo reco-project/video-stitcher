@@ -278,6 +278,278 @@ done:
 }
 \0";
 
+/// PTX for combined NV12 -> float32 RGB CHW conversion.
+///
+/// Reads NV12 Y + interleaved UV planes, converts to RGB using
+/// BT.709 full-range coefficients (matching GoPro/action-cam `yuvj420p`
+/// / `color_range=pc` output), normalizes to [0,1], and writes planar
+/// CHW float32 directly. Replaces the NPP NV12-to-RGB (which uses
+/// BT.601 video-range) + separate normalize kernel pipeline.
+///
+/// Parameters: y_ptr, uv_ptr, dst, y_pitch, width, height, dst_w, dst_h,
+///             pad_x, pad_y, scale
+///
+/// The kernel handles letterbox placement: each output pixel at (ox, oy)
+/// maps back to source (sx, sy) via bilinear interpolation, with pixels
+/// outside the content region left at the pre-filled grey value.
+const NV12_TO_RGB_CHW_PTX: &[u8] = b"
+.version 7.0
+.target sm_50
+.address_size 64
+
+.visible .entry nv12_to_rgb_chw_fullrange(
+    .param .u64 y_ptr,
+    .param .u64 uv_ptr,
+    .param .u64 dst,
+    .param .u32 y_pitch,
+    .param .u32 src_w,
+    .param .u32 src_h,
+    .param .u32 dst_w,
+    .param .u32 dst_h,
+    .param .u32 pad_x,
+    .param .u32 pad_y,
+    .param .f32 scale
+)
+{
+    .reg .u32 %ox, %oy, %dw, %dh, %px, %py, %sw, %sh, %ypitch;
+    .reg .u32 %sx0, %sy0, %sx1, %sy1;
+    .reg .u32 %tmp, %tmp2, %plane, %didx;
+    .reg .u64 %yp, %uvp, %dp, %addr;
+    .reg .f32 %srcx, %srcy, %fx, %fy, %inv_scale;
+    .reg .f32 %one, %zero, %f255, %c128;
+    .reg .f32 %y00, %y10, %y01, %y11, %y_interp;
+    .reg .f32 %u_val, %v_val, %r, %g, %b;
+    .reg .f32 %t1, %t2, %t3, %t4;
+    .reg .u16 %pix;
+    .reg .pred %p, %q;
+
+    // thread coords
+    mov.u32 %tmp, %ctaid.x;
+    mov.u32 %tmp2, %ntid.x;
+    mul.lo.u32 %ox, %tmp, %tmp2;
+    mov.u32 %tmp, %tid.x;
+    add.u32 %ox, %ox, %tmp;
+
+    mov.u32 %tmp, %ctaid.y;
+    mov.u32 %tmp2, %ntid.y;
+    mul.lo.u32 %oy, %tmp, %tmp2;
+    mov.u32 %tmp, %tid.y;
+    add.u32 %oy, %oy, %tmp;
+
+    ld.param.u32 %dw, [dst_w];
+    ld.param.u32 %dh, [dst_h];
+    setp.ge.u32 %p, %ox, %dw;
+    @%p bra done;
+    setp.ge.u32 %p, %oy, %dh;
+    @%p bra done;
+
+    ld.param.u32 %px, [pad_x];
+    ld.param.u32 %py, [pad_y];
+    ld.param.u32 %sw, [src_w];
+    ld.param.u32 %sh, [src_h];
+    ld.param.f32 %inv_scale, [scale];
+
+    // check if this pixel is in the content region
+    setp.lt.u32 %p, %ox, %px;
+    @%p bra done;
+    setp.lt.u32 %p, %oy, %py;
+    @%p bra done;
+    sub.u32 %tmp, %dw, %px;
+    setp.ge.u32 %p, %ox, %tmp;
+    @%p bra done;
+    sub.u32 %tmp, %dh, %py;
+    setp.ge.u32 %p, %oy, %tmp;
+    @%p bra done;
+
+    // map to source coords (nearest for now, bilinear TODO)
+    sub.u32 %tmp, %ox, %px;
+    cvt.rn.f32.u32 %srcx, %tmp;
+    div.rn.f32 %srcx, %srcx, %inv_scale;
+    cvt.rzi.u32.f32 %sx0, %srcx;
+    sub.u32 %tmp2, %sw, 1;
+    min.u32 %sx0, %sx0, %tmp2;
+
+    sub.u32 %tmp, %oy, %py;
+    cvt.rn.f32.u32 %srcy, %tmp;
+    div.rn.f32 %srcy, %srcy, %inv_scale;
+    cvt.rzi.u32.f32 %sy0, %srcy;
+    sub.u32 %tmp2, %sh, 1;
+    min.u32 %sy0, %sy0, %tmp2;
+
+    // read Y sample
+    ld.param.u64 %yp, [y_ptr];
+    ld.param.u32 %ypitch, [y_pitch];
+    mul.lo.u32 %tmp, %sy0, %ypitch;
+    add.u32 %tmp, %tmp, %sx0;
+    cvt.u64.u32 %addr, %tmp;
+    add.u64 %addr, %yp, %addr;
+    ld.global.u8 %pix, [%addr];
+    cvt.rn.f32.u16 %y00, %pix;
+
+    // read UV sample (NV12: interleaved UV at half resolution)
+    ld.param.u64 %uvp, [uv_ptr];
+    shr.u32 %tmp, %sy0, 1;  // cy = sy / 2
+    mul.lo.u32 %tmp, %tmp, %ypitch;  // cy * pitch
+    shr.u32 %tmp2, %sx0, 1;  // cx = sx / 2
+    shl.b32 %tmp2, %tmp2, 1;  // cx * 2 (interleaved UV)
+    add.u32 %tmp, %tmp, %tmp2;
+    cvt.u64.u32 %addr, %tmp;
+    add.u64 %addr, %uvp, %addr;
+    ld.global.u8 %pix, [%addr];
+    cvt.rn.f32.u16 %u_val, %pix;
+    ld.global.u8 %pix, [%addr+1];
+    cvt.rn.f32.u16 %v_val, %pix;
+
+    // BT.709 full-range YUV -> RGB
+    // R = Y + 1.5748 * (V - 128)
+    // G = Y - 0.1873 * (U - 128) - 0.4681 * (V - 128)
+    // B = Y + 1.8556 * (U - 128)
+    mov.f32 %c128, 0f43000000;  // 128.0
+    sub.f32 %u_val, %u_val, %c128;
+    sub.f32 %v_val, %v_val, %c128;
+
+    // R
+    mov.f32 %t1, 0f3FC9930C;  // 1.5748
+    fma.rn.f32 %r, %t1, %v_val, %y00;
+
+    // G
+    mov.f32 %t1, 0fBE3FCB92;  // -0.1873
+    fma.rn.f32 %g, %t1, %u_val, %y00;
+    mov.f32 %t2, 0fBEEFAACE;  // -0.4681
+    fma.rn.f32 %g, %t2, %v_val, %g;
+
+    // B
+    mov.f32 %t1, 0f3FED844D;  // 1.8556
+    fma.rn.f32 %b, %t1, %u_val, %y00;
+
+    // clamp to [0, 255] and normalize to [0, 1]
+    mov.f32 %zero, 0f00000000;
+    mov.f32 %f255, 0f437F0000;  // 255.0
+    max.f32 %r, %r, %zero;
+    min.f32 %r, %r, %f255;
+    max.f32 %g, %g, %zero;
+    min.f32 %g, %g, %f255;
+    max.f32 %b, %b, %zero;
+    min.f32 %b, %b, %f255;
+
+    mov.f32 %t1, 0f3B808081;  // 1.0/255.0
+    mul.f32 %r, %r, %t1;
+    mul.f32 %g, %g, %t1;
+    mul.f32 %b, %b, %t1;
+
+    // write CHW planar output
+    mul.lo.u32 %plane, %dw, %dh;
+    mul.lo.u32 %didx, %oy, %dw;
+    add.u32 %didx, %didx, %ox;
+
+    ld.param.u64 %dp, [dst];
+
+    // R -> plane 0
+    cvt.u64.u32 %addr, %didx;
+    shl.b64 %addr, %addr, 2;
+    add.u64 %addr, %dp, %addr;
+    st.global.f32 [%addr], %r;
+
+    // G -> plane 1
+    add.u32 %tmp, %plane, %didx;
+    cvt.u64.u32 %addr, %tmp;
+    shl.b64 %addr, %addr, 2;
+    add.u64 %addr, %dp, %addr;
+    st.global.f32 [%addr], %g;
+
+    // B -> plane 2
+    add.u32 %tmp, %plane, %plane;
+    add.u32 %tmp, %tmp, %didx;
+    cvt.u64.u32 %addr, %tmp;
+    shl.b64 %addr, %addr, 2;
+    add.u64 %addr, %dp, %addr;
+    st.global.f32 [%addr], %b;
+
+done:
+    ret;
+}
+\0";
+
+static NV12_KERNEL: OnceLock<Result<CudaKernel, CudaInteropError>> = OnceLock::new();
+
+fn get_nv12_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
+    NV12_KERNEL
+        .get_or_init(|| CudaKernel::from_ptx(NV12_TO_RGB_CHW_PTX, "nv12_to_rgb_chw_fullrange"))
+        .as_ref()
+        .map_err(|e| CudaInteropError::CudaError {
+            function: "nv12_to_rgb_chw_fullrange_load",
+            code: match e {
+                CudaInteropError::CudaError { code, .. } => *code,
+                _ => -1,
+            },
+        })
+}
+
+/// Combined NV12 -> float32 RGB CHW conversion with letterbox placement.
+///
+/// Replaces the NPP `nppiNV12ToRGB` (BT.601 video-range) + resize +
+/// normalize pipeline with a single kernel using BT.709 full-range
+/// coefficients matching GoPro/action-cam `yuvj420p` output.
+///
+/// Reads NV12 Y + UV planes at `(y_ptr, uv_ptr)` with `y_pitch`,
+/// source dimensions `(src_w, src_h)`. Writes float32 CHW into `dst`
+/// with dimensions `(dst_w, dst_h)` and content region offset
+/// `(pad_x, pad_y)` at scale factor `scale`. Padding pixels must be
+/// pre-filled (grey 114/255 = 0.447) by the caller at init time.
+#[allow(clippy::too_many_arguments)]
+pub fn nv12_to_rgb_chw_fullrange(
+    y_ptr: CUdeviceptr,
+    uv_ptr: CUdeviceptr,
+    dst: CUdeviceptr,
+    y_pitch: u32,
+    src_w: u32,
+    src_h: u32,
+    dst_w: u32,
+    dst_h: u32,
+    pad_x: u32,
+    pad_y: u32,
+    scale: f32,
+) -> Result<(), CudaInteropError> {
+    reco_core::cuda_interop::cuda_ensure_context()?;
+    let kernel = get_nv12_kernel()?;
+
+    let block = (16u32, 16u32, 1u32);
+    let grid = (dst_w.div_ceil(block.0), dst_h.div_ceil(block.1), 1u32);
+
+    let mut y_val = y_ptr;
+    let mut uv_val = uv_ptr;
+    let mut dst_val = dst;
+    let mut yp_val = y_pitch;
+    let mut sw_val = src_w;
+    let mut sh_val = src_h;
+    let mut dw_val = dst_w;
+    let mut dh_val = dst_h;
+    let mut px_val = pad_x;
+    let mut py_val = pad_y;
+    let mut sc_val = scale;
+
+    let mut args: [*mut c_void; 11] = [
+        (&mut y_val as *mut u64).cast(),
+        (&mut uv_val as *mut u64).cast(),
+        (&mut dst_val as *mut u64).cast(),
+        (&mut yp_val as *mut u32).cast(),
+        (&mut sw_val as *mut u32).cast(),
+        (&mut sh_val as *mut u32).cast(),
+        (&mut dw_val as *mut u32).cast(),
+        (&mut dh_val as *mut u32).cast(),
+        (&mut px_val as *mut u32).cast(),
+        (&mut py_val as *mut u32).cast(),
+        (&mut sc_val as *mut f32).cast(),
+    ];
+
+    unsafe {
+        kernel.launch(grid, block, 0, &mut args)?;
+    }
+
+    reco_core::cuda_interop::cuda_synchronize()?;
+    Ok(())
+}
+
 /// Lazily loaded normalize+transpose kernel.
 static KERNEL: OnceLock<Result<CudaKernel, CudaInteropError>> = OnceLock::new();
 

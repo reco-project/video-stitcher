@@ -39,24 +39,36 @@ pub const DEFAULT_PITCH_FAR: f32 = 0.20;
 /// Default starting FOV when no ball has ever been seen.
 pub const DEFAULT_IDLE_FOV_DEG: f32 = 55.0;
 
-/// A minimal, stateful [`Panner`] that follows a tracked ball.
+/// Maximum angular velocity in radians per second.
+const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.12;
+/// Velocity smoothing alpha.
+const VELOCITY_ALPHA: f32 = 0.04;
+/// FOV EMA alpha.
+const FOV_ALPHA: f32 = 0.02;
+
+/// Ball-following panner with velocity-based smooth motion.
 ///
-/// Holds only enough state to preserve the last-published position
-/// across frames where the ball is [`TrackState::Lost`] or absent.
-/// Decorators (smoothing, anticipation, dead-zone) wrap this and
-/// add their own state separately.
+/// Instead of snapping to the ball position, moves at a capped
+/// angular velocity toward it. This eliminates jitter from noisy
+/// ball detections without needing external Smoother/DeadZone
+/// decorators.
 pub struct BallPanner {
     fov_wide_deg: f32,
     fov_tight_deg: f32,
     pitch_near: f32,
     pitch_far: f32,
     last: ViewportPosition,
+    velocity_yaw: f32,
+    velocity_pitch: f32,
+    current_fov: f32,
+    max_velocity: f32,
 }
 
 impl BallPanner {
     /// Build a ball panner with defaults (matches the old
     /// `BallDirector` FOV envelope).
-    pub fn new() -> Self {
+    pub fn new(fps: f32) -> Self {
+        let fps = fps.clamp(1.0, 1000.0);
         Self {
             fov_wide_deg: DEFAULT_FOV_WIDE_DEG,
             fov_tight_deg: DEFAULT_FOV_TIGHT_DEG,
@@ -67,6 +79,10 @@ impl BallPanner {
                 pitch: 0.0,
                 fov_degrees: Some(DEFAULT_IDLE_FOV_DEG),
             },
+            velocity_yaw: 0.0,
+            velocity_pitch: 0.0,
+            current_fov: DEFAULT_IDLE_FOV_DEG,
+            max_velocity: MAX_VELOCITY_RAD_PER_SEC / fps,
         }
     }
 
@@ -103,32 +119,42 @@ impl BallPanner {
 
 impl Default for BallPanner {
     fn default() -> Self {
-        Self::new()
+        Self::new(30.0)
     }
 }
 
 impl Panner for BallPanner {
     fn decide(&mut self, world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
-        match world.ball {
-            Some(ball) => match ball.state {
-                TrackState::Tracking | TrackState::Coasting => {
-                    let pos = ViewportPosition {
-                        yaw: ball.yaw,
-                        pitch: ball.pitch,
-                        fov_degrees: Some(self.target_fov(ball.pitch)),
-                    };
-                    self.last = pos;
-                    pos
-                }
-                TrackState::Lost => {
-                    // Track was just lost this frame — emit one held
-                    // frame, then subsequent calls will see
-                    // `world.ball = None` and keep holding.
-                    self.last
-                }
-            },
-            None => self.last,
+        let target = match world.ball {
+            Some(ref ball) if !matches!(ball.state, TrackState::Lost) => {
+                Some((ball.yaw, ball.pitch, self.target_fov(ball.pitch)))
+            }
+            _ => None,
+        };
+
+        if let Some((ty, tp, tf)) = target {
+            let err_yaw = ty - self.last.yaw;
+            let err_pitch = tp - self.last.pitch;
+
+            let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
+            let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
+
+            self.velocity_yaw += VELOCITY_ALPHA * (desired_yaw - self.velocity_yaw);
+            self.velocity_pitch += VELOCITY_ALPHA * (desired_pitch - self.velocity_pitch);
+
+            self.last.yaw += self.velocity_yaw;
+            self.last.pitch += self.velocity_pitch;
+            self.current_fov += FOV_ALPHA * (tf - self.current_fov);
+            self.last.fov_degrees = Some(self.current_fov);
+        } else {
+            // Lost or absent: decay velocity to zero, hold position.
+            self.velocity_yaw *= 0.9;
+            self.velocity_pitch *= 0.9;
+            self.last.yaw += self.velocity_yaw;
+            self.last.pitch += self.velocity_pitch;
         }
+
+        self.last
     }
 }
 
@@ -199,7 +225,7 @@ mod tests {
 
     #[test]
     fn default_panner_starts_at_origin_with_idle_fov() {
-        let mut p = BallPanner::new();
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         let out = p.decide(
             &WorldState::default(),
@@ -211,43 +237,48 @@ mod tests {
     }
 
     #[test]
-    fn tracking_snaps_to_ball() {
-        let mut p = BallPanner::new();
+    fn tracking_converges_to_ball() {
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         let world = WorldState {
             ball: Some(ball_at(0.4, 0.05, TrackState::Tracking)),
             players: vec![],
         };
-        let out = p.decide(&world, &ctx(&cal, ViewportPosition::default()));
-        assert!((out.yaw - 0.4).abs() < 1e-6);
-        assert!((out.pitch - 0.05).abs() < 1e-6);
+        let mut out = ViewportPosition::default();
+        for _ in 0..300 {
+            out = p.decide(&world, &ctx(&cal, ViewportPosition::default()));
+        }
+        assert!(
+            (out.yaw - 0.4).abs() < 0.02,
+            "expected ~0.4, got {}",
+            out.yaw
+        );
     }
 
     #[test]
-    fn coasting_still_publishes_ball_position() {
-        let mut p = BallPanner::new();
+    fn coasting_still_moves_toward_ball() {
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
         let world = WorldState {
             ball: Some(ball_at(0.1, 0.0, TrackState::Coasting)),
             players: vec![],
         };
         let out = p.decide(&world, &ctx(&cal, ViewportPosition::default()));
-        assert!((out.yaw - 0.1).abs() < 1e-6);
+        assert!(out.yaw > 0.0, "should move toward ball");
     }
 
     #[test]
-    fn lost_holds_last_position() {
-        let mut p = BallPanner::new();
+    fn lost_does_not_jump() {
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
-        // Track to (0.3, 0.05).
-        p.decide(
-            &WorldState {
-                ball: Some(ball_at(0.3, 0.05, TrackState::Tracking)),
-                players: vec![],
-            },
-            &ctx(&cal, ViewportPosition::default()),
-        );
-        // Ball goes lost.
+        let track_world = WorldState {
+            ball: Some(ball_at(0.3, 0.05, TrackState::Tracking)),
+            players: vec![],
+        };
+        for _ in 0..200 {
+            p.decide(&track_world, &ctx(&cal, ViewportPosition::default()));
+        }
+        let before = p.last.yaw;
         let out = p.decide(
             &WorldState {
                 ball: Some(ball_at(-0.9, -0.9, TrackState::Lost)),
@@ -255,62 +286,54 @@ mod tests {
             },
             &ctx(&cal, ViewportPosition::default()),
         );
-        // Held the previous position — not the Lost entity's fields.
-        assert!((out.yaw - 0.3).abs() < 1e-6);
+        assert!(
+            (out.yaw - before).abs() < 0.01,
+            "lost should not jump: before={before}, after={}",
+            out.yaw
+        );
     }
 
     #[test]
-    fn no_ball_in_world_holds() {
-        let mut p = BallPanner::new();
+    fn no_ball_in_world_holds_roughly() {
+        let mut p = BallPanner::new(30.0);
         let cal = test_cal();
-        p.decide(
-            &WorldState {
-                ball: Some(ball_at(0.2, 0.0, TrackState::Tracking)),
-                players: vec![],
-            },
-            &ctx(&cal, ViewportPosition::default()),
+        for _ in 0..200 {
+            p.decide(
+                &WorldState {
+                    ball: Some(ball_at(0.2, 0.0, TrackState::Tracking)),
+                    players: vec![],
+                },
+                &ctx(&cal, ViewportPosition::default()),
+            );
+        }
+        let before = p.last.yaw;
+        for _ in 0..10 {
+            p.decide(
+                &WorldState::default(),
+                &ctx(&cal, ViewportPosition::default()),
+            );
+        }
+        assert!(
+            (p.last.yaw - before).abs() < 0.02,
+            "should hold roughly: before={before}, after={}",
+            p.last.yaw
         );
-        let out = p.decide(
-            &WorldState::default(),
-            &ctx(&cal, ViewportPosition::default()),
-        );
-        assert!((out.yaw - 0.2).abs() < 1e-6);
     }
 
     #[test]
     fn fov_zooms_in_at_high_pitch() {
-        let mut p = BallPanner::new();
-        let cal = test_cal();
-        let low = p.decide(
-            &WorldState {
-                ball: Some(ball_at(0.0, DEFAULT_PITCH_NEAR, TrackState::Tracking)),
-                players: vec![],
-            },
-            &ctx(&cal, ViewportPosition::default()),
-        );
-        let high = p.decide(
-            &WorldState {
-                ball: Some(ball_at(0.0, DEFAULT_PITCH_FAR, TrackState::Tracking)),
-                players: vec![],
-            },
-            &ctx(&cal, ViewportPosition::default()),
-        );
-        assert!(low.fov_degrees.unwrap() > high.fov_degrees.unwrap());
-        assert!((low.fov_degrees.unwrap() - DEFAULT_FOV_WIDE_DEG).abs() < 1e-3);
-        assert!((high.fov_degrees.unwrap() - DEFAULT_FOV_TIGHT_DEG).abs() < 1e-3);
+        let p = BallPanner::new(30.0);
+        let low = p.target_fov(DEFAULT_PITCH_NEAR);
+        let high = p.target_fov(DEFAULT_PITCH_FAR);
+        assert!(low > high, "low={low} high={high}");
+        assert!((low - DEFAULT_FOV_WIDE_DEG).abs() < 1e-3);
+        assert!((high - DEFAULT_FOV_TIGHT_DEG).abs() < 1e-3);
     }
 
     #[test]
     fn with_fov_overrides_envelope() {
-        let mut p = BallPanner::new().with_fov(80.0, 20.0, 0.0, 0.5);
-        let cal = test_cal();
-        let out = p.decide(
-            &WorldState {
-                ball: Some(ball_at(0.0, 0.0, TrackState::Tracking)),
-                players: vec![],
-            },
-            &ctx(&cal, ViewportPosition::default()),
-        );
-        assert!((out.fov_degrees.unwrap() - 80.0).abs() < 1e-3);
+        let p = BallPanner::new(30.0).with_fov(80.0, 20.0, 0.0, 0.5);
+        let fov = p.target_fov(0.0);
+        assert!((fov - 80.0).abs() < 1e-3);
     }
 }

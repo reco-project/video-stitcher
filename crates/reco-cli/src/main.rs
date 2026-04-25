@@ -225,6 +225,11 @@ enum Commands {
         /// TensorRT. Slower but lets the detector see the frames.
         #[arg(long, default_value_t = false)]
         no_zero_copy: bool,
+
+        /// Record pipeline events (detections, filter decisions, pan
+        /// decisions) to a JSONL file for offline analysis.
+        #[arg(long)]
+        events: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -681,6 +686,7 @@ fn main() -> anyhow::Result<()> {
             replay_scale,
             allow_no_tracking,
             no_zero_copy,
+            events,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -707,6 +713,7 @@ fn main() -> anyhow::Result<()> {
                 replay_scale,
                 allow_no_tracking,
                 no_zero_copy,
+                events_path: events.as_deref(),
             },
             &interrupted,
         ),

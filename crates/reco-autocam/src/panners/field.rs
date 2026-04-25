@@ -52,17 +52,13 @@ const HUBER_CONVERGE_EPS: f32 = 1e-6;
 /// Minimum effective cluster size. Below this, no camera update
 /// happens. The effective count is the number of points whose final
 /// Huber weight equals 1 (i.e., residual within the inlier band).
-const MIN_CLUSTER: usize = 3;
+const MIN_CLUSTER: usize = 2;
 
 /// Edge exaggeration factor: yaw is pushed 15% further from center.
 const EDGE_PUSH: f32 = 0.15;
 
 /// FOV EMA alpha for gentle zoom transitions.
 const FOV_ALPHA: f32 = 0.01;
-
-/// Spread range for FOV mapping.
-const SPREAD_MIN: f32 = 0.05;
-const SPREAD_MAX: f32 = 0.40;
 
 /// Pitch range for distance-based FOV bias.
 const PITCH_NEAR: f32 = -0.05;
@@ -75,23 +71,23 @@ const DISTANCE_BIAS_MAX: f32 = -12.0;
 const EDGE_BIAS_MAX: f32 = 4.0;
 
 /// Default FOV envelope (degrees).
-const DEFAULT_FOV_TIGHT: f32 = 38.0;
-const DEFAULT_FOV_WIDE: f32 = 55.0;
-const DEFAULT_FOV: f32 = 48.0;
+const DEFAULT_FOV_TIGHT: f32 = 22.0;
+const DEFAULT_FOV_WIDE: f32 = 58.0;
+const DEFAULT_FOV: f32 = 40.0;
 
 /// EMA alpha for yaw centroid smoothing (lower = smoother).
 const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
 
-/// EMA alpha for pitch centroid. Pitch lags when a distant (tight)
-/// cluster appears briefly — a faster alpha lets the camera commit to
-/// the elevation change quickly so the tight-cluster FOV zoom actually
-/// reaches its target before the play moves on.
-const DEFAULT_PITCH_ALPHA: f32 = 0.03;
+/// Maximum angular velocity in radians per second.
+/// ~7 deg/s - comfortable broadcast pan speed.
+const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.12;
 
-/// Hard cap on per-frame EMA delta for both yaw and pitch (radians).
-/// 0.015 rad/frame ≈ 0.85°, which comfortably covers real-play
-/// motion without freezing.
-const MAX_POSE_DELTA_RAD: f32 = 0.015;
+/// Velocity smoothing alpha. Controls how quickly the camera changes
+/// direction. Lower = smoother reversals, higher = snappier tracking.
+const VELOCITY_ALPHA: f32 = 0.04;
+
+/// Pitch bias added to the cluster centroid (radians).
+const PITCH_BIAS: f32 = 0.05;
 
 /// Log interval in frames.
 const LOG_INTERVAL: u64 = 30;
@@ -122,20 +118,20 @@ pub struct FieldPanner {
     fov_wide: f32,
     fov_tight: f32,
 
-    /// EMA state.
+    /// Centroid EMA state (noise filter).
     ema_yaw: f32,
     ema_pitch: f32,
     ema_initialized: bool,
 
     /// EMA alpha for yaw centroid.
     cluster_alpha: f32,
-    /// EMA alpha for pitch centroid — faster than yaw so the zoom
-    /// commitment follows distant clusters in time.
-    pitch_alpha: f32,
-    /// Max delta applied to the published pose per frame. Caps both
-    /// yaw and pitch motion so a cluster-membership flip cannot
-    /// teleport the camera.
-    max_pose_delta: f32,
+
+    /// Current angular velocity (rad/frame) for yaw and pitch.
+    velocity_yaw: f32,
+    velocity_pitch: f32,
+
+    /// Max velocity in rad/frame (derived from fps).
+    max_velocity: f32,
 
     /// Frame counter for log throttling.
     frame_index: u64,
@@ -144,7 +140,8 @@ pub struct FieldPanner {
 impl FieldPanner {
     /// Build a field panner with defaults (identical envelope to
     /// `FieldDirector` (predecessor)).
-    pub fn new() -> Self {
+    pub fn new(fps: f32) -> Self {
+        let fps = fps.clamp(1.0, 1000.0);
         Self {
             yaw: 0.0,
             pitch: 0.0,
@@ -157,8 +154,9 @@ impl FieldPanner {
             ema_pitch: 0.0,
             ema_initialized: false,
             cluster_alpha: DEFAULT_CLUSTER_ALPHA,
-            pitch_alpha: DEFAULT_PITCH_ALPHA,
-            max_pose_delta: MAX_POSE_DELTA_RAD,
+            velocity_yaw: 0.0,
+            velocity_pitch: 0.0,
+            max_velocity: MAX_VELOCITY_RAD_PER_SEC / fps,
             frame_index: 0,
         }
     }
@@ -323,13 +321,17 @@ impl FieldPanner {
             return (self.ema_yaw, self.ema_pitch);
         }
 
+        // First-stage EMA: smooths step changes in the raw centroid
+        // into ramps. The output EMA (POSE_ALPHA) then smooths the
+        // ramps further, naturally bounding acceleration. Two cascaded
+        // EMAs = second-order filter with smooth accel/decel.
         if !self.ema_initialized {
             self.ema_yaw = raw_yaw;
             self.ema_pitch = raw_pitch;
             self.ema_initialized = true;
         } else {
             self.ema_yaw += self.cluster_alpha * (raw_yaw - self.ema_yaw);
-            self.ema_pitch += self.pitch_alpha * (raw_pitch - self.ema_pitch);
+            self.ema_pitch += self.cluster_alpha * (raw_pitch - self.ema_pitch);
         }
 
         (self.ema_yaw, self.ema_pitch)
@@ -357,12 +359,17 @@ impl FieldPanner {
             count: core.len(),
         })
     }
+}
 
-    /// Dynamic FOV from cluster spread, pitch (distance proxy), and
-    /// current yaw (panorama-edge bias). Matches FieldDirector.
+impl FieldPanner {
+    /// Dynamic FOV proportional to the cluster's angular extent.
+    ///
+    /// `spread` is the max inlier distance from the centroid (radians).
+    /// The viewport should be roughly `2 * spread` wide plus margin.
+    /// A 1.6x margin keeps players comfortably inside the frame.
     fn target_fov(&self, spread: f32, pitch: f32) -> f32 {
-        let t_spread = ((spread - SPREAD_MIN) / (SPREAD_MAX - SPREAD_MIN)).clamp(0.0, 1.0);
-        let fov_from_spread = self.fov_tight + t_spread * (self.fov_wide - self.fov_tight);
+        let spread_deg = spread.to_degrees();
+        let fov_from_spread = (2.0 * spread_deg * 1.0).max(self.fov_tight);
 
         let t_dist = ((pitch - PITCH_NEAR) / (PITCH_FAR - PITCH_NEAR)).clamp(0.0, 1.0);
         let distance_bias = t_dist * DISTANCE_BIAS_MAX;
@@ -376,7 +383,7 @@ impl FieldPanner {
 
 impl Default for FieldPanner {
     fn default() -> Self {
-        Self::new()
+        Self::new(30.0)
     }
 }
 
@@ -399,7 +406,7 @@ impl Panner for FieldPanner {
 
         if let Some(ref c) = cluster {
             let mut target_yaw = c.yaw * (1.0 + EDGE_PUSH);
-            let mut target_pitch = c.pitch;
+            let mut target_pitch = c.pitch + PITCH_BIAS;
 
             if let Some((by, bp)) = ball_pos {
                 let w = self.ball_weight;
@@ -416,15 +423,17 @@ impl Panner for FieldPanner {
             }
 
             if target_yaw.is_finite() && target_pitch.is_finite() {
-                // Clamp per-frame delta so a cluster-membership flip
-                // cannot teleport the camera; smooth glide is preserved
-                // because any sustained target is reached within a few
-                // frames at max_pose_delta rad/frame.
-                let dy = (target_yaw - self.yaw).clamp(-self.max_pose_delta, self.max_pose_delta);
-                let dp =
-                    (target_pitch - self.pitch).clamp(-self.max_pose_delta, self.max_pose_delta);
-                self.yaw += dy;
-                self.pitch += dp;
+                let err_yaw = target_yaw - self.yaw;
+                let err_pitch = target_pitch - self.pitch;
+
+                let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
+                let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
+
+                self.velocity_yaw += VELOCITY_ALPHA * (desired_yaw - self.velocity_yaw);
+                self.velocity_pitch += VELOCITY_ALPHA * (desired_pitch - self.velocity_pitch);
+
+                self.yaw += self.velocity_yaw;
+                self.pitch += self.velocity_pitch;
             } else {
                 log::warn!(
                     "FieldPanner: non-finite target yaw={target_yaw} pitch={target_pitch}; \
@@ -456,12 +465,14 @@ impl Panner for FieldPanner {
 
         if self.frame_index.is_multiple_of(LOG_INTERVAL) {
             log::debug!(
-                "FieldPanner frame {}: yaw={:.4} pitch={:.4} fov={:.1} players={} ball_blend={}",
+                "FieldPanner frame {}: yaw={:.4} pitch={:.4} fov={:.1} players={} spread={:.3} world_players={} ball_blend={}",
                 self.frame_index,
                 self.yaw,
                 self.pitch,
                 self.current_fov,
                 cluster.as_ref().map_or(0, |c| c.count),
+                cluster.as_ref().map_or(0.0, |c| c.spread),
+                world.players.len(),
                 ball_pos.is_some()
             );
         }
@@ -569,7 +580,7 @@ mod tests {
 
     #[test]
     fn follows_player_centroid() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let w = tight_world();
         // Per-frame delta clamp (0.015 rad) means the pose needs many
@@ -589,7 +600,7 @@ mod tests {
 
     #[test]
     fn no_cluster_holds_position() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         // Seed a pose then send an empty world — must not move.
         p.yaw = 0.3;
@@ -607,7 +618,7 @@ mod tests {
 
     #[test]
     fn huber_excludes_goalkeeper_outlier() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let w = WorldState {
             ball: None,
@@ -629,7 +640,7 @@ mod tests {
 
     #[test]
     fn ball_blend_pulls_toward_ball() {
-        let mut p = FieldPanner::new().with_ball_weight(0.3);
+        let mut p = FieldPanner::new(30.0).with_ball_weight(0.3);
         let cal = cal();
         let mut w = tight_world();
         w.ball = Some(ball(0.80, 0.0));
@@ -644,7 +655,7 @@ mod tests {
 
     #[test]
     fn ball_lost_ignored_in_blend() {
-        let mut p = FieldPanner::new().with_ball_weight(0.3);
+        let mut p = FieldPanner::new(30.0).with_ball_weight(0.3);
         let cal = cal();
         let mut w = tight_world();
         let mut lost = ball(0.80, 0.0);
@@ -665,7 +676,7 @@ mod tests {
 
     #[test]
     fn lost_players_excluded() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         // Four live players at tight cluster + one lost player far
         // away. The lost one must be ignored so it can't drag the
@@ -692,7 +703,7 @@ mod tests {
 
     #[test]
     fn fov_narrows_for_tight_cluster() {
-        let p = FieldPanner::new();
+        let p = FieldPanner::new(30.0);
         let tight = p.target_fov(0.05, 0.0);
         let wide = p.target_fov(0.40, 0.0);
         assert!(tight < wide, "tight={tight} wide={wide}");
@@ -700,7 +711,7 @@ mod tests {
 
     #[test]
     fn fov_tighter_when_far() {
-        let p = FieldPanner::new();
+        let p = FieldPanner::new(30.0);
         let near = p.target_fov(0.20, PITCH_NEAR);
         let far = p.target_fov(0.20, PITCH_FAR);
         assert!(far < near, "far={far} near={near}");
@@ -708,7 +719,7 @@ mod tests {
 
     #[test]
     fn fov_ema_does_not_latch_on_nan() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let baseline = p.current_fov;
         let nan_players: Vec<TrackedEntity> =
@@ -724,7 +735,7 @@ mod tests {
 
     #[test]
     fn yaw_pitch_do_not_latch_on_nan() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         p.yaw = 0.3;
         p.pitch = 0.05;
@@ -743,7 +754,7 @@ mod tests {
 
     #[test]
     fn position_includes_fov() {
-        let mut p = FieldPanner::new();
+        let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let out = p.decide(&tight_world(), &ctx(0, &cal));
         assert!(out.fov_degrees.is_some());
