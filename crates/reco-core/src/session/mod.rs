@@ -921,12 +921,11 @@ impl StitchSession {
         // at its default (identity) value so the viewport centers.
         let mut pos = self.previous_panner_pose;
 
-        // The panner outputs world-space coordinates (from ball detections).
-        // Clamp in world space, then convert to user space for the renderer.
-        // Rig-tilt conversion is a SIMPLE offset (`user = world - rig_tilt`);
-        // the yaw-weighted horizon correction is a separate compensation
-        // applied at the render site (see Model 3 rationale in
-        // `PoseControl::render_pose`). Validated empirically 2026-04-20.
+        // The panner outputs world-space coordinates (from detections
+        // mapped via camera_to_panorama). Clamp in world space, then
+        // convert to the user-space pitch the renderer expects (the
+        // view_matrix applies rig_tilt as a basis rotation, so the
+        // render-site pitch must compensate via rig_correction).
         if let Some(coverage) = self.core.coverage() {
             if let Some(ref mut fov) = pos.fov_degrees {
                 *fov = fov.min(coverage.max_fov_degrees());
@@ -935,11 +934,28 @@ impl StitchSession {
                 .fov_degrees
                 .unwrap_or_else(|| self.core.pipeline().fov());
             let aspect = self.core.pipeline().viewport().aspect_ratio();
-            // safe_clamp with rig_tilt=0 keeps inputs+outputs in world-space.
+            let rig_tilt = self.core.pipeline().viewport().rig_tilt;
+            // Clamp in world space (rig_tilt=0 so coverage stays in
+            // the panorama's native coordinate system).
             let clamped = coverage.safe_clamp(pos.yaw, pos.pitch, fov, aspect, 0.0);
             pos.yaw = clamped.yaw;
-            let rig_tilt = self.core.pipeline().viewport().rig_tilt;
-            pos.pitch = clamped.pitch - rig_tilt;
+            // Convert world (yaw, pitch) to render-space via exact
+            // quaternion inversion of view_matrix's tilt+roll basis.
+            // Accounts for roll coupling at non-zero yaw that the
+            // closed-form render_pitch misses.
+            let cam = crate::projection::VirtualCamera::new(
+                &self.core.pipeline().scene.camera_position,
+            );
+            let rig_roll = self.core.pipeline().viewport().rig_roll;
+            let (ry, rp) = crate::rig_correction::world_to_render_pose(
+                &cam,
+                clamped.yaw,
+                clamped.pitch,
+                rig_tilt,
+                rig_roll,
+            );
+            pos.yaw = ry;
+            pos.pitch = rp;
         }
 
         // Trace: PosePresented. This is the pose the renderer will

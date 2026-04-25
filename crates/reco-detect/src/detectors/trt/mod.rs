@@ -52,6 +52,7 @@ use super::postprocess;
 pub struct TrtGpuDetector {
     // GPU scratch buffers (drop first).
     rgb_u8: CUdeviceptr,
+    rgb_scratch: CUdeviceptr,
     resized_u8: CUdeviceptr,
     tensor_f32: CUdeviceptr,
     // P010 (10-bit NV12) conversion scratch buffers.
@@ -199,6 +200,7 @@ impl TrtGpuDetector {
         let tensor_size = resized_size * 4; // f32
 
         let rgb_u8 = cuda_mem_alloc(rgb_size)?;
+        let rgb_scratch = cuda_mem_alloc(rgb_size)?;
         let resized_u8 = cuda_mem_alloc(resized_size)?;
         let tensor_f32 = cuda_mem_alloc(tensor_size)?;
 
@@ -246,6 +248,7 @@ impl TrtGpuDetector {
 
         let mut detector = Self {
             rgb_u8,
+            rgb_scratch,
             resized_u8,
             tensor_f32,
             nv12_8bit_y,
@@ -396,20 +399,23 @@ impl TrtGpuDetector {
         }
 
         // Step 1b: Flip 180 degrees if the source has rotation metadata.
+        // Out-of-place mirror (rgb_u8 -> rgb_scratch) because
+        // nppiMirror_8u_C3R is NOT safe in-place (observed corruption
+        // in OrtGpuDetector, same fix backported here).
         if rotation == 180 {
             reco_core::profile_scope!("npp_mirror_180");
-            npp_mirror_c3(self.rgb_u8, self.rgb_u8, width, height).map_err(|e| {
+            npp_mirror_c3(self.rgb_u8, self.rgb_scratch, width, height).map_err(|e| {
                 DetectorError::InferenceFailed(format!("NPP mirror (rotation=180): {e}"))
             })?;
+            std::mem::swap(&mut self.rgb_u8, &mut self.rgb_scratch);
         }
 
-        // Step 2: Resize to letterboxed region (identical to OrtGpuDetector).
+        // Step 2: Resize to letterboxed region. Grey fill was done
+        // once at init; per-frame memset races with NPP resize on
+        // a different CUDA stream (same fix as OrtGpuDetector).
         {
             reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
-            let resized_size = (is as usize) * (is as usize) * 3;
-            cuda_memset_d8(self.resized_u8, 114, resized_size)
-                .map_err(|e| DetectorError::InferenceFailed(format!("grey fill: {e}")))?;
 
             let dst_roi = NppiRect {
                 x: self.pad_x as i32,
@@ -647,6 +653,7 @@ impl Drop for TrtGpuDetector {
         }
         for (name, ptr) in [
             ("rgb_u8", self.rgb_u8),
+            ("rgb_scratch", self.rgb_scratch),
             ("resized_u8", self.resized_u8),
             ("tensor_f32", self.tensor_f32),
             ("nv12_8bit_y", self.nv12_8bit_y),

@@ -472,12 +472,15 @@ pub fn setup_autocam(
 
         // Pre-tracker flicker rejection: class-keyed bucketed-spatial
         // histogram that drops recurrent static mimics (line
-        // intersections, logos, corner flags). Session-wide because
-        // the filter is class-aware, so it helps every tracker we
-        // might attach, not just BallTracker.
-        session.add_detection_filter(Box::new(
-            crate::detection_filters::FlickerDetectionFilter::with_defaults(),
-        ));
+        // intersections, logos, corner flags). Skipped in field mode
+        // because the ROI already filters non-pitch detections, and
+        // stationary players (pre-kickoff, set pieces) are legitimate
+        // signal that the flicker filter aggressively removes.
+        if tracking_mode != TrackingMode::Field {
+            session.add_detection_filter(Box::new(
+                crate::detection_filters::FlickerDetectionFilter::with_defaults(),
+            ));
+        }
 
         // Smoother decorator's one-euro bidirectional filter window.
         // Zero-copy sources cannot buffer, so the window is disabled

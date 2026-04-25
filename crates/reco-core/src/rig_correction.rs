@@ -10,8 +10,14 @@
 //! - [`human_to_world_pitch`] / [`world_to_human_pitch`]: bijective
 //!   mapping for safe_clamp so coverage is checked in world space.
 //!
+//! - [`world_to_render_pose`]: exact quaternion inversion for the AI
+//!   panner path. Given a world-space (yaw, pitch), finds the
+//!   (render_yaw, render_pitch) that makes view_matrix point there.
+//!
 //! Derivation in vault at
 //! `architecture/rig-correction-v2-derivation-2026-04-23.md`.
+
+use crate::projection::VirtualCamera;
 
 /// Compute the pitch to pass to `view_matrix` so the horizon stays
 /// level at the user's requested (yaw, user_pitch).
@@ -59,6 +65,60 @@ fn coupling_factor(yaw: f32, rig_tilt: f32) -> f32 {
     let sin_t = rig_tilt.sin();
     let cos_t = rig_tilt.cos();
     (cos_yaw * cos_yaw * sin_t * sin_t + cos_t * cos_t).sqrt()
+}
+
+/// Exact world-to-render mapping for the AI panner path.
+///
+/// Given a world-space (yaw, pitch) the panner wants to look at,
+/// returns the (render_yaw, render_pitch) that makes `view_matrix`
+/// point at that world direction. Uses quaternion inversion of the
+/// tilt+roll basis rotation, so it handles the roll coupling that
+/// the closed-form [`render_pitch`] misses at non-zero yaw.
+pub(crate) fn world_to_render_pose(
+    cam: &VirtualCamera,
+    world_yaw: f32,
+    world_pitch: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+) -> (f32, f32) {
+    if rig_tilt.abs() < 1e-6 && rig_roll.abs() < 1e-6 {
+        return (world_yaw, world_pitch);
+    }
+
+    // 1. Get the 3D direction the panner wants (in world space).
+    let world_dir = cam.yaw_pitch_to_direction(world_yaw, world_pitch);
+
+    // 2. Build the same tilt+roll quaternion that view_matrix applies.
+    let base_right = cam.base_right;
+    let mut base_forward = cam.base_forward;
+    let mut world_up = VirtualCamera::world_up();
+
+    let mut combined_q = nalgebra::UnitQuaternion::identity();
+    if rig_tilt.abs() > 1e-6 {
+        let tilt_q = nalgebra::UnitQuaternion::from_axis_angle(
+            &nalgebra::Unit::new_normalize(base_right),
+            rig_tilt,
+        );
+        base_forward = tilt_q * base_forward;
+        world_up = tilt_q * world_up;
+        combined_q = tilt_q;
+    }
+    if rig_roll.abs() > 1e-6 {
+        let roll_q = nalgebra::UnitQuaternion::from_axis_angle(
+            &nalgebra::Unit::new_normalize(base_forward),
+            -rig_roll,
+        );
+        let _ = roll_q * world_up;
+        combined_q = roll_q * combined_q;
+    }
+
+    // 3. Invert: the un-tilted direction that view_matrix's
+    //    tilt rotation will map to world_dir.
+    let render_dir = combined_q.inverse() * world_dir;
+
+    // 4. Decompose using the un-tilted camera basis.
+    let pos = cam.direction_to_yaw_pitch(&render_dir);
+    (pos.yaw, pos.pitch)
 }
 
 #[cfg(test)]

@@ -297,8 +297,15 @@ impl OrtGpuDetector {
             (y_ptr, y_pitch, uv_ptr, uv_pitch)
         };
 
-        // Step 1: NV12 -> packed RGB u8 via NPP.
-        {
+        // Combined NV12 -> float32 RGB CHW in one kernel pass.
+        // Uses BT.709 full-range coefficients matching GoPro/action-cam
+        // yuvj420p output. Replaces the NPP NV12-to-RGB (BT.601
+        // video-range) + NPP resize + normalize pipeline that was
+        // producing a 10x detection count difference vs CPU ORT (#284).
+        if rotation == 180 {
+            // Rotated streams: fall back to the NPP path since the
+            // combined kernel doesn't handle in-place NV12 mirroring.
+            // TODO: add rotation support to the combined kernel.
             reco_core::profile_scope!("npp_nv12_to_rgb");
             npp_nv12_to_rgb(
                 nv12_y,
@@ -310,65 +317,40 @@ impl OrtGpuDetector {
                 height,
             )
             .map_err(|e| DetectorError::InferenceFailed(format!("NPP NV12->RGB: {e}")))?;
-        }
 
-        // Step 1b: Flip 180 degrees if the source has rotation metadata.
-        // NVDEC decodes without applying rotation; the render shader flips
-        // UV for display, but the detector sees raw upside-down frames.
-        //
-        // Mirror OUT-OF-PLACE into `rgb_scratch`. `nppiMirror_8u_C3R` with
-        // `NPPI_AXIS_BOTH` is not safe in-place — writes to the top half
-        // overlap reads from the bottom half, corrupting the output into a
-        // half-mirrored image that the detector silently misreads.
-        let resize_src = if rotation == 180 {
             reco_core::profile_scope!("npp_mirror_180");
             npp_mirror_c3(self.rgb_u8, self.rgb_scratch, width, height).map_err(|e| {
                 DetectorError::InferenceFailed(format!("NPP mirror (rotation=180): {e}"))
             })?;
-            self.rgb_scratch
-        } else {
-            self.rgb_u8
-        };
 
-        // Step 2: Resize into the pre-letterboxed scratch buffer.
-        //
-        // The letterbox grey padding is written ONCE at detector init time
-        // (see the `cuda_memset_d8` in `try_new`). Since `dst_roi` is fixed
-        // for a given (frame_width, frame_height, input_size), the grey
-        // border never changes, so re-filling per frame is redundant.
-        //
-        // The earlier per-frame memset also raced with `npp_resize_c3`:
-        // the memset used the default CUDA stream while NPP ran on its
-        // dedicated stream, and with the mirror step pushing extra work
-        // onto the NPP stream the memset could complete *after* the
-        // resize, wiping freshly-written pitch pixels back to grey. This
-        // asymmetrically starved detection on rotated streams only.
-        {
-            reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
-            let pad_x_i = self.pad_x as u32;
-            let pad_y_i = self.pad_y as u32;
             let dst_roi = NppiRect {
-                x: pad_x_i as i32,
-                y: pad_y_i as i32,
+                x: self.pad_x as i32,
+                y: self.pad_y as i32,
                 width: self.new_w as i32,
                 height: self.new_h as i32,
             };
-
-            npp_resize_c3(resize_src, width, height, self.resized_u8, is, is, dst_roi)
+            npp_resize_c3(self.rgb_scratch, width, height, self.resized_u8, is, is, dst_roi)
                 .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
-        }
 
-        // Step 3: Normalize u8 HWC -> f32 CHW with /255.0 via CUDA kernel.
-        {
-            reco_core::profile_scope!("cuda_normalize");
-            normalize_hwc_to_chw(
-                self.resized_u8,
+            normalize_hwc_to_chw(self.resized_u8, self.tensor_f32, is, is)
+                .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
+        } else {
+            reco_core::profile_scope!("nv12_to_rgb_chw");
+            crate::cuda_kernels::nv12_to_rgb_chw_fullrange(
+                nv12_y,
+                nv12_uv,
                 self.tensor_f32,
+                nv12_y_pitch as u32,
+                width,
+                height,
                 self.input_size,
                 self.input_size,
+                self.pad_x as u32,
+                self.pad_y as u32,
+                self.scale,
             )
-            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
+            .map_err(|e| DetectorError::InferenceFailed(format!("NV12->RGB CHW: {e}")))?;
         }
 
         // Step 4: Wrap GPU buffer as ORT tensor and run inference.

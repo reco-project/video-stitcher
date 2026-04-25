@@ -4,6 +4,15 @@
 //! Pre-processing converts YUV camera frames to RGB, letterboxes to the model's
 //! input size, and normalizes to `[0, 1]`. Post-processing maps detections back
 //! to normalized camera coordinates.
+//!
+//! ## Canonical preprocessing spec (all backends must match)
+//!
+//! - **Color**: BT.601 full-range YUV -> RGB (matches JPEG/OpenCV
+//!   training pipeline and NPP's `nppiNV12ToRGB`)
+//! - **Resize**: bilinear interpolation
+//! - **Letterbox**: grey fill at `rgb(114, 114, 114)`, centered
+//! - **Normalize**: divide by 255.0 to `[0, 1]`
+//! - **Layout**: CHW float32, `[1, 3, H, W]`
 
 use std::path::Path;
 
@@ -117,22 +126,48 @@ impl CpuYoloDetector {
         let pad_y_i = pad_y as u32;
         let plane = sz * sz;
 
+        let w_max = frame.width - 1;
+        let h_max = frame.height - 1;
+
         for dy in 0..new_h {
             for dx in 0..new_w {
-                // Map back to source coordinates.
-                let sx = ((dx as f32) / scale) as u32;
-                let sy = ((dy as f32) / scale) as u32;
-                let sx = sx.min(frame.width - 1);
-                let sy = sy.min(frame.height - 1);
+                // Bilinear interpolation: map destination pixel to
+                // fractional source coordinates, sample 4 neighbors.
+                let src_x = (dx as f32) / scale;
+                let src_y = (dy as f32) / scale;
+                let x0 = (src_x.floor() as u32).min(w_max);
+                let y0 = (src_y.floor() as u32).min(h_max);
+                let x1 = (x0 + 1).min(w_max);
+                let y1 = (y0 + 1).min(h_max);
+                let fx = src_x - src_x.floor();
+                let fy = src_y - src_y.floor();
 
-                let y_val = frame.y[(sy * frame.width + sx) as usize] as f32;
-                let (u_val, v_val) = chroma_sample(frame, sx, sy);
+                let sample_rgb = |sx: u32, sy: u32| -> (f32, f32, f32) {
+                    let y_val = frame.y[(sy * frame.width + sx) as usize] as f32;
+                    let (u_val, v_val) = chroma_sample(frame, sx, sy);
+                    // BT.601 full-range YUV -> RGB (matches JPEG/OpenCV
+                    // training pipeline and NPP GPU path)
+                    let r = (y_val + 1.402 * (v_val - 128.0)).clamp(0.0, 255.0);
+                    let g = (y_val - 0.344136 * (u_val - 128.0) - 0.714136 * (v_val - 128.0))
+                        .clamp(0.0, 255.0);
+                    let b = (y_val + 1.772 * (u_val - 128.0)).clamp(0.0, 255.0);
+                    (r, g, b)
+                };
 
-                // BT.709 full-range YUV -> RGB (matches fisheye.wgsl)
-                let r = (y_val + 1.5748 * (v_val - 128.0)).clamp(0.0, 255.0);
-                let g =
-                    (y_val - 0.1873 * (u_val - 128.0) - 0.4681 * (v_val - 128.0)).clamp(0.0, 255.0);
-                let b = (y_val + 1.8556 * (u_val - 128.0)).clamp(0.0, 255.0);
+                let (r00, g00, b00) = sample_rgb(x0, y0);
+                let (r10, g10, b10) = sample_rgb(x1, y0);
+                let (r01, g01, b01) = sample_rgb(x0, y1);
+                let (r11, g11, b11) = sample_rgb(x1, y1);
+
+                let lerp = |a: f32, b: f32, c: f32, d: f32| -> f32 {
+                    a * (1.0 - fx) * (1.0 - fy)
+                        + b * fx * (1.0 - fy)
+                        + c * (1.0 - fx) * fy
+                        + d * fx * fy
+                };
+                let r = lerp(r00, r10, r01, r11);
+                let g = lerp(g00, g10, g01, g11);
+                let b = lerp(b00, b10, b01, b11);
 
                 let ox = (pad_x_i + dx) as usize;
                 let oy = (pad_y_i + dy) as usize;

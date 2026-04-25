@@ -67,6 +67,11 @@ pub struct StitchJob {
     /// Force CPU decode instead of GPU zero-copy. Needed when ORT
     /// CPU detection is wanted but TensorRT is not available.
     force_cpu_decode: bool,
+
+    /// Path for pipeline event JSONL output. When set, attaches a
+    /// `JsonlSink` to the session that records every detection,
+    /// filter decision, and pan decision for offline analysis.
+    events_path: Option<std::path::PathBuf>,
 }
 
 /// Configuration for optional replay recording (see
@@ -244,6 +249,7 @@ impl StitchJob {
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
             force_cpu_decode: false,
+            events_path: None,
         }
     }
 
@@ -438,6 +444,13 @@ impl StitchJob {
         self
     }
 
+    /// Record pipeline events (detections, filter decisions, pan
+    /// decisions) to a JSONL file for offline analysis.
+    pub fn events(mut self, path: impl AsRef<Path>) -> Self {
+        self.events_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
     #[cfg(feature = "stacked-output")]
     pub fn with_replay_scale(mut self, width: u32, height: u32) -> Self {
         if let Some(ref mut cfg) = self.replay_recording {
@@ -587,6 +600,19 @@ impl StitchJob {
         // Call the session callback for consumer configuration (e.g. autocam)
         if let Some(cb) = self.on_session.take() {
             cb(&mut session, &source);
+        }
+
+        // Attach JSONL event sink if requested.
+        if let Some(ref events_path) = self.events_path {
+            match crate::jsonl_sink::JsonlSink::create(events_path) {
+                Ok(sink) => {
+                    log::info!("Pipeline events -> {}", events_path.display());
+                    session.set_event_sink(Box::new(sink));
+                }
+                Err(e) => {
+                    log::warn!("Failed to open events file {}: {e}", events_path.display());
+                }
+            }
         }
 
         // Create encoder with optional audio passthrough.
