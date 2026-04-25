@@ -359,9 +359,7 @@ impl FieldPanner {
             count: core.len(),
         })
     }
-
 }
-
 
 impl FieldPanner {
     /// Dynamic FOV proportional to the cluster's angular extent.

@@ -943,9 +943,8 @@ impl StitchSession {
             // quaternion inversion of view_matrix's tilt+roll basis.
             // Accounts for roll coupling at non-zero yaw that the
             // closed-form render_pitch misses.
-            let cam = crate::projection::VirtualCamera::new(
-                &self.core.pipeline().scene.camera_position,
-            );
+            let cam =
+                crate::projection::VirtualCamera::new(&self.core.pipeline().scene.camera_position);
             let rig_roll = self.core.pipeline().viewport().rig_roll;
             let (ry, rp) = crate::rig_correction::world_to_render_pose(
                 &cam,

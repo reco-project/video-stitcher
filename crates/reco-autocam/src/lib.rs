@@ -535,8 +535,7 @@ pub fn setup_autocam(
                      player_class={person_id}, ball_class={ball_id})"
                 );
 
-                let field_panner =
-                    crate::panners::FieldPanner::new(fps).with_ball_weight(0.15);
+                let field_panner = crate::panners::FieldPanner::new(fps).with_ball_weight(0.15);
 
                 session.set_ball_tracker(Box::new(ball_tracker));
                 session.set_player_tracker(Box::new(player_tracker));

@@ -330,8 +330,16 @@ impl OrtGpuDetector {
                 width: self.new_w as i32,
                 height: self.new_h as i32,
             };
-            npp_resize_c3(self.rgb_scratch, width, height, self.resized_u8, is, is, dst_roi)
-                .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
+            npp_resize_c3(
+                self.rgb_scratch,
+                width,
+                height,
+                self.resized_u8,
+                is,
+                is,
+                dst_roi,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
 
             normalize_hwc_to_chw(self.resized_u8, self.tensor_f32, is, is)
                 .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;

@@ -474,9 +474,7 @@ static NV12_KERNEL: OnceLock<Result<CudaKernel, CudaInteropError>> = OnceLock::n
 
 fn get_nv12_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
     NV12_KERNEL
-        .get_or_init(|| {
-            CudaKernel::from_ptx(NV12_TO_RGB_CHW_PTX, "nv12_to_rgb_chw_fullrange")
-        })
+        .get_or_init(|| CudaKernel::from_ptx(NV12_TO_RGB_CHW_PTX, "nv12_to_rgb_chw_fullrange"))
         .as_ref()
         .map_err(|e| CudaInteropError::CudaError {
             function: "nv12_to_rgb_chw_fullrange_load",
