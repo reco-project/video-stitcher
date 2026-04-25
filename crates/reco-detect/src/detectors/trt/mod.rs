@@ -669,46 +669,35 @@ impl TrtGpuDetector {
         cuda_ensure_context()
             .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
 
-        if self.cpu_upload_rgba == 0 {
-            self.cpu_upload_rgba = cuda_mem_alloc(rgba_bytes)
-                .map_err(|e| DetectorError::InferenceFailed(format!("rgba alloc: {e}")))?;
-            log::info!(
-                "TrtGpuDetector: allocated RGBA upload buffer ({rgba_bytes} B) for Bayer detection path"
-            );
+        // Strip alpha on CPU (RGBA -> RGB), then upload RGB to the
+        // existing rgb_u8 CUDA buffer and run the standard pipeline.
+        // ~10ms for 4K at 30fps detection interval = ~0.3ms amortized.
+        let rgb_bytes = (width as usize) * (height as usize) * 3;
+        let mut rgb_host = vec![0u8; rgb_bytes];
+        {
+            reco_core::profile_scope!("rgba_strip_alpha");
+            for (src, dst) in rgba_host.chunks_exact(4).zip(rgb_host.chunks_exact_mut(3)) {
+                dst[0] = src[0];
+                dst[1] = src[1];
+                dst[2] = src[2];
+            }
         }
 
-        // Upload RGBA to CUDA
+        // Upload RGB to the existing rgb_u8 buffer (reused from NV12 path)
         {
-            reco_core::profile_scope!("rgba_h2d");
-            let row_bytes = width as usize * 4;
+            reco_core::profile_scope!("rgb_h2d");
             cuda_memcpy_htod_2d(
-                self.cpu_upload_rgba,
-                row_bytes,
-                rgba_host.as_ptr(),
-                row_bytes,
-                row_bytes,
+                self.rgb_u8,
+                width as usize * 3,
+                rgb_host.as_ptr(),
+                width as usize * 3,
+                width as usize * 3,
                 height as usize,
             )
-            .map_err(|e| DetectorError::InferenceFailed(format!("RGBA H2D: {e}")))?;
+            .map_err(|e| DetectorError::InferenceFailed(format!("RGB H2D: {e}")))?;
         }
 
-        // Strip alpha: RGBA -> RGB via NPP (reuses self.rgb_u8)
-        {
-            reco_core::profile_scope!("npp_rgba_to_rgb");
-            crate::npp_interop::npp_rgba_to_rgb(
-                self.cpu_upload_rgba,
-                self.rgb_u8,
-                width,
-                height,
-            )
-            .map_err(|e| DetectorError::InferenceFailed(format!("NPP RGBA->RGB: {e}")))?;
-        }
-
-        // From here, the pipeline is identical to detect_gpu_raw steps 2-5:
-        // resize -> normalize -> infer -> postprocess.
-        // We jump into the pipeline at step 2 (resize), with rgb_u8 populated.
-
-        // Step 2: Resize to letterboxed region.
+        // From here: existing NPP resize + normalize + TRT inference.
         {
             reco_core::profile_scope!("npp_resize");
             let is = self.input_size;
@@ -725,7 +714,6 @@ impl TrtGpuDetector {
             .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
         }
 
-        // Step 3: Normalize u8 HWC -> f32 CHW.
         {
             reco_core::profile_scope!("cuda_normalize");
             crate::cuda_kernels::normalize_hwc_to_chw(
@@ -735,7 +723,6 @@ impl TrtGpuDetector {
             .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
         }
 
-        // Step 4+5: TRT inference + postprocess (shared with detect_gpu_raw).
         self.run_inference_and_postprocess(camera, width, height)
     }
 }
