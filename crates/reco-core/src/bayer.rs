@@ -522,6 +522,71 @@ impl BayerDemosaic {
         );
     }
 
+    /// Read back the graded RGBA output to CPU memory.
+    ///
+    /// Blocking GPU readback - only use for periodic detection, not
+    /// every frame. Returns `width * height * 4` bytes of RGBA.
+    pub fn readback_rgba(&self, gpu: &GpuContext) -> Vec<u8> {
+        let tex = self.output_texture();
+        let bytes_per_row = self.width * 4;
+        let padded = bytes_per_row.div_ceil(256) * 256;
+        let staging_size = (padded as u64) * (self.height as u64);
+
+        let staging = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("detection_staging"),
+            size: staging_size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = gpu.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor { label: Some("detection_readback") },
+        );
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(self.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        gpu.queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |r| { tx.send(r).ok(); });
+        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        rx.recv().unwrap().unwrap();
+
+        let mapped = slice.get_mapped_range();
+        let tight = bytes_per_row as usize;
+        let pad = padded as usize;
+        let mut result = Vec::with_capacity(tight * self.height as usize);
+        if tight == pad {
+            result.extend_from_slice(&mapped);
+        } else {
+            for row in 0..self.height as usize {
+                result.extend_from_slice(&mapped[row * pad..row * pad + tight]);
+            }
+        }
+        drop(mapped);
+        staging.unmap();
+        result
+    }
+
     /// Output texture reference (graded, display-ready).
     ///
     /// Returns the graded output when color grading is active,

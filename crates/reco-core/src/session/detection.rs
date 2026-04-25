@@ -19,7 +19,7 @@
 //! detection without the full stitch+encode pipeline (e.g. the
 //! analyze CLI path, Python SDKs, analytics workers).
 
-use crate::detector::{CameraId, Detection, DetectorFrame, UnifiedDetector};
+use crate::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::director::MappedDetection;
 
 use super::{DetectionSink, DetectionSinkError};
@@ -171,6 +171,44 @@ impl DetectionPipeline {
             // the Metal equivalent. CPU RawFrame construction is
             // impossible here (no CPU-accessible pixels).
             _ => {}
+        }
+        detections
+    }
+
+    /// Run detection on CPU-resident RGBA stereo frames.
+    ///
+    /// Used by the Bayer/V4L2 path where the demosaiced RGBA is read
+    /// back from the GPU periodically for detection.
+    pub fn run_detection_rgba(
+        &mut self,
+        left_rgba: &[u8],
+        right_rgba: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Vec<Detection> {
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+
+        let mut detections = Vec::new();
+        for (camera, rgba) in [
+            (CameraId::Left, left_rgba),
+            (CameraId::Right, right_rgba),
+        ] {
+            let frame = DetectorFrame::Rgba {
+                data: rgba,
+                width,
+                height,
+            };
+            match detector.detect(camera, &frame) {
+                Ok(v) => detections.extend(v),
+                Err(DetectorError::UnsupportedFrameKind) => {
+                    log::debug!("detector '{}' does not support RGBA frames", detector.name());
+                }
+                Err(e) => {
+                    log::warn!("detector '{}' {camera:?}: {e}", detector.name());
+                }
+            }
         }
         detections
     }

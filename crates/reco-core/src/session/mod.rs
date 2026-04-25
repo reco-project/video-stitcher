@@ -994,6 +994,36 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
+    /// Whether detection should run on the current frame.
+    pub fn detection_should_run(&self) -> bool {
+        self.detection.should_detect(self.frame_count)
+    }
+
+    /// Run detection on CPU-resident RGBA frames and update the director.
+    ///
+    /// Used by the Bayer/V4L2 path. Detection runs only when
+    /// `should_detect` returns true (respects detection_interval).
+    /// On non-detection frames, the director still advances.
+    pub fn detect_and_update_director_rgba(
+        &mut self,
+        left_rgba: &[u8],
+        right_rgba: &[u8],
+        width: u32,
+        height: u32,
+        elapsed: std::time::Duration,
+    ) -> Result<(), SessionError> {
+        let should_detect = self.detection.should_detect(self.frame_count);
+
+        if should_detect {
+            let detections = self.detection.run_detection_rgba(
+                left_rgba, right_rgba, width, height,
+            );
+            self.detection.last_detections = self.map_detections(detections);
+        }
+
+        self.fire_sink_and_update_director(elapsed, should_detect)
+    }
+
     /// Update the director without detection.
     ///
     /// Advances the director state (e.g. sweep position) without running

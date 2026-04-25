@@ -415,7 +415,20 @@ pub fn run_camera(
                     gpu.queue().submit(std::iter::once(encoder.finish()));
                 }
 
-                session.update_director(start.elapsed())?;
+                // Detection: readback RGBA from GPU when detection is due.
+                // Only pays the ~3ms readback cost every detection_interval frames.
+                if session.detection_should_run() {
+                    reco_core::profile_scope!("detection_readback");
+                    let left_rgba = demosaic_left.readback_rgba(session.gpu());
+                    let right_rgba = demosaic_right.readback_rgba(session.gpu());
+                    session.detect_and_update_director_rgba(
+                        &left_rgba, &right_rgba,
+                        capture_width, capture_height,
+                        start.elapsed(),
+                    )?;
+                } else {
+                    session.update_director(start.elapsed())?;
+                }
                 let pos = session.director_position();
                 session.process_frame_gpu_rgba(
                     demosaic_left.output_texture(),
