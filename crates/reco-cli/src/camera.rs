@@ -101,6 +101,7 @@ pub fn run_camera(
     );
 
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
+    let field_roi = cal.field_roi.clone();
 
     let viewport = reco_core::viewport::ViewportConfig {
         width,
@@ -179,8 +180,8 @@ pub fn run_camera(
                 detection_interval,
                 0.0,
                 tracking_mode,
-                None,
-                false, // V4L2 captures are always 8-bit NV12
+                field_roi.as_ref(),
+                false,
             ) {
                 Ok(true) => println!("Autocam: {tracking_mode:?} director attached"),
                 Ok(false) => {
