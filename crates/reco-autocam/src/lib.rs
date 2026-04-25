@@ -209,10 +209,10 @@ pub fn setup_autocam(
     model_path: &str,
     input_width: u32,
     input_height: u32,
-    fps: f32,
+    _fps: f32,
     use_zero_copy: bool,
     detection_interval: u64,
-    lead_time: f64,
+    _lead_time: f64,
     tracking_mode: TrackingMode,
     field_roi: Option<&FieldRoi>,
     is_10bit: bool,
@@ -482,23 +482,6 @@ pub fn setup_autocam(
             ));
         }
 
-        // Smoother decorator's one-euro bidirectional filter window.
-        // Zero-copy sources cannot buffer, so the window is disabled
-        // there. This used to also toggle `session.set_lookahead(frames)`
-        // on the decode side; that CPU-pre-decode path was removed as
-        // part of the Step 5 cleanup since it was never enabled on any
-        // shipped consumer and masked scheduling issues we'd rather
-        // surface directly.
-        let lookahead = if lead_time > 0.0 && !use_zero_copy {
-            let frames = (fps as f64 * lead_time).round() as usize;
-            if frames > 0 {
-                log::info!("Smoother lookahead: {lead_time:.1}s ({frames} frames)");
-            }
-            frames
-        } else {
-            0
-        };
-
         match tracking_mode {
             TrackingMode::Ball => {
                 // Ball tracker picks one detection per frame with
@@ -530,12 +513,12 @@ pub fn setup_autocam(
                 // output is piecewise-constant between acquisitions,
                 // which velocity-lead extrapolation rings on). Heavy
                 // smoothing keeps the ball centered without the ring.
+                // No Smoother/DeadZone: BallPanner now has its own
+                // velocity model with bounded acceleration.
                 let ball_panner = crate::panners::BallPanner::new();
-                let smoothed = crate::panners::Smoother::new(Box::new(ball_panner), fps, lookahead);
-                let deadzone = crate::panners::DeadZone::new(Box::new(smoothed));
 
                 session.set_ball_tracker(Box::new(tracker));
-                session.set_panner(Box::new(deadzone));
+                session.set_panner(Box::new(ball_panner));
             }
             TrackingMode::Field => {
                 // Player tracker populates world.players; FieldPanner
@@ -546,20 +529,20 @@ pub fn setup_autocam(
                 // Class IDs come from the model label list so the same
                 // binary works with COCO-indexed (person=0) or custom
                 // (person=<whatever>) models.
-                let _ = ball_id; // BallTracker is not wired for Field by default (ball_weight=0).
                 let player_tracker = crate::trackers::PlayerTracker::new(person_id);
+                let ball_tracker =
+                    crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.8);
                 log::info!(
-                    "Tracking mode: field (PlayerTracker + FieldPanner, \
+                    "Tracking mode: field (PlayerTracker + BallTracker + FieldPanner, \
                      player_class={person_id}, ball_class={ball_id})"
                 );
 
-                let field_panner = crate::panners::FieldPanner::new();
-                let smoothed =
-                    crate::panners::Smoother::new(Box::new(field_panner), fps, lookahead);
-                let deadzone = crate::panners::DeadZone::new(Box::new(smoothed));
+                let field_panner =
+                    crate::panners::FieldPanner::new().with_ball_weight(0.15);
 
+                session.set_ball_tracker(Box::new(ball_tracker));
                 session.set_player_tracker(Box::new(player_tracker));
-                session.set_panner(Box::new(deadzone));
+                session.set_panner(Box::new(field_panner));
             }
             TrackingMode::Sweep => unreachable!("handled before detection block"),
         }

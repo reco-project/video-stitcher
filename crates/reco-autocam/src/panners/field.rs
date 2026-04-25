@@ -78,10 +78,13 @@ const DEFAULT_FOV: f32 = 40.0;
 /// EMA alpha for yaw centroid smoothing (lower = smoother).
 const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
 
+/// Maximum angular velocity in radians per frame.
+/// At 30fps, 0.004 rad/frame = ~6.9 deg/s - comfortable broadcast pan.
+const MAX_VELOCITY: f32 = 0.004;
 
-/// EMA alpha for the output pose (yaw/pitch).
-const POSE_ALPHA: f32 = 0.03;
-
+/// Velocity smoothing alpha. Controls how quickly the camera changes
+/// direction. Lower = smoother reversals, higher = snappier tracking.
+const VELOCITY_ALPHA: f32 = 0.04;
 
 /// Pitch bias added to the cluster centroid (radians).
 const PITCH_BIAS: f32 = 0.05;
@@ -123,6 +126,9 @@ pub struct FieldPanner {
     /// EMA alpha for yaw centroid.
     cluster_alpha: f32,
 
+    /// Current angular velocity (rad/frame) for yaw and pitch.
+    velocity_yaw: f32,
+    velocity_pitch: f32,
 
     /// Frame counter for log throttling.
     frame_index: u64,
@@ -144,6 +150,8 @@ impl FieldPanner {
             ema_pitch: 0.0,
             ema_initialized: false,
             cluster_alpha: DEFAULT_CLUSTER_ALPHA,
+            velocity_yaw: 0.0,
+            velocity_pitch: 0.0,
             frame_index: 0,
         }
     }
@@ -317,8 +325,8 @@ impl FieldPanner {
             self.ema_pitch = raw_pitch;
             self.ema_initialized = true;
         } else {
-            self.ema_yaw += 0.06 * (raw_yaw - self.ema_yaw);
-            self.ema_pitch += 0.06 * (raw_pitch - self.ema_pitch);
+            self.ema_yaw += self.cluster_alpha * (raw_yaw - self.ema_yaw);
+            self.ema_pitch += self.cluster_alpha * (raw_pitch - self.ema_pitch);
         }
 
         (self.ema_yaw, self.ema_pitch)
@@ -412,8 +420,17 @@ impl Panner for FieldPanner {
             }
 
             if target_yaw.is_finite() && target_pitch.is_finite() {
-                self.yaw += POSE_ALPHA * (target_yaw - self.yaw);
-                self.pitch += POSE_ALPHA * (target_pitch - self.pitch);
+                let err_yaw = target_yaw - self.yaw;
+                let err_pitch = target_pitch - self.pitch;
+
+                let desired_yaw = err_yaw.clamp(-MAX_VELOCITY, MAX_VELOCITY);
+                let desired_pitch = err_pitch.clamp(-MAX_VELOCITY, MAX_VELOCITY);
+
+                self.velocity_yaw += VELOCITY_ALPHA * (desired_yaw - self.velocity_yaw);
+                self.velocity_pitch += VELOCITY_ALPHA * (desired_pitch - self.velocity_pitch);
+
+                self.yaw += self.velocity_yaw;
+                self.pitch += self.velocity_pitch;
             } else {
                 log::warn!(
                     "FieldPanner: non-finite target yaw={target_yaw} pitch={target_pitch}; \
