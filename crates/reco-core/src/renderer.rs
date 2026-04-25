@@ -630,6 +630,28 @@ impl Renderer {
         upload_bgra(gpu, &self.right, rgba)
     }
 
+    /// Copy a GPU texture into the left input plane (BGRA mode).
+    ///
+    /// Zero-copy alternative to [`upload_left_bgra`]: the source texture
+    /// must be `Rgba8Unorm` with matching dimensions. The copy is
+    /// appended to `encoder` as a GPU-side blit with no CPU involvement.
+    pub fn copy_texture_to_left(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        source: &wgpu::Texture,
+    ) {
+        copy_texture_to_plane(encoder, source, &self.left);
+    }
+
+    /// Copy a GPU texture into the right input plane (BGRA mode).
+    pub fn copy_texture_to_right(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        source: &wgpu::Texture,
+    ) {
+        copy_texture_to_plane(encoder, source, &self.right);
+    }
+
     /// Create a texture bind group from external textures.
     ///
     /// Used for CUDA/Vulkan zero-copy: pre-build one bind group per
@@ -946,6 +968,34 @@ fn upload_bgra(gpu: &GpuContext, plane: &PlaneResources, rgba: &[u8]) -> Result<
         },
     );
     Ok(())
+}
+
+/// GPU-to-GPU texture copy into a plane's y_texture.
+fn copy_texture_to_plane(
+    encoder: &mut wgpu::CommandEncoder,
+    source: &wgpu::Texture,
+    plane: &PlaneResources,
+) {
+    let size = wgpu::Extent3d {
+        width: plane.width,
+        height: plane.height,
+        depth_or_array_layers: 1,
+    };
+    encoder.copy_texture_to_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: source,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyTextureInfo {
+            texture: &plane.y_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        size,
+    );
 }
 
 /// Upload a single R8Unorm plane to a GPU texture.

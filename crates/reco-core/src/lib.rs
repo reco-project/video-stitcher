@@ -74,6 +74,7 @@ macro_rules! profile_scope {
 pub use wgpu;
 
 pub mod analyze;
+pub mod bayer;
 pub(crate) mod async_encode;
 pub mod calibration;
 /// M3 push-first `StitchCore` shell — the canonical entry point.

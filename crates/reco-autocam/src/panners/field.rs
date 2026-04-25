@@ -79,12 +79,12 @@ const DEFAULT_FOV: f32 = 40.0;
 const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
 
 /// Maximum angular velocity in radians per second.
-/// ~7 deg/s - comfortable broadcast pan speed.
-const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.12;
+/// ~14 deg/s - allows faster pans on long runs across the field.
+const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.25;
 
 /// Velocity smoothing alpha. Controls how quickly the camera changes
 /// direction. Lower = smoother reversals, higher = snappier tracking.
-const VELOCITY_ALPHA: f32 = 0.04;
+const VELOCITY_ALPHA: f32 = 0.06;
 
 /// Pitch bias added to the cluster centroid (radians).
 const PITCH_BIAS: f32 = 0.05;

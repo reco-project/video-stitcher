@@ -837,6 +837,22 @@ impl StitchCore {
             .render_to_target_bgra(left, right, yaw, pitch)?)
     }
 
+    /// Render from GPU-resident RGBA textures (e.g. Bayer demosaic output).
+    ///
+    /// Copies the demosaiced textures into the stitch pipeline's input
+    /// planes (GPU-to-GPU blit), then renders the stitch. Returns the
+    /// render command buffer for `submit_render_output`.
+    pub fn render_gpu_rgba_at_pose(
+        &self,
+        left_rgba: &wgpu::Texture,
+        right_rgba: &wgpu::Texture,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.pipeline
+            .render_from_gpu_rgba(left_rgba, right_rgba, yaw, pitch)
+    }
+
     /// Render any [`StereoFrame`](crate::source::StereoFrame) variant
     /// (YUV / NV12 / GpuResident) at an explicit pose.
     ///

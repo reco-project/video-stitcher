@@ -56,6 +56,12 @@ pub struct CameraRunConfig<'a> {
     /// Optional downscaled replay tile dims `(width, height)`.
     /// GPU-pack path only; no-op when replay_path is None.
     pub replay_scale: Option<(u32, u32)>,
+    /// Use V4L2 direct capture with raw Bayer + GPU demosaic.
+    pub v4l2_direct: bool,
+    /// Sensor exposure in microseconds (V4L2 direct only).
+    pub exposure: u32,
+    /// Sensor analog gain (V4L2 direct only).
+    pub sensor_gain: u32,
 }
 
 pub fn run_camera(
@@ -84,6 +90,9 @@ pub fn run_camera(
         unconstrained,
         replay_path,
         replay_scale,
+        v4l2_direct,
+        exposure,
+        sensor_gain,
     } = config;
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
@@ -102,13 +111,13 @@ pub fn run_camera(
 
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
-    // Use NV12 capture on Jetson to skip the NV12->I420 conversion
-    // in nvvidconv. The NVIDIA ISP natively outputs NV12.
-    let use_nv12_capture = helpers::is_tegra();
-    let input_format = if use_nv12_capture {
-        reco_core::renderer::InputFormat::Nv12
+    let (use_nv12_capture, input_format) = if v4l2_direct {
+        // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path
+        (false, reco_core::renderer::InputFormat::Bgra)
+    } else if helpers::is_tegra() {
+        (true, reco_core::renderer::InputFormat::Nv12)
     } else {
-        reco_core::renderer::InputFormat::Yuv420p
+        (false, reco_core::renderer::InputFormat::Yuv420p)
     };
 
     let capture_width = cam_config.width;
@@ -185,7 +194,13 @@ pub fn run_camera(
         log::warn!("--model specified but autocam feature is disabled");
     }
 
-    let mode_str = if use_nv12_capture { "NV12" } else { "I420" };
+    let mode_str = if v4l2_direct {
+        "Bayer RGGB (V4L2 direct)"
+    } else if use_nv12_capture {
+        "NV12"
+    } else {
+        "I420"
+    };
     println!(
         "Pipeline ready: GPU = {}, capture = {}x{}@{}fps ({}), output = {}x{}",
         session.gpu_name(),
@@ -323,7 +338,99 @@ pub fn run_camera(
     let start = std::time::Instant::now();
     let mut frame_count: u64 = 0;
 
-    if use_nv12_capture {
+    if v4l2_direct {
+        #[cfg(not(feature = "v4l2"))]
+        anyhow::bail!("--v4l2-direct requires the `v4l2` feature flag");
+
+        #[cfg(feature = "v4l2")]
+        {
+            use reco_core::bayer::{BayerDemosaic, IspParams};
+            use reco_io::v4l2::{V4l2CameraConfig, V4l2StereoCameraSource};
+
+            let left_v4l2 = V4l2CameraConfig {
+                device: cam_config.left_device.clone(),
+                width: capture_width,
+                height: capture_height,
+                fps: capture_fps,
+                exposure,
+                gain: sensor_gain,
+            };
+            let right_v4l2 = V4l2CameraConfig {
+                device: cam_config.right_device.clone(),
+                width: capture_width,
+                height: capture_height,
+                fps: capture_fps,
+                exposure,
+                gain: sensor_gain,
+            };
+
+            let isp = IspParams::imx477_default(capture_width, capture_height);
+            let demosaic_left =
+                BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
+            let demosaic_right =
+                BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
+            println!(
+                "GPU demosaic ready ({}x{}, zero-copy), exposure={}, gain={}",
+                capture_width, capture_height, exposure, sensor_gain,
+            );
+
+            let mut source = V4l2StereoCameraSource::open(&left_v4l2, &right_v4l2)?;
+
+            // Warm up: discard first frame (sensor ISP init)
+            if source.next_pair()?.is_some() {
+                println!("Warmup complete, starting V4L2 Bayer capture...");
+            }
+
+            let progress = helpers::ProgressReporter::new(30);
+
+            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                let (left_bytes, right_bytes) = {
+                    reco_core::profile_scope!("wait_capture");
+                    match source.next_pair()? {
+                        Some(p) => p,
+                        None => break,
+                    }
+                };
+
+                // Upload + demosaic (two submits: write_texture is implicit,
+                // compute shader dispatched via encoder)
+                {
+                    reco_core::profile_scope!("demosaic");
+                    let gpu = session.gpu();
+                    let mut encoder = gpu.device().create_command_encoder(
+                        &reco_core::wgpu::CommandEncoderDescriptor {
+                            label: Some("bayer_demosaic"),
+                        },
+                    );
+                    demosaic_left.encode_demosaic(gpu, &mut encoder, &*left_bytes);
+                    demosaic_right.encode_demosaic(gpu, &mut encoder, &*right_bytes);
+                    gpu.queue().submit(std::iter::once(encoder.finish()));
+                }
+
+                // Copy demosaiced textures into stitch pipeline + render
+                let pos = session.director_position();
+                let render_buf = {
+                    reco_core::profile_scope!("stitch_render");
+                    session.core().render_gpu_rgba_at_pose(
+                        demosaic_left.output_texture(),
+                        demosaic_right.output_texture(),
+                        pos.yaw,
+                        pos.pitch,
+                    )
+                };
+                session.submit_render_output(render_buf)?;
+                frame_count += 1;
+                progress.report(frame_count);
+            }
+
+            source.stop();
+            #[cfg(feature = "replay")]
+            session.clear_stacked_gpu_recorder();
+            session.finish()?;
+
+            progress.finish(frame_count, output);
+        }
+    } else if use_nv12_capture {
         // NV12 path: skip nvvidconv format conversion, upload 2 planes
         let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
 

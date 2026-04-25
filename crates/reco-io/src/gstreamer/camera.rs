@@ -46,6 +46,10 @@ pub enum CaptureFormat {
     /// NV12: Y + interleaved UV. Native NVIDIA ISP output - avoids
     /// a format conversion step on Jetson.
     Nv12,
+    /// Raw 10-bit RGGB Bayer via direct V4L2 (bypasses NVIDIA ISP).
+    /// Used with custom camera drivers that output raw sensor data.
+    /// Requires GPU demosaic before stitching.
+    BayerRggb,
 }
 
 /// Validate a device string before interpolating it into a GStreamer pipeline.
@@ -59,30 +63,38 @@ pub enum CaptureFormat {
 /// Returns `Err` with a descriptive message if the device string does not
 /// match the expected pattern, preventing injection of arbitrary GStreamer
 /// elements or shell metacharacters into the pipeline description.
+/// Validate a device string for nvarguscamerasrc (numeric sensor ID).
+fn validate_sensor_id(device: &str) -> Result<(), String> {
+    if device.chars().all(|c| c.is_ascii_digit()) && !device.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid sensor ID {device:?}: expected a numeric index (e.g. \"0\")"
+        ))
+    }
+}
+
+/// Validate a device string for V4L2 (path like /dev/video0).
+fn validate_v4l2_path(device: &str) -> Result<(), String> {
+    let valid = device.starts_with("/dev/video")
+        && device["/dev/video".len()..]
+            .chars()
+            .all(|c| c.is_ascii_digit())
+        && device.len() > "/dev/video".len();
+    if valid {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid V4L2 path {device:?}: expected a path like \"/dev/video0\""
+        ))
+    }
+}
+
 fn validate_device_string(device: &str) -> Result<(), String> {
     if is_tegra() || cfg!(target_os = "macos") || cfg!(target_os = "windows") {
-        // Numeric index only (one or more digits, nothing else)
-        if device.chars().all(|c| c.is_ascii_digit()) && !device.is_empty() {
-            Ok(())
-        } else {
-            Err(format!(
-                "invalid device string {device:?}: expected a numeric index (e.g. \"0\")"
-            ))
-        }
+        validate_sensor_id(device)
     } else {
-        // Linux V4L2: must be exactly /dev/video<digits>
-        let valid = device.starts_with("/dev/video")
-            && device["/dev/video".len()..]
-                .chars()
-                .all(|c| c.is_ascii_digit())
-            && device.len() > "/dev/video".len();
-        if valid {
-            Ok(())
-        } else {
-            Err(format!(
-                "invalid device string {device:?}: expected a V4L2 path like \"/dev/video0\""
-            ))
-        }
+        validate_v4l2_path(device)
     }
 }
 
@@ -96,17 +108,19 @@ fn build_pipeline_string(
     fps: u32,
     format: CaptureFormat,
 ) -> Result<String, String> {
+    if format == CaptureFormat::BayerRggb {
+        return build_bayer_pipeline_string(device, width, height, fps);
+    }
+
     validate_device_string(device)?;
 
     let fmt_str = match format {
         CaptureFormat::I420 => "I420",
         CaptureFormat::Nv12 => "NV12",
+        CaptureFormat::BayerRggb => unreachable!(),
     };
 
     let pipeline = if is_tegra() {
-        // Jetson: nvarguscamerasrc runs the full NVIDIA ISP
-        // (debayer, AWB, AE, denoise). Output is NV12 in NVMM;
-        // nvvidconv copies to system memory (and converts format if needed).
         format!(
             "nvarguscamerasrc sensor-id={device} ! \
              video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
@@ -131,7 +145,6 @@ fn build_pipeline_string(
              appsink name=sink emit-signals=false sync=false"
         )
     } else {
-        // Linux: generic V4L2
         format!(
             "v4l2src device={device} ! \
              video/x-raw,width={width},height={height},framerate={fps}/1 ! \
@@ -142,6 +155,26 @@ fn build_pipeline_string(
     };
 
     Ok(pipeline)
+}
+
+/// Build a V4L2 direct pipeline for raw Bayer capture (bypasses nvarguscamerasrc).
+///
+/// Device must be a V4L2 path (e.g. "/dev/video0"), even on Tegra.
+/// The pipeline outputs raw Bayer bytes through appsink with no conversion.
+/// Caller must set V4L2 controls (bypass_mode, override_enable) before starting.
+fn build_bayer_pipeline_string(
+    device: &str,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> Result<String, String> {
+    validate_v4l2_path(device)?;
+
+    Ok(format!(
+        "v4l2src device={device} ! \
+         video/x-bayer,format=rggb,width={width},height={height},framerate={fps}/1 ! \
+         appsink name=sink emit-signals=false sync=false"
+    ))
 }
 
 /// Detect if we're running on NVIDIA Tegra (Jetson platform).
@@ -564,6 +597,256 @@ impl Drop for GstreamerNv12CameraSource {
         // Drain any pending frames to unblock capture threads
         while self.rx.try_recv().is_ok() {}
         // Give capture threads time to send EOS and reach Null state
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
+/// Raw Bayer frame data from a single camera.
+#[derive(Debug)]
+pub struct BayerData {
+    /// Raw 10-bit samples packed as u16 (little-endian, upper 6 bits zero).
+    pub data: Vec<u16>,
+}
+
+/// Stereo pair of raw Bayer frames.
+#[derive(Debug)]
+pub struct BayerFramePair {
+    pub left: BayerData,
+    pub right: BayerData,
+}
+
+/// Extract raw Bayer data from a GStreamer buffer.
+///
+/// RG10 format stores each 10-bit sample in a 16-bit word.
+/// GStreamer v4l2src with `video/x-bayer` may deliver 8-bit or 16-bit
+/// depending on the negotiated format. We handle both by checking size.
+fn extract_bayer(data: &[u8], width: u32, height: u32) -> Result<BayerData, SourceError> {
+    let pixel_count = (width * height) as usize;
+    let expected_16bit = pixel_count * 2;
+    let expected_8bit = pixel_count;
+
+    if data.len() >= expected_16bit {
+        // 16-bit (10-bit in u16): reinterpret as u16 slice
+        let u16_data: Vec<u16> = data[..expected_16bit]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        Ok(BayerData { data: u16_data })
+    } else if data.len() >= expected_8bit {
+        // 8-bit Bayer: upscale to 10-bit range
+        let u16_data: Vec<u16> = data[..expected_8bit]
+            .iter()
+            .map(|&b| (b as u16) << 2)
+            .collect();
+        Ok(BayerData { data: u16_data })
+    } else {
+        Err(SourceError::Read {
+            reason: format!(
+                "Bayer buffer too small: {} bytes for {}x{} (need {} for 16-bit or {} for 8-bit)",
+                data.len(),
+                width,
+                height,
+                expected_16bit,
+                expected_8bit,
+            ),
+        })
+    }
+}
+
+/// Spawn a GStreamer capture thread for raw Bayer output.
+fn spawn_bayer_capture_thread(
+    device: String,
+    label: &'static str,
+    width: u32,
+    height: u32,
+    fps: u32,
+    stop: Arc<AtomicBool>,
+) -> mpsc::Receiver<BayerData> {
+    let (tx, rx) = mpsc::sync_channel::<BayerData>(2);
+
+    std::thread::Builder::new()
+        .name(format!("capture_{label}"))
+        .spawn(move || {
+            let (pipeline, appsink) = match build_capture_pipeline(
+                &device,
+                label,
+                width,
+                height,
+                fps,
+                CaptureFormat::BayerRggb,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("{e}");
+                    return;
+                }
+            };
+
+            loop {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                let sample = match appsink.pull_sample() {
+                    Ok(s) => s,
+                    Err(_) => break,
+                };
+
+                let Some(buffer) = sample.buffer() else {
+                    log::error!("{label}: sample has no buffer");
+                    break;
+                };
+
+                let Ok(map) = buffer.map_readable() else {
+                    log::error!("{label}: buffer map failed");
+                    break;
+                };
+
+                match extract_bayer(map.as_slice(), width, height) {
+                    Ok(bayer) => {
+                        if tx.send(bayer).is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("{label}: {e}");
+                        break;
+                    }
+                }
+            }
+
+            log::info!("{label}: sending EOS for graceful shutdown");
+            pipeline.send_event(gst::event::Eos::new());
+            let _ = pipeline.set_state(gst::State::Null);
+            let _ = pipeline.state(gst::ClockTime::from_seconds(2));
+            log::info!("{label}: pipeline stopped");
+        })
+        .expect("spawn capture thread");
+
+    rx
+}
+
+/// Set V4L2 controls required for direct capture (bypassing Argus).
+///
+/// Must be called before starting the GStreamer pipeline. Sets
+/// `bypass_mode=0` and `override_enable=1` so exposure/gain controls
+/// take effect. These reset on every module reload.
+pub fn configure_v4l2_direct(device: &str) -> Result<(), String> {
+    validate_v4l2_path(device)?;
+
+    let output = std::process::Command::new("v4l2-ctl")
+        .args([
+            "-d",
+            device,
+            "--set-ctrl",
+            "bypass_mode=0,override_enable=1",
+        ])
+        .output()
+        .map_err(|e| format!("v4l2-ctl not found: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::warn!("v4l2-ctl controls: {stderr} (non-fatal, controls may already be set)");
+    }
+
+    Ok(())
+}
+
+/// Stereo camera source for raw Bayer capture via GStreamer v4l2src.
+///
+/// Captures raw 10-bit RGGB Bayer frames from dual V4L2 cameras.
+/// Frames need GPU demosaic (via `reco_core::bayer::BayerDemosaic`)
+/// before feeding into the stitch pipeline.
+pub struct GstreamerBayerCameraSource {
+    rx: mpsc::Receiver<BayerFramePair>,
+    info: SourceInfo,
+    stop: Arc<AtomicBool>,
+}
+
+impl GstreamerBayerCameraSource {
+    /// Open a stereo Bayer camera source with threaded capture.
+    ///
+    /// `left_device` and `right_device` must be V4L2 paths (e.g. "/dev/video0").
+    /// Caller should call [`configure_v4l2_direct`] for each device first.
+    pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
+        gst::init().map_err(|e| SourceError::Init {
+            path: format!("{} + {}", config.left_device, config.right_device),
+            reason: format!("GStreamer init: {e}"),
+        })?;
+
+        let stop = Arc::new(AtomicBool::new(false));
+
+        let left_rx = spawn_bayer_capture_thread(
+            config.left_device.clone(),
+            "left",
+            config.width,
+            config.height,
+            config.fps,
+            stop.clone(),
+        );
+        let right_rx = spawn_bayer_capture_thread(
+            config.right_device.clone(),
+            "right",
+            config.width,
+            config.height,
+            config.fps,
+            stop.clone(),
+        );
+
+        let (tx, rx) = mpsc::sync_channel::<BayerFramePair>(2);
+
+        std::thread::Builder::new()
+            .name("capture_pair".into())
+            .spawn(move || {
+                while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
+                    if tx.send(BayerFramePair { left, right }).is_err() {
+                        break;
+                    }
+                }
+            })
+            .expect("spawn pairing thread");
+
+        let info = SourceInfo {
+            width: config.width,
+            height: config.height,
+            fps: config.fps as f64,
+            fps_rational: None,
+            total_frames: None,
+        };
+
+        log::info!(
+            "Bayer camera source ready: {}x{} @ {} fps (RGGB, V4L2 direct)",
+            config.width,
+            config.height,
+            config.fps
+        );
+
+        Ok(Self { rx, info, stop })
+    }
+
+    /// Signal capture threads to stop.
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    /// Source metadata.
+    pub fn info(&self) -> SourceInfo {
+        self.info.clone()
+    }
+
+    /// Get the next stereo Bayer frame pair.
+    pub fn next_pair(&mut self) -> Result<Option<BayerFramePair>, SourceError> {
+        match self.rx.recv() {
+            Ok(pair) => Ok(Some(pair)),
+            Err(_) => Ok(None),
+        }
+    }
+}
+
+impl Drop for GstreamerBayerCameraSource {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        while self.rx.try_recv().is_ok() {}
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }

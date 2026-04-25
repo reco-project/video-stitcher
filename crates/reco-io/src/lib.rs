@@ -22,6 +22,9 @@ pub mod gstreamer;
 #[cfg(feature = "libcamera")]
 pub mod libcamera;
 
+#[cfg(feature = "v4l2")]
+pub mod v4l2;
+
 pub mod adapters;
 /// Default shipping [`reco_core::pipeline_event::PipelineEventSink`]:
 /// writes each event as one JSON line. Wrap in `BackpressuredSink`

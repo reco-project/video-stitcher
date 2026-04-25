@@ -810,6 +810,38 @@ impl StitchPipeline {
         ))
     }
 
+    /// Render from GPU-resident RGBA textures (e.g. Bayer demosaic output).
+    ///
+    /// Copies source textures into the input planes, then renders the
+    /// stitch to the internal target. Returns the complete command buffer.
+    /// The caller submits the demosaic encoder first, then this one.
+    /// Requires `InputFormat::Bgra`.
+    pub fn render_from_gpu_rgba(
+        &self,
+        left_rgba: &wgpu::Texture,
+        right_rgba: &wgpu::Texture,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        // Copy demosaiced textures into stitch pipeline input planes
+        let mut copy_encoder =
+            self.gpu
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("bayer_copy"),
+                });
+        self.renderer
+            .copy_texture_to_left(&mut copy_encoder, left_rgba);
+        self.renderer
+            .copy_texture_to_right(&mut copy_encoder, right_rgba);
+        self.gpu
+            .queue
+            .submit(std::iter::once(copy_encoder.finish()));
+
+        // Render stitch (reads from the just-populated input textures)
+        self.render_to_target_gpu(yaw, pitch)
+    }
+
     /// Render to the internal target without upload or readback (zero-copy path).
     ///
     /// Returns the render `CommandBuffer` without submitting. Assumes textures

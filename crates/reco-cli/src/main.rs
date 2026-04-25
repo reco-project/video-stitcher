@@ -382,6 +382,23 @@ enum Commands {
         /// divisible by 4, height even. Requires `--replay`.
         #[arg(long, value_parser = parse_wxh)]
         replay_scale: Option<(u32, u32)>,
+
+        /// Capture raw Bayer via V4L2 direct (bypasses NVIDIA ISP).
+        /// Requires a custom camera driver and devices specified as
+        /// V4L2 paths (e.g. `/dev/video0`). Runs GPU demosaic +
+        /// ISP pipeline on the raw sensor data.
+        #[arg(long, default_value_t = false)]
+        v4l2_direct: bool,
+
+        /// Sensor exposure time in microseconds (V4L2 direct only).
+        /// Lower = darker. Outdoor daylight: 2000-8000. Indoor: 15000-30000.
+        #[arg(long, default_value_t = 780)]
+        exposure: u32,
+
+        /// Sensor analog gain (V4L2 direct only, 16-357 for IMX477).
+        /// Higher = brighter but noisier.
+        #[arg(long, default_value_t = 16)]
+        sensor_gain: u32,
     },
 
     /// Stitch live RPi CSI camera feeds via libcamera (rpicam-vid).
@@ -776,6 +793,9 @@ fn main() -> anyhow::Result<()> {
             unconstrained,
             replay,
             replay_scale,
+            v4l2_direct,
+            exposure,
+            sensor_gain,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -820,6 +840,9 @@ fn main() -> anyhow::Result<()> {
                     unconstrained,
                     replay_path: replay.as_deref(),
                     replay_scale,
+                    v4l2_direct,
+                    exposure,
+                    sensor_gain,
                 },
                 &interrupted,
             )
