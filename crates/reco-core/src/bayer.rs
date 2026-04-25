@@ -72,6 +72,36 @@ impl IspParams {
     }
 }
 
+/// Compute mean brightness from raw Bayer bytes (green channel).
+///
+/// Returns the mean green value in 10-bit space (0-1023).
+/// Green is used because it has 2x the spatial sampling of R or B.
+pub fn compute_mean_brightness(raw_bytes: &[u8], width: u32, height: u32, stride: u32) -> f32 {
+    let mut sum = 0u64;
+    let mut count = 0u32;
+    let w = width as usize;
+    let stride = stride.max(2) as usize;
+
+    // Sample green pixels: step by stride but offset by 1 in x or y
+    // to land on green positions (Gr at x=1,y=0 and Gb at x=0,y=1)
+    for y in (0..height as usize).step_by(stride) {
+        for x in (1..width as usize).step_by(stride) {
+            let idx = (y * w + x) * 2;
+            if idx + 1 >= raw_bytes.len() {
+                continue;
+            }
+            let val = u16::from_le_bytes([raw_bytes[idx], raw_bytes[idx + 1]]);
+            sum += (val >> 6) as u64;
+            count += 1;
+        }
+    }
+
+    if count == 0 {
+        return 0.0;
+    }
+    sum as f32 / count as f32
+}
+
 /// Compute grey-world AWB gains from raw Bayer bytes (RGGB pattern).
 ///
 /// Samples every `stride`-th pixel for speed. Returns `(wb_r, wb_b)`

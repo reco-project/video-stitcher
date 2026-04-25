@@ -344,7 +344,7 @@ pub fn run_camera(
 
         #[cfg(feature = "v4l2")]
         {
-            use reco_core::bayer::{BayerDemosaic, IspParams, compute_awb};
+            use reco_core::bayer::{BayerDemosaic, IspParams, compute_awb, compute_mean_brightness};
             use reco_io::v4l2::{V4l2CameraConfig, V4l2StereoCameraSource};
 
             let left_v4l2 = V4l2CameraConfig {
@@ -386,6 +386,13 @@ pub fn run_camera(
             let isp_baseline_wb_r = isp.wb_r;
             let isp_baseline_wb_b = isp.wb_b;
 
+            // AE state: target mean green ~200 in 10-bit (good for white=300 tonemap)
+            let ae_target = 200.0_f32;
+            let mut cur_exposure = exposure as f32;
+            let mut cur_gain = sensor_gain as f32;
+            let ae_device_left = left_v4l2.device.clone();
+            let ae_device_right = right_v4l2.device.clone();
+
             while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
                 let (left_bytes, right_bytes) = {
                     reco_core::profile_scope!("wait_capture");
@@ -418,6 +425,36 @@ pub fn run_camera(
                             "AWB: raw=({awb_r:.2},{awb_b:.2}) applied=({:.2},{:.2})",
                             isp.wb_r, isp.wb_b
                         );
+                    }
+                }
+
+                // Auto-exposure: adjust sensor exposure/gain to hit target brightness.
+                // Runs on same interval as AWB. Prefers exposure over gain.
+                if frame_count % awb_interval == 0 {
+                    let mean_g = compute_mean_brightness(
+                        &*left_bytes, capture_width, capture_height, 16,
+                    );
+                    if frame_count <= 15 {
+                        log::info!("AE debug: mean_g={mean_g:.1} cur_exp={cur_exposure:.0} target={ae_target}");
+                    }
+                    if mean_g > 1.0 {
+                        let ratio = ae_target / mean_g;
+                        // Clamp adjustment to +/- 1/3 stop per update (~1.26x)
+                        let clamped_ratio = ratio.clamp(1.0 / 1.26, 1.26);
+                        // Prefer exposure adjustment; only touch gain at limits
+                        let new_exp = (cur_exposure * clamped_ratio).clamp(13.0, 30000.0);
+                        if (new_exp - cur_exposure).abs() > 1.0 {
+                            cur_exposure = new_exp;
+                            let exp_i = cur_exposure as u32;
+                            let gain_i = cur_gain as u32;
+                            for dev in [&ae_device_left, &ae_device_right] {
+                                let _ = std::process::Command::new("v4l2-ctl")
+                                    .args(["-d", dev, "--set-ctrl",
+                                           &format!("override_enable=1,exposure={exp_i},gain={gain_i}")])
+                                    .output();
+                            }
+                            log::info!("AE: mean_g={mean_g:.0} ratio={clamped_ratio:.2} -> exp={exp_i} gain={gain_i}");
+                        }
                     }
                 }
 
