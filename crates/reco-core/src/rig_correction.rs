@@ -10,9 +10,10 @@
 //! - [`human_to_world_pitch`] / [`world_to_human_pitch`]: bijective
 //!   mapping for safe_clamp so coverage is checked in world space.
 //!
-//! - [`world_to_render_pose`]: exact quaternion inversion for the AI
-//!   panner path. Given a world-space (yaw, pitch), finds the
-//!   (render_yaw, render_pitch) that makes view_matrix point there.
+//! - `world_to_render_pose` (crate-internal): exact quaternion
+//!   inversion for the AI panner path. Given a world-space (yaw,
+//!   pitch), finds the (render_yaw, render_pitch) that makes
+//!   view_matrix point there.
 //!
 //! Derivation in vault at
 //! `architecture/rig-correction-v2-derivation-2026-04-23.md`.
