@@ -79,9 +79,7 @@ const DEFAULT_FOV: f32 = 40.0;
 const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
 
 
-/// EMA alpha for the output pose (yaw/pitch). Exponential
-/// ease-in/ease-out rather than the constant-velocity motion a
-/// delta clamp produces. Single smoothing layer (no centroid EMA).
+/// EMA alpha for the output pose (yaw/pitch).
 const POSE_ALPHA: f32 = 0.03;
 
 
@@ -117,13 +115,14 @@ pub struct FieldPanner {
     fov_wide: f32,
     fov_tight: f32,
 
-    /// EMA state.
+    /// Centroid EMA state (noise filter).
     ema_yaw: f32,
     ema_pitch: f32,
     ema_initialized: bool,
 
     /// EMA alpha for yaw centroid.
     cluster_alpha: f32,
+
 
     /// Frame counter for log throttling.
     frame_index: u64,
@@ -348,6 +347,10 @@ impl FieldPanner {
         })
     }
 
+}
+
+
+impl FieldPanner {
     /// Dynamic FOV proportional to the cluster's angular extent.
     ///
     /// `spread` is the max inlier distance from the centroid (radians).
