@@ -114,6 +114,8 @@ type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::Calibr
 struct AppState {
     left_path: Option<PathBuf>,
     right_path: Option<PathBuf>,
+    left_input: Option<reco_io::stitch_job::InputPath>,
+    right_input: Option<reco_io::stitch_job::InputPath>,
     calibration_path: Option<PathBuf>,
     calibration: Option<MatchCalibration>,
     playback: Playback,
@@ -257,6 +259,8 @@ impl AppState {
         Self {
             left_path: None,
             right_path: None,
+            left_input: None,
+            right_input: None,
             calibration_path: None,
             calibration: None,
             playback: Playback::new(),
@@ -892,35 +896,48 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_pick_left_video(move || {
         let dialog = rfd::FileDialog::new()
-            .set_title("Select left camera video")
-            // Case-insensitive globs so .MP4 (common on cameras that
-            // write uppercase) picks up alongside .mp4.
+            .set_title("Select left camera video(s)")
             .add_filter(
                 "Video",
                 &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
             );
-        if let Some(path) = dialog.pick_file() {
+        let mut paths = dialog.pick_files().unwrap_or_default();
+        if paths.is_empty() {
+            return;
+        }
+        paths.sort();
+        let first = paths[0].clone();
+        let input = if paths.len() == 1 {
+            reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
+        } else {
+            log::info!("Left: {} segments selected, chaining via concat demuxer", paths.len());
+            reco_io::stitch_job::InputPath::Chained(paths)
+        };
+        {
             let mut s = state_ref.borrow_mut();
-            let changed = s.left_path.as_ref() != Some(&path);
+            let changed = s.left_path.as_ref() != Some(&first);
             if changed && s.bridge.is_some() {
-                // Swapping in a different file while a pipeline is
-                // live: unload so the preview stops rendering the old
-                // source and the user explicitly re-calibrates or
-                // re-loads a match.json.
                 s.unload_pipeline();
                 if let Some(app) = app_weak.upgrade() {
                     app.set_files_loaded(false);
-                    app.set_status_text("File changed — re-calibrate or load calibration".into());
+                    app.set_status_text("File changed - re-calibrate or load calibration".into());
                 }
             }
             if let Some(app) = app_weak.upgrade() {
-                app.set_left_path(display_name(&path).into());
+                let label = match &input {
+                    reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                    reco_io::stitch_job::InputPath::Chained(ps) => {
+                        format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                    }
+                };
+                app.set_left_path(label.into());
             }
-            s.user_settings.push_left(path.clone());
+            s.user_settings.push_left(first.clone());
             if let Some(app) = app_weak.upgrade() {
                 sync_recent_paths(&s.user_settings, &app);
             }
-            s.left_path = Some(path);
+            s.left_input = Some(input);
+            s.left_path = Some(first);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
         }
@@ -930,29 +947,48 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_pick_right_video(move || {
         let dialog = rfd::FileDialog::new()
-            .set_title("Select right camera video")
+            .set_title("Select right camera video(s)")
             .add_filter(
                 "Video",
                 &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
             );
-        if let Some(path) = dialog.pick_file() {
+        let mut paths = dialog.pick_files().unwrap_or_default();
+        if paths.is_empty() {
+            return;
+        }
+        paths.sort();
+        let first = paths[0].clone();
+        let input = if paths.len() == 1 {
+            reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
+        } else {
+            log::info!("Right: {} segments selected, chaining via concat demuxer", paths.len());
+            reco_io::stitch_job::InputPath::Chained(paths)
+        };
+        {
             let mut s = state_ref.borrow_mut();
-            let changed = s.right_path.as_ref() != Some(&path);
+            let changed = s.right_path.as_ref() != Some(&first);
             if changed && s.bridge.is_some() {
                 s.unload_pipeline();
                 if let Some(app) = app_weak.upgrade() {
                     app.set_files_loaded(false);
-                    app.set_status_text("File changed — re-calibrate or load calibration".into());
+                    app.set_status_text("File changed - re-calibrate or load calibration".into());
                 }
             }
             if let Some(app) = app_weak.upgrade() {
-                app.set_right_path(display_name(&path).into());
+                let label = match &input {
+                    reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                    reco_io::stitch_job::InputPath::Chained(ps) => {
+                        format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                    }
+                };
+                app.set_right_path(label.into());
             }
-            s.user_settings.push_right(path.clone());
+            s.user_settings.push_right(first.clone());
             if let Some(app) = app_weak.upgrade() {
                 sync_recent_paths(&s.user_settings, &app);
             }
-            s.right_path = Some(path);
+            s.right_input = Some(input);
+            s.right_path = Some(first);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
         }
@@ -1736,7 +1772,7 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
         }
-        let (Some(left), Some(right), Some(cal)) = (
+        let (Some(left_path), Some(right_path), Some(cal)) = (
             s.left_path.clone(),
             s.right_path.clone(),
             s.calibration.clone(),
@@ -1744,6 +1780,14 @@ fn main() -> anyhow::Result<()> {
             log::error!("Cannot start export without left/right/calibration");
             return;
         };
+        let left = s
+            .left_input
+            .clone()
+            .unwrap_or(reco_io::stitch_job::InputPath::Single(left_path));
+        let right = s
+            .right_input
+            .clone()
+            .unwrap_or(reco_io::stitch_job::InputPath::Single(right_path));
 
         // Snapshot all export settings. Slint properties must not be
         // read from the worker thread — only the UI thread owns them.
@@ -2346,8 +2390,8 @@ fn handle_calibration_result(
 /// Honors the `interrupted` flag between frames for user-initiated cancel.
 #[allow(clippy::too_many_arguments)]
 fn run_export(
-    left: PathBuf,
-    right: PathBuf,
+    left: reco_io::stitch_job::InputPath,
+    right: reco_io::stitch_job::InputPath,
     cal: MatchCalibration,
     output: PathBuf,
     width: u32,
@@ -2397,7 +2441,7 @@ fn run_export(
     // that drives the progress bar percentage. Best-effort: if it
     // fails, progress bar stays indeterminate until job reports frames.
     use reco_core::source::FrameSource;
-    if let Ok(source) = reco_io::adapters::FfmpegFileSource::open(&left, &right)
+    if let Ok(source) = reco_io::adapters::FfmpegFileSource::open_from_inputs(&left, &right, 0)
         && let Some(total) = source.total_frames()
     {
         let weak = app_weak.clone();
