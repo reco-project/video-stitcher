@@ -18,8 +18,6 @@
 //! // source implements FrameSource - pass to session.run()
 //! ```
 
-use std::path::Path;
-
 use reco_core::renderer::GpuPixelFormat;
 use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame};
 
@@ -81,20 +79,20 @@ impl SmartFileSource {
     /// `sync_offset` applies temporal alignment between cameras:
     /// positive skips right frames, negative skips left frames.
     pub fn open(
-        left: impl AsRef<Path>,
-        right: impl AsRef<Path>,
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
         gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
     ) -> Result<Self, SourceError> {
-        let left = left.as_ref();
-        let right = right.as_ref();
+        let left_probe_path = left.first_path();
+        let right_probe_path = right.first_path();
 
-        // Probe left video for metadata
-        let probe =
-            crate::ffmpeg::decoder::VideoDecoder::open(left).map_err(|e| SourceError::Init {
-                path: left.display().to_string(),
+        let probe = crate::ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
+            SourceError::Init {
+                path: left_probe_path.display().to_string(),
                 reason: format!("{e}"),
-            })?;
+            }
+        })?;
 
         let fps_r = probe.frame_rate();
         let info = SourceInfo {
@@ -109,8 +107,7 @@ impl SmartFileSource {
         let decode_backend = probe.backend();
         drop(probe);
 
-        // Probe right video for rotation
-        let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right)
+        let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right_probe_path)
             .map(|d| d.rotation())
             .unwrap_or_else(|e| {
                 log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
@@ -150,20 +147,19 @@ impl SmartFileSource {
         }
     }
 
-    /// Force CPU-only decode (for testing, benchmarking, or fallback).
     pub fn open_cpu_only(
-        left: impl AsRef<Path>,
-        right: impl AsRef<Path>,
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
         sync_offset: i64,
     ) -> Result<Self, SourceError> {
-        let left = left.as_ref();
-        let right = right.as_ref();
+        let left_probe_path = left.first_path();
 
-        let probe =
-            crate::ffmpeg::decoder::VideoDecoder::open(left).map_err(|e| SourceError::Init {
-                path: left.display().to_string(),
+        let probe = crate::ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
+            SourceError::Init {
+                path: left_probe_path.display().to_string(),
                 reason: format!("{e}"),
-            })?;
+            }
+        })?;
         let fps_r = probe.frame_rate();
         let info = SourceInfo {
             width: probe.width(),
@@ -176,12 +172,15 @@ impl SmartFileSource {
         let left_rotation = probe.rotation();
         drop(probe);
 
-        let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right)
-            .map(|d| d.rotation())
-            .unwrap_or_else(|e| {
-                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
-                0
-            });
+        let right_rotation =
+            crate::ffmpeg::decoder::VideoDecoder::open(right.first_path())
+                .map(|d| d.rotation())
+                .unwrap_or_else(|e| {
+                    log::warn!(
+                        "Failed to probe right video for rotation ({e}), assuming 0 degrees"
+                    );
+                    0
+                });
 
         Self::open_cpu(
             left,
@@ -195,15 +194,15 @@ impl SmartFileSource {
     }
 
     fn open_cpu(
-        left: &Path,
-        right: &Path,
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
         sync_offset: i64,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let source = crate::adapters::FfmpegFileSource::open_with_offset(left, right, sync_offset)?;
+        let source = crate::adapters::FfmpegFileSource::open_from_inputs(left, right, sync_offset)?;
         log::info!(
             "SmartFileSource: CPU decode ({}x{}, {pixel_format:?})",
             info.width,
@@ -223,8 +222,8 @@ impl SmartFileSource {
     #[cfg(target_os = "linux")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
-        left: &Path,
-        right: &Path,
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
         gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
         info: SourceInfo,
@@ -237,7 +236,7 @@ impl SmartFileSource {
         use reco_core::zero_copy::GpuBufInfo;
 
         let map_err = |msg: String| SourceError::Init {
-            path: left.display().to_string(),
+            path: left.first_path().display().to_string(),
             reason: msg,
         };
 
@@ -319,8 +318,8 @@ impl SmartFileSource {
 
         // Spawn decode threads
         let decode_handles = crate::zero_copy::spawn_decode_threads_gpu(
-            left.to_string_lossy().into_owned(),
-            right.to_string_lossy().into_owned(),
+            left.clone(),
+            right.clone(),
             left_buf.clone(),
             right_buf.clone(),
             left_slot_free_rx,
@@ -373,8 +372,8 @@ impl SmartFileSource {
     #[cfg(target_os = "macos")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
-        left: &Path,
-        right: &Path,
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
         _gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
         info: SourceInfo,
@@ -382,11 +381,7 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let pair_rx = crate::zero_copy::spawn_vt_decode_pair(
-            &left.to_string_lossy(),
-            &right.to_string_lossy(),
-            sync_offset,
-        );
+        let pair_rx = crate::zero_copy::spawn_vt_decode_pair(left, right, sync_offset);
 
         log::info!(
             "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode)",
@@ -408,8 +403,8 @@ impl SmartFileSource {
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
-        left: &Path,
-        right: &Path,
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
         _gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
         info: SourceInfo,

@@ -8,23 +8,11 @@
 //! `VideoDecoder` from the FFmpeg backend. `reco-core` orchestrates
 //! the frame loop; `reco-io` handles the decode threads.
 
-use std::path::Path;
-
 /// Spawn a single-video GPU decode thread that writes NV12 frames directly
 /// to CUDA/Vulkan shared textures via `cuMemcpy2D`.
-///
-/// `skip_frames` discards the first N frames (for temporal sync offset)
-/// before entering the slot-based GPU decode loop.
-///
-/// Uses `slot_free_rx` for backpressure: the decode thread waits for a slot
-/// to be released by the main thread before writing to it. This prevents
-/// NVDEC from overwriting a slot that the GPU render pass is still reading.
-///
-/// The `shutdown` flag is checked between frames. Setting it to `true`
-/// causes the thread to exit gracefully even if slot senders are still alive.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn spawn_single_decoder_gpu(
-    path: String,
+    input: crate::stitch_job::InputPath,
     label: &'static str,
     buf: reco_core::zero_copy::GpuBufInfo,
     slot_free_rx: std::sync::mpsc::Receiver<u8>,
@@ -38,7 +26,7 @@ pub fn spawn_single_decoder_gpu(
     let handle = std::thread::Builder::new()
         .name(format!("decode_{label}_gpu"))
         .spawn(move || {
-            let mut dec = match VideoDecoder::open(Path::new(&path)) {
+            let mut dec = match VideoDecoder::open_input(&input) {
                 Ok(d) => {
                     log::info!(
                         "{label} GPU decoder: {} ({}x{})",
@@ -156,8 +144,8 @@ pub fn spawn_single_decoder_gpu(
 /// receiver and join handles for graceful shutdown.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn spawn_decode_threads_gpu(
-    left_path: String,
-    right_path: String,
+    left_input: crate::stitch_job::InputPath,
+    right_input: crate::stitch_job::InputPath,
     left_buf: reco_core::zero_copy::GpuBufInfo,
     right_buf: reco_core::zero_copy::GpuBufInfo,
     left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
@@ -175,7 +163,7 @@ pub fn spawn_decode_threads_gpu(
     };
 
     let (left_rx, left_handle) = spawn_single_decoder_gpu(
-        left_path,
+        left_input,
         "left",
         left_buf,
         left_slot_free_rx,
@@ -183,7 +171,7 @@ pub fn spawn_decode_threads_gpu(
         shutdown.clone(),
     );
     let (right_rx, right_handle) = spawn_single_decoder_gpu(
-        right_path,
+        right_input,
         "right",
         right_buf,
         right_slot_free_rx,
@@ -219,7 +207,7 @@ pub fn spawn_decode_threads_gpu(
 /// Spawn a VideoToolbox decode thread that sends retained CVPixelBuffers.
 #[cfg(target_os = "macos")]
 pub fn spawn_vt_decode_thread(
-    path: std::path::PathBuf,
+    input: crate::stitch_job::InputPath,
     label: &'static str,
 ) -> std::sync::mpsc::Receiver<reco_core::metal_interop::RetainedCVPixelBuffer> {
     use crate::ffmpeg::decoder::VideoDecoder;
@@ -230,7 +218,7 @@ pub fn spawn_vt_decode_thread(
     std::thread::Builder::new()
         .name(format!("vt_decode_{label}"))
         .spawn(move || {
-            let mut dec = match VideoDecoder::open(&path) {
+            let mut dec = match VideoDecoder::open_input(&input) {
                 Ok(d) => d,
                 Err(e) => {
                     log::error!("Failed to open {label} video: {e}");
@@ -269,14 +257,14 @@ pub fn spawn_vt_decode_thread(
 /// that zips frames into [`VtFramePair`]s.
 #[cfg(target_os = "macos")]
 pub fn spawn_vt_decode_pair(
-    left_path: &str,
-    right_path: &str,
+    left: &crate::stitch_job::InputPath,
+    right: &crate::stitch_job::InputPath,
     sync_offset: i64,
 ) -> std::sync::mpsc::Receiver<reco_core::zero_copy::VtFramePair> {
     use reco_core::zero_copy::VtFramePair;
 
-    let left_rx = spawn_vt_decode_thread(std::path::PathBuf::from(left_path), "left");
-    let right_rx = spawn_vt_decode_thread(std::path::PathBuf::from(right_path), "right");
+    let left_rx = spawn_vt_decode_thread(left.clone(), "left");
+    let right_rx = spawn_vt_decode_thread(right.clone(), "right");
 
     let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<VtFramePair>(4);
     std::thread::Builder::new()

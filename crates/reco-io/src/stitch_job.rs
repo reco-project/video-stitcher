@@ -149,15 +149,6 @@ impl<P: AsRef<Path>> From<Vec<P>> for InputPath {
     }
 }
 
-impl InputPath {
-    /// Get the primary file path (first segment for chained inputs).
-    fn primary(&self) -> &Path {
-        match self {
-            Self::Single(p) => p,
-            Self::Chained(v) => &v[0],
-        }
-    }
-}
 
 /// Result of a completed stitch job.
 #[derive(Debug)]
@@ -543,18 +534,9 @@ impl StitchJob {
 
         let mut source = if self.force_cpu_decode {
             log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
-            crate::SmartFileSource::open_cpu_only(
-                self.left.primary(),
-                self.right.primary(),
-                effective_sync,
-            )?
+            crate::SmartFileSource::open_cpu_only(&self.left, &self.right, effective_sync)?
         } else {
-            crate::SmartFileSource::open(
-                self.left.primary(),
-                self.right.primary(),
-                &gpu,
-                effective_sync,
-            )?
+            crate::SmartFileSource::open(&self.left, &self.right, &gpu, effective_sync)?
         };
         let info = source.info();
         let (out_w, out_h) = self.resolution.unwrap_or((1920, 1080));

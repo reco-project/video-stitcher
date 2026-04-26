@@ -188,11 +188,8 @@ impl AnalyzeJob {
         // Open the CPU decode path. GPU-resident sources won't yield
         // CPU-accessible frames, which is a problem for detection —
         // FfmpegFileSource stays on the CPU upload path.
-        let mut source = crate::adapters::FfmpegFileSource::open_with_offset(
-            self.left.first_path(),
-            self.right.first_path(),
-            effective_sync,
-        )?;
+        let mut source =
+            crate::adapters::FfmpegFileSource::open_from_inputs(&self.left, &self.right, effective_sync)?;
         let info = source.info();
         let decode_mode = format!("{}", source.decode_backend());
 

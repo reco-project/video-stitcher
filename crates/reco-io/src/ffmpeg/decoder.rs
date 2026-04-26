@@ -159,7 +159,6 @@ impl std::fmt::Display for DecodeBackend {
 pub struct VideoDecoder {
     input: ffmpeg::format::context::Input,
     decoder: ffmpeg::decoder::Video,
-    /// Converts non-YUV420P frames (e.g. NV12 from hwaccel) to YUV420P.
     scaler: Option<ScalingContext>,
     video_stream_index: usize,
     time_base_num: i64,
@@ -168,26 +167,17 @@ pub struct VideoDecoder {
     height: u32,
     eof_sent: bool,
     backend: DecodeBackend,
-    /// Rotation from stream metadata (0, 90, 180, 270).
-    /// Applied to decoded frames to match the intended display orientation.
     rotation: i32,
-    /// True when the source is 10-bit (P010 format: 16-bit per component NV12).
-    /// Detected from the stream's codec pixel format (yuv420p10le/yuv420p10be).
     is_10bit: bool,
-    /// Reusable decode buffer.
     decoded_frame: VideoFrame,
-    /// CPU-side frame for hardware decode transfer.
     sw_frame: VideoFrame,
-    /// Reusable conversion buffer (only used when scaler is active).
     converted_frame: VideoFrame,
-    /// Hardware device context reference (must be kept alive).
-    /// Stored as raw pointer; freed via av_buffer_unref on drop.
     _hw_device_ref: *mut ffi::AVBufferRef,
-    /// Pre-allocated Y plane buffer, reused across frames.
+    /// Concat manifest kept alive so the temp file isn't deleted while
+    /// the demuxer reads it. None for single-file inputs.
+    _manifest: Option<tempfile::NamedTempFile>,
     y_buf: Vec<u8>,
-    /// Pre-allocated U plane buffer, reused across frames.
     u_buf: Vec<u8>,
-    /// Pre-allocated V plane buffer, reused across frames.
     v_buf: Vec<u8>,
 }
 
@@ -215,9 +205,19 @@ impl VideoDecoder {
     /// Set `RECO_NO_HWACCEL=1` to force software decode (useful for benchmarking).
     pub fn open(path: &Path) -> Result<Self, DecodeError> {
         crate::init();
-
         let ictx = input(path)?;
+        Self::from_input_context(ictx)
+    }
 
+    /// Open from an `InputPath` (single file or chained segments).
+    pub fn open_input(input_path: &crate::stitch_job::InputPath) -> Result<Self, DecodeError> {
+        match input_path {
+            crate::stitch_job::InputPath::Single(p) => Self::open(p),
+            crate::stitch_job::InputPath::Chained(paths) => Self::open_chained(paths),
+        }
+    }
+
+    fn from_input_context(ictx: ffmpeg::format::context::Input) -> Result<Self, DecodeError> {
         let stream = ictx
             .streams()
             .best(Type::Video)
@@ -325,7 +325,7 @@ impl VideoDecoder {
         Ok(Self {
             input: ictx,
             decoder,
-            scaler: None, // Created lazily on first frame (format may change with hwaccel)
+            scaler: None,
             video_stream_index,
             time_base_num: time_base.0 as i64,
             time_base_den: time_base.1 as i64,
@@ -339,10 +339,70 @@ impl VideoDecoder {
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
             _hw_device_ref: hw_device_ref,
+            _manifest: None,
             y_buf: Vec::with_capacity(y_size),
             u_buf: Vec::with_capacity(uv_size),
             v_buf: Vec::with_capacity(uv_size),
         })
+    }
+
+    /// Open multiple video segments as a single continuous stream.
+    ///
+    /// Uses FFmpeg's concat demuxer to chain segments transparently.
+    /// Timestamps are rebased, hardware acceleration works across
+    /// segment boundaries, and seeking spans the full duration.
+    pub fn open_chained(paths: &[std::path::PathBuf]) -> Result<Self, DecodeError> {
+        use std::io::Write;
+
+        if paths.len() <= 1 {
+            return Self::open(paths.first().map(|p| p.as_path()).unwrap_or(Path::new("")));
+        }
+
+        crate::init();
+
+        let mut manifest = tempfile::Builder::new()
+            .prefix("reco_concat_")
+            .suffix(".txt")
+            .tempfile()
+            .map_err(|e| DecodeError::Ffmpeg(format!("concat manifest: {e}")))?;
+
+        writeln!(manifest, "ffconcat version 1.0")
+            .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+        for p in paths {
+            writeln!(manifest, "file '{}'", p.display())
+                .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+        }
+        manifest
+            .flush()
+            .map_err(|e| DecodeError::Ffmpeg(format!("flush manifest: {e}")))?;
+
+        log::info!(
+            "Concat demuxer: chaining {} segments via {}",
+            paths.len(),
+            manifest.path().display()
+        );
+
+        let concat_fmt_ptr = unsafe { ffi::av_find_input_format(c"concat".as_ptr()) };
+        if concat_fmt_ptr.is_null() {
+            return Err(DecodeError::Ffmpeg(
+                "FFmpeg concat demuxer not available".into(),
+            ));
+        }
+        let concat_fmt =
+            unsafe { ffmpeg::format::format::Input::wrap(concat_fmt_ptr as *mut _) };
+
+        let mut opts = ffmpeg::Dictionary::new();
+        opts.set("safe", "0");
+
+        let fmt = ffmpeg::format::format::Format::Input(concat_fmt);
+        let ictx = match ffmpeg::format::open_with(manifest.path(), &fmt, opts)? {
+            ffmpeg::format::Context::Input(ctx) => ctx,
+            _ => return Err(DecodeError::Ffmpeg("expected input context".into())),
+        };
+
+        let mut dec = Self::from_input_context(ictx)?;
+        dec._manifest = Some(manifest);
+        Ok(dec)
     }
 
     /// Which decode backend is active.

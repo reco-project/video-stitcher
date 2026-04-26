@@ -35,9 +35,8 @@ pub struct FfmpegFileSource {
     /// Rotation from stream metadata (0, 90, 180, 270).
     left_rotation: i32,
     right_rotation: i32,
-    /// Stored for seek (need to respawn decode pipeline).
-    left_path: std::path::PathBuf,
-    right_path: std::path::PathBuf,
+    left_input: crate::stitch_job::InputPath,
+    right_input: crate::stitch_job::InputPath,
     sync_offset: i64,
     /// Total frame count (estimated from duration * fps).
     total_frame_count: Option<u64>,
@@ -55,7 +54,6 @@ pub struct FfmpegFileSource {
 
 #[cfg(feature = "ffmpeg")]
 impl FfmpegFileSource {
-    /// Open a stereo file source from two video file paths (no sync offset).
     pub fn open(
         left_path: &std::path::Path,
         right_path: &std::path::Path,
@@ -63,27 +61,36 @@ impl FfmpegFileSource {
         Self::open_with_offset(left_path, right_path, 0)
     }
 
-    /// Open a stereo file source with a temporal sync offset.
-    ///
-    /// `sync_offset` specifies how many frames to skip for alignment:
-    /// - Positive: skip N frames from the **right** video (right started first)
-    /// - Negative: skip N frames from the **left** video (left started first)
-    /// - Zero: pair by arrival order (no offset)
     pub fn open_with_offset(
         left_path: &std::path::Path,
         right_path: &std::path::Path,
         sync_offset: i64,
     ) -> Result<Self, SourceError> {
-        // Validate both paths up front so the user sees a structured
-        // reason (not found / not a file / empty / permission) instead
-        // of a stringified FFmpeg "Invalid argument". Cheap: just a
-        // metadata syscall plus a non-blocking open.
-        reco_core::source::validate_input_path(left_path)?;
-        reco_core::source::validate_input_path(right_path)?;
+        Self::open_from_inputs(
+            &crate::stitch_job::InputPath::Single(left_path.to_path_buf()),
+            &crate::stitch_job::InputPath::Single(right_path.to_path_buf()),
+            sync_offset,
+        )
+    }
+
+    /// Open from `InputPath` to support chained multi-segment files.
+    ///
+    /// Accepts `InputPath` to support chained multi-segment files
+    /// (GoPro/DJI auto-split). Probing uses the first segment.
+    pub fn open_from_inputs(
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
+        sync_offset: i64,
+    ) -> Result<Self, SourceError> {
+        let left_probe_path = left.first_path();
+        let right_probe_path = right.first_path();
+
+        reco_core::source::validate_input_path(left_probe_path)?;
+        reco_core::source::validate_input_path(right_probe_path)?;
 
         let probe =
-            ffmpeg::decoder::VideoDecoder::open(left_path).map_err(|e| SourceError::Init {
-                path: left_path.display().to_string(),
+            ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| SourceError::Init {
+                path: left_probe_path.display().to_string(),
                 reason: format!("{e}"),
             })?;
         let fps_r = probe.frame_rate();
@@ -101,17 +108,21 @@ impl FfmpegFileSource {
         let left_rotation = probe.rotation();
         drop(probe);
 
-        // Probe right video for its rotation (may differ from left).
-        let right_rotation = ffmpeg::decoder::VideoDecoder::open(right_path)
+        let right_rotation = ffmpeg::decoder::VideoDecoder::open(right_probe_path)
             .map(|d| d.rotation())
             .unwrap_or_else(|e| {
                 log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
                 0
             });
 
-        let left = left_path.to_path_buf();
-        let right = right_path.to_path_buf();
-        let rx = Self::spawn_decode_pipeline_at(left.clone(), right.clone(), sync_offset, None);
+        let left_owned = left.clone();
+        let right_owned = right.clone();
+        let rx = Self::spawn_decode_pipeline_from_inputs(
+            left_owned.clone(),
+            right_owned.clone(),
+            sync_offset,
+            None,
+        );
 
         Ok(Self {
             rx,
@@ -120,8 +131,8 @@ impl FfmpegFileSource {
             pixel_format,
             left_rotation,
             right_rotation,
-            left_path: left,
-            right_path: right,
+            left_input: left_owned,
+            right_input: right_owned,
             sync_offset,
             total_frame_count,
             current_frame: 0,
@@ -185,7 +196,7 @@ impl FfmpegFileSource {
     }
 
     fn spawn_single_decoder_at(
-        path: std::path::PathBuf,
+        input: crate::stitch_job::InputPath,
         label: &'static str,
         seek_secs: Option<f64>,
     ) -> std::sync::mpsc::Receiver<YuvData> {
@@ -194,7 +205,7 @@ impl FfmpegFileSource {
         std::thread::Builder::new()
             .name(format!("decode_{label}"))
             .spawn(move || {
-                let mut dec = match ffmpeg::decoder::VideoDecoder::open(&path) {
+                let mut dec = match ffmpeg::decoder::VideoDecoder::open_input(&input) {
                     Ok(d) => {
                         log::info!(
                             "{label} decoder: {} ({}x{})",
@@ -266,14 +277,14 @@ impl FfmpegFileSource {
         rx
     }
 
-    fn spawn_decode_pipeline_at(
-        left_path: std::path::PathBuf,
-        right_path: std::path::PathBuf,
+    fn spawn_decode_pipeline_from_inputs(
+        left: crate::stitch_job::InputPath,
+        right: crate::stitch_job::InputPath,
         sync_offset: i64,
         seek_secs: Option<f64>,
     ) -> std::sync::mpsc::Receiver<FramePair> {
-        let left_rx = Self::spawn_single_decoder_at(left_path, "left", seek_secs);
-        let right_rx = Self::spawn_single_decoder_at(right_path, "right", seek_secs);
+        let left_rx = Self::spawn_single_decoder_at(left, "left", seek_secs);
+        let right_rx = Self::spawn_single_decoder_at(right, "right", seek_secs);
 
         let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
 
@@ -394,9 +405,9 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         // Drop old receiver - disconnects current decode threads which
         // exit on the next send() failure. Spawns fresh decoders that
         // seek to the target keyframe and skip to the exact PTS.
-        self.rx = Self::spawn_decode_pipeline_at(
-            self.left_path.clone(),
-            self.right_path.clone(),
+        self.rx = Self::spawn_decode_pipeline_from_inputs(
+            self.left_input.clone(),
+            self.right_input.clone(),
             self.sync_offset,
             Some(secs),
         );
