@@ -30,82 +30,70 @@ use reco_core::director::ViewportPosition;
 use reco_core::panner::{PanContext, Panner};
 use reco_core::tracker::{TrackState, TrackedEntity, WorldState};
 
-/// Huber tuning constant. Residuals greater than `c * scale` get
-/// a weight of `c * scale / r` instead of 1. `1.345` gives ~95%
-/// asymptotic efficiency under Gaussian noise (standard choice).
-const HUBER_C: f32 = 1.1;
-
-/// Floor for the robust scale estimate to avoid divide-by-tiny when
-/// every player sits on top of the centroid (degenerate cluster).
-/// `0.02` rad ≈ 1.15° - below that, the weight of every point
-/// collapses to 1 anyway.
-const HUBER_SCALE_FLOOR: f32 = 0.02;
-
-/// IRLS iteration budget. Huber converges fast; 8 is comfortable
-/// even on 20-player frames.
-const HUBER_ITERS: usize = 8;
-
-/// Residual change below this ends IRLS early (squared-distance in
-/// rad^2). ~0.2% of a typical cluster spread.
-const HUBER_CONVERGE_EPS: f32 = 1e-6;
-
-/// Minimum effective cluster size. Below this, no camera update
-/// happens. The effective count is the number of points whose final
-/// Huber weight equals 1 (i.e., residual within the inlier band).
-const MIN_CLUSTER: usize = 2;
-
-/// Edge exaggeration factor: yaw is pushed 15% further from center.
-const EDGE_PUSH: f32 = 0.15;
-
-/// FOV EMA alpha for gentle zoom transitions.
-const FOV_ALPHA: f32 = 0.01;
-
-/// Pitch range for distance-based FOV bias.
-const PITCH_NEAR: f32 = -0.05;
-const PITCH_FAR: f32 = 0.20;
-
-/// Max FOV reduction for far clusters (degrees).
-const DISTANCE_BIAS_MAX: f32 = -12.0;
-
-/// Max FOV increase at panorama edges (degrees).
-const EDGE_BIAS_MAX: f32 = 4.0;
-
-/// Default FOV envelope (degrees).
-const DEFAULT_FOV_TIGHT: f32 = 22.0;
-const DEFAULT_FOV_WIDE: f32 = 58.0;
-const DEFAULT_FOV: f32 = 40.0;
-
-/// EMA alpha for yaw centroid smoothing (lower = smoother).
-const DEFAULT_CLUSTER_ALPHA: f32 = 0.012;
-
-/// Maximum angular velocity in radians per second.
-/// ~14 deg/s - allows faster pans on long runs across the field.
-const MAX_VELOCITY_RAD_PER_SEC: f32 = 0.18;
-
-/// Velocity smoothing alpha. Controls how quickly the camera changes
-/// direction. Lower = smoother reversals, higher = snappier tracking.
-const VELOCITY_ALPHA: f32 = 0.06;
-
-/// Pitch bias added to the cluster centroid (radians).
-const PITCH_BIAS: f32 = 0.05;
-
-/// Per-frame decay for ball presence (0.99 at 30fps ≈ 3s fade-out).
-const BALL_PRESENCE_DECAY: f32 = 0.99;
-
-/// Per-frame attack for ball presence (fast acquire, slow release).
-const BALL_PRESENCE_ATTACK: f32 = 0.15;
-
-/// Max FOV increase (degrees) when panning at full velocity.
-const VELOCITY_FOV_BIAS_MAX: f32 = 10.0;
-
-/// Margin (degrees) inside the frame edge for ball-in-frame constraint.
-const BALL_FRAME_MARGIN_DEG: f32 = 3.0;
-
-/// Reject ball detections further than this from the cluster centroid (radians, ~50 deg).
-const BALL_MAX_DIST_FROM_CLUSTER: f32 = 0.85;
-
-/// Log interval in frames.
 const LOG_INTERVAL: u64 = 30;
+
+/// All tunable parameters for the field panner.
+///
+/// Safe defaults are tuned for football (soccer) at 30fps. Override
+/// individual fields for other sports or frame rates.
+#[derive(Debug, Clone)]
+pub struct FieldPannerConfig {
+    pub huber_c: f32,
+    pub huber_scale_floor: f32,
+    pub huber_iters: usize,
+    pub huber_converge_eps: f32,
+    pub min_cluster: usize,
+    pub edge_push: f32,
+    pub fov_alpha: f32,
+    pub pitch_near: f32,
+    pub pitch_far: f32,
+    pub distance_bias_max: f32,
+    pub edge_bias_max: f32,
+    pub fov_tight: f32,
+    pub fov_wide: f32,
+    pub fov_default: f32,
+    pub cluster_alpha: f32,
+    pub max_velocity_rad_per_sec: f32,
+    pub velocity_alpha: f32,
+    pub pitch_bias: f32,
+    pub ball_presence_decay: f32,
+    pub ball_presence_attack: f32,
+    pub velocity_fov_bias_max: f32,
+    pub ball_frame_margin_deg: f32,
+    pub ball_max_dist_from_cluster: f32,
+    pub ball_weight: f32,
+}
+
+impl Default for FieldPannerConfig {
+    fn default() -> Self {
+        Self {
+            huber_c: 1.1,
+            huber_scale_floor: 0.02,
+            huber_iters: 8,
+            huber_converge_eps: 1e-6,
+            min_cluster: 2,
+            edge_push: 0.15,
+            fov_alpha: 0.01,
+            pitch_near: -0.05,
+            pitch_far: 0.20,
+            distance_bias_max: -12.0,
+            edge_bias_max: 4.0,
+            fov_tight: 22.0,
+            fov_wide: 58.0,
+            fov_default: 40.0,
+            cluster_alpha: 0.012,
+            max_velocity_rad_per_sec: 0.18,
+            velocity_alpha: 0.06,
+            pitch_bias: 0.05,
+            ball_presence_decay: 0.99,
+            ball_presence_attack: 0.15,
+            velocity_fov_bias_max: 10.0,
+            ball_frame_margin_deg: 3.0,
+            ball_max_dist_from_cluster: 0.85,
+            ball_weight: 0.0,
+        }
+    }
+}
 
 /// Intermediate cluster descriptor produced by the pipeline.
 struct Cluster {
@@ -118,68 +106,42 @@ struct Cluster {
 /// Field-aware panner that follows the densest group of tracked
 /// players, with optional ball blending and dynamic FOV.
 pub struct FieldPanner {
-    /// Current raw published pose (panorama-space radians, degrees FOV).
+    config: FieldPannerConfig,
     yaw: f32,
     pitch: f32,
     current_fov: f32,
-
-    /// Minimum cluster size before any camera update (default 3).
-    min_players: usize,
-
-    /// Ball blend weight (0.0 = players only, 0.1 ≈ 90/10 cluster/ball).
-    ball_weight: f32,
-
-    /// FOV envelope (degrees).
-    fov_wide: f32,
-    fov_tight: f32,
-
-    /// Centroid EMA state (noise filter).
     ema_yaw: f32,
     ema_pitch: f32,
     ema_initialized: bool,
-
-    /// EMA alpha for yaw centroid.
-    cluster_alpha: f32,
-
-    /// Current angular velocity (rad/frame) for yaw and pitch.
     velocity_yaw: f32,
     velocity_pitch: f32,
-
-    /// Max velocity in rad/frame (derived from fps).
     max_velocity: f32,
-
-    /// Ball presence strength (0.0 = no ball, 1.0 = full confidence).
-    /// Ramps up on detection, decays smoothly when lost.
     ball_presence: f32,
-
-    /// Last known ball position for decay blending.
     last_ball_yaw: f32,
     last_ball_pitch: f32,
-
-    /// Frame counter for log throttling.
     frame_index: u64,
 }
 
 impl FieldPanner {
-    /// Build a field panner with defaults (identical envelope to
-    /// `FieldDirector` (predecessor)).
     pub fn new(fps: f32) -> Self {
+        Self::with_config(fps, FieldPannerConfig::default())
+    }
+
+    pub fn with_config(fps: f32, config: FieldPannerConfig) -> Self {
         let fps = fps.clamp(1.0, 1000.0);
+        let current_fov = config.fov_default;
+        let max_velocity = config.max_velocity_rad_per_sec / fps;
         Self {
+            config,
             yaw: 0.0,
             pitch: 0.0,
-            current_fov: DEFAULT_FOV,
-            min_players: MIN_CLUSTER,
-            ball_weight: 0.0,
-            fov_wide: DEFAULT_FOV_WIDE,
-            fov_tight: DEFAULT_FOV_TIGHT,
+            current_fov,
             ema_yaw: 0.0,
             ema_pitch: 0.0,
             ema_initialized: false,
-            cluster_alpha: DEFAULT_CLUSTER_ALPHA,
             velocity_yaw: 0.0,
             velocity_pitch: 0.0,
-            max_velocity: MAX_VELOCITY_RAD_PER_SEC / fps,
+            max_velocity,
             ball_presence: 0.0,
             last_ball_yaw: 0.0,
             last_ball_pitch: 0.0,
@@ -187,23 +149,19 @@ impl FieldPanner {
         }
     }
 
-    /// Override the ball blend weight. `0.0` = pure cluster centroid;
-    /// `1.0` = pure ball. Default is `0.0`.
     pub fn with_ball_weight(mut self, weight: f32) -> Self {
-        self.ball_weight = weight.clamp(0.0, 1.0);
+        self.config.ball_weight = weight.clamp(0.0, 1.0);
         self
     }
 
-    /// Override the FOV envelope in degrees.
     pub fn with_fov_range(mut self, tight: f32, wide: f32) -> Self {
-        self.fov_tight = tight;
-        self.fov_wide = wide;
+        self.config.fov_tight = tight;
+        self.config.fov_wide = wide;
         self
     }
 
-    /// Override the centroid EMA alpha. Lower = smoother, more lag.
     pub fn with_cluster_alpha(mut self, alpha: f32) -> Self {
-        self.cluster_alpha = alpha.clamp(0.001, 1.0);
+        self.config.cluster_alpha = alpha.clamp(0.001, 1.0);
         self
     }
 
@@ -234,7 +192,7 @@ impl FieldPanner {
     /// residual, so a boundary point's influence changes by 1% per
     /// frame instead of 100%.
     fn cluster_and_trim(&self, points: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
-        if points.len() < self.min_players {
+        if points.len() < self.config.min_cluster {
             return Vec::new();
         }
 
@@ -252,7 +210,7 @@ impl FieldPanner {
         let mut residuals = vec![0.0_f32; points.len()];
         let mut abs_r = Vec::with_capacity(points.len());
         let mut weights = vec![0.0_f32; points.len()];
-        for _ in 0..HUBER_ITERS {
+        for _ in 0..self.config.huber_iters {
             for (i, &(y, p, _)) in points.iter().enumerate() {
                 let dy = y - cy;
                 let dp = p - cp;
@@ -262,8 +220,8 @@ impl FieldPanner {
             abs_r.extend_from_slice(&residuals);
             abs_r.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let mad = abs_r[abs_r.len() / 2];
-            let scale = (1.4826 * mad).max(HUBER_SCALE_FLOOR);
-            let threshold = HUBER_C * scale;
+            let scale = (1.4826 * mad).max(self.config.huber_scale_floor);
+            let threshold = self.config.huber_c * scale;
 
             let mut total_w = 0.0_f32;
             for (i, &(_, _, conf)) in points.iter().enumerate() {
@@ -297,7 +255,7 @@ impl FieldPanner {
             let shift_sq = (new_cy - cy).powi(2) + (new_cp - cp).powi(2);
             cy = new_cy;
             cp = new_cp;
-            if shift_sq < HUBER_CONVERGE_EPS {
+            if shift_sq < self.config.huber_converge_eps {
                 break;
             }
         }
@@ -313,8 +271,8 @@ impl FieldPanner {
         abs_r.extend_from_slice(&residuals);
         abs_r.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mad = abs_r[abs_r.len() / 2];
-        let scale = (1.4826 * mad).max(HUBER_SCALE_FLOOR);
-        let threshold = HUBER_C * scale;
+        let scale = (1.4826 * mad).max(self.config.huber_scale_floor);
+        let threshold = self.config.huber_c * scale;
 
         let inliers: Vec<(f32, f32, f32)> = points
             .iter()
@@ -322,7 +280,7 @@ impl FieldPanner {
             .filter_map(|(&pt, &r)| if r <= threshold { Some(pt) } else { None })
             .collect();
 
-        if inliers.len() < self.min_players {
+        if inliers.len() < self.config.min_cluster {
             return Vec::new();
         }
         inliers
@@ -356,8 +314,8 @@ impl FieldPanner {
             self.ema_pitch = raw_pitch;
             self.ema_initialized = true;
         } else {
-            self.ema_yaw += self.cluster_alpha * (raw_yaw - self.ema_yaw);
-            self.ema_pitch += self.cluster_alpha * (raw_pitch - self.ema_pitch);
+            self.ema_yaw += self.config.cluster_alpha * (raw_yaw - self.ema_yaw);
+            self.ema_pitch += self.config.cluster_alpha * (raw_pitch - self.ema_pitch);
         }
 
         (self.ema_yaw, self.ema_pitch)
@@ -392,15 +350,15 @@ impl FieldPanner {
     /// then widened if needed to keep the ball in frame.
     fn target_fov(&self, spread: f32, pitch: f32, velocity_mag: f32) -> f32 {
         let spread_deg = spread.to_degrees();
-        let fov_from_spread = (2.0 * spread_deg).max(self.fov_tight);
+        let fov_from_spread = (2.0 * spread_deg).max(self.config.fov_tight);
 
-        let t_dist = ((pitch - PITCH_NEAR) / (PITCH_FAR - PITCH_NEAR)).clamp(0.0, 1.0);
-        let distance_bias = t_dist * DISTANCE_BIAS_MAX;
+        let t_dist = ((pitch - self.config.pitch_near) / (self.config.pitch_far - self.config.pitch_near)).clamp(0.0, 1.0);
+        let distance_bias = t_dist * self.config.distance_bias_max;
 
-        let edge_bias = (self.yaw.abs() * 5.0).min(EDGE_BIAS_MAX);
+        let edge_bias = (self.yaw.abs() * 5.0).min(self.config.edge_bias_max);
 
         let vel_ratio = (velocity_mag / self.max_velocity).clamp(0.0, 1.0);
-        let velocity_bias = vel_ratio * VELOCITY_FOV_BIAS_MAX;
+        let velocity_bias = vel_ratio * self.config.velocity_fov_bias_max;
 
         let mut fov = fov_from_spread + distance_bias + edge_bias + velocity_bias;
 
@@ -409,11 +367,11 @@ impl FieldPanner {
                 + (self.last_ball_pitch - self.pitch).powi(2))
             .sqrt()
             .to_degrees();
-            let needed = (ball_offset + BALL_FRAME_MARGIN_DEG) * 2.0;
+            let needed = (ball_offset + self.config.ball_frame_margin_deg) * 2.0;
             fov = fov.max(needed);
         }
 
-        fov.clamp(self.fov_tight, self.fov_wide)
+        fov.clamp(self.config.fov_tight, self.config.fov_wide)
     }
 }
 
@@ -430,7 +388,7 @@ impl Panner for FieldPanner {
         self.frame_index = self.frame_index.wrapping_add(1);
         let cluster = self.compute_cluster(&world.players);
 
-        let ball_detected = self.ball_weight > 0.0
+        let ball_detected = self.config.ball_weight > 0.0
             && world
                 .ball
                 .as_ref()
@@ -440,24 +398,24 @@ impl Panner for FieldPanner {
             && cluster.as_ref().is_some_and(|c| {
                 let b = world.ball.as_ref().unwrap();
                 let dist = ((b.yaw - c.yaw).powi(2) + (b.pitch - c.pitch).powi(2)).sqrt();
-                dist < BALL_MAX_DIST_FROM_CLUSTER
+                dist < self.config.ball_max_dist_from_cluster
             });
 
         if ball_near_cluster {
             let b = world.ball.as_ref().unwrap();
             self.last_ball_yaw = b.yaw;
             self.last_ball_pitch = b.pitch;
-            self.ball_presence += BALL_PRESENCE_ATTACK * (1.0 - self.ball_presence);
+            self.ball_presence += self.config.ball_presence_attack * (1.0 - self.ball_presence);
         } else {
-            self.ball_presence *= BALL_PRESENCE_DECAY;
+            self.ball_presence *= self.config.ball_presence_decay;
         }
         self.ball_presence = self.ball_presence.clamp(0.0, 1.0);
 
         if let Some(ref c) = cluster {
-            let mut target_yaw = c.yaw * (1.0 + EDGE_PUSH);
-            let mut target_pitch = c.pitch + PITCH_BIAS;
+            let mut target_yaw = c.yaw * (1.0 + self.config.edge_push);
+            let mut target_pitch = c.pitch + self.config.pitch_bias;
 
-            let effective_w = self.ball_weight * self.ball_presence;
+            let effective_w = self.config.ball_weight * self.ball_presence;
             if effective_w > 0.001 {
                 target_yaw = target_yaw * (1.0 - effective_w) + self.last_ball_yaw * effective_w;
                 target_pitch =
@@ -471,8 +429,8 @@ impl Panner for FieldPanner {
                 let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
                 let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
 
-                self.velocity_yaw += VELOCITY_ALPHA * (desired_yaw - self.velocity_yaw);
-                self.velocity_pitch += VELOCITY_ALPHA * (desired_pitch - self.velocity_pitch);
+                self.velocity_yaw += self.config.velocity_alpha * (desired_yaw - self.velocity_yaw);
+                self.velocity_pitch += self.config.velocity_alpha * (desired_pitch - self.velocity_pitch);
 
                 self.yaw += self.velocity_yaw;
                 self.pitch += self.velocity_pitch;
@@ -481,7 +439,7 @@ impl Panner for FieldPanner {
             let vel_mag = (self.velocity_yaw.powi(2) + self.velocity_pitch.powi(2)).sqrt();
             let target_fov = self.target_fov(c.spread, c.pitch, vel_mag);
             if target_fov.is_finite() {
-                self.current_fov += FOV_ALPHA * (target_fov - self.current_fov);
+                self.current_fov += self.config.fov_alpha * (target_fov - self.current_fov);
             } else {
                 log::warn!(
                     "FieldPanner: non-finite FOV target ({target_fov}) from \
@@ -495,7 +453,7 @@ impl Panner for FieldPanner {
             log::trace!(
                 "FieldPanner: no cluster this frame (players={}, min={})",
                 world.players.len(),
-                self.min_players
+                self.config.min_cluster
             );
         }
 
@@ -748,8 +706,9 @@ mod tests {
     #[test]
     fn fov_tighter_when_far() {
         let p = FieldPanner::new(30.0);
-        let near = p.target_fov(0.20, PITCH_NEAR, 0.0);
-        let far = p.target_fov(0.20, PITCH_FAR, 0.0);
+        let defaults = FieldPannerConfig::default();
+        let near = p.target_fov(0.20, defaults.pitch_near, 0.0);
+        let far = p.target_fov(0.20, defaults.pitch_far, 0.0);
         assert!(far < near, "far={far} near={near}");
     }
 

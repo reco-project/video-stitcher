@@ -24,6 +24,7 @@ tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
 ncnn = ["autocam", "reco-autocam/ncnn"]
 cuda = ["autocam", "reco-autocam/cuda"]
 coreml = ["autocam", "reco-autocam/coreml"]
+load-dynamic = ["autocam", "reco-autocam/load-dynamic"]
 profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling"]
 
 [dependencies]

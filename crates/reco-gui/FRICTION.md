@@ -122,19 +122,9 @@ the adapter reference.
 
 Plan disposition: K8 (Slint upstream; out of scope for this branch).
 
-### N10. setup_autocam positional-11-arg signature
+### ~~N10. setup_autocam positional-11-arg signature~~ RESOLVED
 
-**Impact**: Low-Medium. Pain on every autocam feature addition.
-
-`reco_autocam::setup_autocam(session, model, w, h, fps, use_zero_copy,
-interval, lead, mode, roi, is_10bit)` is an 11-positional-arg call.
-Consumers that only want to change the detection interval have to
-re-type every arg. `setup_autocam_from_config(&mut session, &config)`
-with `AutocamConfig::new(path).with_*()` landed alongside it, but the
-old signature is still the public path for the CLI/OBS.
-
-Plan disposition: K6 / E11. Deprecate `setup_autocam` once all
-consumers migrate to `AutocamConfig`.
+Resolved: the 11-arg function was deleted. `setup_autocam(&mut session, &config, fps)` with `AutocamConfig` is now the only API. All consumers migrated. `FieldPannerConfig` exposes all tuning parameters with safe defaults.
 
 ### N11. Codec / Quality string parsing duplicated across consumers
 

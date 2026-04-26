@@ -34,6 +34,6 @@ pub mod sweep;
 pub use anticipator::Anticipator;
 pub use ball::BallPanner;
 pub use deadzone::DeadZone;
-pub use field::FieldPanner;
+pub use field::{FieldPanner, FieldPannerConfig};
 pub use smoother::Smoother;
 pub use sweep::SweepPanner;

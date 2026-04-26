@@ -185,7 +185,6 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     {
         let model_path = model_path.to_owned();
         let interval = args.detection_interval;
-        let lead = args.lead_time;
         let mode_str = args.tracking_mode.to_owned();
         let allow_fallback = args.allow_no_tracking;
         let tracking_failed = Arc::clone(&tracking_failed);
@@ -197,19 +196,16 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 _ => reco_autocam::TrackingMode::Ball,
             };
             let is_10bit = source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
-            match reco_autocam::setup_autocam(
-                session,
-                &model_path,
-                info.width,
-                info.height,
-                info.fps as f32,
-                source.is_gpu_resident(),
-                interval,
-                lead,
-                mode,
-                field_roi.as_ref(),
-                is_10bit,
-            ) {
+            let autocam_config = reco_autocam::AutocamConfig::new(&model_path)
+                .with_tracking_mode(mode)
+                .with_detection_interval(interval)
+                .with_10bit(is_10bit);
+            let autocam_config = if let Some(roi) = field_roi {
+                autocam_config.with_field_roi(roi)
+            } else {
+                autocam_config
+            };
+            match reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32) {
                 Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
                 Ok(false) => {
                     let msg = "Tracking requested but detection cannot run in zero-copy mode. \

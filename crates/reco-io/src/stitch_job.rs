@@ -486,14 +486,14 @@ impl StitchJob {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use reco_autocam::setup_autocam;
+    /// use reco_autocam::{AutocamConfig, TrackingMode};
     ///
     /// StitchJob::new("left.mp4", "right.mp4", "match.json", "out.mp4")
     ///     .on_session(|session, source| {
-    ///         let info = source.info();
-    ///         setup_autocam(session, "model.onnx", info.width, info.height,
-    ///             info.fps as f32, source.is_gpu_resident(), 3, 0.5,
-    ///             TrackingMode::Ball, None, false).ok();
+    ///         let config = AutocamConfig::new("model.onnx")
+    ///             .with_tracking_mode(TrackingMode::Ball)
+    ///             .with_detection_interval(3);
+    ///         reco_autocam::setup_autocam(session, &config, source.info().fps as f32).ok();
     ///     })
     ///     .run(&interrupted)?;
     /// ```

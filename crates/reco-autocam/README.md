@@ -7,8 +7,8 @@ AI camera control: detectors are plugged in, directors decide where the virtual 
 - **Directors** — `BallDirector` (single-ball following + plausibility), `FieldDirector` (ball + player DBSCAN clustering, broadcast-style), `SweepDirector` (constrained pan sweep for venues without trackable subjects).
 - **SmoothedDirector** — One Euro filter decorator that smooths any underlying director's yaw/pitch/FOV output.
 - **RoiFilteredDetector** — wraps any `UnifiedDetector` with a polygonal field-ROI mask so detections outside the play area never reach the director.
-- **`setup_autocam`** — orchestrator: picks the appropriate detector backend for the current platform + model file, wires the director, attaches to a `StitchSession`.
-- **`AutocamConfig`** — builder-style config surface over the 11-arg `setup_autocam` for new consumers (see FRICTION N10 for the consumer-facing API evolution).
+- **`setup_autocam`** — orchestrator: accepts `AutocamConfig`, picks the detector backend for the platform + model file, wires tracker/panner, attaches to a `StitchSession`.
+- **`AutocamConfig`** — builder-style configuration. `FieldPannerConfig` exposes all AI tracking tuning parameters with safe defaults.
 
 ## Safety policy
 

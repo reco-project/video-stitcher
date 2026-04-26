@@ -2512,19 +2512,17 @@ fn run_export(
             };
             let is_10bit =
                 source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
-            let result = reco_autocam::setup_autocam(
-                session,
-                &model_path_owned,
-                info.width,
-                info.height,
-                info.fps as f32,
-                source.is_gpu_resident(),
-                interval,
-                0.0,
-                mode,
-                field_roi.as_ref(),
-                is_10bit,
-            );
+            let autocam_config = reco_autocam::AutocamConfig::new(&model_path_owned)
+                .with_tracking_mode(mode)
+                .with_detection_interval(interval)
+                .with_10bit(is_10bit);
+            let autocam_config = if let Some(roi) = field_roi.as_ref() {
+                autocam_config.with_field_roi(roi.clone())
+            } else {
+                autocam_config
+            };
+            let result =
+                reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
             let (banner, log_msg): (String, String) = match result {
                 Ok(true) => (
                     "AI tracking: active".into(),

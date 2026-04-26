@@ -170,19 +170,15 @@ pub fn run_camera(
             model_path.unwrap_or("")
         };
         if !effective_model.is_empty() || tracking_mode == reco_autocam::TrackingMode::Sweep {
-            match reco_autocam::setup_autocam(
-                &mut session,
-                effective_model,
-                capture_width,
-                capture_height,
-                capture_fps as f32,
-                use_nv12_capture,
-                detection_interval,
-                0.0,
-                tracking_mode,
-                field_roi.as_ref(),
-                false,
-            ) {
+            let autocam_config = reco_autocam::AutocamConfig::new(effective_model)
+                .with_tracking_mode(tracking_mode)
+                .with_detection_interval(detection_interval);
+            let autocam_config = if let Some(roi) = field_roi.as_ref() {
+                autocam_config.with_field_roi(roi.clone())
+            } else {
+                autocam_config
+            };
+            match reco_autocam::setup_autocam(&mut session, &autocam_config, capture_fps as f32) {
                 Ok(true) => println!("Autocam: {tracking_mode:?} director attached"),
                 Ok(false) => {
                     eprintln!("Warning: tracking unavailable in current capture mode")

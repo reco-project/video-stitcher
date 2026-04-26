@@ -39,7 +39,7 @@
 //! # let mut session: reco_core::session::StitchSession = todo!();
 //! let config = AutocamConfig::new("ball_v0.onnx")
 //!     .with_tracking_mode(TrackingMode::Ball);
-//! reco_autocam::setup_autocam_from_config(&mut session, &config)?;
+//! reco_autocam::setup_autocam(&mut session, &config, 30.0)?;
 //! # Ok(()) }
 //! ```
 
@@ -79,7 +79,6 @@ pub use tracking_mode::TrackingMode;
 #[cfg(feature = "ort")]
 use std::path::Path;
 
-use reco_core::calibration::FieldRoi;
 use reco_core::session::StitchSession;
 
 /// Set up automatic camera control on a [`StitchSession`].
@@ -105,7 +104,7 @@ use reco_core::session::StitchSession;
 ///     .with_tracking_mode(TrackingMode::Field)
 ///     .with_detection_interval(3);
 ///
-/// reco_autocam::setup_autocam_from_config(&mut session, &config)?;
+/// reco_autocam::setup_autocam(&mut session, &config, 30.0)?;
 /// ```
 #[derive(Debug, Clone)]
 pub struct AutocamConfig {
@@ -118,8 +117,9 @@ pub struct AutocamConfig {
     /// Optional playing field ROI polygons for filtering.
     pub field_roi: Option<reco_core::calibration::FieldRoi>,
     /// Whether the source produces P010 (10-bit NV12) frames.
-    /// GPU detectors allocate conversion buffers when true.
     pub is_10bit: bool,
+    /// Field panner tuning. Only used when tracking_mode is Field.
+    pub field_panner_config: Option<crate::panners::FieldPannerConfig>,
 }
 
 impl AutocamConfig {
@@ -131,6 +131,7 @@ impl AutocamConfig {
             detection_interval: 1,
             field_roi: None,
             is_10bit: false,
+            field_panner_config: None,
         }
     }
 
@@ -166,57 +167,24 @@ impl AutocamConfig {
 ///
 /// Infers input dimensions, fps, and zero-copy mode from the session.
 /// Returns `true` if detection was successfully activated.
-pub fn setup_autocam_from_config(
+/// Set up the autocam pipeline (detection + tracking + panning) on a stitch session.
+///
+/// Infers input dimensions, GPU capabilities, and fps from the session and
+/// source. Returns `true` if detection was successfully activated, `false`
+/// if no detector backend is available (the session remains usable without
+/// autocam).
+pub fn setup_autocam(
     session: &mut StitchSession,
     config: &AutocamConfig,
+    fps: f32,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let (input_width, input_height) = session.pipeline().source_info();
     let use_zero_copy = session.pipeline().gpu().supports_zero_copy();
-
-    setup_autocam(
-        session,
-        config.model_path.to_str().unwrap_or(""),
-        input_width,
-        input_height,
-        30.0, // default fps when not available from source
-        use_zero_copy,
-        config.detection_interval,
-        0.0, // no lookahead
-        config.tracking_mode,
-        config.field_roi.as_ref(),
-        config.is_10bit,
-    )
-}
-
-/// Set up the autocam pipeline (detection + direction) on a stitch session.
-///
-/// For a simpler API with config struct and inferred parameters, use
-/// [`setup_autocam_from_config`] with [`AutocamConfig`] instead.
-///
-/// `is_10bit` should be true when the source produces P010 (10-bit NV12)
-/// frames, so GPU detectors allocate conversion buffers.
-///
-/// Returns `true` if detection was successfully activated, `false` if
-/// detection could not be initialized (the session remains usable without
-/// autocam in that case).
-#[allow(clippy::too_many_arguments)]
-#[cfg_attr(
-    not(any(feature = "ort", feature = "tensorrt-native")),
-    allow(unused_variables, unused_mut)
-)]
-pub fn setup_autocam(
-    session: &mut StitchSession,
-    model_path: &str,
-    input_width: u32,
-    input_height: u32,
-    fps: f32,
-    use_zero_copy: bool,
-    detection_interval: u64,
-    _lead_time: f64,
-    tracking_mode: TrackingMode,
-    field_roi: Option<&FieldRoi>,
-    is_10bit: bool,
-) -> Result<bool, Box<dyn std::error::Error>> {
+    let model_path = config.model_path.to_str().unwrap_or("");
+    let detection_interval = config.detection_interval;
+    let tracking_mode = config.tracking_mode;
+    let field_roi = config.field_roi.as_ref();
+    let is_10bit = config.is_10bit;
     // No-detector-feature config: ort + tensorrt-native + ncnn all
     // disabled. Every detector path below is cfg-gated out, so the
     // frame loop runs without autocam. Log once and bail so the caller
@@ -535,7 +503,13 @@ pub fn setup_autocam(
                      player_class={person_id}, ball_class={ball_id})"
                 );
 
-                let field_panner = crate::panners::FieldPanner::new(fps).with_ball_weight(0.20);
+                let fp_config = config.field_panner_config.clone().unwrap_or(
+                    crate::panners::FieldPannerConfig {
+                        ball_weight: 0.20,
+                        ..Default::default()
+                    },
+                );
+                let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
 
                 session.set_ball_tracker(Box::new(ball_tracker));
                 session.set_player_tracker(Box::new(player_tracker));
