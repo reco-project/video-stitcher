@@ -220,6 +220,7 @@ export component RecoApp inherits Window {
     in-out property <float> fov: 75.0;     // degrees
     in-out property <float> blend-width: 0.05;
     in-out property <float> rig-tilt: 0.0; // degrees
+    in-out property <float> rig-roll: 0.0; // degrees
 
     // Live calibration adjustments (PlaneLayout fields on MatchCalibration).
     // Updating these re-runs StitchPipeline::update_layout() so the user
@@ -238,6 +239,7 @@ export component RecoApp inherits Window {
     in-out property <int> export-width: 1920;
     in-out property <int> export-height: 1080;
     in-out property <string> export-codec: "h264";
+    in-out property <[string]> available-codecs: ["h264", "hevc", "av1"];
     in-out property <string> export-quality: "balanced";
     in-out property <float> export-blend-width: 0.05;
     in-out property <float> export-duration-secs: 0.0; // 0 = full clip
@@ -258,6 +260,8 @@ export component RecoApp inherits Window {
     // actually work with their build (TensorRT, CUDA, CoreML, etc).
     in-out property <string> ai-status: "AI: unknown";
     in-out property <bool> ai-gpu-available: false;
+
+    in-out property <string> version: "";
 
     // Lens profile info. Populated after auto-calibration so the user
     // can see which lens the detector resolved to. Empty strings render
@@ -360,6 +364,7 @@ export component RecoApp inherits Window {
     // Settings-panel slider callbacks.
     callback changed-blend-width(float);
     callback changed-rig-tilt(float);
+    callback changed-rig-roll(float);
     callback changed-fov(float);
     // Live calibration editing.
     callback changed-cal-intersect(float);
@@ -686,16 +691,22 @@ export component RecoApp inherits Window {
 
                     LabeledSlider {
                         label: "Rig tilt";
-                        // Widened to +/- 30 per tester feedback: rig tilts
-                        // past 15 degrees happen on handheld / body-cam
-                        // footage and the old clamp hid the rest of the
-                        // range from the user.
                         minimum: -30;
                         maximum: 30;
                         value <=> root.rig-tilt;
                         suffix: "°";
                         decimals: 1;
                         changed(v) => { root.changed-rig-tilt(v); }
+                    }
+
+                    LabeledSlider {
+                        label: "Rig roll";
+                        minimum: -15;
+                        maximum: 15;
+                        value <=> root.rig-roll;
+                        suffix: "°";
+                        decimals: 1;
+                        changed(v) => { root.changed-rig-roll(v); }
                     }
 
                     Rectangle { height: 1px; background: #333; }
@@ -1205,6 +1216,13 @@ export component RecoApp inherits Window {
                     font-size: 11px;
                     vertical-alignment: center;
                 }
+
+                if root.version != "": Text {
+                    text: root.version;
+                    color: #444;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
             }
         }
         }  // close VerticalBox
@@ -1506,7 +1524,7 @@ export component RecoApp inherits Window {
 
                     Text { text: "Default codec"; color: #ccc; font-size: 12px; }
                     ComboBox {
-                        model: ["h264", "hevc", "av1"];
+                        model: root.available-codecs;
                         current-value <=> root.prefs-default-codec;
                     }
 
@@ -1693,7 +1711,7 @@ export component RecoApp inherits Window {
                             horizontal-stretch: 1;
                             Text { text: "Codec"; color: #ccc; font-size: 12px; }
                             ComboBox {
-                                model: ["h264", "hevc", "av1"];
+                                model: root.available-codecs;
                                 current-index: root.export-codec == "hevc" ? 1
                                              : root.export-codec == "av1" ? 2
                                              : 0;

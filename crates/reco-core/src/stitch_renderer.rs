@@ -395,9 +395,12 @@ impl StitchRenderer {
         self.pipeline.viewport.blend_width = w;
     }
 
-    /// Set rig tilt correction in radians.
     pub fn set_rig_tilt(&mut self, radians: f32) {
         self.pipeline.viewport.rig_tilt = radians;
+    }
+
+    pub fn set_rig_roll(&mut self, radians: f32) {
+        self.pipeline.viewport.rig_roll = radians;
     }
 
     /// Access the current calibration (for saving after adjustments).

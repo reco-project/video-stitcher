@@ -538,10 +538,16 @@ impl AppState {
         }
     }
 
-    /// Set rig tilt (degrees). Reasonable range ±15°.
     fn set_rig_tilt(&mut self, deg: f32) {
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.renderer_mut().set_rig_tilt(deg.to_radians());
+            self.preview_dirty = true;
+        }
+    }
+
+    fn set_rig_roll(&mut self, deg: f32) {
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.renderer_mut().set_rig_roll(deg.to_radians());
             self.preview_dirty = true;
         }
     }
@@ -801,6 +807,38 @@ fn main() -> anyhow::Result<()> {
     log::info!("{ai_status}");
     app.set_ai_status(ai_status.into());
     app.set_ai_gpu_available(ai_gpu_ok);
+
+    let version = format!(
+        "v{}{}",
+        env!("CARGO_PKG_VERSION"),
+        option_env!("GIT_HASH")
+            .filter(|h| !h.is_empty())
+            .map(|h| format!(" ({h})"))
+            .unwrap_or_default()
+    );
+    log::info!("Reco GUI {version}");
+    app.set_version(version.into());
+
+    let mut codecs: Vec<slint::SharedString> = Vec::new();
+    for (label, codec) in [
+        ("h264", reco_io::ffmpeg::encoder::VideoCodec::H264),
+        ("hevc", reco_io::ffmpeg::encoder::VideoCodec::Hevc),
+        ("av1", reco_io::ffmpeg::encoder::VideoCodec::Av1),
+    ] {
+        if !reco_io::ffmpeg::encoder::available_encoders(codec).is_empty() {
+            codecs.push(label.into());
+        }
+    }
+    if codecs.is_empty() {
+        log::warn!("No video encoders available - export will fail");
+        codecs.push("h264".into());
+    } else {
+        log::info!(
+            "Available codecs: {}",
+            codecs.iter().map(|c| c.as_str()).collect::<Vec<_>>().join(", ")
+        );
+    }
+    app.set_available_codecs(slint::ModelRc::new(slint::VecModel::from(codecs)));
 
     // Seed the Recent-files dialog with the persisted MRU lists. If
     // the user never loaded anything before, these are empty and the
@@ -1385,6 +1423,11 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_rig_tilt(move |deg| {
         state_ref.borrow_mut().set_rig_tilt(deg);
+    });
+
+    let state_ref = Rc::clone(&state);
+    app.on_changed_rig_roll(move |deg| {
+        state_ref.borrow_mut().set_rig_roll(deg);
     });
 
     let state_ref = Rc::clone(&state);
@@ -2123,6 +2166,10 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 .bridge
                 .as_ref()
                 .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+            let rig_roll_rad = s
+                .bridge
+                .as_ref()
+                .map(|b| b.renderer().pipeline().viewport().rig_roll);
             let blend_width = s
                 .bridge
                 .as_ref()
@@ -2147,6 +2194,9 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 }
                 if let Some(rt) = rig_tilt_rad {
                     app.set_rig_tilt(rt.to_degrees());
+                }
+                if let Some(rr) = rig_roll_rad {
+                    app.set_rig_roll(rr.to_degrees());
                 }
                 if let Some(bw) = blend_width {
                     app.set_blend_width(bw);
@@ -2488,7 +2538,17 @@ fn run_export(
                         if total > 0 {
                             app.set_export_progress(frames as f32 / total as f32);
                         }
-                        app.set_export_status_text(format!("Frame {frames} ({fps:.0} fps)").into());
+                        let eta = if total > 0 && fps > 0.0 {
+                            let remaining = (total as f64 - frames as f64) / fps;
+                            let mins = remaining as u64 / 60;
+                            let secs = remaining as u64 % 60;
+                            format!(" - ~{mins}:{secs:02} remaining")
+                        } else {
+                            String::new()
+                        };
+                        app.set_export_status_text(
+                            format!("Frame {frames} ({fps:.0} fps){eta}").into(),
+                        );
                     }
                 });
             });
