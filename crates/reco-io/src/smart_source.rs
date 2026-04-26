@@ -119,9 +119,16 @@ impl SmartFileSource {
         if hwaccel_disabled {
             log::info!("RECO_NO_HWACCEL set, forcing CPU decode path");
         }
-        let use_zero_copy = !hwaccel_disabled
-            && is_backend_zero_copy_capable(decode_backend)
-            && gpu.supports_zero_copy();
+        let backend_capable = is_backend_zero_copy_capable(decode_backend);
+        let gpu_capable = gpu.supports_zero_copy();
+        let use_zero_copy = !hwaccel_disabled && backend_capable && gpu_capable;
+
+        if !use_zero_copy && !hwaccel_disabled {
+            log::info!(
+                "Zero-copy disabled: decode_backend={decode_backend} (capable={backend_capable}), \
+                 gpu_zero_copy={gpu_capable}. Using CPU upload path."
+            );
+        }
 
         if use_zero_copy {
             Self::open_zero_copy(
