@@ -62,6 +62,10 @@ pub enum GpuError {
     /// Failed to request a GPU device.
     #[error("failed to request GPU device: {0}")]
     DeviceRequest(String),
+
+    /// Buffer mapping failed (GPU readback).
+    #[error("GPU buffer map failed: {0}")]
+    BufferMapFailed(String),
 }
 
 impl From<wgpu::RequestAdapterError> for GpuError {

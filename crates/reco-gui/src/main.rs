@@ -97,6 +97,8 @@ const CALIBRATION_FRAMES: usize = 4;
 /// without re-running detection.
 struct CalibrationOutput {
     calibration: MatchCalibration,
+    confidence: f64,
+    total_matches: usize,
     left_lens_profile: Option<LensProfileInfo>,
     right_lens_profile: Option<LensProfileInfo>,
 }
@@ -295,6 +297,35 @@ impl AppState {
         }
     }
 
+    fn is_exporting(&self) -> bool {
+        self.export_thread.is_some()
+    }
+
+    fn reset_pipeline(&mut self) {
+        self.bridge = None;
+        self.playback = Playback::new();
+        self.calibration = None;
+        self.cal_baseline_layout = None;
+        self.cal_baseline_left_params = None;
+        self.cal_baseline_right_params = None;
+        self.pose = PoseControl::new(PoseControlConfig {
+            drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
+            smoothing: POSE_SMOOTHING,
+            fov_min_degrees: FOV_MIN,
+            fov_max_degrees: FOV_MAX,
+            invert_drag_x: true,
+            rest_pose: ViewportPosition {
+                yaw: 0.0,
+                pitch: 0.0,
+                fov_degrees: Some(FOV_DEFAULT),
+            },
+            ..PoseControlConfig::default()
+        });
+        self.pending_seek = None;
+        self.last_render_at = None;
+        self.preview_dirty = false;
+    }
+
     /// Build a PreviewBridge using the captured Slint GPU handles. Fails
     /// if the rendering notifier hasn't populated `shared_gpu` yet.
     fn build_bridge(
@@ -412,13 +443,7 @@ impl AppState {
     /// swap. Keeps the user-picked paths on `AppState` so the user can
     /// fix and retry, but drops the bridge + playback + calibration.
     fn unload_pipeline(&mut self) {
-        self.bridge = None;
-        self.calibration = None;
-        self.cal_baseline_layout = None;
-        self.cal_baseline_left_params = None;
-        self.cal_baseline_right_params = None;
-        self.playback = crate::playback::Playback::new();
-        self.preview_dirty = true;
+        self.reset_pipeline();
     }
 
     /// Render the current frame. With zero-copy texture sharing, the
@@ -1190,6 +1215,8 @@ fn main() -> anyhow::Result<()> {
                     log::info!("Auto-calibration complete: {} matches", r.total_matches,);
                     Ok(CalibrationOutput {
                         calibration: r.calibration,
+                        confidence: r.confidence,
+                        total_matches: r.total_matches,
                         left_lens_profile: r.left_lens_profile,
                         right_lens_profile: r.right_lens_profile,
                     })
@@ -1688,6 +1715,27 @@ fn main() -> anyhow::Result<()> {
             log::warn!("Export already running, ignoring start request");
             return;
         }
+        let output_path = PathBuf::from(&output_str);
+        if let Some(parent) = output_path.parent() {
+            if !parent.exists() {
+                s.toasts.push(
+                    Severity::Error,
+                    "Output directory does not exist",
+                    parent.display().to_string(),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+                return;
+            }
+            if parent.metadata().map_or(true, |m| m.permissions().readonly()) {
+                s.toasts.push(
+                    Severity::Error,
+                    "Output directory is not writable",
+                    parent.display().to_string(),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+                return;
+            }
+        }
         let (Some(left), Some(right), Some(cal)) = (
             s.left_path.clone(),
             s.right_path.clone(),
@@ -1731,7 +1779,12 @@ fn main() -> anyhow::Result<()> {
         *s.export_last_progress_at.lock().unwrap() = Some(Instant::now());
         let last_progress_at = Arc::clone(&s.export_last_progress_at);
 
-        // UI-thread setup before launching the worker.
+        // Pause preview playback to avoid GPU contention with the
+        // export pipeline. Preview rendering is also gated by
+        // is_exporting() in vsync_render_tick.
+        s.playback.pause();
+        app.set_playing(false);
+
         app.set_export_in_progress(true);
         app.set_export_progress(0.0);
         app.set_export_frames_done(0);
@@ -1894,7 +1947,8 @@ fn main() -> anyhow::Result<()> {
             // every pixel, so the elapsed check never passes. Only
             // after the user lets go does ~120ms pass without new
             // requests, triggering one seek instead of hundreds.
-            if let Some((frac, requested_at)) = s.pending_seek
+            if !s.is_exporting()
+                && let Some((frac, requested_at)) = s.pending_seek
                 && Instant::now().duration_since(requested_at)
                     >= Duration::from_millis(SEEK_DEBOUNCE_MS)
             {
@@ -1937,6 +1991,9 @@ fn main() -> anyhow::Result<()> {
 /// frame was submitted.
 fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) -> bool {
     let mut s = state.borrow_mut();
+    if s.is_exporting() {
+        return false;
+    }
     let camera_changed = s.smooth_camera();
     let video_advanced = match s.playback.tick() {
         Ok(advanced) => advanced,
@@ -2146,6 +2203,8 @@ fn handle_calibration_result(
 
     match result {
         Ok(output) => {
+            let confidence = output.confidence;
+            let total_matches = output.total_matches;
             let left_profile = output.left_lens_profile.clone();
             let right_profile = output.right_lens_profile.clone();
             match state.init_with_calibration(output.calibration) {
@@ -2223,6 +2282,24 @@ fn handle_calibration_result(
                         if let Some((l, r)) = lens_baseline.as_ref() {
                             set_lens_sliders(&app, l, r);
                             app.set_lens_dirty(false);
+                        }
+
+                        if confidence < 0.5 {
+                            log::warn!(
+                                "Low calibration confidence ({:.0}%, {total_matches} matches). \
+                                 Stitch quality may be poor.",
+                                confidence * 100.0
+                            );
+                            state.toasts.push(
+                                Severity::Warn,
+                                "Low calibration confidence",
+                                format!(
+                                    "{:.0}% confidence ({total_matches} matches). \
+                                     Try recording with more camera overlap.",
+                                    confidence * 100.0
+                                ),
+                            );
+                            crate::toast::sync_to_ui(&state.toasts, &app);
                         }
                     }
                 }

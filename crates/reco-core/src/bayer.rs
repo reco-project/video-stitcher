@@ -536,7 +536,7 @@ impl BayerDemosaic {
     ///
     /// Blocking GPU readback - only use for periodic detection, not
     /// every frame. Returns `width * height * 4` bytes of RGBA.
-    pub fn readback_rgba(&self, gpu: &GpuContext) -> Vec<u8> {
+    pub fn readback_rgba(&self, gpu: &GpuContext) -> Result<Vec<u8>, crate::gpu::GpuError> {
         let tex = self.output_texture();
         let bytes_per_row = self.width * 4;
         let padded = bytes_per_row.div_ceil(256) * 256;
@@ -583,7 +583,9 @@ impl BayerDemosaic {
             tx.send(r).ok();
         });
         let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-        rx.recv().unwrap().unwrap();
+        rx.recv()
+            .map_err(|_| crate::gpu::GpuError::BufferMapFailed("channel closed".into()))?
+            .map_err(|e| crate::gpu::GpuError::BufferMapFailed(format!("{e}")))?;
 
         let mapped = slice.get_mapped_range();
         let tight = bytes_per_row as usize;
@@ -598,7 +600,7 @@ impl BayerDemosaic {
         }
         drop(mapped);
         staging.unmap();
-        result
+        Ok(result)
     }
 
     /// Copy the graded output to a CUDA-shared texture for zero-copy detection.

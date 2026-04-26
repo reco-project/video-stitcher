@@ -449,8 +449,8 @@ pub fn run_camera(
                     #[cfg(not(target_os = "linux"))]
                     {
                         reco_core::profile_scope!("detection_readback");
-                        let left_rgba = demosaic_left.readback_rgba(session.gpu());
-                        let right_rgba = demosaic_right.readback_rgba(session.gpu());
+                        let left_rgba = demosaic_left.readback_rgba(session.gpu())?;
+                        let right_rgba = demosaic_right.readback_rgba(session.gpu())?;
                         session.detect_and_update_director_rgba(
                             &left_rgba,
                             &right_rgba,

@@ -189,6 +189,12 @@ impl Playback {
     }
 
     /// Toggle play/pause. Returns the new state.
+    pub fn pause(&mut self) {
+        if self.state == PlayState::Playing {
+            self.state = PlayState::Paused;
+        }
+    }
+
     pub fn toggle(&mut self) -> PlayState {
         match self.state {
             PlayState::Paused | PlayState::Finished => {
