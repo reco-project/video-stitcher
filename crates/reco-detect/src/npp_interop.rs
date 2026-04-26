@@ -201,9 +201,16 @@ struct NppFunctions {
 
     /// `nppiResize_8u_C4R_Ctx` - same as C3 but for 4-channel (RGBA).
     nppi_resize_c4: unsafe extern "C" fn(
-        *const u8, i32, NppiSize, NppiRect,
-        *mut u8, i32, NppiSize, NppiRect,
-        i32, NppStreamContext,
+        *const u8,
+        i32,
+        NppiSize,
+        NppiRect,
+        *mut u8,
+        i32,
+        NppiSize,
+        NppiRect,
+        i32,
+        NppStreamContext,
     ) -> i32,
 
     /// `nppiMirror_8u_C3R_Ctx(pSrc, nSrcStep, pDst, nDstStep, oROI, flip, nppStreamCtx)`

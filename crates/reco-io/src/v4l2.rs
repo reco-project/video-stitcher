@@ -7,8 +7,8 @@
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::os::unix::io::AsRawFd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // V4L2 ioctl helpers. We compute ioctl request codes using the Linux
 // _IOC macro: code = (dir << 30) | (size << 16) | (type << 8) | nr
@@ -32,7 +32,6 @@ const V4L2_PIX_FMT_SRGGB10: u32 =
     (b'R' as u32) | ((b'G' as u32) << 8) | ((b'1' as u32) << 16) | ((b'0' as u32) << 24);
 
 const NUM_BUFFERS: u32 = 4;
-
 
 // Struct sizes differ between 32-bit and 64-bit Linux due to
 // timeval and pointer widths. These must match the kernel's layout.
@@ -271,9 +270,13 @@ impl V4l2Camera {
                 std::slice::from_raw_parts_mut(&mut buf as *mut _ as *mut u8, V4L2_BUFFER_SIZE)
             };
             #[cfg(target_pointer_width = "64")]
-            { raw[60] = V4L2_MEMORY_MMAP as u8; }
+            {
+                raw[60] = V4L2_MEMORY_MMAP as u8;
+            }
             #[cfg(target_pointer_width = "32")]
-            { raw[44] = V4L2_MEMORY_MMAP as u8; }
+            {
+                raw[44] = V4L2_MEMORY_MMAP as u8;
+            }
 
             unsafe { v4l2_ioctl(fd, VIDIOC_QBUF, &mut buf as *mut _ as *mut _)? };
         }
@@ -299,9 +302,13 @@ impl V4l2Camera {
             std::slice::from_raw_parts_mut(&mut buf as *mut _ as *mut u8, V4L2_BUFFER_SIZE)
         };
         #[cfg(target_pointer_width = "64")]
-        { raw[60] = V4L2_MEMORY_MMAP as u8; }
+        {
+            raw[60] = V4L2_MEMORY_MMAP as u8;
+        }
         #[cfg(target_pointer_width = "32")]
-        { raw[44] = V4L2_MEMORY_MMAP as u8; }
+        {
+            raw[44] = V4L2_MEMORY_MMAP as u8;
+        }
 
         unsafe { v4l2_ioctl(fd, VIDIOC_DQBUF, &mut buf as *mut _ as *mut _)? };
 
@@ -430,16 +437,8 @@ impl V4l2StereoCameraSource {
     ) -> io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
 
-        let left_rx = spawn_v4l2_capture_thread(
-            left_config.clone(),
-            "left",
-            stop.clone(),
-        );
-        let right_rx = spawn_v4l2_capture_thread(
-            right_config.clone(),
-            "right",
-            stop.clone(),
-        );
+        let left_rx = spawn_v4l2_capture_thread(left_config.clone(), "left", stop.clone());
+        let right_rx = spawn_v4l2_capture_thread(right_config.clone(), "right", stop.clone());
 
         let (tx, rx) = std::sync::mpsc::sync_channel::<(Arc<Vec<u8>>, Arc<Vec<u8>>)>(2);
 

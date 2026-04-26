@@ -437,7 +437,12 @@ pub fn run_camera(
                             demosaic_right.copy_to_detection_shared(gpu, &mut det_encoder)?;
                         gpu.queue().submit(std::iter::once(det_encoder.finish()));
                         session.detect_and_update_director_cuda_rgba(
-                            l_ptr, l_pitch, r_ptr, r_pitch, w, h,
+                            l_ptr,
+                            l_pitch,
+                            r_ptr,
+                            r_pitch,
+                            w,
+                            h,
                             start.elapsed(),
                         )?;
                     }
@@ -447,8 +452,10 @@ pub fn run_camera(
                         let left_rgba = demosaic_left.readback_rgba(session.gpu());
                         let right_rgba = demosaic_right.readback_rgba(session.gpu());
                         session.detect_and_update_director_rgba(
-                            &left_rgba, &right_rgba,
-                            capture_width, capture_height,
+                            &left_rgba,
+                            &right_rgba,
+                            capture_width,
+                            capture_height,
                             start.elapsed(),
                         )?;
                     }

@@ -693,8 +693,13 @@ impl TrtGpuDetector {
                 height: self.new_h as i32,
             };
             crate::npp_interop::npp_resize_c4(
-                rgba_ptr, width, height,
-                self.resized_rgba, is, is, dst_roi,
+                rgba_ptr,
+                width,
+                height,
+                self.resized_rgba,
+                is,
+                is,
+                dst_roi,
             )
             .map_err(|e| DetectorError::InferenceFailed(format!("NPP C4 resize: {e}")))?;
         }
@@ -727,7 +732,8 @@ impl TrtGpuDetector {
         let rgba_bytes = (width as usize) * (height as usize) * 4;
         if rgba_host.len() < rgba_bytes {
             return Err(DetectorError::InferenceFailed(format!(
-                "RGBA upload: buffer too small ({} < {rgba_bytes})", rgba_host.len()
+                "RGBA upload: buffer too small ({} < {rgba_bytes})",
+                rgba_host.len()
             )));
         }
 
@@ -746,7 +752,8 @@ impl TrtGpuDetector {
                 .map_err(|e| DetectorError::InferenceFailed(format!("rgba grey fill: {e}")))?;
             log::info!(
                 "TrtGpuDetector: allocated RGBA detection buffers ({}+{} B)",
-                rgba_bytes, resized_size
+                rgba_bytes,
+                resized_size
             );
         }
 
@@ -775,8 +782,13 @@ impl TrtGpuDetector {
                 height: self.new_h as i32,
             };
             crate::npp_interop::npp_resize_c4(
-                self.cpu_upload_rgba, width, height,
-                self.resized_rgba, is, is, dst_roi,
+                self.cpu_upload_rgba,
+                width,
+                height,
+                self.resized_rgba,
+                is,
+                is,
+                dst_roi,
             )
             .map_err(|e| DetectorError::InferenceFailed(format!("NPP C4 resize: {e}")))?;
         }

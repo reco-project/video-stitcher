@@ -2,7 +2,7 @@
 publish = false
 name = "reco-cli"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 rust-version.workspace = true
 description = "CLI tool for Reco panoramic video stitching"
 license = "AGPL-3.0-only"

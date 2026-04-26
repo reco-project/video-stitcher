@@ -38,7 +38,7 @@ reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 reco-detect = { path = "../reco-detect", default-features = false }
 reco-autocam = { path = "../reco-autocam", optional = true, default-features = false }
 
-slint = { version = "~1.15", features = ["unstable-wgpu-28"] }
+slint = { version = "~1.15", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility", "compat-1-2", "unstable-wgpu-28"] }
 rfd = "0.15"
 # M2 tracing migration: tracing-subscriber replaces env_logger.
 # tracing-log bridges legacy `log::*` calls to the tracing pipeline.

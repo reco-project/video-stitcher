@@ -635,11 +635,7 @@ impl Renderer {
     /// Zero-copy alternative to [`upload_left_bgra`]: the source texture
     /// must be `Rgba8Unorm` with matching dimensions. The copy is
     /// appended to `encoder` as a GPU-side blit with no CPU involvement.
-    pub fn copy_texture_to_left(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        source: &wgpu::Texture,
-    ) {
+    pub fn copy_texture_to_left(&self, encoder: &mut wgpu::CommandEncoder, source: &wgpu::Texture) {
         copy_texture_to_plane(encoder, source, &self.left);
     }
 

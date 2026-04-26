@@ -1016,9 +1016,9 @@ impl StitchSession {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect {
-            let detections = self.detection.run_detection_rgba(
-                left_rgba, right_rgba, width, height,
-            );
+            let detections = self
+                .detection
+                .run_detection_rgba(left_rgba, right_rgba, width, height);
             self.detection.last_detections = self.map_detections(detections);
         }
 
@@ -1044,7 +1044,12 @@ impl StitchSession {
 
         if should_detect {
             let detections = self.detection.run_detection_cuda_rgba(
-                left_ptr, left_pitch, right_ptr, right_pitch, width, height,
+                left_ptr,
+                left_pitch,
+                right_ptr,
+                right_pitch,
+                width,
+                height,
             );
             self.detection.last_detections = self.map_detections(detections);
         }
@@ -1057,10 +1062,7 @@ impl StitchSession {
     /// Advances the director state (e.g. sweep position) without running
     /// object detection. Used by zero-copy paths and raw Bayer capture
     /// where no CPU-accessible StereoFrame is available.
-    pub fn update_director(
-        &mut self,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
+    pub fn update_director(&mut self, elapsed: std::time::Duration) -> Result<(), SessionError> {
         self.fire_sink_and_update_director(elapsed, false)
     }
 
@@ -1359,9 +1361,9 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        let render_buf = self.core.render_gpu_rgba_at_pose(
-            left_rgba, right_rgba, yaw, pitch,
-        );
+        let render_buf = self
+            .core
+            .render_gpu_rgba_at_pose(left_rgba, right_rgba, yaw, pitch);
         self.submit_render_output(render_buf)?;
         self.core.drive_gpu_stacked_pack();
         Ok(())

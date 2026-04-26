@@ -191,10 +191,7 @@ impl DetectionPipeline {
         };
 
         let mut detections = Vec::new();
-        for (camera, rgba) in [
-            (CameraId::Left, left_rgba),
-            (CameraId::Right, right_rgba),
-        ] {
+        for (camera, rgba) in [(CameraId::Left, left_rgba), (CameraId::Right, right_rgba)] {
             let frame = DetectorFrame::Rgba {
                 data: rgba,
                 width,
@@ -203,7 +200,10 @@ impl DetectionPipeline {
             match detector.detect(camera, &frame) {
                 Ok(v) => detections.extend(v),
                 Err(DetectorError::UnsupportedFrameKind) => {
-                    log::debug!("detector '{}' does not support RGBA frames", detector.name());
+                    log::debug!(
+                        "detector '{}' does not support RGBA frames",
+                        detector.name()
+                    );
                 }
                 Err(e) => {
                     log::warn!("detector '{}' {camera:?}: {e}", detector.name());
@@ -233,11 +233,19 @@ impl DetectionPipeline {
             (CameraId::Left, left_ptr, left_pitch),
             (CameraId::Right, right_ptr, right_pitch),
         ] {
-            let frame = DetectorFrame::CudaRgba { ptr, pitch, width, height };
+            let frame = DetectorFrame::CudaRgba {
+                ptr,
+                pitch,
+                width,
+                height,
+            };
             match detector.detect(camera, &frame) {
                 Ok(v) => detections.extend(v),
                 Err(DetectorError::UnsupportedFrameKind) => {
-                    log::debug!("detector '{}' does not support CudaRgba frames", detector.name());
+                    log::debug!(
+                        "detector '{}' does not support CudaRgba frames",
+                        detector.name()
+                    );
                 }
                 Err(e) => {
                     log::warn!("detector '{}' {camera:?}: {e}", detector.name());

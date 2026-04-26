@@ -124,9 +124,18 @@ pub fn compute_awb(raw_bytes: &[u8], width: u32, height: u32, stride: u32) -> (f
             let val = u16::from_le_bytes([raw_bytes[idx], raw_bytes[idx + 1]]) as u64;
             // RGGB: (even_x, even_y)=R, (odd_x, even_y)=Gr, (even_x, odd_y)=Gb, (odd_x, odd_y)=B
             match (x % 2, y % 2) {
-                (0, 0) => { sum_r += val; count_r += 1; }
-                (1, 1) => { sum_b += val; count_b += 1; }
-                _ => { sum_g += val; count_g += 1; }
+                (0, 0) => {
+                    sum_r += val;
+                    count_r += 1;
+                }
+                (1, 1) => {
+                    sum_b += val;
+                    count_b += 1;
+                }
+                _ => {
+                    sum_g += val;
+                    count_g += 1;
+                }
             }
         }
     }
@@ -190,7 +199,10 @@ impl AwbController {
         if self.frame_count == 1 {
             log::info!(
                 "AWB: baseline=({:.2},{:.2}) raw=({awb_r:.2},{awb_b:.2}) applied=({:.2},{:.2})",
-                self.baseline_r, self.baseline_b, self.current_r, self.current_b
+                self.baseline_r,
+                self.baseline_b,
+                self.current_r,
+                self.current_b
             );
         }
         Some((self.current_r, self.current_b))
@@ -257,7 +269,9 @@ impl AeController {
         for dev in &self.devices {
             let _ = std::process::Command::new("v4l2-ctl")
                 .args([
-                    "-d", dev, "--set-ctrl",
+                    "-d",
+                    dev,
+                    "--set-ctrl",
                     &format!("override_enable=1,exposure={exp_i},gain={gain_i}"),
                 ])
                 .output();
@@ -299,54 +313,50 @@ impl BayerDemosaic {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("bayer_demosaic"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/bayer_demosaic.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/bayer_demosaic.wgsl").into()),
         });
 
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("bayer_demosaic_bgl"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Uint,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("bayer_demosaic_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::StorageTexture {
-                            access: wgpu::StorageTextureAccess::WriteOnly,
-                            format: wgpu::TextureFormat::Rgba8Unorm,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                ],
-            });
+                    count: None,
+                },
+            ],
+        });
 
-        let pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("bayer_demosaic_layout"),
-                bind_group_layouts: &[&bind_group_layout],
-                immediate_size: 0,
-            });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("bayer_demosaic_layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            immediate_size: 0,
+        });
 
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("bayer_demosaic_pipeline"),
@@ -389,8 +399,7 @@ impl BayerDemosaic {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
 
@@ -455,10 +464,7 @@ impl BayerDemosaic {
         encoder: &mut wgpu::CommandEncoder,
         raw_bytes: &[u8],
     ) {
-        debug_assert_eq!(
-            raw_bytes.len(),
-            (self.width * self.height * 2) as usize,
-        );
+        debug_assert_eq!(raw_bytes.len(), (self.width * self.height * 2) as usize,);
 
         {
             crate::profile_scope!("bayer_upload");
@@ -517,21 +523,13 @@ impl BayerDemosaic {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(
-                self.width.div_ceil(16),
-                self.height.div_ceil(16),
-                1,
-            );
+            pass.dispatch_workgroups(self.width.div_ceil(16), self.height.div_ceil(16), 1);
         }
 
         // Chain color grade pass (brightness + saturation + gamma).
         // No-op when params are identity.
-        self.grade_pass.encode(
-            gpu,
-            encoder,
-            &self.demosaic_output,
-            &self.graded_output,
-        );
+        self.grade_pass
+            .encode(gpu, encoder, &self.demosaic_output, &self.graded_output);
     }
 
     /// Read back the graded RGBA output to CPU memory.
@@ -551,9 +549,11 @@ impl BayerDemosaic {
             mapped_at_creation: false,
         });
 
-        let mut encoder = gpu.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { label: Some("detection_readback") },
-        );
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("detection_readback"),
+            });
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
                 texture: tex,
@@ -579,7 +579,9 @@ impl BayerDemosaic {
 
         let slice = staging.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| { tx.send(r).ok(); });
+        slice.map_async(wgpu::MapMode::Read, move |r| {
+            tx.send(r).ok();
+        });
         let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
         rx.recv().unwrap().unwrap();
 
@@ -609,7 +611,10 @@ impl BayerDemosaic {
         &mut self,
         gpu: &GpuContext,
         encoder: &mut wgpu::CommandEncoder,
-    ) -> Result<(crate::cuda_interop::CUdeviceptr, usize, u32, u32), crate::cuda_interop::CudaInteropError> {
+    ) -> Result<
+        (crate::cuda_interop::CUdeviceptr, usize, u32, u32),
+        crate::cuda_interop::CudaInteropError,
+    > {
         if self.detection_shared.is_none() {
             let shared = crate::vulkan_interop::create_shared_texture(
                 gpu,
@@ -619,7 +624,9 @@ impl BayerDemosaic {
             )?;
             log::info!(
                 "BayerDemosaic: created CUDA-shared detection texture ({}x{}, pitch={})",
-                self.width, self.height, shared.pitch
+                self.width,
+                self.height,
+                shared.pitch
             );
             self.detection_shared = Some(shared);
         }

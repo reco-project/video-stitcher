@@ -459,10 +459,9 @@ impl Panner for FieldPanner {
 
             let effective_w = self.ball_weight * self.ball_presence;
             if effective_w > 0.001 {
-                target_yaw = target_yaw * (1.0 - effective_w)
-                    + self.last_ball_yaw * effective_w;
-                target_pitch = target_pitch * (1.0 - effective_w)
-                    + self.last_ball_pitch * effective_w;
+                target_yaw = target_yaw * (1.0 - effective_w) + self.last_ball_yaw * effective_w;
+                target_pitch =
+                    target_pitch * (1.0 - effective_w) + self.last_ball_pitch * effective_w;
             }
 
             if target_yaw.is_finite() && target_pitch.is_finite() {
