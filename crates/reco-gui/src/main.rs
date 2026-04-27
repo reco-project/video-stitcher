@@ -2719,15 +2719,19 @@ fn run_export(
                 autocam_config
             };
             let result = reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
+            let is_failure = !matches!(&result, Ok(true));
             let banner: String = match result {
                 Ok(true) => "AI tracking: active".into(),
-                Ok(false) => "AI tracking UNAVAILABLE (needs tensorrt or CPU decode)".into(),
-                Err(e) => format!("AI tracking setup FAILED ({e})"),
+                Ok(false) => "AI tracking unavailable - build with --features tensorrt, or use CPU decode".into(),
+                Err(e) => format!("AI tracking failed: {e}"),
             };
             log::info!("Export: {banner}");
             let weak = status_weak.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(app) = weak.upgrade() {
+                    if is_failure {
+                        app.set_export_status_text(banner.clone().into());
+                    }
                     app.set_status_text(banner.into());
                 }
             });
