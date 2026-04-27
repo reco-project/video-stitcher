@@ -587,6 +587,7 @@ pub mod encoder {
                     Container::Mp4 => "mp4",
                     Container::Mp4Fragmented => "fmp4",
                     Container::Matroska => "mkv",
+                    Container::Flv => "flv",
                 },
             );
             Ok(Self { layout, encoder })

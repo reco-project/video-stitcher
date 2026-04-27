@@ -247,6 +247,7 @@ export component RecoApp inherits Window {
     in-out property <string> export-tracking-mode: "field";
     in-out property <int> export-detection-interval: 3;
     in-out property <bool> export-autocam-enabled: false;
+    in-out property <bool> export-replay-enabled: false;
 
     // Export progress (also used by the main status bar).
     in-out property <bool> export-in-progress: false;
@@ -1834,6 +1835,11 @@ export component RecoApp inherits Window {
                         value <=> root.export-blend-width;
                         decimals: 2;
                         changed(v) => { /* just stored, used at submit */ }
+                    }
+
+                    CheckBox {
+                        text: "Record replay (stacked raw input for re-stitching)";
+                        checked <=> root.export-replay-enabled;
                     }
 
                     Rectangle { height: 1px; background: #333; }

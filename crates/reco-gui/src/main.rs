@@ -1883,6 +1883,7 @@ fn main() -> anyhow::Result<()> {
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();
         let detection_interval = app.get_export_detection_interval() as u32;
+        let replay_enabled = app.get_export_replay_enabled();
 
         // Persist the user's codec / quality / blend choices as the
         // defaults for next session. Model path is saved in the
@@ -1926,6 +1927,7 @@ fn main() -> anyhow::Result<()> {
                 cal,
                 output_for_thread,
                 None, // stream URL (Phase 6 GUI wiring)
+                replay_enabled,
                 width,
                 height,
                 codec_str,
@@ -2539,6 +2541,7 @@ fn run_export(
     cal: MatchCalibration,
     output: PathBuf,
     stream_url: Option<String>,
+    replay_enabled: bool,
     width: u32,
     height: u32,
     codec_str: String,
@@ -2665,6 +2668,12 @@ fn run_export(
 
     if duration_secs > 0.0 {
         job = job.duration(duration_secs as f64);
+    }
+
+    if replay_enabled {
+        let replay_path = effective_output.with_extension("replay.mkv");
+        log::info!("Replay recording: {}", replay_path.display());
+        job = job.with_replay_recording(&replay_path);
     }
 
     {
