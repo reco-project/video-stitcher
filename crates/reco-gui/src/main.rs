@@ -1952,6 +1952,61 @@ fn main() -> anyhow::Result<()> {
         s.export_interrupted.store(true, Ordering::Relaxed);
     });
 
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_copy_debug_info(move || {
+        let mut s = state_ref.borrow_mut();
+        let gpu = s
+            .bridge
+            .as_ref()
+            .map(|b| {
+                let g = b.renderer().gpu();
+                format!("{} ({:?})", g.gpu_name(), g.backend_name())
+            })
+            .unwrap_or_else(|| "no GPU context".into());
+        let version = format!(
+            "v{}{}",
+            env!("CARGO_PKG_VERSION"),
+            option_env!("GIT_HASH")
+                .filter(|h| !h.is_empty())
+                .map(|h| format!(" ({h})"))
+                .unwrap_or_default()
+        );
+        let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
+
+        let mut lines = vec![
+            format!("Reco {version}"),
+            format!("OS: {os}"),
+            format!("GPU: {gpu}"),
+        ];
+
+        let (ai_status, _) = ai_capability_summary();
+        lines.push(format!("AI: {ai_status}"));
+
+        let info = lines.join("\n");
+        match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(info)) {
+            Ok(()) => {
+                log::info!("Debug info copied to clipboard");
+                s.toasts.push(
+                    crate::toast::Severity::Info,
+                    "Debug info copied",
+                    "Paste into a GitHub issue or message.",
+                );
+            }
+            Err(e) => {
+                log::error!("Failed to copy to clipboard: {e}");
+                s.toasts.push(
+                    crate::toast::Severity::Error,
+                    "Clipboard error",
+                    e.to_string(),
+                );
+            }
+        }
+        if let Some(app) = app_weak.upgrade() {
+            crate::toast::sync_to_ui(&s.toasts, &app);
+        }
+    });
+
     // ── Playback timer ──
 
     let app_weak = app.as_weak();

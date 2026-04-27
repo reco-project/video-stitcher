@@ -421,6 +421,7 @@ export component RecoApp inherits Window {
     callback pick-export-model();
     callback start-export();
     callback cancel-export();
+    callback copy-debug-info();
 
     // Keyboard handling. The FocusScope must *wrap* the content so
     // key events have somewhere to bubble up when a child (button,
@@ -1298,6 +1299,22 @@ export component RecoApp inherits Window {
                     color: #444;
                     font-size: 10px;
                     vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 3px;
+                    background: debug-touch.has-hover ? #333 : transparent;
+                    Text {
+                        text: "📋";
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    debug-touch := TouchArea {
+                        clicked => { root.copy-debug-info(); }
+                    }
                 }
             }
         }
