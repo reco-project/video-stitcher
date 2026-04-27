@@ -888,9 +888,6 @@ impl CoverageBoundary {
         aspect: f32,
         rig_tilt: f32,
     ) -> ClampedPosition {
-        // Transform human-frame pitch to world-space pitch using the
-        // exact tilt coupling factor. Pre-v2 this used the constant
-        // `pitch + rig_tilt` approximation which was wrong at yaw != 0.
         let world_pitch = crate::rig_correction::human_to_world_pitch(yaw, pitch, rig_tilt);
         let clamped = self.safe_clamp_world(yaw, world_pitch, fov_v_deg, aspect);
         ClampedPosition {

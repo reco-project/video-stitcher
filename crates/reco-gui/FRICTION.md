@@ -156,6 +156,20 @@ Resolved: `on_session` now pushes to a `Vec<SessionCallback>`.
 Multiple hooks compose cleanly. A trait-based hook system would
 be preferred for complex future composition.
 
+### N15. PoseControl requires manual rig_tilt threading
+
+**Impact**: High. Caused a constrained-look regression in the GUI.
+
+Consumers must pass rig_tilt to both `clamp_via_coverage` and
+`render_pose` on every tick, and must remember to use `render_pose`
+instead of `current_pose` for the renderer. The CLI got this right;
+the GUI got it wrong.
+
+The renderer should own the pose state machine so rig_tilt, coverage
+clamping, and render compensation are automatic. Consumers would call
+`renderer.set_constrained_look(bool)` and `renderer.tick()` instead
+of manually coordinating PoseControl + coverage + rig_tilt.
+
 Plan disposition: K6 / E7. Lands with N12.
 
 ## Resolved (archived)

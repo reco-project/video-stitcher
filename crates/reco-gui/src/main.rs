@@ -503,7 +503,8 @@ impl AppState {
             v: &frame.right.v,
         };
 
-        let pose = self.pose.current_pose();
+        let rig_tilt = bridge.renderer().pipeline().viewport().rig_tilt;
+        let pose = self.pose.render_pose(rig_tilt);
         match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
             Ok(img) => Some(img),
             Err(e) => {
@@ -549,6 +550,16 @@ impl AppState {
     fn smooth_camera(&mut self) -> bool {
         let before = self.pose.current_pose();
         self.pose.tick();
+        if self.use_constrained_look
+            && let Some(bridge) = self.bridge.as_ref()
+        {
+            let renderer = bridge.renderer();
+            let (vw, vh) = bridge.viewport_size();
+            let aspect = vw as f32 / vh as f32;
+            let rig_tilt = renderer.pipeline().viewport().rig_tilt;
+            self.pose
+                .clamp_via_coverage(renderer.coverage(), aspect, rig_tilt);
+        }
         let after = self.pose.current_pose();
 
         let yaw_changed = (before.yaw - after.yaw).abs() > f32::EPSILON;
@@ -613,9 +624,6 @@ impl AppState {
     /// cannot set an unreachable goal. Delegates to
     /// `PoseControl::clamp_via_coverage`.
     fn clamp_targets(&mut self) {
-        // Constrained-look toggle: when the user disables it we let
-        // yaw/pitch/fov roam freely (useful for calibration debug or
-        // inspecting the black margins beyond the stitched region).
         if !self.use_constrained_look {
             return;
         }
@@ -2722,7 +2730,10 @@ fn run_export(
             let is_failure = !matches!(&result, Ok(true));
             let banner: String = match result {
                 Ok(true) => "AI tracking: active".into(),
-                Ok(false) => "AI tracking unavailable - build with --features tensorrt, or use CPU decode".into(),
+                Ok(false) => {
+                    "AI tracking unavailable - build with --features tensorrt, or use CPU decode"
+                        .into()
+                }
                 Err(e) => format!("AI tracking failed: {e}"),
             };
             log::info!("Export: {banner}");
