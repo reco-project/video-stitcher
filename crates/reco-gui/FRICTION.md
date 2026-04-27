@@ -7,29 +7,17 @@ archived at the bottom with the PR that fixed them, so we can tell
 
 ## Active
 
-### A3. Preview pipeline and export StitchJob share CUDA context and
-racereliably when both active
+### ~~A3. Preview + export CUDA context race~~ RESOLVED
 
-**Impact**: High. Known to crash (#243) or hang (#247) the GUI when
-the user pauses/plays preview while an export is encoding.
+Resolved in v0.5.0: preview rendering is paused during export via
+`is_exporting()` guard in `vsync_render_tick`. Playback is paused
+on export start and rendering resumes on completion.
 
-Both paths create their own NVDEC decoders on the same CUDA context
-(the process-wide default). Contention on `cuCtxPopCurrent` during
-frame handoff produces `cu->cuCtxPopCurrent(&dummy) failed` and a
-subsequent segfault, or a mutex-like hang depending on timing.
+### ~~A4. No clean pipeline unload~~ RESOLVED
 
-reco-core / reco-io don't currently expose any "is an export active"
-guard or "acquire-exclusive" flow, so consumers can't gate preview
-on export state.
-
-**Suggested direction** (needs design):
-- Either serialize: `StitchJob::run_exclusive` drops a mutex that the
-  preview pipeline must acquire too.
-- Or share: pass the preview's `GpuContext` + decoder handles into
-  `StitchJob` so they reuse the same resources.
-- Or isolate: spawn export in a subprocess with its own CUDA ctx.
-
-### A4. No way for consumers to unload a pipeline cleanly
+Resolved in v0.5.0: `reset_pipeline()` on `AppState` drops bridge,
+resets playback, pose, calibration baselines, and pending seeks.
+Called from `unload_pipeline()` and all file-swap paths.
 
 **Impact**: Medium. Manifested as a real state-corruption bug in Tier 3.
 
