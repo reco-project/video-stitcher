@@ -300,7 +300,7 @@ impl Tracker for PlayerTracker {
             });
         }
         for (id, yaw, pitch, origin) in &ids_lost {
-            log::info!(
+            log::trace!(
                 "PlayerTracker: tracklet id={} lost (last yaw={:.3} pitch={:.3})",
                 id,
                 yaw,
