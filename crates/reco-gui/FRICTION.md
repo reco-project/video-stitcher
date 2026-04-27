@@ -162,6 +162,15 @@ the inner pair — which is fine once, awkward when five sites do it.
 `as_yuv420p()` returning `Option<(YuvPlanes, YuvPlanes)>` would
 centralize the destructure.
 
+### N14. StitchJob supports only one on_session callback
+
+**Impact**: Medium. Blocks clean dual-output and telemetry wiring.
+
+`StitchJob::on_session` replaces the previous callback. The GUI needs
+it for both telemetry sink wiring AND autocam setup. Currently merged
+into one closure with cfg branching, which is fragile. Should be a
+`Vec<SessionCallback>` or a trait with multiple hooks.
+
 Plan disposition: K6 / E7. Lands with N12.
 
 ## Resolved (archived)
