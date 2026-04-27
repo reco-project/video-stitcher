@@ -117,34 +117,31 @@ struct GuiTelemetrySink {
 impl reco_core::telemetry::TelemetrySink for GuiTelemetrySink {
     fn on_snapshot(&mut self, snap: &reco_core::telemetry::TelemetrySnapshot) {
         let snap = snap.clone();
-        if let Some(window) = self.window.upgrade() {
-            let weak = self.window.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(app) = weak.upgrade() {
-                    app.set_telem_fps_avg(snap.fps_average);
-                    app.set_telem_fps_recent(snap.fps_recent);
-                    app.set_telem_decode_ms(snap.avg_decode_ms);
-                    app.set_telem_stitch_ms(snap.avg_stitch_ms);
-                    app.set_telem_readback_ms(snap.avg_readback_ms);
-                    app.set_telem_encode_ms(snap.avg_encode_ms);
-                    app.set_telem_total_ms(snap.avg_total_ms);
-                    app.set_telem_p99_ms(snap.p99_total_ms);
-                    app.set_telem_detection_ms(snap.avg_detection_ms);
-                    app.set_telem_active_tracks(snap.active_tracks as i32);
-                    app.set_telem_ball_pct(snap.ball_presence_pct);
-                    app.set_telem_det_per_frame(snap.detections_per_frame);
-                    app.set_telem_frames_dropped(snap.frames_dropped as i32);
-                    app.set_telem_gpu_name(snap.gpu_name.clone().into());
-                    app.set_telem_bottleneck(
-                        snap.bottleneck
-                            .map(|s| s.to_string())
-                            .unwrap_or_default()
-                            .into(),
-                    );
-                }
-            });
-            let _ = window;
-        }
+        let weak = self.window.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_telem_fps_avg(snap.fps_average);
+                app.set_telem_fps_recent(snap.fps_recent);
+                app.set_telem_decode_ms(snap.avg_decode_ms);
+                app.set_telem_stitch_ms(snap.avg_stitch_ms);
+                app.set_telem_readback_ms(snap.avg_readback_ms);
+                app.set_telem_encode_ms(snap.avg_encode_ms);
+                app.set_telem_total_ms(snap.avg_total_ms);
+                app.set_telem_p99_ms(snap.p99_total_ms);
+                app.set_telem_detection_ms(snap.avg_detection_ms);
+                app.set_telem_active_tracks(snap.active_tracks as i32);
+                app.set_telem_ball_pct(snap.ball_presence_pct);
+                app.set_telem_det_per_frame(snap.detections_per_frame);
+                app.set_telem_frames_dropped(snap.frames_dropped as i32);
+                app.set_telem_gpu_name(snap.gpu_name.clone().into());
+                app.set_telem_bottleneck(
+                    snap.bottleneck
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                        .into(),
+                );
+            }
+        });
     }
 }
 
@@ -269,13 +266,12 @@ fn ai_capability_summary() -> (String, bool) {
                 true,
             )
         } else {
-            // CPU (or CUDA-without-NPP) works but can't consume GPU-resident frames.
             (
                 format!(
-                    "AI: {} (CPU-only path; ball tracking disabled on hardware decode)",
+                    "AI: {} (CPU path - works for file export, not live GPU decode)",
                     probe.best_provider()
                 ),
-                false,
+                true,
             )
         }
     }
@@ -581,6 +577,7 @@ impl AppState {
             bridge.renderer_mut().set_rig_tilt(deg.to_radians());
             self.preview_dirty = true;
         }
+        self.clamp_targets();
     }
 
     fn set_rig_roll(&mut self, deg: f32) {
@@ -588,6 +585,7 @@ impl AppState {
             bridge.renderer_mut().set_rig_roll(deg.to_radians());
             self.preview_dirty = true;
         }
+        self.clamp_targets();
     }
 
     /// Reset yaw/pitch/fov targets to the rest pose. Routes through
