@@ -91,8 +91,8 @@ pub fn run_camera(
         replay_path,
         replay_scale,
         v4l2_direct,
-        exposure,
-        sensor_gain,
+        exposure: _exposure,
+        sensor_gain: _sensor_gain,
     } = config;
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
@@ -353,8 +353,8 @@ pub fn run_camera(
                 width: capture_width,
                 height: capture_height,
                 fps: capture_fps,
-                exposure,
-                gain: sensor_gain,
+                exposure: _exposure,
+                gain: _sensor_gain,
             };
             let left_v4l2 = make_v4l2_config(cam_config.left_device.clone());
             let right_v4l2 = make_v4l2_config(cam_config.right_device.clone());
@@ -367,8 +367,8 @@ pub fn run_camera(
 
             let mut awb = AwbController::new(isp.wb_r, isp.wb_b, 15);
             let mut ae = AeController::new(
-                exposure,
-                sensor_gain,
+                _exposure,
+                _sensor_gain,
                 200.0,
                 vec![left_v4l2.device.clone(), right_v4l2.device.clone()],
                 15,
@@ -376,7 +376,7 @@ pub fn run_camera(
 
             println!(
                 "GPU demosaic ready ({}x{}, zero-copy, AE+AWB), exposure={}, gain={}",
-                capture_width, capture_height, exposure, sensor_gain,
+                capture_width, capture_height, _exposure, _sensor_gain,
             );
 
             let mut source = V4l2StereoCameraSource::open(&left_v4l2, &right_v4l2)?;
