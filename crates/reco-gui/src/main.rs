@@ -2687,83 +2687,57 @@ fn run_export(
         job = job.with_replay_recording(&replay_path);
     }
 
-    {
-        let telem_weak = app_weak.clone();
-        #[cfg(feature = "autocam")]
-        let do_autocam = autocam_enabled && !model_path.is_empty();
-        #[cfg(not(feature = "autocam"))]
-        let do_autocam = {
-            let _ = autocam_enabled;
-            false
-        };
+    // Hook 1: telemetry sink
+    let telem_weak = app_weak.clone();
+    job = job.on_session(move |session, _source| {
+        let sink = GuiTelemetrySink { window: telem_weak };
+        session.telemetry_mut().set_sink(Box::new(sink), 30);
+    });
 
-        #[cfg(feature = "autocam")]
+    // Hook 2: autocam setup
+    #[cfg(feature = "autocam")]
+    if autocam_enabled && !model_path.is_empty() {
         let model_path_owned = model_path.clone();
-        #[cfg(feature = "autocam")]
         let mode_str_owned = tracking_mode.clone();
-        #[cfg(feature = "autocam")]
         let interval = detection_interval as u64;
         let status_weak = app_weak.clone();
-
-        #[cfg(not(feature = "autocam"))]
-        let _ = (&model_path, &tracking_mode, detection_interval);
-
         job = job.on_session(move |session, source| {
-            let sink = GuiTelemetrySink { window: telem_weak };
-            session.telemetry_mut().set_sink(Box::new(sink), 30);
-
-            #[cfg(feature = "autocam")]
-            if do_autocam {
-                let info = source.info();
-                let mode = match mode_str_owned.as_str() {
-                    "field" => reco_autocam::TrackingMode::Field,
-                    "sweep" => reco_autocam::TrackingMode::Sweep,
-                    _ => reco_autocam::TrackingMode::Ball,
-                };
-                let is_10bit =
-                    source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
-                let autocam_config = reco_autocam::AutocamConfig::new(&model_path_owned)
-                    .with_tracking_mode(mode)
-                    .with_detection_interval(interval)
-                    .with_10bit(is_10bit);
-                let autocam_config = if let Some(roi) = field_roi.as_ref() {
-                    autocam_config.with_field_roi(roi.clone())
-                } else {
-                    autocam_config
-                };
-                let result = reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
-                let (banner, log_msg): (String, String) = match result {
-                    Ok(true) => (
-                        "AI tracking: active".into(),
-                        "Export autocam: tracking enabled".into(),
-                    ),
-                    Ok(false) => (
-                        "AI tracking UNAVAILABLE (needs tensorrt feature or CPU decode); \
-                         export continuing WITHOUT tracking"
-                            .into(),
-                        "Export autocam: unavailable (needs --features tensorrt or CPU decode)"
-                            .into(),
-                    ),
-                    Err(e) => (
-                        format!(
-                            "AI tracking setup FAILED ({e}); export continuing WITHOUT tracking"
-                        ),
-                        format!("Export autocam setup failed: {e}"),
-                    ),
-                };
-                log::warn!("{log_msg}");
-                let weak = status_weak.clone();
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(app) = weak.upgrade() {
-                        app.set_status_text(banner.into());
-                    }
-                });
-            }
-
-            #[cfg(not(feature = "autocam"))]
-            let _ = (do_autocam, &status_weak, source);
+            let info = source.info();
+            let mode = match mode_str_owned.as_str() {
+                "field" => reco_autocam::TrackingMode::Field,
+                "sweep" => reco_autocam::TrackingMode::Sweep,
+                _ => reco_autocam::TrackingMode::Ball,
+            };
+            let is_10bit =
+                source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
+            let autocam_config = reco_autocam::AutocamConfig::new(&model_path_owned)
+                .with_tracking_mode(mode)
+                .with_detection_interval(interval)
+                .with_10bit(is_10bit);
+            let autocam_config = if let Some(roi) = field_roi.as_ref() {
+                autocam_config.with_field_roi(roi.clone())
+            } else {
+                autocam_config
+            };
+            let result = reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
+            let banner: String = match result {
+                Ok(true) => "AI tracking: active".into(),
+                Ok(false) => {
+                    "AI tracking UNAVAILABLE (needs tensorrt or CPU decode)".into()
+                }
+                Err(e) => format!("AI tracking setup FAILED ({e})"),
+            };
+            log::info!("Export: {banner}");
+            let weak = status_weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(app) = weak.upgrade() {
+                    app.set_status_text(banner.into());
+                }
+            });
         });
     }
+    #[cfg(not(feature = "autocam"))]
+    let _ = (autocam_enabled, &model_path, &tracking_mode, detection_interval);
 
     match job.run(interrupted) {
         Ok(r) => ExportOutcome::Ok(r.frames_processed, output),

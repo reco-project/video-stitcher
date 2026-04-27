@@ -56,7 +56,10 @@ pub struct StitchJob {
 
     // Callbacks
     on_progress: Option<ProgressCallback>,
-    on_session: Option<SessionCallback>,
+    // Vec so multiple consumers can hook the session (telemetry, autocam,
+    // future dual-output). A trait-based hook system would be cleaner for
+    // complex composition but Vec<FnOnce> is sufficient for now.
+    session_hooks: Vec<SessionCallback>,
 
     // Replay recording (M6.5 stacked-video). Opt-in, gated by the
     // `stacked-output` feature so consumers not building it pay
@@ -231,7 +234,7 @@ impl StitchJob {
             sync_offset: None,
             blend_width: 0.15,
             on_progress: None,
-            on_session: None,
+            session_hooks: Vec::new(),
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
             force_cpu_decode: false,
@@ -496,7 +499,7 @@ impl StitchJob {
         mut self,
         cb: impl FnOnce(&mut StitchSession, &dyn FrameSource) + Send + 'static,
     ) -> Self {
-        self.on_session = Some(Box::new(cb));
+        self.session_hooks.push(Box::new(cb));
         self
     }
 
@@ -574,9 +577,8 @@ impl StitchJob {
             session.setup_gpu_source(shared);
         }
 
-        // Call the session callback for consumer configuration (e.g. autocam)
-        if let Some(cb) = self.on_session.take() {
-            cb(&mut session, &source);
+        for hook in self.session_hooks.drain(..) {
+            hook(&mut session, &source);
         }
 
         // Attach JSONL event sink if requested.
