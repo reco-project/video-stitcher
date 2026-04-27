@@ -1887,6 +1887,7 @@ fn main() -> anyhow::Result<()> {
                 right,
                 cal,
                 output_for_thread,
+                None, // stream URL (Phase 6 GUI wiring)
                 width,
                 height,
                 codec_str,
@@ -2444,6 +2445,7 @@ fn run_export(
     right: reco_io::stitch_job::InputPath,
     cal: MatchCalibration,
     output: PathBuf,
+    stream_url: Option<String>,
     width: u32,
     height: u32,
     codec_str: String,
@@ -2507,12 +2509,27 @@ fn run_export(
     let progress_weak = app_weak.clone();
     let progress_start = Instant::now();
     let progress_last_at = Arc::clone(&last_progress_at);
-    let mut job =
-        reco_io::StitchJob::with_calibration(left.clone(), right.clone(), cal, output.clone())
-            .codec(codec)
-            .quality(quality)
-            .resolution(width, height)
-            .blend_width(blend)
+    let effective_output = stream_url
+        .as_ref()
+        .filter(|u| !u.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| output.clone());
+    let format = reco_io::output::Format::for_output(&effective_output.to_string_lossy());
+    if format.is_streaming() {
+        log::info!("Streaming to {}", effective_output.display());
+    }
+
+    let mut job = reco_io::StitchJob::with_calibration(
+        left.clone(),
+        right.clone(),
+        cal,
+        effective_output.clone(),
+    )
+    .codec(codec)
+    .quality(quality)
+    .format(format)
+    .resolution(width, height)
+    .blend_width(blend)
             .on_progress(move |p: &reco_core::session::FrameProgress| {
                 // Slint properties MUST be touched from the UI thread; use
                 // invoke_from_event_loop to queue the update.

@@ -282,6 +282,9 @@ pub enum Container {
     /// Matroska (`.mkv`). Naturally streamable; recommended by OBS
     /// for crash-safe recording.
     Matroska,
+    /// FLV container for RTMP streaming. Required by most RTMP
+    /// ingest endpoints (YouTube, Twitch).
+    Flv,
 }
 
 impl Container {
@@ -290,6 +293,7 @@ impl Container {
         match self {
             Self::Mp4 | Self::Mp4Fragmented => "mp4",
             Self::Matroska => "matroska",
+            Self::Flv => "flv",
         }
     }
 
@@ -300,6 +304,7 @@ impl Container {
             "mp4" => Some(Self::Mp4),
             "fmp4" | "mp4-fragmented" | "mp4_fragmented" => Some(Self::Mp4Fragmented),
             "mkv" | "matroska" => Some(Self::Matroska),
+            "flv" => Some(Self::Flv),
             _ => None,
         }
     }
@@ -465,7 +470,9 @@ impl VideoEncoder {
             // opt-in container choice wins over filename.
             let mut octx = match config.container {
                 Container::Mp4 | Container::Mp4Fragmented => format::output(path)?,
-                Container::Matroska => format::output_as(path, config.container.muxer_name())?,
+                Container::Matroska | Container::Flv => {
+                    format::output_as(path, config.container.muxer_name())?
+                }
             };
 
             match Self::try_open(

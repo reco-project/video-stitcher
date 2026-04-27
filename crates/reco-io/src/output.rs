@@ -85,6 +85,37 @@ pub enum Format {
     Mkv,
     /// QuickTime. Preferred on macOS.
     Mov,
+    /// FLV container for RTMP streaming (YouTube, Twitch).
+    Flv,
+}
+
+impl Format {
+    /// Detect the appropriate container from an output path or URL.
+    /// RTMP/RTSP URLs get FLV; file paths infer from extension.
+    pub fn for_output(path: &str) -> Self {
+        if path.starts_with("rtmp://") || path.starts_with("rtmps://") {
+            Self::Flv
+        } else if path.starts_with("srt://") {
+            Self::Mkv
+        } else {
+            match std::path::Path::new(path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase())
+                .as_deref()
+            {
+                Some("mkv") => Self::Mkv,
+                Some("mov") => Self::Mov,
+                Some("flv") => Self::Flv,
+                _ => Self::Mp4,
+            }
+        }
+    }
+
+    /// Whether this format targets a network URL (not a local file).
+    pub fn is_streaming(&self) -> bool {
+        matches!(self, Self::Flv)
+    }
 }
 
 /// Audio handling for the output.

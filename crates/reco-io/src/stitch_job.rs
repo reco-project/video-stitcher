@@ -635,6 +635,7 @@ impl StitchJob {
                     crate::ffmpeg::encoder::Container::Mp4Fragmented
                 }
                 crate::output::Format::Mkv => crate::ffmpeg::encoder::Container::Matroska,
+                crate::output::Format::Flv => crate::ffmpeg::encoder::Container::Flv,
             },
             gop_size: None,
         };

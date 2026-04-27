@@ -129,6 +129,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 reco_io::output::Format::Mp4Fragmented
             }
             reco_io::ffmpeg::encoder::Container::Matroska => reco_io::output::Format::Mkv,
+            reco_io::ffmpeg::encoder::Container::Flv => reco_io::output::Format::Flv,
         });
     }
 
