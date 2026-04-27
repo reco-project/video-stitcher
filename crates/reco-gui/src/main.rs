@@ -873,7 +873,11 @@ fn main() -> anyhow::Result<()> {
     } else {
         log::info!(
             "Available codecs: {}",
-            codecs.iter().map(|c| c.as_str()).collect::<Vec<_>>().join(", ")
+            codecs
+                .iter()
+                .map(|c| c.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     app.set_available_codecs(slint::ModelRc::new(slint::VecModel::from(codecs)));
@@ -986,7 +990,10 @@ fn main() -> anyhow::Result<()> {
         let input = if paths.len() == 1 {
             reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
         } else {
-            log::info!("Left: {} segments selected, chaining via concat demuxer", paths.len());
+            log::info!(
+                "Left: {} segments selected, chaining via concat demuxer",
+                paths.len()
+            );
             reco_io::stitch_job::InputPath::Chained(paths)
         };
         {
@@ -1037,7 +1044,10 @@ fn main() -> anyhow::Result<()> {
         let input = if paths.len() == 1 {
             reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
         } else {
-            log::info!("Right: {} segments selected, chaining via concat demuxer", paths.len());
+            log::info!(
+                "Right: {} segments selected, chaining via concat demuxer",
+                paths.len()
+            );
             reco_io::stitch_job::InputPath::Chained(paths)
         };
         {
@@ -1843,7 +1853,10 @@ fn main() -> anyhow::Result<()> {
                 crate::toast::sync_to_ui(&s.toasts, &app);
                 return;
             }
-            if parent.metadata().map_or(true, |m| m.permissions().readonly()) {
+            if parent
+                .metadata()
+                .map_or(true, |m| m.permissions().readonly())
+            {
                 s.toasts.push(
                     Severity::Error,
                     "Output directory is not writable",
@@ -2626,45 +2639,43 @@ fn run_export(
     .format(format)
     .resolution(width, height)
     .blend_width(blend)
-            .on_progress(move |p: &reco_core::session::FrameProgress| {
-                // Slint properties MUST be touched from the UI thread; use
-                // invoke_from_event_loop to queue the update.
-                let frames = p.frames_completed;
-                let elapsed = progress_start.elapsed().as_secs_f64();
-                let fps = if elapsed > 0.0 {
-                    frames as f64 / elapsed
-                } else {
-                    0.0
-                };
-                // Stamp the time directly from the worker thread. The
-                // main-thread timer reads this to detect when the job
-                // is in its finalization phase (encoder trailer write +
-                // index flush). Lock contention is negligible - we only
-                // touch it once per frame and the timer reads briefly.
-                *progress_last_at.lock().unwrap() = Some(Instant::now());
+    .on_progress(move |p: &reco_core::session::FrameProgress| {
+        // Slint properties MUST be touched from the UI thread; use
+        // invoke_from_event_loop to queue the update.
+        let frames = p.frames_completed;
+        let elapsed = progress_start.elapsed().as_secs_f64();
+        let fps = if elapsed > 0.0 {
+            frames as f64 / elapsed
+        } else {
+            0.0
+        };
+        // Stamp the time directly from the worker thread. The
+        // main-thread timer reads this to detect when the job
+        // is in its finalization phase (encoder trailer write +
+        // index flush). Lock contention is negligible - we only
+        // touch it once per frame and the timer reads briefly.
+        *progress_last_at.lock().unwrap() = Some(Instant::now());
 
-                let weak = progress_weak.clone();
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(app) = weak.upgrade() {
-                        app.set_export_frames_done(frames as i32);
-                        let total = app.get_export_frames_total();
-                        if total > 0 {
-                            app.set_export_progress(frames as f32 / total as f32);
-                        }
-                        let eta = if total > 0 && fps > 0.0 {
-                            let remaining = (total as f64 - frames as f64) / fps;
-                            let mins = remaining as u64 / 60;
-                            let secs = remaining as u64 % 60;
-                            format!(" - ~{mins}:{secs:02} remaining")
-                        } else {
-                            String::new()
-                        };
-                        app.set_export_status_text(
-                            format!("Frame {frames} ({fps:.0} fps){eta}").into(),
-                        );
-                    }
-                });
-            });
+        let weak = progress_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_export_frames_done(frames as i32);
+                let total = app.get_export_frames_total();
+                if total > 0 {
+                    app.set_export_progress(frames as f32 / total as f32);
+                }
+                let eta = if total > 0 && fps > 0.0 {
+                    let remaining = (total as f64 - frames as f64) / fps;
+                    let mins = remaining as u64 / 60;
+                    let secs = remaining as u64 % 60;
+                    format!(" - ~{mins}:{secs:02} remaining")
+                } else {
+                    String::new()
+                };
+                app.set_export_status_text(format!("Frame {frames} ({fps:.0} fps){eta}").into());
+            }
+        });
+    });
 
     if duration_secs > 0.0 {
         job = job.duration(duration_secs as f64);
@@ -2695,12 +2706,8 @@ fn run_export(
         let _ = (&model_path, &tracking_mode, detection_interval);
 
         job = job.on_session(move |session, source| {
-            let sink = GuiTelemetrySink {
-                window: telem_weak,
-            };
-            session
-                .telemetry_mut()
-                .set_sink(Box::new(sink), 30);
+            let sink = GuiTelemetrySink { window: telem_weak };
+            session.telemetry_mut().set_sink(Box::new(sink), 30);
 
             #[cfg(feature = "autocam")]
             if do_autocam {
@@ -2721,8 +2728,7 @@ fn run_export(
                 } else {
                     autocam_config
                 };
-                let result =
-                    reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
+                let result = reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
                 let (banner, log_msg): (String, String) = match result {
                     Ok(true) => (
                         "AI tracking: active".into(),

@@ -93,8 +93,8 @@ pub fn run_libcamera(
     // Set up autocam (detector + director) if model provided.
     #[cfg(feature = "autocam")]
     if let Some(model) = model_path {
-        let autocam_config = reco_autocam::AutocamConfig::new(model)
-            .with_detection_interval(detection_interval);
+        let autocam_config =
+            reco_autocam::AutocamConfig::new(model).with_detection_interval(detection_interval);
         match reco_autocam::setup_autocam(&mut session, &autocam_config, capture_fps as f32) {
             Ok(true) => println!("Autocam: YOLO ball tracking enabled (model: {model})"),
             Ok(false) => eprintln!("Warning: ball tracking unavailable in current capture mode"),

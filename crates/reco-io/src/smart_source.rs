@@ -179,15 +179,12 @@ impl SmartFileSource {
         let left_rotation = probe.rotation();
         drop(probe);
 
-        let right_rotation =
-            crate::ffmpeg::decoder::VideoDecoder::open(right.first_path())
-                .map(|d| d.rotation())
-                .unwrap_or_else(|e| {
-                    log::warn!(
-                        "Failed to probe right video for rotation ({e}), assuming 0 degrees"
-                    );
-                    0
-                });
+        let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right.first_path())
+            .map(|d| d.rotation())
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
+                0
+            });
 
         Self::open_cpu(
             left,

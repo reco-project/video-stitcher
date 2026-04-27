@@ -352,7 +352,9 @@ impl FieldPanner {
         let spread_deg = spread.to_degrees();
         let fov_from_spread = (2.0 * spread_deg).max(self.config.fov_tight);
 
-        let t_dist = ((pitch - self.config.pitch_near) / (self.config.pitch_far - self.config.pitch_near)).clamp(0.0, 1.0);
+        let t_dist = ((pitch - self.config.pitch_near)
+            / (self.config.pitch_far - self.config.pitch_near))
+            .clamp(0.0, 1.0);
         let distance_bias = t_dist * self.config.distance_bias_max;
 
         let edge_bias = (self.yaw.abs() * 5.0).min(self.config.edge_bias_max);
@@ -430,7 +432,8 @@ impl Panner for FieldPanner {
                 let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
 
                 self.velocity_yaw += self.config.velocity_alpha * (desired_yaw - self.velocity_yaw);
-                self.velocity_pitch += self.config.velocity_alpha * (desired_pitch - self.velocity_pitch);
+                self.velocity_pitch +=
+                    self.config.velocity_alpha * (desired_pitch - self.velocity_pitch);
 
                 self.yaw += self.velocity_yaw;
                 self.pitch += self.velocity_pitch;

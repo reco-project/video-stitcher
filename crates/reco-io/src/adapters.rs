@@ -88,11 +88,12 @@ impl FfmpegFileSource {
         reco_core::source::validate_input_path(left_probe_path)?;
         reco_core::source::validate_input_path(right_probe_path)?;
 
-        let probe =
-            ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| SourceError::Init {
+        let probe = ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
+            SourceError::Init {
                 path: left_probe_path.display().to_string(),
                 reason: format!("{e}"),
-            })?;
+            }
+        })?;
         let fps_r = probe.frame_rate();
         let fps = probe.fps();
         let total_frame_count = probe.duration_secs().map(|dur| (dur * fps) as u64);

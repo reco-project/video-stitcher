@@ -388,8 +388,7 @@ impl VideoDecoder {
                 "FFmpeg concat demuxer not available".into(),
             ));
         }
-        let concat_fmt =
-            unsafe { ffmpeg::format::format::Input::wrap(concat_fmt_ptr as *mut _) };
+        let concat_fmt = unsafe { ffmpeg::format::format::Input::wrap(concat_fmt_ptr as *mut _) };
 
         let mut opts = ffmpeg::Dictionary::new();
         opts.set("safe", "0");

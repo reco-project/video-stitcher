@@ -149,7 +149,6 @@ impl<P: AsRef<Path>> From<Vec<P>> for InputPath {
     }
 }
 
-
 /// Result of a completed stitch job.
 #[derive(Debug)]
 pub struct StitchResult {

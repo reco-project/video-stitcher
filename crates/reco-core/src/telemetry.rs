@@ -73,11 +73,7 @@ impl<const N: usize> RingBuffer<N> {
     }
 
     fn iter(&self) -> impl Iterator<Item = &FrameTiming> {
-        let start = if self.len < N {
-            0
-        } else {
-            self.head
-        };
+        let start = if self.len < N { 0 } else { self.head };
         (0..self.len).map(move |i| &self.buf[(start + i) % N])
     }
 
@@ -213,11 +209,7 @@ impl TelemetryCollector {
                 .iter()
                 .filter_map(|t| extract(t).map(|d| d.as_secs_f32() * 1000.0))
                 .sum();
-            let count = self
-                .ring
-                .iter()
-                .filter(|t| extract(t).is_some())
-                .count() as f32;
+            let count = self.ring.iter().filter(|t| extract(t).is_some()).count() as f32;
             if count > 0.0 { sum / count } else { 0.0 }
         };
 
@@ -253,7 +245,12 @@ impl TelemetryCollector {
         };
 
         let bottleneck = self.detect_bottleneck(
-            avg_decode, avg_upload, avg_stitch, avg_readback, avg_encode, avg_detection,
+            avg_decode,
+            avg_upload,
+            avg_stitch,
+            avg_readback,
+            avg_encode,
+            avg_detection,
         );
 
         TelemetrySnapshot {
@@ -288,11 +285,7 @@ impl TelemetryCollector {
         }
     }
 
-    fn percentile_ms(
-        &self,
-        extract: fn(&FrameTiming) -> Option<Duration>,
-        pct: f32,
-    ) -> f32 {
+    fn percentile_ms(&self, extract: fn(&FrameTiming) -> Option<Duration>, pct: f32) -> f32 {
         let mut values: Vec<f32> = self
             .ring
             .iter()
@@ -391,7 +384,11 @@ impl std::fmt::Display for SessionSummary {
             s.frames_processed, s.frames_dropped
         )?;
         writeln!(f, "Duration:  {:.1}s", s.elapsed.as_secs_f64())?;
-        writeln!(f, "FPS:       {:.1} avg, {:.1} recent", s.fps_average, s.fps_recent)?;
+        writeln!(
+            f,
+            "FPS:       {:.1} avg, {:.1} recent",
+            s.fps_average, s.fps_recent
+        )?;
         writeln!(f, "GPU:       {}", s.gpu_name)?;
         if let Some(enc) = &s.encoder_name {
             writeln!(f, "Encoder:   {enc}")?;
