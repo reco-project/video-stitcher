@@ -39,7 +39,7 @@
 //! # let mut session: reco_core::session::StitchSession = todo!();
 //! let config = AutocamConfig::new("ball_v0.onnx")
 //!     .with_tracking_mode(TrackingMode::Ball);
-//! reco_autocam::setup_autocam(&mut session, &config, 30.0)?;
+//! reco_autocam::setup_autocam(&mut session, &config, 30.0, false)?;
 //! # Ok(()) }
 //! ```
 
@@ -104,7 +104,7 @@ use reco_core::session::StitchSession;
 ///     .with_tracking_mode(TrackingMode::Field)
 ///     .with_detection_interval(3);
 ///
-/// reco_autocam::setup_autocam(&mut session, &config, 30.0)?;
+/// reco_autocam::setup_autocam(&mut session, &config, 30.0, false)?;
 /// ```
 #[derive(Debug, Clone)]
 pub struct AutocamConfig {
@@ -181,6 +181,7 @@ pub fn setup_autocam(
     session: &mut StitchSession,
     config: &AutocamConfig,
     fps: f32,
+    source_is_gpu_resident: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     #[cfg(not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")))]
     {
@@ -193,7 +194,7 @@ pub fn setup_autocam(
     }
 
     let (input_width, input_height) = session.pipeline().source_info();
-    let use_zero_copy = session.pipeline().gpu().supports_zero_copy();
+    let use_zero_copy = source_is_gpu_resident;
     let model_path = config.model_path.to_str().unwrap_or("");
     let detection_interval = config.detection_interval;
     let tracking_mode = config.tracking_mode;

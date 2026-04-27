@@ -178,7 +178,12 @@ pub fn run_camera(
             } else {
                 autocam_config
             };
-            match reco_autocam::setup_autocam(&mut session, &autocam_config, capture_fps as f32) {
+            match reco_autocam::setup_autocam(
+                &mut session,
+                &autocam_config,
+                capture_fps as f32,
+                false,
+            ) {
                 Ok(true) => println!("Autocam: {tracking_mode:?} director attached"),
                 Ok(false) => {
                     eprintln!("Warning: tracking unavailable in current capture mode")

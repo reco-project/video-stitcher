@@ -491,7 +491,7 @@ impl StitchJob {
     ///         let config = AutocamConfig::new("model.onnx")
     ///             .with_tracking_mode(TrackingMode::Ball)
     ///             .with_detection_interval(3);
-    ///         reco_autocam::setup_autocam(session, &config, source.info().fps as f32).ok();
+    ///         reco_autocam::setup_autocam(session, &config, source.info().fps as f32, source.is_gpu_resident()).ok();
     ///     })
     ///     .run(&interrupted)?;
     /// ```
@@ -530,6 +530,7 @@ impl StitchJob {
         let gpu = reco_core::gpu::GpuContext::new_blocking()?;
         let gpu_name = gpu.gpu_name().to_string();
 
+        log::info!("StitchJob::run: force_cpu_decode={}", self.force_cpu_decode);
         let mut source = if self.force_cpu_decode {
             log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
             crate::SmartFileSource::open_cpu_only(&self.left, &self.right, effective_sync)?

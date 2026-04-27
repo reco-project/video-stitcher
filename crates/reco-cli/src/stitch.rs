@@ -206,7 +206,12 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             } else {
                 autocam_config
             };
-            match reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32) {
+            match reco_autocam::setup_autocam(
+                session,
+                &autocam_config,
+                info.fps as f32,
+                source.is_gpu_resident(),
+            ) {
                 Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
                 Ok(false) => {
                     let msg = "Tracking requested but detection cannot run in zero-copy mode. \

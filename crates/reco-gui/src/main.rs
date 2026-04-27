@@ -2748,7 +2748,12 @@ fn run_export(
             } else {
                 autocam_config
             };
-            let result = reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
+            let result = reco_autocam::setup_autocam(
+                session,
+                &autocam_config,
+                info.fps as f32,
+                source.is_gpu_resident(),
+            );
             let is_failure = !matches!(&result, Ok(true));
             let banner: String = match result {
                 Ok(true) => "AI tracking: active".into(),
