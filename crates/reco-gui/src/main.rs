@@ -1903,18 +1903,6 @@ fn main() -> anyhow::Result<()> {
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();
 
-        #[cfg(feature = "autocam")]
-        if autocam_enabled {
-            let probe = reco_detect::probe_execution_providers();
-            if probe.is_available() && !probe.can_run_on_gpu_frames {
-                s.toasts.push(
-                    crate::toast::Severity::Warn,
-                    "AI tracking may not work",
-                    "CPU-only AI cannot process GPU-decoded frames. Tracking will be skipped unless CPU decode is used.".to_string(),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        }
         let detection_interval = app.get_export_detection_interval() as u32;
         let replay_enabled = app.get_export_replay_enabled();
 
@@ -2716,6 +2704,17 @@ fn run_export(
         let replay_path = effective_output.with_extension("replay.mkv");
         log::info!("Replay recording: {}", replay_path.display());
         job = job.with_replay_recording(&replay_path);
+    }
+
+    #[cfg(feature = "autocam")]
+    if autocam_enabled {
+        let probe = reco_detect::probe_execution_providers();
+        if probe.is_available() && !probe.can_run_on_gpu_frames {
+            log::info!(
+                "AI requested but GPU inference unavailable. Forcing CPU decode for ORT compatibility."
+            );
+            job = job.force_cpu_decode();
+        }
     }
 
     // Hook 1: telemetry sink
