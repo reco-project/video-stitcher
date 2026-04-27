@@ -91,9 +91,9 @@ pub use traits::{
     CalibrationOptimizer, CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
 };
 pub use types::{
-    AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep,
-    GrayFrame, LensProfileInfo, LensProfileSummary, MatchConfig, OptimizerConfig, ProfileSource,
-    YuvFrame,
+    AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationQuality, CalibrationResult,
+    CalibrationStep, GrayFrame, LensProfileInfo, LensProfileSummary, MatchConfig, OptimizerConfig,
+    ProfileSource, YuvFrame,
 };
 
 use reco_core::calibration::{CameraParams, MatchCalibration};
@@ -499,10 +499,12 @@ pub fn calibrate_with(
         residual_error: best_residual,
         confidence,
         per_frame: successful_frames,
-        // Lens profile metadata is threaded through from the pipeline
-        // layer (CalibrationPipeline::calibrate). The core calibrate()
-        // function works with bare CameraParams and has no profile info.
         left_lens_profile: None,
         right_lens_profile: None,
+        quality: Some(types::CalibrationQuality {
+            mean_reprojection_error: total_reproj,
+            trimmed_reprojection_error: trimmed_err,
+            angular_error: angular_err,
+        }),
     })
 }

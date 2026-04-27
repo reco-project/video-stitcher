@@ -463,4 +463,14 @@ pub struct CalibrationResult {
     pub left_lens_profile: Option<LensProfileInfo>,
     /// Lens profile used for the right camera.
     pub right_lens_profile: Option<LensProfileInfo>,
+    /// Detailed quality metrics for diagnostics.
+    pub quality: Option<CalibrationQuality>,
+}
+
+/// Detailed calibration quality metrics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalibrationQuality {
+    pub mean_reprojection_error: f64,
+    pub trimmed_reprojection_error: f64,
+    pub angular_error: f64,
 }

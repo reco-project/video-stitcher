@@ -259,6 +259,14 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         result.fps(),
         args.output
     );
+
+    if let Some(snap) = &result.telemetry {
+        let summary = reco_core::telemetry::SessionSummary {
+            snapshot: snap.clone(),
+        };
+        println!("\n{summary}");
+    }
+
     Ok(())
 }
 

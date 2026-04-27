@@ -153,16 +153,12 @@ impl<P: AsRef<Path>> From<Vec<P>> for InputPath {
 /// Result of a completed stitch job.
 #[derive(Debug)]
 pub struct StitchResult {
-    /// Number of frames processed.
     pub frames_processed: u64,
-    /// Total wall-clock time.
     pub elapsed: Duration,
-    /// GPU used for rendering.
     pub gpu_name: String,
-    /// Encoder used (e.g. "h264_nvenc", "libx264").
     pub encoder_name: String,
-    /// Decode mode (e.g. "GPU zero-copy (CUDA/Vulkan)", "CPU upload").
     pub decode_mode: String,
+    pub telemetry: Option<reco_core::telemetry::TelemetrySnapshot>,
 }
 
 impl StitchResult {
@@ -833,6 +829,7 @@ impl StitchJob {
         // No-op when the GPU path wasn't selected.
         #[cfg(feature = "stacked-output")]
         session.clear_stacked_gpu_recorder();
+        let telemetry_snap = session.telemetry_snapshot();
         session.finish()?;
 
         #[cfg(feature = "stacked-output")]
@@ -879,6 +876,7 @@ impl StitchJob {
             gpu_name,
             encoder_name: enc_name,
             decode_mode,
+            telemetry: Some(telemetry_snap),
         })
     }
 }

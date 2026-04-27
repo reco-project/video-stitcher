@@ -100,11 +100,46 @@ pub enum PipelineEvent {
 
     /// Final pose the renderer received this frame (post-clamp).
     PosePresented {
-        /// Monotonic frame counter.
         frame_index: u64,
-        /// Pose after all clamping and FOV adjustments.
         pose: ViewportPosition,
     },
+
+    /// End-of-frame summary with per-stage timing.
+    FrameComplete {
+        frame_index: u64,
+        timestamp_ms: f64,
+        timing: FrameTimingMicros,
+        detection_count: u32,
+        active_tracks: u32,
+        ball_present: bool,
+    },
+}
+
+/// Compact per-stage timing in microseconds for JSONL serialization.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct FrameTimingMicros {
+    pub decode_us: Option<u32>,
+    pub upload_us: Option<u32>,
+    pub stitch_us: Option<u32>,
+    pub readback_us: Option<u32>,
+    pub encode_us: Option<u32>,
+    pub detection_us: Option<u32>,
+    pub total_us: u32,
+}
+
+impl From<&crate::telemetry::FrameTiming> for FrameTimingMicros {
+    fn from(t: &crate::telemetry::FrameTiming) -> Self {
+        let to_us = |d: Option<std::time::Duration>| d.map(|d| d.as_micros() as u32);
+        Self {
+            decode_us: to_us(t.decode),
+            upload_us: to_us(t.upload),
+            stitch_us: to_us(t.stitch),
+            readback_us: to_us(t.readback),
+            encode_us: to_us(t.encode),
+            detection_us: to_us(t.detection),
+            total_us: t.total.map_or(0, |d| d.as_micros() as u32),
+        }
+    }
 }
 
 impl PipelineEvent {
@@ -117,7 +152,8 @@ impl PipelineEvent {
             | PipelineEvent::DetectionFilter { frame_index, .. }
             | PipelineEvent::WorldState { frame_index, .. }
             | PipelineEvent::PanDecision { frame_index, .. }
-            | PipelineEvent::PosePresented { frame_index, .. } => *frame_index,
+            | PipelineEvent::PosePresented { frame_index, .. }
+            | PipelineEvent::FrameComplete { frame_index, .. } => *frame_index,
         }
     }
 }
@@ -311,6 +347,22 @@ mod tests {
             PipelineEvent::PosePresented {
                 frame_index: 6,
                 pose: ViewportPosition::default(),
+            },
+            PipelineEvent::FrameComplete {
+                frame_index: 7,
+                timestamp_ms: 2.0,
+                timing: FrameTimingMicros {
+                    decode_us: Some(1000),
+                    upload_us: None,
+                    stitch_us: Some(500),
+                    readback_us: None,
+                    encode_us: Some(2000),
+                    detection_us: None,
+                    total_us: 5000,
+                },
+                detection_count: 0,
+                active_tracks: 0,
+                ball_present: false,
             },
         ];
         for (i, ev) in events.iter().enumerate() {
