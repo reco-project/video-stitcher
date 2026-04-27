@@ -2251,7 +2251,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 .map(|b| b.renderer().gpu().gpu_name().to_string())
                 .unwrap_or_default();
 
-            // Render the first frame.
+            s.clamp_targets();
             let img = s.render_current();
             // Seed calibration slider values from the baseline layout.
             let layout = s.cal_baseline_layout.clone();
@@ -2418,6 +2418,7 @@ fn handle_calibration_result(
                         .as_ref()
                         .map(|b| b.renderer().gpu().gpu_name().to_string())
                         .unwrap_or_default();
+                    state.clamp_targets();
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 
