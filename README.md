@@ -118,6 +118,10 @@ cargo run --release -p reco-cli --features profiling -- \
 # Produces reco-trace.json — open in https://ui.perfetto.dev
 ```
 
+## Privacy
+
+Reco collects no usage data, sends no telemetry, and makes no network requests except those you explicitly configure (RTMP streaming, etc.). All performance statistics shown in the Stats panel are computed locally in memory and never leave your machine.
+
 ## License
 
 **AGPL-3.0-only.** See [LICENSE](LICENSE). Contributor terms are in [CONTRIBUTING.md](CONTRIBUTING.md#contributor-license-agreement): by submitting a PR you grant the maintainer the right to relicense contributions, which keeps dual-licensing on the table for future commercial distribution.
