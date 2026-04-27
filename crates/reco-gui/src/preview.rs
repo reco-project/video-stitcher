@@ -144,6 +144,23 @@ impl PreviewBridge {
         })
     }
 
+    /// Render and additionally perform NV12 readback for recording.
+    /// Returns the Slint image and optionally the NV12 data.
+    pub fn render_frame_and_nv12(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(slint::Image, Option<Vec<u8>>), PipelineError> {
+        let nv12 = self
+            .renderer
+            .render_and_readback_nv12(left, right, yaw, pitch)?
+            .map(|slice| slice.to_vec());
+        let img = self.render_frame(left, right, yaw, pitch)?;
+        Ok((img, nv12))
+    }
+
     /// Access the underlying renderer for viewport adjustments.
     #[allow(dead_code)]
     pub fn renderer(&self) -> &StitchRenderer {

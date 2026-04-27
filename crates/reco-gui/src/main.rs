@@ -155,6 +155,9 @@ struct AppState {
     calibration: Option<MatchCalibration>,
     playback: Playback,
     bridge: Option<PreviewBridge>,
+    recording_encoder: Option<Box<dyn reco_core::encoder::Encoder + Send>>,
+    recording_path: Option<PathBuf>,
+    recording_frames: u64,
     /// Receives calibration results from the background thread.
     cal_rx: Option<std::sync::mpsc::Receiver<CalibrationResult>>,
     /// wgpu handles captured from Slint's rendering notifier. `None`
@@ -299,6 +302,9 @@ impl AppState {
             calibration: None,
             playback: Playback::new(),
             bridge: None,
+            recording_encoder: None,
+            recording_path: None,
+            recording_frames: 0,
             cal_rx: None,
             shared_gpu: None,
             pose: PoseControl::new(PoseControlConfig {
@@ -482,7 +488,67 @@ impl AppState {
     /// swap. Keeps the user-picked paths on `AppState` so the user can
     /// fix and retry, but drops the bridge + playback + calibration.
     fn unload_pipeline(&mut self) {
+        self.stop_recording();
         self.reset_pipeline();
+    }
+
+    fn start_recording(&mut self) -> Result<PathBuf, String> {
+        let bridge = self.bridge.as_ref().ok_or("No pipeline")?;
+        let (w, h) = bridge.viewport_size();
+        let rec_w = w & !3;
+        let rec_h = h & !1;
+        let fps = self.playback.fps();
+        let fps_r = (fps.round() as i32, 1);
+
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let path = PathBuf::from(format!("reco_recording_{epoch}.mp4"));
+
+        let (encoder, enc_name) = reco_io::adapters::create_encoder(
+            &path, rec_w, rec_h, fps_r, "h264", "balanced", None, None, None,
+        )
+        .map_err(|e| format!("Failed to start recording: {e}"))?;
+
+        log::info!("Recording started: {} ({enc_name})", path.display());
+        self.recording_encoder = Some(Box::new(encoder));
+        self.recording_path = Some(path.clone());
+        self.recording_frames = 0;
+        Ok(path)
+    }
+
+    fn stop_recording(&mut self) -> Option<(PathBuf, u64)> {
+        if let Some(mut enc) = self.recording_encoder.take() {
+            if let Some(bridge) = self.bridge.as_mut() {
+                let (w, h) = bridge.viewport_size();
+                let fps = self.playback.fps();
+                for _ in 0..2 {
+                    if let Ok(Some(nv12)) = bridge.renderer_mut().flush_nv12() {
+                        let pts =
+                            (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
+                        let _ = enc.submit(reco_core::encoder::OutputFrame {
+                            data: nv12,
+                            width: w & !3,
+                            height: h & !1,
+                            format: reco_core::encoder::PixelFormat::Nv12,
+                            pts_us: pts,
+                        });
+                        self.recording_frames += 1;
+                    }
+                }
+            }
+            let _ = enc.finish();
+        }
+        let path = self.recording_path.take()?;
+        let frames = self.recording_frames;
+        self.recording_frames = 0;
+        log::info!("Recording stopped: {frames} frames to {}", path.display());
+        Some((path, frames))
+    }
+
+    fn is_recording(&self) -> bool {
+        self.recording_encoder.is_some()
     }
 
     /// Render the current frame. With zero-copy texture sharing, the
@@ -505,11 +571,43 @@ impl AppState {
 
         let rig_tilt = bridge.renderer().pipeline().viewport().rig_tilt;
         let pose = self.pose.render_pose(rig_tilt);
-        match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
-            Ok(img) => Some(img),
-            Err(e) => {
-                log::error!("Render error: {e}");
-                None
+
+        let recording = self.is_recording();
+        if recording {
+            let bridge = self.bridge.as_mut().unwrap();
+            let (w, h) = bridge.viewport_size();
+            let fps = self.playback.fps();
+            let result = bridge.render_frame_and_nv12(&left, &right, pose.yaw, pose.pitch);
+            match result {
+                Ok((img, nv12_opt)) => {
+                    if let Some(nv12) = nv12_opt
+                        && let Some(enc) = self.recording_encoder.as_mut()
+                    {
+                        let pts =
+                            (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
+                        let _ = enc.submit(reco_core::encoder::OutputFrame {
+                            data: &nv12,
+                            width: w & !3,
+                            height: h & !1,
+                            format: reco_core::encoder::PixelFormat::Nv12,
+                            pts_us: pts,
+                        });
+                        self.recording_frames += 1;
+                    }
+                    Some(img)
+                }
+                Err(e) => {
+                    log::error!("Render error: {e}");
+                    None
+                }
+            }
+        } else {
+            match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
+                Ok(img) => Some(img),
+                Err(e) => {
+                    log::error!("Render error: {e}");
+                    None
+                }
             }
         }
     }
@@ -1973,6 +2071,46 @@ fn main() -> anyhow::Result<()> {
         let s = state_ref.borrow();
         log::info!("Cancel requested");
         s.export_interrupted.store(true, Ordering::Relaxed);
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_toggle_recording(move || {
+        let mut s = state_ref.borrow_mut();
+        if s.is_recording() {
+            if let Some((path, frames)) = s.stop_recording()
+                && let Some(app) = app_weak.upgrade()
+            {
+                    app.set_recording(false);
+                    s.toasts.push(
+                        crate::toast::Severity::Info,
+                        "Recording saved",
+                        format!("{frames} frames to {}", path.display()),
+                    );
+                    crate::toast::sync_to_ui(&s.toasts, &app);
+            }
+        } else {
+            match s.start_recording() {
+                Ok(path) => {
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_recording(true);
+                        s.toasts.push(
+                            crate::toast::Severity::Info,
+                            "Recording started",
+                            path.display().to_string(),
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Recording failed: {e}");
+                    if let Some(app) = app_weak.upgrade() {
+                        s.toasts.push(crate::toast::Severity::Error, "Recording failed", e);
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
+                }
+            }
+        }
     });
 
     let state_ref = Rc::clone(&state);

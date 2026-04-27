@@ -423,6 +423,8 @@ export component RecoApp inherits Window {
     callback start-export();
     callback cancel-export();
     callback copy-debug-info();
+    callback toggle-recording();
+    in-out property <bool> recording: false;
 
     // Keyboard handling. The FocusScope must *wrap* the content so
     // key events have somewhere to bubble up when a child (button,
@@ -1245,6 +1247,14 @@ export component RecoApp inherits Window {
                         text: ">|";
                         enabled: root.files-loaded;
                         clicked => { root.step-forward(); }
+                    }
+
+                    Rectangle { width: 20px; }
+
+                    Button {
+                        text: root.recording ? "Stop Rec" : "Record";
+                        enabled: root.files-loaded && !root.export-in-progress;
+                        clicked => { root.toggle-recording(); }
                     }
                 }
             }
