@@ -123,6 +123,7 @@ pub mod session;
 pub mod source;
 pub mod stage;
 pub mod stitch_renderer;
+pub mod telemetry;
 /// Tracker contract — see [`Tracker`](tracker::Tracker),
 /// [`WorldState`](tracker::WorldState), and
 /// [`TrackedEntity`](tracker::TrackedEntity). The tracker half of

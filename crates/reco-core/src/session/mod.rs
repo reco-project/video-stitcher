@@ -492,11 +492,8 @@ pub struct StitchSession {
     error_policy: ErrorPolicy,
     /// Dropped frame counter (for metrics).
     frames_dropped: u64,
-    /// Optional pipeline event sink for structured observability.
-    /// When `None` (default), every emit site is a single branch.
-    /// See [`set_event_sink`](Self::set_event_sink) and
-    /// [`crate::pipeline_event`] for the vocabulary.
     event_sink: Option<Box<dyn crate::pipeline_event::PipelineEventSink>>,
+    pub(crate) telemetry: crate::telemetry::TelemetryCollector,
     /// Ordered pre-tracker detection filters. Empty by default; each
     /// stage transforms `detection.last_detections` in place before
     /// the trackers run. Emission of the before/after event is gated
@@ -623,6 +620,7 @@ impl StitchSession {
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
             event_sink: None,
+            telemetry: crate::telemetry::TelemetryCollector::new(),
             detection_filters: Vec::new(),
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
@@ -1664,6 +1662,8 @@ impl StitchSession {
         let gpu_buf_info = self.gpu_buf_info.clone();
 
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+            let frame_t0 = std::time::Instant::now();
+
             let frame = {
                 crate::profile_scope!("wait_decode");
                 match source.next_frame()? {
@@ -1671,9 +1671,8 @@ impl StitchSession {
                     None => break,
                 }
             };
+            let decode_time = frame_t0.elapsed();
 
-            // Trace: FrameStart fires once per frame at the top of the
-            // loop, before detection / pose / render work.
             if let Some(sink) = self.event_sink.as_deref_mut() {
                 sink.emit(crate::pipeline_event::PipelineEvent::FrameStart {
                     frame_index: self.frame_count,
@@ -1693,12 +1692,33 @@ impl StitchSession {
                         *right_slot,
                         start.elapsed(),
                     )?;
+                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
+                        decode: Some(decode_time),
+                        total: Some(frame_t0.elapsed()),
+                        ..Default::default()
+                    });
                 }
                 _ => {
-                    // CPU-resident frames (Yuv420p, Nv12)
+                    let detect_t0 = std::time::Instant::now();
                     self.detect_and_update_director(&frame, start.elapsed())?;
+                    let detect_time = detect_t0.elapsed();
+
+                    let render_t0 = std::time::Instant::now();
                     let pos = self.director_position();
                     self.process_frame(&frame, pos.yaw, pos.pitch)?;
+                    let render_time = render_t0.elapsed();
+
+                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
+                        decode: Some(decode_time),
+                        detection: if self.detection_should_run() {
+                            Some(detect_time)
+                        } else {
+                            None
+                        },
+                        stitch: Some(render_time),
+                        total: Some(frame_t0.elapsed()),
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -1813,8 +1833,16 @@ impl StitchSession {
             frames_dropped: self.frames_dropped,
             elapsed,
             fps_average: self.frame_count as f32 / secs,
-            total_frames: None, // set by consumer from SourceInfo
+            total_frames: None,
         }
+    }
+
+    pub fn telemetry_snapshot(&self) -> crate::telemetry::TelemetrySnapshot {
+        self.telemetry.snapshot()
+    }
+
+    pub fn telemetry_mut(&mut self) -> &mut crate::telemetry::TelemetryCollector {
+        &mut self.telemetry
     }
 
     /// Add an additional encoder for multi-output (e.g. record + stream).
