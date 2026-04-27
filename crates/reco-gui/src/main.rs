@@ -1902,6 +1902,19 @@ fn main() -> anyhow::Result<()> {
         let autocam_enabled = app.get_export_autocam_enabled();
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();
+
+        #[cfg(feature = "autocam")]
+        if autocam_enabled {
+            let probe = reco_detect::probe_execution_providers();
+            if probe.is_available() && !probe.can_run_on_gpu_frames {
+                s.toasts.push(
+                    crate::toast::Severity::Warn,
+                    "AI tracking may not work",
+                    "CPU-only AI cannot process GPU-decoded frames. Tracking will be skipped unless CPU decode is used.".to_string(),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+            }
+        }
         let detection_interval = app.get_export_detection_interval() as u32;
         let replay_enabled = app.get_export_replay_enabled();
 
@@ -2260,6 +2273,10 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 .unwrap_or_default();
 
             s.clamp_targets();
+            let clamped_fov = s.pose.current_fov_deg();
+            if let Some(bridge) = s.bridge.as_mut() {
+                bridge.renderer_mut().pipeline_mut().set_fov(clamped_fov);
+            }
             let img = s.render_current();
             // Seed calibration slider values from the baseline layout.
             let layout = s.cal_baseline_layout.clone();
@@ -2317,6 +2334,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 if let Some(bw) = blend_width {
                     app.set_blend_width(bw);
                 }
+                app.set_fov(clamped_fov);
                 // Manual calibration JSON does not embed lens-profile info,
                 // so clear the display (hide the lens card) and just show
                 // the candidates count for this resolution so the user
@@ -2427,6 +2445,10 @@ fn handle_calibration_result(
                         .map(|b| b.renderer().gpu().gpu_name().to_string())
                         .unwrap_or_default();
                     state.clamp_targets();
+                    let clamped_fov = state.pose.current_fov_deg();
+                    if let Some(bridge) = state.bridge.as_mut() {
+                        bridge.renderer_mut().pipeline_mut().set_fov(clamped_fov);
+                    }
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 
@@ -2489,6 +2511,7 @@ fn handle_calibration_result(
                         if let Some(bw) = blend_width {
                             app.set_blend_width(bw);
                         }
+                        app.set_fov(clamped_fov);
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
                         if let Some((l, r)) = lens_baseline.as_ref() {
                             set_lens_sliders(&app, l, r);
