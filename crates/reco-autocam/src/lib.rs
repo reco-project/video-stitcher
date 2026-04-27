@@ -173,24 +173,18 @@ impl AutocamConfig {
 /// source. Returns `true` if detection was successfully activated, `false`
 /// if no detector backend is available (the session remains usable without
 /// autocam).
+#[cfg_attr(
+    not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")),
+    allow(unused_variables, unreachable_code)
+)]
 pub fn setup_autocam(
     session: &mut StitchSession,
     config: &AutocamConfig,
     fps: f32,
 ) -> Result<bool, Box<dyn std::error::Error>> {
-    let (input_width, input_height) = session.pipeline().source_info();
-    let use_zero_copy = session.pipeline().gpu().supports_zero_copy();
-    let model_path = config.model_path.to_str().unwrap_or("");
-    let detection_interval = config.detection_interval;
-    let tracking_mode = config.tracking_mode;
-    let field_roi = config.field_roi.as_ref();
-    let is_10bit = config.is_10bit;
-    // No-detector-feature config: ort + tensorrt-native + ncnn all
-    // disabled. Every detector path below is cfg-gated out, so the
-    // frame loop runs without autocam. Log once and bail so the caller
-    // knows why detection stayed off.
     #[cfg(not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")))]
     {
+        let _ = (session, config, fps);
         log::warn!(
             "Autocam: no detector backend compiled in (enable ort, tensorrt-native, or ncnn). \
              Session will run without AI camera control."
@@ -198,7 +192,14 @@ pub fn setup_autocam(
         return Ok(false);
     }
 
-    #[allow(unreachable_code)]
+    let (input_width, input_height) = session.pipeline().source_info();
+    let use_zero_copy = session.pipeline().gpu().supports_zero_copy();
+    let model_path = config.model_path.to_str().unwrap_or("");
+    let detection_interval = config.detection_interval;
+    let tracking_mode = config.tracking_mode;
+    let field_roi = config.field_roi.as_ref();
+    let is_10bit = config.is_10bit;
+
     let mut detection_active = false;
 
     // Load class names from the model to resolve label -> class_id for directors.
