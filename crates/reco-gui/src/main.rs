@@ -236,7 +236,7 @@ struct AppState {
 /// `cfg!()` summary that lied when a feature was baked in but the
 /// runtime libraries were missing.
 ///
-/// Returns `(status_text, can_run_ai_on_gpu_frames)`.
+/// Returns `(status_text, any_detector_available)`.
 fn ai_capability_summary() -> (String, bool) {
     #[cfg(not(feature = "autocam"))]
     return ("AI: disabled (build without autocam feature)".into(), false);
@@ -402,6 +402,7 @@ impl AppState {
             bridge.renderer_mut().update_layout(layout);
             self.preview_dirty = true;
         }
+        self.clamp_targets();
     }
 
     /// Write the current (edited) calibration back to disk.
@@ -839,10 +840,10 @@ fn main() -> anyhow::Result<()> {
     // Seed AI capability status once at startup so users can see
     // before they try to use tracking whether this build will do GPU
     // inference or fall back.
-    let (ai_status, ai_gpu_ok) = ai_capability_summary();
+    let (ai_status, ai_available) = ai_capability_summary();
     log::info!("{ai_status}");
     app.set_ai_status(ai_status.into());
-    app.set_ai_gpu_available(ai_gpu_ok);
+    app.set_ai_available(ai_available);
 
     let version = format!(
         "v{}{}",

@@ -328,9 +328,27 @@ impl StitchRenderer {
         self.pipeline.render_target()
     }
 
-    /// The precomputed coverage boundary.
     pub fn coverage(&self) -> &CoverageBoundary {
         &self.coverage
+    }
+
+    /// Clamp a viewport pose to the coverage boundary, accounting for
+    /// the current rig tilt. Consumers should call this instead of
+    /// accessing coverage + rig_tilt separately.
+    pub fn clamp_pose(
+        &self,
+        yaw: f32,
+        pitch: f32,
+        fov_degrees: f32,
+        aspect: f32,
+    ) -> crate::projection::ClampedPosition {
+        self.coverage.safe_clamp(
+            yaw,
+            pitch,
+            fov_degrees,
+            aspect,
+            self.pipeline.viewport.rig_tilt,
+        )
     }
 
     /// Maximum vertical FOV (degrees) that fits within the coverage area.

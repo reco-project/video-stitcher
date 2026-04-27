@@ -260,7 +260,7 @@ export component RecoApp inherits Window {
     // so the user can tell at-a-glance whether ball tracking will
     // actually work with their build (TensorRT, CUDA, CoreML, etc).
     in-out property <string> ai-status: "AI: unknown";
-    in-out property <bool> ai-gpu-available: false;
+    in-out property <bool> ai-available: false;
 
     in-out property <string> version: "";
 
@@ -1859,13 +1859,13 @@ export component RecoApp inherits Window {
                         CheckBox {
                             text: "Enable";
                             checked <=> root.export-autocam-enabled;
-                            enabled: root.ai-gpu-available;
+                            enabled: root.ai-available;
                         }
                     }
 
                     Text {
                         text: root.ai-status;
-                        color: root.ai-gpu-available ? #8f8 : #f88;
+                        color: root.ai-available ? #8f8 : #f88;
                         font-size: 11px;
                         wrap: word-wrap;
                     }
