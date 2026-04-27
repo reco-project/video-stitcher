@@ -308,6 +308,27 @@ export component RecoApp inherits Window {
     in-out property <[Toast]> toasts: [];
     callback toast-dismissed(int);
 
+    // Telemetry panel state.
+    in-out property <bool> stats-panel-open: false;
+    in-out property <float> telem-fps-avg: 0.0;
+    in-out property <float> telem-fps-recent: 0.0;
+    in-out property <float> telem-decode-ms: 0.0;
+    in-out property <float> telem-stitch-ms: 0.0;
+    in-out property <float> telem-readback-ms: 0.0;
+    in-out property <float> telem-encode-ms: 0.0;
+    in-out property <float> telem-total-ms: 0.0;
+    in-out property <float> telem-p99-ms: 0.0;
+    in-out property <float> telem-detection-ms: 0.0;
+    in-out property <int> telem-active-tracks: 0;
+    in-out property <float> telem-ball-pct: 0.0;
+    in-out property <float> telem-det-per-frame: 0.0;
+    in-out property <int> telem-frames-dropped: 0;
+    in-out property <string> telem-gpu-name: "";
+    in-out property <string> telem-bottleneck: "";
+    in-out property <float> telem-cal-confidence: 0.0;
+    in-out property <float> telem-cal-reproj-err: 0.0;
+    in-out property <int> telem-cal-matches: 0;
+
     // Per-camera lens intrinsics (populated by Rust after auto-calibrate
     // from `CalibrationResult.left_lens_profile` / `right_lens_profile`).
     // The Lens tab binds sliders to these properties; changes flow back
@@ -548,6 +569,12 @@ export component RecoApp inherits Window {
                     text: root.controls-open ? "Hide Controls" : "Controls";
                     enabled: root.files-loaded;
                     clicked => { root.controls-open = !root.controls-open; }
+                }
+
+                Button {
+                    text: root.stats-panel-open ? "Hide Stats" : "Stats";
+                    enabled: root.files-loaded;
+                    clicked => { root.stats-panel-open = !root.stats-panel-open; }
                 }
             }
         }
@@ -1084,6 +1111,55 @@ export component RecoApp inherits Window {
                     }
                     }  // close VerticalLayout inside ScrollView
                 }  // close ScrollView
+            }
+
+            if root.stats-panel-open: Rectangle {
+                background: #1a1a1a;
+                width: 240px;
+                border-width: 1px;
+                border-color: #333;
+
+                ScrollView {
+                    VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text { text: "Performance"; color: #fff; font-size: 13px; font-weight: 600; }
+
+                    Text { text: "FPS: " + round(root.telem-fps-avg) + " avg / " + round(root.telem-fps-recent) + " recent"; color: #aaa; font-size: 11px; }
+                    Text { text: "Frame: " + round(root.telem-total-ms * 10) / 10 + " avg / " + round(root.telem-p99-ms * 10) / 10 + " p99 ms"; color: #aaa; font-size: 11px; }
+                    Text { text: "  Decode:   " + round(root.telem-decode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                    Text { text: "  Stitch:   " + round(root.telem-stitch-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                    Text { text: "  Readback: " + round(root.telem-readback-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                    Text { text: "  Encode:   " + round(root.telem-encode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+
+                    if root.telem-bottleneck != "": Text {
+                        text: "Bottleneck: " + root.telem-bottleneck;
+                        color: #e8a060;
+                        font-size: 11px;
+                        font-weight: 600;
+                    }
+
+                    if root.telem-gpu-name != "": Text { text: root.telem-gpu-name; color: #666; font-size: 10px; }
+                    if root.telem-frames-dropped > 0: Text { text: "Dropped: " + root.telem-frames-dropped; color: #f88; font-size: 11px; }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    Text { text: "Detection"; color: #fff; font-size: 13px; font-weight: 600; }
+                    Text { text: "Ball present: " + round(root.telem-ball-pct) + "%"; color: #aaa; font-size: 11px; }
+                    Text { text: "Tracks: " + root.telem-active-tracks; color: #aaa; font-size: 11px; }
+                    Text { text: "Detections: " + round(root.telem-det-per-frame * 10) / 10 + "/frame"; color: #aaa; font-size: 11px; }
+                    if root.telem-detection-ms > 0: Text { text: "Detection: " + round(root.telem-detection-ms * 10) / 10 + " ms"; color: #aaa; font-size: 11px; }
+
+                    if root.telem-cal-matches > 0: Rectangle { height: 1px; background: #333; }
+                    if root.telem-cal-matches > 0: Text { text: "Calibration"; color: #fff; font-size: 13px; font-weight: 600; }
+                    if root.telem-cal-matches > 0: Text { text: "Confidence: " + round(root.telem-cal-confidence * 100) + "%"; color: #aaa; font-size: 11px; }
+                    if root.telem-cal-matches > 0: Text { text: "Reproj error: " + round(root.telem-cal-reproj-err * 10000) / 10000; color: #aaa; font-size: 11px; }
+                    if root.telem-cal-matches > 0: Text { text: "Matches: " + root.telem-cal-matches; color: #aaa; font-size: 11px; }
+
+                    }
+                }
             }
         }
 
