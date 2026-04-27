@@ -1208,7 +1208,7 @@ impl StitchSession {
         // trackers manage their own freshness via detection cadence.
         let _ = fresh_detection;
         let calibration = self.core.pipeline().calibration();
-        crate::panner::dispatch(
+        let dispatch_result = crate::panner::dispatch(
             self.panner.as_mut(),
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
@@ -1222,6 +1222,13 @@ impl StitchSession {
                 caller: "StitchSession",
             },
         );
+
+        self.telemetry.record_detections(
+            self.detection.last_detections.len() as u32,
+            dispatch_result.as_ref().map_or(0, |r| r.active_tracks),
+            dispatch_result.as_ref().is_some_and(|r| r.ball_present),
+        );
+
         Ok(())
     }
 

@@ -122,6 +122,12 @@ pub(crate) struct DispatchContext<'a> {
 /// [`PipelineEvent::WorldState`] right before `panner.decide` and a
 /// [`PipelineEvent::PanDecision`] right after. Both sites are part
 /// of the Step 6 trace vocabulary.
+pub(crate) struct DispatchResult {
+    pub pose: ViewportPosition,
+    pub active_tracks: u32,
+    pub ball_present: bool,
+}
+
 pub(crate) fn dispatch(
     panner: Option<&mut Box<dyn Panner>>,
     player_tracker: Option<&mut Box<dyn Tracker>>,
@@ -129,7 +135,7 @@ pub(crate) fn dispatch(
     previous_panner_pose: &mut ViewportPosition,
     mut event_sink: Option<&mut (dyn PipelineEventSink + '_)>,
     ctx: DispatchContext<'_>,
-) -> Option<ViewportPosition> {
+) -> Option<DispatchResult> {
     let panner = panner?;
     let mut world = WorldState::default();
 
@@ -169,10 +175,14 @@ pub(crate) fn dispatch(
         previous_position: *previous_panner_pose,
         calibration: ctx.calibration,
     };
+    let active_tracks = world.players.len() as u32;
+    let ball_present = world.ball.as_ref().is_some_and(|b| {
+        !matches!(b.state, crate::tracker::TrackState::Lost)
+    });
+
     let pose = panner.decide(&world, &pan_ctx);
     *previous_panner_pose = pose;
 
-    // Trace: PanDecision.
     if let Some(sink) = event_sink.as_mut() {
         sink.emit(PipelineEvent::PanDecision {
             frame_index: ctx.frame_index,
@@ -180,7 +190,11 @@ pub(crate) fn dispatch(
         });
     }
 
-    Some(pose)
+    Some(DispatchResult {
+        pose,
+        active_tracks,
+        ball_present,
+    })
 }
 
 #[cfg(test)]

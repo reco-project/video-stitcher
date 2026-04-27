@@ -2692,7 +2692,10 @@ fn run_export(
         #[cfg(feature = "autocam")]
         let do_autocam = autocam_enabled && !model_path.is_empty();
         #[cfg(not(feature = "autocam"))]
-        let do_autocam = false;
+        let do_autocam = {
+            let _ = autocam_enabled;
+            false
+        };
 
         #[cfg(feature = "autocam")]
         let model_path_owned = model_path.clone();

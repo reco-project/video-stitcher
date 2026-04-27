@@ -1520,13 +1520,8 @@ impl StitchCore {
                 caller: "StitchCore",
             },
         )
+        .map(|r| r.pose)
         .unwrap_or_default();
-        // Constrained-look (FRICTION A13): when on (default), clamp
-        // the pose through the coverage boundary so the viewport
-        // never reveals black panorama edges. When off, pass the
-        // raw pose through — useful for exploring the panorama space
-        // directly or for a deliberate cinematographic effect where
-        // black bars are acceptable.
         let clamped = if self.constrained_look {
             self.safe_clamp(raw)
         } else {
