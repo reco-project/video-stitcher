@@ -1349,7 +1349,7 @@ impl StitchSession {
     ///
     /// Copies the RGBA textures into the stitch pipeline's input planes,
     /// renders the stitch, converts to NV12, and submits to encoders.
-    /// This is the Bayer/GPU-RGBA equivalent of [`process_frame`] for
+    /// This is the Bayer/GPU-RGBA equivalent of `process_frame` for
     /// YUV/NV12 paths - session features (encoder fan-out, replay recording,
     /// frame counting) work automatically.
     pub fn process_frame_gpu_rgba(

@@ -25,9 +25,9 @@
 //! | Feature       | Transport                       | Status       |
 //! |---------------|----------------------------------|--------------|
 //! | `keyboard`    | [`keyboard::KeyboardTransport`] | **shipped** (trivial pass-through) |
-//! | `gopro`       | [`gopro`] module stub           | placeholder  |
-//! | `mobile`      | [`mobile`] module stub          | placeholder  |
-//! | `websocket`   | [`websocket`] module stub       | placeholder  |
+//! | `gopro`       | `gopro` module stub             | placeholder  |
+//! | `mobile`      | `mobile` module stub            | placeholder  |
+//! | `websocket`   | `websocket` module stub         | placeholder (feature-gated) |
 //!
 //! The placeholder modules contain `todo!()` bodies; they exist so
 //! the feature-combo CI matrix exercises the gates and so future
