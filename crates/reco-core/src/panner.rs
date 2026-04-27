@@ -176,9 +176,10 @@ pub(crate) fn dispatch(
         calibration: ctx.calibration,
     };
     let active_tracks = world.players.len() as u32;
-    let ball_present = world.ball.as_ref().is_some_and(|b| {
-        !matches!(b.state, crate::tracker::TrackState::Lost)
-    });
+    let ball_present = world
+        .ball
+        .as_ref()
+        .is_some_and(|b| !matches!(b.state, crate::tracker::TrackState::Lost));
 
     let pose = panner.decide(&world, &pan_ctx);
     *previous_panner_pose = pose;

@@ -2708,8 +2708,7 @@ fn run_export(
                 "sweep" => reco_autocam::TrackingMode::Sweep,
                 _ => reco_autocam::TrackingMode::Ball,
             };
-            let is_10bit =
-                source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
+            let is_10bit = source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
             let autocam_config = reco_autocam::AutocamConfig::new(&model_path_owned)
                 .with_tracking_mode(mode)
                 .with_detection_interval(interval)
@@ -2722,9 +2721,7 @@ fn run_export(
             let result = reco_autocam::setup_autocam(session, &autocam_config, info.fps as f32);
             let banner: String = match result {
                 Ok(true) => "AI tracking: active".into(),
-                Ok(false) => {
-                    "AI tracking UNAVAILABLE (needs tensorrt or CPU decode)".into()
-                }
+                Ok(false) => "AI tracking UNAVAILABLE (needs tensorrt or CPU decode)".into(),
                 Err(e) => format!("AI tracking setup FAILED ({e})"),
             };
             log::info!("Export: {banner}");
@@ -2737,7 +2734,12 @@ fn run_export(
         });
     }
     #[cfg(not(feature = "autocam"))]
-    let _ = (autocam_enabled, &model_path, &tracking_mode, detection_interval);
+    let _ = (
+        autocam_enabled,
+        &model_path,
+        &tracking_mode,
+        detection_interval,
+    );
 
     match job.run(interrupted) {
         Ok(r) => ExportOutcome::Ok(r.frames_processed, output),

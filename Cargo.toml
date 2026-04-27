@@ -33,5 +33,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "tracing-log"] }
 tracing-log = "0.2"
 
+[profile.release]
+strip = true
+lto = "thin"
+
 # SPIKE: wgpu 28 interop with Slint. Fork removed; if wgpu 28 doesn't
 # have the shaderDrawParameters regression, no patch is needed.
