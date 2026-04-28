@@ -172,6 +172,49 @@ of manually coordinating PoseControl + coverage + rig_tilt.
 
 Plan disposition: K6 / E7. Lands with N12.
 
+### N16. Recording doubles GPU render cost in GUI
+
+**Impact**: High. User-visible stutter during preview recording.
+
+The GUI's `render_frame_and_nv12` calls `render_and_readback_nv12`
+(renders to internal target + NV12 compute + triple-buffer readback)
+then `render_frame` (renders again to a Slint-owned texture). Two
+full stitch renders per frame. The CLI preview does the same double
+render but without Slint's compositor overhead, so it's smooth.
+
+The proper fix: render once to the Slint texture, and run the NV12
+compute shader on that same texture's output (it has TEXTURE_BINDING).
+This requires the NV12 converter to accept an external texture as
+input instead of always using the pipeline's internal render target.
+Alternatively, render to the internal target once, run NV12 readback,
+then blit/copy to the Slint texture (one render + one copy instead
+of two renders).
+
+### N17. No ROI visualization or editing in GUI
+
+**Impact**: Medium. The calibration produces `field_roi` (bounding box
+of the playing field in panoramic coordinates) but the GUI never shows
+or lets users adjust it. The ROI gates which detections the AI tracker
+considers - a wrong ROI means the tracker ignores the ball or tracks
+spectators. Users have no way to verify the ROI is correct without
+looking at raw calibration JSON.
+
+**Suggested direction**: overlay the ROI rectangle on the preview
+(transparent colored border). An edit mode where users can drag the
+ROI corners. Requires `panorama_to_screen` projection (inverse of the
+stitch projection) to map ROI coordinates to screen pixels.
+
+### N18. Slint slider loses pointer tracking inside ScrollView
+
+**Impact**: Low. Reproducible with the correction slider in the Lens
+section. When the user drags a Slint Slider inside a ScrollView, the
+ScrollView can capture the pointer and the slider stops tracking.
+The slider "drops" from the cursor and blocks until re-clicked.
+
+Likely a Slint bug or interaction between ScrollView's pointer
+handling and Slider's drag gesture. Workaround: move critical sliders
+outside the ScrollView, or use a custom drag-based control.
+
 ## Resolved (archived)
 
 Items pruned from Active once the reco-core / reco-io API added what
