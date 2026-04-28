@@ -1926,18 +1926,20 @@ fn main() -> anyhow::Result<()> {
         };
         drop(s);
 
-        let (use_imu_seeds, cal_frames, akaze_threshold, detect_y_min, detect_y_max) = app_weak
-            .upgrade()
-            .map(|a| {
-                (
-                    a.get_use_imu_seeds(),
-                    a.get_calibration_frames().max(2) as usize,
-                    a.get_cal_akaze_threshold() as f64,
-                    a.get_cal_detect_y_min() as f64,
-                    a.get_cal_detect_y_max() as f64,
-                )
-            })
-            .unwrap_or((false, 4, 0.0001, 0.05, 0.95));
+        let (use_imu_seeds, cal_frames, akaze_threshold, detect_y_min, detect_y_max, skip_end) =
+            app_weak
+                .upgrade()
+                .map(|a| {
+                    (
+                        a.get_use_imu_seeds(),
+                        a.get_calibration_frames().max(2) as usize,
+                        a.get_cal_akaze_threshold() as f64,
+                        a.get_cal_detect_y_min() as f64,
+                        a.get_cal_detect_y_max() as f64,
+                        a.get_cal_skip_end_secs() as f64,
+                    )
+                })
+                .unwrap_or((false, 4, 0.0001, 0.05, 0.95, 0.0));
 
         if let Some(app) = app_weak.upgrade() {
             app.set_calibrating(true);
@@ -1977,13 +1979,14 @@ fn main() -> anyhow::Result<()> {
             // to settle on, which especially helps at 4K where AKAZE
             // feature matches are noisier per frame.
             log::info!(
-                "Auto-calibrate: {cal_frames} frames, skip={current_time_secs:.1}s, \
+                "Auto-calibrate: {cal_frames} frames, skip=[{current_time_secs:.1}s, -{skip_end:.0}s], \
                  imu_seeds={use_imu_seeds}, akaze={akaze_threshold}, \
                  detect_y=[{detect_y_min:.2}, {detect_y_max:.2}]"
             );
             let mut config = reco_calibrate::CalibrationConfig {
                 num_frames: cal_frames,
                 skip_start_secs: current_time_secs,
+                skip_end_secs: skip_end,
                 use_imu_rotation_seeds: use_imu_seeds,
                 ..Default::default()
             };

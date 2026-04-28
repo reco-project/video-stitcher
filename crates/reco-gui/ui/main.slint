@@ -297,6 +297,7 @@ export component RecoApp inherits Window {
     in-out property <float> cal-akaze-threshold: 0.0001;
     in-out property <float> cal-detect-y-min: 0.05;
     in-out property <float> cal-detect-y-max: 0.95;
+    in-out property <float> cal-skip-end-secs: 0.0;
 
     // When true (default), pan/zoom is clamped to the coverage boundary
     // so the viewport never shows black margins. Users can disable it
@@ -768,6 +769,16 @@ export component RecoApp inherits Window {
                                     maximum: 1.0;
                                     value <=> root.cal-detect-y-max;
                                     decimals: 2;
+                                    changed(v) => {}
+                                }
+
+                                LabeledSlider {
+                                    label: "Skip end";
+                                    minimum: 0;
+                                    maximum: 60;
+                                    value <=> root.cal-skip-end-secs;
+                                    suffix: "s";
+                                    decimals: 0;
                                     changed(v) => {}
                                 }
                             }
