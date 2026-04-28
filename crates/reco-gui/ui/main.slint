@@ -250,6 +250,7 @@ export component RecoApp inherits Window {
     in-out property <[string]> available-codecs: ["h264", "hevc", "av1"];
     in-out property <string> export-quality: "balanced";
     in-out property <float> export-blend-width: 0.05;
+    in-out property <float> export-start-secs: 0.0; // 0 = from beginning
     in-out property <float> export-duration-secs: 0.0; // 0 = full clip
     in-out property <string> export-model-path: "";
     in-out property <string> export-tracking-mode: "field";
@@ -544,6 +545,9 @@ export component RecoApp inherits Window {
 
                 Rectangle { horizontal-stretch: 1; }
 
+                Button { text: "?"; clicked => { root.shortcuts-dialog-open = true; } }
+                Button { text: "⚙"; clicked => { root.open-prefs-dialog(); } }
+
                 Button {
                     text: "Export…";
                     enabled: root.files-loaded && !root.export-in-progress;
@@ -551,8 +555,10 @@ export component RecoApp inherits Window {
                     clicked => { root.open-export-dialog(); }
                 }
 
+                Rectangle { width: 1px; height: 24px; background: #444; }
+
                 Button {
-                    text: root.controls-open ? "Panel ◀" : "▶ Panel";
+                    text: root.controls-open ? "◀" : "▶";
                     enabled: root.files-loaded;
                     clicked => { root.controls-open = !root.controls-open; }
                 }
@@ -1295,20 +1301,6 @@ export component RecoApp inherits Window {
                     vertical-alignment: center;
                 }
 
-                // Utility buttons (moved from toolbar)
-                Rectangle {
-                    width: 22px; height: 22px; border-radius: 3px;
-                    background: help-touch.has-hover ? #2a2a2a : transparent;
-                    Text { text: "?"; color: #666; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                    help-touch := TouchArea { clicked => { root.shortcuts-dialog-open = true; } }
-                }
-                Rectangle {
-                    width: 22px; height: 22px; border-radius: 3px;
-                    background: prefs-touch.has-hover ? #2a2a2a : transparent;
-                    Text { text: "⚙"; color: #666; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
-                    prefs-touch := TouchArea { clicked => { root.open-prefs-dialog(); } }
-                }
-
                 Rectangle {
                     width: 18px;
                     height: 18px;
@@ -1867,6 +1859,36 @@ export component RecoApp inherits Window {
                         value <=> root.export-blend-width;
                         decimals: 2;
                         changed(v) => { /* just stored, used at submit */ }
+                    }
+
+                    // Processing range
+                    HorizontalBox {
+                        spacing: 10px;
+                        padding: 0;
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Start (seconds)"; color: #ccc; font-size: 12px; }
+                            LineEdit {
+                                text: root.export-start-secs == 0 ? "" : root.export-start-secs;
+                                placeholder-text: "0 (beginning)";
+                                edited(v) => {
+                                    root.export-start-secs = v.to-float();
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Duration (seconds)"; color: #ccc; font-size: 12px; }
+                            LineEdit {
+                                text: root.export-duration-secs == 0 ? "" : root.export-duration-secs;
+                                placeholder-text: "0 (full clip)";
+                                edited(v) => {
+                                    root.export-duration-secs = v.to-float();
+                                }
+                            }
+                        }
                     }
 
                     CheckBox {

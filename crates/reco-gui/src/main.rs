@@ -2524,6 +2524,7 @@ fn main() -> anyhow::Result<()> {
         let codec_str = app.get_export_codec().to_string();
         let quality_str = app.get_export_quality().to_string();
         let blend = app.get_export_blend_width();
+        let start_secs = app.get_export_start_secs();
         let duration = app.get_export_duration_secs();
         let autocam_enabled = app.get_export_autocam_enabled();
         let model_path = app.get_export_model_path().to_string();
@@ -2580,6 +2581,7 @@ fn main() -> anyhow::Result<()> {
                 codec_str,
                 quality_str,
                 blend,
+                start_secs,
                 duration,
                 autocam_enabled,
                 model_path,

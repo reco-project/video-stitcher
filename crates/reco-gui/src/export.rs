@@ -73,6 +73,7 @@ pub fn run_export(
     codec_str: String,
     quality_str: String,
     blend: f32,
+    start_secs: f32,
     duration_secs: f32,
     autocam_enabled: bool,
     model_path: String,
@@ -178,6 +179,10 @@ pub fn run_export(
         });
     });
 
+    if start_secs > 0.0 {
+        let fps = 30.0; // TODO: probe source FPS
+        job = job.start_frame((start_secs as f64 * fps) as u64);
+    }
     if duration_secs > 0.0 {
         job = job.duration(duration_secs as f64);
     }
