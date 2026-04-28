@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 //! Reco GUI - Slint-based panoramic video stitcher.
 //!
 //! Opens a Material dark themed window with file pickers for left/right
