@@ -575,29 +575,39 @@ impl AppState {
             let bridge = self.bridge.as_mut().unwrap();
             let (w, h) = bridge.viewport_size();
             let fps = self.playback.fps();
-            let result = bridge.render_frame_and_nv12(&left, &right, pose.yaw, pose.pitch);
-            match result {
-                Ok((img, nv12_opt)) => {
-                    if let Some(nv12) = nv12_opt
-                        && let Some(enc) = self.recording_encoder.as_mut()
-                    {
+
+            // NV12 readback for the encoder (every frame)
+            match bridge
+                .renderer_mut()
+                .render_and_readback_nv12(&left, &right, pose.yaw, pose.pitch)
+            {
+                Ok(Some(nv12)) => {
+                    if let Some(enc) = self.recording_encoder.as_mut() {
                         let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
                         let _ = enc.submit(reco_core::encoder::OutputFrame {
-                            data: &nv12,
+                            data: nv12,
                             width: w & !3,
                             height: h & !1,
                             format: reco_core::encoder::PixelFormat::Nv12,
                             pts_us: pts,
                         });
-                        self.recording_frames += 1;
                     }
-                    Some(img)
+                    self.recording_frames += 1;
                 }
-                Err(e) => {
-                    log::error!("Render error: {e}");
-                    None
+                Ok(None) => {}
+                Err(e) => log::error!("NV12 readback error: {e}"),
+            }
+
+            // Display preview at reduced rate (every 3rd frame) to
+            // avoid the double-render cost that causes stutter (N16).
+            if self.recording_frames.is_multiple_of(3) {
+                let bridge = self.bridge.as_ref().unwrap();
+                match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
+                    Ok(img) => return Some(img),
+                    Err(e) => log::error!("Preview render error: {e}"),
                 }
             }
+            None
         } else {
             match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
                 Ok(img) => Some(img),
@@ -1805,13 +1815,21 @@ fn main() -> anyhow::Result<()> {
     });
 
     let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
     app.on_changed_rig_tilt(move |deg| {
         state_ref.borrow_mut().set_rig_tilt(deg);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
     });
 
     let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
     app.on_changed_rig_roll(move |deg| {
         state_ref.borrow_mut().set_rig_roll(deg);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
     });
 
     let state_ref = Rc::clone(&state);
