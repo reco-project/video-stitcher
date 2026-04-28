@@ -403,6 +403,20 @@ export component RecoApp inherits Window {
     // camera and calls update_camera_params.
     callback changed-lens-param();
     callback reset-lens();
+
+    // Lens picker dialog.
+    callback lens-search-changed(string);
+    callback lens-pick(int);
+    callback lens-pick-file();
+    in-out property <bool> lens-picker-open: false;
+    in-out property <string> lens-search-query: "";
+    in-out property <[string]> lens-search-results: [];
+
+    // Distortion preview controls.
+    in-out property <float> lens-correction-amount: 1.0;
+    in-out property <bool> distortion-split-view: false;
+    callback changed-lens-correction(float);
+    callback changed-split-view();
     // Constrained-look checkbox. Fires when the user toggles it so Rust
     // can sync `AppState.use_constrained_look` with the UI property
     // (Slint's <=> binding updates the property but Rust needs a notify
@@ -924,6 +938,27 @@ export component RecoApp inherits Window {
                         if !root.lens-info-available: Text {
                             text: "Auto-calibrate to detect lens.";
                             color: #777; font-size: 11px;
+                        }
+
+                        Button {
+                            text: "Browse profiles...";
+                            clicked => { root.lens-picker-open = true; }
+                        }
+
+                        // Distortion preview
+                        LabeledSlider {
+                            label: "Correction";
+                            minimum: 0;
+                            maximum: 1.0;
+                            value <=> root.lens-correction-amount;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-correction(v); }
+                        }
+
+                        CheckBox {
+                            text: "Split view (raw vs corrected)";
+                            checked <=> root.distortion-split-view;
+                            toggled => { root.changed-split-view(); }
                         }
 
                         // Fine-tune toggle
@@ -1884,6 +1919,99 @@ export component RecoApp inherits Window {
                             primary: true;
                             enabled: root.export-output-path != "";
                             clicked => { root.start-export(); }
+                        }
+                    }
+                }
+            }
+        }
+        // ── Lens profile picker dialog (modal) ──
+        if root.lens-picker-open: Rectangle {
+            background: #000000aa;
+            TouchArea { clicked => { root.lens-picker-open = false; } }
+
+            Rectangle {
+                width: 520px;
+                height: min(parent.height - 80px, 540px);
+                background: #222;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #444;
+                TouchArea {}
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 10px;
+
+                    Text {
+                        text: "Browse Lens Profiles";
+                        color: #fff;
+                        font-size: 16px;
+                        font-weight: 600;
+                    }
+
+                    LineEdit {
+                        text <=> root.lens-search-query;
+                        placeholder-text: "Search by camera, lens, resolution...";
+                        edited(text) => { root.lens-search-changed(text); }
+                    }
+
+                    ScrollView {
+                        vertical-stretch: 1;
+
+                        VerticalLayout {
+                            spacing: 2px;
+
+                            if root.lens-search-results.length == 0 && root.lens-search-query != "": Text {
+                                text: "No profiles match your search.";
+                                color: #777;
+                                font-size: 12px;
+                            }
+
+                            if root.lens-search-query == "": Text {
+                                text: "Type to search across 4200+ camera profiles.";
+                                color: #666;
+                                font-size: 12px;
+                            }
+
+                            for result[idx] in root.lens-search-results: Rectangle {
+                                height: 32px;
+                                border-radius: 4px;
+                                background: lens-row.has-hover ? #333 : #282828;
+
+                                lens-row := TouchArea {
+                                    clicked => {
+                                        root.lens-pick(idx);
+                                        root.lens-picker-open = false;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    spacing: 6px;
+                                    Text {
+                                        text: result;
+                                        color: #ddd;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button {
+                            text: "Load from file...";
+                            clicked => { root.lens-pick-file(); }
+                        }
+                        Button {
+                            text: "Close";
+                            clicked => { root.lens-picker-open = false; }
                         }
                     }
                 }

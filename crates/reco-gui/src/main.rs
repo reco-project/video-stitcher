@@ -2052,6 +2052,183 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // ── Lens picker callbacks ──
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_lens_search_changed(move |query| {
+        let s = state_ref.borrow();
+        let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
+        let db = reco_calibrate::lens_database::LensDatabase::embedded();
+        let results = db.search(query.as_str(), in_w, in_h);
+        let model: Vec<slint::SharedString> = results
+            .iter()
+            .map(|r| {
+                slint::SharedString::from(format!(
+                    "{} - {} - {}x{}",
+                    r.camera, r.lens, r.width, r.height
+                ))
+            })
+            .collect();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_lens_search_results(slint::ModelRc::new(slint::VecModel::from(model)));
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_lens_pick(move |idx| {
+        let app_ref = app_weak.upgrade();
+        let query = app_ref
+            .as_ref()
+            .map(|a| a.get_lens_search_query().to_string())
+            .unwrap_or_default();
+        let mut s = state_ref.borrow_mut();
+        let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
+        let db = reco_calibrate::lens_database::LensDatabase::embedded();
+        let results = db.search(&query, in_w, in_h);
+        let idx = idx as usize;
+        if idx < results.len() {
+            let summary = &results[idx];
+            if let Some(params) = db.load_by_summary(summary) {
+                log::info!(
+                    "Lens picker: applying {} - {} ({}x{})",
+                    summary.camera,
+                    summary.lens,
+                    summary.width,
+                    summary.height
+                );
+                let scale_w = in_w as f64 / params.width as f64;
+                let scale_h = in_h as f64 / params.height as f64;
+                let scaled = reco_core::calibration::CameraParams {
+                    width: in_w,
+                    height: in_h,
+                    fx: params.fx * scale_w,
+                    fy: params.fy * scale_h,
+                    cx: params.cx * scale_w,
+                    cy: params.cy * scale_h,
+                    d: params.d,
+                };
+                if let Some(bridge) = s.bridge.as_mut() {
+                    bridge
+                        .renderer_mut()
+                        .update_camera_params(Some(scaled.clone()), Some(scaled.clone()));
+                }
+                s.preview_dirty = true;
+                if let Some(app) = app_ref.as_ref() {
+                    set_lens_sliders(app, &scaled, &scaled);
+                    app.set_lens_dirty(true);
+                    app.set_lens_left_camera(summary.camera.clone().into());
+                    app.set_lens_left_source("Picker".into());
+                    app.set_lens_right_camera(summary.camera.clone().into());
+                    app.set_lens_right_source("Picker".into());
+                    app.set_lens_info_available(true);
+                }
+            }
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_lens_pick_file(move || {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Load lens profile JSON")
+            .add_filter("JSON", &["json"]);
+        if let Some(path) = dialog.pick_file() {
+            match reco_calibrate::lens_database::load_from_file(&path) {
+                Ok(params) => {
+                    let mut s = state_ref.borrow_mut();
+                    let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
+                    let scale_w = if params.width > 0 {
+                        in_w as f64 / params.width as f64
+                    } else {
+                        1.0
+                    };
+                    let scale_h = if params.height > 0 {
+                        in_h as f64 / params.height as f64
+                    } else {
+                        1.0
+                    };
+                    let scaled = reco_core::calibration::CameraParams {
+                        width: in_w,
+                        height: in_h,
+                        fx: params.fx * scale_w,
+                        fy: params.fy * scale_h,
+                        cx: params.cx * scale_w,
+                        cy: params.cy * scale_h,
+                        d: params.d,
+                    };
+                    if let Some(bridge) = s.bridge.as_mut() {
+                        bridge
+                            .renderer_mut()
+                            .update_camera_params(Some(scaled.clone()), Some(scaled.clone()));
+                    }
+                    s.preview_dirty = true;
+                    if let Some(app) = app_weak.upgrade() {
+                        set_lens_sliders(&app, &scaled, &scaled);
+                        app.set_lens_dirty(true);
+                        app.set_lens_picker_open(false);
+                        let name = display_name(&path);
+                        app.set_lens_left_camera(name.clone().into());
+                        app.set_lens_left_source("File".into());
+                        app.set_lens_right_camera(name.into());
+                        app.set_lens_right_source("File".into());
+                        app.set_lens_info_available(true);
+                        s.toasts.push(
+                            crate::toast::Severity::Info,
+                            "Lens profile loaded",
+                            path.display().to_string(),
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to load lens profile: {e}");
+                    let mut s = state_ref.borrow_mut();
+                    if let Some(app) = app_weak.upgrade() {
+                        s.toasts.push(
+                            crate::toast::Severity::Error,
+                            "Failed to load lens profile",
+                            e.to_string(),
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
+                }
+            }
+        }
+    });
+
+    // ── Distortion preview callbacks ──
+
+    let state_ref = Rc::clone(&state);
+    app.on_changed_lens_correction(move |amount| {
+        let mut s = state_ref.borrow_mut();
+        if let Some(bridge) = s.bridge.as_mut() {
+            bridge
+                .renderer_mut()
+                .pipeline_mut()
+                .set_lens_correction_amount(amount);
+            s.preview_dirty = true;
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_split_view(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let enabled = app.get_distortion_split_view();
+        let mut s = state_ref.borrow_mut();
+        if let Some(bridge) = s.bridge.as_mut() {
+            bridge
+                .renderer_mut()
+                .pipeline_mut()
+                .set_distortion_split_view(enabled);
+            s.preview_dirty = true;
+        }
+    });
+
     // Slint's <=> binding updates the use-constrained-look property but
     // does not call back into Rust. Without this notify, AppState's
     // use_constrained_look stays at its initial value forever and the
