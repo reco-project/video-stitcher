@@ -2552,6 +2552,12 @@ fn main() -> anyhow::Result<()> {
         },
     );
 
+    // Auto-open the files panel when no files are loaded so the user
+    // sees the first action they need to take.
+    if !app.get_files_loaded() {
+        app.set_files_panel_open(true);
+    }
+
     app.run()?;
     Ok(())
 }
@@ -2643,11 +2649,6 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
         Ok(true) => {
             let fps = s.playback.fps();
             let total = s.playback.total_frames().unwrap_or(0);
-            let gpu_name = s
-                .bridge
-                .as_ref()
-                .map(|b| b.renderer().gpu().gpu_name().to_string())
-                .unwrap_or_default();
 
             s.clamp_targets();
             let clamped_fov = s.pose.current_fov_deg();
@@ -2690,9 +2691,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 app.set_total_frames(total as i32);
                 app.set_current_frame(s.playback.frame_index() as i32);
                 app.set_fps(fps as f32);
-                app.set_status_text(
-                    format!("Ready - {gpu_name} - {:.1} fps - {total} frames", fps,).into(),
-                );
+                app.set_status_text(format!("Ready - {:.0} fps - {total} frames", fps).into());
                 if let Some(img) = img {
                     app.set_preview_frame(img);
                 }
@@ -2816,11 +2815,6 @@ fn handle_calibration_result(
                 Ok(true) => {
                     let fps = state.playback.fps();
                     let total = state.playback.total_frames().unwrap_or(0);
-                    let gpu_name = state
-                        .bridge
-                        .as_ref()
-                        .map(|b| b.renderer().gpu().gpu_name().to_string())
-                        .unwrap_or_default();
                     state.clamp_targets();
                     let clamped_fov = state.pose.current_fov_deg();
                     if let Some(bridge) = state.bridge.as_mut() {
@@ -2904,11 +2898,7 @@ fn handle_calibration_result(
                         app.set_current_frame(state.playback.frame_index() as i32);
                         app.set_fps(fps as f32);
                         app.set_status_text(
-                            format!(
-                                "Auto-calibrated - {gpu_name} - {:.1} fps - {total} frames",
-                                fps,
-                            )
-                            .into(),
+                            format!("Auto-calibrated - {:.0} fps - {total} frames", fps,).into(),
                         );
                         if let Some(img) = img {
                             app.set_preview_frame(img);
