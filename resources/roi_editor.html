@@ -39,7 +39,7 @@ canvas { cursor: crosshair; max-width: 100%; max-height: calc(100vh - 60px); }
 </div>
 
 <div class="instructions">
-  Click to add points. Right-click to undo. Switch cameras above. Click "Save ROI" when done.
+  Click to add field boundary points. Right-click to undo. Switch cameras above. Save writes to calibration file and copies to clipboard.
 </div>
 
 <script>
@@ -48,44 +48,34 @@ const ctx = canvas.getContext('2d');
 const sideSelect = document.getElementById('side');
 const pointCountEl = document.getElementById('pointCount');
 
-// ROI data per side
 const roi = { left: [], right: [] };
 const images = { left: null, right: null };
 let currentImage = null;
 
-// Parse URL params
-const params = new URLSearchParams(window.location.search);
-const leftImagePath = params.get('left');
-const rightImagePath = params.get('right');
-const calPath = params.get('cal');
+// Data injected by Rust at generation time (base64 data URIs + inline JSON).
+// These placeholders are replaced with actual values in the generated HTML.
+const LEFT_IMAGE_DATA = '{{LEFT_IMAGE_DATA}}';
+const RIGHT_IMAGE_DATA = '{{RIGHT_IMAGE_DATA}}';
+const CAL_JSON = {{CAL_JSON}};
+const CAL_PATH = '{{CAL_PATH}}';
 
-function loadImage(path) {
+function loadImage(dataUri) {
   return new Promise((resolve, reject) => {
+    if (!dataUri || dataUri.startsWith('{{')) { reject('no data'); return; }
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = reject;
-    img.src = path;
+    img.src = dataUri;
   });
 }
 
 async function init() {
-  if (leftImagePath) {
-    try { images.left = await loadImage(leftImagePath); } catch(e) { console.warn('Left image not found:', leftImagePath); }
-  }
-  if (rightImagePath) {
-    try { images.right = await loadImage(rightImagePath); } catch(e) { console.warn('Right image not found:', rightImagePath); }
-  }
+  try { images.left = await loadImage(LEFT_IMAGE_DATA); } catch(e) { console.warn('Left image not available'); }
+  try { images.right = await loadImage(RIGHT_IMAGE_DATA); } catch(e) { console.warn('Right image not available'); }
 
-  // Load existing ROI from calibration if provided
-  if (calPath) {
-    try {
-      const resp = await fetch(calPath);
-      const cal = await resp.json();
-      if (cal.field_roi) {
-        if (cal.field_roi.left) roi.left = cal.field_roi.left.map(p => [...p]);
-        if (cal.field_roi.right) roi.right = cal.field_roi.right.map(p => [...p]);
-      }
-    } catch(e) { console.warn('Could not load calibration:', e); }
+  if (CAL_JSON && CAL_JSON.field_roi) {
+    if (CAL_JSON.field_roi.left) roi.left = CAL_JSON.field_roi.left.map(p => [...p]);
+    if (CAL_JSON.field_roi.right) roi.right = CAL_JSON.field_roi.right.map(p => [...p]);
   }
 
   switchSide();
@@ -116,7 +106,7 @@ function redraw() {
     ctx.fillStyle = '#888';
     ctx.font = '20px system-ui';
     ctx.textAlign = 'center';
-    ctx.fillText('No image loaded', canvas.width/2, canvas.height/2);
+    ctx.fillText('No image loaded - ffmpeg may not be installed', canvas.width/2, canvas.height/2);
   }
 
   const side = sideSelect.value;
@@ -125,7 +115,6 @@ function redraw() {
   const h = canvas.height;
 
   if (points.length > 0) {
-    // Draw polygon fill
     ctx.beginPath();
     ctx.moveTo(points[0][0] * w, points[0][1] * h);
     for (let i = 1; i < points.length; i++) {
@@ -135,7 +124,6 @@ function redraw() {
     ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
     ctx.fill();
 
-    // Draw polygon outline
     ctx.beginPath();
     ctx.moveTo(points[0][0] * w, points[0][1] * h);
     for (let i = 1; i < points.length; i++) {
@@ -146,7 +134,6 @@ function redraw() {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Draw vertices
     for (let i = 0; i < points.length; i++) {
       const x = points[i][0] * w;
       const y = points[i][1] * h;
@@ -189,28 +176,33 @@ function clearPoints() {
 }
 
 function saveAndClose() {
-  // Build the ROI JSON and offer as download, or update the calibration file
-  const output = { left: roi.left, right: roi.right };
-  const json = JSON.stringify(output, null, 2);
+  const roiData = { left: roi.left, right: roi.right };
 
-  // If we have a calibration path, try to update it
-  if (calPath) {
-    // Create a download link with the ROI data
-    const blob = new Blob([json], { type: 'application/json' });
+  // Update the calibration JSON with field_roi and save
+  if (CAL_PATH && CAL_JSON) {
+    CAL_JSON.field_roi = roiData;
+    const updatedCal = JSON.stringify(CAL_JSON, null, 2);
+
+    // Download the updated calibration file
+    const blob = new Blob([updatedCal], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'field_roi.json';
+    // Use the original calibration filename
+    const calName = CAL_PATH.split('/').pop() || 'calibration.json';
+    a.download = calName;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  // Also copy to clipboard
+  // Copy just the ROI portion to clipboard
+  const json = JSON.stringify(roiData, null, 2);
   navigator.clipboard.writeText(json).then(() => {
-    pointCountEl.textContent = 'ROI copied to clipboard + downloaded!';
+    pointCountEl.textContent = 'ROI saved! Updated calibration downloaded + ROI copied to clipboard.';
     pointCountEl.style.color = '#8f8';
   }).catch(() => {
-    pointCountEl.textContent = 'ROI downloaded as field_roi.json';
+    pointCountEl.textContent = 'Updated calibration downloaded as ' + (CAL_PATH.split('/').pop() || 'calibration.json');
+    pointCountEl.style.color = '#8f8';
   });
 }
 

@@ -1475,13 +1475,11 @@ fn main() -> anyhow::Result<()> {
             return;
         };
 
-        // Export current frames as temp PNGs for the web-based ROI editor
         let tmp_dir = std::env::temp_dir().join("reco-roi");
         let _ = std::fs::create_dir_all(&tmp_dir);
         let left_png = tmp_dir.join("left.png");
         let right_png = tmp_dir.join("right.png");
 
-        // Extract one frame from each video at the current playback position
         let current_secs = {
             let s = state_ref.borrow();
             if s.playback.fps() > 0.0 {
@@ -1503,31 +1501,56 @@ fn main() -> anyhow::Result<()> {
         extract_frame(&left, &left_png, &seek_str);
         extract_frame(&right, &right_png, &seek_str);
 
-        let html_path =
+        let html_template =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/roi_editor.html");
-        if !html_path.exists() {
+        if !html_template.exists() {
             let mut s = state_ref.borrow_mut();
             if let Some(app) = app_weak.upgrade() {
                 s.toasts.push(
                     crate::toast::Severity::Error,
                     "ROI editor not found",
-                    format!("Expected at {}", html_path.display()),
+                    format!("Expected at {}", html_template.display()),
                 );
                 crate::toast::sync_to_ui(&s.toasts, &app);
             }
             return;
         }
 
-        let url = format!(
-            "file://{}?left=file://{}&right=file://{}&cal=file://{}",
-            html_path.display(),
-            left_png.display(),
-            right_png.display(),
-            cal_path.display()
-        );
-        log::info!("Opening ROI editor: {url}");
+        // Build self-contained HTML with base64-embedded images and
+        // inline calibration JSON so browsers don't block file:// loads.
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD;
 
-        if let Err(e) = open::that(&url) {
+        let left_data = std::fs::read(&left_png)
+            .ok()
+            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
+            .unwrap_or_default();
+        let right_data = std::fs::read(&right_png)
+            .ok()
+            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
+            .unwrap_or_default();
+
+        let cal_json_str = std::fs::read_to_string(&cal_path).unwrap_or_else(|_| "{}".into());
+
+        let template = std::fs::read_to_string(&html_template).unwrap_or_default();
+        let html = template
+            .replace("'{{LEFT_IMAGE_DATA}}'", &format!("'{left_data}'"))
+            .replace("'{{RIGHT_IMAGE_DATA}}'", &format!("'{right_data}'"))
+            .replace("{{CAL_JSON}}", &cal_json_str)
+            .replace("'{{CAL_PATH}}'", &format!("'{}'", cal_path.display()));
+
+        let out_html = tmp_dir.join("roi_editor.html");
+        if let Err(e) = std::fs::write(&out_html, html) {
+            log::error!("Failed to write ROI editor HTML: {e}");
+            return;
+        }
+
+        log::info!(
+            "Opening ROI editor with embedded frames from t={seek_str}s: {}",
+            out_html.display()
+        );
+
+        if let Err(e) = open::that(&out_html) {
             log::error!("Failed to open ROI editor: {e}");
             let mut s = state_ref.borrow_mut();
             if let Some(app) = app_weak.upgrade() {
@@ -1544,7 +1567,7 @@ fn main() -> anyhow::Result<()> {
                 s.toasts.push(
                     crate::toast::Severity::Info,
                     "ROI editor opened in browser",
-                    "Click field boundary points, save, then paste the ROI JSON into the calibration file.",
+                    "Click field boundary points, then Save ROI. The updated calibration will download automatically.",
                 );
                 crate::toast::sync_to_ui(&s.toasts, &app);
             }
