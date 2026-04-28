@@ -79,6 +79,14 @@ pub struct GuiSettings {
     /// first enable, never reset. UUID v4, no PII.
     #[serde(default)]
     pub telemetry_client_id: Option<String>,
+
+    /// Dark mode preference. Default true.
+    #[serde(default = "default_dark_mode")]
+    pub dark_mode: bool,
+}
+
+fn default_dark_mode() -> bool {
+    true
 }
 
 fn default_codec() -> String {
@@ -111,6 +119,7 @@ impl Default for GuiSettings {
             preview_aspect: default_preview_aspect(),
             telemetry_enabled: false,
             telemetry_client_id: None,
+            dark_mode: true,
         }
     }
 }

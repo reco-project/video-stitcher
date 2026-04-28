@@ -1036,6 +1036,25 @@ fn sync_segments(state: &AppState, app: &RecoApp) {
     ))));
 }
 
+fn sync_roi_points(state: &AppState, app: &RecoApp) {
+    let (xs, ys) = if let Some(cal) = &state.calibration
+        && let Some(roi) = &cal.field_roi
+    {
+        let side = if state.lens_preview_side == "right" {
+            &roi.right
+        } else {
+            &roi.left
+        };
+        let xs: Vec<f32> = side.iter().map(|p| p[0] as f32).collect();
+        let ys: Vec<f32> = side.iter().map(|p| p[1] as f32).collect();
+        (xs, ys)
+    } else {
+        (vec![], vec![])
+    };
+    app.set_roi_points_x(slint::ModelRc::new(slint::VecModel::from(xs)));
+    app.set_roi_points_y(slint::ModelRc::new(slint::VecModel::from(ys)));
+}
+
 /// Install the standard tracing subscriber + log bridge.
 ///
 /// Replaces the previous `env_logger::init()`. Bridges `log::*` calls
@@ -1148,6 +1167,11 @@ fn main() -> anyhow::Result<()> {
     );
     log::info!("Reco GUI {version}");
     app.set_version(version.into());
+
+    {
+        let s = state.borrow();
+        app.set_dark_mode(s.user_settings.dark_mode);
+    }
 
     let mut codecs: Vec<slint::SharedString> = Vec::new();
     for (label, codec) in [
@@ -1823,6 +1847,7 @@ fn main() -> anyhow::Result<()> {
                 .into(),
         );
         app.set_prefs_telemetry_enabled(s.user_settings.telemetry_enabled);
+        app.set_prefs_dark_mode(s.user_settings.dark_mode);
         app.set_prefs_dialog_open(true);
     });
 
@@ -1850,6 +1875,10 @@ fn main() -> anyhow::Result<()> {
         } else {
             Some(PathBuf::from(rec_folder))
         };
+        let dark = app.get_prefs_dark_mode();
+        s.user_settings.dark_mode = dark;
+        app.set_dark_mode(dark);
+
         let telemetry_wanted = app.get_prefs_telemetry_enabled();
         s.user_settings.telemetry_enabled = telemetry_wanted;
         if telemetry_wanted && s.telemetry.is_none() {
@@ -2605,6 +2634,7 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         s.lens_preview_active = app.get_lens_preview_active();
         s.lens_preview_side = app.get_lens_preview_side().to_string();
+        sync_roi_points(&s, &app);
         s.preview_dirty = true;
     });
 
@@ -3082,6 +3112,7 @@ fn main() -> anyhow::Result<()> {
                     s.calibration = Some(cal);
                     if let Some(app) = app_weak.upgrade() {
                         app.set_has_roi(has_roi);
+                        sync_roi_points(&s, &app);
                         s.toasts.push(
                             Severity::Info,
                             "Field ROI updated",

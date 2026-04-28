@@ -1,7 +1,7 @@
 // Reco Video Stitcher - GUI
 // Material dark theme (configured via build.rs)
 
-import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView, TabWidget } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView, TabWidget, Palette, StyleMetrics } from "std-widgets.slint";
 
 /// One labeled slider row for the controls panel.
 component LabeledSlider inherits VerticalLayout {
@@ -191,11 +191,38 @@ export component RecoApp inherits Window {
     preferred-width: 1280px;
     preferred-height: 820px;
     min-width: 720px;
-    // Prevent the transport + status bars from getting clipped at the
-    // bottom. 600px = file-bar (52) + preview min (~400) + transport
-    // (96) + status (28) + comfortable padding.
     min-height: 600px;
-    background: #121212;
+
+    // ── Theme colors ──
+    in-out property <bool> dark-mode: true;
+
+    property <color> bg-base: dark-mode ? #121212 : #f0f0f0;
+    property <color> bg-panel: dark-mode ? #1a1a1a : #e8e8e8;
+    property <color> bg-bar: dark-mode ? #1e1e1e : #e0e0e0;
+    property <color> bg-surface: dark-mode ? #222 : #ddd;
+    property <color> bg-card: dark-mode ? #242424 : #d4d4d4;
+    property <color> bg-hover: dark-mode ? #2e2e2e : #ccc;
+    property <color> bg-preview: dark-mode ? #0a0a0a : #888;
+    property <color> bg-scrim: dark-mode ? #000000aa : #000000aa;
+    property <color> border-subtle: dark-mode ? #333 : #bbb;
+    property <color> border-mid: dark-mode ? #444 : #aaa;
+    property <color> text-primary: dark-mode ? #eee : #111;
+    property <color> text-body: dark-mode ? #ccc : #222;
+    property <color> text-secondary: dark-mode ? #aaa : #444;
+    property <color> text-muted: dark-mode ? #888 : #666;
+    property <color> text-dim: dark-mode ? #666 : #888;
+    property <color> text-faint: dark-mode ? #555 : #999;
+    property <color> text-heading: dark-mode ? #fff : #000;
+    property <color> accent: dark-mode ? #8ae68a : #2a7a2a;
+    property <color> accent-info: dark-mode ? #8f8 : #2a8a2a;
+    property <color> accent-warn: dark-mode ? #e8a060 : #c07020;
+    property <color> accent-error: dark-mode ? #f88 : #c44;
+    property <color> rec-bg: dark-mode ? #2a1a1a : #f0e0e0;
+    property <color> rec-border: dark-mode ? #553333 : #c08080;
+    property <color> rec-active-bg: dark-mode ? #4a1010 : #f0c0c0;
+    property <color> rec-active-border: dark-mode ? #e04040 : #c03030;
+
+    background: bg-base;
 
     // Preview area dimensions (Rust reads these to size the render target).
     out property <float> preview-area-width: preview-box.width / 1px;
@@ -220,6 +247,8 @@ export component RecoApp inherits Window {
     in-out property <string> calibration-step: "";
     in-out property <bool> has-both-videos: left-path != "" && right-path != "";
     in-out property <bool> has-roi: false;
+    in-out property <[float]> roi-points-x: [];
+    in-out property <[float]> roi-points-y: [];
     callback launch-roi-editor();
 
     // Camera view state (kept in sync with Rust AppState).
@@ -452,6 +481,7 @@ export component RecoApp inherits Window {
     callback open-website();
     callback open-forum();
     in-out property <bool> prefs-telemetry-enabled: false;
+    in-out property <bool> prefs-dark-mode: true;
     // Export dialog actions.
     callback open-export-dialog();
     callback pick-export-output();
@@ -505,7 +535,10 @@ export component RecoApp inherits Window {
         // controls and status bar. Explicit 100/100 fixes that.
         width: 100%;
         height: 100%;
-        init => { self.focus(); }
+        init => {
+            self.focus();
+            Palette.color-scheme = root.dark-mode ? ColorScheme.dark : ColorScheme.light;
+        }
         key-pressed(event) => {
             // Space: play/pause
             if (event.text == " ") { root.toggle-playback(); return accept; }
@@ -535,7 +568,7 @@ export component RecoApp inherits Window {
 
         // ── Toolbar ──
         Rectangle {
-            background: #1e1e1e;
+            background: root.bg-bar;
             height: 42px;
 
             HorizontalBox {
@@ -584,7 +617,7 @@ export component RecoApp inherits Window {
 
             // ── Left files panel ──
             if root.files-panel-open: Rectangle {
-                background: #1a1a1a;
+                background: root.bg-panel;
                 width: root.left-panel-width;
 
                 // Resize handle on the right edge
@@ -629,7 +662,7 @@ export component RecoApp inherits Window {
                         for seg[idx] in root.left-segments: Rectangle {
                             height: 26px;
                             border-radius: 4px;
-                            background: #242424;
+                            background: root.bg-card;
                             HorizontalLayout {
                                 padding-left: 8px;
                                 padding-right: 4px;
@@ -653,7 +686,7 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        Rectangle { height: 1px; background: #333; }
+                        Rectangle { height: 1px; background: root.border-subtle; }
 
                         // Right video section
                         HorizontalLayout {
@@ -672,7 +705,7 @@ export component RecoApp inherits Window {
                         for seg[idx] in root.right-segments: Rectangle {
                             height: 26px;
                             border-radius: 4px;
-                            background: #242424;
+                            background: root.bg-card;
                             HorizontalLayout {
                                 padding-left: 8px;
                                 padding-right: 4px;
@@ -696,7 +729,7 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        if root.has-both-videos || root.calibration-path != "": Rectangle { height: 1px; background: #333; }
+                        if root.has-both-videos || root.calibration-path != "": Rectangle { height: 1px; background: root.border-subtle; }
 
                         if root.has-both-videos || root.calibration-path != "": Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
 
@@ -787,7 +820,7 @@ export component RecoApp inherits Window {
                         if root.calibration-path != "": Rectangle {
                             height: 26px;
                             border-radius: 4px;
-                            background: #242424;
+                            background: root.bg-card;
                             HorizontalLayout {
                                 padding-left: 8px;
                                 padding-right: 4px;
@@ -812,7 +845,7 @@ export component RecoApp inherits Window {
                         }
 
                         // Stitching settings only appear after calibration is loaded
-                        if root.files-loaded: Rectangle { height: 1px; background: #333; }
+                        if root.files-loaded: Rectangle { height: 1px; background: root.border-subtle; }
 
                         if root.files-loaded: Text { text: "Stitching"; color: #aaa; font-size: 12px; font-weight: 600; }
 
@@ -852,7 +885,7 @@ export component RecoApp inherits Window {
                         }
 
                         // Field ROI status
-                        if root.files-loaded: Rectangle { height: 1px; background: #333; }
+                        if root.files-loaded: Rectangle { height: 1px; background: root.border-subtle; }
 
                         if root.files-loaded: HorizontalLayout {
                             spacing: 6px;
@@ -877,7 +910,7 @@ export component RecoApp inherits Window {
                             wrap: word-wrap;
                         }
 
-                        Rectangle { height: 1px; background: #333; }
+                        Rectangle { height: 1px; background: root.border-subtle; }
 
                         Button {
                             text: "Recent…";
@@ -895,7 +928,7 @@ export component RecoApp inherits Window {
             // `preview-box` optionally constrains itself to a chosen
             // aspect ratio and centers inside the outer area.
             Rectangle {
-                background: #0a0a0a;
+                background: root.bg-preview;
                 horizontal-stretch: 1;
 
                 if !root.files-loaded: VerticalLayout {
@@ -951,6 +984,20 @@ export component RecoApp inherits Window {
                         width: 100%;
                         height: 100%;
                     }
+
+                    // ROI vertex overlay (visible in lens preview mode).
+                    // Absolute-positioned dots at each polygon vertex.
+                    for idx in root.roi-points-x.length: Rectangle {
+                        visible: root.lens-preview-active && root.has-roi;
+                        x: root.roi-points-x[idx] * preview-box.width - 4px;
+                        y: root.roi-points-y[idx] * preview-box.height - 4px;
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: #0f08;
+                        border-width: 1px;
+                        border-color: #0f0;
+                    }
                 }
 
                 drag := TouchArea {
@@ -987,7 +1034,7 @@ export component RecoApp inherits Window {
             // the default view compact; ScrollView catches overflow
             // when advanced sections are expanded on short screens.
             if root.controls-open: Rectangle {
-                background: #1a1a1a;
+                background: root.bg-panel;
                 width: root.right-panel-width;
 
                 // Resize handle on the left edge
@@ -1044,7 +1091,7 @@ export component RecoApp inherits Window {
                         clicked => { root.reset-view(); }
                     }
 
-                    if !root.lens-preview-active: Rectangle { height: 1px; background: #333; }
+                    if !root.lens-preview-active: Rectangle { height: 1px; background: root.border-subtle; }
 
                     // ── Lens (collapsible: info always, sliders on demand) ──
                     lens-section := SectionHeader {
@@ -1241,7 +1288,7 @@ export component RecoApp inherits Window {
 
         // ── Transport bar (single inline row) ──
         Rectangle {
-            background: #1e1e1e;
+            background: root.bg-bar;
             height: 44px;
 
             HorizontalLayout {
@@ -1343,7 +1390,7 @@ export component RecoApp inherits Window {
 
         // ── Status bar (or export progress when active) ──
         Rectangle {
-            background: #181818;
+            background: root.bg-bar;
             min-height: 28px;
 
             HorizontalLayout {
@@ -1426,7 +1473,7 @@ export component RecoApp inherits Window {
         // file slot. Rendered as a sibling of the main layout so it
         // overlays everything.
         if root.recent-dialog-open: Rectangle {
-            background: #000000aa;
+            background: root.bg-scrim;
             TouchArea {
                 clicked => { root.recent-dialog-open = false; }
             }
@@ -1434,10 +1481,10 @@ export component RecoApp inherits Window {
             Rectangle {
                 width: 720px;
                 height: 460px;
-                background: #222;
+                background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: #444;
+                border-color: root.border-mid;
                 // Block click-through so clicks inside the panel do
                 // not close the dialog.
                 TouchArea {}
@@ -1472,7 +1519,7 @@ export component RecoApp inherits Window {
                         // so the styling stays consistent.
                         Rectangle {
                             border-radius: 6px;
-                            background: #1a1a1a;
+                            background: root.bg-panel;
                             horizontal-stretch: 1;
                             VerticalLayout {
                                 padding: 10px;
@@ -1513,7 +1560,7 @@ export component RecoApp inherits Window {
 
                         Rectangle {
                             border-radius: 6px;
-                            background: #1a1a1a;
+                            background: root.bg-panel;
                             horizontal-stretch: 1;
                             VerticalLayout {
                                 padding: 10px;
@@ -1554,7 +1601,7 @@ export component RecoApp inherits Window {
 
                         Rectangle {
                             border-radius: 6px;
-                            background: #1a1a1a;
+                            background: root.bg-panel;
                             horizontal-stretch: 1;
                             VerticalLayout {
                                 padding: 10px;
@@ -1607,7 +1654,7 @@ export component RecoApp inherits Window {
 
         // ── Keyboard shortcuts dialog (modal) ──
         if root.shortcuts-dialog-open: Rectangle {
-            background: #000000aa;
+            background: root.bg-scrim;
             TouchArea {
                 clicked => { root.shortcuts-dialog-open = false; }
             }
@@ -1615,10 +1662,10 @@ export component RecoApp inherits Window {
             Rectangle {
                 width: 420px;
                 height: 360px;
-                background: #222;
+                background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: #444;
+                border-color: root.border-mid;
                 TouchArea {}
 
                 VerticalLayout {
@@ -1627,12 +1674,12 @@ export component RecoApp inherits Window {
 
                     Text {
                         text: "Keyboard shortcuts";
-                        color: #fff;
+                        color: root.text-heading;
                         font-size: 16px;
                         font-weight: 600;
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    Rectangle { height: 1px; background: root.border-subtle; }
 
                     // Explicit two-column rows for alignment: the key
                     // column is fixed width, the description fills.
@@ -1681,7 +1728,7 @@ export component RecoApp inherits Window {
         // default quality, default blend width, AI model path. Save
         // persists; Cancel discards.
         if root.prefs-dialog-open: Rectangle {
-            background: #000000aa;
+            background: root.bg-scrim;
             TouchArea {
                 clicked => { root.prefs-dialog-open = false; }
             }
@@ -1689,10 +1736,10 @@ export component RecoApp inherits Window {
             Rectangle {
                 width: 480px;
                 height: min(parent.height - 60px, 580px);
-                background: #222;
+                background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: #444;
+                border-color: root.border-mid;
                 TouchArea {}
 
                 VerticalLayout {
@@ -1701,12 +1748,12 @@ export component RecoApp inherits Window {
 
                     Text {
                         text: "Preferences";
-                        color: #fff;
+                        color: root.text-heading;
                         font-size: 16px;
                         font-weight: 600;
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    Rectangle { height: 1px; background: root.border-subtle; }
 
                     Text { text: "Default codec"; color: #ccc; font-size: 12px; }
                     ComboBox {
@@ -1745,7 +1792,7 @@ export component RecoApp inherits Window {
                         }
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    Rectangle { height: 1px; background: root.border-subtle; }
 
                     Text { text: "Recording defaults"; color: #ccc; font-size: 12px; font-weight: 600; }
 
@@ -1785,9 +1832,18 @@ export component RecoApp inherits Window {
                         }
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    Rectangle { height: 1px; background: root.border-subtle; }
 
-                    Text { text: "Privacy"; color: #ccc; font-size: 12px; font-weight: 600; }
+                    Text { text: "Appearance"; color: root.text-body; font-size: 12px; font-weight: 600; }
+
+                    CheckBox {
+                        text: "Dark mode";
+                        checked <=> root.prefs-dark-mode;
+                    }
+
+                    Rectangle { height: 1px; background: root.border-subtle; }
+
+                    Text { text: "Privacy"; color: root.text-body; font-size: 12px; font-weight: 600; }
 
                     CheckBox {
                         text: "Send anonymous usage data (opt-in)";
@@ -1800,7 +1856,7 @@ export component RecoApp inherits Window {
                         wrap: word-wrap;
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    Rectangle { height: 1px; background: root.border-subtle; }
 
                     HorizontalLayout {
                         spacing: 8px;
@@ -1847,7 +1903,7 @@ export component RecoApp inherits Window {
         // top. Visibility toggled by `export-dialog-open`. Clicks on
         // the dark backdrop outside the panel dismiss the dialog.
         if root.export-dialog-open: Rectangle {
-            background: #000000aa; // 67% opacity scrim
+            background: root.bg-scrim; // 67% opacity scrim
             TouchArea {
                 // Swallow clicks on the backdrop; clicking a transparent
                 // area (not the panel) closes the dialog.
@@ -1857,10 +1913,10 @@ export component RecoApp inherits Window {
             Rectangle {
                 width: 560px;
                 height: min(parent.height - 60px, 720px);
-                background: #222;
+                background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: #444;
+                border-color: root.border-mid;
 
                 TouchArea {}
 
@@ -2023,7 +2079,7 @@ export component RecoApp inherits Window {
                         checked <=> root.export-replay-enabled;
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    Rectangle { height: 1px; background: root.border-subtle; }
 
                     // AI Tracking section
                     HorizontalBox {
@@ -2134,16 +2190,16 @@ export component RecoApp inherits Window {
         }
         // ── Lens profile picker dialog (modal) ──
         if root.lens-picker-open: Rectangle {
-            background: #000000aa;
+            background: root.bg-scrim;
             TouchArea { clicked => { root.lens-picker-open = false; } }
 
             Rectangle {
                 width: 520px;
                 height: min(parent.height - 80px, 540px);
-                background: #222;
+                background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
-                border-color: #444;
+                border-color: root.border-mid;
                 TouchArea {}
 
                 VerticalLayout {
