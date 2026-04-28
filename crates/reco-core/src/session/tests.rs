@@ -258,6 +258,7 @@ fn build_test_session(
             fov_degrees: 75.0,
             rig_tilt: 0.0,
             rig_roll: 0.0,
+            ..ViewportConfig::default()
         })
         .detection_interval(detection_interval);
 

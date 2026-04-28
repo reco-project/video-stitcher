@@ -2381,8 +2381,16 @@ fn main() -> anyhow::Result<()> {
     app.on_changed_lens_correction(move |amount| {
         let mut s = state_ref.borrow_mut();
         s.lens_correction_amount = amount;
+        // Update the stitch pipeline too (works in non-preview mode)
+        if !s.lens_preview_active
+            && let Some(bridge) = s.bridge.as_mut()
+        {
+            bridge
+                .renderer_mut()
+                .pipeline_mut()
+                .set_lens_correction_amount(amount);
+        }
         s.preview_dirty = true;
-        // Also sync the Slint property
         if let Some(app) = app_weak.upgrade() {
             app.set_lens_correction_amount(amount);
         }

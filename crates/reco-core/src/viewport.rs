@@ -41,6 +41,13 @@ pub struct ViewportConfig {
     /// Rotates the scene around the forward axis to compensate for a
     /// laterally tilted camera rig. `0.0` = no correction. Default: 0.0.
     pub rig_roll: f32,
+    /// Lens distortion correction amount (0.0 to 1.0).
+    ///
+    /// Controls how much KB4 correction the shader applies. `1.0`
+    /// (default) is full correction. `0.0` is pinhole projection.
+    /// Values between smoothly interpolate. This is a rendering
+    /// parameter - it does NOT affect calibration accuracy.
+    pub lens_correction_amount: f32,
 }
 
 impl Default for ViewportConfig {
@@ -52,6 +59,7 @@ impl Default for ViewportConfig {
             blend_width: 0.05,
             rig_tilt: 0.0,
             rig_roll: 0.0,
+            lens_correction_amount: 1.0,
         }
     }
 }

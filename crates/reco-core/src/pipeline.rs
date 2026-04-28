@@ -430,6 +430,11 @@ impl StitchPipeline {
         self.viewport.fov_degrees
     }
 
+    /// Set the lens distortion correction amount for the stitch view.
+    pub fn set_lens_correction_amount(&mut self, amount: f32) {
+        self.viewport.lens_correction_amount = amount.clamp(0.0, 1.0);
+    }
+
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
     /// new layout. Takes effect on the next render call (uniforms are rebuilt
     /// each frame from the stored calibration and scene).

@@ -1009,30 +1009,25 @@ export component RecoApp inherits Window {
 
                         Rectangle { height: 4px; }
 
-                        // Lens preview: shows one camera flat with adjustable correction
+                        LabeledSlider {
+                            label: root.lens-correction-amount < 0 ? "Raw" : "Correction";
+                            minimum: root.lens-preview-active ? -1.0 : 0;
+                            maximum: 1.0;
+                            value <=> root.lens-correction-amount;
+                            decimals: 2;
+                            changed(v) => { root.changed-lens-correction(v); }
+                        }
+
                         CheckBox {
                             text: "Lens preview (beta)";
                             checked <=> root.lens-preview-active;
                             toggled => { root.changed-lens-preview(); }
                         }
 
-                        if root.lens-preview-active: VerticalLayout {
+                        if root.lens-preview-active: HorizontalLayout {
                             spacing: 4px;
-
-                            HorizontalLayout {
-                                spacing: 4px;
-                                Button { text: "Left"; primary: root.lens-preview-side == "left"; clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); } }
-                                Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
-                            }
-
-                            LabeledSlider {
-                                label: root.lens-correction-amount < 0 ? "Raw" : "Correction";
-                                minimum: -1.0;
-                                maximum: 1.0;
-                                value <=> root.lens-correction-amount;
-                                decimals: 2;
-                                changed(v) => { root.changed-lens-correction(v); }
-                            }
+                            Button { text: "Left"; primary: root.lens-preview-side == "left"; clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); } }
+                            Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
                         }
 
                         // Fine-tune toggle
