@@ -1,5 +1,5 @@
 fn main() {
-    let config = slint_build::CompilerConfiguration::new().with_style("cosmic-dark".to_string());
+    let config = slint_build::CompilerConfiguration::new().with_style("fluent-dark".to_string());
     slint_build::compile_with_config("ui/main.slint", config).unwrap();
 
     if let Ok(output) = std::process::Command::new("git")

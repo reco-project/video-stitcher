@@ -31,7 +31,7 @@ canvas { cursor: crosshair; max-width: 100%; max-height: 100%; object-fit: conta
   <button onclick="clearPoints()">Clear</button>
   <span class="spacer"></span>
   <span class="info" id="pointCount">0 points</span>
-  <button class="primary" onclick="saveAndClose()">Save ROI</button>
+  <button class="primary" onclick="saveAndClose()">Copy ROI</button>
 </div>
 
 <div class="canvas-wrap">
@@ -180,13 +180,20 @@ function saveAndClose() {
   const json = JSON.stringify(roiData, null, 2);
 
   navigator.clipboard.writeText(json).then(() => {
-    pointCountEl.textContent = 'ROI copied to clipboard! Go back to Reco and click "Paste ROI".';
+    pointCountEl.textContent = 'ROI copied! Go back to Reco and click "Paste ROI".';
     pointCountEl.style.color = '#8f8';
     document.querySelector('.instructions').textContent = 'Done! Switch back to Reco and click "Paste ROI" to apply.';
   }).catch(() => {
-    // Fallback: show the JSON for manual copy
-    prompt('Copy this ROI JSON, then paste in Reco with "Paste ROI":', json);
+    showManualCopy(json);
   });
+}
+
+function showManualCopy(json) {
+  const wrap = document.querySelector('.canvas-wrap');
+  wrap.innerHTML = '<textarea id="roiText" style="width:90%;height:300px;background:#222;color:#ddd;font-family:monospace;font-size:12px;padding:10px;border:1px solid #555;border-radius:6px;">' + json + '</textarea>';
+  document.getElementById('roiText').select();
+  pointCountEl.textContent = 'Clipboard failed. Select all (Ctrl+A), copy (Ctrl+C), then Paste ROI in Reco.';
+  pointCountEl.style.color = '#ff8';
 }
 
 init();

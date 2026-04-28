@@ -1750,19 +1750,32 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_paste_roi(move || {
         let mut s = state_ref.borrow_mut();
-        let clipboard_text = match arboard::Clipboard::new().and_then(|mut cb| cb.get_text()) {
-            Ok(t) => t,
-            Err(e) => {
-                log::warn!("Clipboard read failed: {e}");
-                if let Some(app) = app_weak.upgrade() {
-                    s.toasts.push(
-                        crate::toast::Severity::Error,
-                        "Paste ROI",
-                        "Could not read clipboard.",
-                    );
-                    crate::toast::sync_to_ui(&s.toasts, &app);
+        // Try manual JSON input first, then clipboard
+        let manual = app_weak
+            .upgrade()
+            .map(|a| {
+                let t = a.get_roi_manual_json().to_string();
+                a.set_roi_manual_json("".into());
+                t
+            })
+            .unwrap_or_default();
+        let clipboard_text = if !manual.trim().is_empty() {
+            manual
+        } else {
+            match arboard::Clipboard::new().and_then(|mut cb| cb.get_text()) {
+                Ok(t) => t,
+                Err(e) => {
+                    log::warn!("Clipboard read failed: {e}");
+                    if let Some(app) = app_weak.upgrade() {
+                        s.toasts.push(
+                            crate::toast::Severity::Error,
+                            "Paste ROI",
+                            "Could not read clipboard. Paste JSON in the text field instead.",
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
+                    return;
                 }
-                return;
             }
         };
 
@@ -3002,16 +3015,6 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    app.on_open_bug_report(move || {
-        let url = format!(
-            "https://github.com/reco-project/video-stitcher/issues/new?labels=bug&title=&body={}",
-            "(paste bug report from clipboard here)"
-        );
-        if let Err(e) = open::that(&url) {
-            log::error!("Failed to open browser for bug report: {e}");
-        }
-    });
-
     app.on_show_in_folder(move |path| {
         let path = PathBuf::from(path.as_str());
         let folder = path.parent().unwrap_or(&path);
@@ -3022,11 +3025,15 @@ fn main() -> anyhow::Result<()> {
 
     let state_ref = Rc::clone(&state);
     let app_weak = app.as_weak();
-    app.on_copy_debug_info(move || {
+    app.on_submit_bug_report(move |user_message| {
         let mut s = state_ref.borrow_mut();
-        let report = build_bug_report(&s, &app_weak);
+        let mut report = build_bug_report(&s, &app_weak);
+        let msg = user_message.to_string();
+        if !msg.trim().is_empty() {
+            report = format!("## User description\n{msg}\n\n{report}");
+        }
 
-        let sent_to_dev = if let Some(ref t) = s.telemetry {
+        let sent = if let Some(ref t) = s.telemetry {
             t.bug_report(&report);
             true
         } else {
@@ -3035,13 +3042,13 @@ fn main() -> anyhow::Result<()> {
 
         let _ = arboard::Clipboard::new().and_then(|mut cb| cb.set_text(report));
 
-        let msg = if sent_to_dev {
+        let toast_msg = if sent {
             "Report sent to developer. Also copied to clipboard."
         } else {
-            "Report copied to clipboard. Enable telemetry in Preferences to send directly."
+            "Report copied to clipboard. Enable telemetry in Preferences to send directly to the developer."
         };
         s.toasts
-            .push(crate::toast::Severity::Info, "Bug report", msg);
+            .push(crate::toast::Severity::Info, "Bug report", toast_msg);
 
         if let Some(app) = app_weak.upgrade() {
             crate::toast::sync_to_ui(&s.toasts, &app);

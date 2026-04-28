@@ -207,18 +207,18 @@ export component RecoApp inherits Window {
     property <color> bg-panel: dark-mode ? #1a1a1a : #eaeaea;
     property <color> bg-bar: dark-mode ? #1e1e1e : #e0e0e0;
     property <color> bg-surface: dark-mode ? #222 : #fff;
-    property <color> bg-card: dark-mode ? #242424 : #e0e0e0;
-    property <color> bg-hover: dark-mode ? #2e2e2e : #d5d5d5;
-    property <color> bg-preview: dark-mode ? #0a0a0a : #333;
+    property <color> bg-card: dark-mode ? #242424 : #ddd;
+    property <color> bg-hover: dark-mode ? #2e2e2e : #c8c8c8;
+    property <color> bg-preview: dark-mode ? #0a0a0a : #444;
     property <color> bg-scrim: dark-mode ? #000000aa : #000000aa;
     property <color> border-subtle: dark-mode ? #333 : #ccc;
     property <color> border-mid: dark-mode ? #444 : #aaa;
     property <color> text-primary: dark-mode ? #eee : #111;
     property <color> text-body: dark-mode ? #ccc : #222;
-    property <color> text-secondary: dark-mode ? #aaa : #444;
-    property <color> text-muted: dark-mode ? #888 : #555;
-    property <color> text-dim: dark-mode ? #666 : #777;
-    property <color> text-faint: dark-mode ? #555 : #888;
+    property <color> text-secondary: dark-mode ? #aaa : #333;
+    property <color> text-muted: dark-mode ? #888 : #444;
+    property <color> text-dim: dark-mode ? #666 : #555;
+    property <color> text-faint: dark-mode ? #555 : #666;
     property <color> text-heading: dark-mode ? #fff : #111;
     property <color> accent: dark-mode ? #8ae68a : #2a7a2a;
     property <color> accent-info: dark-mode ? #8f8 : #2a8a2a;
@@ -258,6 +258,7 @@ export component RecoApp inherits Window {
     in-out property <[float]> roi-points-y: [];
     callback launch-roi-editor();
     callback paste-roi();
+    in-out property <string> roi-manual-json: "";
 
     // Camera view state (kept in sync with Rust AppState).
     in-out property <float> yaw: 0.0;      // radians
@@ -497,7 +498,8 @@ export component RecoApp inherits Window {
     callback start-export();
     callback cancel-export();
     callback copy-debug-info();
-    callback open-bug-report();
+    callback submit-bug-report(string);
+    in-out property <bool> bug-dialog-open: false;
     callback show-in-folder(string);
     callback toggle-recording(string, string);
     callback pick-recording-folder();
@@ -563,6 +565,11 @@ export component RecoApp inherits Window {
             if (event.text == "]") { root.seek-relative(5);  return accept; }
             // R : reset view
             if (event.text == "r" || event.text == "R") { root.reset-view(); return accept; }
+            // F or F11 : toggle fullscreen
+            if (event.text == "f" || event.text == "F" || event.text == Key.F11) {
+                root.full-screen = !root.full-screen;
+                return accept;
+            }
             return reject;
         }
 
@@ -608,13 +615,13 @@ export component RecoApp inherits Window {
                     clicked => { root.open-export-dialog(); }
                 }
 
-                Rectangle { width: 1px; height: 24px; background: #444; }
+            }
 
-                Button {
-                    text: root.controls-open ? "◀" : "▶";
-                    enabled: root.files-loaded;
-                    clicked => { root.controls-open = !root.controls-open; }
-                }
+            // Panel toggle pinned to the window's far right
+            Button {
+                text: root.controls-open ? "▶" : "◀";
+                enabled: root.files-loaded;
+                clicked => { root.controls-open = !root.controls-open; }
             }
         }
 
@@ -919,8 +926,16 @@ export component RecoApp inherits Window {
                             }
                         }
 
+                        if root.files-loaded: LineEdit {
+                            placeholder-text: "Or paste ROI JSON here...";
+                            accepted(text) => {
+                                root.roi-manual-json = text;
+                                root.paste-roi();
+                            }
+                        }
+
                         if root.files-loaded && !root.has-roi: Text {
-                            text: "Draw in browser, then Paste ROI to apply.";
+                            text: "Draw in browser, Copy ROI, then Paste or type JSON above.";
                             color: root.text-dim;
                             font-size: 10px;
                             wrap: word-wrap;
@@ -1473,10 +1488,7 @@ export component RecoApp inherits Window {
                         Text { text: "Report Bug"; color: #666; font-size: 10px; vertical-alignment: center; }
                     }
                     bug-touch := TouchArea {
-                        clicked => {
-                            root.copy-debug-info();
-                            root.open-bug-report();
-                        }
+                        clicked => { root.bug-dialog-open = true; }
                     }
                 }
             }
@@ -1902,6 +1914,48 @@ export component RecoApp inherits Window {
                     }
                 }
                 }  // close ScrollView
+            }
+        }
+
+        // ── Bug report dialog ──
+        if root.bug-dialog-open: Rectangle {
+            background: root.bg-scrim;
+            TouchArea { clicked => { root.bug-dialog-open = false; } }
+
+            Rectangle {
+                width: 440px;
+                height: 280px;
+                background: root.bg-surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: root.border-mid;
+                TouchArea {}
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+
+                    Text { text: "Report a Bug"; color: root.text-heading; font-size: 16px; font-weight: 600; }
+                    Text { text: "Describe what happened. System info and telemetry will be attached automatically."; color: root.text-muted; font-size: 11px; wrap: word-wrap; }
+
+                    bug-msg := LineEdit {
+                        placeholder-text: "What went wrong?";
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button { text: "Cancel"; clicked => { root.bug-dialog-open = false; } }
+                        Button {
+                            text: "Send Report";
+                            primary: true;
+                            clicked => {
+                                root.submit-bug-report(bug-msg.text);
+                                root.bug-dialog-open = false;
+                            }
+                        }
+                    }
+                }
             }
         }
 
