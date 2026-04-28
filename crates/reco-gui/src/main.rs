@@ -668,28 +668,38 @@ impl AppState {
             let (w, h) = bridge.viewport_size();
             let fps = self.playback.fps();
 
-            // Single render: NV12 for encoder + blit to Slint texture.
-            // Replaces the old double-render (N16 fix).
-            match bridge.render_frame_and_nv12(&left, &right, pose.yaw, pose.pitch) {
-                Ok((img, Some(nv12))) => {
+            // NV12 readback for the encoder on every frame. This is the
+            // only stitch render per frame - no separate display render.
+            match bridge
+                .renderer_mut()
+                .render_and_readback_nv12(&left, &right, pose.yaw, pose.pitch)
+            {
+                Ok(Some(nv12)) => {
                     if let Some(tx) = self.recording_tx.as_ref() {
                         let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
                         let _ = tx.try_send(RecordingFrame {
-                            data: nv12,
+                            data: nv12.to_vec(),
                             width: w & !3,
                             height: h & !1,
                             pts_us: pts,
                         });
                     }
                     self.recording_frames += 1;
-                    return Some(img);
                 }
-                Ok((img, None)) => {
+                Ok(None) => {
                     self.recording_frames += 1;
-                    return Some(img);
                 }
-                Err(e) => {
-                    log::error!("Recording render error: {e}");
+                Err(e) => log::error!("NV12 readback error: {e}"),
+            }
+
+            // Display preview at reduced rate (every 5th frame).
+            // The display render is cheap compared to the NV12 readback
+            // but we skip most frames to keep encoding smooth.
+            if self.recording_frames.is_multiple_of(5) {
+                let bridge = self.bridge.as_ref().unwrap();
+                match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
+                    Ok(img) => return Some(img),
+                    Err(e) => log::error!("Preview render error: {e}"),
                 }
             }
             None

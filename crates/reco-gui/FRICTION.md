@@ -172,13 +172,31 @@ of manually coordinating PoseControl + coverage + rig_tilt.
 
 Plan disposition: K6 / E7. Lands with N12.
 
-### ~~N16. Recording doubles GPU render cost in GUI~~ RESOLVED
+### N16. Recording lags preview and drops frames during panning
 
-Resolved in v0.5.0: `PreviewBridge::render_frame_and_nv12` does one
-stitch render to the internal target, runs NV12 readback, then blits
-(copy_texture_to_texture) to a fresh Slint texture. One render + one
-cheap GPU copy replaces two full stitch renders. The old 3:1 frame
-skip workaround is removed.
+**Impact**: High. User-visible stutter during preview recording.
+
+The GUI's recording path runs `render_and_readback_nv12` on the UI
+thread. The NV12 readback stalls the GPU pipeline (triple-buffer
+latency), blocking the Slint compositor. Even with async encoder
+threads, the readback itself is synchronous and takes ~5-8ms per
+frame on the UI thread.
+
+**Current mitigation**: NV12 render every frame for the encoder,
+display preview only every 5th frame. This prioritizes encoding
+smoothness over preview responsiveness.
+
+**Proper fix**: Recording should use the export pipeline (`StitchSession`
+on a background thread with its own decoder), matching the CLI's
+`run_immediate` loop. The preview continues independently at its own
+rate. This is the Phase 11 recording architecture - "Rec" becomes
+a lightweight export job. Requires sharing the calibration and viewport
+state but NOT the GPU pipeline between preview and recording threads.
+
+**Alternative**: Accept the preview-loop model but move the NV12
+readback to a separate GPU queue or use compute-shader NV12 without
+readback (encode from GPU-resident data via VAAPI/NVENC hardware
+encoder path).
 
 ### N17. No ROI visualization or editing in GUI
 
