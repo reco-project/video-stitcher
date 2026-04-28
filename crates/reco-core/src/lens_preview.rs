@@ -303,7 +303,7 @@ impl LensPreviewRenderer {
 
         let mut uniforms =
             build_gpu_uniforms(&mvp, params, false, 0.0, InputFormat::Yuv420p, false);
-        uniforms.lens_preview[0] = correction_amount.clamp(0.0, 1.0);
+        uniforms.lens_preview[0] = correction_amount.clamp(-1.0, 1.0);
 
         gpu.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));

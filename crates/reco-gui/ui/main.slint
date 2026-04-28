@@ -1026,8 +1026,8 @@ export component RecoApp inherits Window {
                             }
 
                             LabeledSlider {
-                                label: "Correction";
-                                minimum: 0;
+                                label: root.lens-correction-amount < 0 ? "Raw" : "Correction";
+                                minimum: -1.0;
                                 maximum: 1.0;
                                 value <=> root.lens-correction-amount;
                                 decimals: 2;

@@ -155,6 +155,16 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Raw mode: negative correction bypasses all projection math
+    // and samples the input texture directly at the fragment UV.
+    if u.lens_preview.x < 0.0 {
+        if in.uv.x < 0.0 || in.uv.x > 1.0 || in.uv.y < 0.0 || in.uv.y > 1.0 {
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        }
+        let raw = sample_yuv(in.uv);
+        return vec4<f32>(raw.rgb, 1.0);
+    }
+
     let fx = u.intrinsics.x;
     let fy = u.intrinsics.y;
     let cx = u.intrinsics.z;
