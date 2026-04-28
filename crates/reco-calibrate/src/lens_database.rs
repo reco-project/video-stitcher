@@ -21,8 +21,11 @@ use reco_core::calibration::CameraParams;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use crate::types::{LensProfileInfo, LensProfileSummary, ProfileSource};
+
+static EMBEDDED_DB: OnceLock<LensDatabase> = OnceLock::new();
 
 /// Embedded Gyroflow lens profile database (profiles.cbor.gz).
 static PROFILES_CBOR_GZ: &[u8] = include_bytes!(concat!(
@@ -62,10 +65,18 @@ pub struct LensDatabase {
 }
 
 impl LensDatabase {
+    /// Get the shared embedded profile database (cached singleton).
+    ///
+    /// First call decompresses and parses the bundled CBOR (~50ms).
+    /// Subsequent calls return the same `&'static` reference instantly.
+    pub fn embedded() -> &'static LensDatabase {
+        EMBEDDED_DB.get_or_init(Self::load_embedded)
+    }
+
     /// Load the embedded Gyroflow profile database.
     ///
-    /// Decompresses and parses the bundled `profiles.cbor.gz` (1.5MB
-    /// compressed, 4200+ profiles). Takes ~50ms on first call.
+    /// Prefer [`embedded()`](Self::embedded) for the cached singleton.
+    /// This allocates a fresh database each call.
     pub fn load_embedded() -> Self {
         let mut db = Self {
             profiles: Vec::new(),
@@ -379,6 +390,128 @@ impl LensDatabase {
             })
             .collect()
     }
+
+    /// Full-text search across all profiles.
+    ///
+    /// Splits `query` into lowercase words and returns profiles where
+    /// every word appears in the combined "brand model lens_model
+    /// camera_setting WxH" string. Results matching `width`x`height`
+    /// sort first (exact match), then same aspect ratio, then the rest.
+    /// Pass 0 for width/height to skip resolution ranking.
+    /// Capped at 100 results.
+    pub fn search(&self, query: &str, width: u32, height: u32) -> Vec<LensProfileSummary> {
+        let words: Vec<String> = query.split_whitespace().map(|w| w.to_lowercase()).collect();
+        if words.is_empty() {
+            return Vec::new();
+        }
+
+        let target_aspect = if width > 0 && height > 0 {
+            Some(width as f64 / height as f64)
+        } else {
+            None
+        };
+
+        let mut hits: Vec<(usize, u8)> = Vec::new();
+        for (i, p) in self.profiles.iter().enumerate() {
+            let haystack = format!(
+                "{} {} {} {} {}x{}",
+                p.brand, p.model, p.lens_model, p.camera_setting, p.width, p.height
+            )
+            .to_lowercase();
+            if words.iter().all(|w| haystack.contains(w.as_str())) {
+                let priority = if width > 0 && p.width == width && height > 0 && p.height == height
+                {
+                    0
+                } else if let Some(ta) = target_aspect {
+                    let pa = p.width as f64 / p.height as f64;
+                    if (pa - ta).abs() < 0.05 { 1 } else { 2 }
+                } else {
+                    2
+                };
+                hits.push((i, priority));
+            }
+        }
+
+        hits.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+        hits.truncate(100);
+
+        hits.iter().map(|&(i, _)| self.summary_at(i)).collect()
+    }
+
+    /// Unique camera brands in the database, sorted alphabetically.
+    pub fn brands(&self) -> Vec<String> {
+        let mut seen: Vec<String> = self
+            .by_camera
+            .keys()
+            .filter_map(|k| k.split('/').next())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .map(title_case)
+            .collect();
+        seen.sort();
+        seen
+    }
+
+    /// Models for a given brand with their profile counts, sorted.
+    pub fn models_for_brand(&self, brand: &str) -> Vec<(String, u32)> {
+        let prefix = brand.to_lowercase().replace(' ', "-");
+        let mut models: Vec<(String, u32)> = self
+            .by_camera
+            .iter()
+            .filter_map(|(key, indices)| {
+                let parts: Vec<&str> = key.splitn(2, '/').collect();
+                if parts.len() == 2 && parts[0] == prefix {
+                    Some((title_case(parts[1]), indices.len() as u32))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        models.sort_by(|a, b| a.0.cmp(&b.0));
+        models
+    }
+
+    /// Load the full `CameraParams` for a profile identified by its
+    /// summary fields. Returns `None` if no exact match is found.
+    pub fn load_by_summary(&self, summary: &LensProfileSummary) -> Option<CameraParams> {
+        self.profiles
+            .iter()
+            .find(|p| {
+                format_camera_name(&p.brand, &p.model) == summary.camera
+                    && format_lens_name(&p.lens_model, &p.camera_setting) == summary.lens
+                    && p.width == summary.width
+                    && p.height == summary.height
+            })
+            .map(|p| p.params.clone())
+    }
+
+    fn summary_at(&self, idx: usize) -> LensProfileSummary {
+        let p = &self.profiles[idx];
+        LensProfileSummary {
+            camera: format_camera_name(&p.brand, &p.model),
+            lens: format_lens_name(&p.lens_model, &p.camera_setting),
+            width: p.width,
+            height: p.height,
+        }
+    }
+}
+
+fn title_case(s: &str) -> String {
+    s.split('-')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(c) => {
+                    let mut out = String::new();
+                    out.extend(c.to_uppercase());
+                    out.extend(chars);
+                    out
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Format "Brand Model" with title case from the lowercase internal storage.
@@ -669,4 +802,90 @@ fn load_dir_recursive(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_singleton_returns_same_ref() {
+        let a = LensDatabase::embedded();
+        let b = LensDatabase::embedded();
+        assert!(std::ptr::eq(a, b));
+        assert!(!a.is_empty());
+    }
+
+    #[test]
+    fn search_gopro_returns_results() {
+        let db = LensDatabase::embedded();
+        let results = db.search("gopro hero10", 0, 0);
+        assert!(!results.is_empty());
+        assert!(
+            results
+                .iter()
+                .all(|r| r.camera.to_lowercase().contains("gopro")
+                    && r.camera.to_lowercase().contains("hero10"))
+        );
+    }
+
+    #[test]
+    fn search_resolution_ranking() {
+        let db = LensDatabase::embedded();
+        let results = db.search("gopro hero", 3840, 2160);
+        if !results.is_empty() {
+            assert_eq!(results[0].width, 3840);
+            assert_eq!(results[0].height, 2160);
+        }
+    }
+
+    #[test]
+    fn search_multi_word() {
+        let db = LensDatabase::embedded();
+        let results = db.search("hero10 wide", 0, 0);
+        for r in &results {
+            let combined = format!("{} {}", r.camera, r.lens).to_lowercase();
+            assert!(combined.contains("hero"));
+            assert!(combined.contains("wide"));
+        }
+    }
+
+    #[test]
+    fn search_caps_at_100() {
+        let db = LensDatabase::embedded();
+        let results = db.search("a", 0, 0);
+        assert!(results.len() <= 100);
+    }
+
+    #[test]
+    fn brands_non_empty_sorted() {
+        let db = LensDatabase::embedded();
+        let brands = db.brands();
+        assert!(brands.len() > 10);
+        let mut sorted = brands.clone();
+        sorted.sort();
+        assert_eq!(brands, sorted);
+    }
+
+    #[test]
+    fn models_for_brand_gopro() {
+        let db = LensDatabase::embedded();
+        let models = db.models_for_brand("GoPro");
+        assert!(!models.is_empty());
+        assert!(models.iter().any(|(m, _)| m.contains("Hero")));
+        assert!(models.iter().all(|&(_, count)| count > 0));
+    }
+
+    #[test]
+    fn load_by_summary_roundtrip() {
+        let db = LensDatabase::embedded();
+        let results = db.search("gopro hero10", 0, 0);
+        if let Some(summary) = results.first() {
+            let params = db.load_by_summary(summary);
+            assert!(params.is_some());
+            let p = params.unwrap();
+            assert!(p.fx > 0.0);
+            assert!(p.fy > 0.0);
+        }
+    }
 }
