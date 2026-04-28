@@ -14,9 +14,9 @@ body { background: #1a1a1a; color: #ddd; font-family: system-ui, sans-serif; }
 .header button.primary:hover { background: #5a8a5a; }
 .header .spacer { flex: 1; }
 .header .info { color: #888; font-size: 12px; }
-.canvas-wrap { position: relative; display: flex; justify-content: center; padding: 10px; }
-canvas { cursor: crosshair; max-width: 100%; max-height: calc(100vh - 60px); }
-.instructions { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); background: #333a; padding: 8px 16px; border-radius: 6px; font-size: 12px; color: #aaa; }
+.canvas-wrap { position: relative; display: flex; justify-content: center; padding: 5px; overflow: hidden; height: calc(100vh - 55px); }
+canvas { cursor: crosshair; max-width: 100%; max-height: 100%; object-fit: contain; }
+.instructions { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); background: #333a; padding: 6px 14px; border-radius: 6px; font-size: 11px; color: #aaa; pointer-events: none; }
 </style>
 </head>
 <body>

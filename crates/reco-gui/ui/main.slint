@@ -24,9 +24,16 @@ component LabeledSlider inherits VerticalLayout {
             horizontal-stretch: 1;
         }
         Text {
+            property <float> scale:
+                root.decimals <= 0 ? 1
+              : root.decimals == 1 ? 10
+              : root.decimals == 2 ? 100
+              : root.decimals == 3 ? 1000
+              : root.decimals == 4 ? 10000
+              : 100000;
             text: (root.decimals == 0
                 ? round(root.value)
-                : round(root.value * 100) / 100) + root.suffix;
+                : round(root.value * scale) / scale) + root.suffix;
             color: #888;
             font-size: 11px;
             vertical-alignment: center;
@@ -196,23 +203,23 @@ export component RecoApp inherits Window {
     // ── Theme colors ──
     in-out property <bool> dark-mode: true;
 
-    property <color> bg-base: dark-mode ? #121212 : #f0f0f0;
-    property <color> bg-panel: dark-mode ? #1a1a1a : #e8e8e8;
+    property <color> bg-base: dark-mode ? #121212 : #f5f5f5;
+    property <color> bg-panel: dark-mode ? #1a1a1a : #eaeaea;
     property <color> bg-bar: dark-mode ? #1e1e1e : #e0e0e0;
-    property <color> bg-surface: dark-mode ? #222 : #ddd;
-    property <color> bg-card: dark-mode ? #242424 : #d4d4d4;
-    property <color> bg-hover: dark-mode ? #2e2e2e : #ccc;
-    property <color> bg-preview: dark-mode ? #0a0a0a : #888;
+    property <color> bg-surface: dark-mode ? #222 : #fff;
+    property <color> bg-card: dark-mode ? #242424 : #e0e0e0;
+    property <color> bg-hover: dark-mode ? #2e2e2e : #d5d5d5;
+    property <color> bg-preview: dark-mode ? #0a0a0a : #333;
     property <color> bg-scrim: dark-mode ? #000000aa : #000000aa;
-    property <color> border-subtle: dark-mode ? #333 : #bbb;
+    property <color> border-subtle: dark-mode ? #333 : #ccc;
     property <color> border-mid: dark-mode ? #444 : #aaa;
     property <color> text-primary: dark-mode ? #eee : #111;
     property <color> text-body: dark-mode ? #ccc : #222;
     property <color> text-secondary: dark-mode ? #aaa : #444;
-    property <color> text-muted: dark-mode ? #888 : #666;
-    property <color> text-dim: dark-mode ? #666 : #888;
-    property <color> text-faint: dark-mode ? #555 : #999;
-    property <color> text-heading: dark-mode ? #fff : #000;
+    property <color> text-muted: dark-mode ? #888 : #555;
+    property <color> text-dim: dark-mode ? #666 : #777;
+    property <color> text-faint: dark-mode ? #555 : #888;
+    property <color> text-heading: dark-mode ? #fff : #111;
     property <color> accent: dark-mode ? #8ae68a : #2a7a2a;
     property <color> accent-info: dark-mode ? #8f8 : #2a8a2a;
     property <color> accent-warn: dark-mode ? #e8a060 : #c07020;
@@ -1382,7 +1389,7 @@ export component RecoApp inherits Window {
                     model: ["auto", "16:9", "4:3", "21:9"];
                     current-value <=> root.preview-aspect;
                     enabled: root.files-loaded;
-                    width: 68px;
+                    width: 78px;
                     selected(v) => { root.changed-preview-aspect(v); }
                 }
             }
@@ -1431,8 +1438,8 @@ export component RecoApp inherits Window {
 
                 if !root.export-in-progress: Rectangle { horizontal-stretch: 1; }
 
-                if !root.export-in-progress && root.fps > 0: Text {
-                    text: round(root.fps) + " fps";
+                if !root.export-in-progress && root.telem-fps-avg > 0: Text {
+                    text: round(root.telem-fps-avg) + " / " + round(root.telem-fps-recent) + " fps";
                     color: #555;
                     font-size: 11px;
                     vertical-alignment: center;
@@ -1711,8 +1718,13 @@ export component RecoApp inherits Window {
 
                     Rectangle { vertical-stretch: 1; }
 
+                    Rectangle { height: 1px; background: root.border-subtle; }
+
                     HorizontalLayout {
-                        alignment: end;
+                        spacing: 8px;
+                        Button { text: "Website"; clicked => { root.open-website(); } }
+                        Button { text: "Forum"; clicked => { root.open-forum(); } }
+                        Rectangle { horizontal-stretch: 1; }
                         Button {
                             text: "Close";
                             clicked => { root.shortcuts-dialog-open = false; }
@@ -1735,12 +1747,15 @@ export component RecoApp inherits Window {
 
             Rectangle {
                 width: 480px;
-                height: min(parent.height - 60px, 580px);
+                height: min(parent.height - 60px, 680px);
                 background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
                 border-color: root.border-mid;
                 TouchArea {}
+
+                ScrollView {
+                    horizontal-scrollbar-policy: always-off;
 
                 VerticalLayout {
                     padding: 20px;
@@ -1858,13 +1873,6 @@ export component RecoApp inherits Window {
 
                     Rectangle { height: 1px; background: root.border-subtle; }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button { text: "Website"; clicked => { root.open-website(); } }
-                        Button { text: "Forum"; clicked => { root.open-forum(); } }
-                        Rectangle { horizontal-stretch: 1; }
-                    }
-
                     Rectangle { vertical-stretch: 1; }
 
                     HorizontalLayout {
@@ -1884,6 +1892,7 @@ export component RecoApp inherits Window {
                         }
                     }
                 }
+                }  // close ScrollView
             }
         }
 

@@ -1614,7 +1614,13 @@ fn main() -> anyhow::Result<()> {
             return;
         };
 
-        let tmp_dir = std::env::temp_dir().join("reco-roi");
+        // Use $HOME/.cache/reco instead of /tmp because snap-packaged
+        // browsers (Firefox) can't access /tmp due to sandboxing.
+        let cache_base = std::env::var("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache")))
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let tmp_dir = cache_base.join("reco").join("roi");
         if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
             log::error!("Failed to create ROI temp dir {}: {e}", tmp_dir.display());
             let mut s = state_ref.borrow_mut();
@@ -1708,7 +1714,12 @@ fn main() -> anyhow::Result<()> {
             out_html.display()
         );
 
-        if let Err(e) = open::that(out_html.as_os_str()) {
+        let open_result = std::process::Command::new("xdg-open")
+            .arg(&out_html)
+            .spawn()
+            .map(|_| ())
+            .or_else(|_| open::that(out_html.as_os_str()));
+        if let Err(e) = open_result {
             log::error!("Failed to open ROI editor: {e}");
             let mut s = state_ref.borrow_mut();
             if let Some(app) = app_weak.upgrade() {
@@ -1901,11 +1912,11 @@ fn main() -> anyhow::Result<()> {
     });
 
     app.on_open_website(|| {
-        let _ = open::that("https://reco.camera");
+        let _ = open::that("https://github.com/reco-project/video-stitcher");
     });
 
     app.on_open_forum(|| {
-        let _ = open::that("https://community.reco.camera");
+        let _ = open::that("https://forum.reco-project.org/");
     });
 
     let app_weak = app.as_weak();
@@ -2955,28 +2966,23 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         let report = build_bug_report(&s, &app_weak);
 
-        if let Some(ref t) = s.telemetry {
+        let sent_to_dev = if let Some(ref t) = s.telemetry {
             t.bug_report(&report);
-        }
+            true
+        } else {
+            false
+        };
 
-        match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(report)) {
-            Ok(()) => {
-                log::info!("Bug report copied to clipboard");
-                s.toasts.push(
-                    crate::toast::Severity::Info,
-                    "Bug report copied to clipboard",
-                    "Paste into a GitHub issue or send via the telemetry server.",
-                );
-            }
-            Err(e) => {
-                log::error!("Failed to copy to clipboard: {e}");
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Clipboard error",
-                    e.to_string(),
-                );
-            }
-        }
+        let _ = arboard::Clipboard::new().and_then(|mut cb| cb.set_text(report));
+
+        let msg = if sent_to_dev {
+            "Report sent to developer. Also copied to clipboard."
+        } else {
+            "Report copied to clipboard. Enable telemetry in Preferences to send directly."
+        };
+        s.toasts
+            .push(crate::toast::Severity::Info, "Bug report", msg);
+
         if let Some(app) = app_weak.upgrade() {
             crate::toast::sync_to_ui(&s.toasts, &app);
         }
