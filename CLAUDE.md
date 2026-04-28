@@ -6,12 +6,13 @@ Open-source GPU-accelerated panoramic sports camera software.
 
 **Focus: v0.5.0 public release (GUI + AI tracking for community testers).**
 PR #288 on `feat/v0.5.0-release`. Tracking issue #289.
-Phases 1-9 shipped. Remaining: packaging (Phase 11), first-run
-experience (Phase 12), manual testing (Phase 13).
+Phases 1-9 shipped. GUI architecture revision in progress.
+Remaining: ROI visualization, recording perf fix, packaging
+(Phase 11), first-run experience (Phase 12), manual testing (Phase 13).
 Full plan at `~/.claude/plans/i-need-advanced-telemetry-breezy-eagle.md`.
 
-Active FRICTION: 16 in `crates/reco-obs/FRICTION.md`, ~8 in
-`crates/reco-gui/FRICTION.md` (A3, A4, N10 resolved in v0.5.0).
+Active FRICTION: 16 in `crates/reco-obs/FRICTION.md`, 11 active
+in `crates/reco-gui/FRICTION.md` (N16-N18 added 2026-04-28).
 User's rule: **document friction,
 don't work around**; reco-core API gaps get a FRICTION entry, not a
 consumer-side hack.
