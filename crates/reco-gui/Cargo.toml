@@ -48,6 +48,8 @@ anyhow = "1"
 arboard = "3"
 open = "5"
 base64 = "0.22"
+ureq = "3"
+uuid = { version = "1", features = ["v4"] }
 serde_json = "1"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

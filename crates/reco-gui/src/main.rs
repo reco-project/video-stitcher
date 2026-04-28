@@ -17,6 +17,7 @@ mod export;
 mod playback;
 mod preview;
 mod settings;
+mod telemetry_client;
 mod toast;
 
 use std::cell::RefCell;
@@ -197,6 +198,7 @@ struct AppState {
     /// Set by the ROI editor thread. Timer tick reloads calibration when true.
     roi_reload_pending: Option<Arc<AtomicBool>>,
     toasts: ToastManager,
+    telemetry: Option<telemetry_client::TelemetryClient>,
 }
 
 /// Runtime AI capability summary.
@@ -380,7 +382,14 @@ impl AppState {
             export_thread: None,
             export_rx: None,
             cal_baseline_layout: None,
-            user_settings: crate::settings::GuiSettings::load(),
+            user_settings: {
+                let mut s = crate::settings::GuiSettings::load();
+                if s.telemetry_client_id.is_none() {
+                    s.telemetry_client_id = Some(uuid::Uuid::new_v4().to_string());
+                    s.save();
+                }
+                s
+            },
             last_persisted_window_size: None,
             last_window_size_save_at: None,
             cal_baseline_left_params: None,
@@ -391,6 +400,7 @@ impl AppState {
             lens_correction_amount: 1.0,
             roi_reload_pending: None,
             toasts: ToastManager::default(),
+            telemetry: None,
         }
     }
 
@@ -1096,13 +1106,37 @@ fn main() -> anyhow::Result<()> {
     let app = RecoApp::new()?;
     let state = Rc::new(RefCell::new(AppState::new()));
 
-    // Seed AI capability status once at startup so users can see
-    // before they try to use tracking whether this build will do GPU
-    // inference or fall back.
+    // Initialize opt-in telemetry if the user enabled it.
+    {
+        let mut s = state.borrow_mut();
+        if s.user_settings.telemetry_enabled {
+            let cid = s
+                .user_settings
+                .telemetry_client_id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            log::info!("Telemetry enabled (client_id={}).", &cid[..8]);
+            let client = telemetry_client::TelemetryClient::new(cid);
+            client.app_open();
+            s.telemetry = Some(client);
+        } else {
+            log::info!("Telemetry disabled (opt-in via Preferences).");
+        }
+    }
+
     let (ai_status, ai_available) = ai_capability_summary();
     log::info!("{ai_status}");
-    app.set_ai_status(ai_status.into());
+    app.set_ai_status(ai_status.clone().into());
     app.set_ai_available(ai_available);
+
+    // Send context telemetry after AI probe.
+    {
+        let s = state.borrow();
+        if let Some(ref t) = s.telemetry {
+            let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
+            t.context("(pending GPU init)", &os, &ai_status);
+        }
+    }
 
     let version = format!(
         "v{}{}",
@@ -1788,6 +1822,7 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .into(),
         );
+        app.set_prefs_telemetry_enabled(s.user_settings.telemetry_enabled);
         app.set_prefs_dialog_open(true);
     });
 
@@ -1815,7 +1850,33 @@ fn main() -> anyhow::Result<()> {
         } else {
             Some(PathBuf::from(rec_folder))
         };
+        let telemetry_wanted = app.get_prefs_telemetry_enabled();
+        s.user_settings.telemetry_enabled = telemetry_wanted;
+        if telemetry_wanted && s.telemetry.is_none() {
+            let cid = s
+                .user_settings
+                .telemetry_client_id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            log::info!("Telemetry enabled by user (client_id={}).", &cid[..8]);
+            let client = telemetry_client::TelemetryClient::new(cid);
+            client.app_open();
+            s.telemetry = Some(client);
+        } else if !telemetry_wanted {
+            if s.telemetry.is_some() {
+                log::info!("Telemetry disabled by user.");
+            }
+            s.telemetry = None;
+        }
         s.user_settings.save();
+    });
+
+    app.on_open_website(|| {
+        let _ = open::that("https://reco.camera");
+    });
+
+    app.on_open_forum(|| {
+        let _ = open::that("https://community.reco.camera");
     });
 
     let app_weak = app.as_weak();
@@ -2856,6 +2917,10 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         let report = build_bug_report(&s, &app_weak);
 
+        if let Some(ref t) = s.telemetry {
+            t.bug_report(&report);
+        }
+
         match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(report)) {
             Ok(()) => {
                 log::info!("Bug report copied to clipboard");
@@ -2918,6 +2983,9 @@ fn main() -> anyhow::Result<()> {
                                     .into(),
                             );
                             app.set_last_output_path(path.display().to_string().into());
+                            if let Some(ref t) = s.telemetry {
+                                t.export_complete(frames, 0.0, "");
+                            }
                             s.toasts.push(
                                 Severity::Info,
                                 "Export complete",
@@ -2945,6 +3013,9 @@ fn main() -> anyhow::Result<()> {
                             } else {
                                 ("Export failed", msg.clone())
                             };
+                            if let Some(ref t) = s.telemetry {
+                                t.export_error(&msg);
+                            }
                             s.toasts.push(Severity::Error, title, body);
                             crate::toast::sync_to_ui(&s.toasts, &app);
                         }
@@ -3328,6 +3399,9 @@ fn handle_calibration_result(
         Ok(output) => {
             let confidence = output.confidence;
             let total_matches = output.total_matches;
+            if let Some(ref t) = state.telemetry {
+                t.calibration_complete(confidence, total_matches);
+            }
             let left_profile = output.left_lens_profile.clone();
             let right_profile = output.right_lens_profile.clone();
             match state.init_with_calibration(output.calibration) {

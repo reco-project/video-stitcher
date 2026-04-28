@@ -69,6 +69,16 @@ pub struct GuiSettings {
     /// Preview aspect ratio mode (fill, 16:9, 4:3, 21:9).
     #[serde(default = "default_preview_aspect")]
     pub preview_aspect: String,
+
+    /// Opt-in anonymous telemetry. Default false - no data sent until
+    /// the user explicitly enables it in preferences.
+    #[serde(default)]
+    pub telemetry_enabled: bool,
+
+    /// Persistent anonymous client ID for telemetry. Generated once on
+    /// first enable, never reset. UUID v4, no PII.
+    #[serde(default)]
+    pub telemetry_client_id: Option<String>,
 }
 
 fn default_codec() -> String {
@@ -99,6 +109,8 @@ impl Default for GuiSettings {
             recording_quality: default_quality(),
             recording_folder: None,
             preview_aspect: default_preview_aspect(),
+            telemetry_enabled: false,
+            telemetry_client_id: None,
         }
     }
 }

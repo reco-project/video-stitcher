@@ -448,6 +448,9 @@ export component RecoApp inherits Window {
     callback open-prefs-dialog();
     callback save-prefs();
     callback pick-prefs-model();
+    callback open-website();
+    callback open-forum();
+    in-out property <bool> prefs-telemetry-enabled: false;
     // Export dialog actions.
     callback open-export-dialog();
     callback pick-export-output();
@@ -1769,6 +1772,30 @@ export component RecoApp inherits Window {
                             text: "Browse…";
                             clicked => { root.pick-recording-folder(); }
                         }
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    Text { text: "Privacy"; color: #ccc; font-size: 12px; font-weight: 600; }
+
+                    CheckBox {
+                        text: "Send anonymous usage data (opt-in)";
+                        checked <=> root.prefs-telemetry-enabled;
+                    }
+                    Text {
+                        text: "Helps improve Reco. No file paths, no video content, no PII.";
+                        color: #666;
+                        font-size: 10px;
+                        wrap: word-wrap;
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button { text: "Website"; clicked => { root.open-website(); } }
+                        Button { text: "Forum"; clicked => { root.open-forum(); } }
+                        Rectangle { horizontal-stretch: 1; }
                     }
 
                     Rectangle { vertical-stretch: 1; }
