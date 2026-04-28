@@ -497,9 +497,9 @@ export component RecoApp inherits Window {
     callback pick-export-model();
     callback start-export();
     callback cancel-export();
-    callback copy-debug-info();
-    callback submit-bug-report(string);
+    callback submit-bug-report(string, string, bool);
     in-out property <bool> bug-dialog-open: false;
+    in-out property <string> bug-user-contact: "";
     callback show-in-folder(string);
     callback toggle-recording(string, string);
     callback pick-recording-folder();
@@ -618,10 +618,24 @@ export component RecoApp inherits Window {
             }
 
             // Panel toggle pinned to the window's far right
-            Button {
-                text: root.controls-open ? "▶" : "◀";
-                enabled: root.files-loaded;
-                clicked => { root.controls-open = !root.controls-open; }
+            Rectangle {
+                width: 36px;
+                height: 42px;
+                background: panel-toggle-touch.has-hover ? root.bg-hover : transparent;
+
+                panel-toggle-touch := TouchArea {
+                    enabled: root.files-loaded;
+                    clicked => { root.controls-open = !root.controls-open; }
+                    mouse-cursor: pointer;
+                }
+
+                Text {
+                    text: root.controls-open ? "▶" : "◀";
+                    color: root.files-loaded ? root.text-secondary : root.text-faint;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
 
@@ -1923,8 +1937,8 @@ export component RecoApp inherits Window {
             TouchArea { clicked => { root.bug-dialog-open = false; } }
 
             Rectangle {
-                width: 440px;
-                height: 280px;
+                width: 500px;
+                height: min(parent.height - 60px, 420px);
                 background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
@@ -1932,14 +1946,38 @@ export component RecoApp inherits Window {
                 TouchArea {}
 
                 VerticalLayout {
-                    padding: 20px;
-                    spacing: 12px;
+                    padding: 24px;
+                    spacing: 14px;
 
-                    Text { text: "Report a Bug"; color: root.text-heading; font-size: 16px; font-weight: 600; }
-                    Text { text: "Describe what happened. System info and telemetry will be attached automatically."; color: root.text-muted; font-size: 11px; wrap: word-wrap; }
+                    Text { text: "Report a Bug"; color: root.text-heading; font-size: 18px; font-weight: 600; }
 
+                    Text {
+                        text: "Tell us what happened. Your system info (GPU, OS, settings) will be included to help us fix the issue faster.";
+                        color: root.text-muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+
+                    Text { text: "What went wrong?"; color: root.text-body; font-size: 12px; }
                     bug-msg := LineEdit {
-                        placeholder-text: "What went wrong?";
+                        placeholder-text: "e.g. The video freezes when I click Export";
+                    }
+
+                    Text { text: "How can we reach you? (optional)"; color: root.text-body; font-size: 12px; }
+                    bug-contact := LineEdit {
+                        text <=> root.bug-user-contact;
+                        placeholder-text: "Forum username or email";
+                    }
+
+                    bug-share-logs := CheckBox {
+                        text: "Include system info and logs";
+                        checked: true;
+                    }
+                    Text {
+                        text: "Shares GPU model, OS, performance stats, and file paths. No video content.";
+                        color: root.text-dim;
+                        font-size: 10px;
+                        wrap: word-wrap;
                     }
 
                     HorizontalLayout {
@@ -1949,8 +1987,9 @@ export component RecoApp inherits Window {
                         Button {
                             text: "Send Report";
                             primary: true;
+                            enabled: bug-msg.text != "";
                             clicked => {
-                                root.submit-bug-report(bug-msg.text);
+                                root.submit-bug-report(bug-msg.text, bug-contact.text, bug-share-logs.checked);
                                 root.bug-dialog-open = false;
                             }
                         }

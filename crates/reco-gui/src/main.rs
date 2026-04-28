@@ -3025,30 +3025,60 @@ fn main() -> anyhow::Result<()> {
 
     let state_ref = Rc::clone(&state);
     let app_weak = app.as_weak();
-    app.on_submit_bug_report(move |user_message| {
+    app.on_submit_bug_report(move |user_message, contact, include_logs| {
         let mut s = state_ref.borrow_mut();
-        let mut report = build_bug_report(&s, &app_weak);
         let msg = user_message.to_string();
-        if !msg.trim().is_empty() {
-            report = format!("## User description\n{msg}\n\n{report}");
-        }
+        let contact_str = contact.to_string();
 
-        let sent = if let Some(ref t) = s.telemetry {
-            t.bug_report(&report);
-            true
+        let report = if include_logs {
+            let sys_report = build_bug_report(&s, &app_weak);
+            format!(
+                "## User description\n{msg}\n\n## Contact\n{}\n\n{sys_report}",
+                if contact_str.trim().is_empty() {
+                    "(not provided)"
+                } else {
+                    contact_str.trim()
+                }
+            )
         } else {
-            false
+            format!(
+                "## User description\n{msg}\n\n## Contact\n{}",
+                if contact_str.trim().is_empty() {
+                    "(not provided)"
+                } else {
+                    contact_str.trim()
+                }
+            )
         };
+
+        // Always try to send via telemetry (even without opt-in -
+        // bug reports are an explicit user action, not passive tracking).
+        let cid = s
+            .user_settings
+            .telemetry_client_id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let client = s.telemetry.get_or_insert_with(|| {
+            log::info!("Creating one-shot telemetry client for bug report");
+            telemetry_client::TelemetryClient::new(cid)
+        });
+        client.bug_report(&report);
+
+        // Save contact for next time
+        if !contact_str.trim().is_empty() {
+            s.user_settings
+                .telemetry_client_id
+                .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
+            s.user_settings.save();
+        }
 
         let _ = arboard::Clipboard::new().and_then(|mut cb| cb.set_text(report));
 
-        let toast_msg = if sent {
-            "Report sent to developer. Also copied to clipboard."
-        } else {
-            "Report copied to clipboard. Enable telemetry in Preferences to send directly to the developer."
-        };
-        s.toasts
-            .push(crate::toast::Severity::Info, "Bug report", toast_msg);
+        s.toasts.push(
+            crate::toast::Severity::Info,
+            "Report sent",
+            "Thank you! Your report has been sent to the developer.",
+        );
 
         if let Some(app) = app_weak.upgrade() {
             crate::toast::sync_to_ui(&s.toasts, &app);
