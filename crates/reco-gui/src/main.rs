@@ -699,6 +699,9 @@ impl AppState {
     }
 
     fn set_rig_tilt(&mut self, deg: f32) {
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.rig_tilt = deg as f64;
+        }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.renderer_mut().set_rig_tilt(deg.to_radians());
             self.preview_dirty = true;
@@ -707,6 +710,9 @@ impl AppState {
     }
 
     fn set_rig_roll(&mut self, deg: f32) {
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.rig_roll = deg as f64;
+        }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.renderer_mut().set_rig_roll(deg.to_radians());
             self.preview_dirty = true;
@@ -872,6 +878,23 @@ fn set_lens_profile_props(
     };
     app.set_lens_candidates_count(candidates);
     app.set_lens_info_available(left.is_some() || right.is_some());
+}
+
+fn format_time(frame: u64, fps: f64) -> String {
+    if fps <= 0.0 {
+        return "0:00".into();
+    }
+    let total_secs = (frame as f64 / fps) as u64;
+    let m = total_secs / 60;
+    let s = total_secs % 60;
+    format!("{m}:{s:02}")
+}
+
+fn sync_frame_display(app: &RecoApp, frame: u64, total: u64, fps: f64) {
+    app.set_current_frame(frame as i32);
+    app.set_total_frames(total as i32);
+    app.set_current_time_text(format_time(frame, fps).into());
+    app.set_total_time_text(format_time(total, fps).into());
 }
 
 fn display_name(path: &std::path::Path) -> String {
@@ -2198,37 +2221,6 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    // ── Distortion preview callbacks ──
-
-    let state_ref = Rc::clone(&state);
-    app.on_changed_lens_correction(move |amount| {
-        let mut s = state_ref.borrow_mut();
-        if let Some(bridge) = s.bridge.as_mut() {
-            bridge
-                .renderer_mut()
-                .pipeline_mut()
-                .set_lens_correction_amount(amount);
-            s.preview_dirty = true;
-        }
-    });
-
-    let state_ref = Rc::clone(&state);
-    let app_weak = app.as_weak();
-    app.on_changed_split_view(move || {
-        let Some(app) = app_weak.upgrade() else {
-            return;
-        };
-        let enabled = app.get_distortion_split_view();
-        let mut s = state_ref.borrow_mut();
-        if let Some(bridge) = s.bridge.as_mut() {
-            bridge
-                .renderer_mut()
-                .pipeline_mut()
-                .set_distortion_split_view(enabled);
-            s.preview_dirty = true;
-        }
-    });
-
     // Slint's <=> binding updates the use-constrained-look property but
     // does not call back into Rust. Without this notify, AppState's
     // use_constrained_look stays at its initial value forever and the
@@ -2795,7 +2787,9 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         app.set_preview_frame(img);
         s.last_render_at = Some(Instant::now());
         if video_advanced {
-            app.set_current_frame(s.playback.frame_index() as i32);
+            let fps = s.playback.fps();
+            let total = s.playback.total_frames().unwrap_or(0);
+            sync_frame_display(&app, s.playback.frame_index(), total, fps);
             if s.playback.state() == PlayState::Finished {
                 app.set_playing(false);
                 app.set_status_text("Playback finished".into());

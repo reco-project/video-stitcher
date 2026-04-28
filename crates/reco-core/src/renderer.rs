@@ -798,8 +798,6 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[0],
-            viewport.config.lens_correction_amount,
-            viewport.config.distortion_split_view,
         );
 
         let right_mvp = projection * view * scene.model_matrix_right();
@@ -810,8 +808,6 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[1],
-            viewport.config.lens_correction_amount,
-            viewport.config.distortion_split_view,
         );
 
         gpu.queue.write_buffer(
@@ -1185,8 +1181,6 @@ pub(crate) fn build_gpu_uniforms(
     blend_width: f32,
     input_format: InputFormat,
     flip_180: bool,
-    lens_correction_amount: f32,
-    distortion_split_view: bool,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -1216,12 +1210,9 @@ pub(crate) fn build_gpu_uniforms(
             flip_180 as u32,
             0,
         ],
-        lens_preview: [
-            lens_correction_amount,
-            if distortion_split_view { 1.0 } else { 0.0 },
-            0.0,
-            0.0,
-        ],
+        // Full correction for normal stitching. LensPreviewRenderer
+        // overrides this field for the single-camera preview mode.
+        lens_preview: [1.0, 0.0, 0.0, 0.0],
     }
 }
 
@@ -1266,16 +1257,7 @@ mod tests {
             d: [0.0342, 0.0677, -0.0741, 0.0299],
         };
         let mvp = Matrix4::identity();
-        let u = build_gpu_uniforms(
-            &mvp,
-            &camera,
-            false,
-            0.0,
-            InputFormat::Yuv420p,
-            false,
-            1.0,
-            false,
-        );
+        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0, InputFormat::Yuv420p, false);
 
         // fx/width ≈ 0.4678
         assert!((u.intrinsics[0] - 1796.32 / 3840.0).abs() < 1e-4);

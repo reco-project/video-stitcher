@@ -41,16 +41,6 @@ pub struct ViewportConfig {
     /// Rotates the scene around the forward axis to compensate for a
     /// laterally tilted camera rig. `0.0` = no correction. Default: 0.0.
     pub rig_roll: f32,
-    /// Lens distortion correction amount (0.0 to 1.0).
-    ///
-    /// `1.0` (default) applies full KB4 fisheye correction. `0.0` skips
-    /// distortion correction entirely (pinhole projection). Intermediate
-    /// values smoothly interpolate, letting users visually evaluate how
-    /// much correction the lens profile contributes.
-    pub lens_correction_amount: f32,
-    /// When true, the shader renders left half without lens correction
-    /// and right half with full correction, separated by a thin line.
-    pub distortion_split_view: bool,
 }
 
 impl Default for ViewportConfig {
@@ -62,8 +52,6 @@ impl Default for ViewportConfig {
             blend_width: 0.05,
             rig_tilt: 0.0,
             rig_roll: 0.0,
-            lens_correction_amount: 1.0,
-            distortion_split_view: false,
         }
     }
 }

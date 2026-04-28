@@ -213,6 +213,8 @@ export component RecoApp inherits Window {
     in-out property <float> progress: 0.0;
     in-out property <int> current-frame: 0;
     in-out property <int> total-frames: 0;
+    in-out property <string> current-time-text: "0:00";
+    in-out property <string> total-time-text: "0:00";
     in-out property <float> fps: 0.0;
     in-out property <bool> calibrating: false;
     in-out property <string> calibration-step: "";
@@ -412,11 +414,6 @@ export component RecoApp inherits Window {
     in-out property <string> lens-search-query: "";
     in-out property <[string]> lens-search-results: [];
 
-    // Distortion preview controls.
-    in-out property <float> lens-correction-amount: 1.0;
-    in-out property <bool> distortion-split-view: false;
-    callback changed-lens-correction(float);
-    callback changed-split-view();
     // Constrained-look checkbox. Fires when the user toggles it so Rust
     // can sync `AppState.use_constrained_look` with the UI property
     // (Slint's <=> binding updates the property but Rust needs a notify
@@ -945,22 +942,6 @@ export component RecoApp inherits Window {
                             clicked => { root.lens-picker-open = true; }
                         }
 
-                        // Distortion preview
-                        LabeledSlider {
-                            label: "Correction";
-                            minimum: 0;
-                            maximum: 1.0;
-                            value <=> root.lens-correction-amount;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-correction(v); }
-                        }
-
-                        CheckBox {
-                            text: "Split view (raw vs corrected)";
-                            checked <=> root.distortion-split-view;
-                            toggled => { root.changed-split-view(); }
-                        }
-
                         // Fine-tune toggle
                         lens-tune := SectionHeader {
                             title: "Fine-tune";
@@ -1109,17 +1090,15 @@ export component RecoApp inherits Window {
                 Button { text: root.playing ? "||" : "▶"; enabled: root.files-loaded; clicked => { root.toggle-playback(); } }
                 Button { text: ">|"; enabled: root.files-loaded; clicked => { root.step-forward(); } }
 
-                // Frame counter
                 Text {
-                    text: root.current-frame;
+                    text: root.current-time-text;
                     color: #aaa;
                     font-size: 11px;
                     vertical-alignment: center;
-                    width: 48px;
+                    width: 44px;
                     horizontal-alignment: right;
                 }
 
-                // Seek slider
                 Slider {
                     horizontal-stretch: 1;
                     minimum: 0;
@@ -1132,11 +1111,11 @@ export component RecoApp inherits Window {
                 }
 
                 Text {
-                    text: root.total-frames;
+                    text: root.total-time-text;
                     color: #666;
                     font-size: 11px;
                     vertical-alignment: center;
-                    width: 48px;
+                    width: 44px;
                 }
 
                 // Record button
