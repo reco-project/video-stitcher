@@ -220,6 +220,7 @@ export component RecoApp inherits Window {
     in-out property <string> calibration-step: "";
     in-out property <bool> has-both-videos: left-path != "" && right-path != "";
     in-out property <bool> has-roi: false;
+    callback launch-roi-editor();
 
     // Camera view state (kept in sync with Rust AppState).
     in-out property <float> yaw: 0.0;      // radians
@@ -771,8 +772,13 @@ export component RecoApp inherits Window {
                             }
                         }
 
+                        if root.files-loaded: Button {
+                            text: root.has-roi ? "Edit ROI..." : "Set ROI...";
+                            clicked => { root.launch-roi-editor(); }
+                        }
+
                         if root.files-loaded && !root.has-roi: Text {
-                            text: "Add field_roi to calibration JSON for better AI tracking.";
+                            text: "Opens a window to click field boundary points per camera.";
                             color: #666;
                             font-size: 10px;
                             wrap: word-wrap;

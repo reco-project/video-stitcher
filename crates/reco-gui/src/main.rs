@@ -198,6 +198,8 @@ struct AppState {
     lens_preview_side: String,
     /// Lens correction amount for the preview (0.0 = raw, 1.0 = full).
     lens_correction_amount: f32,
+    /// Set by the ROI editor thread. Timer tick reloads calibration when true.
+    roi_reload_pending: Option<Arc<AtomicBool>>,
     toasts: ToastManager,
 }
 
@@ -301,6 +303,7 @@ impl AppState {
             lens_preview_active: false,
             lens_preview_side: "left".into(),
             lens_correction_amount: 1.0,
+            roi_reload_pending: None,
             toasts: ToastManager::default(),
         }
     }
@@ -1432,6 +1435,79 @@ fn main() -> anyhow::Result<()> {
             app.set_files_loaded(false);
             app.set_status_text("Calibration cleared".into());
         }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_launch_roi_editor(move || {
+        let paths = {
+            let s = state_ref.borrow();
+            match (
+                s.left_path.clone(),
+                s.right_path.clone(),
+                s.calibration_path.clone(),
+            ) {
+                (Some(l), Some(r), Some(c)) => Some((l, r, c)),
+                _ => None,
+            }
+        };
+        let Some((left, right, cal_path)) = paths else {
+            let mut s = state_ref.borrow_mut();
+            if let Some(app) = app_weak.upgrade() {
+                s.toasts.push(
+                    crate::toast::Severity::Error,
+                    "Cannot set ROI",
+                    "Need left video, right video, and calibration loaded.",
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+            }
+            return;
+        };
+
+        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/field_roi.py");
+        if !script.exists() {
+            let mut s = state_ref.borrow_mut();
+            if let Some(app) = app_weak.upgrade() {
+                s.toasts.push(
+                    crate::toast::Severity::Error,
+                    "ROI script not found",
+                    format!("Expected at {}", script.display()),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+            }
+            return;
+        }
+
+        log::info!(
+            "Launching ROI editor: {} {} {}",
+            left.display(),
+            right.display(),
+            cal_path.display()
+        );
+        // Set a flag that the timer tick checks to reload calibration
+        // after the ROI editor exits. This avoids Send issues with
+        // Rc<RefCell<AppState>> across threads.
+        let roi_pending = Arc::new(AtomicBool::new(false));
+        {
+            let mut s = state_ref.borrow_mut();
+            s.roi_reload_pending = Some(Arc::clone(&roi_pending));
+        }
+        std::thread::spawn(move || {
+            let result = std::process::Command::new("python3")
+                .arg(&script)
+                .arg(&left)
+                .arg(&right)
+                .arg(&cal_path)
+                .status();
+            match result {
+                Ok(status) if status.success() => {
+                    log::info!("ROI editor completed, signaling reload");
+                    roi_pending.store(true, Ordering::Relaxed);
+                }
+                Ok(status) => log::warn!("ROI editor exited with status {status}"),
+                Err(e) => log::error!("Failed to launch ROI editor: {e}"),
+            }
+        });
     });
 
     let app_weak = app.as_weak();
@@ -2706,6 +2782,35 @@ fn main() -> anyhow::Result<()> {
                 {
                     s.user_settings.save();
                     s.last_window_size_save_at = None;
+                }
+            }
+
+            // Check if ROI editor finished and reload calibration.
+            if let Some(ref flag) = s.roi_reload_pending
+                && flag.load(Ordering::Relaxed)
+            {
+                s.roi_reload_pending = None;
+                if let Some(cal_path) = s.calibration_path.as_ref()
+                    && let Ok(cal) = MatchCalibration::from_file(cal_path)
+                {
+                    let has_roi = cal
+                        .field_roi
+                        .as_ref()
+                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty());
+                    s.calibration = Some(cal);
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_has_roi(has_roi);
+                        s.toasts.push(
+                            Severity::Info,
+                            "Field ROI updated",
+                            if has_roi {
+                                "ROI loaded from calibration"
+                            } else {
+                                "No ROI points saved"
+                            },
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
                 }
             }
 
