@@ -99,6 +99,7 @@ pub mod encoder;
 pub mod framesync;
 pub mod gpu;
 pub mod lens;
+pub mod lens_preview;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
 pub mod nv12_converter;

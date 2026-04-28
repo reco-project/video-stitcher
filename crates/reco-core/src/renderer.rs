@@ -70,7 +70,7 @@ pub(crate) struct GpuUniforms {
     color_scale: [f32; 4],
     color_offset_blend: [f32; 4],
     flags: [u32; 4],
-    lens_preview: [f32; 4],
+    pub(crate) lens_preview: [f32; 4],
 }
 
 /// Vertex with 3D position and UV coordinates.
