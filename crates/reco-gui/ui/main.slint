@@ -472,6 +472,9 @@ export component RecoApp inherits Window {
 
     // Left panel (files) visibility.
     in-out property <bool> files-panel-open: false;
+    // Panel widths (resizable via drag handles).
+    in-out property <length> left-panel-width: 260px;
+    in-out property <length> right-panel-width: 280px;
 
     // Keyboard handling. The FocusScope must *wrap* the content so
     // key events have somewhere to bubble up when a child (button,
@@ -564,13 +567,23 @@ export component RecoApp inherits Window {
             // ── Left files panel ──
             if root.files-panel-open: Rectangle {
                 background: #1a1a1a;
-                width: 260px;
-                // Right edge separator
+                width: root.left-panel-width;
+
+                // Resize handle on the right edge
                 Rectangle {
-                    x: parent.width - 1px;
-                    width: 1px;
+                    x: parent.width - 4px;
+                    width: 6px;
                     height: parent.height;
-                    background: #333;
+                    background: left-resize.has-hover || left-resize.pressed ? #555 : #333;
+
+                    left-resize := TouchArea {
+                        mouse-cursor: ew-resize;
+                        moved => {
+                            if (self.pressed) {
+                                root.left-panel-width = max(180px, root.left-panel-width + (self.mouse-x - self.pressed-x));
+                            }
+                        }
+                    }
                 }
 
                 ScrollView {
@@ -895,13 +908,23 @@ export component RecoApp inherits Window {
             // when advanced sections are expanded on short screens.
             if root.controls-open: Rectangle {
                 background: #1a1a1a;
-                width: 280px;
-                // Left edge separator
+                width: root.right-panel-width;
+
+                // Resize handle on the left edge
                 Rectangle {
                     x: 0;
-                    width: 1px;
+                    width: 6px;
                     height: parent.height;
-                    background: #333;
+                    background: right-resize.has-hover || right-resize.pressed ? #555 : #333;
+
+                    right-resize := TouchArea {
+                        mouse-cursor: ew-resize;
+                        moved => {
+                            if (self.pressed) {
+                                root.right-panel-width = max(200px, root.right-panel-width - (self.mouse-x - self.pressed-x));
+                            }
+                        }
+                    }
                 }
 
                 ScrollView {
@@ -1698,7 +1721,7 @@ export component RecoApp inherits Window {
         // TouchArea - only the dismiss × inside each card.
         ToastStack {
             toasts: root.toasts;
-            right-inset: root.controls-open ? 280px : 0px;
+            right-inset: root.controls-open ? root.right-panel-width : 0px;
             dismissed(id) => { root.toast-dismissed(id); }
         }
 
