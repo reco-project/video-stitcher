@@ -1657,7 +1657,10 @@ fn main() -> anyhow::Result<()> {
                 Ok(output) => {
                     if !output.status.success() {
                         let stderr = String::from_utf8_lossy(&output.stderr);
-                        log::warn!("ffmpeg frame extraction failed for {}: {stderr}", video.display());
+                        log::warn!(
+                            "ffmpeg frame extraction failed for {}: {stderr}",
+                            video.display()
+                        );
                     }
                 }
                 Err(e) => log::error!("ffmpeg not found or failed to run: {e}"),
@@ -1736,10 +1739,67 @@ fn main() -> anyhow::Result<()> {
                 s.toasts.push(
                     crate::toast::Severity::Info,
                     "ROI editor opened in browser",
-                    "Click field boundary points, then Save ROI. The updated calibration will download automatically.",
+                    "Draw field boundary, click Save ROI, then come back here and click Paste ROI.",
                 );
                 crate::toast::sync_to_ui(&s.toasts, &app);
             }
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_paste_roi(move || {
+        let mut s = state_ref.borrow_mut();
+        let clipboard_text = match arboard::Clipboard::new().and_then(|mut cb| cb.get_text()) {
+            Ok(t) => t,
+            Err(e) => {
+                log::warn!("Clipboard read failed: {e}");
+                if let Some(app) = app_weak.upgrade() {
+                    s.toasts.push(
+                        crate::toast::Severity::Error,
+                        "Paste ROI",
+                        "Could not read clipboard.",
+                    );
+                    crate::toast::sync_to_ui(&s.toasts, &app);
+                }
+                return;
+            }
+        };
+
+        let roi: reco_core::calibration::FieldRoi = match serde_json::from_str(&clipboard_text) {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("Clipboard is not valid ROI JSON: {e}");
+                if let Some(app) = app_weak.upgrade() {
+                    s.toasts.push(
+                        crate::toast::Severity::Error,
+                        "Paste ROI",
+                        "Clipboard doesn't contain valid ROI JSON. Save ROI in the browser editor first.",
+                    );
+                    crate::toast::sync_to_ui(&s.toasts, &app);
+                }
+                return;
+            }
+        };
+
+        let point_count = roi.left.len() + roi.right.len();
+        if let Some(cal) = s.calibration.as_mut() {
+            cal.field_roi = Some(roi);
+        }
+        if let Err(e) = s.save_calibration() {
+            log::error!("Failed to save calibration with ROI: {e}");
+        }
+
+        if let Some(app) = app_weak.upgrade() {
+            let has = point_count > 0;
+            app.set_has_roi(has);
+            sync_roi_points(&s, &app);
+            s.toasts.push(
+                crate::toast::Severity::Info,
+                "ROI applied",
+                format!("{point_count} points saved to calibration."),
+            );
+            crate::toast::sync_to_ui(&s.toasts, &app);
         }
     });
 

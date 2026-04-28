@@ -257,6 +257,7 @@ export component RecoApp inherits Window {
     in-out property <[float]> roi-points-x: [];
     in-out property <[float]> roi-points-y: [];
     callback launch-roi-editor();
+    callback paste-roi();
 
     // Camera view state (kept in sync with Rust AppState).
     in-out property <float> yaw: 0.0;      // radians
@@ -905,14 +906,22 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        if root.files-loaded: Button {
-                            text: root.has-roi ? "Edit ROI..." : "Set ROI...";
-                            clicked => { root.launch-roi-editor(); }
+                        if root.files-loaded: HorizontalLayout {
+                            spacing: 4px;
+                            Button {
+                                text: root.has-roi ? "Edit ROI..." : "Set ROI...";
+                                horizontal-stretch: 1;
+                                clicked => { root.launch-roi-editor(); }
+                            }
+                            Button {
+                                text: "Paste ROI";
+                                clicked => { root.paste-roi(); }
+                            }
                         }
 
                         if root.files-loaded && !root.has-roi: Text {
-                            text: "Opens a window to click field boundary points per camera.";
-                            color: #666;
+                            text: "Draw in browser, then Paste ROI to apply.";
+                            color: root.text-dim;
                             font-size: 10px;
                             wrap: word-wrap;
                         }
