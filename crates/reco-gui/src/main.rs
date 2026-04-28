@@ -49,9 +49,10 @@ struct SharedGpu {
 
 slint::include_modules!();
 
-/// Default preview viewport dimensions.
-const PREVIEW_WIDTH: u32 = 1920;
-const PREVIEW_HEIGHT: u32 = 1080;
+/// Default preview viewport dimensions (used before the first
+/// adaptive resize reads the actual preview container size from Slint).
+const PREVIEW_WIDTH_DEFAULT: u32 = 1920;
+const PREVIEW_HEIGHT_DEFAULT: u32 = 1080;
 
 /// Tick interval for the playback timer (ms).
 ///
@@ -392,8 +393,8 @@ impl AppState {
             cal.clone(),
             input_w,
             input_h,
-            PREVIEW_WIDTH,
-            PREVIEW_HEIGHT,
+            PREVIEW_WIDTH_DEFAULT,
+            PREVIEW_HEIGHT_DEFAULT,
         )
         .map_err(|e| format!("GPU init error: {e}"))
     }
@@ -492,7 +493,7 @@ impl AppState {
         self.reset_pipeline();
     }
 
-    fn start_recording(&mut self) -> Result<PathBuf, String> {
+    fn start_recording(&mut self, codec: &str, quality: &str) -> Result<PathBuf, String> {
         let bridge = self.bridge.as_ref().ok_or("No pipeline")?;
         let (w, h) = bridge.viewport_size();
         let rec_w = w & !3;
@@ -504,14 +505,31 @@ impl AppState {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let path = PathBuf::from(format!("reco_recording_{epoch}.mp4"));
+
+        let folder = self
+            .user_settings
+            .recording_folder
+            .as_ref()
+            .filter(|p| p.is_dir())
+            .cloned()
+            .or_else(|| {
+                self.left_path
+                    .as_ref()
+                    .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            })
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let folder = std::fs::canonicalize(&folder).unwrap_or(folder);
+        let path = folder.join(format!("reco_recording_{epoch}.mp4"));
 
         let (encoder, enc_name) = reco_io::adapters::create_encoder(
-            &path, rec_w, rec_h, fps_r, "h264", "balanced", None, None, None,
+            &path, rec_w, rec_h, fps_r, codec, quality, None, None, None,
         )
         .map_err(|e| format!("Failed to start recording: {e}"))?;
 
-        log::info!("Recording started: {} ({enc_name})", path.display());
+        log::info!(
+            "Recording started: {} ({enc_name}, {codec}/{quality})",
+            path.display()
+        );
         self.recording_encoder = Some(Box::new(encoder));
         self.recording_path = Some(path.clone());
         self.recording_frames = 0;
@@ -525,8 +543,7 @@ impl AppState {
                 let fps = self.playback.fps();
                 for _ in 0..2 {
                     if let Ok(Some(nv12)) = bridge.renderer_mut().flush_nv12() {
-                        let pts =
-                            (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
+                        let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
                         let _ = enc.submit(reco_core::encoder::OutputFrame {
                             data: nv12,
                             width: w & !3,
@@ -583,8 +600,7 @@ impl AppState {
                     if let Some(nv12) = nv12_opt
                         && let Some(enc) = self.recording_encoder.as_mut()
                     {
-                        let pts =
-                            (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
+                        let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
                         let _ = enc.submit(reco_core::encoder::OutputFrame {
                             data: &nv12,
                             width: w & !3,
@@ -879,6 +895,28 @@ fn sync_recent_paths(settings: &settings::GuiSettings, app: &RecoApp) {
     app.set_recent_calibration_paths(to_model(settings.recent_calibration.entries()));
 }
 
+/// Push the per-side segment filenames into the Slint left/right-segments
+/// models so the Files panel shows what was imported.
+fn sync_segments(state: &AppState, app: &RecoApp) {
+    fn input_to_names(input: &Option<reco_io::stitch_job::InputPath>) -> Vec<slint::SharedString> {
+        match input {
+            Some(reco_io::stitch_job::InputPath::Single(p)) => {
+                vec![display_name(p).into()]
+            }
+            Some(reco_io::stitch_job::InputPath::Chained(ps)) => {
+                ps.iter().map(|p| display_name(p).into()).collect()
+            }
+            None => vec![],
+        }
+    }
+    app.set_left_segments(slint::ModelRc::new(slint::VecModel::from(input_to_names(
+        &state.left_input,
+    ))));
+    app.set_right_segments(slint::ModelRc::new(slint::VecModel::from(input_to_names(
+        &state.right_input,
+    ))));
+}
+
 /// Install the standard tracing subscriber + log bridge.
 ///
 /// Replaces the previous `env_logger::init()`. Bridges `log::*` calls
@@ -940,8 +978,7 @@ fn main() -> anyhow::Result<()> {
         .require_wgpu_28({
             let mut config = slint::wgpu_28::WGPUConfiguration::default();
             if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
-                settings.device_required_limits =
-                    reco_core::wgpu::Limits::downlevel_defaults();
+                settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
             }
             config
         })
@@ -993,6 +1030,22 @@ fn main() -> anyhow::Result<()> {
         );
     }
     app.set_available_codecs(slint::ModelRc::new(slint::VecModel::from(codecs)));
+
+    // Seed recording and preview settings from persisted preferences.
+    {
+        let s = state.borrow();
+        app.set_recording_codec(s.user_settings.recording_codec.clone().into());
+        app.set_recording_quality(s.user_settings.recording_quality.clone().into());
+        app.set_recording_folder(
+            s.user_settings
+                .recording_folder
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .into(),
+        );
+        app.set_preview_aspect(s.user_settings.preview_aspect.clone().into());
+    }
 
     // Seed the Recent-files dialog with the persisted MRU lists. If
     // the user never loaded anything before, these are empty and the
@@ -1315,6 +1368,138 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // ── File management callbacks (left panel) ──
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_clear_left(move || {
+        let mut s = state_ref.borrow_mut();
+        if s.bridge.is_some() {
+            s.unload_pipeline();
+        }
+        s.left_path = None;
+        s.left_input = None;
+        if let Some(app) = app_weak.upgrade() {
+            app.set_left_path("".into());
+            app.set_files_loaded(false);
+            app.set_status_text("Left video cleared".into());
+            sync_segments(&s, &app);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_clear_right(move || {
+        let mut s = state_ref.borrow_mut();
+        if s.bridge.is_some() {
+            s.unload_pipeline();
+        }
+        s.right_path = None;
+        s.right_input = None;
+        if let Some(app) = app_weak.upgrade() {
+            app.set_right_path("".into());
+            app.set_files_loaded(false);
+            app.set_status_text("Right video cleared".into());
+            sync_segments(&s, &app);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_clear_calibration(move || {
+        let mut s = state_ref.borrow_mut();
+        if s.bridge.is_some() {
+            s.unload_pipeline();
+        }
+        s.calibration_path = None;
+        s.calibration = None;
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_path("".into());
+            app.set_files_loaded(false);
+            app.set_status_text("Calibration cleared".into());
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_remove_left_segment(move |idx| {
+        let mut s = state_ref.borrow_mut();
+        if let Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) = s.left_input {
+            let idx = idx as usize;
+            if idx < paths.len() {
+                paths.remove(idx);
+                if paths.is_empty() {
+                    s.left_input = None;
+                    s.left_path = None;
+                } else if paths.len() == 1 {
+                    let p = paths[0].clone();
+                    s.left_path = Some(p.clone());
+                    s.left_input = Some(reco_io::stitch_job::InputPath::Single(p));
+                } else {
+                    s.left_path = Some(paths[0].clone());
+                }
+                if s.bridge.is_some() {
+                    s.unload_pipeline();
+                }
+                if let Some(app) = app_weak.upgrade() {
+                    let label = s
+                        .left_input
+                        .as_ref()
+                        .map(|i| match i {
+                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                            reco_io::stitch_job::InputPath::Chained(ps) => {
+                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                            }
+                        })
+                        .unwrap_or_default();
+                    app.set_left_path(label.into());
+                    app.set_files_loaded(false);
+                    sync_segments(&s, &app);
+                }
+            }
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_remove_right_segment(move |idx| {
+        let mut s = state_ref.borrow_mut();
+        if let Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) = s.right_input {
+            let idx = idx as usize;
+            if idx < paths.len() {
+                paths.remove(idx);
+                if paths.is_empty() {
+                    s.right_input = None;
+                    s.right_path = None;
+                } else if paths.len() == 1 {
+                    let p = paths[0].clone();
+                    s.right_path = Some(p.clone());
+                    s.right_input = Some(reco_io::stitch_job::InputPath::Single(p));
+                } else {
+                    s.right_path = Some(paths[0].clone());
+                }
+                if s.bridge.is_some() {
+                    s.unload_pipeline();
+                }
+                if let Some(app) = app_weak.upgrade() {
+                    let label = s
+                        .right_input
+                        .as_ref()
+                        .map(|i| match i {
+                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                            reco_io::stitch_job::InputPath::Chained(ps) => {
+                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                            }
+                        })
+                        .unwrap_or_default();
+                    app.set_right_path(label.into());
+                    app.set_files_loaded(false);
+                    sync_segments(&s, &app);
+                }
+            }
+        }
+    });
+
     // ── Preferences dialog callbacks ──
     //
     // Open prefills the prefs-* properties from user_settings; Save
@@ -1339,6 +1524,16 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .into(),
         );
+        app.set_recording_codec(s.user_settings.recording_codec.clone().into());
+        app.set_recording_quality(s.user_settings.recording_quality.clone().into());
+        app.set_recording_folder(
+            s.user_settings
+                .recording_folder
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .into(),
+        );
         app.set_prefs_dialog_open(true);
     });
 
@@ -1358,6 +1553,14 @@ fn main() -> anyhow::Result<()> {
         } else {
             Some(PathBuf::from(model_path))
         };
+        s.user_settings.recording_codec = app.get_recording_codec().to_string();
+        s.user_settings.recording_quality = app.get_recording_quality().to_string();
+        let rec_folder = app.get_recording_folder().to_string();
+        s.user_settings.recording_folder = if rec_folder.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(rec_folder))
+        };
         s.user_settings.save();
     });
 
@@ -1371,6 +1574,23 @@ fn main() -> anyhow::Result<()> {
         {
             app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
         }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_pick_recording_folder(move || {
+        let dialog = rfd::FileDialog::new().set_title("Select default recording folder");
+        if let Some(folder) = dialog.pick_folder()
+            && let Some(app) = app_weak.upgrade()
+        {
+            app.set_recording_folder(folder.to_string_lossy().to_string().into());
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    app.on_changed_preview_aspect(move |aspect| {
+        let mut s = state_ref.borrow_mut();
+        s.user_settings.preview_aspect = aspect.to_string();
+        s.user_settings.save();
     });
 
     // ── Auto-calibration callback ──
@@ -2082,22 +2302,23 @@ fn main() -> anyhow::Result<()> {
 
     let state_ref = Rc::clone(&state);
     let app_weak = app.as_weak();
-    app.on_toggle_recording(move || {
+    app.on_toggle_recording(move |codec, quality| {
         let mut s = state_ref.borrow_mut();
         if s.is_recording() {
             if let Some((path, frames)) = s.stop_recording()
                 && let Some(app) = app_weak.upgrade()
             {
-                    app.set_recording(false);
-                    s.toasts.push(
-                        crate::toast::Severity::Info,
-                        "Recording saved",
-                        format!("{frames} frames to {}", path.display()),
-                    );
-                    crate::toast::sync_to_ui(&s.toasts, &app);
+                app.set_recording(false);
+                s.toasts.push_with_ttl(
+                    crate::toast::Severity::Info,
+                    "Recording saved",
+                    format!("{frames} frames\n{}", path.display()),
+                    Duration::from_secs(8),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
             }
         } else {
-            match s.start_recording() {
+            match s.start_recording(codec.as_str(), quality.as_str()) {
                 Ok(path) => {
                     if let Some(app) = app_weak.upgrade() {
                         app.set_recording(true);
@@ -2112,7 +2333,8 @@ fn main() -> anyhow::Result<()> {
                 Err(e) => {
                     log::error!("Recording failed: {e}");
                     if let Some(app) = app_weak.upgrade() {
-                        s.toasts.push(crate::toast::Severity::Error, "Recording failed", e);
+                        s.toasts
+                            .push(crate::toast::Severity::Error, "Recording failed", e);
                         crate::toast::sync_to_ui(&s.toasts, &app);
                     }
                 }
@@ -2343,6 +2565,25 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     if s.is_exporting() {
         return false;
     }
+
+    // Adaptive preview: resize render target to match the preview
+    // container. Skipped during recording because the encoder was
+    // initialized at a fixed resolution and the NV12 readback must
+    // match. Also caps at 1920x1080 to prevent GPU starvation on
+    // high-DPI displays.
+    if !s.is_recording()
+        && let Some(app) = app_weak.upgrade()
+        && let Some(bridge) = s.bridge.as_mut()
+    {
+        let area_w = (app.get_preview_area_width().max(320.0) as u32).min(1920);
+        let area_h = (app.get_preview_area_height().max(240.0) as u32).min(1080);
+        let (cur_w, cur_h) = bridge.viewport_size();
+        if area_w.abs_diff(cur_w) > 16 || area_h.abs_diff(cur_h) > 16 {
+            bridge.resize(area_w, area_h);
+            s.preview_dirty = true;
+        }
+    }
+
     let camera_changed = s.smooth_camera();
     let video_advanced = match s.playback.tick() {
         Ok(advanced) => advanced,
@@ -2395,6 +2636,9 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
 /// Try to initialize the pipeline when all files are selected.
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
     let mut s = state.borrow_mut();
+    if let Some(app) = app_weak.upgrade() {
+        sync_segments(&s, &app);
+    }
     match s.try_init() {
         Ok(true) => {
             let fps = s.playback.fps();
@@ -2616,9 +2860,46 @@ fn handle_calibration_result(
                         .as_ref()
                         .map(|b| b.renderer().pipeline().viewport().blend_width);
 
+                    // Auto-save calibration next to the left video so
+                    // it appears in Recent and can be reloaded.
+                    if let Some(left) = state.left_path.as_ref() {
+                        let cal_path = left.with_file_name(format!(
+                            "{}_calibration.json",
+                            left.file_stem()
+                                .map(|s| s.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| "reco".into())
+                        ));
+                        if let Some(cal) = state.calibration.as_ref() {
+                            match serde_json::to_string_pretty(cal) {
+                                Ok(json) => match std::fs::write(&cal_path, json) {
+                                    Ok(()) => {
+                                        log::info!(
+                                            "Auto-saved calibration to {}",
+                                            cal_path.display()
+                                        );
+                                        state.calibration_path = Some(cal_path.clone());
+                                        state.user_settings.push_calibration(cal_path.clone());
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Failed to auto-save calibration: {e}");
+                                    }
+                                },
+                                Err(e) => {
+                                    log::warn!("Failed to serialize calibration: {e}");
+                                }
+                            }
+                        }
+                    }
+
                     if let Some(app) = app_weak.upgrade() {
+                        let cal_label = state
+                            .calibration_path
+                            .as_ref()
+                            .map(|p| display_name(p))
+                            .unwrap_or_else(|| "(auto-calibrated)".into());
                         app.set_files_loaded(true);
-                        app.set_calibration_path("(auto-calibrated)".into());
+                        app.set_calibration_path(cal_label.into());
+                        sync_recent_paths(&state.user_settings, &app);
                         app.set_total_frames(total as i32);
                         app.set_current_frame(state.playback.frame_index() as i32);
                         app.set_fps(fps as f32);

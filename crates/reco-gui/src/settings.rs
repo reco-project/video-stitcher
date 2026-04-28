@@ -52,6 +52,23 @@ pub struct GuiSettings {
     /// "use Slint's preferred-width / preferred-height defaults".
     #[serde(default)]
     pub window_size: Option<(u32, u32)>,
+
+    /// Recording codec preference (h264, hevc, av1).
+    #[serde(default = "default_codec")]
+    pub recording_codec: String,
+
+    /// Recording quality preference (fast, balanced, high).
+    #[serde(default = "default_quality")]
+    pub recording_quality: String,
+
+    /// Default folder for preview recordings. `None` means "same
+    /// directory as the source video".
+    #[serde(default)]
+    pub recording_folder: Option<PathBuf>,
+
+    /// Preview aspect ratio mode (fill, 16:9, 4:3, 21:9).
+    #[serde(default = "default_preview_aspect")]
+    pub preview_aspect: String,
 }
 
 fn default_codec() -> String {
@@ -62,6 +79,9 @@ fn default_quality() -> String {
 }
 fn default_blend_width() -> f32 {
     0.05
+}
+fn default_preview_aspect() -> String {
+    "auto".into()
 }
 
 impl Default for GuiSettings {
@@ -75,6 +95,10 @@ impl Default for GuiSettings {
             default_blend_width: default_blend_width(),
             ai_model_path: None,
             window_size: None,
+            recording_codec: default_codec(),
+            recording_quality: default_quality(),
+            recording_folder: None,
+            preview_aspect: default_preview_aspect(),
         }
     }
 }

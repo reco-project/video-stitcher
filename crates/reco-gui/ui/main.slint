@@ -1,45 +1,7 @@
 // Reco Video Stitcher - GUI
 // Material dark theme (configured via build.rs)
 
-import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView } from "std-widgets.slint";
-
-component FileChip inherits Rectangle {
-    in property <string> label;
-    in property <string> file-path;
-    in property <bool> has-file: file-path != "";
-
-    callback clicked();
-
-    height: 36px;
-    border-radius: 8px;
-    background: touch.has-hover ? #3a3a3a : #2a2a2a;
-
-    touch := TouchArea {
-        clicked => { root.clicked(); }
-    }
-
-    HorizontalBox {
-        padding: 8px;
-        spacing: 6px;
-
-        Text {
-            text: root.label;
-            color: root.has-file ? #a0e8a0 : #aaa;
-            vertical-alignment: center;
-            font-size: 13px;
-            font-weight: root.has-file ? 600 : 400;
-        }
-
-        if root.has-file: Text {
-            text: root.file-path;
-            color: #888;
-            vertical-alignment: center;
-            font-size: 11px;
-            overflow: elide;
-            horizontal-stretch: 1;
-        }
-    }
-}
+import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView, TabWidget } from "std-widgets.slint";
 
 /// One labeled slider row for the controls panel.
 component LabeledSlider inherits VerticalLayout {
@@ -76,6 +38,42 @@ component LabeledSlider inherits VerticalLayout {
         maximum: root.maximum;
         value <=> root.value;
         changed(v) => { root.changed(v); }
+    }
+}
+
+/// Collapsible section header. Toggles visibility of content below it.
+component SectionHeader inherits Rectangle {
+    in property <string> title;
+    in-out property <bool> expanded: false;
+
+    height: 28px;
+    border-radius: 4px;
+    background: section-touch.has-hover ? #2a2a2a : transparent;
+
+    section-touch := TouchArea {
+        clicked => { root.expanded = !root.expanded; }
+    }
+
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        spacing: 6px;
+
+        Text {
+            text: root.expanded ? "▾" : "▸";
+            color: #888;
+            font-size: 10px;
+            vertical-alignment: center;
+            width: 12px;
+        }
+        Text {
+            text: root.title;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
     }
 }
 
@@ -171,10 +169,11 @@ component ToastCard inherits Rectangle {
 /// `dismissed(id)` callback.
 component ToastStack inherits Rectangle {
     in property <[Toast]> toasts;
+    in property <length> right-inset: 0px;
     callback dismissed(int);
 
     VerticalLayout {
-        x: parent.width - self.preferred-width - 16px;
+        x: parent.width - self.preferred-width - 16px - root.right-inset;
         y: parent.height - self.preferred-height - 16px;
         spacing: 8px;
         alignment: end;
@@ -196,6 +195,10 @@ export component RecoApp inherits Window {
     // (96) + status (28) + comfortable padding.
     min-height: 600px;
     background: #121212;
+
+    // Preview area dimensions (Rust reads these to size the render target).
+    out property <float> preview-area-width: preview-box.width / 1px;
+    out property <float> preview-area-height: preview-box.height / 1px;
 
     // ── Properties bound from Rust ──
 
@@ -230,7 +233,7 @@ export component RecoApp inherits Window {
     in-out property <float> cal-x-ty: 0.0;
     in-out property <bool> cal-dirty: false;  // true when user has edited
 
-    // Controls panel visibility.
+    // Side panel visibility (unified Controls + Stats).
     in-out property <bool> controls-open: false;
 
     // Export dialog state.
@@ -423,8 +426,30 @@ export component RecoApp inherits Window {
     callback start-export();
     callback cancel-export();
     callback copy-debug-info();
-    callback toggle-recording();
+    callback toggle-recording(string, string);
+    callback pick-recording-folder();
     in-out property <bool> recording: false;
+    in-out property <string> recording-quality: "balanced";
+    in-out property <string> recording-codec: "h264";
+    in-out property <string> recording-folder: "";
+
+    // Preview aspect ratio mode: "auto" fills the available space
+    // preserving the source aspect; ratio values constrain the
+    // preview container to that shape.
+    in-out property <string> preview-aspect: "auto";
+    callback changed-preview-aspect(string);
+
+    // File management: per-side segment lists and removal.
+    in-out property <[string]> left-segments: [];
+    in-out property <[string]> right-segments: [];
+    callback remove-left-segment(int);
+    callback remove-right-segment(int);
+    callback clear-left();
+    callback clear-right();
+    callback clear-calibration();
+
+    // Left panel (files) visibility.
+    in-out property <bool> files-panel-open: false;
 
     // Keyboard handling. The FocusScope must *wrap* the content so
     // key events have somewhere to bubble up when a child (button,
@@ -470,61 +495,19 @@ export component RecoApp inherits Window {
         VerticalLayout {
             spacing: 0;
 
-        // ── File picker bar ──
+        // ── Toolbar ──
         Rectangle {
             background: #1e1e1e;
-            height: 52px;
+            height: 42px;
 
             HorizontalBox {
-                padding: 8px;
-                spacing: 8px;
+                padding: 6px;
+                spacing: 6px;
                 alignment: start;
 
-                FileChip {
-                    label: "Left";
-                    file-path: root.left-path;
-                    clicked => { root.pick-left-video(); }
-                }
-
-                FileChip {
-                    label: "Right";
-                    file-path: root.right-path;
-                    clicked => { root.pick-right-video(); }
-                }
-
-                FileChip {
-                    label: "Calibration";
-                    file-path: root.calibration-path;
-                    clicked => { root.pick-calibration(); }
-                }
-
-                // Separator
-                Rectangle { width: 1px; height: 24px; background: #444; }
-
-                // Auto Calibrate is clickable any time we have both videos
-                // and aren't currently calibrating. Once `files-loaded`
-                // is true the button text switches to "Re-calibrate" so
-                // the user can retry with different options (IMU seeds
-                // toggled, different lens profile in a later tier)
-                // without restarting the app.
                 Button {
-                    text: root.calibrating
-                        ? "Calibrating..."
-                        : (root.files-loaded ? "Re-calibrate" : "Auto Calibrate");
-                    enabled: root.has-both-videos && !root.calibrating;
-                    clicked => { root.auto-calibrate(); }
-                }
-
-                // IMU-seed opt-in. Most clips work best without it
-                // (feature matcher seeds the bundle-adjustment fine on
-                // its own), so this stays off by default. User can flip
-                // it on for clips where the first frame is aimed oddly.
-                // Editable while files are loaded so re-calibrate can
-                // toggle it.
-                CheckBox {
-                    text: "IMU seeds";
-                    checked <=> root.use-imu-seeds;
-                    enabled: root.has-both-videos && !root.calibrating;
+                    text: root.files-panel-open ? "◀ Files" : "Files ▶";
+                    clicked => { root.files-panel-open = !root.files-panel-open; }
                 }
 
                 if root.calibrating: Text {
@@ -534,33 +517,10 @@ export component RecoApp inherits Window {
                     vertical-alignment: center;
                 }
 
-                // Right-align spacer
                 Rectangle { horizontal-stretch: 1; }
 
-                // Recent button. Only interactive if at least one MRU
-                // list has entries - otherwise there's nothing to show.
-                Button {
-                    text: "Recent…";
-                    enabled: root.recent-left-paths.length > 0
-                           || root.recent-right-paths.length > 0
-                           || root.recent-calibration-paths.length > 0;
-                    clicked => { root.recent-dialog-open = true; }
-                }
-
-                // Keyboard shortcut help. "?" is small and recognizable
-                // as help in dozens of apps; shorter than "Help".
-                Button {
-                    text: "?";
-                    clicked => { root.shortcuts-dialog-open = true; }
-                }
-
-                // Preferences. "⚙" is the standard gear icon for
-                // settings; Slint renders Unicode glyphs directly so
-                // no icon assets are needed.
-                Button {
-                    text: "⚙";
-                    clicked => { root.open-prefs-dialog(); }
-                }
+                Button { text: "?"; clicked => { root.shortcuts-dialog-open = true; } }
+                Button { text: "⚙"; clicked => { root.open-prefs-dialog(); } }
 
                 Button {
                     text: "Export…";
@@ -570,29 +530,188 @@ export component RecoApp inherits Window {
                 }
 
                 Button {
-                    text: root.controls-open ? "Hide Controls" : "Controls";
+                    text: root.controls-open ? "Panel ◀" : "▶ Panel";
                     enabled: root.files-loaded;
                     clicked => { root.controls-open = !root.controls-open; }
-                }
-
-                Button {
-                    text: root.stats-panel-open ? "Hide Stats" : "Stats";
-                    enabled: root.files-loaded;
-                    clicked => { root.stats-panel-open = !root.stats-panel-open; }
                 }
             }
         }
 
-        // ── Preview area + side controls ──
-        // HorizontalLayout (not HorizontalBox) for the same reason as
-        // the outer VerticalLayout: VerticalBox/HorizontalBox carry
-        // implicit padding that inserts a 6-8px strip between sections
-        // and eats into the bottom bars' visible area.
+        // ── Left files panel + Preview + Right controls ──
         HorizontalLayout {
             spacing: 0;
             vertical-stretch: 1;
 
-            // Preview (with mouse drag + scroll handling)
+            // ── Left files panel ──
+            if root.files-panel-open: Rectangle {
+                background: #1a1a1a;
+                width: 240px;
+                border-width: 1px;
+                border-color: #333;
+
+                ScrollView {
+                    horizontal-scrollbar-policy: always-off;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        // Left video section
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text { text: "Left"; color: #8ae68a; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                            Button { text: "+"; clicked => { root.pick-left-video(); } }
+                            Button { text: "Clear"; enabled: root.left-path != ""; clicked => { root.clear-left(); } }
+                        }
+
+                        if root.left-segments.length == 0: Text {
+                            text: "No video selected";
+                            color: #666;
+                            font-size: 11px;
+                        }
+
+                        for seg[idx] in root.left-segments: Rectangle {
+                            height: 26px;
+                            border-radius: 4px;
+                            background: #242424;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 4px;
+                                spacing: 4px;
+                                Text {
+                                    text: (idx + 1) + ". " + seg;
+                                    color: #ccc;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                Rectangle {
+                                    width: 18px;
+                                    height: 18px;
+                                    border-radius: 3px;
+                                    background: seg-rm.has-hover ? #3a2020 : transparent;
+                                    Text { text: "×"; color: #888; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                                    seg-rm := TouchArea { clicked => { root.remove-left-segment(idx); } }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #333; }
+
+                        // Right video section
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text { text: "Right"; color: #8ae68a; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                            Button { text: "+"; clicked => { root.pick-right-video(); } }
+                            Button { text: "Clear"; enabled: root.right-path != ""; clicked => { root.clear-right(); } }
+                        }
+
+                        if root.right-segments.length == 0: Text {
+                            text: "No video selected";
+                            color: #666;
+                            font-size: 11px;
+                        }
+
+                        for seg[idx] in root.right-segments: Rectangle {
+                            height: 26px;
+                            border-radius: 4px;
+                            background: #242424;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 4px;
+                                spacing: 4px;
+                                Text {
+                                    text: (idx + 1) + ". " + seg;
+                                    color: #ccc;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                Rectangle {
+                                    width: 18px;
+                                    height: 18px;
+                                    border-radius: 3px;
+                                    background: seg-rm2.has-hover ? #3a2020 : transparent;
+                                    Text { text: "×"; color: #888; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                                    seg-rm2 := TouchArea { clicked => { root.remove-right-segment(idx); } }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #333; }
+
+                        // Calibration section
+                        Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
+
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Button {
+                                text: root.calibrating
+                                    ? "Calibrating..."
+                                    : (root.files-loaded ? "Re-calibrate" : "Auto Calibrate");
+                                enabled: root.has-both-videos && !root.calibrating;
+                                horizontal-stretch: 1;
+                                clicked => { root.auto-calibrate(); }
+                            }
+                            Button {
+                                text: "Load…";
+                                clicked => { root.pick-calibration(); }
+                            }
+                        }
+
+                        CheckBox {
+                            text: "IMU seeds";
+                            checked <=> root.use-imu-seeds;
+                            enabled: root.has-both-videos && !root.calibrating;
+                        }
+
+                        if root.calibration-path != "": Rectangle {
+                            height: 26px;
+                            border-radius: 4px;
+                            background: #242424;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 4px;
+                                spacing: 4px;
+                                Text {
+                                    text: root.calibration-path;
+                                    color: #ccc;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                Rectangle {
+                                    width: 18px;
+                                    height: 18px;
+                                    border-radius: 3px;
+                                    background: cal-rm.has-hover ? #3a2020 : transparent;
+                                    Text { text: "×"; color: #888; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                                    cal-rm := TouchArea { clicked => { root.clear-calibration(); } }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #333; }
+
+                        Button {
+                            text: "Recent…";
+                            enabled: root.recent-left-paths.length > 0
+                                   || root.recent-right-paths.length > 0
+                                   || root.recent-calibration-paths.length > 0;
+                            clicked => { root.recent-dialog-open = true; }
+                        }
+                    }
+                }
+            }
+
+            // Preview (with mouse drag + scroll handling).
+            // The outer Rectangle fills the layout cell; the inner
+            // `preview-box` optionally constrains itself to a chosen
+            // aspect ratio and centers inside the outer area.
             Rectangle {
                 background: #0a0a0a;
                 horizontal-stretch: 1;
@@ -605,25 +724,35 @@ export component RecoApp inherits Window {
                     vertical-alignment: center;
                 }
 
-                if root.files-loaded: Image {
-                    source: root.preview-frame;
-                    // `image-fit: contain` preserves source aspect and
-                    // centers inside the element. Anchoring the Image
-                    // to the full Rectangle (x=0, y=0, 100% w/h) means
-                    // any letterbox space from an aspect mismatch splits
-                    // evenly above/below or left/right instead of
-                    // landing asymmetrically at the top.
-                    image-fit: contain;
-                    x: 0;
-                    y: 0;
-                    width: 100%;
-                    height: 100%;
+                // Aspect-constrained preview container. When "auto"
+                // (default) it fills the parent; when a ratio is
+                // chosen it shrinks one axis to maintain that ratio,
+                // centered within the outer Rectangle.
+                preview-box := Rectangle {
+                    property <float> ratio:
+                        root.preview-aspect == "16:9" ? (16.0 / 9.0)
+                      : root.preview-aspect == "4:3"  ? (4.0 / 3.0)
+                      : root.preview-aspect == "21:9" ? (21.0 / 9.0)
+                      : 0;
+
+                    property <length> fit-w:
+                        ratio > 0 ? min(parent.width, parent.height * ratio / 1.0) : parent.width;
+                    property <length> fit-h:
+                        ratio > 0 ? min(parent.height, parent.width / ratio * 1.0) : parent.height;
+
+                    width: fit-w;
+                    height: fit-h;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+
+                    if root.files-loaded: Image {
+                        source: root.preview-frame;
+                        image-fit: contain;
+                        width: 100%;
+                        height: 100%;
+                    }
                 }
 
-                // Interaction layer: drag to pan, scroll to zoom.
-                // `moved` fires continuously while the pointer is
-                // pressed; we forward the delta to Rust which updates
-                // yaw/pitch and triggers a re-render.
                 drag := TouchArea {
                     enabled: root.files-loaded;
                     property <length> last-x: 0px;
@@ -648,21 +777,15 @@ export component RecoApp inherits Window {
                     }
 
                     scroll-event(e) => {
-                        // Positive delta = scroll down = zoom out.
-                        // Slint scroll deltas are lengths; /1px converts
-                        // to a plain number we can scale for FOV degrees.
                         root.zoom(-e.delta-y / 40px);
                         return accept;
                     }
                 }
             }
 
-            // Right-side controls panel (collapsible).
-            // Wrapped in ScrollView so users on short windows can reach
-            // the Calibration sliders, Save/Reset buttons, and shortcut
-            // help at the bottom. The inner VerticalLayout sets its
-            // natural height from content; ScrollView shows a vertical
-            // scrollbar automatically when that exceeds the viewport.
+            // Right-side controls panel. Collapsible sections keep
+            // the default view compact; ScrollView catches overflow
+            // when advanced sections are expanded on short screens.
             if root.controls-open: Rectangle {
                 background: #1a1a1a;
                 width: 280px;
@@ -670,15 +793,18 @@ export component RecoApp inherits Window {
                 border-color: #333;
 
                 ScrollView {
-                    VerticalLayout {
+                    horizontal-scrollbar-policy: always-off;
+
+                VerticalLayout {
                     padding: 12px;
-                    spacing: 14px;
+                    spacing: 10px;
                     alignment: start;
 
+                    // ── Camera (always visible) ──
                     Text {
                         text: "Camera";
                         color: #fff;
-                        font-size: 14px;
+                        font-size: 13px;
                         font-weight: 600;
                     }
 
@@ -692,22 +818,19 @@ export component RecoApp inherits Window {
                         changed(v) => { root.changed-fov(v); }
                     }
 
-                    // Constrained look: clamps pan/zoom to the coverage
-                    // boundary when on (default). Off lets the user pan
-                    // into the black margins beyond the stitched region
-                    // - useful for calibration debug.
                     CheckBox {
-                        text: "Constrained look (clamp to coverage)";
+                        text: "Constrained look";
                         checked <=> root.use-constrained-look;
                         toggled => { root.changed-constrained-look(); }
                     }
 
                     Rectangle { height: 1px; background: #333; }
 
+                    // ── Stitching (always visible) ──
                     Text {
                         text: "Stitching";
                         color: #fff;
-                        font-size: 14px;
+                        font-size: 13px;
                         font-weight: 600;
                     }
 
@@ -740,8 +863,6 @@ export component RecoApp inherits Window {
                         changed(v) => { root.changed-rig-roll(v); }
                     }
 
-                    Rectangle { height: 1px; background: #333; }
-
                     Button {
                         text: "Reset View";
                         clicked => { root.reset-view(); }
@@ -749,513 +870,249 @@ export component RecoApp inherits Window {
 
                     Rectangle { height: 1px; background: #333; }
 
-                    // ── Lens profile info (read-only) ──
-                    // Displayed after auto-calibrate. Shows which lens the
-                    // database/telemetry resolved to for each camera, plus
-                    // a hint about how many alternate profiles exist for
-                    // this video resolution. Functional override lives in
-                    // a later tier once the calibrate API supports passing
-                    // a chosen profile directly.
-                    Text {
-                        text: "Lens profiles";
-                        color: #fff;
-                        font-size: 14px;
-                        font-weight: 600;
+                    // ── Lens (collapsible: info always, sliders on demand) ──
+                    lens-section := SectionHeader {
+                        title: root.lens-info-available
+                            ? "Lens - " + root.lens-left-camera
+                            : "Lens";
+                        expanded: false;
                     }
 
-                    if !root.lens-info-available: Text {
-                        text: "Run auto-calibrate to detect lens profiles.";
-                        color: #777;
-                        font-size: 11px;
-                        wrap: word-wrap;
-                    }
-
-                    if root.files-loaded: VerticalLayout {
+                    if lens-section.expanded && root.files-loaded: VerticalLayout {
                         spacing: 6px;
 
-                        // Left camera card
-                        Rectangle {
-                            border-radius: 6px;
-                            background: #242424;
-                            VerticalLayout {
-                                padding: 8px;
-                                spacing: 2px;
-                                Text {
-                                    text: "Left  " + root.lens-left-source;
-                                    color: #8ae68a;
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                }
-                                Text {
-                                    text: root.lens-left-camera;
-                                    color: #eee;
-                                    font-size: 12px;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    text: root.lens-left-lens;
-                                    color: #aaa;
-                                    font-size: 11px;
-                                    overflow: elide;
-                                }
+                        if root.lens-info-available: VerticalLayout {
+                            spacing: 4px;
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Text { text: "L"; color: #8ae68a; font-size: 10px; font-weight: 600; vertical-alignment: center; width: 14px; }
+                                Text { text: root.lens-left-source + " - " + root.lens-left-camera; color: #ccc; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Text { text: "R"; color: #8ae68a; font-size: 10px; font-weight: 600; vertical-alignment: center; width: 14px; }
+                                Text { text: root.lens-right-source + " - " + root.lens-right-camera; color: #ccc; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
                             }
                         }
 
-                        // Right camera card
-                        Rectangle {
-                            border-radius: 6px;
-                            background: #242424;
-                            VerticalLayout {
-                                padding: 8px;
-                                spacing: 2px;
-                                Text {
-                                    text: "Right  " + root.lens-right-source;
-                                    color: #8ae68a;
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                }
-                                Text {
-                                    text: root.lens-right-camera;
-                                    color: #eee;
-                                    font-size: 12px;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    text: root.lens-right-lens;
-                                    color: #aaa;
-                                    font-size: 11px;
-                                    overflow: elide;
-                                }
+                        if !root.lens-info-available: Text {
+                            text: "Auto-calibrate to detect lens.";
+                            color: #777; font-size: 11px;
+                        }
+
+                        // Fine-tune toggle
+                        lens-tune := SectionHeader {
+                            title: "Fine-tune";
+                            expanded: false;
+                        }
+
+                        if lens-tune.expanded: VerticalLayout {
+                            spacing: 4px;
+
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Left"; primary: root.lens-selected-camera == "left"; clicked => { root.lens-selected-camera = "left"; } }
+                                Button { text: "Right"; primary: root.lens-selected-camera == "right"; clicked => { root.lens-selected-camera = "right"; } }
+                                Button { text: "Both"; primary: root.lens-selected-camera == "both"; clicked => { root.lens-selected-camera = "both"; } }
+                            }
+
+                            if root.lens-selected-camera == "left" || root.lens-selected-camera == "both": VerticalLayout {
+                                spacing: 3px;
+                                LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-left-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-left-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-left-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-left-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                            }
+
+                            if root.lens-selected-camera == "right": VerticalLayout {
+                                spacing: 3px;
+                                LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-right-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-right-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-right-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-right-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                            }
+
+                            Button { text: "Reset Lens"; enabled: root.lens-dirty; clicked => { root.reset-lens(); } }
+                        }
+                    }
+
+                    if !lens-section.expanded: Rectangle { height: 1px; background: #2a2a2a; }
+
+                    // ── Calibration (collapsible) ──
+                    cal-section := SectionHeader {
+                        title: "Calibration";
+                        expanded: false;
+                    }
+
+                    if cal-section.expanded: VerticalLayout {
+                        spacing: 8px;
+
+                        LabeledSlider {
+                            label: "Intersect";
+                            minimum: -1.0;
+                            maximum: 1.0;
+                            value <=> root.cal-intersect;
+                            decimals: 3;
+                            changed(v) => { root.changed-cal-intersect(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Camera axis offset";
+                            minimum: -0.6;
+                            maximum: 0.6;
+                            value <=> root.cal-camera-axis-offset;
+                            decimals: 3;
+                            changed(v) => { root.changed-cal-camera-axis-offset(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "x_ty";
+                            minimum: -0.1;
+                            maximum: 0.1;
+                            value <=> root.cal-x-ty;
+                            decimals: 3;
+                            changed(v) => { root.changed-cal-x-ty(v); }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Button {
+                                text: "Save Cal & Lens";
+                                enabled: root.cal-dirty;
+                                clicked => { root.save-calibration(); }
+                            }
+                            Button {
+                                text: "Reset";
+                                enabled: root.cal-dirty;
+                                clicked => { root.reset-calibration(); }
                             }
                         }
-
-                        Text {
-                            text: root.lens-candidates-count == 0
-                                ? "No alternate profiles for this resolution."
-                                : (root.lens-candidates-count == 1
-                                    ? "1 alternate profile available for this resolution."
-                                    : root.lens-candidates-count + " alternate profiles available for this resolution.");
-                            color: #777;
-                            font-size: 10px;
-                            wrap: word-wrap;
-                        }
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    if !cal-section.expanded: Rectangle { height: 1px; background: #2a2a2a; }
 
-                    // ── Live lens fine-tuning ──
-                    // Sliders bound directly to the stored CameraParams
-                    // via changed-lens-param. Editing one side at a time
-                    // keeps the Controls panel compact; the left/right
-                    // toggle swaps which camera the sliders are driving.
-                    if root.files-loaded: Text {
-                        text: "Lens fine-tune";
-                        color: #fff;
-                        font-size: 14px;
-                        font-weight: 600;
+                    // ── Stats (collapsible) ──
+                    stats-section := SectionHeader {
+                        title: "Stats";
+                        expanded: false;
                     }
 
-                    if root.files-loaded: HorizontalLayout {
-                        spacing: 8px;
-                        Button {
-                            text: "Left";
-                            primary: root.lens-selected-camera == "left";
-                            clicked => { root.lens-selected-camera = "left"; }
-                        }
-                        Button {
-                            text: "Right";
-                            primary: root.lens-selected-camera == "right";
-                            clicked => { root.lens-selected-camera = "right"; }
-                        }
-                        // "Both" applies the left-side slider values to
-                        // both cameras. Useful for stereo rigs with
-                        // matched lenses where you want to tune them in
-                        // lockstep. Rust implements this by mirroring
-                        // left-* params to right-* on every slider edit
-                        // while "both" is selected.
-                        Button {
-                            text: "Both";
-                            primary: root.lens-selected-camera == "both";
-                            clicked => { root.lens-selected-camera = "both"; }
-                        }
-                    }
-
-                    if root.files-loaded && (root.lens-selected-camera == "left" || root.lens-selected-camera == "both"): VerticalLayout {
+                    if stats-section.expanded: VerticalLayout {
                         spacing: 4px;
 
-                        LabeledSlider {
-                            label: "fx";
-                            minimum: root.lens-fx-min;
-                            maximum: root.lens-fx-max;
-                            value <=> root.lens-left-fx;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "fy";
-                            minimum: root.lens-fy-min;
-                            maximum: root.lens-fy-max;
-                            value <=> root.lens-left-fy;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "cx";
-                            minimum: root.lens-cx-min;
-                            maximum: root.lens-cx-max;
-                            value <=> root.lens-left-cx;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "cy";
-                            minimum: root.lens-cy-min;
-                            maximum: root.lens-cy-max;
-                            value <=> root.lens-left-cy;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k1";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-left-k1;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k2";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-left-k2;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k3";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-left-k3;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k4";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-left-k4;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
+                        Text { text: "FPS: " + round(root.telem-fps-avg) + " avg / " + round(root.telem-fps-recent) + " recent"; color: #aaa; font-size: 11px; }
+                        Text { text: "Frame: " + round(root.telem-total-ms * 10) / 10 + " / " + round(root.telem-p99-ms * 10) / 10 + " p99 ms"; color: #aaa; font-size: 11px; }
+                        Text { text: "  Decode:   " + round(root.telem-decode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                        Text { text: "  Stitch:   " + round(root.telem-stitch-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                        Text { text: "  Readback: " + round(root.telem-readback-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                        Text { text: "  Encode:   " + round(root.telem-encode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                        if root.telem-bottleneck != "": Text { text: "Bottleneck: " + root.telem-bottleneck; color: #e8a060; font-size: 11px; font-weight: 600; }
+                        if root.telem-gpu-name != "": Text { text: root.telem-gpu-name; color: #666; font-size: 10px; }
+                        if root.telem-frames-dropped > 0: Text { text: "Dropped: " + root.telem-frames-dropped; color: #f88; font-size: 11px; }
+
+                        Rectangle { height: 4px; }
+                        Text { text: "Ball: " + round(root.telem-ball-pct) + "%  Tracks: " + root.telem-active-tracks + "  Det: " + round(root.telem-det-per-frame * 10) / 10 + "/f"; color: #aaa; font-size: 10px; }
+                        if root.telem-detection-ms > 0: Text { text: "Detection: " + round(root.telem-detection-ms * 10) / 10 + " ms"; color: #aaa; font-size: 10px; }
+
+                        if root.telem-cal-matches > 0: Rectangle { height: 4px; }
+                        if root.telem-cal-matches > 0: Text { text: "Cal: " + round(root.telem-cal-confidence * 100) + "% conf, " + root.telem-cal-matches + " matches, reproj " + round(root.telem-cal-reproj-err * 10000) / 10000; color: #aaa; font-size: 10px; }
                     }
-
-                    if root.files-loaded && root.lens-selected-camera == "right": VerticalLayout {
-                        spacing: 4px;
-
-                        LabeledSlider {
-                            label: "fx";
-                            minimum: root.lens-fx-min;
-                            maximum: root.lens-fx-max;
-                            value <=> root.lens-right-fx;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "fy";
-                            minimum: root.lens-fy-min;
-                            maximum: root.lens-fy-max;
-                            value <=> root.lens-right-fy;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "cx";
-                            minimum: root.lens-cx-min;
-                            maximum: root.lens-cx-max;
-                            value <=> root.lens-right-cx;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "cy";
-                            minimum: root.lens-cy-min;
-                            maximum: root.lens-cy-max;
-                            value <=> root.lens-right-cy;
-                            decimals: 0;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k1";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-right-k1;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k2";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-right-k2;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k3";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-right-k3;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                        LabeledSlider {
-                            label: "k4";
-                            minimum: -root.lens-k-range;
-                            maximum: root.lens-k-range;
-                            value <=> root.lens-right-k4;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-param(); }
-                        }
-                    }
-
-                    if root.files-loaded: Button {
-                        text: "Reset Lens";
-                        enabled: root.lens-dirty;
-                        clicked => { root.reset-lens(); }
-                    }
-
-                    if root.files-loaded: Text {
-                        text: "Edits the in-memory lens. Save Calibration below to persist; Reset Lens restores the auto-detected profile.";
-                        color: #777;
-                        font-size: 10px;
-                        wrap: word-wrap;
-                    }
-
-                    if root.files-loaded: Rectangle { height: 1px; background: #333; }
-
-                    // ── Live calibration ──
-                    Text {
-                        text: "Calibration";
-                        color: #fff;
-                        font-size: 14px;
-                        font-weight: 600;
-                    }
-
-                    LabeledSlider {
-                        label: "Intersect";
-                        // Widened per tester feedback - the old +/- 0.5
-                        // was too tight for some rig geometries.
-                        minimum: -1.0;
-                        maximum: 1.0;
-                        value <=> root.cal-intersect;
-                        decimals: 3;
-                        changed(v) => { root.changed-cal-intersect(v); }
-                    }
-
-                    LabeledSlider {
-                        label: "Camera axis offset";
-                        // Widened to +/- 0.6 per tester feedback - real
-                        // rigs can offset further than +/- 0.3 and the
-                        // old clamp made fine-tuning infeasible.
-                        minimum: -0.6;
-                        maximum: 0.6;
-                        value <=> root.cal-camera-axis-offset;
-                        decimals: 3;
-                        changed(v) => { root.changed-cal-camera-axis-offset(v); }
-                    }
-
-                    LabeledSlider {
-                        label: "x_ty";
-                        // Narrowed to +/- 0.1 per tester feedback - x_ty
-                        // is a small correction in practice and the old
-                        // +/- 0.3 range made the slider granularity too
-                        // coarse to tune well.
-                        minimum: -0.1;
-                        maximum: 0.1;
-                        value <=> root.cal-x-ty;
-                        decimals: 3;
-                        changed(v) => { root.changed-cal-x-ty(v); }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button {
-                            // Labelled to make clear that it persists
-                            // everything - lens intrinsics included,
-                            // not just the rig layout. The save path
-                            // serializes the full MatchCalibration,
-                            // which carries both.
-                            text: "Save Calibration & Lens";
-                            enabled: root.cal-dirty;
-                            clicked => { root.save-calibration(); }
-                        }
-                        Button {
-                            text: "Reset";
-                            enabled: root.cal-dirty;
-                            clicked => { root.reset-calibration(); }
-                        }
-                    }
-
-                    // Keyboard hints
-                    Rectangle {
-                        height: 1px;
-                        background: #333;
-                    }
-
-                    VerticalLayout {
-                        spacing: 2px;
-                        Text { text: "Shortcuts"; color: #888; font-size: 11px; font-weight: 600; }
-                        Text { text: "Space  Play / pause";     color: #666; font-size: 10px; }
-                        Text { text: "Arrows  Pan camera";      color: #666; font-size: 10px; }
-                        Text { text: "+ / -   Zoom";            color: #666; font-size: 10px; }
-                        Text { text: "Scroll  Zoom";            color: #666; font-size: 10px; }
-                        Text { text: "Drag    Pan";             color: #666; font-size: 10px; }
-                        Text { text: "[  ]   Seek 5 s";         color: #666; font-size: 10px; }
-                        Text { text: "R      Reset view";       color: #666; font-size: 10px; }
-                    }
-                    }  // close VerticalLayout inside ScrollView
+                }
                 }  // close ScrollView
             }
 
-            if root.stats-panel-open: Rectangle {
-                background: #1a1a1a;
-                width: 240px;
-                border-width: 1px;
-                border-color: #333;
-
-                ScrollView {
-                    VerticalLayout {
-                    padding: 12px;
-                    spacing: 8px;
-                    alignment: start;
-
-                    Text { text: "Performance"; color: #fff; font-size: 13px; font-weight: 600; }
-
-                    Text { text: "FPS: " + round(root.telem-fps-avg) + " avg / " + round(root.telem-fps-recent) + " recent"; color: #aaa; font-size: 11px; }
-                    Text { text: "Frame: " + round(root.telem-total-ms * 10) / 10 + " avg / " + round(root.telem-p99-ms * 10) / 10 + " p99 ms"; color: #aaa; font-size: 11px; }
-                    Text { text: "  Decode:   " + round(root.telem-decode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
-                    Text { text: "  Stitch:   " + round(root.telem-stitch-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
-                    Text { text: "  Readback: " + round(root.telem-readback-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
-                    Text { text: "  Encode:   " + round(root.telem-encode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
-
-                    if root.telem-bottleneck != "": Text {
-                        text: "Bottleneck: " + root.telem-bottleneck;
-                        color: #e8a060;
-                        font-size: 11px;
-                        font-weight: 600;
-                    }
-
-                    if root.telem-gpu-name != "": Text { text: root.telem-gpu-name; color: #666; font-size: 10px; }
-                    if root.telem-frames-dropped > 0: Text { text: "Dropped: " + root.telem-frames-dropped; color: #f88; font-size: 11px; }
-
-                    Rectangle { height: 1px; background: #333; }
-
-                    Text { text: "Detection"; color: #fff; font-size: 13px; font-weight: 600; }
-                    Text { text: "Ball present: " + round(root.telem-ball-pct) + "%"; color: #aaa; font-size: 11px; }
-                    Text { text: "Tracks: " + root.telem-active-tracks; color: #aaa; font-size: 11px; }
-                    Text { text: "Detections: " + round(root.telem-det-per-frame * 10) / 10 + "/frame"; color: #aaa; font-size: 11px; }
-                    if root.telem-detection-ms > 0: Text { text: "Detection: " + round(root.telem-detection-ms * 10) / 10 + " ms"; color: #aaa; font-size: 11px; }
-
-                    if root.telem-cal-matches > 0: Rectangle { height: 1px; background: #333; }
-                    if root.telem-cal-matches > 0: Text { text: "Calibration"; color: #fff; font-size: 13px; font-weight: 600; }
-                    if root.telem-cal-matches > 0: Text { text: "Confidence: " + round(root.telem-cal-confidence * 100) + "%"; color: #aaa; font-size: 11px; }
-                    if root.telem-cal-matches > 0: Text { text: "Reproj error: " + round(root.telem-cal-reproj-err * 10000) / 10000; color: #aaa; font-size: 11px; }
-                    if root.telem-cal-matches > 0: Text { text: "Matches: " + root.telem-cal-matches; color: #aaa; font-size: 11px; }
-
-                    }
-                }
-            }
         }
 
-        // ── Transport controls ──
-        // `min-height` instead of `height` so the bar grows if its
-        // content (slider + buttons) ever needs more, and never shrinks
-        // below the intended 96px - even when the preview layout is
-        // fighting for vertical space.
+        // ── Transport bar (single inline row) ──
         Rectangle {
             background: #1e1e1e;
-            min-height: 96px;
+            height: 44px;
 
-            VerticalLayout {
-                padding: 6px;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                padding-top: 4px;
+                padding-bottom: 4px;
                 spacing: 6px;
 
+                // Playback buttons
+                Button { text: "|<"; enabled: root.files-loaded; clicked => { root.step-backward(); } }
+                Button { text: root.playing ? "||" : "▶"; enabled: root.files-loaded; clicked => { root.toggle-playback(); } }
+                Button { text: ">|"; enabled: root.files-loaded; clicked => { root.step-forward(); } }
+
+                // Frame counter
+                Text {
+                    text: root.current-frame;
+                    color: #aaa;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    width: 48px;
+                    horizontal-alignment: right;
+                }
+
                 // Seek slider
-                HorizontalBox {
-                    padding-left: 12px;
-                    padding-right: 12px;
-                    spacing: 8px;
-
-                    Text {
-                        text: root.current-frame;
-                        color: #aaa;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        width: 60px;
-                    }
-
-                    Slider {
-                        horizontal-stretch: 1;
-                        minimum: 0;
-                        maximum: root.total-frames == 0 ? 1.0 : 1.0 * root.total-frames;
-                        // Explicit float coercion: binding an int to
-                        // `value` (a float) was not re-flowing the
-                        // visual handle on every playback tick. Forcing
-                        // the expression to float makes Slint re-check
-                        // the binding each property change.
-                        value: 1.0 * root.current-frame;
-                        enabled: root.files-loaded;
-                        // `released` fires only on user pointer release,
-                        // unlike `changed` which also fires when Rust
-                        // writes `current-frame` back after a decode
-                        // (feedback loop).
-                        released(val) => {
-                            if root.total-frames > 0 {
-                                root.seek(val / root.total-frames);
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: root.total-frames;
-                        color: #aaa;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        width: 60px;
-                        horizontal-alignment: right;
+                Slider {
+                    horizontal-stretch: 1;
+                    minimum: 0;
+                    maximum: root.total-frames == 0 ? 1.0 : 1.0 * root.total-frames;
+                    value: 1.0 * root.current-frame;
+                    enabled: root.files-loaded;
+                    released(val) => {
+                        if root.total-frames > 0 { root.seek(val / root.total-frames); }
                     }
                 }
 
-                // Buttons row
-                HorizontalBox {
-                    alignment: center;
-                    spacing: 12px;
+                Text {
+                    text: root.total-frames;
+                    color: #666;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    width: 48px;
+                }
 
-                    Button {
-                        text: "|<";
-                        enabled: root.files-loaded;
-                        clicked => { root.step-backward(); }
-                    }
-
-                    Button {
-                        text: root.playing ? "Pause" : "Play";
-                        enabled: root.files-loaded;
-                        clicked => { root.toggle-playback(); }
-                    }
-
-                    Button {
-                        text: ">|";
-                        enabled: root.files-loaded;
-                        clicked => { root.step-forward(); }
-                    }
-
-                    Rectangle { width: 20px; }
-
-                    Button {
-                        text: root.recording ? "Stop Rec" : "Record";
+                // Record button
+                Rectangle {
+                    width: rec-layout.preferred-width + 12px;
+                    height: 28px;
+                    border-radius: 5px;
+                    background: root.recording ? #4a1010 : rec-touch.has-hover ? #3a2020 : #2a1a1a;
+                    border-width: 1px;
+                    border-color: root.recording ? #e04040 : #553333;
+                    rec-touch := TouchArea {
                         enabled: root.files-loaded && !root.export-in-progress;
-                        clicked => { root.toggle-recording(); }
+                        clicked => { root.toggle-recording(root.recording-codec, root.recording-quality); }
                     }
+                    rec-layout := HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 5px;
+                        Rectangle { width: 7px; height: 7px; y: (parent.height - self.height) / 2; border-radius: 4px; background: root.recording ? #ff3030 : #883030; }
+                        Text { text: root.recording ? "Stop" : "Rec"; color: root.recording ? #ff6060 : #cc8888; font-size: 11px; font-weight: 600; vertical-alignment: center; }
+                    }
+                }
+
+                if !root.recording: ComboBox {
+                    model: ["fast", "balanced", "high"];
+                    current-value <=> root.recording-quality;
+                    enabled: root.files-loaded && !root.export-in-progress;
+                    width: 82px;
+                }
+
+                // Aspect ratio
+                ComboBox {
+                    model: ["auto", "16:9", "4:3", "21:9"];
+                    current-value <=> root.preview-aspect;
+                    enabled: root.files-loaded;
+                    width: 68px;
+                    selected(v) => { root.changed-preview-aspect(v); }
                 }
             }
         }
@@ -1599,7 +1456,7 @@ export component RecoApp inherits Window {
 
             Rectangle {
                 width: 480px;
-                height: 420px;
+                height: min(parent.height - 60px, 580px);
                 background: #222;
                 border-radius: 12px;
                 border-width: 1px;
@@ -1615,13 +1472,6 @@ export component RecoApp inherits Window {
                         color: #fff;
                         font-size: 16px;
                         font-weight: 600;
-                    }
-
-                    Text {
-                        text: "Defaults used when the Export dialog opens. The blend width used for preview is always the Controls slider value; this default applies when no preview is active.";
-                        color: #999;
-                        font-size: 11px;
-                        wrap: word-wrap;
                     }
 
                     Rectangle { height: 1px; background: #333; }
@@ -1663,6 +1513,46 @@ export component RecoApp inherits Window {
                         }
                     }
 
+                    Rectangle { height: 1px; background: #333; }
+
+                    Text { text: "Recording defaults"; color: #ccc; font-size: 12px; font-weight: 600; }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Codec"; color: #ccc; font-size: 12px; }
+                            ComboBox {
+                                model: root.available-codecs;
+                                current-value <=> root.recording-codec;
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: "Quality"; color: #ccc; font-size: 12px; }
+                            ComboBox {
+                                model: ["fast", "balanced", "high"];
+                                current-value <=> root.recording-quality;
+                            }
+                        }
+                    }
+
+                    Text { text: "Recording folder"; color: #ccc; font-size: 12px; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.recording-folder;
+                            placeholder-text: "Same as source video (default)";
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: "Browse…";
+                            clicked => { root.pick-recording-folder(); }
+                        }
+                    }
+
                     Rectangle { vertical-stretch: 1; }
 
                     HorizontalLayout {
@@ -1691,6 +1581,7 @@ export component RecoApp inherits Window {
         // TouchArea - only the dismiss × inside each card.
         ToastStack {
             toasts: root.toasts;
+            right-inset: root.controls-open ? 280px : 0px;
             dismissed(id) => { root.toast-dismissed(id); }
         }
 
@@ -1758,7 +1649,7 @@ export component RecoApp inherits Window {
                         }
                     }
 
-                    // Resolution + codec + quality
+                    // Resolution presets
                     HorizontalBox {
                         spacing: 10px;
                         padding: 0;
@@ -1766,43 +1657,34 @@ export component RecoApp inherits Window {
                         VerticalLayout {
                             spacing: 4px;
                             horizontal-stretch: 1;
-                            Text { text: "Width"; color: #ccc; font-size: 12px; }
+                            Text { text: "Resolution"; color: #ccc; font-size: 12px; }
                             ComboBox {
-                                model: ["1280", "1920", "2560", "3840"];
-                                // ComboBox.current-value expects a string;
-                                // binding an int property silently falls
-                                // through to index 0 and `selected` only
-                                // fires on user click. Map via current-index.
-                                current-index: root.export-width == 1280 ? 0
+                                model: ["1080p (1920x1080)", "720p (1280x720)", "2K (2560x1440)", "4K (3840x2160)"];
+                                current-index: root.export-width == 1280 ? 1
                                              : root.export-width == 2560 ? 2
                                              : root.export-width == 3840 ? 3
-                                             : 1;
+                                             : 0;
                                 selected(v) => {
-                                    root.export-width = v == "1280" ? 1280
-                                                     : v == "2560" ? 2560
-                                                     : v == "3840" ? 3840
-                                                     : 1920;
+                                    if (v == "720p (1280x720)") {
+                                        root.export-width = 1280;
+                                        root.export-height = 720;
+                                    } else if (v == "2K (2560x1440)") {
+                                        root.export-width = 2560;
+                                        root.export-height = 1440;
+                                    } else if (v == "4K (3840x2160)") {
+                                        root.export-width = 3840;
+                                        root.export-height = 2160;
+                                    } else {
+                                        root.export-width = 1920;
+                                        root.export-height = 1080;
+                                    }
                                 }
                             }
                         }
 
                         VerticalLayout {
                             spacing: 4px;
-                            horizontal-stretch: 1;
-                            Text { text: "Height"; color: #ccc; font-size: 12px; }
-                            ComboBox {
-                                model: ["720", "1080", "1440", "2160"];
-                                current-index: root.export-height == 720 ? 0
-                                             : root.export-height == 1440 ? 2
-                                             : root.export-height == 2160 ? 3
-                                             : 1;
-                                selected(v) => {
-                                    root.export-height = v == "720" ? 720
-                                                      : v == "1440" ? 1440
-                                                      : v == "2160" ? 2160
-                                                      : 1080;
-                                }
-                            }
+                            Text { text: root.export-width + " x " + root.export-height; color: #888; font-size: 11px; }
                         }
                     }
 

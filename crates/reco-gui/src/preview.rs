@@ -174,8 +174,18 @@ impl PreviewBridge {
     }
 
     /// Current viewport dimensions.
-    #[allow(dead_code)]
     pub fn viewport_size(&self) -> (u32, u32) {
         (self.viewport_width, self.viewport_height)
+    }
+
+    /// Resize the render target. Updates both the pipeline viewport and
+    /// the texture dimensions used for per-frame allocation.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            return;
+        }
+        self.viewport_width = width;
+        self.viewport_height = height;
+        self.renderer.pipeline_mut().resize(width, height);
     }
 }
