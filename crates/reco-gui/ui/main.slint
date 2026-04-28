@@ -292,6 +292,7 @@ export component RecoApp inherits Window {
     // frame is pointed off-axis; harmful if the IMU is noisy. Default
     // off because the feature-matching seed is reliable on most footage.
     in-out property <bool> use-imu-seeds: false;
+    in-out property <int> calibration-frames: 4;
 
     // When true (default), pan/zoom is clamped to the coverage boundary
     // so the viewport never shows black margins. Users can disable it
@@ -706,10 +707,21 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        if root.has-both-videos: CheckBox {
-                            text: "IMU seeds";
-                            checked <=> root.use-imu-seeds;
-                            enabled: !root.calibrating;
+                        if root.has-both-videos: HorizontalLayout {
+                            spacing: 10px;
+                            CheckBox {
+                                text: "IMU seeds";
+                                checked <=> root.use-imu-seeds;
+                                enabled: !root.calibrating;
+                            }
+                            Text { text: "Frames:"; color: #888; font-size: 11px; vertical-alignment: center; }
+                            ComboBox {
+                                model: ["2", "4", "6", "8"];
+                                current-value: root.calibration-frames;
+                                width: 56px;
+                                enabled: !root.calibrating;
+                                selected(v) => { root.calibration-frames = max(2, v.to-float()); }
+                            }
                         }
 
                         if root.calibration-path != "": Rectangle {

@@ -88,11 +88,6 @@ const POSE_SMOOTHING: f32 = 0.25;
 /// saturates the GPU with hundreds of pending reinits.
 const SEEK_DEBOUNCE_MS: u64 = 120;
 
-/// Default number of frame pairs for auto-calibration. The reco-core
-/// default is 2 which is thin for high-resolution footage; 4 gives a
-/// much better bundle-adjustment fit at the cost of a few extra seconds.
-const CALIBRATION_FRAMES: usize = 4;
-
 /// Calibration payload sent from the background worker: the computed
 /// match calibration plus the lens profile info each side resolved to,
 /// so the GUI can tell the user "we auto-detected GoPro HERO10 Linear 4K"
@@ -1765,10 +1760,10 @@ fn main() -> anyhow::Result<()> {
         };
         drop(s);
 
-        let use_imu_seeds = app_weak
+        let (use_imu_seeds, cal_frames) = app_weak
             .upgrade()
-            .map(|a| a.get_use_imu_seeds())
-            .unwrap_or(false);
+            .map(|a| (a.get_use_imu_seeds(), a.get_calibration_frames().max(2) as usize))
+            .unwrap_or((false, 4));
 
         if let Some(app) = app_weak.upgrade() {
             app.set_calibrating(true);
@@ -1794,8 +1789,11 @@ fn main() -> anyhow::Result<()> {
             // More frames give the bundle adjustment more constraints
             // to settle on, which especially helps at 4K where AKAZE
             // feature matches are noisier per frame.
+            log::info!(
+                "Auto-calibrate: {cal_frames} frame pairs, skip={current_time_secs:.1}s, imu_seeds={use_imu_seeds}"
+            );
             let config = reco_calibrate::CalibrationConfig {
-                num_frames: CALIBRATION_FRAMES,
+                num_frames: cal_frames,
                 skip_start_secs: current_time_secs,
                 use_imu_rotation_seeds: use_imu_seeds,
                 ..Default::default()
