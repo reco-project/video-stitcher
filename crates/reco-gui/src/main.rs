@@ -122,7 +122,8 @@ struct AppState {
     calibration: Option<MatchCalibration>,
     playback: Playback,
     bridge: Option<PreviewBridge>,
-    recording_encoder: Option<Box<dyn reco_core::encoder::Encoder + Send>>,
+    recording_tx: Option<std::sync::mpsc::SyncSender<RecordingFrame>>,
+    recording_thread: Option<std::thread::JoinHandle<()>>,
     recording_path: Option<PathBuf>,
     recording_frames: u64,
     /// Receives calibration results from the background thread.
@@ -254,6 +255,13 @@ fn ai_capability_summary() -> (String, bool) {
 
 use crate::export::ExportOutcome;
 
+struct RecordingFrame {
+    data: Vec<u8>,
+    width: u32,
+    height: u32,
+    pts_us: i64,
+}
+
 impl AppState {
     fn new() -> Self {
         Self {
@@ -265,7 +273,8 @@ impl AppState {
             calibration: None,
             playback: Playback::new(),
             bridge: None,
-            recording_encoder: None,
+            recording_tx: None,
+            recording_thread: None,
             recording_path: None,
             recording_frames: 0,
             cal_rx: None,
@@ -496,32 +505,36 @@ impl AppState {
             "Recording started: {} ({enc_name}, {codec}/{quality})",
             path.display()
         );
-        self.recording_encoder = Some(Box::new(encoder));
+
+        // Spawn encoder thread with bounded channel (4 frames deep).
+        // The UI thread sends NV12 data without blocking on FFmpeg.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<RecordingFrame>(4);
+        let handle = std::thread::spawn(move || {
+            let mut encoder: Box<dyn reco_core::encoder::Encoder + Send> = Box::new(encoder);
+            while let Ok(frame) = rx.recv() {
+                let _ = encoder.submit(reco_core::encoder::OutputFrame {
+                    data: &frame.data,
+                    width: frame.width,
+                    height: frame.height,
+                    format: reco_core::encoder::PixelFormat::Nv12,
+                    pts_us: frame.pts_us,
+                });
+            }
+            let _ = encoder.finish();
+        });
+
+        self.recording_tx = Some(tx);
+        self.recording_thread = Some(handle);
         self.recording_path = Some(path.clone());
         self.recording_frames = 0;
         Ok(path)
     }
 
     fn stop_recording(&mut self) -> Option<(PathBuf, u64)> {
-        if let Some(mut enc) = self.recording_encoder.take() {
-            if let Some(bridge) = self.bridge.as_mut() {
-                let (w, h) = bridge.viewport_size();
-                let fps = self.playback.fps();
-                for _ in 0..2 {
-                    if let Ok(Some(nv12)) = bridge.renderer_mut().flush_nv12() {
-                        let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
-                        let _ = enc.submit(reco_core::encoder::OutputFrame {
-                            data: nv12,
-                            width: w & !3,
-                            height: h & !1,
-                            format: reco_core::encoder::PixelFormat::Nv12,
-                            pts_us: pts,
-                        });
-                        self.recording_frames += 1;
-                    }
-                }
-            }
-            let _ = enc.finish();
+        // Drop the sender to signal the encoder thread to finish.
+        self.recording_tx = None;
+        if let Some(handle) = self.recording_thread.take() {
+            let _ = handle.join();
         }
         let path = self.recording_path.take()?;
         let frames = self.recording_frames;
@@ -531,7 +544,7 @@ impl AppState {
     }
 
     fn is_recording(&self) -> bool {
-        self.recording_encoder.is_some()
+        self.recording_tx.is_some()
     }
 
     /// Render the current frame. With zero-copy texture sharing, the
@@ -579,19 +592,18 @@ impl AppState {
             let (w, h) = bridge.viewport_size();
             let fps = self.playback.fps();
 
-            // NV12 readback for the encoder (every frame)
+            // NV12 readback for the encoder (every frame, sent async)
             match bridge
                 .renderer_mut()
                 .render_and_readback_nv12(&left, &right, pose.yaw, pose.pitch)
             {
                 Ok(Some(nv12)) => {
-                    if let Some(enc) = self.recording_encoder.as_mut() {
+                    if let Some(tx) = self.recording_tx.as_ref() {
                         let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
-                        let _ = enc.submit(reco_core::encoder::OutputFrame {
-                            data: nv12,
+                        let _ = tx.try_send(RecordingFrame {
+                            data: nv12.to_vec(),
                             width: w & !3,
                             height: h & !1,
-                            format: reco_core::encoder::PixelFormat::Nv12,
                             pts_us: pts,
                         });
                     }
