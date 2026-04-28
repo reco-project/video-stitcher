@@ -1470,18 +1470,27 @@ fn main() -> anyhow::Result<()> {
         let left_png = tmp_dir.join("left.png");
         let right_png = tmp_dir.join("right.png");
 
-        // Extract one frame from each video using ffmpeg
-        let extract_frame = |video: &std::path::Path, out: &std::path::Path| {
+        // Extract one frame from each video at the current playback position
+        let current_secs = {
+            let s = state_ref.borrow();
+            if s.playback.fps() > 0.0 {
+                s.playback.frame_index() as f64 / s.playback.fps()
+            } else {
+                1.0
+            }
+        };
+        let seek_str = format!("{:.2}", current_secs);
+        let extract_frame = |video: &std::path::Path, out: &std::path::Path, seek: &str| {
             std::process::Command::new("ffmpeg")
-                .args(["-y", "-i"])
+                .args(["-y", "-ss", seek, "-i"])
                 .arg(video)
                 .args(["-frames:v", "1", "-q:v", "2"])
                 .arg(out)
                 .output()
                 .ok();
         };
-        extract_frame(&left, &left_png);
-        extract_frame(&right, &right_png);
+        extract_frame(&left, &left_png, &seek_str);
+        extract_frame(&right, &right_png, &seek_str);
 
         let html_path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/roi_editor.html");
@@ -1714,11 +1723,14 @@ fn main() -> anyhow::Result<()> {
             (Some(l), Some(r)) => (l.clone(), r.clone()),
             _ => return,
         };
+        // Capture current playback position as calibration start time
+        let current_time_secs = if s.playback.fps() > 0.0 {
+            s.playback.frame_index() as f64 / s.playback.fps()
+        } else {
+            0.0
+        };
         drop(s);
 
-        // Snapshot the IMU-seed opt-in so the worker thread doesn't
-        // need to touch the Slint app at all (which would require the
-        // Weak handle to upgrade successfully off the UI thread).
         let use_imu_seeds = app_weak
             .upgrade()
             .map(|a| a.get_use_imu_seeds())
@@ -1750,6 +1762,7 @@ fn main() -> anyhow::Result<()> {
             // feature matches are noisier per frame.
             let config = reco_calibrate::CalibrationConfig {
                 num_frames: CALIBRATION_FRAMES,
+                skip_start_secs: current_time_secs,
                 use_imu_rotation_seeds: use_imu_seeds,
                 ..Default::default()
             };

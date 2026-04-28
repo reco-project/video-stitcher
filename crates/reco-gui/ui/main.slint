@@ -771,9 +771,9 @@ export component RecoApp inherits Window {
                             changed(v) => { root.changed-rig-roll(v); }
                         }
 
-                        if root.files-loaded: Button {
+                        if root.files-loaded && (root.cal-dirty || root.lens-dirty): Button {
                             text: "Save Calibration";
-                            enabled: root.cal-dirty || root.lens-dirty;
+                            primary: true;
                             clicked => { root.save-calibration(); }
                         }
 
