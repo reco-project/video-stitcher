@@ -324,10 +324,6 @@ impl AppState {
     fn reset_pipeline(&mut self) {
         self.bridge = None;
         self.playback = Playback::new();
-        self.calibration = None;
-        self.cal_baseline_layout = None;
-        self.cal_baseline_left_params = None;
-        self.cal_baseline_right_params = None;
         self.pose = PoseControl::new(PoseControlConfig {
             drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
             smoothing: POSE_SMOOTHING,
@@ -466,6 +462,9 @@ impl AppState {
     fn unload_pipeline(&mut self) {
         self.stop_recording();
         self.reset_pipeline();
+        self.cal_baseline_layout = None;
+        self.cal_baseline_left_params = None;
+        self.cal_baseline_right_params = None;
     }
 
     fn start_recording(&mut self, codec: &str, quality: &str) -> Result<PathBuf, String> {
@@ -1411,7 +1410,7 @@ fn main() -> anyhow::Result<()> {
         if let Some(app) = app_weak.upgrade() {
             app.set_left_path("".into());
             app.set_files_loaded(false);
-            app.set_status_text("Left video cleared".into());
+            app.set_status_text("Left video cleared. Calibration preserved.".into());
             sync_segments(&s, &app);
         }
     });
@@ -1428,7 +1427,7 @@ fn main() -> anyhow::Result<()> {
         if let Some(app) = app_weak.upgrade() {
             app.set_right_path("".into());
             app.set_files_loaded(false);
-            app.set_status_text("Right video cleared".into());
+            app.set_status_text("Right video cleared. Calibration preserved.".into());
             sync_segments(&s, &app);
         }
     });
@@ -2392,19 +2391,19 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     app.on_changed_lens_correction(move |amount| {
         let mut s = state_ref.borrow_mut();
-        s.lens_correction_amount = amount;
-        // Update the stitch pipeline too (works in non-preview mode)
+        let clamped = if amount > 0.5 { 1.0 } else { 0.0 };
+        s.lens_correction_amount = clamped;
         if !s.lens_preview_active
             && let Some(bridge) = s.bridge.as_mut()
         {
             bridge
                 .renderer_mut()
                 .pipeline_mut()
-                .set_lens_correction_amount(amount);
+                .set_lens_correction_amount(clamped);
         }
         s.preview_dirty = true;
         if let Some(app) = app_weak.upgrade() {
-            app.set_lens_correction_amount(amount);
+            app.set_lens_correction_amount(clamped);
         }
     });
 
@@ -2645,6 +2644,7 @@ fn main() -> anyhow::Result<()> {
                 && let Some(app) = app_weak.upgrade()
             {
                 app.set_recording(false);
+                app.set_last_output_path(path.display().to_string().into());
                 s.toasts.push_with_ttl(
                     crate::toast::Severity::Info,
                     "Recording saved",
@@ -2675,6 +2675,14 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+        }
+    });
+
+    app.on_show_in_folder(move |path| {
+        let path = PathBuf::from(path.as_str());
+        let folder = path.parent().unwrap_or(&path);
+        if let Err(e) = open::that(folder) {
+            log::error!("Failed to open folder: {e}");
         }
     });
 
@@ -2771,6 +2779,7 @@ fn main() -> anyhow::Result<()> {
                                 format!("Export complete: {frames} frames -> {}", path.display(),)
                                     .into(),
                             );
+                            app.set_last_output_path(path.display().to_string().into());
                             s.toasts.push(
                                 Severity::Info,
                                 "Export complete",

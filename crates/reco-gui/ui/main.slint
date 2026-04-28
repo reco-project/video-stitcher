@@ -272,6 +272,7 @@ export component RecoApp inherits Window {
     in-out property <bool> ai-available: false;
 
     in-out property <string> version: "";
+    in-out property <string> last-output-path: "";
 
     // Lens profile info. Populated after auto-calibration so the user
     // can see which lens the detector resolved to. Empty strings render
@@ -449,6 +450,7 @@ export component RecoApp inherits Window {
     callback start-export();
     callback cancel-export();
     callback copy-debug-info();
+    callback show-in-folder(string);
     callback toggle-recording(string, string);
     callback pick-recording-folder();
     in-out property <bool> recording: false;
@@ -684,9 +686,9 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        if root.has-both-videos: Rectangle { height: 1px; background: #333; }
+                        if root.has-both-videos || root.calibration-path != "": Rectangle { height: 1px; background: #333; }
 
-                        if root.has-both-videos: Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
+                        if root.has-both-videos || root.calibration-path != "": Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
 
                         if root.has-both-videos: HorizontalLayout {
                             spacing: 4px;
@@ -941,15 +943,15 @@ export component RecoApp inherits Window {
                     spacing: 10px;
                     alignment: start;
 
-                    // ── Camera (always visible) ──
-                    Text {
+                    // ── Camera (hidden during lens preview) ──
+                    if !root.lens-preview-active: Text {
                         text: "Camera";
                         color: #fff;
                         font-size: 13px;
                         font-weight: 600;
                     }
 
-                    LabeledSlider {
+                    if !root.lens-preview-active: LabeledSlider {
                         label: "Field of view";
                         minimum: 20;
                         maximum: 150;
@@ -959,18 +961,18 @@ export component RecoApp inherits Window {
                         changed(v) => { root.changed-fov(v); }
                     }
 
-                    CheckBox {
+                    if !root.lens-preview-active: CheckBox {
                         text: "Constrained look";
                         checked <=> root.use-constrained-look;
                         toggled => { root.changed-constrained-look(); }
                     }
 
-                    Button {
+                    if !root.lens-preview-active: Button {
                         text: "Reset View";
                         clicked => { root.reset-view(); }
                     }
 
-                    Rectangle { height: 1px; background: #333; }
+                    if !root.lens-preview-active: Rectangle { height: 1px; background: #333; }
 
                     // ── Lens (collapsible: info always, sliders on demand) ──
                     lens-section := SectionHeader {
@@ -1009,17 +1011,17 @@ export component RecoApp inherits Window {
 
                         Rectangle { height: 4px; }
 
-                        LabeledSlider {
-                            label: root.lens-correction-amount < 0 ? "Raw" : "Correction";
-                            minimum: root.lens-preview-active ? -1.0 : 0;
-                            maximum: 1.0;
-                            value <=> root.lens-correction-amount;
-                            decimals: 2;
-                            changed(v) => { root.changed-lens-correction(v); }
+                        CheckBox {
+                            text: "Lens correction";
+                            checked: root.lens-correction-amount > 0.5;
+                            toggled => {
+                                root.lens-correction-amount = self.checked ? 1.0 : 0.0;
+                                root.changed-lens-correction(root.lens-correction-amount);
+                            }
                         }
 
                         CheckBox {
-                            text: "Lens preview (beta)";
+                            text: "Lens preview (single camera)";
                             checked <=> root.lens-preview-active;
                             toggled => { root.changed-lens-preview(); }
                         }
@@ -1030,10 +1032,10 @@ export component RecoApp inherits Window {
                             Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
                         }
 
-                        // Fine-tune toggle
+                        // Fine-tune: auto-expands in lens preview mode
                         lens-tune := SectionHeader {
                             title: "Fine-tune";
-                            expanded: false;
+                            expanded: root.lens-preview-active;
                         }
 
                         if lens-tune.expanded: VerticalLayout {
@@ -1129,7 +1131,10 @@ export component RecoApp inherits Window {
 
                     if !cal-section.expanded: Rectangle { height: 1px; background: #2a2a2a; }
 
-                    // ── Stats (collapsible) ──
+                    // ── Stats (collapsible, hidden in lens preview) ──
+                    if !root.lens-preview-active: VerticalLayout {
+                        spacing: 10px;
+
                     stats-section := SectionHeader {
                         title: "Stats";
                         expanded: false;
@@ -1155,6 +1160,7 @@ export component RecoApp inherits Window {
                         if root.telem-cal-matches > 0: Rectangle { height: 4px; }
                         if root.telem-cal-matches > 0: Text { text: "Cal: " + round(root.telem-cal-confidence * 100) + "% conf, " + root.telem-cal-matches + " matches, reproj " + round(root.telem-cal-reproj-err * 10000) / 10000; color: #aaa; font-size: 10px; }
                     }
+                    }  // close stats wrapper (lens-preview gate)
                 }
                 }  // close ScrollView
             }
@@ -1278,6 +1284,11 @@ export component RecoApp inherits Window {
                 if root.export-in-progress: Button {
                     text: "Cancel";
                     clicked => { root.cancel-export(); }
+                }
+
+                if !root.export-in-progress && root.last-output-path != "": Button {
+                    text: "Show in folder";
+                    clicked => { root.show-in-folder(root.last-output-path); }
                 }
 
                 if !root.export-in-progress: Rectangle { horizontal-stretch: 1; }
@@ -1726,16 +1737,17 @@ export component RecoApp inherits Window {
             }
 
             Rectangle {
-                // Centered modal panel
                 width: 560px;
-                height: 620px;
+                height: min(parent.height - 60px, 720px);
                 background: #222;
                 border-radius: 12px;
                 border-width: 1px;
                 border-color: #444;
 
-                // Block click-through to the backdrop.
                 TouchArea {}
+
+                ScrollView {
+                    horizontal-scrollbar-policy: always-off;
 
                 VerticalBox {
                     padding: 24px;
@@ -1976,7 +1988,7 @@ export component RecoApp inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; } // flex spacer
+                    Rectangle { height: 10px; }
 
                     HorizontalBox {
                         spacing: 10px;
@@ -1997,6 +2009,7 @@ export component RecoApp inherits Window {
                         }
                     }
                 }
+                }  // close ScrollView
             }
         }
         // ── Lens profile picker dialog (modal) ──
