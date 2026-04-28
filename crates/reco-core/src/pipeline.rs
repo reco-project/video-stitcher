@@ -430,6 +430,16 @@ impl StitchPipeline {
         self.viewport.fov_degrees
     }
 
+    /// Set the lens distortion correction amount (0.0 = raw, 1.0 = full).
+    pub fn set_lens_correction_amount(&mut self, amount: f32) {
+        self.viewport.lens_correction_amount = amount.clamp(0.0, 1.0);
+    }
+
+    /// Toggle the distortion split-view (left raw, right corrected).
+    pub fn set_distortion_split_view(&mut self, enabled: bool) {
+        self.viewport.distortion_split_view = enabled;
+    }
+
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
     /// new layout. Takes effect on the next render call (uniforms are rebuilt
     /// each frame from the stored calibration and scene).

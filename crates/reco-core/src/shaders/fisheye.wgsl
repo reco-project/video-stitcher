@@ -25,6 +25,9 @@ struct Uniforms {
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
     // flags.w: reserved
     flags: vec4<u32>,
+    // lens_preview.x: correction_amount (0.0 = no correction, 1.0 = full KB4)
+    // lens_preview.y: split_view (> 0.5 = left half uncorrected, right half corrected)
+    lens_preview: vec4<f32>,
 };
 
 // YUV420P plane textures (Y = full res R8Unorm, U/V = half res R8Unorm)
@@ -163,11 +166,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let r = sqrt(x * x + y * y);
     let theta = atan(r);
     let theta2 = theta * theta;
-    let theta_d = theta * (1.0
+    let theta_d_full = theta * (1.0
         + u.dist.x * theta2
         + u.dist.y * theta2 * theta2
         + u.dist.z * theta2 * theta2 * theta2
         + u.dist.w * theta2 * theta2 * theta2 * theta2);
+
+    // Lens correction amount: 1.0 = full KB4, 0.0 = identity (pinhole).
+    // Split view: left half uncorrected, right half fully corrected.
+    var correction = u.lens_preview.x;
+    if u.lens_preview.y > 0.5 {
+        correction = select(0.0, 1.0, in.uv.x > 0.5);
+    }
+    let theta_d = mix(theta, theta_d_full, correction);
 
     var scale = 1.0;
     if r > 0.0 {
@@ -197,6 +208,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if u.flags.x == 1u && blend_width > 0.0 {
         let edge_dist = in.uv.x;
         alpha = smoothstep(0.0, blend_width, edge_dist);
+    }
+
+    // Split-view separator line (1px white at the midpoint)
+    if u.lens_preview.y > 0.5 && abs(in.uv.x - 0.5) < 0.001 {
+        return vec4<f32>(1.0, 1.0, 1.0, alpha);
     }
 
     return vec4<f32>(color, alpha);

@@ -70,6 +70,7 @@ pub(crate) struct GpuUniforms {
     color_scale: [f32; 4],
     color_offset_blend: [f32; 4],
     flags: [u32; 4],
+    lens_preview: [f32; 4],
 }
 
 /// Vertex with 3D position and UV coordinates.
@@ -797,6 +798,8 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[0],
+            viewport.config.lens_correction_amount,
+            viewport.config.distortion_split_view,
         );
 
         let right_mvp = projection * view * scene.model_matrix_right();
@@ -807,6 +810,8 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[1],
+            viewport.config.lens_correction_amount,
+            viewport.config.distortion_split_view,
         );
 
         gpu.queue.write_buffer(
@@ -1180,6 +1185,8 @@ pub(crate) fn build_gpu_uniforms(
     blend_width: f32,
     input_format: InputFormat,
     flip_180: bool,
+    lens_correction_amount: f32,
+    distortion_split_view: bool,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -1197,7 +1204,7 @@ pub(crate) fn build_gpu_uniforms(
             camera.d[2] as f32,
             camera.d[3] as f32,
         ],
-        color_scale: [1.0, 1.0, 1.0, 0.0], // identity (no color correction yet)
+        color_scale: [1.0, 1.0, 1.0, 0.0],
         color_offset_blend: [0.0, 0.0, 0.0, blend_width],
         flags: [
             is_right as u32,
@@ -1208,6 +1215,12 @@ pub(crate) fn build_gpu_uniforms(
             },
             flip_180 as u32,
             0,
+        ],
+        lens_preview: [
+            lens_correction_amount,
+            if distortion_split_view { 1.0 } else { 0.0 },
+            0.0,
+            0.0,
         ],
     }
 }
@@ -1253,7 +1266,16 @@ mod tests {
             d: [0.0342, 0.0677, -0.0741, 0.0299],
         };
         let mvp = Matrix4::identity();
-        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0, InputFormat::Yuv420p, false);
+        let u = build_gpu_uniforms(
+            &mvp,
+            &camera,
+            false,
+            0.0,
+            InputFormat::Yuv420p,
+            false,
+            1.0,
+            false,
+        );
 
         // fx/width ≈ 0.4678
         assert!((u.intrinsics[0] - 1796.32 / 3840.0).abs() < 1e-4);
