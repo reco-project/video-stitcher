@@ -172,23 +172,13 @@ of manually coordinating PoseControl + coverage + rig_tilt.
 
 Plan disposition: K6 / E7. Lands with N12.
 
-### N16. Recording doubles GPU render cost in GUI
+### ~~N16. Recording doubles GPU render cost in GUI~~ RESOLVED
 
-**Impact**: High. User-visible stutter during preview recording.
-
-The GUI's `render_frame_and_nv12` calls `render_and_readback_nv12`
-(renders to internal target + NV12 compute + triple-buffer readback)
-then `render_frame` (renders again to a Slint-owned texture). Two
-full stitch renders per frame. The CLI preview does the same double
-render but without Slint's compositor overhead, so it's smooth.
-
-The proper fix: render once to the Slint texture, and run the NV12
-compute shader on that same texture's output (it has TEXTURE_BINDING).
-This requires the NV12 converter to accept an external texture as
-input instead of always using the pipeline's internal render target.
-Alternatively, render to the internal target once, run NV12 readback,
-then blit/copy to the Slint texture (one render + one copy instead
-of two renders).
+Resolved in v0.5.0: `PreviewBridge::render_frame_and_nv12` does one
+stitch render to the internal target, runs NV12 readback, then blits
+(copy_texture_to_texture) to a fresh Slint texture. One render + one
+cheap GPU copy replaces two full stitch renders. The old 3:1 frame
+skip workaround is removed.
 
 ### N17. No ROI visualization or editing in GUI
 

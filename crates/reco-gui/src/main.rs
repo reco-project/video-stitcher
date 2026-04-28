@@ -586,34 +586,28 @@ impl AppState {
             let (w, h) = bridge.viewport_size();
             let fps = self.playback.fps();
 
-            // NV12 readback for the encoder (every frame, sent async)
-            match bridge
-                .renderer_mut()
-                .render_and_readback_nv12(&left, &right, pose.yaw, pose.pitch)
-            {
-                Ok(Some(nv12)) => {
+            // Single render: NV12 for encoder + blit to Slint texture.
+            // Replaces the old double-render (N16 fix).
+            match bridge.render_frame_and_nv12(&left, &right, pose.yaw, pose.pitch) {
+                Ok((img, Some(nv12))) => {
                     if let Some(tx) = self.recording_tx.as_ref() {
                         let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
                         let _ = tx.try_send(RecordingFrame {
-                            data: nv12.to_vec(),
+                            data: nv12,
                             width: w & !3,
                             height: h & !1,
                             pts_us: pts,
                         });
                     }
                     self.recording_frames += 1;
+                    return Some(img);
                 }
-                Ok(None) => {}
-                Err(e) => log::error!("NV12 readback error: {e}"),
-            }
-
-            // Display preview at reduced rate (every 3rd frame) to
-            // avoid the double-render cost that causes stutter (N16).
-            if self.recording_frames.is_multiple_of(3) {
-                let bridge = self.bridge.as_ref().unwrap();
-                match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
-                    Ok(img) => return Some(img),
-                    Err(e) => log::error!("Preview render error: {e}"),
+                Ok((img, None)) => {
+                    self.recording_frames += 1;
+                    return Some(img);
+                }
+                Err(e) => {
+                    log::error!("Recording render error: {e}");
                 }
             }
             None

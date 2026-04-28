@@ -150,6 +150,74 @@ impl PreviewBridge {
         })
     }
 
+    /// Render once for NV12 readback (encoder) and copy the internal
+    /// render target to a Slint texture for display. One stitch render
+    /// instead of two.
+    ///
+    /// Returns `(slint_image, Option<nv12_bytes_owned>)`. The NV12 data
+    /// is copied out so the borrow on the renderer is released before
+    /// we access the render target for the GPU blit.
+    pub fn render_frame_and_nv12(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(slint::Image, Option<Vec<u8>>), PipelineError> {
+        let nv12_owned = self
+            .renderer
+            .render_and_readback_nv12(left, right, yaw, pitch)?
+            .map(|slice| slice.to_vec());
+
+        let device = self.renderer.gpu().device();
+        let queue = self.renderer.gpu().queue();
+
+        let dst = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("reco-gui preview (blit from NV12 render)"),
+            size: wgpu::Extent3d {
+                width: self.viewport_width,
+                height: self.viewport_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.texture_format,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let src = self.renderer.pipeline().render_target();
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let copy_size = wgpu::Extent3d {
+            width: self.viewport_width.min(src.width()),
+            height: self.viewport_height.min(src.height()),
+            depth_or_array_layers: 1,
+        };
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: src,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &dst,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            copy_size,
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let img = slint::Image::try_from(dst).map_err(|_| PipelineError::InvalidConfig {
+            reason: "slint::Image::try_from(wgpu::Texture) failed".into(),
+        })?;
+        Ok((img, nv12_owned))
+    }
+
     /// Access the underlying renderer for viewport adjustments.
     #[allow(dead_code)]
     pub fn renderer(&self) -> &StitchRenderer {
