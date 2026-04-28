@@ -2473,6 +2473,12 @@ fn main() -> anyhow::Result<()> {
             } else {
                 app.set_export_blend_width(s.user_settings.default_blend_width);
             }
+            let clip_secs = if s.playback.fps() > 0.0 {
+                s.playback.total_frames().unwrap_or(0) as f32 / s.playback.fps() as f32
+            } else {
+                0.0
+            };
+            app.set_clip_duration_secs(clip_secs);
             app.set_export_dialog_open(true);
         }
     });
@@ -2578,7 +2584,12 @@ fn main() -> anyhow::Result<()> {
         let quality_str = app.get_export_quality().to_string();
         let blend = app.get_export_blend_width();
         let start_secs = app.get_export_start_secs();
-        let duration = app.get_export_duration_secs();
+        let end_secs = app.get_export_end_secs();
+        let clip_dur = app.get_clip_duration_secs();
+        let duration = if end_secs > start_secs { end_secs - start_secs } else { 0.0 };
+        log::info!(
+            "Export range: start={start_secs:.1}s, end={end_secs:.1}s (duration={duration:.1}s, clip={clip_dur:.1}s)"
+        );
         let autocam_enabled = app.get_export_autocam_enabled();
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();

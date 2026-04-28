@@ -250,8 +250,9 @@ export component RecoApp inherits Window {
     in-out property <[string]> available-codecs: ["h264", "hevc", "av1"];
     in-out property <string> export-quality: "balanced";
     in-out property <float> export-blend-width: 0.05;
-    in-out property <float> export-start-secs: 0.0; // 0 = from beginning
-    in-out property <float> export-duration-secs: 0.0; // 0 = full clip
+    in-out property <float> export-start-secs: 0.0;
+    in-out property <float> export-end-secs: 0.0; // 0 = end of clip
+    in-out property <float> clip-duration-secs: 0.0;
     in-out property <string> export-model-path: "";
     in-out property <string> export-tracking-mode: "field";
     in-out property <int> export-detection-interval: 3;
@@ -1205,14 +1206,33 @@ export component RecoApp inherits Window {
                     horizontal-alignment: right;
                 }
 
-                Slider {
+                Rectangle {
                     horizontal-stretch: 1;
-                    minimum: 0;
-                    maximum: root.total-frames == 0 ? 1.0 : 1.0 * root.total-frames;
-                    value: 1.0 * root.current-frame;
-                    enabled: root.files-loaded;
-                    released(val) => {
-                        if root.total-frames > 0 { root.seek(val / root.total-frames); }
+                    height: 24px;
+
+                    // Export range indicator (green tint behind the slider)
+                    if root.export-start-secs > 0 || root.export-end-secs > 0: Rectangle {
+                        property <float> start-frac: root.clip-duration-secs > 0
+                            ? root.export-start-secs / root.clip-duration-secs : 0;
+                        property <float> end-frac: root.clip-duration-secs > 0
+                            ? (root.export-end-secs > 0 ? root.export-end-secs / root.clip-duration-secs : 1.0) : 1.0;
+
+                        x: parent.width * start-frac;
+                        width: parent.width * (end-frac - start-frac);
+                        height: parent.height;
+                        background: #4a7a4a33;
+                        border-radius: 2px;
+                    }
+
+                    Slider {
+                        width: 100%;
+                        minimum: 0;
+                        maximum: root.total-frames == 0 ? 1.0 : 1.0 * root.total-frames;
+                        value: 1.0 * root.current-frame;
+                        enabled: root.files-loaded;
+                        released(val) => {
+                            if root.total-frames > 0 { root.seek(val / root.total-frames); }
+                        }
                     }
                 }
 
@@ -1880,32 +1900,44 @@ export component RecoApp inherits Window {
                         changed(v) => { /* just stored, used at submit */ }
                     }
 
-                    // Processing range
+                    // Processing range (start/end with sliders and manual input)
+                    Text { text: "Processing range"; color: #ccc; font-size: 12px; }
+
                     HorizontalBox {
-                        spacing: 10px;
+                        spacing: 8px;
                         padding: 0;
+
                         VerticalLayout {
-                            spacing: 4px;
+                            spacing: 3px;
                             horizontal-stretch: 1;
-                            Text { text: "Start (seconds)"; color: #ccc; font-size: 12px; }
+                            Text { text: "Start"; color: #888; font-size: 11px; }
+                            Slider {
+                                minimum: 0;
+                                maximum: max(1, root.clip-duration-secs);
+                                value <=> root.export-start-secs;
+                                enabled: root.clip-duration-secs > 0;
+                            }
                             LineEdit {
                                 text: root.export-start-secs == 0 ? "" : root.export-start-secs;
-                                placeholder-text: "0 (beginning)";
-                                edited(v) => {
-                                    root.export-start-secs = v.to-float();
-                                }
+                                placeholder-text: "0:00";
+                                edited(v) => { root.export-start-secs = max(0, v.to-float()); }
                             }
                         }
+
                         VerticalLayout {
-                            spacing: 4px;
+                            spacing: 3px;
                             horizontal-stretch: 1;
-                            Text { text: "Duration (seconds)"; color: #ccc; font-size: 12px; }
+                            Text { text: "End"; color: #888; font-size: 11px; }
+                            Slider {
+                                minimum: 0;
+                                maximum: max(1, root.clip-duration-secs);
+                                value <=> root.export-end-secs;
+                                enabled: root.clip-duration-secs > 0;
+                            }
                             LineEdit {
-                                text: root.export-duration-secs == 0 ? "" : root.export-duration-secs;
-                                placeholder-text: "0 (full clip)";
-                                edited(v) => {
-                                    root.export-duration-secs = v.to-float();
-                                }
+                                text: root.export-end-secs == 0 ? "" : root.export-end-secs;
+                                placeholder-text: "full clip";
+                                edited(v) => { root.export-end-secs = max(0, v.to-float()); }
                             }
                         }
                     }
