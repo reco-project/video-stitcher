@@ -2919,8 +2919,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
-                app.set_total_frames(total as i32);
-                app.set_current_frame(s.playback.frame_index() as i32);
+                sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 app.set_fps(fps as f32);
                 app.set_status_text(format!("Ready - {:.0} fps - {total} frames", fps).into());
                 if let Some(img) = img {
@@ -3125,8 +3124,7 @@ fn handle_calibration_result(
                         app.set_files_loaded(true);
                         app.set_calibration_path(cal_label.into());
                         sync_recent_paths(&state.user_settings, &app);
-                        app.set_total_frames(total as i32);
-                        app.set_current_frame(state.playback.frame_index() as i32);
+                        sync_frame_display(&app, state.playback.frame_index(), total, fps);
                         app.set_fps(fps as f32);
                         app.set_status_text(
                             format!("Auto-calibrated - {:.0} fps - {total} frames", fps,).into(),
