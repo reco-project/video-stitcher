@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reco - Field ROI Editor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a1a; color: #ddd; font-family: system-ui, sans-serif; }
+.header { padding: 12px 20px; background: #222; display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 16px; font-weight: 600; }
+.header select, .header button { padding: 6px 12px; border-radius: 4px; border: 1px solid #444; background: #333; color: #ddd; font-size: 13px; cursor: pointer; }
+.header button.primary { background: #4a7a4a; border-color: #5a9a5a; }
+.header button:hover { background: #444; }
+.header button.primary:hover { background: #5a8a5a; }
+.header .spacer { flex: 1; }
+.header .info { color: #888; font-size: 12px; }
+.canvas-wrap { position: relative; display: flex; justify-content: center; padding: 10px; }
+canvas { cursor: crosshair; max-width: 100%; max-height: calc(100vh - 60px); }
+.instructions { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); background: #333a; padding: 8px 16px; border-radius: 6px; font-size: 12px; color: #aaa; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Field ROI Editor</h1>
+  <select id="side">
+    <option value="left">Left Camera</option>
+    <option value="right">Right Camera</option>
+  </select>
+  <button onclick="undo()">Undo</button>
+  <button onclick="clearPoints()">Clear</button>
+  <span class="spacer"></span>
+  <span class="info" id="pointCount">0 points</span>
+  <button class="primary" onclick="saveAndClose()">Save ROI</button>
+</div>
+
+<div class="canvas-wrap">
+  <canvas id="canvas"></canvas>
+</div>
+
+<div class="instructions">
+  Click to add points. Right-click to undo. Switch cameras above. Click "Save ROI" when done.
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const sideSelect = document.getElementById('side');
+const pointCountEl = document.getElementById('pointCount');
+
+// ROI data per side
+const roi = { left: [], right: [] };
+const images = { left: null, right: null };
+let currentImage = null;
+
+// Parse URL params
+const params = new URLSearchParams(window.location.search);
+const leftImagePath = params.get('left');
+const rightImagePath = params.get('right');
+const calPath = params.get('cal');
+
+function loadImage(path) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = path;
+  });
+}
+
+async function init() {
+  if (leftImagePath) {
+    try { images.left = await loadImage(leftImagePath); } catch(e) { console.warn('Left image not found:', leftImagePath); }
+  }
+  if (rightImagePath) {
+    try { images.right = await loadImage(rightImagePath); } catch(e) { console.warn('Right image not found:', rightImagePath); }
+  }
+
+  // Load existing ROI from calibration if provided
+  if (calPath) {
+    try {
+      const resp = await fetch(calPath);
+      const cal = await resp.json();
+      if (cal.field_roi) {
+        if (cal.field_roi.left) roi.left = cal.field_roi.left.map(p => [...p]);
+        if (cal.field_roi.right) roi.right = cal.field_roi.right.map(p => [...p]);
+      }
+    } catch(e) { console.warn('Could not load calibration:', e); }
+  }
+
+  switchSide();
+}
+
+function switchSide() {
+  const side = sideSelect.value;
+  currentImage = images[side];
+  if (currentImage) {
+    canvas.width = currentImage.naturalWidth;
+    canvas.height = currentImage.naturalHeight;
+  } else {
+    canvas.width = 1920;
+    canvas.height = 1080;
+  }
+  redraw();
+}
+
+sideSelect.addEventListener('change', switchSide);
+
+function redraw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (currentImage) {
+    ctx.drawImage(currentImage, 0, 0);
+  } else {
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#888';
+    ctx.font = '20px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('No image loaded', canvas.width/2, canvas.height/2);
+  }
+
+  const side = sideSelect.value;
+  const points = roi[side];
+  const w = canvas.width;
+  const h = canvas.height;
+
+  if (points.length > 0) {
+    // Draw polygon fill
+    ctx.beginPath();
+    ctx.moveTo(points[0][0] * w, points[0][1] * h);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i][0] * w, points[i][1] * h);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+    ctx.fill();
+
+    // Draw polygon outline
+    ctx.beginPath();
+    ctx.moveTo(points[0][0] * w, points[0][1] * h);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i][0] * w, points[i][1] * h);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw vertices
+    for (let i = 0; i < points.length; i++) {
+      const x = points[i][0] * w;
+      const y = points[i][1] * h;
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f0';
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '11px system-ui';
+      ctx.fillText(String(i + 1), x + 8, y - 6);
+    }
+  }
+
+  pointCountEl.textContent = `${points.length} points (${side})`;
+}
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX / canvas.width;
+  const y = (e.clientY - rect.top) * scaleY / canvas.height;
+  roi[sideSelect.value].push([Math.round(x * 10000) / 10000, Math.round(y * 10000) / 10000]);
+  redraw();
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  undo();
+});
+
+function undo() {
+  roi[sideSelect.value].pop();
+  redraw();
+}
+
+function clearPoints() {
+  roi[sideSelect.value] = [];
+  redraw();
+}
+
+function saveAndClose() {
+  // Build the ROI JSON and offer as download, or update the calibration file
+  const output = { left: roi.left, right: roi.right };
+  const json = JSON.stringify(output, null, 2);
+
+  // If we have a calibration path, try to update it
+  if (calPath) {
+    // Create a download link with the ROI data
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'field_roi.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Also copy to clipboard
+  navigator.clipboard.writeText(json).then(() => {
+    pointCountEl.textContent = 'ROI copied to clipboard + downloaded!';
+    pointCountEl.style.color = '#8f8';
+  }).catch(() => {
+    pointCountEl.textContent = 'ROI downloaded as field_roi.json';
+  });
+}
+
+init();
+</script>
+</body>
+</html>

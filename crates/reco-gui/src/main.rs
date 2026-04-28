@@ -1464,50 +1464,71 @@ fn main() -> anyhow::Result<()> {
             return;
         };
 
-        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/field_roi.py");
-        if !script.exists() {
+        // Export current frames as temp PNGs for the web-based ROI editor
+        let tmp_dir = std::env::temp_dir().join("reco-roi");
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let left_png = tmp_dir.join("left.png");
+        let right_png = tmp_dir.join("right.png");
+
+        // Extract one frame from each video using ffmpeg
+        let extract_frame = |video: &std::path::Path, out: &std::path::Path| {
+            std::process::Command::new("ffmpeg")
+                .args(["-y", "-i"])
+                .arg(video)
+                .args(["-frames:v", "1", "-q:v", "2"])
+                .arg(out)
+                .output()
+                .ok();
+        };
+        extract_frame(&left, &left_png);
+        extract_frame(&right, &right_png);
+
+        let html_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/roi_editor.html");
+        if !html_path.exists() {
             let mut s = state_ref.borrow_mut();
             if let Some(app) = app_weak.upgrade() {
                 s.toasts.push(
                     crate::toast::Severity::Error,
-                    "ROI script not found",
-                    format!("Expected at {}", script.display()),
+                    "ROI editor not found",
+                    format!("Expected at {}", html_path.display()),
                 );
                 crate::toast::sync_to_ui(&s.toasts, &app);
             }
             return;
         }
 
-        log::info!(
-            "Launching ROI editor: {} {} {}",
-            left.display(),
-            right.display(),
+        let url = format!(
+            "file://{}?left=file://{}&right=file://{}&cal=file://{}",
+            html_path.display(),
+            left_png.display(),
+            right_png.display(),
             cal_path.display()
         );
-        // Set a flag that the timer tick checks to reload calibration
-        // after the ROI editor exits. This avoids Send issues with
-        // Rc<RefCell<AppState>> across threads.
-        let roi_pending = Arc::new(AtomicBool::new(false));
-        {
+        log::info!("Opening ROI editor: {url}");
+
+        if let Err(e) = open::that(&url) {
+            log::error!("Failed to open ROI editor: {e}");
             let mut s = state_ref.borrow_mut();
-            s.roi_reload_pending = Some(Arc::clone(&roi_pending));
-        }
-        std::thread::spawn(move || {
-            let result = std::process::Command::new("python3")
-                .arg(&script)
-                .arg(&left)
-                .arg(&right)
-                .arg(&cal_path)
-                .status();
-            match result {
-                Ok(status) if status.success() => {
-                    log::info!("ROI editor completed, signaling reload");
-                    roi_pending.store(true, Ordering::Relaxed);
-                }
-                Ok(status) => log::warn!("ROI editor exited with status {status}"),
-                Err(e) => log::error!("Failed to launch ROI editor: {e}"),
+            if let Some(app) = app_weak.upgrade() {
+                s.toasts.push(
+                    crate::toast::Severity::Error,
+                    "Cannot open browser",
+                    e.to_string(),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
             }
-        });
+        } else {
+            let mut s = state_ref.borrow_mut();
+            if let Some(app) = app_weak.upgrade() {
+                s.toasts.push(
+                    crate::toast::Severity::Info,
+                    "ROI editor opened in browser",
+                    "Click field boundary points, save, then paste the ROI JSON into the calibration file.",
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+            }
+        }
     });
 
     let app_weak = app.as_weak();

@@ -46,6 +46,7 @@ rfd = "0.15"
 log = "0.4"
 anyhow = "1"
 arboard = "3"
+open = "5"
 serde_json = "1"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
