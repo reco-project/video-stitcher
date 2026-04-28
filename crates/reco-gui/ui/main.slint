@@ -711,6 +711,40 @@ export component RecoApp inherits Window {
 
                         Rectangle { height: 1px; background: #333; }
 
+                        // Stitching settings (affect export output)
+                        Text { text: "Stitching"; color: #aaa; font-size: 12px; font-weight: 600; }
+
+                        LabeledSlider {
+                            label: "Seam blend";
+                            minimum: 0;
+                            maximum: 0.3;
+                            value <=> root.blend-width;
+                            decimals: 2;
+                            changed(v) => { root.changed-blend-width(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Rig tilt";
+                            minimum: -30;
+                            maximum: 30;
+                            value <=> root.rig-tilt;
+                            suffix: "°";
+                            decimals: 1;
+                            changed(v) => { root.changed-rig-tilt(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Rig roll";
+                            minimum: -15;
+                            maximum: 15;
+                            value <=> root.rig-roll;
+                            suffix: "°";
+                            decimals: 1;
+                            changed(v) => { root.changed-rig-roll(v); }
+                        }
+
+                        Rectangle { height: 1px; background: #333; }
+
                         Button {
                             text: "Recent…";
                             enabled: root.recent-left-paths.length > 0
@@ -859,45 +893,6 @@ export component RecoApp inherits Window {
                         text: "Constrained look";
                         checked <=> root.use-constrained-look;
                         toggled => { root.changed-constrained-look(); }
-                    }
-
-                    Rectangle { height: 1px; background: #333; }
-
-                    // ── Stitching (always visible) ──
-                    Text {
-                        text: "Stitching";
-                        color: #fff;
-                        font-size: 13px;
-                        font-weight: 600;
-                    }
-
-                    LabeledSlider {
-                        label: "Seam blend";
-                        minimum: 0;
-                        maximum: 0.3;
-                        value <=> root.blend-width;
-                        decimals: 2;
-                        changed(v) => { root.changed-blend-width(v); }
-                    }
-
-                    LabeledSlider {
-                        label: "Rig tilt";
-                        minimum: -30;
-                        maximum: 30;
-                        value <=> root.rig-tilt;
-                        suffix: "°";
-                        decimals: 1;
-                        changed(v) => { root.changed-rig-tilt(v); }
-                    }
-
-                    LabeledSlider {
-                        label: "Rig roll";
-                        minimum: -15;
-                        maximum: 15;
-                        value <=> root.rig-roll;
-                        suffix: "°";
-                        decimals: 1;
-                        changed(v) => { root.changed-rig-roll(v); }
                     }
 
                     Button {
@@ -1139,27 +1134,19 @@ export component RecoApp inherits Window {
                     }
                 }
 
-                if !root.recording: VerticalLayout {
-                    spacing: 1px;
-                    Text { text: "Quality"; color: #555; font-size: 9px; horizontal-alignment: center; }
-                    ComboBox {
-                        model: ["fast", "balanced", "high"];
-                        current-value <=> root.recording-quality;
-                        enabled: root.files-loaded && !root.export-in-progress;
-                        width: 82px;
-                    }
+                if !root.recording: ComboBox {
+                    model: ["fast", "balanced", "high"];
+                    current-value <=> root.recording-quality;
+                    enabled: root.files-loaded && !root.export-in-progress;
+                    width: 82px;
                 }
 
-                VerticalLayout {
-                    spacing: 1px;
-                    Text { text: "Aspect"; color: #555; font-size: 9px; horizontal-alignment: center; }
-                    ComboBox {
-                        model: ["auto", "16:9", "4:3", "21:9"];
-                        current-value <=> root.preview-aspect;
-                        enabled: root.files-loaded;
-                        width: 68px;
-                        selected(v) => { root.changed-preview-aspect(v); }
-                    }
+                ComboBox {
+                    model: ["auto", "16:9", "4:3", "21:9"];
+                    current-value <=> root.preview-aspect;
+                    enabled: root.files-loaded;
+                    width: 68px;
+                    selected(v) => { root.changed-preview-aspect(v); }
                 }
             }
         }
