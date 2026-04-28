@@ -250,6 +250,88 @@ fn ai_capability_summary() -> (String, bool) {
 
 use crate::export::ExportOutcome;
 
+fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String {
+    let gpu = state
+        .bridge
+        .as_ref()
+        .map(|b| {
+            let g = b.renderer().gpu();
+            format!("{} ({:?})", g.gpu_name(), g.backend_name())
+        })
+        .unwrap_or_else(|| "no GPU context".into());
+
+    let version = format!(
+        "v{}{}",
+        env!("CARGO_PKG_VERSION"),
+        option_env!("GIT_HASH")
+            .filter(|h| !h.is_empty())
+            .map(|h| format!(" ({h})"))
+            .unwrap_or_default()
+    );
+
+    let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
+    let (ai_status, _) = ai_capability_summary();
+
+    let mut report = format!(
+        "## Environment\n\
+         - Reco {version}\n\
+         - OS: {os}\n\
+         - GPU: {gpu}\n\
+         - {ai_status}\n"
+    );
+
+    // Telemetry snapshot if available
+    if let Some(app) = app_weak.upgrade() {
+        let fps_avg = app.get_telem_fps_avg();
+        let fps_recent = app.get_telem_fps_recent();
+        let total_ms = app.get_telem_total_ms();
+        let bottleneck = app.get_telem_bottleneck().to_string();
+        let dropped = app.get_telem_frames_dropped();
+
+        if fps_avg > 0.0 || total_ms > 0.0 {
+            report.push_str(&format!(
+                "\n## Performance\n\
+                 - FPS: {fps_avg:.0} avg / {fps_recent:.0} recent\n\
+                 - Frame time: {total_ms:.1} ms\n"
+            ));
+            if !bottleneck.is_empty() {
+                report.push_str(&format!("- Bottleneck: {bottleneck}\n"));
+            }
+            if dropped > 0 {
+                report.push_str(&format!("- Dropped frames: {dropped}\n"));
+            }
+        }
+
+        let cal_confidence = app.get_telem_cal_confidence();
+        let cal_matches = app.get_telem_cal_matches();
+        if cal_matches > 0 {
+            let reproj = app.get_telem_cal_reproj_err();
+            report.push_str(&format!(
+                "\n## Calibration\n\
+                 - Confidence: {:.0}%\n\
+                 - Matches: {cal_matches}\n\
+                 - Reprojection error: {reproj:.4}\n",
+                cal_confidence * 100.0
+            ));
+        }
+    }
+
+    // Redact file paths
+    if let Some(cal) = &state.calibration_path {
+        let name = cal.file_name().unwrap_or_default().to_string_lossy();
+        report.push_str(&format!("\n## Files\n- Calibration: {name}\n"));
+    }
+
+    report.push_str(
+        "\n## Description\n\
+         <!-- What happened? What did you expect? -->\n\n\
+         ## Steps to reproduce\n\
+         <!-- 1. ... 2. ... 3. ... -->\n",
+    );
+
+    report
+}
+
 struct RecordingFrame {
     data: Vec<u8>,
     width: u32,
@@ -2704,6 +2786,16 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    app.on_open_bug_report(move || {
+        let url = format!(
+            "https://github.com/nicksarris/reco/issues/new?labels=bug&title=&body={}",
+            "(paste bug report from clipboard here)"
+        );
+        if let Err(e) = open::that(&url) {
+            log::error!("Failed to open browser for bug report: {e}");
+        }
+    });
+
     app.on_show_in_folder(move |path| {
         let path = PathBuf::from(path.as_str());
         let folder = path.parent().unwrap_or(&path);
@@ -2716,41 +2808,15 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     app.on_copy_debug_info(move || {
         let mut s = state_ref.borrow_mut();
-        let gpu = s
-            .bridge
-            .as_ref()
-            .map(|b| {
-                let g = b.renderer().gpu();
-                format!("{} ({:?})", g.gpu_name(), g.backend_name())
-            })
-            .unwrap_or_else(|| "no GPU context".into());
-        let version = format!(
-            "v{}{}",
-            env!("CARGO_PKG_VERSION"),
-            option_env!("GIT_HASH")
-                .filter(|h| !h.is_empty())
-                .map(|h| format!(" ({h})"))
-                .unwrap_or_default()
-        );
-        let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
+        let report = build_bug_report(&s, &app_weak);
 
-        let mut lines = vec![
-            format!("Reco {version}"),
-            format!("OS: {os}"),
-            format!("GPU: {gpu}"),
-        ];
-
-        let (ai_status, _) = ai_capability_summary();
-        lines.push(format!("AI: {ai_status}"));
-
-        let info = lines.join("\n");
-        match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(info)) {
+        match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(report)) {
             Ok(()) => {
-                log::info!("Debug info copied to clipboard");
+                log::info!("Bug report copied to clipboard");
                 s.toasts.push(
                     crate::toast::Severity::Info,
-                    "Debug info copied",
-                    "Paste into a GitHub issue or message.",
+                    "Bug report copied to clipboard",
+                    "Paste into a GitHub issue at github.com/nicksarris/reco/issues/new",
                 );
             }
             Err(e) => {
