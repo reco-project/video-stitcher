@@ -219,6 +219,7 @@ export component RecoApp inherits Window {
     in-out property <bool> calibrating: false;
     in-out property <string> calibration-step: "";
     in-out property <bool> has-both-videos: left-path != "" && right-path != "";
+    in-out property <bool> has-roi: false;
 
     // Camera view state (kept in sync with Rust AppState).
     in-out property <float> yaw: 0.0;      // radians
@@ -754,6 +755,27 @@ export component RecoApp inherits Window {
                             text: "Save Calibration";
                             enabled: root.cal-dirty || root.lens-dirty;
                             clicked => { root.save-calibration(); }
+                        }
+
+                        // Field ROI status
+                        if root.files-loaded: Rectangle { height: 1px; background: #333; }
+
+                        if root.files-loaded: HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: root.has-roi ? "Field ROI: loaded" : "Field ROI: none";
+                                color: root.has-roi ? #8ae68a : #777;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+                        }
+
+                        if root.files-loaded && !root.has-roi: Text {
+                            text: "Add field_roi to calibration JSON for better AI tracking.";
+                            color: #666;
+                            font-size: 10px;
+                            wrap: word-wrap;
                         }
 
                         Rectangle { height: 1px; background: #333; }

@@ -2894,6 +2894,12 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
+                app.set_has_roi(
+                    s.calibration
+                        .as_ref()
+                        .and_then(|c| c.field_roi.as_ref())
+                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
+                );
                 sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 app.set_fps(fps as f32);
                 app.set_status_text(format!("Ready - {:.0} fps - {total} frames", fps).into());
@@ -3097,6 +3103,13 @@ fn handle_calibration_result(
                             .map(|p| display_name(p))
                             .unwrap_or_else(|| "(auto-calibrated)".into());
                         app.set_files_loaded(true);
+                        app.set_has_roi(
+                            state
+                                .calibration
+                                .as_ref()
+                                .and_then(|c| c.field_roi.as_ref())
+                                .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
+                        );
                         app.set_calibration_path(cal_label.into());
                         sync_recent_paths(&state.user_settings, &app);
                         sync_frame_display(&app, state.playback.frame_index(), total, fps);
