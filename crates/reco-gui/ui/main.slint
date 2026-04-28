@@ -663,18 +663,17 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        Rectangle { height: 1px; background: #333; }
+                        if root.has-both-videos: Rectangle { height: 1px; background: #333; }
 
-                        // Calibration section
-                        Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
+                        if root.has-both-videos: Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
 
-                        HorizontalLayout {
+                        if root.has-both-videos: HorizontalLayout {
                             spacing: 4px;
                             Button {
                                 text: root.calibrating
                                     ? "Calibrating..."
                                     : (root.files-loaded ? "Re-calibrate" : "Auto Calibrate");
-                                enabled: root.has-both-videos && !root.calibrating;
+                                enabled: !root.calibrating;
                                 horizontal-stretch: 1;
                                 clicked => { root.auto-calibrate(); }
                             }
@@ -684,10 +683,10 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        CheckBox {
+                        if root.has-both-videos: CheckBox {
                             text: "IMU seeds";
                             checked <=> root.use-imu-seeds;
-                            enabled: root.has-both-videos && !root.calibrating;
+                            enabled: !root.calibrating;
                         }
 
                         if root.calibration-path != "": Rectangle {
@@ -717,12 +716,12 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        Rectangle { height: 1px; background: #333; }
+                        // Stitching settings only appear after calibration is loaded
+                        if root.files-loaded: Rectangle { height: 1px; background: #333; }
 
-                        // Stitching settings (affect export output)
-                        Text { text: "Stitching"; color: #aaa; font-size: 12px; font-weight: 600; }
+                        if root.files-loaded: Text { text: "Stitching"; color: #aaa; font-size: 12px; font-weight: 600; }
 
-                        LabeledSlider {
+                        if root.files-loaded: LabeledSlider {
                             label: "Seam blend";
                             minimum: 0;
                             maximum: 0.3;
@@ -731,7 +730,7 @@ export component RecoApp inherits Window {
                             changed(v) => { root.changed-blend-width(v); }
                         }
 
-                        LabeledSlider {
+                        if root.files-loaded: LabeledSlider {
                             label: "Rig tilt";
                             minimum: -30;
                             maximum: 30;
@@ -741,7 +740,7 @@ export component RecoApp inherits Window {
                             changed(v) => { root.changed-rig-tilt(v); }
                         }
 
-                        LabeledSlider {
+                        if root.files-loaded: LabeledSlider {
                             label: "Rig roll";
                             minimum: -15;
                             maximum: 15;
@@ -749,6 +748,12 @@ export component RecoApp inherits Window {
                             suffix: "°";
                             decimals: 1;
                             changed(v) => { root.changed-rig-roll(v); }
+                        }
+
+                        if root.files-loaded: Button {
+                            text: "Save Calibration";
+                            enabled: root.cal-dirty || root.lens-dirty;
+                            clicked => { root.save-calibration(); }
                         }
 
                         Rectangle { height: 1px; background: #333; }
