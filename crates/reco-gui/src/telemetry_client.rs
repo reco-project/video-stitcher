@@ -10,8 +10,7 @@ use serde::Serialize;
 use std::sync::mpsc;
 use std::thread;
 
-const ENDPOINT: &str =
-    "https://telemetry-ingestion-204135919265.us-central1.run.app/telemetry";
+const ENDPOINT: &str = "https://telemetry-ingestion-204135919265.us-central1.run.app/telemetry";
 const APP_NAME: &str = "video-stitcher";
 
 #[derive(Serialize)]

@@ -119,7 +119,11 @@ pub fn run_export(
             .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
             .unwrap_or(30.0);
 
-        let start_frames = if start_secs > 0.0 { (start_secs as f64 * fps) as u64 } else { 0 };
+        let start_frames = if start_secs > 0.0 {
+            (start_secs as f64 * fps) as u64
+        } else {
+            0
+        };
         let range_total = if duration_secs > 0.0 {
             (duration_secs as f64 * fps) as u64
         } else {

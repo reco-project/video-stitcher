@@ -1928,13 +1928,15 @@ fn main() -> anyhow::Result<()> {
 
         let (use_imu_seeds, cal_frames, akaze_threshold, detect_y_min, detect_y_max) = app_weak
             .upgrade()
-            .map(|a| (
-                a.get_use_imu_seeds(),
-                a.get_calibration_frames().max(2) as usize,
-                a.get_cal_akaze_threshold() as f64,
-                a.get_cal_detect_y_min() as f64,
-                a.get_cal_detect_y_max() as f64,
-            ))
+            .map(|a| {
+                (
+                    a.get_use_imu_seeds(),
+                    a.get_calibration_frames().max(2) as usize,
+                    a.get_cal_akaze_threshold() as f64,
+                    a.get_cal_detect_y_min() as f64,
+                    a.get_cal_detect_y_max() as f64,
+                )
+            })
             .unwrap_or((false, 4, 0.0001, 0.05, 0.95));
 
         if let Some(app) = app_weak.upgrade() {
@@ -1953,7 +1955,10 @@ fn main() -> anyhow::Result<()> {
                 let cal = bridge.renderer().pipeline().calibration();
                 (Some(cal.left.clone()), Some(cal.right.clone()))
             } else {
-                (s.cal_baseline_left_params.clone(), s.cal_baseline_right_params.clone())
+                (
+                    s.cal_baseline_left_params.clone(),
+                    s.cal_baseline_right_params.clone(),
+                )
             }
         };
 
