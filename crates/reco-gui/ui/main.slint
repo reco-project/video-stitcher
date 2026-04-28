@@ -294,6 +294,9 @@ export component RecoApp inherits Window {
     // off because the feature-matching seed is reliable on most footage.
     in-out property <bool> use-imu-seeds: false;
     in-out property <int> calibration-frames: 4;
+    in-out property <float> cal-akaze-threshold: 0.0001;
+    in-out property <float> cal-detect-y-min: 0.05;
+    in-out property <float> cal-detect-y-max: 0.95;
 
     // When true (default), pan/zoom is clamped to the coverage boundary
     // so the viewport never shows black margins. Users can disable it
@@ -723,6 +726,46 @@ export component RecoApp inherits Window {
                                 width: 56px;
                                 enabled: !root.calibrating;
                                 selected(v) => { root.calibration-frames = max(2, v.to-float()); }
+                            }
+                        }
+
+                        if root.has-both-videos: VerticalLayout {
+                            spacing: 6px;
+
+                            cal-advanced := SectionHeader {
+                                title: "Advanced";
+                                expanded: false;
+                            }
+
+                            if cal-advanced.expanded: VerticalLayout {
+                                spacing: 4px;
+
+                                LabeledSlider {
+                                    label: "AKAZE threshold";
+                                    minimum: 0.00001;
+                                    maximum: 0.01;
+                                    value <=> root.cal-akaze-threshold;
+                                    decimals: 5;
+                                    changed(v) => {}
+                                }
+
+                                LabeledSlider {
+                                    label: "Detect Y min";
+                                    minimum: 0;
+                                    maximum: 0.5;
+                                    value <=> root.cal-detect-y-min;
+                                    decimals: 2;
+                                    changed(v) => {}
+                                }
+
+                                LabeledSlider {
+                                    label: "Detect Y max";
+                                    minimum: 0.5;
+                                    maximum: 1.0;
+                                    value <=> root.cal-detect-y-max;
+                                    decimals: 2;
+                                    changed(v) => {}
+                                }
                             }
                         }
 

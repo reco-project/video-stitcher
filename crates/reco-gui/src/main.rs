@@ -1547,7 +1547,19 @@ fn main() -> anyhow::Result<()> {
         };
 
         let tmp_dir = std::env::temp_dir().join("reco-roi");
-        let _ = std::fs::create_dir_all(&tmp_dir);
+        if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
+            log::error!("Failed to create ROI temp dir {}: {e}", tmp_dir.display());
+            let mut s = state_ref.borrow_mut();
+            if let Some(app) = app_weak.upgrade() {
+                s.toasts.push(
+                    crate::toast::Severity::Error,
+                    "ROI editor",
+                    format!("Cannot create temp dir: {e}"),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+            }
+            return;
+        }
         let left_png = tmp_dir.join("left.png");
         let right_png = tmp_dir.join("right.png");
 
@@ -1561,16 +1573,29 @@ fn main() -> anyhow::Result<()> {
         };
         let seek_str = format!("{:.2}", current_secs);
         let extract_frame = |video: &std::path::Path, out: &std::path::Path, seek: &str| {
-            std::process::Command::new("ffmpeg")
+            match std::process::Command::new("ffmpeg")
                 .args(["-y", "-ss", seek, "-i"])
                 .arg(video)
                 .args(["-frames:v", "1", "-q:v", "2"])
                 .arg(out)
                 .output()
-                .ok();
+            {
+                Ok(output) => {
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        log::warn!("ffmpeg frame extraction failed for {}: {stderr}", video.display());
+                    }
+                }
+                Err(e) => log::error!("ffmpeg not found or failed to run: {e}"),
+            }
         };
         extract_frame(&left, &left_png, &seek_str);
         extract_frame(&right, &right_png, &seek_str);
+        log::info!(
+            "ROI frame extraction: left={} right={}",
+            left_png.exists(),
+            right_png.exists()
+        );
 
         let html_template =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/roi_editor.html");
@@ -1611,17 +1636,27 @@ fn main() -> anyhow::Result<()> {
             .replace("'{{CAL_PATH}}'", &format!("'{}'", cal_path.display()));
 
         let out_html = tmp_dir.join("roi_editor.html");
-        if let Err(e) = std::fs::write(&out_html, html) {
+        if let Err(e) = std::fs::write(&out_html, &html) {
             log::error!("Failed to write ROI editor HTML: {e}");
+            let mut s = state_ref.borrow_mut();
+            if let Some(app) = app_weak.upgrade() {
+                s.toasts.push(
+                    crate::toast::Severity::Error,
+                    "ROI editor",
+                    format!("Cannot write temp file: {e}"),
+                );
+                crate::toast::sync_to_ui(&s.toasts, &app);
+            }
             return;
         }
-
         log::info!(
-            "Opening ROI editor with embedded frames from t={seek_str}s: {}",
+            "ROI editor: wrote {} bytes to {}, opening in browser",
+            html.len(),
             out_html.display()
         );
 
-        if let Err(e) = open::that(&out_html) {
+        let url = format!("file://{}", out_html.display());
+        if let Err(e) = open::that(&url) {
             log::error!("Failed to open ROI editor: {e}");
             let mut s = state_ref.borrow_mut();
             if let Some(app) = app_weak.upgrade() {
@@ -1836,10 +1871,16 @@ fn main() -> anyhow::Result<()> {
         };
         drop(s);
 
-        let (use_imu_seeds, cal_frames) = app_weak
+        let (use_imu_seeds, cal_frames, akaze_threshold, detect_y_min, detect_y_max) = app_weak
             .upgrade()
-            .map(|a| (a.get_use_imu_seeds(), a.get_calibration_frames().max(2) as usize))
-            .unwrap_or((false, 4));
+            .map(|a| (
+                a.get_use_imu_seeds(),
+                a.get_calibration_frames().max(2) as usize,
+                a.get_cal_akaze_threshold() as f64,
+                a.get_cal_detect_y_min() as f64,
+                a.get_cal_detect_y_max() as f64,
+            ))
+            .unwrap_or((false, 4, 0.0001, 0.05, 0.95));
 
         if let Some(app) = app_weak.upgrade() {
             app.set_calibrating(true);
@@ -1866,14 +1907,19 @@ fn main() -> anyhow::Result<()> {
             // to settle on, which especially helps at 4K where AKAZE
             // feature matches are noisier per frame.
             log::info!(
-                "Auto-calibrate: {cal_frames} frame pairs, skip={current_time_secs:.1}s, imu_seeds={use_imu_seeds}"
+                "Auto-calibrate: {cal_frames} frames, skip={current_time_secs:.1}s, \
+                 imu_seeds={use_imu_seeds}, akaze={akaze_threshold}, \
+                 detect_y=[{detect_y_min:.2}, {detect_y_max:.2}]"
             );
-            let config = reco_calibrate::CalibrationConfig {
+            let mut config = reco_calibrate::CalibrationConfig {
                 num_frames: cal_frames,
                 skip_start_secs: current_time_secs,
                 use_imu_rotation_seeds: use_imu_seeds,
                 ..Default::default()
             };
+            config.akaze.threshold = akaze_threshold;
+            config.akaze.detect_y_min = detect_y_min;
+            config.akaze.detect_y_max = detect_y_max;
             let result = reco_calibrate::video::calibrate_videos(
                 &left,
                 &right,
@@ -2788,7 +2834,7 @@ fn main() -> anyhow::Result<()> {
 
     app.on_open_bug_report(move || {
         let url = format!(
-            "https://github.com/nicksarris/reco/issues/new?labels=bug&title=&body={}",
+            "https://github.com/reco-project/video-stitcher/issues/new?labels=bug&title=&body={}",
             "(paste bug report from clipboard here)"
         );
         if let Err(e) = open::that(&url) {
@@ -2816,7 +2862,7 @@ fn main() -> anyhow::Result<()> {
                 s.toasts.push(
                     crate::toast::Severity::Info,
                     "Bug report copied to clipboard",
-                    "Paste into a GitHub issue at github.com/nicksarris/reco/issues/new",
+                    "Paste into a GitHub issue or send via the telemetry server.",
                 );
             }
             Err(e) => {
