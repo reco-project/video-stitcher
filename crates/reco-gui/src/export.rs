@@ -112,12 +112,23 @@ pub fn run_export(
 
     use reco_core::source::FrameSource;
     if let Ok(source) = reco_io::adapters::FfmpegFileSource::open_from_inputs(&left, &right, 0)
-        && let Some(total) = source.total_frames()
+        && let Some(full_total) = source.total_frames()
     {
+        let left_path = left.first_path();
+        let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left_path)
+            .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
+            .unwrap_or(30.0);
+
+        let start_frames = if start_secs > 0.0 { (start_secs as f64 * fps) as u64 } else { 0 };
+        let range_total = if duration_secs > 0.0 {
+            (duration_secs as f64 * fps) as u64
+        } else {
+            full_total.saturating_sub(start_frames)
+        };
         let weak = app_weak.clone();
         let _ = slint::invoke_from_event_loop(move || {
             if let Some(app) = weak.upgrade() {
-                app.set_export_frames_total(total as i32);
+                app.set_export_frames_total(range_total as i32);
             }
         });
     }

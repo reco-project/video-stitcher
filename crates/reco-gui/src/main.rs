@@ -1607,23 +1607,6 @@ fn main() -> anyhow::Result<()> {
             right_png.exists()
         );
 
-        let html_template =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/roi_editor.html");
-        if !html_template.exists() {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor not found",
-                    format!("Expected at {}", html_template.display()),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        }
-
-        // Build self-contained HTML with base64-embedded images and
-        // inline calibration JSON so browsers don't block file:// loads.
         use base64::Engine;
         let b64 = base64::engine::general_purpose::STANDARD;
 
@@ -1638,7 +1621,9 @@ fn main() -> anyhow::Result<()> {
 
         let cal_json_str = std::fs::read_to_string(&cal_path).unwrap_or_else(|_| "{}".into());
 
-        let template = std::fs::read_to_string(&html_template).unwrap_or_default();
+        // Template is embedded at compile time so deployed binaries work
+        // without needing the source tree.
+        let template = include_str!("../../../resources/roi_editor.html");
         let html = template
             .replace("'{{LEFT_IMAGE_DATA}}'", &format!("'{left_data}'"))
             .replace("'{{RIGHT_IMAGE_DATA}}'", &format!("'{right_data}'"))
@@ -1665,8 +1650,7 @@ fn main() -> anyhow::Result<()> {
             out_html.display()
         );
 
-        let url = format!("file://{}", out_html.display());
-        if let Err(e) = open::that(&url) {
+        if let Err(e) = open::that(out_html.as_os_str()) {
             log::error!("Failed to open ROI editor: {e}");
             let mut s = state_ref.borrow_mut();
             if let Some(app) = app_weak.upgrade() {
@@ -1901,7 +1885,17 @@ fn main() -> anyhow::Result<()> {
         let interrupted = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
 
-        // Store the receiver so the UI timer can poll it.
+        // Preserve user-picked lens profiles for recalibration.
+        let (existing_left_params, existing_right_params) = {
+            let s = state_ref.borrow();
+            if let Some(bridge) = s.bridge.as_ref() {
+                let cal = bridge.renderer().pipeline().calibration();
+                (Some(cal.left.clone()), Some(cal.right.clone()))
+            } else {
+                (s.cal_baseline_left_params.clone(), s.cal_baseline_right_params.clone())
+            }
+        };
+
         {
             let mut s = state_ref.borrow_mut();
             s.cal_rx = Some(rx);
@@ -1930,11 +1924,16 @@ fn main() -> anyhow::Result<()> {
             config.akaze.threshold = akaze_threshold;
             config.akaze.detect_y_min = detect_y_min;
             config.akaze.detect_y_max = detect_y_max;
+            if existing_left_params.is_some() {
+                log::info!("Re-calibrating with user-picked lens profiles");
+            }
             let result = reco_calibrate::video::calibrate_videos(
                 &left,
                 &right,
                 reco_calibrate::video::CalibrateVideosOptions {
                     config: Some(config),
+                    left_params: existing_left_params,
+                    right_params: existing_right_params,
                     ..Default::default()
                 },
                 &mut |progress| {
@@ -2596,15 +2595,6 @@ fn main() -> anyhow::Result<()> {
             if let Some(model_path) = s.user_settings.ai_model_path.as_ref() {
                 app.set_export_model_path(model_path.to_string_lossy().to_string().into());
             }
-            // ...then override blend width with the live preview's
-            // current value, which is usually what the user actually
-            // wants applied to the export (overrides the saved default).
-            if let Some(bridge) = s.bridge.as_ref() {
-                let cur_blend = bridge.renderer().pipeline().viewport().blend_width;
-                app.set_export_blend_width(cur_blend);
-            } else {
-                app.set_export_blend_width(s.user_settings.default_blend_width);
-            }
             let clip_secs = if s.playback.fps() > 0.0 {
                 s.playback.total_frames().unwrap_or(0) as f32 / s.playback.fps() as f32
             } else {
@@ -2714,7 +2704,7 @@ fn main() -> anyhow::Result<()> {
         let height = app.get_export_height() as u32;
         let codec_str = app.get_export_codec().to_string();
         let quality_str = app.get_export_quality().to_string();
-        let blend = app.get_export_blend_width();
+        let blend = app.get_blend_width();
         let start_secs = app.get_export_start_secs();
         let end_secs = app.get_export_end_secs();
         let clip_dur = app.get_clip_duration_secs();
