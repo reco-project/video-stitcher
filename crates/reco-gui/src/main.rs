@@ -225,10 +225,13 @@ struct AppState {
     /// calibration debug where the user wants to see beyond the stitched
     /// region. Bound to the Slint `use-constrained-look` checkbox.
     use_constrained_look: bool,
-    /// Toast notification manager. Events across the app (calibration
-    /// failures, export errors, invalid file picks) push into this,
-    /// the main timer expires aged entries, and both push a refreshed
-    /// model into the Slint `toasts` property.
+    /// When true, the preview shows a single camera through orthographic
+    /// projection instead of the stitched panorama.
+    lens_preview_active: bool,
+    /// Which camera to show in lens preview mode ("left" or "right").
+    lens_preview_side: String,
+    /// Lens correction amount for the preview (0.0 = raw, 1.0 = full).
+    lens_correction_amount: f32,
     toasts: ToastManager,
 }
 
@@ -338,6 +341,9 @@ impl AppState {
             cal_baseline_left_params: None,
             cal_baseline_right_params: None,
             use_constrained_look: true,
+            lens_preview_active: false,
+            lens_preview_side: "left".into(),
+            lens_correction_amount: 1.0,
             toasts: ToastManager::default(),
         }
     }
@@ -585,6 +591,24 @@ impl AppState {
             u: &frame.right.u,
             v: &frame.right.v,
         };
+
+        // Lens preview mode: render single camera flat
+        if self.lens_preview_active {
+            let bridge = self.bridge.as_mut()?;
+            let cal = bridge.renderer().pipeline().calibration();
+            let (planes, params) = if self.lens_preview_side == "right" {
+                (&right, cal.right.clone())
+            } else {
+                (&left, cal.left.clone())
+            };
+            return match bridge.render_lens_preview(planes, &params, self.lens_correction_amount) {
+                Ok(img) => Some(img),
+                Err(e) => {
+                    log::error!("Lens preview error: {e}");
+                    None
+                }
+            };
+        }
 
         let rig_tilt = bridge.renderer().pipeline().viewport().rig_tilt;
         let pose = self.pose.render_pose(rig_tilt);
@@ -2100,7 +2124,7 @@ fn main() -> anyhow::Result<()> {
 
     let state_ref = Rc::clone(&state);
     let app_weak = app.as_weak();
-    app.on_lens_pick(move |idx| {
+    app.on_lens_pick(move |idx, side| {
         let app_ref = app_weak.upgrade();
         let query = app_ref
             .as_ref()
@@ -2114,8 +2138,9 @@ fn main() -> anyhow::Result<()> {
         if idx < results.len() {
             let summary = &results[idx];
             if let Some(params) = db.load_by_summary(summary) {
+                let side_str = side.as_str();
                 log::info!(
-                    "Lens picker: applying {} - {} ({}x{})",
+                    "Lens picker: applying {} - {} ({}x{}) to {side_str}",
                     summary.camera,
                     summary.lens,
                     summary.width,
@@ -2132,19 +2157,28 @@ fn main() -> anyhow::Result<()> {
                     cy: params.cy * scale_h,
                     d: params.d,
                 };
+                let (apply_left, apply_right) = match side_str {
+                    "left" => (Some(scaled.clone()), None),
+                    "right" => (None, Some(scaled.clone())),
+                    _ => (Some(scaled.clone()), Some(scaled.clone())),
+                };
                 if let Some(bridge) = s.bridge.as_mut() {
                     bridge
                         .renderer_mut()
-                        .update_camera_params(Some(scaled.clone()), Some(scaled.clone()));
+                        .update_camera_params(apply_left, apply_right);
                 }
                 s.preview_dirty = true;
                 if let Some(app) = app_ref.as_ref() {
+                    if side_str != "right" {
+                        app.set_lens_left_camera(summary.camera.clone().into());
+                        app.set_lens_left_source("Picker".into());
+                    }
+                    if side_str != "left" {
+                        app.set_lens_right_camera(summary.camera.clone().into());
+                        app.set_lens_right_source("Picker".into());
+                    }
                     set_lens_sliders(app, &scaled, &scaled);
                     app.set_lens_dirty(true);
-                    app.set_lens_left_camera(summary.camera.clone().into());
-                    app.set_lens_left_source("Picker".into());
-                    app.set_lens_right_camera(summary.camera.clone().into());
-                    app.set_lens_right_source("Picker".into());
                     app.set_lens_info_available(true);
                 }
             }
@@ -2241,6 +2275,32 @@ fn main() -> anyhow::Result<()> {
             s.clamp_targets();
         }
         s.preview_dirty = true;
+    });
+
+    // ── Lens preview mode callbacks ──
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_lens_preview(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.lens_preview_active = app.get_lens_preview_active();
+        s.lens_preview_side = app.get_lens_preview_side().to_string();
+        s.preview_dirty = true;
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_lens_correction(move |amount| {
+        let mut s = state_ref.borrow_mut();
+        s.lens_correction_amount = amount;
+        s.preview_dirty = true;
+        // Also sync the Slint property
+        if let Some(app) = app_weak.upgrade() {
+            app.set_lens_correction_amount(amount);
+        }
     });
 
     // ── Toast dismissal ──

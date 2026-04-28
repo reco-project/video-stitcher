@@ -408,11 +408,19 @@ export component RecoApp inherits Window {
 
     // Lens picker dialog.
     callback lens-search-changed(string);
-    callback lens-pick(int);
+    callback lens-pick(int, string);
     callback lens-pick-file();
     in-out property <bool> lens-picker-open: false;
     in-out property <string> lens-search-query: "";
     in-out property <[string]> lens-search-results: [];
+    in-out property <string> lens-pick-side: "both";
+
+    // Lens preview mode (single-camera flat view).
+    in-out property <bool> lens-preview-active: false;
+    in-out property <string> lens-preview-side: "left";
+    in-out property <float> lens-correction-amount: 1.0;
+    callback changed-lens-preview();
+    callback changed-lens-correction(float);
 
     // Constrained-look checkbox. Fires when the user toggles it so Rust
     // can sync `AppState.use_constrained_look` with the UI property
@@ -935,6 +943,34 @@ export component RecoApp inherits Window {
                         Button {
                             text: "Browse profiles...";
                             clicked => { root.lens-picker-open = true; }
+                        }
+
+                        Rectangle { height: 4px; }
+
+                        // Lens preview: shows one camera flat with adjustable correction
+                        CheckBox {
+                            text: "Lens preview";
+                            checked <=> root.lens-preview-active;
+                            toggled => { root.changed-lens-preview(); }
+                        }
+
+                        if root.lens-preview-active: VerticalLayout {
+                            spacing: 4px;
+
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Left"; primary: root.lens-preview-side == "left"; clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); } }
+                                Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
+                            }
+
+                            LabeledSlider {
+                                label: "Correction";
+                                minimum: 0;
+                                maximum: 1.0;
+                                value <=> root.lens-correction-amount;
+                                decimals: 2;
+                                changed(v) => { root.changed-lens-correction(v); }
+                            }
                         }
 
                         // Fine-tune toggle
@@ -1908,11 +1944,25 @@ export component RecoApp inherits Window {
                     padding: 20px;
                     spacing: 10px;
 
-                    Text {
-                        text: "Browse Lens Profiles";
-                        color: #fff;
-                        font-size: 16px;
-                        font-weight: 600;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: "Browse Lens Profiles";
+                            color: #fff;
+                            font-size: 16px;
+                            font-weight: 600;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                        }
+                        Text { text: "Apply to:"; color: #aaa; font-size: 11px; vertical-alignment: center; }
+                        ComboBox {
+                            model: ["Both", "Left", "Right"];
+                            current-value: root.lens-pick-side == "left" ? "Left" : root.lens-pick-side == "right" ? "Right" : "Both";
+                            width: 80px;
+                            selected(v) => {
+                                root.lens-pick-side = v == "Left" ? "left" : v == "Right" ? "right" : "both";
+                            }
+                        }
                     }
 
                     LineEdit {
@@ -1946,7 +1996,7 @@ export component RecoApp inherits Window {
 
                                 lens-row := TouchArea {
                                     clicked => {
-                                        root.lens-pick(idx);
+                                        root.lens-pick(idx, root.lens-pick-side);
                                         root.lens-picker-open = false;
                                     }
                                 }

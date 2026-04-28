@@ -26,8 +26,9 @@
 //! alias the same storage. Slint's texture pool / compositor makes
 //! per-frame allocation inexpensive; the driver reuses VRAM slabs.
 
-use reco_core::calibration::MatchCalibration;
+use reco_core::calibration::{CameraParams, MatchCalibration};
 use reco_core::gpu::GpuContext;
+use reco_core::lens_preview::LensPreviewRenderer;
 use reco_core::pipeline::{PipelineError, YuvPlanes};
 use reco_core::stitch_renderer::StitchRenderer;
 use reco_core::viewport::ViewportConfig;
@@ -36,15 +37,16 @@ use reco_core::wgpu;
 /// Bridges reco-core GPU rendering to Slint via a shared wgpu device.
 ///
 /// Each `render_frame` call produces a fresh `slint::Image` backed by a
-/// GPU texture on Slint's own device — the UI displays it with zero
+/// GPU texture on Slint's own device - the UI displays it with zero
 /// copies.
 pub struct PreviewBridge {
     renderer: StitchRenderer,
     viewport_width: u32,
     viewport_height: u32,
-    /// Texture format matching the one we use for render targets. Kept
-    /// as a field so both allocation and renderer setup agree.
     texture_format: wgpu::TextureFormat,
+    lens_preview: Option<LensPreviewRenderer>,
+    input_width: u32,
+    input_height: u32,
 }
 
 impl PreviewBridge {
@@ -99,6 +101,9 @@ impl PreviewBridge {
             viewport_width,
             viewport_height,
             texture_format,
+            lens_preview: None,
+            input_width,
+            input_height,
         })
     }
 
@@ -187,5 +192,33 @@ impl PreviewBridge {
         self.viewport_width = width;
         self.viewport_height = height;
         self.renderer.pipeline_mut().resize(width, height);
+    }
+
+    /// Render a single camera through orthographic projection with
+    /// optional lens correction. Returns a Slint image for display.
+    ///
+    /// `correction_amount`: 0.0 = raw input, 1.0 = full KB4 correction.
+    pub fn render_lens_preview(
+        &mut self,
+        planes: &YuvPlanes<'_>,
+        params: &CameraParams,
+        correction_amount: f32,
+    ) -> Result<slint::Image, PipelineError> {
+        let lp = self.lens_preview.get_or_insert_with(|| {
+            let aspect = self.input_width as f32 / self.input_height as f32;
+            LensPreviewRenderer::new(
+                self.renderer.gpu(),
+                self.input_width,
+                self.input_height,
+                aspect,
+                self.texture_format,
+            )
+        });
+
+        let texture = lp.render_yuv(self.renderer.gpu(), planes, params, correction_amount);
+
+        slint::Image::try_from(texture).map_err(|_| PipelineError::InvalidConfig {
+            reason: "slint::Image::try_from(wgpu::Texture) failed".into(),
+        })
     }
 }
