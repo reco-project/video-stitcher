@@ -66,7 +66,9 @@ jobs:
           sudo apt-get install -y \
             libavcodec-dev libavformat-dev libavutil-dev \
             libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
-            pkg-config clang
+            pkg-config clang \
+            libfontconfig1-dev libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxkbcommon-dev
 
       # ----------------------------------------------------------------
       # Linux ARM64 cross-compilation
@@ -168,8 +170,10 @@ jobs:
       # ----------------------------------------------------------------
       # Build
       # ----------------------------------------------------------------
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }} -p reco-cli
+      - name: Build release binaries
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p reco-cli --features load-dynamic
+          cargo build --release --target ${{ matrix.target }} -p reco-gui --features load-dynamic || echo "::warning::reco-gui build failed on ${{ matrix.name }} (cross-compile or missing deps)"
 
       # ----------------------------------------------------------------
       # Package
@@ -180,6 +184,11 @@ jobs:
           staging="reco-${{ github.ref_name }}-${{ matrix.name }}"
           mkdir "$staging"
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$staging/"
+          # Include GUI binary if it was built
+          gui_bin="target/${{ matrix.target }}/release/reco-gui"
+          if [ -f "$gui_bin" ]; then
+            cp "$gui_bin" "$staging/"
+          fi
           cp LICENSE "$staging/"
           tar czf "$staging.tar.gz" "$staging"
 
@@ -190,8 +199,12 @@ jobs:
           $staging = "reco-${{ github.ref_name }}-${{ matrix.name }}"
           New-Item -ItemType Directory -Path $staging | Out-Null
           Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary }}" "$staging\"
+          # Include GUI binary if it was built
+          $guiBin = "target\${{ matrix.target }}\release\reco-gui.exe"
+          if (Test-Path $guiBin) {
+            Copy-Item $guiBin "$staging\"
+          }
           Copy-Item LICENSE "$staging\"
-          # Bundle FFmpeg DLLs so the binary is self-contained on Windows
           if (Test-Path "$env:FFMPEG_DLL_DIR") {
             Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
           }

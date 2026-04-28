@@ -1173,6 +1173,32 @@ fn main() -> anyhow::Result<()> {
         app.set_dark_mode(s.user_settings.dark_mode);
     }
 
+    // Check for updates in the background.
+    // Stores result in an Arc<Mutex> that the timer tick reads once.
+    let update_result: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    {
+        let result = Arc::clone(&update_result);
+        std::thread::spawn(move || {
+            let current = env!("CARGO_PKG_VERSION");
+            let resp = ureq::get(
+                "https://api.github.com/repos/reco-project/video-stitcher/releases/latest",
+            )
+            .header("User-Agent", "reco-gui")
+            .call();
+            if let Ok(mut resp) = resp
+                && let Ok(body) = resp.body_mut().read_to_string()
+                && let Ok(json) = serde_json::from_str::<serde_json::Value>(&body)
+                && let Some(tag) = json["tag_name"].as_str()
+            {
+                let latest = tag.trim_start_matches('v');
+                if latest != current && latest > current {
+                    log::info!("Update available: {current} -> {latest}");
+                    *result.lock().unwrap() = Some(tag.to_string());
+                }
+            }
+        });
+    }
+
     let mut codecs: Vec<slint::SharedString> = Vec::new();
     for (label, codec) in [
         ("h264", reco_io::ffmpeg::encoder::VideoCodec::H264),
@@ -3090,11 +3116,26 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     let timer = slint::Timer::default();
+    let update_check = Arc::clone(&update_result);
     timer.start(
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(TICK_INTERVAL_MS as u64),
         move || {
             let mut s = state_ref.borrow_mut();
+
+            // Check for update notification from the background thread.
+            if let Ok(mut guard) = update_check.try_lock()
+                && let Some(tag) = guard.take()
+                && let Some(app) = app_weak.upgrade()
+            {
+                        s.toasts.push_with_ttl(
+                            Severity::Info,
+                            format!("Update available: {tag}"),
+                            "Visit the website to download the latest version.",
+                            Duration::from_secs(15),
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+            }
 
             // Poll for calibration results from the background thread.
             if let Some(rx) = &s.cal_rx
