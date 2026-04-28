@@ -937,7 +937,14 @@ fn main() -> anyhow::Result<()> {
     // its own instance/adapter/device; we capture the handles later
     // via the rendering notifier.
     slint::BackendSelector::new()
-        .require_wgpu_28(slint::wgpu_28::WGPUConfiguration::default())
+        .require_wgpu_28({
+            let mut config = slint::wgpu_28::WGPUConfiguration::default();
+            if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
+                settings.device_required_limits =
+                    reco_core::wgpu::Limits::downlevel_defaults();
+            }
+            config
+        })
         .select()?;
 
     let app = RecoApp::new()?;
