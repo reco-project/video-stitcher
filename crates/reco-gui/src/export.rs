@@ -208,8 +208,6 @@ pub fn run_export(
         job = job.with_replay_recording(&replay_path);
     }
 
-
-
     let telem_weak = app_weak.clone();
     job = job.on_session(move |session, _source| {
         let sink = ExportTelemetrySink { window: telem_weak };
