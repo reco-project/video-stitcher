@@ -208,16 +208,7 @@ pub fn run_export(
         job = job.with_replay_recording(&replay_path);
     }
 
-    #[cfg(feature = "autocam")]
-    if autocam_enabled {
-        let probe = reco_detect::probe_execution_providers();
-        if probe.is_available() && !probe.can_run_on_gpu_frames {
-            log::info!(
-                "AI requested but GPU inference unavailable. Forcing CPU decode for ORT compatibility."
-            );
-            job = job.force_cpu_decode();
-        }
-    }
+
 
     let telem_weak = app_weak.clone();
     job = job.on_session(move |session, _source| {

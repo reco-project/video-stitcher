@@ -125,6 +125,8 @@ pub enum DecodeBackend {
     Vaapi,
     /// Apple VideoToolbox (macOS).
     VideoToolbox,
+    /// D3D11VA (Windows - AMD/Intel/NVIDIA).
+    D3d11va,
 }
 
 impl std::fmt::Display for DecodeBackend {
@@ -134,6 +136,7 @@ impl std::fmt::Display for DecodeBackend {
             Self::Cuda => write!(f, "NVDEC (CUDA)"),
             Self::Vaapi => write!(f, "VA-API"),
             Self::VideoToolbox => write!(f, "VideoToolbox"),
+            Self::D3d11va => write!(f, "D3D11VA"),
         }
     }
 }
@@ -851,6 +854,11 @@ fn try_hwaccel(
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
             DecodeBackend::Cuda,
+        ),
+        #[cfg(target_os = "windows")]
+        (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_D3D11VA,
+            DecodeBackend::D3d11va,
         ),
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,

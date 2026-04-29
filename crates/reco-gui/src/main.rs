@@ -1,5 +1,4 @@
-// windows_subsystem disabled for debugging - shows console on Windows
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 //! Reco GUI - Slint-based panoramic video stitcher.
 //!
@@ -1130,59 +1129,26 @@ fn install_panic_hook() {
 }
 
 fn main() -> anyhow::Result<()> {
-    // Direct file write for crash diagnostics - bypasses tracing entirely.
-    // This survives even if the tracing subscriber fails to flush.
-    let diag_path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("reco-gui-diag.txt")))
-        .unwrap_or_else(|| std::path::PathBuf::from("reco-gui-diag.txt"));
-    let _ = std::fs::write(&diag_path, "1: main() entered\n");
-
     init_tracing();
     install_panic_hook();
-
-    let _ = std::fs::write(&diag_path, "2: tracing + panic hook ready\n");
-
     reco_io::init();
-    let _ = std::fs::write(&diag_path, "3: reco_io::init() done\n");
 
     // Select wgpu 28 as Slint's rendering backend. This MUST happen
-    // before creating any window. downlevel_defaults() ensures iGPUs
+    // before creating any window. femtovg-wgpu renders UI through
+    // wgpu (DX12/Vulkan) instead of OpenGL, so it works on GPUs
+    // that lack an OpenGL driver. downlevel_defaults() ensures iGPUs
     // and older hardware can satisfy the device limits.
-    let _ = std::fs::write(&diag_path, "4: wgpu 28 init starting\n");
-    log::info!("Initializing wgpu 28 backend...");
-    // Try femtovg (OpenGL) first. If it fails (e.g. AMD iGPU without
-    // OpenGL), fall back to software renderer. wgpu-28 texture interop
-    // is independent of the UI renderer.
-    let selector = slint::BackendSelector::new().require_wgpu_28({
-        let mut config = slint::wgpu_28::WGPUConfiguration::default();
-        if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
-            settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
-        }
-        config
-    });
-    if selector.select().is_err() {
-        log::warn!("Default renderer failed (OpenGL unavailable?). Trying software renderer.");
-        let _ = std::fs::write(&diag_path, "4b: retrying with software renderer\n");
-        slint::BackendSelector::new()
-            .renderer_name("software".into())
-            .require_wgpu_28({
-                let mut config = slint::wgpu_28::WGPUConfiguration::default();
-                if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
-                    settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
-                }
-                config
-            })
-            .select()?;
-    }
-    let _ = std::fs::write(&diag_path, "5: wgpu 28 ready\n");
-    log::info!("wgpu 28 backend ready.");
+    slint::BackendSelector::new()
+        .require_wgpu_28({
+            let mut config = slint::wgpu_28::WGPUConfiguration::default();
+            if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
+                settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
+            }
+            config
+        })
+        .select()?;
 
-    let _ = std::fs::write(&diag_path, "6: creating window\n");
-    log::info!("Creating window...");
     let app = RecoApp::new()?;
-    let _ = std::fs::write(&diag_path, "7: window created\n");
-    log::info!("Window created.");
     let state = Rc::new(RefCell::new(AppState::new()));
 
     // Initialize opt-in telemetry if the user enabled it.
@@ -3384,13 +3350,7 @@ fn main() -> anyhow::Result<()> {
         app.set_files_panel_open(true);
     }
 
-    let _ = std::fs::write(&diag_path, "8: entering event loop\n");
-    app.window()
-        .set_position(slint::LogicalPosition::new(100.0, 100.0));
-    app.window()
-        .set_size(slint::LogicalSize::new(1280.0, 820.0));
     app.run()?;
-    let _ = std::fs::write(&diag_path, "9: event loop exited\n");
     Ok(())
 }
 
