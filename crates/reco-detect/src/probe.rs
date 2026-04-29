@@ -139,6 +139,24 @@ pub fn probe_execution_providers() -> AiProbeResult {
             }
         }
 
+        // DirectML EP (Windows - AMD/Intel/NVIDIA via DX12)
+        #[cfg(target_os = "windows")]
+        {
+            let result: Result<(), String> = match Session::builder() {
+                Ok(b) => b
+                    .with_execution_providers([ort::ep::DirectML::default().build()])
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            match result {
+                Ok(()) => {
+                    providers.push("DirectML".into());
+                }
+                Err(e) => errors.push(format!("DirectML: {e}")),
+            }
+        }
+
         // CPU is always available when ORT loads.
         providers.push("CPU".into());
     }

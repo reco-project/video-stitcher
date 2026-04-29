@@ -74,8 +74,7 @@ pub fn create_ort_session(
             )));
         }
     }
-    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
-    .with_intra_threads(4)?;
+    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?;
 
     // Try TensorRT EP first (JIT-compiles for any GPU arch including Blackwell),
     // then CUDA EP, then fall back to CPU.
@@ -134,6 +133,21 @@ pub fn create_ort_session(
             }
             Err(e) => {
                 log::warn!("ORT: CoreML EP failed ({e}), falling back to CPU");
+                e.recover()
+            }
+        }
+    };
+
+    // DirectML EP for Windows (AMD/Intel/NVIDIA via DX12).
+    #[cfg(target_os = "windows")]
+    let mut builder = {
+        match builder.with_execution_providers([ort::ep::DirectML::default().build()]) {
+            Ok(b) => {
+                log::info!("ORT: DirectML execution provider enabled");
+                b
+            }
+            Err(e) => {
+                log::warn!("ORT: DirectML EP failed ({e}), falling back to CPU");
                 e.recover()
             }
         }
