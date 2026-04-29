@@ -1151,15 +1151,30 @@ fn main() -> anyhow::Result<()> {
     // and older hardware can satisfy the device limits.
     let _ = std::fs::write(&diag_path, "4: wgpu 28 init starting\n");
     log::info!("Initializing wgpu 28 backend...");
-    slint::BackendSelector::new()
-        .require_wgpu_28({
-            let mut config = slint::wgpu_28::WGPUConfiguration::default();
-            if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
-                settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
-            }
-            config
-        })
-        .select()?;
+    // Try femtovg (OpenGL) first. If it fails (e.g. AMD iGPU without
+    // OpenGL), fall back to software renderer. wgpu-28 texture interop
+    // is independent of the UI renderer.
+    let selector = slint::BackendSelector::new().require_wgpu_28({
+        let mut config = slint::wgpu_28::WGPUConfiguration::default();
+        if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
+            settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
+        }
+        config
+    });
+    if selector.select().is_err() {
+        log::warn!("Default renderer failed (OpenGL unavailable?). Trying software renderer.");
+        let _ = std::fs::write(&diag_path, "4b: retrying with software renderer\n");
+        slint::BackendSelector::new()
+            .renderer_name("software".into())
+            .require_wgpu_28({
+                let mut config = slint::wgpu_28::WGPUConfiguration::default();
+                if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
+                    settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
+                }
+                config
+            })
+            .select()?;
+    }
     let _ = std::fs::write(&diag_path, "5: wgpu 28 ready\n");
     log::info!("wgpu 28 backend ready.");
 
@@ -3370,8 +3385,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     let _ = std::fs::write(&diag_path, "8: entering event loop\n");
-    app.window().set_position(slint::LogicalPosition::new(100.0, 100.0));
-    app.window().set_size(slint::LogicalSize::new(1280.0, 820.0));
+    app.window()
+        .set_position(slint::LogicalPosition::new(100.0, 100.0));
+    app.window()
+        .set_size(slint::LogicalSize::new(1280.0, 820.0));
     app.run()?;
     let _ = std::fs::write(&diag_path, "9: event loop exited\n");
     Ok(())
