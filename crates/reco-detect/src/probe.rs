@@ -57,11 +57,17 @@ pub fn probe_execution_providers() -> AiProbeResult {
     #[allow(unused_mut)]
     let mut can_run_on_gpu_frames = false;
 
-    // Test ORT itself loads.
-    let builder = match Session::builder() {
-        Ok(b) => Some(b),
-        Err(e) => {
+    // Test ORT itself loads. With load-dynamic, the library may not be
+    // installed. The ort crate panics with .expect() if the DLL/so isn't
+    // found, so we catch the panic here.
+    let builder = match std::panic::catch_unwind(Session::builder) {
+        Ok(Ok(b)) => Some(b),
+        Ok(Err(e)) => {
             errors.push(format!("ORT init: {e}"));
+            None
+        }
+        Err(_) => {
+            errors.push("ONNX Runtime library not found. AI detection is unavailable.".to_string());
             None
         }
     };

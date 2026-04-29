@@ -62,10 +62,20 @@ pub fn create_ort_session(
     model_path: &Path,
     fallback_labels: Vec<String>,
 ) -> Result<(Session, u32, Vec<String>), ort::Error> {
+    // With load-dynamic, Session::builder() panics if the ORT library
+    // isn't installed. Catch the panic and convert to an error.
     #[allow(unused_mut)]
-    let mut builder = Session::builder()?
-        .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
-        .with_intra_threads(4)?;
+    let mut builder = match std::panic::catch_unwind(Session::builder) {
+        Ok(r) => r?,
+        Err(_) => {
+            return Err(ort::Error::wrap(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "ONNX Runtime library not found. Install onnxruntime or place the DLL next to the executable.",
+            )));
+        }
+    }
+    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
+    .with_intra_threads(4)?;
 
     // Try TensorRT EP first (JIT-compiles for any GPU arch including Blackwell),
     // then CUDA EP, then fall back to CPU.
