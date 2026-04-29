@@ -1129,14 +1129,26 @@ fn install_panic_hook() {
 }
 
 fn main() -> anyhow::Result<()> {
+    // Direct file write for crash diagnostics - bypasses tracing entirely.
+    // This survives even if the tracing subscriber fails to flush.
+    let diag_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("reco-gui-diag.txt")))
+        .unwrap_or_else(|| std::path::PathBuf::from("reco-gui-diag.txt"));
+    let _ = std::fs::write(&diag_path, "1: main() entered\n");
+
     init_tracing();
     install_panic_hook();
 
+    let _ = std::fs::write(&diag_path, "2: tracing + panic hook ready\n");
+
     reco_io::init();
+    let _ = std::fs::write(&diag_path, "3: reco_io::init() done\n");
 
     // Select wgpu 28 as Slint's rendering backend. This MUST happen
     // before creating any window. downlevel_defaults() ensures iGPUs
     // and older hardware can satisfy the device limits.
+    let _ = std::fs::write(&diag_path, "4: wgpu 28 init starting\n");
     log::info!("Initializing wgpu 28 backend...");
     slint::BackendSelector::new()
         .require_wgpu_28({
@@ -1147,10 +1159,13 @@ fn main() -> anyhow::Result<()> {
             config
         })
         .select()?;
+    let _ = std::fs::write(&diag_path, "5: wgpu 28 ready\n");
     log::info!("wgpu 28 backend ready.");
 
+    let _ = std::fs::write(&diag_path, "6: creating window\n");
     log::info!("Creating window...");
     let app = RecoApp::new()?;
+    let _ = std::fs::write(&diag_path, "7: window created\n");
     log::info!("Window created.");
     let state = Rc::new(RefCell::new(AppState::new()));
 
