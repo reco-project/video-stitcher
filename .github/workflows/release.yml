@@ -185,29 +185,29 @@ jobs:
         shell: pwsh
         run: |
           $nupkg = "$env:RUNNER_TEMP\ort-dml.nupkg"
-          Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime.DirectML/1.21.1" -OutFile $nupkg
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.24.4/microsoft.ml.onnxruntime.directml.1.24.4.nupkg" -OutFile $nupkg
           Expand-Archive -Path $nupkg -DestinationPath "$env:RUNNER_TEMP\ort-dml"
           $dll = "$env:RUNNER_TEMP\ort-dml\runtimes\win-x64\native\onnxruntime.dll"
           echo "ORT_DLL=$dll" >> $env:GITHUB_ENV
-          echo "Bundled ONNX Runtime 1.21.1 DirectML ($('{0:N1}' -f ((Get-Item $dll).Length / 1MB)) MB)"
+          echo "Bundled ONNX Runtime 1.24.4 DirectML ($('{0:N1}' -f ((Get-Item $dll).Length / 1MB)) MB)"
 
       - name: Download ONNX Runtime (macOS)
         if: runner.os == 'macOS'
         run: |
-          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v1.21.1/onnxruntime-osx-${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x86_64' }}-1.21.1.tgz" -o /tmp/ort.tgz
+          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x86_64' }}-1.24.4.tgz" -o /tmp/ort.tgz
           tar xzf /tmp/ort.tgz -C /tmp
           ORT_LIB=$(find /tmp/onnxruntime-* -name "libonnxruntime*.dylib" | head -1)
           echo "ORT_LIB=$ORT_LIB" >> "$GITHUB_ENV"
-          echo "Bundled ONNX Runtime 1.21.1 ($(du -h "$ORT_LIB" | cut -f1))"
+          echo "Bundled ONNX Runtime 1.24.4 ($(du -h "$ORT_LIB" | cut -f1))"
 
       - name: Download ONNX Runtime (Linux)
         if: runner.os == 'Linux' && !matrix.cross
         run: |
-          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v1.21.1/onnxruntime-linux-x64-1.21.1.tgz" -o /tmp/ort.tgz
+          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz" -o /tmp/ort.tgz
           tar xzf /tmp/ort.tgz -C /tmp
           ORT_LIB=$(find /tmp/onnxruntime-* -name "libonnxruntime.so*" -not -type l | head -1)
           echo "ORT_LIB=$ORT_LIB" >> "$GITHUB_ENV"
-          echo "Bundled ONNX Runtime 1.21.1 CPU ($(du -h "$ORT_LIB" | cut -f1))"
+          echo "Bundled ONNX Runtime 1.24.4 CPU ($(du -h "$ORT_LIB" | cut -f1))"
 
       # ----------------------------------------------------------------
       # Package
