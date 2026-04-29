@@ -1149,7 +1149,9 @@ fn main() -> anyhow::Result<()> {
         .select()?;
     log::info!("wgpu 28 backend ready.");
 
+    log::info!("Creating window...");
     let app = RecoApp::new()?;
+    log::info!("Window created.");
     let state = Rc::new(RefCell::new(AppState::new()));
 
     // Initialize opt-in telemetry if the user enabled it.
