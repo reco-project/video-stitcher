@@ -3368,7 +3368,11 @@ fn main() -> anyhow::Result<()> {
         app.set_files_panel_open(true);
     }
 
+    let _ = std::fs::write(&diag_path, "8: entering event loop\n");
+    app.window().set_position(slint::LogicalPosition::new(100.0, 100.0));
+    app.window().set_size(slint::LogicalSize::new(1280.0, 820.0));
     app.run()?;
+    let _ = std::fs::write(&diag_path, "9: event loop exited\n");
     Ok(())
 }
 
