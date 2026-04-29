@@ -1,4 +1,5 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// windows_subsystem disabled for debugging - shows console on Windows
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 //! Reco GUI - Slint-based panoramic video stitcher.
 //!
