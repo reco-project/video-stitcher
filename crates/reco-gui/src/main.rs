@@ -1110,10 +1110,17 @@ fn main() -> anyhow::Result<()> {
     reco_io::init();
 
     // Select wgpu 28 as Slint's rendering backend. This MUST happen
-    // before creating any window.
+    // before creating any window. downlevel_defaults() ensures iGPUs
+    // and older hardware can satisfy the device limits.
     log::info!("Initializing wgpu 28 backend...");
     slint::BackendSelector::new()
-        .require_wgpu_28(slint::wgpu_28::WGPUConfiguration::default())
+        .require_wgpu_28({
+            let mut config = slint::wgpu_28::WGPUConfiguration::default();
+            if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
+                settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
+            }
+            config
+        })
         .select()?;
     log::info!("wgpu 28 backend ready.");
 
