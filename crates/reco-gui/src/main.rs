@@ -1109,12 +1109,11 @@ fn main() -> anyhow::Result<()> {
 
     reco_io::init();
 
-    // Select wgpu 28 as Slint's rendering backend. This MUST happen
-    // before creating any window — it configures the backend for the
-    // entire process. `WGPUConfiguration::default()` lets Slint create
-    // its own instance/adapter/device; we capture the handles later
-    // via the rendering notifier.
-    slint::BackendSelector::new()
+    // Select wgpu 28 as Slint's rendering backend. Falls back to the
+    // default (FemtoVG or software) if wgpu init fails (e.g. iGPU
+    // driver issues). Preview rendering requires wgpu; without it the
+    // app still opens but preview won't work.
+    let wgpu_ok = slint::BackendSelector::new()
         .require_wgpu_28({
             let mut config = slint::wgpu_28::WGPUConfiguration::default();
             if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
@@ -1122,7 +1121,14 @@ fn main() -> anyhow::Result<()> {
             }
             config
         })
-        .select()?;
+        .select()
+        .is_ok();
+    if !wgpu_ok {
+        log::warn!(
+            "wgpu 28 backend failed, falling back to default renderer. GPU preview will not be available."
+        );
+        slint::BackendSelector::new().select()?;
+    }
 
     let app = RecoApp::new()?;
     let state = Rc::new(RefCell::new(AppState::new()));
