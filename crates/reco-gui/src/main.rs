@@ -1070,6 +1070,31 @@ fn init_tracing() {
 
     let _ = tracing_log::LogTracer::init();
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    // On Windows release builds, windows_subsystem="windows" detaches
+    // stderr so tracing output is lost. Write to a log file alongside
+    // the executable so we can always diagnose startup failures.
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    {
+        let log_path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("reco-gui.log")))
+            .unwrap_or_else(|| std::path::PathBuf::from("reco-gui.log"));
+        if let Ok(file) = std::fs::File::create(&log_path) {
+            let _ = tracing_subscriber::registry()
+                .with(filter)
+                .with(
+                    fmt::layer()
+                        .with_target(true)
+                        .with_level(true)
+                        .with_ansi(false)
+                        .with_writer(file),
+                )
+                .try_init();
+            return;
+        }
+    }
+
     let _ = tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer().with_target(true).with_level(true))
