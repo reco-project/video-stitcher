@@ -113,10 +113,10 @@ pub struct VtFrame {
 
 /// A decoded D3D11VA frame referencing the D3D11 array texture pool.
 ///
-/// `texture` is the pool's `ID3D11Texture2D` (same pointer for all frames)
-/// and `array_slice` selects which slice within the pool holds this frame.
-/// The caller must stage-copy the frame before the next decode call, as
-/// the decoder may reuse the slice.
+/// Holds an `av_frame_ref`-ed copy of the decoded AVFrame, preventing
+/// the D3D11VA pool from recycling this array slice until the frame is
+/// dropped. Without this, the decode thread could overwrite the slice
+/// before the session thread stages it.
 #[cfg(target_os = "windows")]
 pub struct D3d11Frame {
     /// Pointer to the D3D11VA decode pool texture (`ID3D11Texture2D*`).
@@ -129,10 +129,24 @@ pub struct D3d11Frame {
     pub height: u32,
     /// Presentation timestamp in microseconds.
     pub timestamp_us: i64,
+    /// Retained AVFrame reference. Prevents D3D11VA from recycling
+    /// the array slice until this frame is dropped.
+    _retained_frame: *mut ffi::AVFrame,
 }
 
 #[cfg(target_os = "windows")]
 unsafe impl Send for D3d11Frame {}
+
+#[cfg(target_os = "windows")]
+impl Drop for D3d11Frame {
+    fn drop(&mut self) {
+        if !self._retained_frame.is_null() {
+            unsafe {
+                ffi::av_frame_free(&mut self._retained_frame);
+            }
+        }
+    }
+}
 
 /// Re-export the canonical YUV frame type from reco-core.
 pub use reco_core::source::YuvFrame;
@@ -792,12 +806,25 @@ impl VideoDecoder {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
         let timestamp_us = self.pts_to_us(raw.pts);
 
+        // Create a refcounted copy of the AVFrame. This increments the
+        // reference count on the D3D11VA pool slice, preventing FFmpeg
+        // from recycling it for the next decode. The slice is released
+        // when the D3d11Frame is dropped (after staging copy).
+        let retained = unsafe {
+            let frame = ffi::av_frame_alloc();
+            assert!(!frame.is_null(), "av_frame_alloc failed");
+            let ret = ffi::av_frame_ref(frame, self.decoded_frame.as_ptr());
+            assert!(ret >= 0, "av_frame_ref failed: {ret}");
+            frame
+        };
+
         D3d11Frame {
             texture: raw.data[0] as *mut std::ffi::c_void,
             array_slice: raw.data[1] as usize,
             width: self.width,
             height: self.height,
             timestamp_us,
+            _retained_frame: retained,
         }
     }
 
