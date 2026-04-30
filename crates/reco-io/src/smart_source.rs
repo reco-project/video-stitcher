@@ -537,7 +537,7 @@ impl SmartFileSource {
 
     /// Take the D3D11VA wgpu views (ownership transfer to session).
     #[cfg(target_os = "windows")]
-    pub fn take_d3d11_views(&mut self) -> Option<crate::d3d11_interop::D3d11WgpuViews> {
+    pub fn take_d3d11_views(&mut self) -> Option<reco_core::d3d11_interop::D3d11WgpuViews> {
         match &mut self.mode {
             SourceMode::D3d11ZeroCopy(state) => state.handles.views.take(),
             _ => None,

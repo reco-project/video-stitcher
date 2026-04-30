@@ -385,7 +385,11 @@ pub fn spawn_d3d11_decode_pair(
             ctx,
             left_dec.width(),
             left_dec.height(),
-        )?
+        )
+        .map_err(|e| reco_core::source::SourceError::Init {
+            path: left.first_path().display().to_string(),
+            reason: format!("D3D11 staging pool: {e}"),
+        })?
     };
 
     // Apply sync offset before spawning threads.
