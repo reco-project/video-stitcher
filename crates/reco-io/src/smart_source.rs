@@ -594,26 +594,6 @@ impl FrameSource for SmartFileSource {
             #[cfg(target_os = "windows")]
             SourceMode::D3d11ZeroCopy(state) => match state.pair_rx.recv() {
                 Ok((left, right)) => {
-                    // Build readback closure that captures the retained AVFrame
-                    // pointers. When called by the session on detection frames,
-                    // this uses av_hwframe_transfer_data (FFmpeg's optimized
-                    // GPU->CPU path) instead of the D3D11 staging readback
-                    // which suffers from device context contention.
-                    // Build readback closure. Uses a Send-safe wrapper to
-                    // pass the retained AVFrame pointer across threads.
-                    // SAFETY: the pointer is valid as long as _retained_pair
-                    // (set below) is alive, which outlives the closure.
-                    let readback = {
-                        let lp = left.retained_frame_ptr();
-                        let rp = right.retained_frame_ptr();
-                        let wrapped = crate::ffmpeg::decoder::D3d11ReadbackPair::new(lp, rp);
-                        let cb: Box<
-                            dyn FnOnce() -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String>
-                                + Send,
-                        > = Box::new(move || wrapped.transfer());
-                        Some(cb)
-                    };
-
                     let frame = StereoFrame::D3d11Resident {
                         left_texture: left.texture,
                         left_slice: left.array_slice,
@@ -621,12 +601,11 @@ impl FrameSource for SmartFileSource {
                         right_slice: right.array_slice,
                         d3d11_device: left.d3d11_device,
                         d3d11_context: left.d3d11_context,
-                        cpu_readback: readback,
                     };
                     // Keep the D3d11Frames alive so their av_frame_ref
                     // prevents the D3D11VA pool from recycling the slices.
-                    // The readback closure captures the raw retained_frame
-                    // pointers which remain valid as long as _retained_pair lives.
+                    // Dropped on the NEXT next_frame() call, after the
+                    // session has staged and rendered this frame.
                     state._retained_pair = Some((left, right));
                     Ok(Some(frame))
                 }

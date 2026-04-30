@@ -213,23 +213,37 @@ impl CpuYoloDetector {
         frame: &RawFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("yolo_detect");
+        let detect_t0 = std::time::Instant::now();
 
         let (scale, pad_x, pad_y) = {
             reco_core::profile_scope!("yolo_preprocess");
             self.preprocess(frame)
         };
+        let preprocess_time = detect_t0.elapsed();
 
         let sz = self.input_size as usize;
         let input_tensor =
             TensorRef::from_array_view(([1, 3, sz, sz], self.rgb_chw_buf.as_slice()))
                 .map_err(|e| DetectorError::InferenceFailed(format!("tensor build: {e}")))?;
 
+        let inference_t0 = std::time::Instant::now();
         let outputs = {
             reco_core::profile_scope!("yolo_inference");
             self.session
                 .run(ort::inputs![input_tensor])
                 .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?
         };
+        let inference_time = inference_t0.elapsed();
+
+        log::info!(
+            "detect {camera:?}: preprocess={:.1}ms inference={:.1}ms ({}x{} -> {}x{})",
+            preprocess_time.as_secs_f64() * 1000.0,
+            inference_time.as_secs_f64() * 1000.0,
+            frame.width,
+            frame.height,
+            self.input_size,
+            self.input_size,
+        );
 
         // Borrow the output tensor's backing buffer instead of cloning
         // it into a Vec. `outputs` owns it; postprocess finishes before
