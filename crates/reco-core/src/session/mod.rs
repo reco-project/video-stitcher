@@ -1755,14 +1755,16 @@ impl StitchSession {
                     let left_slot = self.frame_count as usize % 2;
                     let right_slot = left_slot + 2;
 
-                    // Sync: ensure previous wgpu render is done before
-                    // overwriting the staging slot it was reading from.
-                    // Use non-blocking poll - the D3D11 staging copy's own
-                    // event query wait (~0.2ms) provides enough delay for
-                    // the DX12 render to complete in practice.
+                    // Sync: ensure previous wgpu render that read from
+                    // this staging slot has completed before we overwrite it.
+                    // With 2 slots per camera, frame N reuses the slot from
+                    // frame N-2, so we wait for all prior GPU work.
                     let poll_t0 = std::time::Instant::now();
                     if self.frame_count >= 2 {
-                        let _ = self.core.gpu().device().poll(wgpu::PollType::Poll);
+                        let _ = self.core.gpu().device().poll(wgpu::PollType::Wait {
+                            submission_index: None,
+                            timeout: None,
+                        });
                     }
                     let poll_time = poll_t0.elapsed();
 
