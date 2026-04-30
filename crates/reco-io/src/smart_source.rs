@@ -599,6 +599,8 @@ impl FrameSource for SmartFileSource {
                         left_slice: left.array_slice,
                         right_texture: right.texture,
                         right_slice: right.array_slice,
+                        d3d11_device: left.d3d11_device,
+                        d3d11_context: left.d3d11_context,
                     };
                     // Keep the D3d11Frames alive so their av_frame_ref
                     // prevents the D3D11VA pool from recycling the slices.

@@ -20,19 +20,15 @@ use crate::gpu::GpuContext;
 use std::ffi::c_void;
 use thiserror::Error;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE};
-use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
+use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
-    D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
-    D3D11_USAGE_DEFAULT, D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Query,
+    D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
+    D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Device, ID3D11DeviceContext, ID3D11Query,
     ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
-use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIResource1,
-};
+use windows::Win32::Graphics::Dxgi::IDXGIResource1;
 use windows::core::Interface;
 
 /// Errors from D3D11VA interop.
@@ -84,62 +80,57 @@ pub struct D3d11StagingPool {
 }
 
 impl D3d11StagingPool {
-    /// Create a staging pool on the same physical adapter as wgpu's DX12 device.
-    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, D3d11InteropError> {
-        use wgpu::hal::api::Dx12;
-
+    /// Create a staging pool using FFmpeg's D3D11 device.
+    ///
+    /// `d3d11_device_ptr` and `d3d11_context_ptr` must be the raw
+    /// `ID3D11Device*` and `ID3D11DeviceContext*` from FFmpeg's
+    /// `AVD3D11VADeviceContext`. Using FFmpeg's device ensures
+    /// `CopySubresourceRegion` operates on same-device resources.
+    ///
+    /// # Safety
+    /// The raw pointers must be valid COM interfaces from FFmpeg's
+    /// hw_device_ctx. They are AddRef'd internally and remain valid
+    /// for the lifetime of the pool.
+    pub unsafe fn new(
+        gpu: &GpuContext,
+        d3d11_device_ptr: *mut c_void,
+        d3d11_context_ptr: *mut c_void,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
         }
-
-        // Match the DXGI adapter by PCI vendor+device ID from wgpu's AdapterInfo.
-        let target_vendor = gpu.adapter_info.vendor;
-        let target_device = gpu.adapter_info.device;
-
-        let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
-        let adapter = find_adapter_by_pci_id(&factory, target_vendor, target_device)?;
-        let adapter_desc = unsafe { adapter.GetDesc1()? };
-        let adapter_name = String::from_utf16_lossy(
-            &adapter_desc
-                .Description
-                .iter()
-                .take_while(|c| **c != 0)
-                .copied()
-                .collect::<Vec<_>>(),
-        );
-        log::info!(
-            "D3D11 interop: matched adapter '{adapter_name}' \
-             (vendor=0x{target_vendor:04x}, device=0x{target_device:04x})",
-        );
-
-        // Create D3D11 device on that adapter.
-        let mut d3d11_device: Option<ID3D11Device> = None;
-        let mut d3d11_context: Option<ID3D11DeviceContext> = None;
-        unsafe {
-            D3D11CreateDevice(
-                &adapter,
-                D3D_DRIVER_TYPE_UNKNOWN,
-                HMODULE::default(),
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                None,
-                D3D11_SDK_VERSION,
-                Some(&mut d3d11_device),
-                None,
-                Some(&mut d3d11_context),
-            )?;
+        if d3d11_device_ptr.is_null() || d3d11_context_ptr.is_null() {
+            return Err(D3d11InteropError::D3d11(
+                "null D3D11 device/context from FFmpeg".into(),
+            ));
         }
-        let device = d3d11_device
-            .ok_or_else(|| D3d11InteropError::D3d11("D3D11CreateDevice returned None".into()))?;
-        let context = d3d11_context.ok_or_else(|| {
-            D3d11InteropError::D3d11("D3D11CreateDevice returned no context".into())
-        })?;
+
+        // Wrap FFmpeg's raw COM pointers. from_raw takes ownership
+        // (no AddRef), so we clone to AddRef for our own reference,
+        // then forget the original to avoid double-Release.
+        let device: ID3D11Device = {
+            let raw = ID3D11Device::from_raw(d3d11_device_ptr);
+            let cloned = raw.clone(); // AddRef
+            std::mem::forget(raw); // don't Release FFmpeg's ref
+            cloned
+        };
+        let context: ID3D11DeviceContext = {
+            let raw = ID3D11DeviceContext::from_raw(d3d11_context_ptr);
+            let cloned = raw.clone();
+            std::mem::forget(raw);
+            cloned
+        };
+
+        log::info!("D3D11 interop: using FFmpeg's D3D11 device ({d3d11_device_ptr:?})");
 
         // Create event query for staging copy synchronization.
         let query_desc = D3D11_QUERY_DESC {
             Query: D3D11_QUERY(0), // D3D11_QUERY_EVENT = 0
             MiscFlags: 0,
         };
-        let event_query: ID3D11Query = unsafe {
+        let event_query: ID3D11Query = {
             let mut query: Option<ID3D11Query> = None;
             device.CreateQuery(&query_desc, Some(&mut query))?;
             query.ok_or_else(|| D3d11InteropError::D3d11("CreateQuery returned None".into()))?
@@ -320,30 +311,6 @@ impl D3d11StagingPool {
     pub fn height(&self) -> u32 {
         self.height
     }
-}
-
-/// Find a DXGI adapter matching the given PCI vendor and device IDs.
-fn find_adapter_by_pci_id(
-    factory: &IDXGIFactory1,
-    vendor_id: u32,
-    device_id: u32,
-) -> Result<IDXGIAdapter1, D3d11InteropError> {
-    let mut i = 0u32;
-    loop {
-        let adapter: IDXGIAdapter1 = match unsafe { factory.EnumAdapters1(i) } {
-            Ok(a) => a,
-            Err(_) => break,
-        };
-        let desc = unsafe { adapter.GetDesc1()? };
-        if desc.VendorId == vendor_id && desc.DeviceId == device_id {
-            return Ok(adapter);
-        }
-        i += 1;
-    }
-
-    Err(D3d11InteropError::Dxgi(format!(
-        "no DXGI adapter with vendor=0x{vendor_id:04x}, device=0x{device_id:04x}"
-    )))
 }
 
 /// Import a D3D11 shared handle into wgpu as an NV12 texture.

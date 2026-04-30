@@ -290,6 +290,11 @@ pub enum StereoFrame {
         right_texture: *mut std::ffi::c_void,
         /// Array slice index within the D3D11VA decode pool for right camera.
         right_slice: usize,
+        /// FFmpeg's D3D11 device pointer (ID3D11Device*).
+        /// Passed on first frame to initialize the staging pool.
+        d3d11_device: *mut std::ffi::c_void,
+        /// FFmpeg's D3D11 device context pointer (ID3D11DeviceContext*).
+        d3d11_context: *mut std::ffi::c_void,
     },
 }
 

@@ -129,6 +129,10 @@ pub struct D3d11Frame {
     pub height: u32,
     /// Presentation timestamp in microseconds.
     pub timestamp_us: i64,
+    /// FFmpeg's D3D11 device pointer (ID3D11Device*).
+    pub d3d11_device: *mut std::ffi::c_void,
+    /// FFmpeg's D3D11 device context pointer (ID3D11DeviceContext*).
+    pub d3d11_context: *mut std::ffi::c_void,
     /// Retained AVFrame reference. Prevents D3D11VA from recycling
     /// the array slice until this frame is dropped.
     _retained_frame: *mut ffi::AVFrame,
@@ -498,6 +502,39 @@ impl VideoDecoder {
         self.is_full_range
     }
 
+    /// Extract FFmpeg's D3D11 device and device context pointers.
+    ///
+    /// Returns `(ID3D11Device*, ID3D11DeviceContext*)` from FFmpeg's
+    /// hw_device_ctx. The staging pool must use these for
+    /// `CopySubresourceRegion` because D3D11 requires same-device copies.
+    ///
+    /// Returns `None` if the backend is not D3D11VA.
+    #[cfg(target_os = "windows")]
+    pub fn d3d11_device_ptrs(&self) -> Option<(*mut std::ffi::c_void, *mut std::ffi::c_void)> {
+        if self.backend != DecodeBackend::D3d11va || self._hw_device_ref.is_null() {
+            return None;
+        }
+        unsafe {
+            // AVBufferRef.data -> AVHWDeviceContext
+            let hw_device_ctx = (*self._hw_device_ref).data as *mut ffi::AVHWDeviceContext;
+            if hw_device_ctx.is_null() {
+                return None;
+            }
+            // AVHWDeviceContext.hwctx -> AVD3D11VADeviceContext
+            let d3d11_ctx = (*hw_device_ctx).hwctx as *mut ffi::AVD3D11VADeviceContext;
+            if d3d11_ctx.is_null() {
+                return None;
+            }
+            let device = (*d3d11_ctx).device as *mut std::ffi::c_void;
+            let context = (*d3d11_ctx).device_context as *mut std::ffi::c_void;
+            if device.is_null() || context.is_null() {
+                return None;
+            }
+            log::debug!("D3D11VA device ptrs: device={device:?}, context={context:?}");
+            Some((device, context))
+        }
+    }
+
     /// Rotation from stream metadata (0, 90, 180, 270 degrees).
     ///
     /// The CPU decode path applies this by reversing buffers in `extract_yuv`.
@@ -818,12 +855,18 @@ impl VideoDecoder {
             frame
         };
 
+        let (dev, ctx) = self
+            .d3d11_device_ptrs()
+            .unwrap_or((ptr::null_mut(), ptr::null_mut()));
+
         D3d11Frame {
             texture: raw.data[0] as *mut std::ffi::c_void,
             array_slice: raw.data[1] as usize,
             width: self.width,
             height: self.height,
             timestamp_us,
+            d3d11_device: dev,
+            d3d11_context: ctx,
             _retained_frame: retained,
         }
     }

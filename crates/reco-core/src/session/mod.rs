@@ -1722,13 +1722,24 @@ impl StitchSession {
                     left_slice,
                     right_texture,
                     right_slice,
+                    d3d11_device,
+                    d3d11_context,
                 } => {
                     if self.d3d11_staging_pool.is_none() {
                         let (w, h) = self.core.pipeline().source_info();
-                        match crate::d3d11_interop::D3d11StagingPool::new(self.core.gpu(), w, h) {
+                        match unsafe {
+                            crate::d3d11_interop::D3d11StagingPool::new(
+                                self.core.gpu(),
+                                *d3d11_device,
+                                *d3d11_context,
+                                w,
+                                h,
+                            )
+                        } {
                             Ok(pool) => {
                                 log::info!(
-                                    "D3D11VA staging pool created: {}x{}, 4 NV12 slots",
+                                    "D3D11VA staging pool created: {}x{}, 4 NV12 slots \
+                                     (using FFmpeg's D3D11 device)",
                                     w,
                                     h
                                 );
