@@ -20,13 +20,13 @@
 pub mod detection;
 #[cfg(test)]
 mod tests;
-#[cfg(target_os = "linux")]
-mod zero_copy_linux;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+mod zero_copy_gpu;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod zero_copy_macos;
 
-#[cfg(target_os = "linux")]
-pub use zero_copy_linux::SharedTextureSet;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub use zero_copy_gpu::SharedTextureSet;
 
 // `LiveStitchSession` + `LiveSessionConfig` + `LiveSessionError` were
 // deleted 2026-04-19 (plan-execution §3 M3 step 3). Consumers that
@@ -502,10 +502,10 @@ pub struct StitchSession {
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
     /// Slot-free senders for decode backpressure (GPU zero-copy).
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_slot_free_tx: Option<(
         std::sync::mpsc::SyncSender<u8>,
         std::sync::mpsc::SyncSender<u8>,
@@ -521,7 +521,7 @@ pub struct StitchSession {
     /// rebuilding views every frame. TextureView holds an Arc on
     /// the underlying texture so the shared-memory lifetime is
     /// still bound to the SharedTextureSet the source owns.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     gpu_shared_views: Option<[wgpu::TextureView; 8]>,
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
@@ -627,13 +627,13 @@ impl StitchSession {
             event_sink: None,
             telemetry: crate::telemetry::TelemetryCollector::new(),
             detection_filters: Vec::new(),
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_bind_groups: None,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_slot_free_tx: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_buf_info: None,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             gpu_shared_views: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
@@ -1488,7 +1488,7 @@ impl StitchSession {
     ///
     /// The `buf_info` is extracted once before the frame loop to avoid
     /// per-frame clones and satisfy the borrow checker.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     fn step_gpu_with_bufs(
         &mut self,
         buf_info: &Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
@@ -1590,7 +1590,7 @@ impl StitchSession {
     ///
     /// For the Layer 1 API (`run_zero_copy_linux`), this is handled
     /// internally and you don't need to call it.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn setup_gpu_source(&mut self, shared: &SharedTextureSet) {
         let t = &shared.textures;
         let bind_groups = self.core.pipeline_mut().configure_gpu_source(
@@ -1654,7 +1654,7 @@ impl StitchSession {
         // Drop GPU slot senders so decode threads can exit gracefully.
         // Without this, SmartFileSource::drop() deadlocks because the
         // session's cloned senders keep the decode threads' recv() alive.
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         {
             self.gpu_slot_free_tx = None;
         }
@@ -1676,7 +1676,7 @@ impl StitchSession {
         // Extract GPU buf info once before the loop to avoid per-frame clones.
         // Needed to satisfy the borrow checker (immutable borrow of buf_info
         // vs mutable borrow for detect_and_update_director_gpu).
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         let gpu_buf_info = self.gpu_buf_info.clone();
 
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
@@ -1699,7 +1699,7 @@ impl StitchSession {
             }
 
             match &frame {
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
                 StereoFrame::GpuResident {
                     left_slot,
                     right_slot,
