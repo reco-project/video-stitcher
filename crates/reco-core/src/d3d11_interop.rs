@@ -63,18 +63,24 @@ impl From<D3d11InteropError> for crate::session::SessionError {
     }
 }
 
-/// Double-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
+/// Triple-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
 ///
-/// Pre-allocates 4 staging textures (2 per camera, ping-pong) with shared
-/// handles. Each staging texture is imported into wgpu as an NV12 texture
-/// with pre-built Y and UV plane views.
+/// Pre-allocates 6 staging textures (3 per camera) with shared handles.
+/// Triple buffering ensures frame N never overwrites a slot still being
+/// rendered by frame N-1, eliminating the need for `poll(Wait)`.
+///
+/// Slot layout: [left_0, left_1, left_2, right_0, right_1, right_2]
+/// Left slot = frame_count % 3, right slot = left_slot + 3.
+const SLOTS_PER_CAMERA: usize = 3;
+const TOTAL_SLOTS: usize = SLOTS_PER_CAMERA * 2;
+
 pub struct D3d11StagingPool {
     _device: ID3D11Device,
     context: ID3D11DeviceContext,
-    staging: [ID3D11Texture2D; 4],
-    _wgpu_textures: [wgpu::Texture; 4],
-    y_views: [wgpu::TextureView; 4],
-    uv_views: [wgpu::TextureView; 4],
+    staging: Vec<ID3D11Texture2D>,
+    _wgpu_textures: Vec<wgpu::Texture>,
+    y_views: Vec<wgpu::TextureView>,
+    uv_views: Vec<wgpu::TextureView>,
     event_query: ID3D11Query,
     /// CPU-readable staging texture for detection readback.
     /// Created lazily on first detection frame.
@@ -158,12 +164,12 @@ impl D3d11StagingPool {
                 as u32,
         };
 
-        let mut staging_textures: Vec<ID3D11Texture2D> = Vec::with_capacity(4);
-        let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(4);
-        let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(4);
-        let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(4);
+        let mut staging_textures: Vec<ID3D11Texture2D> = Vec::with_capacity(TOTAL_SLOTS);
+        let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(TOTAL_SLOTS);
+        let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(TOTAL_SLOTS);
+        let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(TOTAL_SLOTS);
 
-        for i in 0..4 {
+        for i in 0..TOTAL_SLOTS {
             let staging: ID3D11Texture2D = unsafe {
                 let mut tex: Option<ID3D11Texture2D> = None;
                 device.CreateTexture2D(&desc, None, Some(&mut tex))?;
@@ -214,18 +220,20 @@ impl D3d11StagingPool {
         }
 
         log::info!(
-            "D3D11VA staging pool ready: {}x{} NV12, 4 slots",
+            "D3D11VA staging pool ready: {}x{} NV12, {} slots ({} per camera)",
             width,
-            height
+            height,
+            TOTAL_SLOTS,
+            SLOTS_PER_CAMERA
         );
 
         Ok(Self {
             _device: device,
             context,
-            staging: staging_textures.try_into().unwrap(),
-            _wgpu_textures: wgpu_textures.try_into().unwrap(),
-            y_views: y_views.try_into().unwrap(),
-            uv_views: uv_views.try_into().unwrap(),
+            staging: staging_textures,
+            _wgpu_textures: wgpu_textures,
+            y_views,
+            uv_views,
             event_query,
             readback_staging: None,
             width,
@@ -246,9 +254,9 @@ impl D3d11StagingPool {
         if src_texture.is_null() {
             return Err(D3d11InteropError::StagingCopy("null source texture".into()));
         }
-        if slot >= 4 {
+        if slot >= TOTAL_SLOTS {
             return Err(D3d11InteropError::StagingCopy(format!(
-                "slot {slot} out of range (0..4)"
+                "slot {slot} out of range (0..{TOTAL_SLOTS})"
             )));
         }
 
@@ -323,9 +331,9 @@ impl D3d11StagingPool {
     /// luma plane and `uv_data` is the half-resolution interleaved chroma.
     /// Only called on detection frames (every N frames).
     pub fn readback_nv12(&mut self, slot: usize) -> Result<(Vec<u8>, Vec<u8>), D3d11InteropError> {
-        if slot >= 4 {
+        if slot >= TOTAL_SLOTS {
             return Err(D3d11InteropError::StagingCopy(format!(
-                "readback slot {slot} out of range"
+                "readback slot {slot} out of range (0..{TOTAL_SLOTS})"
             )));
         }
 
