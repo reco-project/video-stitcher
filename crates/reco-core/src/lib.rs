@@ -105,6 +105,7 @@ pub mod lens_preview;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
 pub mod nv12_converter;
+pub mod nv12_downscale;
 /// Camera-motion policy contract — see [`Panner`](panner::Panner).
 /// The panner half of the tracker/panner split: consumes a clean
 /// [`WorldState`](tracker::WorldState) and decides where to point

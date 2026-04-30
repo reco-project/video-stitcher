@@ -555,10 +555,13 @@ pub struct StitchSession {
     #[cfg(target_os = "windows")]
     d3d11_views: Option<crate::d3d11_interop::D3d11WgpuViews>,
 
-    /// Readback callback for D3D11VA detection frames.
-    /// Called with (left_slot, right_slot) and returns NV12 plane data.
+    /// Readback callback for D3D11VA detection frames (full-res, fallback).
     #[cfg(target_os = "windows")]
     d3d11_readback: Option<Box<dyn D3d11ReadbackFn>>,
+
+    /// GPU-side NV12 downscaler for detection readback (preferred over d3d11_readback).
+    #[cfg(target_os = "windows")]
+    nv12_downscaler: Option<crate::nv12_downscale::Nv12Downscaler>,
 
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
@@ -667,6 +670,8 @@ impl StitchSession {
             d3d11_views: None,
             #[cfg(target_os = "windows")]
             d3d11_readback: None,
+            #[cfg(target_os = "windows")]
+            nv12_downscaler: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -1773,31 +1778,43 @@ impl StitchSession {
                     let should_detect = self.detection.has_detector()
                         && self.detection.should_detect(self.frame_count);
                     if should_detect {
-                        if let Some(readback) = self.d3d11_readback.as_mut() {
-                            match readback.readback(*left_slot, *right_slot) {
-                                Ok((left_rb, right_rb)) => {
-                                    let (width, height) = self.core.pipeline().source_info();
-                                    let nv12_frame = crate::source::StereoFrame::Nv12(
-                                        crate::source::Nv12FramePair {
-                                            left: crate::source::Nv12Data {
-                                                y: left_rb.y,
-                                                uv: left_rb.uv,
-                                            },
-                                            right: crate::source::Nv12Data {
-                                                y: right_rb.y,
-                                                uv: right_rb.uv,
-                                            },
-                                        },
-                                    );
-                                    let detections =
-                                        self.detection.run_detection(&nv12_frame, width, height);
-                                    self.detection.last_detections =
-                                        self.map_detections(detections);
-                                }
-                                Err(e) => {
-                                    log::warn!("D3D11VA readback failed: {e}");
-                                }
-                            }
+                        // Lazy-init the GPU downscaler on first detection frame.
+                        if self.nv12_downscaler.is_none() && self.detection.has_detector() {
+                            let ds = crate::nv12_downscale::Nv12Downscaler::new(
+                                self.core.gpu(),
+                                1280,
+                                720,
+                            );
+                            self.nv12_downscaler = Some(ds);
+                        }
+
+                        let views = self.d3d11_views.as_ref().unwrap();
+                        if let Some(ds) = self.nv12_downscaler.as_ref() {
+                            let (left_y, left_uv) = ds.downscale_and_readback(
+                                self.core.gpu(),
+                                views.y_view(left_view_idx),
+                                views.uv_view(left_view_idx),
+                            );
+                            let (right_y, right_uv) = ds.downscale_and_readback(
+                                self.core.gpu(),
+                                views.y_view(right_view_idx),
+                                views.uv_view(right_view_idx),
+                            );
+                            let nv12_frame =
+                                crate::source::StereoFrame::Nv12(crate::source::Nv12FramePair {
+                                    left: crate::source::Nv12Data {
+                                        y: left_y,
+                                        uv: left_uv,
+                                    },
+                                    right: crate::source::Nv12Data {
+                                        y: right_y,
+                                        uv: right_uv,
+                                    },
+                                });
+                            let detections =
+                                self.detection
+                                    .run_detection(&nv12_frame, ds.width(), ds.height());
+                            self.detection.last_detections = self.map_detections(detections);
                         }
                     }
                     self.fire_sink_and_update_director(start.elapsed(), should_detect)?;
