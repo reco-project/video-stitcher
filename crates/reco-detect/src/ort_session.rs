@@ -144,10 +144,12 @@ pub fn create_ort_session(
         match builder.with_execution_providers([ort::ep::DirectML::default().build()]) {
             Ok(b) => {
                 log::info!("ORT: DirectML execution provider enabled");
+                eprintln!("ORT: DirectML execution provider enabled");
                 b
             }
             Err(e) => {
                 log::warn!("ORT: DirectML EP failed ({e}), falling back to CPU");
+                eprintln!("ORT: DirectML EP FAILED ({e}), using CPU");
                 e.recover()
             }
         }
