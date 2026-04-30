@@ -26,6 +26,12 @@ pub struct SharedTexture {
     _shared_mem: CudaSharedMemory,
 }
 
+// SAFETY: SharedTexture's only non-Send field is the *mut c_void handle
+// in CudaSharedMemory, which is a Win32 NT handle that can be used from
+// any thread. The wgpu::Texture and CUDA device pointer are also thread-safe.
+unsafe impl Send for SharedTexture {}
+unsafe impl Sync for SharedTexture {}
+
 /// Create a wgpu texture backed by CUDA shared memory via DX12 import.
 pub fn create_shared_texture(
     gpu: &GpuContext,

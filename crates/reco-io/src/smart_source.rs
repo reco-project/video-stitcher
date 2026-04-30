@@ -246,7 +246,7 @@ impl SmartFileSource {
         })
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
         left: &crate::stitch_job::InputPath,
