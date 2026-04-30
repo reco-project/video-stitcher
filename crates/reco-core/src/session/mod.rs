@@ -55,27 +55,6 @@ use detection::DetectionPipeline;
 
 use thiserror::Error;
 
-/// NV12 readback data for one camera.
-#[cfg(target_os = "windows")]
-pub struct D3d11ReadbackData {
-    /// Full-resolution luma plane.
-    pub y: Vec<u8>,
-    /// Half-resolution interleaved chroma plane.
-    pub uv: Vec<u8>,
-}
-
-/// Readback callback for D3D11VA detection. Returns NV12 data for
-/// left and right cameras from the given staging slots.
-#[cfg(target_os = "windows")]
-pub trait D3d11ReadbackFn: Send {
-    /// Request NV12 readback for the given slots.
-    fn readback(
-        &mut self,
-        left_slot: usize,
-        right_slot: usize,
-    ) -> Result<(D3d11ReadbackData, D3d11ReadbackData), String>;
-}
-
 /// Compute the frame limit from optional duration and max-frames constraints.
 ///
 /// Both `duration_secs` and `max_frames` are optional. When both are provided,
@@ -550,15 +529,10 @@ pub struct StitchSession {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
 
-    /// Pre-built wgpu views for D3D11VA zero-copy rendering.
-    /// Set by the consumer before `run()` via [`set_d3d11_views`].
+    /// D3D11VA staging pool for zero-copy decode on Windows.
+    /// Created lazily when the first D3d11Resident frame arrives.
     #[cfg(target_os = "windows")]
-    d3d11_views: Option<crate::d3d11_interop::D3d11WgpuViews>,
-
-    /// Readback callback for D3D11VA detection frames.
-    /// Called with (left_slot, right_slot) and returns NV12 plane data.
-    #[cfg(target_os = "windows")]
-    d3d11_readback: Option<Box<dyn D3d11ReadbackFn>>,
+    d3d11_staging_pool: Option<crate::d3d11_interop::D3d11StagingPool>,
 
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
@@ -664,9 +638,7 @@ impl StitchSession {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
             #[cfg(target_os = "windows")]
-            d3d11_views: None,
-            #[cfg(target_os = "windows")]
-            d3d11_readback: None,
+            d3d11_staging_pool: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -940,18 +912,6 @@ impl StitchSession {
     /// Replaces any previously registered sink.
     pub fn set_detection_sink(&mut self, sink: Box<dyn DetectionSink>) {
         self.detection.set_sink(sink);
-    }
-
-    /// Set the pre-built wgpu views for D3D11VA zero-copy rendering.
-    #[cfg(target_os = "windows")]
-    pub fn set_d3d11_views(&mut self, views: crate::d3d11_interop::D3d11WgpuViews) {
-        self.d3d11_views = Some(views);
-    }
-
-    /// Set the readback callback for D3D11VA detection frames.
-    #[cfg(target_os = "windows")]
-    pub fn set_d3d11_readback(&mut self, readback: Box<dyn D3d11ReadbackFn>) {
-        self.d3d11_readback = Some(readback);
     }
 
     /// Get the current viewport position from the director, or default.
@@ -1757,60 +1717,101 @@ impl StitchSession {
                     });
                 }
                 #[cfg(target_os = "windows")]
-                StereoFrame::D3d11Staged {
-                    left_slot,
-                    right_slot,
+                StereoFrame::D3d11Resident {
+                    left_texture,
+                    left_slice,
+                    right_texture,
+                    right_slice,
+                    d3d11_device,
+                    d3d11_context,
                 } => {
-                    if self.d3d11_views.is_none() {
-                        return Err(SessionError::ZeroCopy(
-                            "D3D11 wgpu views not set (call set_d3d11_views before run)".into(),
-                        ));
+                    if self.d3d11_staging_pool.is_none() {
+                        let (w, h) = self.core.pipeline().source_info();
+                        match unsafe {
+                            crate::d3d11_interop::D3d11StagingPool::new(
+                                self.core.gpu(),
+                                *d3d11_device,
+                                *d3d11_context,
+                                w,
+                                h,
+                            )
+                        } {
+                            Ok(pool) => {
+                                log::info!(
+                                    "D3D11VA staging pool created: {}x{}, 4 NV12 slots \
+                                     (using FFmpeg's D3D11 device)",
+                                    w,
+                                    h
+                                );
+                                self.d3d11_staging_pool = Some(pool);
+                            }
+                            Err(e) => {
+                                return Err(SessionError::ZeroCopy(format!(
+                                    "D3D11 staging pool: {e}"
+                                )));
+                            }
+                        }
                     }
-                    let left_view_idx = *left_slot;
-                    let right_view_idx = *right_slot + crate::d3d11_interop::SLOTS_PER_CAMERA;
+                    // Triple buffering: 3 slots per camera. Frame N reuses
+                    // the slot from frame N-3, giving 2 full frames of GPU
+                    // pipeline time for the render to complete. No poll needed.
+                    let left_slot = self.frame_count as usize % 3;
+                    let right_slot = left_slot + 3;
+                    let poll_time = std::time::Duration::ZERO;
 
+                    // Stage: D3D11 CopySubresourceRegion + Flush + event query.
+                    let stage_t0 = std::time::Instant::now();
+                    {
+                        let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                        pool.stage_frame(*left_texture, *left_slice, left_slot)?;
+                        pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+                    }
+                    let stage_time = stage_t0.elapsed();
+
+                    // Detection: readback NV12 from staging on detection frames.
                     let detect_t0 = std::time::Instant::now();
                     let should_detect = self.detection.has_detector()
                         && self.detection.should_detect(self.frame_count);
                     if should_detect {
-                        if let Some(readback) = self.d3d11_readback.as_mut() {
-                            match readback.readback(*left_slot, *right_slot) {
-                                Ok((left_rb, right_rb)) => {
-                                    let (width, height) = self.core.pipeline().source_info();
-                                    let nv12_frame = crate::source::StereoFrame::Nv12(
-                                        crate::source::Nv12FramePair {
-                                            left: crate::source::Nv12Data {
-                                                y: left_rb.y,
-                                                uv: left_rb.uv,
-                                            },
-                                            right: crate::source::Nv12Data {
-                                                y: right_rb.y,
-                                                uv: right_rb.uv,
-                                            },
-                                        },
-                                    );
-                                    let detections =
-                                        self.detection.run_detection(&nv12_frame, width, height);
-                                    self.detection.last_detections =
-                                        self.map_detections(detections);
-                                }
-                                Err(e) => {
-                                    log::warn!("D3D11VA readback failed: {e}");
-                                }
-                            }
-                        }
+                        let readback_t0 = std::time::Instant::now();
+                        let pool_mut = self.d3d11_staging_pool.as_mut().unwrap();
+                        let (left_y, left_uv) = pool_mut.readback_nv12(left_slot)?;
+                        let (right_y, right_uv) = pool_mut.readback_nv12(right_slot)?;
+                        let readback_time = readback_t0.elapsed();
+                        eprintln!(
+                            "detection readback: {:.1}ms (2 cameras, {}x{})",
+                            readback_time.as_secs_f64() * 1000.0,
+                            pool_mut.width(),
+                            pool_mut.height(),
+                        );
+
+                        let (width, height) = self.core.pipeline().source_info();
+                        let nv12_frame =
+                            crate::source::StereoFrame::Nv12(crate::source::Nv12FramePair {
+                                left: crate::source::Nv12Data {
+                                    y: left_y,
+                                    uv: left_uv,
+                                },
+                                right: crate::source::Nv12Data {
+                                    y: right_y,
+                                    uv: right_uv,
+                                },
+                            });
+                        let detections = self.detection.run_detection(&nv12_frame, width, height);
+                        self.detection.last_detections = self.map_detections(detections);
                     }
                     self.fire_sink_and_update_director(start.elapsed(), should_detect)?;
                     let detect_time = detect_t0.elapsed();
                     let pos = self.director_position();
 
+                    // Render: create bind groups + stitch render pass.
                     let render_t0 = std::time::Instant::now();
-                    let views = self.d3d11_views.as_ref().unwrap();
+                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
                     let render_buf = self.core.render_imported_views_at_pose(
-                        views.y_view(left_view_idx),
-                        views.uv_view(left_view_idx),
-                        views.y_view(right_view_idx),
-                        views.uv_view(right_view_idx),
+                        pool.y_view(left_slot),
+                        pool.uv_view(left_slot),
+                        pool.y_view(right_slot),
+                        pool.uv_view(right_slot),
                         pos.yaw,
                         pos.pitch,
                     );
@@ -1822,7 +1823,8 @@ impl StitchSession {
                     let encode_time = encode_t0.elapsed();
 
                     self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
+                        decode: Some(decode_time + poll_time),
+                        upload: Some(stage_time),
                         detection: if should_detect {
                             Some(detect_time)
                         } else {

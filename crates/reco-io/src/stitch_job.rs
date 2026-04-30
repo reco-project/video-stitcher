@@ -578,16 +578,6 @@ impl StitchJob {
             session.setup_gpu_source(shared);
         }
 
-        #[cfg(target_os = "windows")]
-        {
-            if let Some(views) = source.take_d3d11_views() {
-                session.set_d3d11_views(views);
-            }
-            if let Some(readback) = source.take_d3d11_readback() {
-                session.set_d3d11_readback(readback);
-            }
-        }
-
         for hook in self.session_hooks.drain(..) {
             hook(&mut session, &source);
         }

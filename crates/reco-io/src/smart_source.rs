@@ -60,7 +60,17 @@ enum SourceMode {
 
 #[cfg(target_os = "windows")]
 struct WindowsZeroCopyState {
-    handles: crate::zero_copy::D3d11DecodeHandles,
+    pair_rx: std::sync::mpsc::Receiver<(
+        crate::ffmpeg::decoder::D3d11Frame,
+        crate::ffmpeg::decoder::D3d11Frame,
+    )>,
+    /// Keeps the previous frame pair's AVFrame references alive until
+    /// the next frame is requested. Without this, the D3D11VA pool
+    /// recycles the array slice before the session stages it.
+    _retained_pair: Option<(
+        crate::ffmpeg::decoder::D3d11Frame,
+        crate::ffmpeg::decoder::D3d11Frame,
+    )>,
 }
 
 #[cfg(target_os = "linux")]
@@ -433,16 +443,19 @@ impl SmartFileSource {
         right_rotation: i32,
         full_range: bool,
     ) -> Result<Self, SourceError> {
-        let handles = crate::zero_copy::spawn_d3d11_decode_pair(left, right, _gpu, sync_offset)?;
-        log::info!("SmartFileSource: D3D11VA zero-copy decode enabled (decode-thread staging)");
+        let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(left, right, sync_offset);
+        log::info!("SmartFileSource: D3D11VA zero-copy decode enabled");
 
         Ok(Self {
-            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState { handles })),
+            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
+                pair_rx,
+                _retained_pair: None,
+            })),
             info,
             pixel_format,
             left_rotation,
             right_rotation,
-            decode_mode: "D3D11VA zero-copy (decode-thread staging)",
+            decode_mode: "D3D11VA zero-copy",
             full_range,
             exhausted: false,
         })
@@ -534,27 +547,6 @@ impl SmartFileSource {
             _ => None,
         }
     }
-
-    /// Take the D3D11VA wgpu views (ownership transfer to session).
-    #[cfg(target_os = "windows")]
-    pub fn take_d3d11_views(&mut self) -> Option<reco_core::d3d11_interop::D3d11WgpuViews> {
-        match &mut self.mode {
-            SourceMode::D3d11ZeroCopy(state) => state.handles.views.take(),
-            _ => None,
-        }
-    }
-
-    /// Take the D3D11VA readback callback (ownership transfer to session).
-    #[cfg(target_os = "windows")]
-    pub fn take_d3d11_readback(&mut self) -> Option<Box<dyn reco_core::session::D3d11ReadbackFn>> {
-        match &mut self.mode {
-            SourceMode::D3d11ZeroCopy(state) => {
-                let rb = crate::zero_copy::ChannelReadbackFn::from_handles(&mut state.handles);
-                Some(Box::new(rb))
-            }
-            _ => None,
-        }
-    }
 }
 
 impl FrameSource for SmartFileSource {
@@ -600,11 +592,23 @@ impl FrameSource for SmartFileSource {
                 }
             },
             #[cfg(target_os = "windows")]
-            SourceMode::D3d11ZeroCopy(state) => match state.handles.pair_rx.recv() {
-                Ok((left_slot, right_slot)) => Ok(Some(StereoFrame::D3d11Staged {
-                    left_slot,
-                    right_slot,
-                })),
+            SourceMode::D3d11ZeroCopy(state) => match state.pair_rx.recv() {
+                Ok((left, right)) => {
+                    let frame = StereoFrame::D3d11Resident {
+                        left_texture: left.texture,
+                        left_slice: left.array_slice,
+                        right_texture: right.texture,
+                        right_slice: right.array_slice,
+                        d3d11_device: left.d3d11_device,
+                        d3d11_context: left.d3d11_context,
+                    };
+                    // Keep the D3d11Frames alive so their av_frame_ref
+                    // prevents the D3D11VA pool from recycling the slices.
+                    // Dropped on the NEXT next_frame() call, after the
+                    // session has staged and rendered this frame.
+                    state._retained_pair = Some((left, right));
+                    Ok(Some(frame))
+                }
                 Err(_) => {
                     self.exhausted = true;
                     Ok(None)
