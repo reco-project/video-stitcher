@@ -298,3 +298,95 @@ pub fn spawn_vt_decode_pair(
 
     pair_rx
 }
+
+/// Spawn a D3D11VA decode thread that sends raw texture pointers + slice indices.
+#[cfg(target_os = "windows")]
+pub fn spawn_d3d11_decode_thread(
+    input: crate::stitch_job::InputPath,
+    label: &'static str,
+) -> std::sync::mpsc::Receiver<crate::ffmpeg::decoder::D3d11Frame> {
+    use crate::ffmpeg::decoder::{D3d11Frame, VideoDecoder};
+
+    let (tx, rx) = std::sync::mpsc::sync_channel::<D3d11Frame>(4);
+
+    std::thread::Builder::new()
+        .name(format!("d3d11_decode_{label}"))
+        .spawn(move || {
+            let mut dec = match VideoDecoder::open_input(&input) {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("Failed to open {label} video: {e}");
+                    return;
+                }
+            };
+            log::info!("D3D11VA decode thread {label}: backend={}", dec.backend());
+
+            loop {
+                match dec.next_frame_d3d11() {
+                    Ok(Some(frame)) => {
+                        if tx.send(frame).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        log::error!("{label} D3D11VA decode error: {e}");
+                        break;
+                    }
+                }
+            }
+        })
+        .expect("spawn D3D11VA decode thread");
+
+    rx
+}
+
+/// Spawn paired D3D11VA decode threads and return the pair receiver.
+///
+/// `sync_offset` applies temporal alignment: positive skips right frames,
+/// negative skips left frames.
+#[cfg(target_os = "windows")]
+pub fn spawn_d3d11_decode_pair(
+    left: &crate::stitch_job::InputPath,
+    right: &crate::stitch_job::InputPath,
+    sync_offset: i64,
+) -> std::sync::mpsc::Receiver<(
+    crate::ffmpeg::decoder::D3d11Frame,
+    crate::ffmpeg::decoder::D3d11Frame,
+)> {
+    use crate::ffmpeg::decoder::D3d11Frame;
+
+    let left_rx = spawn_d3d11_decode_thread(left.clone(), "left");
+    let right_rx = spawn_d3d11_decode_thread(right.clone(), "right");
+
+    let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<(D3d11Frame, D3d11Frame)>(4);
+    std::thread::Builder::new()
+        .name("d3d11_pair".into())
+        .spawn(move || {
+            if sync_offset > 0 {
+                for _ in 0..sync_offset {
+                    if right_rx.recv().is_err() {
+                        return;
+                    }
+                }
+                log::info!("D3D11VA sync offset: skipped {sync_offset} right frames");
+            } else if sync_offset < 0 {
+                let skip = sync_offset.unsigned_abs();
+                for _ in 0..skip {
+                    if left_rx.recv().is_err() {
+                        return;
+                    }
+                }
+                log::info!("D3D11VA sync offset: skipped {skip} left frames");
+            }
+
+            while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
+                if pair_tx.send((left, right)).is_err() {
+                    break;
+                }
+            }
+        })
+        .expect("spawn D3D11VA pairing thread");
+
+    pair_rx
+}

@@ -580,6 +580,30 @@ impl StitchPipeline {
         self.render_to_target_gpu(yaw, pitch)
     }
 
+    /// Render from pre-built GPU texture views.
+    ///
+    /// Used by the D3D11VA zero-copy path where NV12 plane views are
+    /// created from `TextureAspect::Plane0` / `Plane1`.
+    pub fn render_imported_views(
+        &mut self,
+        left_y: &wgpu::TextureView,
+        left_uv: &wgpu::TextureView,
+        right_y: &wgpu::TextureView,
+        right_uv: &wgpu::TextureView,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        let left_bg = self
+            .renderer
+            .create_bind_group_from_views(left_y, left_uv, "d3d11_left");
+        let right_bg = self
+            .renderer
+            .create_bind_group_from_views(right_y, right_uv, "d3d11_right");
+        self.renderer.set_left_bind_group(left_bg);
+        self.renderer.set_right_bind_group(right_bg);
+        self.render_to_target_gpu(yaw, pitch)
+    }
+
     /// Process a CPU-resident stereo frame and return the render command buffer.
     ///
     /// Handles YUV420P vs NV12 format differences internally.

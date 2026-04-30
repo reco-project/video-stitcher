@@ -529,6 +529,11 @@ pub struct StitchSession {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
 
+    /// D3D11VA staging pool for zero-copy decode on Windows.
+    /// Created lazily when the first D3d11Resident frame arrives.
+    #[cfg(target_os = "windows")]
+    d3d11_staging_pool: Option<crate::d3d11_interop::D3d11StagingPool>,
+
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
@@ -632,6 +637,8 @@ impl StitchSession {
             gpu_shared_views: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
+            #[cfg(target_os = "windows")]
+            d3d11_staging_pool: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -1699,6 +1706,58 @@ impl StitchSession {
                         *right_slot,
                         start.elapsed(),
                     )?;
+                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
+                        decode: Some(decode_time),
+                        total: Some(frame_t0.elapsed()),
+                        ..Default::default()
+                    });
+                }
+                #[cfg(target_os = "windows")]
+                StereoFrame::D3d11Resident {
+                    left_texture,
+                    left_slice,
+                    right_texture,
+                    right_slice,
+                } => {
+                    if self.d3d11_staging_pool.is_none() {
+                        let (w, h) = self.core.pipeline().source_info();
+                        match crate::d3d11_interop::D3d11StagingPool::new(self.core.gpu(), w, h) {
+                            Ok(pool) => {
+                                log::info!(
+                                    "D3D11VA staging pool created: {}x{}, 4 NV12 slots",
+                                    w,
+                                    h
+                                );
+                                self.d3d11_staging_pool = Some(pool);
+                            }
+                            Err(e) => {
+                                return Err(SessionError::ZeroCopy(format!(
+                                    "D3D11 staging pool: {e}"
+                                )));
+                            }
+                        }
+                    }
+                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
+
+                    let left_slot = self.frame_count as usize % 2;
+                    let right_slot = left_slot + 2;
+
+                    pool.stage_frame(*left_texture, *left_slice, left_slot)?;
+                    pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+
+                    self.update_director(start.elapsed())?;
+
+                    let pos = self.director_position();
+                    let render_buf = self.core.render_imported_views_at_pose(
+                        pool.y_view(left_slot),
+                        pool.uv_view(left_slot),
+                        pool.y_view(right_slot),
+                        pool.uv_view(right_slot),
+                        pos.yaw,
+                        pos.pitch,
+                    );
+                    self.submit_render_output(render_buf)?;
+
                     self.telemetry.record_frame(crate::telemetry::FrameTiming {
                         decode: Some(decode_time),
                         total: Some(frame_t0.elapsed()),

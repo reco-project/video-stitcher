@@ -5484,6 +5484,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "wgpu",
+ "windows 0.62.2",
 ]
 
 [[package]]

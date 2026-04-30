@@ -53,6 +53,18 @@ enum SourceMode {
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
     MetalZeroCopy(std::sync::mpsc::Receiver<reco_core::zero_copy::VtFramePair>),
+    #[cfg(target_os = "windows")]
+    D3d11ZeroCopy(Box<WindowsZeroCopyState>),
+}
+
+#[cfg(target_os = "windows")]
+struct WindowsZeroCopyState {
+    pair_rx: std::sync::mpsc::Receiver<(
+        crate::ffmpeg::decoder::D3d11Frame,
+        crate::ffmpeg::decoder::D3d11Frame,
+    )>,
+    join_handles: Vec<std::thread::JoinHandle<()>>,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[cfg(target_os = "linux")]
@@ -404,7 +416,37 @@ impl SmartFileSource {
         })
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
+    #[allow(clippy::too_many_arguments)]
+    fn open_zero_copy(
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
+        _gpu: &reco_core::gpu::GpuContext,
+        sync_offset: i64,
+        info: SourceInfo,
+        pixel_format: GpuPixelFormat,
+        left_rotation: i32,
+        right_rotation: i32,
+    ) -> Result<Self, SourceError> {
+        let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(left, right, sync_offset);
+        log::info!("SmartFileSource: D3D11VA zero-copy decode enabled");
+
+        Ok(Self {
+            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
+                pair_rx,
+                join_handles: Vec::new(),
+                shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            })),
+            info,
+            pixel_format,
+            left_rotation,
+            right_rotation,
+            decode_mode: "D3D11VA zero-copy",
+            exhausted: false,
+        })
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
         left: &crate::stitch_job::InputPath,
@@ -533,6 +575,19 @@ impl FrameSource for SmartFileSource {
                     Ok(None)
                 }
             },
+            #[cfg(target_os = "windows")]
+            SourceMode::D3d11ZeroCopy(state) => match state.pair_rx.recv() {
+                Ok((left, right)) => Ok(Some(StereoFrame::D3d11Resident {
+                    left_texture: left.texture,
+                    left_slice: left.array_slice,
+                    right_texture: right.texture,
+                    right_slice: right.array_slice,
+                })),
+                Err(_) => {
+                    self.exhausted = true;
+                    Ok(None)
+                }
+            },
         }
     }
 
@@ -562,6 +617,8 @@ impl FrameSource for SmartFileSource {
             SourceMode::GpuZeroCopy(_) => self.exhausted,
             #[cfg(target_os = "macos")]
             SourceMode::MetalZeroCopy(_) => self.exhausted,
+            #[cfg(target_os = "windows")]
+            SourceMode::D3d11ZeroCopy(_) => self.exhausted,
         }
     }
 }
@@ -605,6 +662,8 @@ fn is_backend_zero_copy_capable(backend: crate::ffmpeg::decoder::DecodeBackend) 
         DecodeBackend::Cuda => true,
         #[cfg(target_os = "macos")]
         DecodeBackend::VideoToolbox => true,
+        #[cfg(target_os = "windows")]
+        DecodeBackend::D3d11va => true,
         _ => false,
     }
 }

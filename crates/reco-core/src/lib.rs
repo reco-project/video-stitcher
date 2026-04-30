@@ -89,6 +89,8 @@ pub mod core;
 // paths used by the stitch pipeline's zero-copy bridge.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod cuda_interop;
+#[cfg(target_os = "windows")]
+pub mod d3d11_interop;
 pub mod detection_filter;
 pub mod detector;
 pub mod director;

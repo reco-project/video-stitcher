@@ -184,6 +184,12 @@ impl GpuContext {
                  10-bit video input (P010/HEVC) will not be available."
             );
         }
+        if adapter
+            .features()
+            .contains(wgpu::Features::TEXTURE_FORMAT_NV12)
+        {
+            features |= wgpu::Features::TEXTURE_FORMAT_NV12;
+        }
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -294,6 +300,12 @@ impl GpuContext {
                  10-bit video input (P010/HEVC) will not be available."
             );
         }
+        if adapter
+            .features()
+            .contains(wgpu::Features::TEXTURE_FORMAT_NV12)
+        {
+            features |= wgpu::Features::TEXTURE_FORMAT_NV12;
+        }
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -380,6 +392,11 @@ impl GpuContext {
         self.adapter_info.backend == wgpu::Backend::Metal
     }
 
+    /// Whether the GPU backend is DX12 (needed for D3D11VA interop on Windows).
+    pub fn is_dx12(&self) -> bool {
+        self.adapter_info.backend == wgpu::Backend::Dx12
+    }
+
     /// Whether this GPU context supports zero-copy decode.
     ///
     /// Checks that the GPU backend matches a supported interop path
@@ -394,7 +411,16 @@ impl GpuContext {
         {
             self.is_metal()
         }
-        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "ios")))]
+        #[cfg(target_os = "windows")]
+        {
+            self.is_dx12()
+        }
+        #[cfg(not(any(
+            target_os = "linux",
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "windows"
+        )))]
         {
             false
         }

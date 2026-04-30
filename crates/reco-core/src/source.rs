@@ -278,6 +278,19 @@ pub enum StereoFrame {
         /// Right camera retained pixel buffer.
         right: crate::metal_interop::RetainedCVPixelBuffer,
     },
+    /// Windows D3D11VA zero-copy: decoded frame still on D3D11 GPU memory.
+    /// The session stages these into shared NV12 textures for wgpu rendering.
+    #[cfg(target_os = "windows")]
+    D3d11Resident {
+        /// D3D11 array texture pointer (ID3D11Texture2D*) for left camera.
+        left_texture: *mut std::ffi::c_void,
+        /// Array slice index within the D3D11VA decode pool for left camera.
+        left_slice: usize,
+        /// D3D11 array texture pointer (ID3D11Texture2D*) for right camera.
+        right_texture: *mut std::ffi::c_void,
+        /// Array slice index within the D3D11VA decode pool for right camera.
+        right_slice: usize,
+    },
 }
 
 /// Metadata about the frame source.

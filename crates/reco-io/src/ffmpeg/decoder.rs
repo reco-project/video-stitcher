@@ -111,6 +111,29 @@ pub struct VtFrame {
     pub timestamp_us: i64,
 }
 
+/// A decoded D3D11VA frame referencing the D3D11 array texture pool.
+///
+/// `texture` is the pool's `ID3D11Texture2D` (same pointer for all frames)
+/// and `array_slice` selects which slice within the pool holds this frame.
+/// The caller must stage-copy the frame before the next decode call, as
+/// the decoder may reuse the slice.
+#[cfg(target_os = "windows")]
+pub struct D3d11Frame {
+    /// Pointer to the D3D11VA decode pool texture (`ID3D11Texture2D*`).
+    pub texture: *mut std::ffi::c_void,
+    /// Array slice index within the pool texture.
+    pub array_slice: usize,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+    /// Presentation timestamp in microseconds.
+    pub timestamp_us: i64,
+}
+
+#[cfg(target_os = "windows")]
+unsafe impl Send for D3d11Frame {}
+
 /// Re-export the canonical YUV frame type from reco-core.
 pub use reco_core::source::YuvFrame;
 
@@ -594,6 +617,60 @@ impl VideoDecoder {
         }
     }
 
+    /// Decode the next frame and return the D3D11VA texture + array slice.
+    ///
+    /// Only valid when the backend is [`DecodeBackend::D3d11va`]. Returns
+    /// `Ok(None)` for non-D3D11VA backends or at EOF. The caller must
+    /// stage-copy the frame before calling this method again, as the
+    /// decoder may reuse the array slice.
+    #[cfg(target_os = "windows")]
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "decode_frame_d3d11")
+    )]
+    pub fn next_frame_d3d11(&mut self) -> Result<Option<D3d11Frame>, DecodeError> {
+        if self.backend != DecodeBackend::D3d11va {
+            return Ok(None);
+        }
+
+        if self.eof_sent {
+            return Ok(None);
+        }
+
+        loop {
+            {
+                profile_scope!("h264_decode");
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
+                    if is_hw_frame(&self.decoded_frame) {
+                        return Ok(Some(self.extract_d3d11_frame()));
+                    }
+                    return Ok(None);
+                }
+            }
+
+            let mut found_packet = false;
+            for (stream, packet) in self.input.packets() {
+                if stream.index() == self.video_stream_index {
+                    profile_scope!("send_packet");
+                    self.decoder.send_packet(&packet)?;
+                    found_packet = true;
+                    break;
+                }
+            }
+
+            if !found_packet {
+                self.eof_sent = true;
+                self.decoder.send_eof()?;
+                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok()
+                    && is_hw_frame(&self.decoded_frame)
+                {
+                    return Ok(Some(self.extract_d3d11_frame()));
+                }
+                return Ok(None);
+            }
+        }
+    }
+
     /// Decode the next frame and return a VideoToolbox `CVPixelBufferRef`.
     ///
     /// Returns `Ok(None)` if the backend is not VideoToolbox or EOF is reached.
@@ -672,6 +749,25 @@ impl VideoDecoder {
 
         VtFrame {
             cv_pixel_buffer: raw.data[3] as *mut std::ffi::c_void,
+            width: self.width,
+            height: self.height,
+            timestamp_us,
+        }
+    }
+
+    /// Extract the D3D11VA texture pointer and array slice from a decoded frame.
+    ///
+    /// Per FFmpeg's D3D11VA convention, `frame->data[0]` is the
+    /// `ID3D11Texture2D*` (the shared pool texture) and `frame->data[1]`
+    /// is the array slice index (as `intptr_t`).
+    #[cfg(target_os = "windows")]
+    fn extract_d3d11_frame(&self) -> D3d11Frame {
+        let raw = unsafe { &*self.decoded_frame.as_ptr() };
+        let timestamp_us = self.pts_to_us(raw.pts);
+
+        D3d11Frame {
+            texture: raw.data[0] as *mut std::ffi::c_void,
+            array_slice: raw.data[1] as usize,
             width: self.width,
             height: self.height,
             timestamp_us,

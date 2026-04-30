@@ -695,6 +695,45 @@ impl Renderer {
         })
     }
 
+    /// Create a texture bind group from pre-built texture views.
+    ///
+    /// Used by the D3D11VA zero-copy path where NV12 plane views require
+    /// explicit `TextureAspect::Plane0` / `Plane1` and cannot be obtained
+    /// from `TextureViewDescriptor::default()`.
+    pub fn create_bind_group_from_views(
+        &self,
+        y_view: &wgpu::TextureView,
+        uv_view: &wgpu::TextureView,
+        label: &str,
+    ) -> wgpu::BindGroup {
+        let v_view = self
+            .left
+            .v_texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &self.texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(y_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(uv_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&v_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        })
+    }
+
     /// Set the left plane's texture bind group for the next render.
     pub fn set_left_bind_group(&mut self, bind_group: wgpu::BindGroup) {
         self.left.texture_bind_group = bind_group;

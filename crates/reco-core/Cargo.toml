@@ -29,6 +29,17 @@ ash = "0.38"
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 libloading = "0.9"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Foundation",
+    "Win32_Security",
+] }
+
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 # The `metal` crate (0.33) is wgpu-hal 28's Metal backend dependency.
 # We use it directly for interop with VideoToolbox and compute shaders.
