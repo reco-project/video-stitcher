@@ -1751,6 +1751,7 @@ impl StitchSession {
                     if self.frame_count >= 2 {
                         let _ = self.core.gpu().device().poll(wgpu::PollType::Wait {
                             submission_index: None,
+                            timeout: None,
                         });
                     }
 
