@@ -63,8 +63,6 @@ struct WindowsZeroCopyState {
         crate::ffmpeg::decoder::D3d11Frame,
         crate::ffmpeg::decoder::D3d11Frame,
     )>,
-    join_handles: Vec<std::thread::JoinHandle<()>>,
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[cfg(target_os = "linux")]
@@ -432,11 +430,7 @@ impl SmartFileSource {
         log::info!("SmartFileSource: D3D11VA zero-copy decode enabled");
 
         Ok(Self {
-            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
-                pair_rx,
-                join_handles: Vec::new(),
-                shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            })),
+            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState { pair_rx })),
             info,
             pixel_format,
             left_rotation,
