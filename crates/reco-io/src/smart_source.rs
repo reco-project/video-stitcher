@@ -227,7 +227,7 @@ impl SmartFileSource {
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
         let source = crate::adapters::FfmpegFileSource::open_from_inputs(left, right, sync_offset)?;
-        let full_range = false; // swscale normalizes to limited range
+        let full_range = false; // CPU path: swscale normalizes to limited range
         log::info!(
             "SmartFileSource: CPU decode ({}x{}, {pixel_format:?})",
             info.width,

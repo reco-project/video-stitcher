@@ -63,17 +63,15 @@ impl From<D3d11InteropError> for crate::session::SessionError {
     }
 }
 
+/// Slots per camera for staging. Triple buffering ensures frame N never
+/// overwrites a slot still being rendered by frame N-1.
+pub const SLOTS_PER_CAMERA: usize = 3;
+const TOTAL_SLOTS: usize = SLOTS_PER_CAMERA * 2;
+
 /// Triple-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
-///
-/// Pre-allocates 6 staging textures (3 per camera) with shared handles.
-/// Triple buffering ensures frame N never overwrites a slot still being
-/// rendered by frame N-1, eliminating the need for `poll(Wait)`.
 ///
 /// Slot layout: [left_0, left_1, left_2, right_0, right_1, right_2]
 /// Left slot = frame_count % 3, right slot = left_slot + 3.
-const SLOTS_PER_CAMERA: usize = 3;
-const TOTAL_SLOTS: usize = SLOTS_PER_CAMERA * 2;
-
 pub struct D3d11StagingPool {
     _device: ID3D11Device,
     context: ID3D11DeviceContext,
@@ -83,7 +81,6 @@ pub struct D3d11StagingPool {
     uv_views: Vec<wgpu::TextureView>,
     event_query: ID3D11Query,
     /// CPU-readable staging texture for detection readback.
-    /// Created lazily on first detection frame.
     readback_staging: Option<ID3D11Texture2D>,
     width: u32,
     height: u32,
