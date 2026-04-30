@@ -278,23 +278,15 @@ pub enum StereoFrame {
         /// Right camera retained pixel buffer.
         right: crate::metal_interop::RetainedCVPixelBuffer,
     },
-    /// Windows D3D11VA zero-copy: decoded frame still on D3D11 GPU memory.
-    /// The session stages these into shared NV12 textures for wgpu rendering.
+    /// Windows D3D11VA zero-copy: pre-staged NV12 frame in shared textures.
+    /// Decode threads have already copied from the D3D11VA pool to the
+    /// staging slots. The session renders directly from the wgpu views.
     #[cfg(target_os = "windows")]
-    D3d11Resident {
-        /// D3D11 array texture pointer (ID3D11Texture2D*) for left camera.
-        left_texture: *mut std::ffi::c_void,
-        /// Array slice index within the D3D11VA decode pool for left camera.
-        left_slice: usize,
-        /// D3D11 array texture pointer (ID3D11Texture2D*) for right camera.
-        right_texture: *mut std::ffi::c_void,
-        /// Array slice index within the D3D11VA decode pool for right camera.
-        right_slice: usize,
-        /// FFmpeg's D3D11 device pointer (ID3D11Device*).
-        /// Passed on first frame to initialize the staging pool.
-        d3d11_device: *mut std::ffi::c_void,
-        /// FFmpeg's D3D11 device context pointer (ID3D11DeviceContext*).
-        d3d11_context: *mut std::ffi::c_void,
+    D3d11Staged {
+        /// Left camera staging slot index (0..SLOTS_PER_CAMERA).
+        left_slot: usize,
+        /// Right camera staging slot index (0..SLOTS_PER_CAMERA).
+        right_slot: usize,
     },
 }
 
