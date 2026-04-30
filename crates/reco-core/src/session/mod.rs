@@ -1567,6 +1567,10 @@ impl StitchSession {
                 self.core.pipeline_mut().set_flip_180(lr == 180, rr == 180);
                 log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
             }
+            if source.is_full_range() {
+                self.core.pipeline_mut().set_full_range(true);
+                log::info!("Color range: full (0-255), shader will skip limited-range expansion");
+            }
             // Store rotation for the GPU detector preprocessing path.
             // The detector needs to flip frames independently of the render shader.
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -1739,6 +1743,14 @@ impl StitchSession {
                     }
                     let left_slot = self.frame_count as usize % 2;
                     let right_slot = left_slot + 2;
+
+                    // Ensure previous wgpu render pass is done before we
+                    // overwrite the staging slot it was reading from.
+                    // Without this, frame N's staging copy can race with
+                    // frame N-2's render pass on the same slot.
+                    if self.frame_count >= 2 {
+                        self.core.gpu().device().poll(wgpu::Maintain::Wait);
+                    }
 
                     // Stage frames (borrows pool immutably, scoped).
                     {

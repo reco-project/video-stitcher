@@ -23,7 +23,8 @@ struct Uniforms {
     //          in t_u; 2 = BGRA/RGBA: t_y holds packed 4-channel RGB, skip YUV conversion)
     // flags.z: flip_180 (0 or 1) - flip UV coordinates for 180-degree rotation
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
-    // flags.w: reserved
+    // flags.w: full_range (0 = limited range 16-235, 1 = full range 0-255)
+    //          D3D11VA zero-copy preserves the source color range; CPU path normalizes via swscale.
     flags: vec4<u32>,
     // lens_preview.x: correction_amount (0.0 = no correction, 1.0 = full KB4)
     // lens_preview.y: split_view (> 0.5 = left half uncorrected, right half corrected)
@@ -136,10 +137,21 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
         v_raw = textureSample(t_v, s_video, sample_uv).r;
     }
 
-    // BT.709 limited-range YCbCr -> full-range R'G'B'
-    let y = (y_raw - 16.0 / 255.0) * (255.0 / 219.0);
-    let cb = (u_raw - 128.0 / 255.0) * (255.0 / 224.0);
-    let cr = (v_raw - 128.0 / 255.0) * (255.0 / 224.0);
+    // YCbCr -> R'G'B'. Range depends on flags.w:
+    // Limited range (0): Y 16-235, Cb/Cr 16-240 (standard H.264)
+    // Full range (1): Y 0-255, Cb/Cr 0-255 (GoPro yuvj420p, D3D11VA zero-copy)
+    var y: f32;
+    var cb: f32;
+    var cr: f32;
+    if u.flags.w == 1u {
+        y = y_raw;
+        cb = u_raw - 0.5;
+        cr = v_raw - 0.5;
+    } else {
+        y = (y_raw - 16.0 / 255.0) * (255.0 / 219.0);
+        cb = (u_raw - 128.0 / 255.0) * (255.0 / 224.0);
+        cr = (v_raw - 128.0 / 255.0) * (255.0 / 224.0);
+    }
 
     let r = y + 1.5748 * cr;
     let g = y - 0.1873 * cb - 0.4681 * cr;

@@ -382,6 +382,16 @@ pub trait FrameSource: Send {
         0
     }
 
+    /// Whether the source uses full-range YUV (0-255).
+    ///
+    /// Standard H.264 uses limited range (Y: 16-235). GoPro HERO10 uses
+    /// `yuvj420p` (full range). The CPU path normalizes via swscale, but
+    /// zero-copy paths preserve the source range and the shader needs to
+    /// skip limited-range expansion.
+    fn is_full_range(&self) -> bool {
+        false
+    }
+
     /// Seek to a specific frame number.
     ///
     /// File-based sources should implement this for interactive scrubbing.

@@ -37,6 +37,7 @@ pub struct SmartFileSource {
     pixel_format: GpuPixelFormat,
     left_rotation: i32,
     right_rotation: i32,
+    full_range: bool,
     /// Human-readable description of the active decode path.
     decode_mode: &'static str,
     /// True once the active backend has signaled end-of-stream.
@@ -115,6 +116,7 @@ impl SmartFileSource {
         let pixel_format = probe.pixel_format();
         let left_rotation = probe.rotation();
         let decode_backend = probe.backend();
+        let full_range = probe.is_full_range();
         drop(probe);
 
         let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right_probe_path)
@@ -150,6 +152,7 @@ impl SmartFileSource {
                 pixel_format,
                 left_rotation,
                 right_rotation,
+                full_range,
             )
         } else {
             Self::open_cpu(
@@ -217,6 +220,7 @@ impl SmartFileSource {
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
         let source = crate::adapters::FfmpegFileSource::open_from_inputs(left, right, sync_offset)?;
+        let full_range = false; // swscale normalizes to limited range
         log::info!(
             "SmartFileSource: CPU decode ({}x{}, {pixel_format:?})",
             info.width,
@@ -229,6 +233,7 @@ impl SmartFileSource {
             left_rotation,
             right_rotation,
             decode_mode: "CPU upload",
+            full_range,
             exhausted: false,
         })
     }
@@ -244,6 +249,7 @@ impl SmartFileSource {
         pixel_format: GpuPixelFormat,
         left_rotation: i32,
         right_rotation: i32,
+        full_range: bool,
     ) -> Result<Self, SourceError> {
         use reco_core::session::SharedTextureSet;
         use reco_core::vulkan_interop::{Nv12Plane, create_nv12_shared_texture};
@@ -379,6 +385,7 @@ impl SmartFileSource {
             left_rotation,
             right_rotation,
             decode_mode: "GPU zero-copy (CUDA/Vulkan)",
+            full_range,
             exhausted: false,
         })
     }
@@ -394,6 +401,7 @@ impl SmartFileSource {
         pixel_format: GpuPixelFormat,
         left_rotation: i32,
         right_rotation: i32,
+        full_range: bool,
     ) -> Result<Self, SourceError> {
         let pair_rx = crate::zero_copy::spawn_vt_decode_pair(left, right, sync_offset);
 
@@ -410,6 +418,7 @@ impl SmartFileSource {
             left_rotation,
             right_rotation,
             decode_mode: "Metal zero-copy (VideoToolbox)",
+            full_range,
             exhausted: false,
         })
     }
@@ -425,6 +434,7 @@ impl SmartFileSource {
         pixel_format: GpuPixelFormat,
         left_rotation: i32,
         right_rotation: i32,
+        full_range: bool,
     ) -> Result<Self, SourceError> {
         let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(left, right, sync_offset);
         log::info!("SmartFileSource: D3D11VA zero-copy decode enabled");
@@ -436,6 +446,7 @@ impl SmartFileSource {
             left_rotation,
             right_rotation,
             decode_mode: "D3D11VA zero-copy",
+            full_range,
             exhausted: false,
         })
     }
@@ -451,6 +462,7 @@ impl SmartFileSource {
         pixel_format: GpuPixelFormat,
         left_rotation: i32,
         right_rotation: i32,
+        _full_range: bool,
     ) -> Result<Self, SourceError> {
         log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
         Self::open_cpu(
@@ -599,6 +611,10 @@ impl FrameSource for SmartFileSource {
 
     fn right_rotation(&self) -> i32 {
         self.right_rotation
+    }
+
+    fn is_full_range(&self) -> bool {
+        self.full_range
     }
 
     fn is_exhausted(&self) -> bool {

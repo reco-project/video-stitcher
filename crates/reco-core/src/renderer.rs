@@ -236,6 +236,7 @@ pub(crate) struct Renderer {
     /// Set by the zero-copy path when the source video has rotation metadata.
     /// The CPU decode path handles rotation by reversing buffers instead.
     flip_180: [bool; 2],
+    full_range: bool,
 }
 
 impl Renderer {
@@ -421,6 +422,7 @@ impl Renderer {
             sampler,
             device: device.clone(),
             flip_180: [false, false],
+            full_range: false,
         }
     }
 
@@ -752,6 +754,11 @@ impl Renderer {
         self.flip_180 = [left, right];
     }
 
+    /// Set full-range YUV flag for the shader (0-255 instead of 16-235).
+    pub fn set_full_range(&mut self, full_range: bool) {
+        self.full_range = full_range;
+    }
+
     /// Create fresh `TextureView`s for the left plane's Y/U/V
     /// textures. Needed by [`crate::yuv_stack_packer::YuvStackPacker`]
     /// when replay recording is enabled: the packer samples the same
@@ -838,6 +845,7 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[0],
+            self.full_range,
         );
         left_uniforms.lens_preview[0] = correction;
 
@@ -849,6 +857,7 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[1],
+            self.full_range,
         );
         right_uniforms.lens_preview[0] = correction;
 
@@ -1223,6 +1232,7 @@ pub(crate) fn build_gpu_uniforms(
     blend_width: f32,
     input_format: InputFormat,
     flip_180: bool,
+    full_range: bool,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -1250,7 +1260,7 @@ pub(crate) fn build_gpu_uniforms(
                 InputFormat::Bgra => 2,
             },
             flip_180 as u32,
-            0,
+            full_range as u32,
         ],
         // Full correction for normal stitching. LensPreviewRenderer
         // overrides this field for the single-camera preview mode.
@@ -1299,7 +1309,15 @@ mod tests {
             d: [0.0342, 0.0677, -0.0741, 0.0299],
         };
         let mvp = Matrix4::identity();
-        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0, InputFormat::Yuv420p, false);
+        let u = build_gpu_uniforms(
+            &mvp,
+            &camera,
+            false,
+            0.0,
+            InputFormat::Yuv420p,
+            false,
+            false,
+        );
 
         // fx/width ≈ 0.4678
         assert!((u.intrinsics[0] - 1796.32 / 3840.0).abs() < 1e-4);

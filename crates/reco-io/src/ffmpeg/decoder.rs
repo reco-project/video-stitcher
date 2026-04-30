@@ -195,6 +195,7 @@ pub struct VideoDecoder {
     backend: DecodeBackend,
     rotation: i32,
     is_10bit: bool,
+    is_full_range: bool,
     decoded_frame: VideoFrame,
     sw_frame: VideoFrame,
     converted_frame: VideoFrame,
@@ -335,6 +336,22 @@ impl VideoDecoder {
             }
         };
 
+        // Detect full-range (JPEG-style) YUV from the source pixel format.
+        // yuvj420p/yuvj422p use 0-255 range; standard yuv420p uses 16-235.
+        // D3D11VA zero-copy preserves the source range, while the CPU path's
+        // swscale normalizes to limited range.
+        let is_full_range = {
+            let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
+            let format_i32 = raw_codecpar.format;
+            let pixel = Pixel::from(raw_i32_to_pix_fmt(format_i32));
+            let full = matches!(pixel, Pixel::YUVJ420P | Pixel::YUVJ422P | Pixel::YUVJ444P)
+                || raw_codecpar.color_range == ffi::AVColorRange::AVCOL_RANGE_JPEG;
+            if full {
+                log::info!("Source uses full-range YUV (0-255)");
+            }
+            full
+        };
+
         log::debug!(
             "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
             width,
@@ -361,6 +378,7 @@ impl VideoDecoder {
             backend,
             rotation,
             is_10bit,
+            is_full_range,
             decoded_frame: VideoFrame::empty(),
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
@@ -455,6 +473,15 @@ impl VideoDecoder {
         } else {
             reco_core::renderer::GpuPixelFormat::Nv12
         }
+    }
+
+    /// Whether the source uses full-range YUV (0-255 instead of 16-235).
+    ///
+    /// GoPro HERO10 uses `yuvj420p` (full range). The CPU decode path
+    /// normalizes to limited range via swscale, but the GPU zero-copy path
+    /// preserves the source range and needs the shader to skip expansion.
+    pub fn is_full_range(&self) -> bool {
+        self.is_full_range
     }
 
     /// Rotation from stream metadata (0, 90, 180, 270 degrees).
