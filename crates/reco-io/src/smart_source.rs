@@ -64,6 +64,13 @@ struct WindowsZeroCopyState {
         crate::ffmpeg::decoder::D3d11Frame,
         crate::ffmpeg::decoder::D3d11Frame,
     )>,
+    /// Keeps the previous frame pair's AVFrame references alive until
+    /// the next frame is requested. Without this, the D3D11VA pool
+    /// recycles the array slice before the session stages it.
+    _retained_pair: Option<(
+        crate::ffmpeg::decoder::D3d11Frame,
+        crate::ffmpeg::decoder::D3d11Frame,
+    )>,
 }
 
 #[cfg(target_os = "linux")]
@@ -440,7 +447,10 @@ impl SmartFileSource {
         log::info!("SmartFileSource: D3D11VA zero-copy decode enabled");
 
         Ok(Self {
-            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState { pair_rx })),
+            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
+                pair_rx,
+                _retained_pair: None,
+            })),
             info,
             pixel_format,
             left_rotation,
@@ -583,12 +593,20 @@ impl FrameSource for SmartFileSource {
             },
             #[cfg(target_os = "windows")]
             SourceMode::D3d11ZeroCopy(state) => match state.pair_rx.recv() {
-                Ok((left, right)) => Ok(Some(StereoFrame::D3d11Resident {
-                    left_texture: left.texture,
-                    left_slice: left.array_slice,
-                    right_texture: right.texture,
-                    right_slice: right.array_slice,
-                })),
+                Ok((left, right)) => {
+                    let frame = StereoFrame::D3d11Resident {
+                        left_texture: left.texture,
+                        left_slice: left.array_slice,
+                        right_texture: right.texture,
+                        right_slice: right.array_slice,
+                    };
+                    // Keep the D3d11Frames alive so their av_frame_ref
+                    // prevents the D3D11VA pool from recycling the slices.
+                    // Dropped on the NEXT next_frame() call, after the
+                    // session has staged and rendered this frame.
+                    state._retained_pair = Some((left, right));
+                    Ok(Some(frame))
+                }
                 Err(_) => {
                     self.exhausted = true;
                     Ok(None)
