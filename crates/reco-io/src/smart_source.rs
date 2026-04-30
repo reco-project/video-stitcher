@@ -516,6 +516,11 @@ impl SmartFileSource {
         };
         let mut right_buf = left_buf.clone();
 
+        reco_core::cuda_interop::cuda_ensure_context().map_err(|e| SourceError::Init {
+            path: left.first_path().display().to_string(),
+            reason: format!("CUDA context init: {e}"),
+        })?;
+
         for slot in 0..2 {
             let y = reco_core::dx12_cuda_interop::create_shared_texture(
                 gpu,
