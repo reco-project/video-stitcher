@@ -262,7 +262,34 @@ impl VideoDecoder {
         }
     }
 
+    /// Open a decoder sharing an existing hardware device context.
+    ///
+    /// Both decoders will use the same D3D11 device, which is required
+    /// for `CopySubresourceRegion` in the staging pipeline. Without
+    /// this, each decoder gets its own device and cross-device copies
+    /// hang on NVIDIA drivers.
+    pub fn open_input_shared_hw(
+        input_path: &crate::stitch_job::InputPath,
+        shared_hw_device_ref: *mut ffi::AVBufferRef,
+    ) -> Result<Self, DecodeError> {
+        crate::init();
+        let ictx = match input_path {
+            crate::stitch_job::InputPath::Single(p) => input(p)?,
+            crate::stitch_job::InputPath::Chained(paths) => {
+                return Self::open_chained_shared_hw(paths, shared_hw_device_ref);
+            }
+        };
+        Self::from_input_context_with_hw(ictx, shared_hw_device_ref)
+    }
+
     fn from_input_context(ictx: ffmpeg::format::context::Input) -> Result<Self, DecodeError> {
+        Self::from_input_context_with_hw(ictx, ptr::null_mut())
+    }
+
+    fn from_input_context_with_hw(
+        ictx: ffmpeg::format::context::Input,
+        shared_hw_ref: *mut ffi::AVBufferRef,
+    ) -> Result<Self, DecodeError> {
         let stream = ictx
             .streams()
             .best(Type::Video)
@@ -271,17 +298,30 @@ impl VideoDecoder {
         let time_base = stream.time_base();
 
         let mut context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
-        // Enable multithreaded decode (frame-level threading).
-        // count(0) = auto-detect optimal thread count.
-        // kind(Frame) = decode multiple frames in parallel.
         let mut threading = ffmpeg::threading::Config::kind(ffmpeg::threading::Type::Frame);
         threading.count = 0;
         context.set_threading(threading);
 
-        // Try hardware acceleration (unless disabled via env var)
         let (backend, hw_device_ref) = if std::env::var("RECO_NO_HWACCEL").is_ok() {
             log::info!("Hardware acceleration disabled via RECO_NO_HWACCEL");
             (DecodeBackend::Software, ptr::null_mut())
+        } else if !shared_hw_ref.is_null() {
+            // Reuse an existing hw device context (shared D3D11 device).
+            let hw_ref = unsafe { ffi::av_buffer_ref(shared_hw_ref) };
+            unsafe {
+                (*context.as_mut_ptr()).hw_device_ctx = ffi::av_buffer_ref(hw_ref);
+            }
+            let backend = unsafe {
+                let hw_ctx = (*hw_ref).data as *mut ffi::AVHWDeviceContext;
+                match (*hw_ctx).type_ {
+                    ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_D3D11VA => DecodeBackend::D3d11va,
+                    ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA => DecodeBackend::Cuda,
+                    ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI => DecodeBackend::Vaapi,
+                    _ => DecodeBackend::Software,
+                }
+            };
+            log::info!("Decoder: sharing hw device context ({backend})");
+            (backend, hw_ref)
         } else {
             try_hwaccel(&mut context)
         };
@@ -466,6 +506,57 @@ impl VideoDecoder {
         Ok(dec)
     }
 
+    fn open_chained_shared_hw(
+        paths: &[std::path::PathBuf],
+        shared_hw_ref: *mut ffi::AVBufferRef,
+    ) -> Result<Self, DecodeError> {
+        use std::io::Write;
+
+        if paths.len() <= 1 {
+            let ictx = input(paths.first().map(|p| p.as_path()).unwrap_or(Path::new("")))?;
+            return Self::from_input_context_with_hw(ictx, shared_hw_ref);
+        }
+
+        crate::init();
+
+        let mut manifest = tempfile::Builder::new()
+            .prefix("reco_concat_")
+            .suffix(".txt")
+            .tempfile()
+            .map_err(|e| DecodeError::Ffmpeg(format!("concat manifest: {e}")))?;
+
+        writeln!(manifest, "ffconcat version 1.0")
+            .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+        for p in paths {
+            writeln!(manifest, "file '{}'", p.display())
+                .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+        }
+        manifest
+            .flush()
+            .map_err(|e| DecodeError::Ffmpeg(format!("flush manifest: {e}")))?;
+
+        let concat_fmt_ptr = unsafe { ffi::av_find_input_format(c"concat".as_ptr()) };
+        if concat_fmt_ptr.is_null() {
+            return Err(DecodeError::Ffmpeg(
+                "FFmpeg concat demuxer not available".into(),
+            ));
+        }
+        let concat_fmt = unsafe { ffmpeg::format::format::Input::wrap(concat_fmt_ptr as *mut _) };
+
+        let mut opts = ffmpeg::Dictionary::new();
+        opts.set("safe", "0");
+
+        let fmt = ffmpeg::format::format::Format::Input(concat_fmt);
+        let ictx = match ffmpeg::format::open_with(manifest.path(), &fmt, opts)? {
+            ffmpeg::format::Context::Input(ctx) => ctx,
+            _ => return Err(DecodeError::Ffmpeg("expected input context".into())),
+        };
+
+        let mut dec = Self::from_input_context_with_hw(ictx, shared_hw_ref)?;
+        dec._manifest = Some(manifest);
+        Ok(dec)
+    }
+
     /// Which decode backend is active.
     pub fn backend(&self) -> DecodeBackend {
         self.backend
@@ -508,6 +599,15 @@ impl VideoDecoder {
     /// hw_device_ctx. The staging pool must use these for
     /// `CopySubresourceRegion` because D3D11 requires same-device copies.
     ///
+    /// Raw FFmpeg hw_device_ref pointer for sharing between decoders.
+    ///
+    /// Two decoders that share the same `hw_device_ref` will use the
+    /// same D3D11 device, which is required for `CopySubresourceRegion`
+    /// in the staging pipeline.
+    pub fn hw_device_ref(&self) -> *mut ffi::AVBufferRef {
+        self._hw_device_ref
+    }
+
     /// Returns `None` if the backend is not D3D11VA.
     #[cfg(target_os = "windows")]
     pub fn d3d11_device_ptrs(&self) -> Option<(*mut std::ffi::c_void, *mut std::ffi::c_void)> {

@@ -425,11 +425,19 @@ pub fn spawn_d3d11_decode_pair(
             path: left.first_path().display().to_string(),
             reason: format!("{e}"),
         })?;
-    let mut right_dec =
-        VideoDecoder::open_input(right).map_err(|e| reco_core::source::SourceError::Init {
-            path: right.first_path().display().to_string(),
-            reason: format!("{e}"),
-        })?;
+    // Share the left decoder's D3D11 device with the right decoder.
+    // Without this, each decoder creates its own D3D11 device, and
+    // CopySubresourceRegion across devices hangs on NVIDIA drivers.
+    let shared_hw = left_dec.hw_device_ref();
+    let mut right_dec = if shared_hw.is_null() {
+        VideoDecoder::open_input(right)
+    } else {
+        VideoDecoder::open_input_shared_hw(right, shared_hw)
+    }
+    .map_err(|e| reco_core::source::SourceError::Init {
+        path: right.first_path().display().to_string(),
+        reason: format!("{e}"),
+    })?;
 
     log::info!(
         "D3D11VA decode: left={} ({}x{}), right={} ({}x{})",
