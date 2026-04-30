@@ -235,7 +235,7 @@ impl CpuYoloDetector {
         };
         let inference_time = inference_t0.elapsed();
 
-        log::info!(
+        eprintln!(
             "detect {camera:?}: preprocess={:.1}ms inference={:.1}ms ({}x{} -> {}x{})",
             preprocess_time.as_secs_f64() * 1000.0,
             inference_time.as_secs_f64() * 1000.0,

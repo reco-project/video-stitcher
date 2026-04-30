@@ -1778,7 +1778,7 @@ impl StitchSession {
                         let (left_y, left_uv) = pool_mut.readback_nv12(left_slot)?;
                         let (right_y, right_uv) = pool_mut.readback_nv12(right_slot)?;
                         let readback_time = readback_t0.elapsed();
-                        log::info!(
+                        eprintln!(
                             "detection readback: {:.1}ms (2 cameras, {}x{})",
                             readback_time.as_secs_f64() * 1000.0,
                             pool_mut.width(),
