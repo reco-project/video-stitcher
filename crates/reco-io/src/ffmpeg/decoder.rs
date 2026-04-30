@@ -1144,21 +1144,18 @@ fn try_hwaccel(
     context: &mut ffmpeg::codec::context::Context,
 ) -> (DecodeBackend, *mut ffi::AVBufferRef) {
     // Hardware device types to try, in priority order.
-    // On Windows, D3D11VA is preferred over CUDA because our zero-copy
-    // staging pipeline uses D3D11 shared handles into DX12/wgpu. CUDA
-    // decode on Windows produces frames we can't stage efficiently
-    // (CUDA zero-copy requires Vulkan, which is Linux-only). D3D11VA
-    // uses the same NVDEC hardware on NVIDIA GPUs - no performance
-    // difference in decode throughput.
+    // CUDA first: on NVIDIA, CUDA decode feeds the CUDA→DX12 zero-copy
+    // path (Windows) or CUDA→Vulkan (Linux). On AMD/Intel, CUDA fails
+    // and D3D11VA/VAAPI is used instead.
     let candidates = [
+        (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
+            DecodeBackend::Cuda,
+        ),
         #[cfg(target_os = "windows")]
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_D3D11VA,
             DecodeBackend::D3d11va,
-        ),
-        (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
-            DecodeBackend::Cuda,
         ),
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,

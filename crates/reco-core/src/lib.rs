@@ -94,6 +94,8 @@ pub mod d3d11_interop;
 pub mod detection_filter;
 pub mod detector;
 pub mod director;
+#[cfg(target_os = "windows")]
+pub mod dx12_cuda_interop;
 pub mod encoder;
 /// M4 timestamped multi-source ingest buffer. See
 /// [`framesync::TimestampedIngestBuffer`] for the dual-source

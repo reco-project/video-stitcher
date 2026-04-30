@@ -688,7 +688,7 @@ impl Drop for SmartFileSource {
 fn is_backend_zero_copy_capable(backend: crate::ffmpeg::decoder::DecodeBackend) -> bool {
     use crate::ffmpeg::decoder::DecodeBackend;
     match backend {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         DecodeBackend::Cuda => true,
         #[cfg(target_os = "macos")]
         DecodeBackend::VideoToolbox => true,
