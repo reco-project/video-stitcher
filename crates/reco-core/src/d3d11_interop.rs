@@ -80,7 +80,11 @@ const TOTAL_SLOTS: usize = SLOTS_PER_CAMERA * 2;
 /// cross-thread context contention).
 pub struct D3d11StagingCopier {
     device: ID3D11Device,
-    context: ID3D11DeviceContext,
+    /// Shared D3D11 immediate context behind a mutex.
+    /// Both decode threads share the same context (from FFmpeg's
+    /// hw_device_ctx). D3D11 immediate contexts are NOT thread-safe -
+    /// concurrent calls cause frame ordering corruption.
+    context: std::sync::Arc<std::sync::Mutex<ID3D11DeviceContext>>,
     staging: Vec<ID3D11Texture2D>,
     event_query: ID3D11Query,
     /// CPU-readable staging texture for detection readback.
@@ -237,9 +241,11 @@ pub unsafe fn create_staging_pair(
         SLOTS_PER_CAMERA
     );
 
+    let shared_context = std::sync::Arc::new(std::sync::Mutex::new(context));
+
     let left_copier = D3d11StagingCopier {
         device: device.clone(),
-        context: context.clone(),
+        context: std::sync::Arc::clone(&shared_context),
         staging: left_staging,
         event_query: left_query,
         readback_staging: None,
@@ -250,7 +256,7 @@ pub unsafe fn create_staging_pair(
 
     let right_copier = D3d11StagingCopier {
         device,
-        context,
+        context: shared_context,
         staging: right_staging,
         event_query: right_query,
         readback_staging: None,
@@ -294,7 +300,8 @@ impl D3d11StagingCopier {
             let src: ID3D11Texture2D = unknown.cast()?;
             std::mem::forget(unknown);
 
-            self.context.CopySubresourceRegion(
+            let ctx = self.context.lock().unwrap();
+            ctx.CopySubresourceRegion(
                 &self.staging[slot],
                 0,
                 0,
@@ -304,12 +311,12 @@ impl D3d11StagingCopier {
                 array_slice as u32,
                 None,
             );
-            self.context.Flush();
+            ctx.Flush();
 
-            self.context.End(&self.event_query);
+            ctx.End(&self.event_query);
             loop {
                 let mut done: u32 = 0;
-                let hr = self.context.GetData(
+                let hr = ctx.GetData(
                     &self.event_query,
                     Some(&mut done as *mut u32 as *mut c_void),
                     std::mem::size_of::<u32>() as u32,
@@ -367,12 +374,13 @@ impl D3d11StagingCopier {
 
             let readback = self.readback_staging.as_ref().unwrap();
 
-            self.context.CopyResource(readback, &self.staging[slot]);
-            self.context.Flush();
-            self.context.End(&self.event_query);
+            let ctx = self.context.lock().unwrap();
+            ctx.CopyResource(readback, &self.staging[slot]);
+            ctx.Flush();
+            ctx.End(&self.event_query);
             loop {
                 let mut done: u32 = 0;
-                let hr = self.context.GetData(
+                let hr = ctx.GetData(
                     &self.event_query,
                     Some(&mut done as *mut u32 as *mut c_void),
                     std::mem::size_of::<u32>() as u32,
@@ -385,8 +393,7 @@ impl D3d11StagingCopier {
             }
 
             let mut mapped = std::mem::zeroed();
-            self.context
-                .Map(readback, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
+            ctx.Map(readback, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
 
             let row_pitch = mapped.RowPitch as usize;
             let w = self.width as usize;
@@ -413,7 +420,7 @@ impl D3d11StagingCopier {
                 );
             }
 
-            self.context.Unmap(readback, 0);
+            ctx.Unmap(readback, 0);
 
             Ok((y_data, uv_data))
         }
