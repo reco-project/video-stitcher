@@ -534,10 +534,6 @@ pub struct StitchSession {
     #[cfg(target_os = "windows")]
     d3d11_staging_pool: Option<crate::d3d11_interop::D3d11StagingPool>,
 
-    /// Pause control for decode threads during AI inference on iGPUs.
-    #[cfg(target_os = "windows")]
-    decode_pause_ctl: Option<std::sync::Arc<crate::zero_copy::DecodePauseControl>>,
-
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
@@ -643,8 +639,6 @@ impl StitchSession {
             metal_texture_cache: None,
             #[cfg(target_os = "windows")]
             d3d11_staging_pool: None,
-            #[cfg(target_os = "windows")]
-            decode_pause_ctl: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -918,20 +912,6 @@ impl StitchSession {
     /// Replaces any previously registered sink.
     pub fn set_detection_sink(&mut self, sink: Box<dyn DetectionSink>) {
         self.detection.set_sink(sink);
-    }
-
-    /// Set the decode thread pause control for iGPU power management.
-    ///
-    /// When set, the session pauses decode threads before running AI
-    /// inference and resumes them after. This frees CPU power budget
-    /// on shared-TDP APUs (e.g. AMD Surface at 25W STAPM), allowing
-    /// the GPU to clock higher during DirectML inference.
-    #[cfg(target_os = "windows")]
-    pub fn set_decode_pause_control(
-        &mut self,
-        ctl: std::sync::Arc<crate::zero_copy::DecodePauseControl>,
-    ) {
-        self.decode_pause_ctl = Some(ctl);
     }
 
     /// Get the current viewport position from the director, or default.
@@ -1805,19 +1785,6 @@ impl StitchSession {
                             pool_mut.height(),
                         );
 
-                        // Pause decode threads to free CPU power for GPU
-                        // inference on shared-TDP iGPUs.
-                        let has_pause_ctl = self.decode_pause_ctl.is_some();
-                        if has_pause_ctl {
-                            let pause_t0 = std::time::Instant::now();
-                            let all_parked = self.decode_pause_ctl.as_ref().unwrap().pause();
-                            eprintln!(
-                                "decode threads paused in {:.1}ms (all_parked={})",
-                                pause_t0.elapsed().as_secs_f64() * 1000.0,
-                                all_parked,
-                            );
-                        }
-
                         let (width, height) = self.core.pipeline().source_info();
                         let nv12_frame =
                             crate::source::StereoFrame::Nv12(crate::source::Nv12FramePair {
@@ -1832,10 +1799,6 @@ impl StitchSession {
                             });
                         let detections = self.detection.run_detection(&nv12_frame, width, height);
                         self.detection.last_detections = self.map_detections(detections);
-
-                        if has_pause_ctl {
-                            self.decode_pause_ctl.as_ref().unwrap().resume();
-                        }
                     }
                     self.fire_sink_and_update_director(start.elapsed(), should_detect)?;
                     let detect_time = detect_t0.elapsed();
