@@ -1755,29 +1755,32 @@ impl StitchSession {
                     let left_slot = self.frame_count as usize % 2;
                     let right_slot = left_slot + 2;
 
-                    // Ensure previous wgpu render pass is done before we
-                    // overwrite the staging slot it was reading from.
-                    // Without this, frame N's staging copy can race with
-                    // frame N-2's render pass on the same slot.
+                    // Poll: ensure previous wgpu render is done before
+                    // overwriting the staging slot it was reading from.
+                    let poll_t0 = std::time::Instant::now();
                     if self.frame_count >= 2 {
                         let _ = self.core.gpu().device().poll(wgpu::PollType::Wait {
                             submission_index: None,
                             timeout: None,
                         });
                     }
+                    let poll_time = poll_t0.elapsed();
 
-                    // Stage frames (borrows pool immutably, scoped).
+                    // Stage: D3D11 CopySubresourceRegion + Flush + event query.
+                    let stage_t0 = std::time::Instant::now();
                     {
                         let pool = self.d3d11_staging_pool.as_ref().unwrap();
                         pool.stage_frame(*left_texture, *left_slice, left_slot)?;
                         pool.stage_frame(*right_texture, *right_slice, right_slot)?;
                     }
+                    let stage_time = stage_t0.elapsed();
 
-                    // Director update (borrows self mutably).
+                    // Director update.
                     self.update_director(start.elapsed())?;
                     let pos = self.director_position();
 
-                    // Render from staged views (borrows pool immutably again).
+                    // Render: create bind groups + stitch render pass.
+                    let render_t0 = std::time::Instant::now();
                     let pool = self.d3d11_staging_pool.as_ref().unwrap();
                     let render_buf = self.core.render_imported_views_at_pose(
                         pool.y_view(left_slot),
@@ -1787,10 +1790,18 @@ impl StitchSession {
                         pos.yaw,
                         pos.pitch,
                     );
+                    let render_time = render_t0.elapsed();
+
+                    // Encode: NV12 convert + readback + encoder submit.
+                    let encode_t0 = std::time::Instant::now();
                     self.submit_render_output(render_buf)?;
+                    let encode_time = encode_t0.elapsed();
 
                     self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
+                        decode: Some(decode_time + poll_time),
+                        upload: Some(stage_time),
+                        stitch: Some(render_time),
+                        encode: Some(encode_time),
                         total: Some(frame_t0.elapsed()),
                         ..Default::default()
                     });
