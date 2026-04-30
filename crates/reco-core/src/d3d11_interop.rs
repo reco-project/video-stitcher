@@ -299,7 +299,7 @@ impl D3d11StagingPool {
                 if hr.is_ok() && done != 0 {
                     break;
                 }
-                std::thread::yield_now();
+                std::hint::spin_loop();
             }
             let wait_time = t_wait.elapsed();
             let total = t0.elapsed();
