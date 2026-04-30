@@ -578,6 +578,19 @@ impl StitchJob {
             session.setup_gpu_source(shared);
         }
 
+        // Pass decode thread pause control to the session for iGPU
+        // power management during AI inference. Disable with
+        // RECO_NO_DECODE_PAUSE=1 for A/B benchmarking.
+        #[cfg(target_os = "windows")]
+        if std::env::var("RECO_NO_DECODE_PAUSE").is_err() {
+            if let Some(ctl) = source.decode_pause_control() {
+                eprintln!("iGPU power management: decode thread pausing enabled");
+                session.set_decode_pause_control(ctl);
+            }
+        } else {
+            eprintln!("iGPU power management: decode thread pausing disabled (RECO_NO_DECODE_PAUSE)");
+        }
+
         for hook in self.session_hooks.drain(..) {
             hook(&mut session, &source);
         }

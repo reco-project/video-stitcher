@@ -1,12 +1,18 @@
 //! Decode thread spawning for zero-copy GPU paths.
 //!
 //! These functions spawn FFmpeg decode threads that write directly to
-//! GPU-shared memory (CUDA/Vulkan on Linux, VideoToolbox/Metal on macOS).
-//! The types they consume and produce are defined in [`reco_core::zero_copy`].
+//! GPU-shared memory (CUDA/Vulkan on Linux, VideoToolbox/Metal on macOS,
+//! D3D11VA on Windows). The types they consume and produce are defined
+//! in [`reco_core::zero_copy`].
 //!
 //! This module lives in `reco-io` (not `reco-core`) because it needs
 //! `VideoDecoder` from the FFmpeg backend. `reco-core` orchestrates
 //! the frame loop; `reco-io` handles the decode threads.
+
+pub use reco_core::zero_copy::DecodePauseControl;
+
+#[cfg(target_os = "windows")]
+use std::sync::Arc;
 
 /// Spawn a single-video GPU decode thread that writes NV12 frames directly
 /// to CUDA/Vulkan shared textures via `cuMemcpy2D`.
@@ -304,6 +310,7 @@ pub fn spawn_vt_decode_pair(
 pub fn spawn_d3d11_decode_thread(
     input: crate::stitch_job::InputPath,
     label: &'static str,
+    pause_ctl: Arc<DecodePauseControl>,
 ) -> std::sync::mpsc::Receiver<crate::ffmpeg::decoder::D3d11Frame> {
     use crate::ffmpeg::decoder::{D3d11Frame, VideoDecoder};
 
@@ -322,6 +329,7 @@ pub fn spawn_d3d11_decode_thread(
             log::info!("D3D11VA decode thread {label}: backend={}", dec.backend());
 
             loop {
+                pause_ctl.check_pause();
                 match dec.next_frame_d3d11() {
                     Ok(Some(frame)) => {
                         if tx.send(frame).is_err() {
@@ -341,7 +349,8 @@ pub fn spawn_d3d11_decode_thread(
     rx
 }
 
-/// Spawn paired D3D11VA decode threads and return the pair receiver.
+/// Spawn paired D3D11VA decode threads and return the pair receiver
+/// plus a pause control for power management during AI inference.
 ///
 /// `sync_offset` applies temporal alignment: positive skips right frames,
 /// negative skips left frames.
@@ -350,14 +359,19 @@ pub fn spawn_d3d11_decode_pair(
     left: &crate::stitch_job::InputPath,
     right: &crate::stitch_job::InputPath,
     sync_offset: i64,
-) -> std::sync::mpsc::Receiver<(
-    crate::ffmpeg::decoder::D3d11Frame,
-    crate::ffmpeg::decoder::D3d11Frame,
-)> {
+) -> (
+    std::sync::mpsc::Receiver<(
+        crate::ffmpeg::decoder::D3d11Frame,
+        crate::ffmpeg::decoder::D3d11Frame,
+    )>,
+    Arc<DecodePauseControl>,
+) {
     use crate::ffmpeg::decoder::D3d11Frame;
 
-    let left_rx = spawn_d3d11_decode_thread(left.clone(), "left");
-    let right_rx = spawn_d3d11_decode_thread(right.clone(), "right");
+    let pause_ctl = DecodePauseControl::new(2);
+
+    let left_rx = spawn_d3d11_decode_thread(left.clone(), "left", Arc::clone(&pause_ctl));
+    let right_rx = spawn_d3d11_decode_thread(right.clone(), "right", Arc::clone(&pause_ctl));
 
     let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<(D3d11Frame, D3d11Frame)>(4);
     std::thread::Builder::new()
@@ -388,5 +402,5 @@ pub fn spawn_d3d11_decode_pair(
         })
         .expect("spawn D3D11VA pairing thread");
 
-    pair_rx
+    (pair_rx, pause_ctl)
 }

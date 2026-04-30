@@ -71,6 +71,7 @@ struct WindowsZeroCopyState {
         crate::ffmpeg::decoder::D3d11Frame,
         crate::ffmpeg::decoder::D3d11Frame,
     )>,
+    pause_ctl: std::sync::Arc<reco_core::zero_copy::DecodePauseControl>,
 }
 
 #[cfg(target_os = "linux")]
@@ -443,13 +444,15 @@ impl SmartFileSource {
         right_rotation: i32,
         full_range: bool,
     ) -> Result<Self, SourceError> {
-        let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(left, right, sync_offset);
+        let (pair_rx, pause_ctl) =
+            crate::zero_copy::spawn_d3d11_decode_pair(left, right, sync_offset);
         log::info!("SmartFileSource: D3D11VA zero-copy decode enabled");
 
         Ok(Self {
             mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
                 pair_rx,
                 _retained_pair: None,
+                pause_ctl,
             })),
             info,
             pixel_format,
@@ -544,6 +547,20 @@ impl SmartFileSource {
             SourceMode::GpuZeroCopy(state) => {
                 Some((&state.shared.left_buf, &state.shared.right_buf))
             }
+            _ => None,
+        }
+    }
+
+    /// Get the decode thread pause control (D3D11VA zero-copy only).
+    ///
+    /// The session uses this to pause decode threads during DirectML
+    /// inference on iGPUs, freeing shared TDP power for the GPU.
+    #[cfg(target_os = "windows")]
+    pub fn decode_pause_control(
+        &self,
+    ) -> Option<std::sync::Arc<reco_core::zero_copy::DecodePauseControl>> {
+        match &self.mode {
+            SourceMode::D3d11ZeroCopy(state) => Some(std::sync::Arc::clone(&state.pause_ctl)),
             _ => None,
         }
     }
