@@ -22,14 +22,15 @@ use thiserror::Error;
 
 use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_QUERY, D3D11_QUERY_DESC,
-    D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_TEXTURE2D_DESC,
-    D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, ID3D11Device, ID3D11DeviceContext, ID3D11Query,
-    ID3D11Texture2D,
+    D3D11_CPU_ACCESS_READ, D3D11_FENCE_FLAG_NONE, D3D11_MAP_READ,
+    D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
+    D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, ID3D11Device, ID3D11Device5,
+    ID3D11DeviceContext, ID3D11DeviceContext4, ID3D11Fence, ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
-use windows::Win32::Graphics::Dxgi::IDXGIResource1;
+use windows::Win32::Graphics::Dxgi::{IDXGIKeyedMutex, IDXGIResource1};
+use windows::Win32::System::Threading::{CreateEventA, WaitForSingleObject};
 use windows::core::Interface;
 
 /// Errors from D3D11VA interop.
@@ -75,20 +76,19 @@ const TOTAL_SLOTS: usize = SLOTS_PER_CAMERA * 2;
 pub struct D3d11StagingPool {
     _device: ID3D11Device,
     context: ID3D11DeviceContext,
+    context4: ID3D11DeviceContext4,
     staging: Vec<ID3D11Texture2D>,
+    keyed_mutexes: Vec<IDXGIKeyedMutex>,
     _wgpu_textures: Vec<wgpu::Texture>,
     y_views: Vec<wgpu::TextureView>,
     uv_views: Vec<wgpu::TextureView>,
-    event_query: ID3D11Query,
+    fence: ID3D11Fence,
+    fence_event: HANDLE,
+    fence_value: std::sync::atomic::AtomicU64,
     /// CPU-readable staging texture for detection readback.
     readback_staging: Option<ID3D11Texture2D>,
     width: u32,
     height: u32,
-    /// Skip event query wait (NVIDIA: Flush-only mode).
-    /// On NVIDIA, the event query spin_loop hangs because it waits for
-    /// all prior D3D11 work including continuous decode submissions.
-    /// Flush-only relies on DX12 import sync via shared NT handles.
-    flush_only: bool,
 }
 
 impl D3d11StagingPool {
@@ -109,7 +109,6 @@ impl D3d11StagingPool {
         d3d11_context_ptr: *mut c_void,
         width: u32,
         height: u32,
-        flush_only: bool,
     ) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
@@ -120,13 +119,10 @@ impl D3d11StagingPool {
             ));
         }
 
-        // Wrap FFmpeg's raw COM pointers. from_raw takes ownership
-        // (no AddRef), so we clone to AddRef for our own reference,
-        // then forget the original to avoid double-Release.
         let device: ID3D11Device = {
             let raw = ID3D11Device::from_raw(d3d11_device_ptr);
-            let cloned = raw.clone(); // AddRef
-            std::mem::forget(raw); // don't Release FFmpeg's ref
+            let cloned = raw.clone();
+            std::mem::forget(raw);
             cloned
         };
         let context: ID3D11DeviceContext = {
@@ -138,18 +134,24 @@ impl D3d11StagingPool {
 
         log::info!("D3D11 interop: using FFmpeg's D3D11 device ({d3d11_device_ptr:?})");
 
-        // Create event query for staging copy synchronization.
-        let query_desc = D3D11_QUERY_DESC {
-            Query: D3D11_QUERY(0), // D3D11_QUERY_EVENT = 0
-            MiscFlags: 0,
+        // D3D11 fence for per-operation sync (unlike event queries
+        // which wait for ALL prior work and deadlock on NVIDIA).
+        let device5: ID3D11Device5 = device.cast().map_err(|e| {
+            D3d11InteropError::D3d11(format!(
+                "ID3D11Device5 not available (need Windows 10+): {e}"
+            ))
+        })?;
+        let context4: ID3D11DeviceContext4 = context.cast().map_err(|e| {
+            D3d11InteropError::D3d11(format!("ID3D11DeviceContext4 not available: {e}"))
+        })?;
+        let fence: ID3D11Fence = {
+            let mut f: Option<ID3D11Fence> = None;
+            device5.CreateFence(0, D3D11_FENCE_FLAG_NONE, &mut f)?;
+            f.ok_or_else(|| D3d11InteropError::D3d11("CreateFence returned None".into()))?
         };
-        let event_query: ID3D11Query = {
-            let mut query: Option<ID3D11Query> = None;
-            device.CreateQuery(&query_desc, Some(&mut query))?;
-            query.ok_or_else(|| D3d11InteropError::D3d11("CreateQuery returned None".into()))?
-        };
+        let fence_event = CreateEventA(None, false, false, windows::core::PCSTR::null())
+            .map_err(|e| D3d11InteropError::D3d11(format!("CreateEvent: {e}")))?;
 
-        // Create 4 NV12 staging textures with shared handles.
         let desc = D3D11_TEXTURE2D_DESC {
             Width: width,
             Height: height,
@@ -163,11 +165,12 @@ impl D3d11StagingPool {
             Usage: D3D11_USAGE_DEFAULT,
             BindFlags: 0,
             CPUAccessFlags: 0,
-            MiscFlags: (D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0 | D3D11_RESOURCE_MISC_SHARED.0)
-                as u32,
+            MiscFlags: (D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0
+                | D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0) as u32,
         };
 
         let mut staging_textures: Vec<ID3D11Texture2D> = Vec::with_capacity(TOTAL_SLOTS);
+        let mut keyed_mutexes: Vec<IDXGIKeyedMutex> = Vec::with_capacity(TOTAL_SLOTS);
         let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(TOTAL_SLOTS);
         let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(TOTAL_SLOTS);
         let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(TOTAL_SLOTS);
@@ -179,20 +182,18 @@ impl D3d11StagingPool {
                 tex.ok_or_else(|| D3d11InteropError::D3d11("CreateTexture2D returned None".into()))?
             };
 
-            // Get shared NT handle.
+            let keyed_mutex: IDXGIKeyedMutex = staging.cast()?;
+
             let dxgi_resource: IDXGIResource1 = staging.cast()?;
             let handle: HANDLE =
                 unsafe { dxgi_resource.CreateSharedHandle(None, GENERIC_ALL.0, None)? };
 
-            // Import into wgpu via DX12 HAL.
             let wgpu_texture = unsafe { import_d3d11_shared_handle(gpu, handle, width, height)? };
 
-            // Close the NT handle (DX12 has its own reference now).
             unsafe {
                 let _ = CloseHandle(handle);
             }
 
-            // Create NV12 plane views.
             let y_view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor {
                 label: Some(&format!("d3d11_y_{i}")),
                 format: Some(wgpu::TextureFormat::R8Unorm),
@@ -217,6 +218,7 @@ impl D3d11StagingPool {
             });
 
             staging_textures.push(staging);
+            keyed_mutexes.push(keyed_mutex);
             wgpu_textures.push(wgpu_texture);
             y_views.push(y_view);
             uv_views.push(uv_view);
@@ -237,18 +239,22 @@ impl D3d11StagingPool {
             _wgpu_textures: wgpu_textures,
             y_views,
             uv_views,
-            event_query,
+            keyed_mutexes,
+            fence,
+            fence_event,
+            fence_value: std::sync::atomic::AtomicU64::new(0),
+            context4,
             readback_staging: None,
             width,
             height,
-            flush_only,
         })
     }
 
     /// Copy a D3D11VA decoded frame from the decode pool to a staging slot.
     ///
-    /// Performs `CopySubresourceRegion` (GPU-to-GPU, ~0.2ms) then waits
-    /// for completion via an event query before returning.
+    /// Uses ID3D11Fence + IDXGIKeyedMutex for per-operation sync
+    /// (Gyroflow pattern). Unlike event queries which wait for ALL prior
+    /// D3D11 work, the fence signals after THIS specific copy completes.
     pub fn stage_frame(
         &self,
         src_texture: *mut c_void,
@@ -271,7 +277,8 @@ impl D3d11StagingPool {
             let src: ID3D11Texture2D = unknown.cast()?;
             std::mem::forget(unknown);
 
-            let src_subresource = array_slice as u32;
+            // Acquire the keyed mutex on the staging texture.
+            self.keyed_mutexes[slot].AcquireSync(0, 5000)?;
 
             let t_copy = std::time::Instant::now();
             self.context.CopySubresourceRegion(
@@ -281,41 +288,33 @@ impl D3d11StagingPool {
                 0,
                 0,
                 &src,
-                src_subresource,
+                array_slice as u32,
                 None,
             );
             let copy_time = t_copy.elapsed();
 
-            let t_flush = std::time::Instant::now();
-            self.context.Flush();
-            let flush_time = t_flush.elapsed();
-
+            // Signal fence and wait for THIS copy to complete.
             let t_wait = std::time::Instant::now();
-            if !self.flush_only {
-                self.context.End(&self.event_query);
-                loop {
-                    let mut done: u32 = 0;
-                    let hr = self.context.GetData(
-                        &self.event_query,
-                        Some(&mut done as *mut u32 as *mut c_void),
-                        std::mem::size_of::<u32>() as u32,
-                        0,
-                    );
-                    if hr.is_ok() && done != 0 {
-                        break;
-                    }
-                    std::hint::spin_loop();
-                }
-            }
+            let fence_val = self
+                .fence_value
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            self.context4.Signal(&self.fence, fence_val)?;
+            self.fence
+                .SetEventOnCompletion(fence_val, self.fence_event)?;
+            WaitForSingleObject(self.fence_event, 5000);
             let wait_time = t_wait.elapsed();
+
+            // Release the mutex so DX12 can read the texture.
+            self.keyed_mutexes[slot].ReleaseSync(0)?;
+
             let total = t0.elapsed();
 
             if self.width > 1920 {
                 log::trace!(
                     "stage_frame[{slot}] slice={array_slice}: \
-                     copy={:.1}ms flush={:.1}ms wait={:.1}ms total={:.1}ms",
+                     copy={:.1}ms fence={:.1}ms total={:.1}ms",
                     copy_time.as_secs_f64() * 1000.0,
-                    flush_time.as_secs_f64() * 1000.0,
                     wait_time.as_secs_f64() * 1000.0,
                     total.as_secs_f64() * 1000.0,
                 );
