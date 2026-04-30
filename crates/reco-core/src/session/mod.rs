@@ -1749,7 +1749,9 @@ impl StitchSession {
                     // Without this, frame N's staging copy can race with
                     // frame N-2's render pass on the same slot.
                     if self.frame_count >= 2 {
-                        self.core.gpu().device().poll(wgpu::Maintain::Wait);
+                        let _ = self.core.gpu().device().poll(wgpu::PollType::Wait {
+                            submission_index: None,
+                        });
                     }
 
                     // Stage frames (borrows pool immutably, scoped).
