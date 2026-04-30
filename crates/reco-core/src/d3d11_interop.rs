@@ -286,14 +286,31 @@ impl D3d11StagingPool {
             self.context.Flush();
             let flush_time = t_flush.elapsed();
 
+            let t_wait = std::time::Instant::now();
+            self.context.End(&self.event_query);
+            loop {
+                let mut done: u32 = 0;
+                let hr = self.context.GetData(
+                    &self.event_query,
+                    Some(&mut done as *mut u32 as *mut c_void),
+                    std::mem::size_of::<u32>() as u32,
+                    0,
+                );
+                if hr.is_ok() && done != 0 {
+                    break;
+                }
+                std::thread::yield_now();
+            }
+            let wait_time = t_wait.elapsed();
             let total = t0.elapsed();
 
             if self.width > 1920 {
                 log::trace!(
                     "stage_frame[{slot}] slice={array_slice}: \
-                     copy={:.1}ms flush={:.1}ms total={:.1}ms",
+                     copy={:.1}ms flush={:.1}ms wait={:.1}ms total={:.1}ms",
                     copy_time.as_secs_f64() * 1000.0,
                     flush_time.as_secs_f64() * 1000.0,
+                    wait_time.as_secs_f64() * 1000.0,
                     total.as_secs_f64() * 1000.0,
                 );
             }
