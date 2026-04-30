@@ -1737,17 +1737,22 @@ impl StitchSession {
                             }
                         }
                     }
-                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
-
                     let left_slot = self.frame_count as usize % 2;
                     let right_slot = left_slot + 2;
 
-                    pool.stage_frame(*left_texture, *left_slice, left_slot)?;
-                    pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+                    // Stage frames (borrows pool immutably, scoped).
+                    {
+                        let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                        pool.stage_frame(*left_texture, *left_slice, left_slot)?;
+                        pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+                    }
 
+                    // Director update (borrows self mutably).
                     self.update_director(start.elapsed())?;
-
                     let pos = self.director_position();
+
+                    // Render from staged views (borrows pool immutably again).
+                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
                     let render_buf = self.core.render_imported_views_at_pose(
                         pool.y_view(left_slot),
                         pool.uv_view(left_slot),

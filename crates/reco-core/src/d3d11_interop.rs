@@ -20,7 +20,7 @@ use crate::gpu::GpuContext;
 use std::ffi::c_void;
 use thiserror::Error;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, LUID};
+use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE, LUID};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
@@ -120,7 +120,7 @@ impl D3d11StagingPool {
             D3D11CreateDevice(
                 &adapter,
                 D3D_DRIVER_TYPE_UNKNOWN,
-                None,
+                HMODULE::default(),
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 None,
                 D3D11_SDK_VERSION,
@@ -252,10 +252,12 @@ impl D3d11StagingPool {
         unsafe {
             // Reconstruct the ID3D11Texture2D from the raw pointer.
             // SAFETY: FFmpeg guarantees data[0] is a valid ID3D11Texture2D*
-            // for the lifetime of the decoded frame.
-            let src: ID3D11Texture2D = ID3D11Texture2D::from_raw_borrowed(&src_texture)
-                .expect("from_raw_borrowed")
-                .clone();
+            // for the lifetime of the decoded frame. We AddRef via clone
+            // to get our own reference, then release at scope end.
+            let unknown: windows::core::IUnknown = windows::core::IUnknown::from_raw(src_texture);
+            let src: ID3D11Texture2D = unknown.cast()?;
+            // Re-leak the original pointer so FFmpeg keeps its reference.
+            std::mem::forget(unknown);
 
             // D3D11CalcSubresource(MipSlice=0, ArraySlice, MipLevels=1) = ArraySlice
             let src_subresource = array_slice as u32;
@@ -367,7 +369,9 @@ unsafe fn import_d3d11_shared_handle(
             .as_hal::<Dx12>()
             .ok_or(D3d11InteropError::NotDx12)?;
         let raw_device = hal_device_guard.raw_device();
-        raw_device.OpenSharedHandle(handle)?
+        let mut resource: Option<ID3D12Resource> = None;
+        raw_device.OpenSharedHandle(handle, &mut resource)?;
+        resource.ok_or_else(|| D3d11InteropError::D3d11("OpenSharedHandle returned None".into()))?
     };
 
     // Wrap the D3D12 resource in a wgpu HAL texture.
