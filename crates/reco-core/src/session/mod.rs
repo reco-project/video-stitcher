@@ -1807,16 +1807,14 @@ impl StitchSession {
 
                         // Pause decode threads to free CPU power for GPU
                         // inference on shared-TDP iGPUs.
-                        let pause_t0 = std::time::Instant::now();
-                        let paused = self
-                            .decode_pause_ctl
-                            .as_ref()
-                            .map(|ctl| ctl.pause())
-                            .unwrap_or(false);
-                        if paused {
+                        let has_pause_ctl = self.decode_pause_ctl.is_some();
+                        if has_pause_ctl {
+                            let pause_t0 = std::time::Instant::now();
+                            let all_parked = self.decode_pause_ctl.as_ref().unwrap().pause();
                             eprintln!(
-                                "decode threads paused in {:.1}ms",
+                                "decode threads paused in {:.1}ms (all_parked={})",
                                 pause_t0.elapsed().as_secs_f64() * 1000.0,
+                                all_parked,
                             );
                         }
 
@@ -1835,10 +1833,8 @@ impl StitchSession {
                         let detections = self.detection.run_detection(&nv12_frame, width, height);
                         self.detection.last_detections = self.map_detections(detections);
 
-                        if paused {
-                            if let Some(ctl) = self.decode_pause_ctl.as_ref() {
-                                ctl.resume();
-                            }
+                        if has_pause_ctl {
+                            self.decode_pause_ctl.as_ref().unwrap().resume();
                         }
                     }
                     self.fire_sink_and_update_director(start.elapsed(), should_detect)?;

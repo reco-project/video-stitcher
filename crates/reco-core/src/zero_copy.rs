@@ -43,6 +43,7 @@ impl DecodePauseControl {
     ///
     /// Blocks until all threads have acknowledged the pause. Returns
     /// false if the 50ms timeout expires (thread stuck in FFmpeg).
+    /// Always call [`resume`] after this, even on timeout.
     pub fn pause(&self) -> bool {
         {
             let mut state = self.state.lock().unwrap();
