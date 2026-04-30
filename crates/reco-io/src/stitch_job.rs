@@ -588,7 +588,9 @@ impl StitchJob {
                 session.set_decode_pause_control(ctl);
             }
         } else {
-            eprintln!("iGPU power management: decode thread pausing disabled (RECO_NO_DECODE_PAUSE)");
+            eprintln!(
+                "iGPU power management: decode thread pausing disabled (RECO_NO_DECODE_PAUSE)"
+            );
         }
 
         for hook in self.session_hooks.drain(..) {
