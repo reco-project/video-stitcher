@@ -52,7 +52,7 @@ pub fn create_shared_texture(
             .as_hal::<Dx12>()
             .ok_or(CudaInteropError::NotVulkan)?;
         let raw_device = hal_device_guard.raw_device();
-        let handle = HANDLE(win32_handle as isize);
+        let handle = HANDLE(win32_handle);
         let mut resource: Option<ID3D12Resource> = None;
         raw_device
             .OpenSharedHandle(handle, &mut resource)

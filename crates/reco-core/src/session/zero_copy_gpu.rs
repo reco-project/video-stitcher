@@ -43,16 +43,6 @@ pub struct SharedTextureSet {
 impl StitchSession {
     /// Create double-buffered shared textures for CUDA/Vulkan zero-copy (Linux only).
     #[cfg(target_os = "linux")]
-    ///
-    /// Returns 8 shared textures (Y + UV per slot per camera), the
-    /// `GpuBufInfo` for each camera (CUDA pointers for decode threads),
-    /// and slot-free channels for backpressure.
-    ///
-    /// The `pixel_format` selects texture formats: [`GpuPixelFormat::Nv12`](crate::renderer::GpuPixelFormat::Nv12)
-    /// uses R8Unorm/Rg8Unorm, [`GpuPixelFormat::P010`](crate::renderer::GpuPixelFormat::P010) uses R16Unorm/Rg16Unorm.
-    ///
-    /// Call this once during setup, then pass the results to
-    /// [`Self::run_zero_copy_linux`].
     pub fn create_shared_textures(
         &mut self,
         input_width: u32,
@@ -213,9 +203,15 @@ impl StitchSession {
             Some(bg) => bg,
             None => {
                 let t = &textures;
-                self.core.pipeline_mut().configure_gpu_source(
-                    [(&t[0], &t[1]), (&t[2], &t[3])],
-                    [(&t[4], &t[5]), (&t[6], &t[7])],
+                self.core.pipeline_mut().configure_gpu_source_raw(
+                    [
+                        (&t[0].texture, &t[1].texture),
+                        (&t[2].texture, &t[3].texture),
+                    ],
+                    [
+                        (&t[4].texture, &t[5].texture),
+                        (&t[6].texture, &t[7].texture),
+                    ],
                 )
             }
         };
