@@ -503,8 +503,13 @@ pub fn spawn_d3d11_decode_pair(
         log::info!("D3D11VA sync offset: skipped {skip} left frames");
     }
 
-    let (left_slot_tx, left_slot_rx) = std::sync::mpsc::sync_channel::<usize>(4);
-    let (right_slot_tx, right_slot_rx) = std::sync::mpsc::sync_channel::<usize>(4);
+    // Channel depth must be < SLOTS_PER_CAMERA to prevent the decode
+    // thread from wrapping around and overwriting a slot the main thread
+    // hasn't rendered yet. With 3 slots: depth 2 = one being rendered,
+    // one in the channel, one being staged.
+    let slot_channel_depth = SLOTS_PER_CAMERA - 1;
+    let (left_slot_tx, left_slot_rx) = std::sync::mpsc::sync_channel::<usize>(slot_channel_depth);
+    let (right_slot_tx, right_slot_rx) = std::sync::mpsc::sync_channel::<usize>(slot_channel_depth);
 
     // Readback channels for detection.
     let (left_rb_req_tx, left_rb_req_rx) = std::sync::mpsc::sync_channel::<ReadbackRequest>(1);
@@ -596,7 +601,7 @@ pub fn spawn_d3d11_decode_pair(
         .expect("spawn D3D11VA right decode thread");
 
     // Pairing thread: zip left + right slot indices.
-    let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<(usize, usize)>(4);
+    let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<(usize, usize)>(slot_channel_depth);
     std::thread::Builder::new()
         .name("d3d11_pair".into())
         .spawn(move || {
