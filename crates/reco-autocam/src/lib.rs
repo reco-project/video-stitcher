@@ -394,7 +394,7 @@ pub fn setup_autocam(
 
     // ORT CPU fallback for .onnx files.
     #[cfg(feature = "ort")]
-    if !detection_active && !use_zero_copy {
+    if !detection_active {
         let yolo = CpuYoloDetector::from_file(model_path)?;
         let detector: Box<dyn reco_core::detector::UnifiedDetector> =
             if let Some(roi) = effective_roi {
@@ -404,7 +404,11 @@ pub fn setup_autocam(
             };
         session.set_detector(detector);
         detection_active = true;
-        log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
+        if use_zero_copy {
+            log::info!("Autocam: YOLO tracking enabled via NV12 readback (model: {model_path})");
+        } else {
+            log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
+        }
     }
     // Without ort feature, detection only activates via the
     // tensorrt-native or ncnn branches above. If we still don't

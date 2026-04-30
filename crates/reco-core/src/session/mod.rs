@@ -1777,8 +1777,31 @@ impl StitchSession {
                     }
                     let stage_time = stage_t0.elapsed();
 
-                    // Director update.
-                    self.update_director(start.elapsed())?;
+                    // Detection: readback NV12 from staging on detection frames.
+                    let detect_t0 = std::time::Instant::now();
+                    let should_detect = self.detection.has_detector()
+                        && self.detection.should_detect(self.frame_count);
+                    if should_detect {
+                        let pool_mut = self.d3d11_staging_pool.as_mut().unwrap();
+                        let (left_y, left_uv) = pool_mut.readback_nv12(left_slot)?;
+                        let (right_y, right_uv) = pool_mut.readback_nv12(right_slot)?;
+                        let (width, height) = self.core.pipeline().source_info();
+                        let nv12_frame =
+                            crate::source::StereoFrame::Nv12(crate::source::Nv12FramePair {
+                                left: crate::source::Nv12Data {
+                                    y: left_y,
+                                    uv: left_uv,
+                                },
+                                right: crate::source::Nv12Data {
+                                    y: right_y,
+                                    uv: right_uv,
+                                },
+                            });
+                        let detections = self.detection.run_detection(&nv12_frame, width, height);
+                        self.detection.last_detections = self.map_detections(detections);
+                    }
+                    self.fire_sink_and_update_director(start.elapsed(), should_detect)?;
+                    let detect_time = detect_t0.elapsed();
                     let pos = self.director_position();
 
                     // Render: create bind groups + stitch render pass.
@@ -1802,6 +1825,11 @@ impl StitchSession {
                     self.telemetry.record_frame(crate::telemetry::FrameTiming {
                         decode: Some(decode_time + poll_time),
                         upload: Some(stage_time),
+                        detection: if should_detect {
+                            Some(detect_time)
+                        } else {
+                            None
+                        },
                         stitch: Some(render_time),
                         encode: Some(encode_time),
                         total: Some(frame_t0.elapsed()),

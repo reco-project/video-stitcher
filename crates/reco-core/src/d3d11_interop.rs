@@ -22,8 +22,9 @@ use thiserror::Error;
 
 use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
-    D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Device, ID3D11DeviceContext, ID3D11Query,
+    D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_QUERY, D3D11_QUERY_DESC,
+    D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_TEXTURE2D_DESC,
+    D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, ID3D11Device, ID3D11DeviceContext, ID3D11Query,
     ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
@@ -75,6 +76,9 @@ pub struct D3d11StagingPool {
     y_views: [wgpu::TextureView; 4],
     uv_views: [wgpu::TextureView; 4],
     event_query: ID3D11Query,
+    /// CPU-readable staging texture for detection readback.
+    /// Created lazily on first detection frame.
+    readback_staging: Option<ID3D11Texture2D>,
     width: u32,
     height: u32,
 }
@@ -223,6 +227,7 @@ impl D3d11StagingPool {
             y_views: y_views.try_into().unwrap(),
             uv_views: uv_views.try_into().unwrap(),
             event_query,
+            readback_staging: None,
             width,
             height,
         })
@@ -310,6 +315,109 @@ impl D3d11StagingPool {
     /// Staging texture height.
     pub fn height(&self) -> u32 {
         self.height
+    }
+
+    /// Read back NV12 data from a staging slot to CPU memory.
+    ///
+    /// Returns `(y_data, uv_data)` where `y_data` is the full-resolution
+    /// luma plane and `uv_data` is the half-resolution interleaved chroma.
+    /// Only called on detection frames (every N frames).
+    pub fn readback_nv12(&mut self, slot: usize) -> Result<(Vec<u8>, Vec<u8>), D3d11InteropError> {
+        if slot >= 4 {
+            return Err(D3d11InteropError::StagingCopy(format!(
+                "readback slot {slot} out of range"
+            )));
+        }
+
+        unsafe {
+            // Lazily create the CPU-readable staging texture.
+            if self.readback_staging.is_none() {
+                let desc = D3D11_TEXTURE2D_DESC {
+                    Width: self.width,
+                    Height: self.height,
+                    MipLevels: 1,
+                    ArraySize: 1,
+                    Format: DXGI_FORMAT_NV12,
+                    SampleDesc: DXGI_SAMPLE_DESC {
+                        Count: 1,
+                        Quality: 0,
+                    },
+                    Usage: D3D11_USAGE_STAGING,
+                    BindFlags: 0,
+                    CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                    MiscFlags: 0,
+                };
+                let mut tex: Option<ID3D11Texture2D> = None;
+                self._device.CreateTexture2D(&desc, None, Some(&mut tex))?;
+                self.readback_staging = Some(tex.ok_or_else(|| {
+                    D3d11InteropError::D3d11("readback staging texture creation failed".into())
+                })?);
+                log::info!(
+                    "D3D11VA readback staging texture created: {}x{} NV12",
+                    self.width,
+                    self.height
+                );
+            }
+
+            let readback = self.readback_staging.as_ref().unwrap();
+
+            // Copy from the shared staging slot to the CPU-readable staging texture.
+            self.context.CopyResource(readback, &self.staging[slot]);
+            self.context.Flush();
+            self.context.End(&self.event_query);
+            loop {
+                let mut done: u32 = 0;
+                let hr = self.context.GetData(
+                    &self.event_query,
+                    Some(&mut done as *mut u32 as *mut c_void),
+                    std::mem::size_of::<u32>() as u32,
+                    0,
+                );
+                if hr.is_ok() && done != 0 {
+                    break;
+                }
+                std::hint::spin_loop();
+            }
+
+            // Map the readback texture for CPU read.
+            let mut mapped = std::mem::zeroed();
+            self.context
+                .Map(readback, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
+
+            let row_pitch = mapped.RowPitch as usize;
+
+            // NV12 layout: Y plane is height rows, UV plane is height/2 rows.
+            // Row pitch may be larger than width due to alignment.
+            let w = self.width as usize;
+            let h = self.height as usize;
+
+            // Copy Y plane (tightly packed, removing row padding).
+            let mut y_data = vec![0u8; w * h];
+            let src = mapped.pData as *const u8;
+            for row in 0..h {
+                std::ptr::copy_nonoverlapping(
+                    src.add(row * row_pitch),
+                    y_data.as_mut_ptr().add(row * w),
+                    w,
+                );
+            }
+
+            // UV plane starts at offset row_pitch * height in NV12 layout.
+            let uv_h = h / 2;
+            let mut uv_data = vec![0u8; w * uv_h];
+            let uv_src = src.add(row_pitch * h);
+            for row in 0..uv_h {
+                std::ptr::copy_nonoverlapping(
+                    uv_src.add(row * row_pitch),
+                    uv_data.as_mut_ptr().add(row * w),
+                    w,
+                );
+            }
+
+            self.context.Unmap(readback, 0);
+
+            Ok((y_data, uv_data))
+        }
     }
 }
 
