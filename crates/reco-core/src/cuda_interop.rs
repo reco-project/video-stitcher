@@ -438,11 +438,11 @@ pub fn allocate_shared_memory(size: usize) -> Result<CudaSharedMemory, CudaInter
         let win32_handle_value: *mut c_void = {
             use std::sync::OnceLock;
             use windows::Wdk::Foundation::OBJECT_ATTRIBUTES;
-            use windows::Win32::Foundation::OBJECT_ATTRIBUTE_FLAGS;
-            use windows::Win32::Foundation::{HANDLE, PSECURITY_DESCRIPTOR};
+            use windows::Win32::Foundation::{HANDLE, OBJECT_ATTRIBUTE_FLAGS};
             use windows::Win32::Security::Authorization::{
                 ConvertStringSecurityDescriptorToSecurityDescriptorA, SDDL_REVISION_1,
             };
+            use windows::Win32::Security::PSECURITY_DESCRIPTOR;
             use windows::core::PCSTR;
 
             static OBJ_ATTRS: OnceLock<Option<Box<(OBJECT_ATTRIBUTES, PSECURITY_DESCRIPTOR)>>> =
