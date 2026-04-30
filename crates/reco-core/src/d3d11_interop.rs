@@ -261,32 +261,34 @@ impl D3d11StagingPool {
         }
 
         unsafe {
-            // Reconstruct the ID3D11Texture2D from the raw pointer.
-            // SAFETY: FFmpeg guarantees data[0] is a valid ID3D11Texture2D*
-            // for the lifetime of the decoded frame. We AddRef via clone
-            // to get our own reference, then release at scope end.
+            let t0 = std::time::Instant::now();
+
             let unknown: windows::core::IUnknown = windows::core::IUnknown::from_raw(src_texture);
             let src: ID3D11Texture2D = unknown.cast()?;
-            // Re-leak the original pointer so FFmpeg keeps its reference.
             std::mem::forget(unknown);
 
-            // D3D11CalcSubresource(MipSlice=0, ArraySlice, MipLevels=1) = ArraySlice
             let src_subresource = array_slice as u32;
 
+            let t_copy = std::time::Instant::now();
             self.context.CopySubresourceRegion(
                 &self.staging[slot],
-                0, // dst subresource
                 0,
                 0,
-                0, // dst x, y, z
+                0,
+                0,
                 &src,
                 src_subresource,
-                None, // full region
+                None,
             );
+            let copy_time = t_copy.elapsed();
 
-            // Flush and wait for the copy to complete.
+            let t_flush = std::time::Instant::now();
             self.context.Flush();
+            let flush_time = t_flush.elapsed();
+
+            let t_wait = std::time::Instant::now();
             self.context.End(&self.event_query);
+            let mut spins = 0u32;
             loop {
                 let mut done: u32 = 0;
                 let hr = self.context.GetData(
@@ -298,7 +300,21 @@ impl D3d11StagingPool {
                 if hr.is_ok() && done != 0 {
                     break;
                 }
+                spins += 1;
                 std::hint::spin_loop();
+            }
+            let wait_time = t_wait.elapsed();
+            let total = t0.elapsed();
+
+            if self.width > 1920 {
+                log::trace!(
+                    "stage_frame[{slot}] slice={array_slice}: \
+                     copy={:.1}ms flush={:.1}ms wait={:.1}ms (spins={spins}) total={:.1}ms",
+                    copy_time.as_secs_f64() * 1000.0,
+                    flush_time.as_secs_f64() * 1000.0,
+                    wait_time.as_secs_f64() * 1000.0,
+                    total.as_secs_f64() * 1000.0,
+                );
             }
         }
 
