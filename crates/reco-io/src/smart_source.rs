@@ -594,6 +594,23 @@ impl FrameSource for SmartFileSource {
             #[cfg(target_os = "windows")]
             SourceMode::D3d11ZeroCopy(state) => match state.pair_rx.recv() {
                 Ok((left, right)) => {
+                    // Build readback closure that captures the retained AVFrame
+                    // pointers. When called by the session on detection frames,
+                    // this uses av_hwframe_transfer_data (FFmpeg's optimized
+                    // GPU->CPU path) instead of the D3D11 staging readback
+                    // which suffers from device context contention.
+                    let left_retained = left.retained_frame_ptr();
+                    let right_retained = right.retained_frame_ptr();
+                    let readback: Box<
+                        dyn FnOnce() -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String> + Send,
+                    > = Box::new(move || unsafe {
+                        let (ly, luv) =
+                            crate::ffmpeg::decoder::transfer_retained_to_nv12(left_retained)?;
+                        let (ry, ruv) =
+                            crate::ffmpeg::decoder::transfer_retained_to_nv12(right_retained)?;
+                        Ok((ly, luv, ry, ruv))
+                    });
+
                     let frame = StereoFrame::D3d11Resident {
                         left_texture: left.texture,
                         left_slice: left.array_slice,
@@ -601,11 +618,12 @@ impl FrameSource for SmartFileSource {
                         right_slice: right.array_slice,
                         d3d11_device: left.d3d11_device,
                         d3d11_context: left.d3d11_context,
+                        cpu_readback: Some(readback),
                     };
                     // Keep the D3d11Frames alive so their av_frame_ref
                     // prevents the D3D11VA pool from recycling the slices.
-                    // Dropped on the NEXT next_frame() call, after the
-                    // session has staged and rendered this frame.
+                    // The readback closure captures the raw retained_frame
+                    // pointers which remain valid as long as _retained_pair lives.
                     state._retained_pair = Some((left, right));
                     Ok(Some(frame))
                 }

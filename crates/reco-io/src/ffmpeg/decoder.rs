@@ -142,6 +142,67 @@ pub struct D3d11Frame {
 unsafe impl Send for D3d11Frame {}
 
 #[cfg(target_os = "windows")]
+impl D3d11Frame {
+    /// Raw pointer to the retained AVFrame (for building readback closures).
+    pub fn retained_frame_ptr(&self) -> *mut ffi::AVFrame {
+        self._retained_frame
+    }
+
+    /// Transfer the D3D11VA GPU frame to CPU NV12 data via `av_hwframe_transfer_data`.
+    ///
+    /// Used for AI detection on zero-copy frames. Much faster than reading
+    /// back through the staging texture because it uses FFmpeg's optimized
+    /// transfer path without D3D11 device context contention.
+    pub fn transfer_to_cpu_nv12(&self) -> Result<(Vec<u8>, Vec<u8>), DecodeError> {
+        if self._retained_frame.is_null() {
+            return Err(DecodeError::ConversionError(
+                "no retained AVFrame for CPU transfer".into(),
+            ));
+        }
+        unsafe {
+            let sw_frame = ffi::av_frame_alloc();
+            if sw_frame.is_null() {
+                return Err(DecodeError::ConversionError("av_frame_alloc failed".into()));
+            }
+            let ret = ffi::av_hwframe_transfer_data(sw_frame, self._retained_frame, 0);
+            if ret < 0 {
+                ffi::av_frame_free(&mut { sw_frame });
+                return Err(DecodeError::ConversionError(format!(
+                    "av_hwframe_transfer_data failed: {ret}"
+                )));
+            }
+
+            let w = (*sw_frame).width as usize;
+            let h = (*sw_frame).height as usize;
+            let y_stride = (*sw_frame).linesize[0] as usize;
+            let uv_stride = (*sw_frame).linesize[1] as usize;
+
+            let mut y_data = vec![0u8; w * h];
+            for row in 0..h {
+                std::ptr::copy_nonoverlapping(
+                    (*sw_frame).data[0].add(row * y_stride),
+                    y_data.as_mut_ptr().add(row * w),
+                    w,
+                );
+            }
+
+            let uv_h = h / 2;
+            let mut uv_data = vec![0u8; w * uv_h];
+            for row in 0..uv_h {
+                std::ptr::copy_nonoverlapping(
+                    (*sw_frame).data[1].add(row * uv_stride),
+                    uv_data.as_mut_ptr().add(row * w),
+                    w,
+                );
+            }
+
+            ffi::av_frame_free(&mut { sw_frame });
+            Ok((y_data, uv_data))
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
 impl Drop for D3d11Frame {
     fn drop(&mut self) {
         if !self._retained_frame.is_null() {
@@ -150,6 +211,55 @@ impl Drop for D3d11Frame {
             }
         }
     }
+}
+
+/// Transfer a retained D3D11VA AVFrame to CPU NV12 data.
+///
+/// Free function usable from closures that don't own the D3d11Frame.
+/// The `retained_frame` pointer must be valid (non-null, from `D3d11Frame::retained_frame_ptr`).
+///
+/// # Safety
+/// `retained_frame` must point to a valid AVFrame with a hw_frames_ctx.
+#[cfg(target_os = "windows")]
+pub unsafe fn transfer_retained_to_nv12(
+    retained_frame: *mut ffi::AVFrame,
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    if retained_frame.is_null() {
+        return Err("null retained AVFrame".into());
+    }
+    let sw_frame = ffi::av_frame_alloc();
+    if sw_frame.is_null() {
+        return Err("av_frame_alloc failed".into());
+    }
+    let ret = ffi::av_hwframe_transfer_data(sw_frame, retained_frame, 0);
+    if ret < 0 {
+        ffi::av_frame_free(&mut { sw_frame });
+        return Err(format!("av_hwframe_transfer_data failed: {ret}"));
+    }
+    let w = (*sw_frame).width as usize;
+    let h = (*sw_frame).height as usize;
+    let y_stride = (*sw_frame).linesize[0] as usize;
+    let uv_stride = (*sw_frame).linesize[1] as usize;
+
+    let mut y_data = vec![0u8; w * h];
+    for row in 0..h {
+        std::ptr::copy_nonoverlapping(
+            (*sw_frame).data[0].add(row * y_stride),
+            y_data.as_mut_ptr().add(row * w),
+            w,
+        );
+    }
+    let uv_h = h / 2;
+    let mut uv_data = vec![0u8; w * uv_h];
+    for row in 0..uv_h {
+        std::ptr::copy_nonoverlapping(
+            (*sw_frame).data[1].add(row * uv_stride),
+            uv_data.as_mut_ptr().add(row * w),
+            w,
+        );
+    }
+    ffi::av_frame_free(&mut { sw_frame });
+    Ok((y_data, uv_data))
 }
 
 /// Re-export the canonical YUV frame type from reco-core.

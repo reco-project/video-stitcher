@@ -291,10 +291,15 @@ pub enum StereoFrame {
         /// Array slice index within the D3D11VA decode pool for right camera.
         right_slice: usize,
         /// FFmpeg's D3D11 device pointer (ID3D11Device*).
-        /// Passed on first frame to initialize the staging pool.
         d3d11_device: *mut std::ffi::c_void,
         /// FFmpeg's D3D11 device context pointer (ID3D11DeviceContext*).
         d3d11_context: *mut std::ffi::c_void,
+        /// Callback to transfer GPU frames to CPU NV12 for detection.
+        /// Calls av_hwframe_transfer_data on the retained AVFrame.
+        /// Returns (left_y, left_uv, right_y, right_uv).
+        cpu_readback: Option<
+            Box<dyn FnOnce() -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String> + Send>,
+        >,
     },
 }
 

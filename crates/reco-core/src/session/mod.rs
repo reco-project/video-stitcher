@@ -1682,7 +1682,7 @@ impl StitchSession {
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
             let frame_t0 = std::time::Instant::now();
 
-            let frame = {
+            let mut frame = {
                 crate::profile_scope!("wait_decode");
                 match source.next_frame()? {
                     Some(f) => f,
@@ -1698,7 +1698,7 @@ impl StitchSession {
                 });
             }
 
-            match &frame {
+            match &mut frame {
                 #[cfg(target_os = "linux")]
                 StereoFrame::GpuResident {
                     left_slot,
@@ -1724,6 +1724,7 @@ impl StitchSession {
                     right_slice,
                     d3d11_device,
                     d3d11_context,
+                    cpu_readback,
                 } => {
                     if self.d3d11_staging_pool.is_none() {
                         let (w, h) = self.core.pipeline().source_info();
@@ -1768,28 +1769,39 @@ impl StitchSession {
                     }
                     let stage_time = stage_t0.elapsed();
 
-                    // Detection: readback NV12 from staging on detection frames.
+                    // Detection: use FFmpeg's av_hwframe_transfer_data via
+                    // the cpu_readback closure. This bypasses D3D11 staging
+                    // readback which suffers from device context contention.
                     let detect_t0 = std::time::Instant::now();
                     let should_detect = self.detection.has_detector()
                         && self.detection.should_detect(self.frame_count);
                     if should_detect {
-                        let pool_mut = self.d3d11_staging_pool.as_mut().unwrap();
-                        let (left_y, left_uv) = pool_mut.readback_nv12(left_slot)?;
-                        let (right_y, right_uv) = pool_mut.readback_nv12(right_slot)?;
-                        let (width, height) = self.core.pipeline().source_info();
-                        let nv12_frame =
-                            crate::source::StereoFrame::Nv12(crate::source::Nv12FramePair {
-                                left: crate::source::Nv12Data {
-                                    y: left_y,
-                                    uv: left_uv,
-                                },
-                                right: crate::source::Nv12Data {
-                                    y: right_y,
-                                    uv: right_uv,
-                                },
-                            });
-                        let detections = self.detection.run_detection(&nv12_frame, width, height);
-                        self.detection.last_detections = self.map_detections(detections);
+                        if let Some(readback) = cpu_readback.take() {
+                            match readback() {
+                                Ok((left_y, left_uv, right_y, right_uv)) => {
+                                    let (width, height) = self.core.pipeline().source_info();
+                                    let nv12_frame = crate::source::StereoFrame::Nv12(
+                                        crate::source::Nv12FramePair {
+                                            left: crate::source::Nv12Data {
+                                                y: left_y,
+                                                uv: left_uv,
+                                            },
+                                            right: crate::source::Nv12Data {
+                                                y: right_y,
+                                                uv: right_uv,
+                                            },
+                                        },
+                                    );
+                                    let detections =
+                                        self.detection.run_detection(&nv12_frame, width, height);
+                                    self.detection.last_detections =
+                                        self.map_detections(detections);
+                                }
+                                Err(e) => {
+                                    log::warn!("D3D11VA CPU readback for detection failed: {e}");
+                                }
+                            }
+                        }
                     }
                     self.fire_sink_and_update_director(start.elapsed(), should_detect)?;
                     let detect_time = detect_t0.elapsed();
