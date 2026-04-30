@@ -129,7 +129,9 @@ impl Nv12Downscaler {
         let output_buffer = gpu.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("nv12_downscale_output"),
             size: buffer_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
