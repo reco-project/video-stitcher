@@ -20,7 +20,7 @@ use crate::gpu::GpuContext;
 use std::ffi::c_void;
 use thiserror::Error;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE, LUID};
+use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
@@ -92,25 +92,24 @@ impl D3d11StagingPool {
             return Err(D3d11InteropError::NotDx12);
         }
 
-        // Get the adapter LUID from wgpu so we create D3D11 on the same GPU.
-        let adapter_luid = gpu.adapter_info.device;
+        // Match the DXGI adapter by PCI vendor+device ID from wgpu's AdapterInfo.
+        let target_vendor = gpu.adapter_info.vendor;
+        let target_device = gpu.adapter_info.device;
 
-        // Find the matching DXGI adapter by LUID.
         let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
-        let adapter = find_adapter_by_luid(&factory, adapter_luid)?;
+        let adapter = find_adapter_by_pci_id(&factory, target_vendor, target_device)?;
         let adapter_desc = unsafe { adapter.GetDesc1()? };
+        let adapter_name = String::from_utf16_lossy(
+            &adapter_desc
+                .Description
+                .iter()
+                .take_while(|c| **c != 0)
+                .copied()
+                .collect::<Vec<_>>(),
+        );
         log::info!(
-            "D3D11 interop: matched adapter '{}' (LUID {}:{})",
-            String::from_utf16_lossy(
-                &adapter_desc
-                    .Description
-                    .iter()
-                    .take_while(|c| **c != 0)
-                    .copied()
-                    .collect::<Vec<_>>()
-            ),
-            adapter_desc.AdapterLuid.HighPart,
-            adapter_desc.AdapterLuid.LowPart,
+            "D3D11 interop: matched adapter '{adapter_name}' \
+             (vendor=0x{target_vendor:04x}, device=0x{target_device:04x})",
         );
 
         // Create D3D11 device on that adapter.
@@ -323,18 +322,12 @@ impl D3d11StagingPool {
     }
 }
 
-/// Find a DXGI adapter matching the given adapter device ID (LUID encoding).
-fn find_adapter_by_luid(
+/// Find a DXGI adapter matching the given PCI vendor and device IDs.
+fn find_adapter_by_pci_id(
     factory: &IDXGIFactory1,
-    device_id: u64,
+    vendor_id: u32,
+    device_id: u32,
 ) -> Result<IDXGIAdapter1, D3d11InteropError> {
-    // wgpu stores the LUID as a u64 in AdapterInfo.device.
-    // Reconstruct the LUID: low 32 bits = LowPart, high 32 bits = HighPart.
-    let target_luid = LUID {
-        LowPart: device_id as u32,
-        HighPart: (device_id >> 32) as i32,
-    };
-
     let mut i = 0u32;
     loop {
         let adapter: IDXGIAdapter1 = match unsafe { factory.EnumAdapters1(i) } {
@@ -342,17 +335,14 @@ fn find_adapter_by_luid(
             Err(_) => break,
         };
         let desc = unsafe { adapter.GetDesc1()? };
-        if desc.AdapterLuid.LowPart == target_luid.LowPart
-            && desc.AdapterLuid.HighPart == target_luid.HighPart
-        {
+        if desc.VendorId == vendor_id && desc.DeviceId == device_id {
             return Ok(adapter);
         }
         i += 1;
     }
 
     Err(D3d11InteropError::Dxgi(format!(
-        "no DXGI adapter with LUID {}:{} (device_id={})",
-        target_luid.HighPart, target_luid.LowPart, device_id
+        "no DXGI adapter with vendor=0x{vendor_id:04x}, device=0x{device_id:04x}"
     )))
 }
 
@@ -369,14 +359,14 @@ unsafe fn import_d3d11_shared_handle(
     use wgpu::hal::api::Dx12;
 
     // Open the shared handle as a D3D12 resource.
-    let d3d12_resource: ID3D12Resource = {
+    let d3d12_resource: ID3D12Resource = unsafe {
         let hal_device_guard = gpu
             .device()
             .as_hal::<Dx12>()
             .ok_or(D3d11InteropError::NotDx12)?;
         let raw_device = hal_device_guard.raw_device();
         let mut resource: Option<ID3D12Resource> = None;
-        unsafe { raw_device.OpenSharedHandle(handle, &mut resource)? };
+        raw_device.OpenSharedHandle(handle, &mut resource)?;
         resource.ok_or_else(|| D3d11InteropError::D3d11("OpenSharedHandle returned None".into()))?
     };
 
