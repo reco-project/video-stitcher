@@ -599,25 +599,20 @@ impl FrameSource for SmartFileSource {
                     // this uses av_hwframe_transfer_data (FFmpeg's optimized
                     // GPU->CPU path) instead of the D3D11 staging readback
                     // which suffers from device context contention.
-                    // Wrap raw AVFrame pointers in a Send newtype.
-                    // SAFETY: the retained frames are valid as long as
-                    // _retained_pair is alive (set below), and the
-                    // closure is consumed before the next next_frame() call.
-                    struct SendPtr(*mut std::ffi::c_void);
-                    unsafe impl Send for SendPtr {}
-                    let left_retained = SendPtr(left.retained_frame_ptr() as *mut _);
-                    let right_retained = SendPtr(right.retained_frame_ptr() as *mut _);
-                    let readback: Box<
-                        dyn FnOnce() -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String> + Send,
-                    > = Box::new(move || unsafe {
-                        let (ly, luv) = crate::ffmpeg::decoder::transfer_retained_to_nv12(
-                            left_retained.0 as *mut _,
-                        )?;
-                        let (ry, ruv) = crate::ffmpeg::decoder::transfer_retained_to_nv12(
-                            right_retained.0 as *mut _,
-                        )?;
-                        Ok((ly, luv, ry, ruv))
-                    });
+                    // Build readback closure. Uses a Send-safe wrapper to
+                    // pass the retained AVFrame pointer across threads.
+                    // SAFETY: the pointer is valid as long as _retained_pair
+                    // (set below) is alive, which outlives the closure.
+                    let readback = {
+                        let lp = left.retained_frame_ptr();
+                        let rp = right.retained_frame_ptr();
+                        let wrapped = crate::ffmpeg::decoder::D3d11ReadbackPair::new(lp, rp);
+                        let cb: Box<
+                            dyn FnOnce() -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String>
+                                + Send,
+                        > = Box::new(move || wrapped.transfer());
+                        Some(cb)
+                    };
 
                     let frame = StereoFrame::D3d11Resident {
                         left_texture: left.texture,

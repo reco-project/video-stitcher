@@ -262,6 +262,37 @@ pub unsafe fn transfer_retained_to_nv12(
     Ok((y_data, uv_data))
 }
 
+/// Send-safe wrapper for a pair of retained AVFrame pointers.
+///
+/// Enables building readback closures that can be sent across threads
+/// (from SmartFileSource to the session). The raw pointers are valid
+/// as long as the D3d11Frame's `_retained_pair` is alive.
+#[cfg(target_os = "windows")]
+pub struct D3d11ReadbackPair {
+    left: *mut ffi::AVFrame,
+    right: *mut ffi::AVFrame,
+}
+
+#[cfg(target_os = "windows")]
+unsafe impl Send for D3d11ReadbackPair {}
+
+#[cfg(target_os = "windows")]
+impl D3d11ReadbackPair {
+    /// Create from retained AVFrame pointers.
+    pub fn new(left: *mut ffi::AVFrame, right: *mut ffi::AVFrame) -> Self {
+        Self { left, right }
+    }
+
+    /// Transfer both frames to CPU NV12 via av_hwframe_transfer_data.
+    pub fn transfer(self) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String> {
+        unsafe {
+            let (ly, luv) = transfer_retained_to_nv12(self.left)?;
+            let (ry, ruv) = transfer_retained_to_nv12(self.right)?;
+            Ok((ly, luv, ry, ruv))
+        }
+    }
+}
+
 /// Re-export the canonical YUV frame type from reco-core.
 pub use reco_core::source::YuvFrame;
 
