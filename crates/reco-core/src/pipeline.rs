@@ -270,7 +270,7 @@ pub struct StitchPipeline {
 ///
 /// Created by [`StitchPipeline::configure_gpu_source`]. Each slot
 /// corresponds to a double-buffer index used by the decode thread.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub struct GpuSourceBindGroups {
     left: [wgpu::BindGroup; 2],
     right: [wgpu::BindGroup; 2],
@@ -509,24 +509,42 @@ impl StitchPipeline {
             &crate::vulkan_interop::SharedTexture,
         ); 2],
     ) -> GpuSourceBindGroups {
+        self.configure_gpu_source_raw(
+            [
+                (&left_textures[0].0.texture, &left_textures[0].1.texture),
+                (&left_textures[1].0.texture, &left_textures[1].1.texture),
+            ],
+            [
+                (&right_textures[0].0.texture, &right_textures[0].1.texture),
+                (&right_textures[1].0.texture, &right_textures[1].1.texture),
+            ],
+        )
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn configure_gpu_source_raw(
+        &mut self,
+        left_textures: [(&wgpu::Texture, &wgpu::Texture); 2],
+        right_textures: [(&wgpu::Texture, &wgpu::Texture); 2],
+    ) -> GpuSourceBindGroups {
         let left_bg_0 = self.renderer.create_texture_bind_group(
-            &left_textures[0].0.texture,
-            &left_textures[0].1.texture,
+            left_textures[0].0,
+            left_textures[0].1,
             "left_slot0",
         );
         let left_bg_1 = self.renderer.create_texture_bind_group(
-            &left_textures[1].0.texture,
-            &left_textures[1].1.texture,
+            left_textures[1].0,
+            left_textures[1].1,
             "left_slot1",
         );
         let right_bg_0 = self.renderer.create_texture_bind_group(
-            &right_textures[0].0.texture,
-            &right_textures[0].1.texture,
+            right_textures[0].0,
+            right_textures[0].1,
             "right_slot0",
         );
         let right_bg_1 = self.renderer.create_texture_bind_group(
-            &right_textures[1].0.texture,
-            &right_textures[1].1.texture,
+            right_textures[1].0,
+            right_textures[1].1,
             "right_slot1",
         );
         GpuSourceBindGroups {
@@ -538,7 +556,7 @@ impl StitchPipeline {
     /// Select bind groups for a GPU-resident frame and render.
     ///
     /// Call this instead of manually setting bind groups on the renderer.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn render_gpu_frame(
         &mut self,
         bind_groups: &GpuSourceBindGroups,

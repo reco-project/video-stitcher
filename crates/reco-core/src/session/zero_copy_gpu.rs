@@ -1,25 +1,26 @@
-//! Linux CUDA/Vulkan zero-copy session methods.
+//! GPU zero-copy session methods (CUDA/Vulkan on Linux, CUDA/DX12 on Windows).
 //!
 //! Separated from the main session module to isolate platform-specific
-//! shared-texture orchestration (CUDA VMM, Vulkan external memory).
+//! shared-texture orchestration.
 
 use super::{FrameProgress, ProgressCallback, SessionError, StitchSession};
-use crate::vulkan_interop::{Nv12Plane, SharedTexture, create_nv12_shared_texture};
+#[cfg(target_os = "linux")]
+use crate::vulkan_interop::{Nv12Plane, create_nv12_shared_texture};
 use crate::zero_copy::GpuBufInfo;
 
+/// Platform-specific shared texture type.
+#[cfg(target_os = "linux")]
+pub type PlatformSharedTexture = crate::vulkan_interop::SharedTexture;
+#[cfg(target_os = "windows")]
+pub type PlatformSharedTexture = crate::dx12_cuda_interop::SharedTexture;
+
 /// Bundled shared textures, CUDA buffer info, slot channels, and bind
-/// groups for the Linux CUDA/Vulkan zero-copy path.
-///
-/// Created by [`StitchSession::create_shared_textures`], consumed by
-/// [`StitchSession::run_zero_copy_linux`]. The caller must pass
-/// `left_buf` / `right_buf` and the slot-free receivers to the decode
-/// thread spawner, then pass this struct (minus the receivers) to the
-/// session.
+/// groups for the GPU zero-copy path.
 pub struct SharedTextureSet {
     /// The 8 shared textures: [left_y_0, left_uv_0, left_y_1, left_uv_1,
     /// right_y_0, right_uv_0, right_y_1, right_uv_1].
-    /// Must be dropped after decode threads are joined.
-    pub textures: [SharedTexture; 8],
+    /// Each owns both the wgpu::Texture and the CUDA shared memory.
+    pub textures: [PlatformSharedTexture; 8],
     /// CUDA buffer info for left camera decode thread.
     pub left_buf: GpuBufInfo,
     /// CUDA buffer info for right camera decode thread.
@@ -40,7 +41,8 @@ pub struct SharedTextureSet {
 }
 
 impl StitchSession {
-    /// Create double-buffered shared textures for CUDA/Vulkan zero-copy.
+    /// Create double-buffered shared textures for CUDA/Vulkan zero-copy (Linux only).
+    #[cfg(target_os = "linux")]
     ///
     /// Returns 8 shared textures (Y + UV per slot per camera), the
     /// `GpuBufInfo` for each camera (CUDA pointers for decode threads),
@@ -60,30 +62,37 @@ impl StitchSession {
         log::info!("Creating shared textures for zero-copy ({pixel_format:?})...");
 
         let gpu = self.core.gpu();
-        let create_pair =
-            |label: &str, slot: usize| -> Result<(SharedTexture, SharedTexture), SessionError> {
-                let y = create_nv12_shared_texture(
-                    gpu,
-                    input_width,
-                    input_height,
-                    Nv12Plane::Y,
-                    pixel_format,
-                )
-                .map_err(|e| {
-                    SessionError::ZeroCopy(format!("{label} Y[{slot}] shared texture: {e}"))
-                })?;
-                let uv = create_nv12_shared_texture(
-                    gpu,
-                    input_width,
-                    input_height,
-                    Nv12Plane::Uv,
-                    pixel_format,
-                )
-                .map_err(|e| {
-                    SessionError::ZeroCopy(format!("{label} UV[{slot}] shared texture: {e}"))
-                })?;
-                Ok((y, uv))
-            };
+        let create_pair = |label: &str,
+                           slot: usize|
+         -> Result<
+            (
+                crate::vulkan_interop::SharedTexture,
+                crate::vulkan_interop::SharedTexture,
+            ),
+            SessionError,
+        > {
+            let y = create_nv12_shared_texture(
+                gpu,
+                input_width,
+                input_height,
+                Nv12Plane::Y,
+                pixel_format,
+            )
+            .map_err(|e| {
+                SessionError::ZeroCopy(format!("{label} Y[{slot}] shared texture: {e}"))
+            })?;
+            let uv = create_nv12_shared_texture(
+                gpu,
+                input_width,
+                input_height,
+                Nv12Plane::Uv,
+                pixel_format,
+            )
+            .map_err(|e| {
+                SessionError::ZeroCopy(format!("{label} UV[{slot}] shared texture: {e}"))
+            })?;
+            Ok((y, uv))
+        };
 
         // NVIDIA driver workaround: the first CUDA VMM -> Vulkan external
         // memory import for 16-bit formats (R16Unorm, Rg16Unorm) produces

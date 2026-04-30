@@ -914,7 +914,7 @@ impl StitchCore {
     /// [`StitchPipeline::render_gpu_frame`](crate::pipeline::StitchPipeline::render_gpu_frame).
     /// Consumers must have already called
     /// [`StitchPipeline::configure_gpu_source`] via [`Self::pipeline_mut`].
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn render_gpu_frame_at_pose(
         &mut self,
         bind_groups: &crate::pipeline::GpuSourceBindGroups,

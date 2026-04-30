@@ -573,16 +573,21 @@ impl SmartFileSource {
             right_uv.push(uv);
         }
 
-        // Build wgpu textures array for SharedTextureSet
+        // Move shared textures into the array.
+        // Vec::into_iter + array construction via drain.
+        let mut ly = left_y.into_iter();
+        let mut lu = left_uv.into_iter();
+        let mut ry = right_y.into_iter();
+        let mut ru = right_uv.into_iter();
         let textures = [
-            left_y[0].texture.clone(),
-            left_uv[0].texture.clone(),
-            left_y[1].texture.clone(),
-            left_uv[1].texture.clone(),
-            right_y[0].texture.clone(),
-            right_uv[0].texture.clone(),
-            right_y[1].texture.clone(),
-            right_uv[1].texture.clone(),
+            ly.next().unwrap(),
+            lu.next().unwrap(),
+            ly.next().unwrap(),
+            lu.next().unwrap(),
+            ry.next().unwrap(),
+            ru.next().unwrap(),
+            ry.next().unwrap(),
+            ru.next().unwrap(),
         ];
 
         let (left_slot_free_tx, left_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);

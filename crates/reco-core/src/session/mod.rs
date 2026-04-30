@@ -1593,9 +1593,15 @@ impl StitchSession {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn setup_gpu_source(&mut self, shared: &SharedTextureSet) {
         let t = &shared.textures;
-        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
-            [(&t[0], &t[1]), (&t[2], &t[3])],
-            [(&t[4], &t[5]), (&t[6], &t[7])],
+        let bind_groups = self.core.pipeline_mut().configure_gpu_source_raw(
+            [
+                (&t[0].texture, &t[1].texture),
+                (&t[2].texture, &t[3].texture),
+            ],
+            [
+                (&t[4].texture, &t[5].texture),
+                (&t[6].texture, &t[7].texture),
+            ],
         );
         self.gpu_bind_groups = Some(bind_groups);
         self.gpu_slot_free_tx = Some((
