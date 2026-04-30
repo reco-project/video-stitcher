@@ -599,15 +599,23 @@ impl FrameSource for SmartFileSource {
                     // this uses av_hwframe_transfer_data (FFmpeg's optimized
                     // GPU->CPU path) instead of the D3D11 staging readback
                     // which suffers from device context contention.
-                    let left_retained = left.retained_frame_ptr();
-                    let right_retained = right.retained_frame_ptr();
+                    // Wrap raw AVFrame pointers in a Send newtype.
+                    // SAFETY: the retained frames are valid as long as
+                    // _retained_pair is alive (set below), and the
+                    // closure is consumed before the next next_frame() call.
+                    struct SendPtr(*mut std::ffi::c_void);
+                    unsafe impl Send for SendPtr {}
+                    let left_retained = SendPtr(left.retained_frame_ptr() as *mut _);
+                    let right_retained = SendPtr(right.retained_frame_ptr() as *mut _);
                     let readback: Box<
                         dyn FnOnce() -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String> + Send,
                     > = Box::new(move || unsafe {
-                        let (ly, luv) =
-                            crate::ffmpeg::decoder::transfer_retained_to_nv12(left_retained)?;
-                        let (ry, ruv) =
-                            crate::ffmpeg::decoder::transfer_retained_to_nv12(right_retained)?;
+                        let (ly, luv) = crate::ffmpeg::decoder::transfer_retained_to_nv12(
+                            left_retained.0 as *mut _,
+                        )?;
+                        let (ry, ruv) = crate::ffmpeg::decoder::transfer_retained_to_nv12(
+                            right_retained.0 as *mut _,
+                        )?;
                         Ok((ly, luv, ry, ruv))
                     });
 
