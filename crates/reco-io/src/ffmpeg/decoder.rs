@@ -520,13 +520,14 @@ impl VideoDecoder {
             if hw_device_ctx.is_null() {
                 return None;
             }
-            // AVHWDeviceContext.hwctx -> AVD3D11VADeviceContext
-            let d3d11_ctx = (*hw_device_ctx).hwctx as *mut ffi::AVD3D11VADeviceContext;
-            if d3d11_ctx.is_null() {
+            // AVHWDeviceContext.hwctx -> AVD3D11VADeviceContext (not in bindings).
+            // Layout: { ID3D11Device *device; ID3D11DeviceContext *device_context; ... }
+            let hwctx = (*hw_device_ctx).hwctx as *const *mut std::ffi::c_void;
+            if hwctx.is_null() {
                 return None;
             }
-            let device = (*d3d11_ctx).device as *mut std::ffi::c_void;
-            let context = (*d3d11_ctx).device_context as *mut std::ffi::c_void;
+            let device = *hwctx;
+            let context = *hwctx.add(1);
             if device.is_null() || context.is_null() {
                 return None;
             }
