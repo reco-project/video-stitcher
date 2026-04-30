@@ -1727,33 +1727,23 @@ impl StitchSession {
                     left_slot,
                     right_slot,
                 } => {
-                    let views = self.d3d11_views.as_ref().ok_or_else(|| {
-                        SessionError::ZeroCopy(
+                    if self.d3d11_views.is_none() {
+                        return Err(SessionError::ZeroCopy(
                             "D3D11 wgpu views not set (call set_d3d11_views before run)".into(),
-                        )
-                    })?;
-                    // Map per-camera slot to global view index.
-                    // Views layout: [left_0..left_2, right_0..right_2]
+                        ));
+                    }
                     let left_view_idx = *left_slot;
                     let right_view_idx = *right_slot + crate::d3d11_interop::SLOTS_PER_CAMERA;
 
-                    // Detection: request readback from decode threads.
                     let detect_t0 = std::time::Instant::now();
                     let should_detect = self.detection.has_detector()
                         && self.detection.should_detect(self.frame_count);
-                    if should_detect {
-                        // Detection readback is handled by the session
-                        // via the readback channels stored externally.
-                        // For now, detection on pre-staged frames is
-                        // deferred - the director uses last known detections.
-                        // TODO: wire readback channels through session
-                    }
                     self.fire_sink_and_update_director(start.elapsed(), should_detect)?;
                     let detect_time = detect_t0.elapsed();
                     let pos = self.director_position();
 
-                    // Render directly from pre-staged wgpu views.
                     let render_t0 = std::time::Instant::now();
+                    let views = self.d3d11_views.as_ref().unwrap();
                     let render_buf = self.core.render_imported_views_at_pose(
                         views.y_view(left_view_idx),
                         views.uv_view(left_view_idx),
