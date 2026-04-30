@@ -430,6 +430,55 @@ pub fn allocate_shared_memory(size: usize) -> Result<CudaSharedMemory, CudaInter
         #[cfg(target_os = "windows")]
         let handle_type = CU_MEM_HANDLE_TYPE_WIN32;
 
+        // On Windows, CUDA requires a valid OBJECT_ATTRIBUTES pointer
+        // in win32HandleMetaData for CU_MEM_HANDLE_TYPE_WIN32 allocations.
+        // Passing null causes CUDA_ERROR_INVALID_VALUE. The security
+        // descriptor grants access to all users (Gyroflow pattern).
+        #[cfg(target_os = "windows")]
+        let win32_handle_value: *mut c_void = {
+            use std::sync::OnceLock;
+            use windows::Wdk::Foundation::OBJECT_ATTRIBUTES;
+            use windows::Win32::Foundation::OBJECT_ATTRIBUTE_FLAGS;
+            use windows::Win32::Foundation::{HANDLE, PSECURITY_DESCRIPTOR};
+            use windows::Win32::Security::Authorization::{
+                ConvertStringSecurityDescriptorToSecurityDescriptorA, SDDL_REVISION_1,
+            };
+            use windows::core::PCSTR;
+
+            static OBJ_ATTRS: OnceLock<Option<Box<(OBJECT_ATTRIBUTES, PSECURITY_DESCRIPTOR)>>> =
+                OnceLock::new();
+            let attrs = OBJ_ATTRS.get_or_init(|| {
+                let sddl = c"D:P(OA;;GARCSDWDWOCCDCLCSWLODTWPRPCRFA;;;WD)";
+                let mut sec_desc = PSECURITY_DESCRIPTOR::default();
+                let result = ConvertStringSecurityDescriptorToSecurityDescriptorA(
+                    PCSTR::from_raw(sddl.as_ptr() as *const u8),
+                    SDDL_REVISION_1,
+                    &mut sec_desc,
+                    None,
+                );
+                if result.is_ok() {
+                    let attrs = OBJECT_ATTRIBUTES {
+                        Length: std::mem::size_of::<OBJECT_ATTRIBUTES>() as u32,
+                        RootDirectory: HANDLE::default(),
+                        ObjectName: std::ptr::null_mut(),
+                        Attributes: OBJECT_ATTRIBUTE_FLAGS::default(),
+                        SecurityDescriptor: sec_desc.0 as *const _,
+                        SecurityQualityOfService: std::ptr::null_mut(),
+                    };
+                    Some(Box::new((attrs, sec_desc)))
+                } else {
+                    log::warn!("Failed to create security descriptor for CUDA Win32 handle");
+                    None
+                }
+            });
+            attrs
+                .as_ref()
+                .map(|b| &b.0 as *const _ as *mut c_void)
+                .unwrap_or(std::ptr::null_mut())
+        };
+        #[cfg(not(target_os = "windows"))]
+        let win32_handle_value: *mut c_void = std::ptr::null_mut();
+
         let prop = CUmemAllocationProp {
             alloc_type: CU_MEM_ALLOCATION_TYPE_PINNED,
             handle_type,
@@ -437,7 +486,7 @@ pub fn allocate_shared_memory(size: usize) -> Result<CudaSharedMemory, CudaInter
                 location_type: CU_MEM_LOCATION_TYPE_DEVICE,
                 id: device,
             },
-            win32_handle_value: std::ptr::null_mut(),
+            win32_handle_value,
             _reserved: [0; 8],
         };
 

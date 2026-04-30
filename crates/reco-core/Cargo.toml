@@ -38,6 +38,9 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Dxgi_Common",
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+    "Wdk_Foundation",
 ] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
