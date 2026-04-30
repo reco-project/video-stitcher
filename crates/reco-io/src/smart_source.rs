@@ -133,26 +133,16 @@ impl SmartFileSource {
                 0
             });
 
-        // Detect zero-copy capability.
-        // D3D11VA zero-copy is disabled on NVIDIA GPUs because the
-        // event query spin_loop in stage_frame hangs due to D3D11
-        // context contention with NVIDIA's internal decode threads.
-        // NVIDIA on Linux uses the CUDA/Vulkan path instead.
+        // Detect zero-copy capability
         let hwaccel_disabled = std::env::var("RECO_NO_HWACCEL").is_ok();
         if hwaccel_disabled {
             log::info!("RECO_NO_HWACCEL set, forcing CPU decode path");
         }
         let backend_capable = is_backend_zero_copy_capable(decode_backend);
         let gpu_capable = gpu.supports_zero_copy();
-        let is_nvidia = gpu.gpu_name().contains("NVIDIA") || gpu.gpu_name().contains("GeForce");
-        let use_zero_copy = !hwaccel_disabled && backend_capable && gpu_capable && !is_nvidia;
+        let use_zero_copy = !hwaccel_disabled && backend_capable && gpu_capable;
 
-        if is_nvidia && backend_capable && gpu_capable && !hwaccel_disabled {
-            log::info!(
-                "D3D11VA zero-copy disabled on NVIDIA (event query contention). \
-                 Using CPU upload path. NVIDIA zero-copy is supported on Linux via CUDA/Vulkan."
-            );
-        } else if !use_zero_copy && !hwaccel_disabled {
+        if !use_zero_copy && !hwaccel_disabled {
             log::info!(
                 "Zero-copy disabled: decode_backend={decode_backend} (capable={backend_capable}), \
                  gpu_zero_copy={gpu_capable}. Using CPU upload path."

@@ -84,6 +84,11 @@ pub struct D3d11StagingPool {
     readback_staging: Option<ID3D11Texture2D>,
     width: u32,
     height: u32,
+    /// Skip event query wait (NVIDIA: Flush-only mode).
+    /// On NVIDIA, the event query spin_loop hangs because it waits for
+    /// all prior D3D11 work including continuous decode submissions.
+    /// Flush-only relies on DX12 import sync via shared NT handles.
+    flush_only: bool,
 }
 
 impl D3d11StagingPool {
@@ -104,6 +109,7 @@ impl D3d11StagingPool {
         d3d11_context_ptr: *mut c_void,
         width: u32,
         height: u32,
+        flush_only: bool,
     ) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
@@ -235,6 +241,7 @@ impl D3d11StagingPool {
             readback_staging: None,
             width,
             height,
+            flush_only,
         })
     }
 
@@ -284,19 +291,21 @@ impl D3d11StagingPool {
             let flush_time = t_flush.elapsed();
 
             let t_wait = std::time::Instant::now();
-            self.context.End(&self.event_query);
-            loop {
-                let mut done: u32 = 0;
-                let hr = self.context.GetData(
-                    &self.event_query,
-                    Some(&mut done as *mut u32 as *mut c_void),
-                    std::mem::size_of::<u32>() as u32,
-                    0,
-                );
-                if hr.is_ok() && done != 0 {
-                    break;
+            if !self.flush_only {
+                self.context.End(&self.event_query);
+                loop {
+                    let mut done: u32 = 0;
+                    let hr = self.context.GetData(
+                        &self.event_query,
+                        Some(&mut done as *mut u32 as *mut c_void),
+                        std::mem::size_of::<u32>() as u32,
+                        0,
+                    );
+                    if hr.is_ok() && done != 0 {
+                        break;
+                    }
+                    std::hint::spin_loop();
                 }
-                std::hint::spin_loop();
             }
             let wait_time = t_wait.elapsed();
             let total = t0.elapsed();

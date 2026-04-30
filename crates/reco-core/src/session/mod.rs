@@ -1727,6 +1727,8 @@ impl StitchSession {
                 } => {
                     if self.d3d11_staging_pool.is_none() {
                         let (w, h) = self.core.pipeline().source_info();
+                        let gpu_name = self.core.gpu().gpu_name().to_string();
+                        let is_nvidia = gpu_name.contains("NVIDIA") || gpu_name.contains("GeForce");
                         match unsafe {
                             crate::d3d11_interop::D3d11StagingPool::new(
                                 self.core.gpu(),
@@ -1734,14 +1736,21 @@ impl StitchSession {
                                 *d3d11_context,
                                 w,
                                 h,
+                                is_nvidia,
                             )
                         } {
                             Ok(pool) => {
+                                let mode = if is_nvidia {
+                                    "flush-only (NVIDIA)"
+                                } else {
+                                    "event query (AMD/Intel)"
+                                };
                                 log::info!(
-                                    "D3D11VA staging pool created: {}x{}, 4 NV12 slots \
-                                     (using FFmpeg's D3D11 device)",
+                                    "D3D11VA staging pool created: {}x{}, {} NV12 slots, \
+                                     sync mode: {mode}",
                                     w,
-                                    h
+                                    h,
+                                    crate::d3d11_interop::SLOTS_PER_CAMERA * 2,
                                 );
                                 self.d3d11_staging_pool = Some(pool);
                             }
