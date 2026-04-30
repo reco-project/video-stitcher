@@ -55,6 +55,27 @@ use detection::DetectionPipeline;
 
 use thiserror::Error;
 
+/// NV12 readback data for one camera.
+#[cfg(target_os = "windows")]
+pub struct D3d11ReadbackData {
+    /// Full-resolution luma plane.
+    pub y: Vec<u8>,
+    /// Half-resolution interleaved chroma plane.
+    pub uv: Vec<u8>,
+}
+
+/// Readback callback for D3D11VA detection. Returns NV12 data for
+/// left and right cameras from the given staging slots.
+#[cfg(target_os = "windows")]
+pub trait D3d11ReadbackFn: Send {
+    /// Request NV12 readback for the given slots.
+    fn readback(
+        &mut self,
+        left_slot: usize,
+        right_slot: usize,
+    ) -> Result<(D3d11ReadbackData, D3d11ReadbackData), String>;
+}
+
 /// Compute the frame limit from optional duration and max-frames constraints.
 ///
 /// Both `duration_secs` and `max_frames` are optional. When both are provided,
@@ -534,6 +555,11 @@ pub struct StitchSession {
     #[cfg(target_os = "windows")]
     d3d11_views: Option<crate::d3d11_interop::D3d11WgpuViews>,
 
+    /// Readback callback for D3D11VA detection frames.
+    /// Called with (left_slot, right_slot) and returns NV12 plane data.
+    #[cfg(target_os = "windows")]
+    d3d11_readback: Option<Box<dyn D3d11ReadbackFn>>,
+
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
@@ -639,6 +665,8 @@ impl StitchSession {
             metal_texture_cache: None,
             #[cfg(target_os = "windows")]
             d3d11_views: None,
+            #[cfg(target_os = "windows")]
+            d3d11_readback: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -918,6 +946,12 @@ impl StitchSession {
     #[cfg(target_os = "windows")]
     pub fn set_d3d11_views(&mut self, views: crate::d3d11_interop::D3d11WgpuViews) {
         self.d3d11_views = Some(views);
+    }
+
+    /// Set the readback callback for D3D11VA detection frames.
+    #[cfg(target_os = "windows")]
+    pub fn set_d3d11_readback(&mut self, readback: Box<dyn D3d11ReadbackFn>) {
+        self.d3d11_readback = Some(readback);
     }
 
     /// Get the current viewport position from the director, or default.
@@ -1738,6 +1772,34 @@ impl StitchSession {
                     let detect_t0 = std::time::Instant::now();
                     let should_detect = self.detection.has_detector()
                         && self.detection.should_detect(self.frame_count);
+                    if should_detect {
+                        if let Some(readback) = self.d3d11_readback.as_mut() {
+                            match readback.readback(*left_slot, *right_slot) {
+                                Ok((left_rb, right_rb)) => {
+                                    let (width, height) = self.core.pipeline().source_info();
+                                    let nv12_frame = crate::source::StereoFrame::Nv12(
+                                        crate::source::Nv12FramePair {
+                                            left: crate::source::Nv12Data {
+                                                y: left_rb.y,
+                                                uv: left_rb.uv,
+                                            },
+                                            right: crate::source::Nv12Data {
+                                                y: right_rb.y,
+                                                uv: right_rb.uv,
+                                            },
+                                        },
+                                    );
+                                    let detections =
+                                        self.detection.run_detection(&nv12_frame, width, height);
+                                    self.detection.last_detections =
+                                        self.map_detections(detections);
+                                }
+                                Err(e) => {
+                                    log::warn!("D3D11VA readback failed: {e}");
+                                }
+                            }
+                        }
+                    }
                     self.fire_sink_and_update_director(start.elapsed(), should_detect)?;
                     let detect_time = detect_t0.elapsed();
                     let pos = self.director_position();

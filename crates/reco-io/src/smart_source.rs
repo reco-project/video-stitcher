@@ -543,6 +543,18 @@ impl SmartFileSource {
             _ => None,
         }
     }
+
+    /// Take the D3D11VA readback callback (ownership transfer to session).
+    #[cfg(target_os = "windows")]
+    pub fn take_d3d11_readback(&mut self) -> Option<Box<dyn reco_core::session::D3d11ReadbackFn>> {
+        match &mut self.mode {
+            SourceMode::D3d11ZeroCopy(state) => {
+                let rb = crate::zero_copy::ChannelReadbackFn::from_handles(&mut state.handles);
+                Some(Box::new(rb))
+            }
+            _ => None,
+        }
+    }
 }
 
 impl FrameSource for SmartFileSource {

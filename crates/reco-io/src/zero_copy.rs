@@ -330,6 +330,77 @@ pub struct ReadbackResult {
     pub uv: Vec<u8>,
 }
 
+/// Readback callback that requests NV12 data from the decode threads
+/// via channels. Implements [`D3d11ReadbackFn`] for the session.
+#[cfg(target_os = "windows")]
+pub struct ChannelReadbackFn {
+    left_tx: std::sync::mpsc::SyncSender<ReadbackRequest>,
+    left_rx: std::sync::mpsc::Receiver<ReadbackResult>,
+    right_tx: std::sync::mpsc::SyncSender<ReadbackRequest>,
+    right_rx: std::sync::mpsc::Receiver<ReadbackResult>,
+}
+
+#[cfg(target_os = "windows")]
+impl ChannelReadbackFn {
+    /// Create from a D3d11DecodeHandles, taking ownership of the rx channels.
+    pub fn from_handles(handles: &mut D3d11DecodeHandles) -> Self {
+        Self {
+            left_tx: handles.left_readback_tx.clone(),
+            left_rx: std::mem::replace(
+                &mut handles.left_readback_rx,
+                std::sync::mpsc::sync_channel(0).1,
+            ),
+            right_tx: handles.right_readback_tx.clone(),
+            right_rx: std::mem::replace(
+                &mut handles.right_readback_rx,
+                std::sync::mpsc::sync_channel(0).1,
+            ),
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl reco_core::session::D3d11ReadbackFn for ChannelReadbackFn {
+    fn readback(
+        &mut self,
+        left_slot: usize,
+        right_slot: usize,
+    ) -> Result<
+        (
+            reco_core::session::D3d11ReadbackData,
+            reco_core::session::D3d11ReadbackData,
+        ),
+        String,
+    > {
+        self.left_tx
+            .send(ReadbackRequest { slot: left_slot })
+            .map_err(|e| format!("left readback send: {e}"))?;
+        self.right_tx
+            .send(ReadbackRequest { slot: right_slot })
+            .map_err(|e| format!("right readback send: {e}"))?;
+
+        let left = self
+            .left_rx
+            .recv()
+            .map_err(|e| format!("left readback recv: {e}"))?;
+        let right = self
+            .right_rx
+            .recv()
+            .map_err(|e| format!("right readback recv: {e}"))?;
+
+        Ok((
+            reco_core::session::D3d11ReadbackData {
+                y: left.y,
+                uv: left.uv,
+            },
+            reco_core::session::D3d11ReadbackData {
+                y: right.y,
+                uv: right.uv,
+            },
+        ))
+    }
+}
+
 /// Spawn paired D3D11VA decode threads with decode-thread staging.
 ///
 /// Decoders and staging copiers are created on the calling thread.
