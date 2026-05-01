@@ -258,6 +258,34 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
         full_range: bool,
+        decode_backend: crate::ffmpeg::decoder::DecodeBackend,
+    ) -> Result<Self, SourceError> {
+        Self::open_cuda_vulkan_zero_copy(
+            left,
+            right,
+            gpu,
+            sync_offset,
+            info,
+            pixel_format,
+            left_rotation,
+            right_rotation,
+            full_range,
+            decode_backend,
+        )
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[allow(clippy::too_many_arguments)]
+    fn open_cuda_vulkan_zero_copy(
+        left: &crate::stitch_job::InputPath,
+        right: &crate::stitch_job::InputPath,
+        gpu: &reco_core::gpu::GpuContext,
+        sync_offset: i64,
+        info: SourceInfo,
+        pixel_format: GpuPixelFormat,
+        left_rotation: i32,
+        right_rotation: i32,
+        full_range: bool,
         _decode_backend: crate::ffmpeg::decoder::DecodeBackend,
     ) -> Result<Self, SourceError> {
         use reco_core::session::SharedTextureSet;
@@ -449,8 +477,25 @@ impl SmartFileSource {
     ) -> Result<Self, SourceError> {
         use crate::ffmpeg::decoder::DecodeBackend;
 
+        if decode_backend == DecodeBackend::Cuda && gpu.is_vulkan() {
+            // NVIDIA + Vulkan backend: reuse the Linux CUDA/Vulkan path
+            log::info!("NVIDIA Windows + Vulkan backend: using CUDA/Vulkan zero-copy path");
+            return Self::open_cuda_vulkan_zero_copy(
+                left,
+                right,
+                gpu,
+                sync_offset,
+                info,
+                pixel_format,
+                left_rotation,
+                right_rotation,
+                full_range,
+                decode_backend,
+            );
+        }
+
         if decode_backend == DecodeBackend::Cuda {
-            // NVIDIA: CUDA→DX12 zero-copy (mirrors Linux CUDA→Vulkan)
+            // NVIDIA + DX12 backend: CUDA→DX12 zero-copy
             return Self::open_cuda_dx12_zero_copy(
                 left,
                 right,
