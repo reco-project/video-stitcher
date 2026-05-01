@@ -351,6 +351,8 @@ impl SmartFileSource {
             uv_ptr: [left_uv_0.cuda_ptr, left_uv_1.cuda_ptr],
             y_pitch: [left_y_0.pitch, left_y_1.pitch],
             uv_pitch: [left_uv_0.pitch, left_uv_1.pitch],
+            y_array: [0; 2],
+            uv_array: [0; 2],
             width: input_width,
             height: input_height,
             pixel_format,
@@ -360,6 +362,8 @@ impl SmartFileSource {
             uv_ptr: [right_uv_0.cuda_ptr, right_uv_1.cuda_ptr],
             y_pitch: [right_y_0.pitch, right_y_1.pitch],
             uv_pitch: [right_uv_0.pitch, right_uv_1.pitch],
+            y_array: [0; 2],
+            uv_array: [0; 2],
             width: input_width,
             height: input_height,
             pixel_format,
@@ -565,6 +569,8 @@ impl SmartFileSource {
             uv_ptr: [0; 2],
             y_pitch: [0; 2],
             uv_pitch: [0; 2],
+            y_array: [0; 2],
+            uv_array: [0; 2],
             width: info.width,
             height: info.height,
             pixel_format,
@@ -597,10 +603,8 @@ impl SmartFileSource {
                 path: left.first_path().display().to_string(),
                 reason: format!("CUDA/DX12 UV texture: {e}"),
             })?;
-            left_buf.y_ptr[slot] = y.cuda_ptr;
-            left_buf.y_pitch[slot] = y.pitch;
-            left_buf.uv_ptr[slot] = uv.cuda_ptr;
-            left_buf.uv_pitch[slot] = uv.pitch;
+            left_buf.y_array[slot] = y.cuda_array as usize;
+            left_buf.uv_array[slot] = uv.cuda_array as usize;
             left_y.push(y);
             left_uv.push(uv);
         }
@@ -625,10 +629,8 @@ impl SmartFileSource {
                 path: right.first_path().display().to_string(),
                 reason: format!("CUDA/DX12 UV texture: {e}"),
             })?;
-            right_buf.y_ptr[slot] = y.cuda_ptr;
-            right_buf.y_pitch[slot] = y.pitch;
-            right_buf.uv_ptr[slot] = uv.cuda_ptr;
-            right_buf.uv_pitch[slot] = uv.pitch;
+            right_buf.y_array[slot] = y.cuda_array as usize;
+            right_buf.uv_array[slot] = uv.cuda_array as usize;
             right_y.push(y);
             right_uv.push(uv);
         }

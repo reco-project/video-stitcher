@@ -76,6 +76,11 @@ const CU_MEM_ALLOC_GRANULARITY_MINIMUM: u32 = 0;
 /// Memory types for cuMemcpy2D.
 const CU_MEMORYTYPE_HOST: u32 = 1;
 const CU_MEMORYTYPE_DEVICE: u32 = 2;
+const CU_MEMORYTYPE_ARRAY: u32 = 3;
+
+/// CUDA array format: unsigned 8-bit integers (used for R8/RG8 textures).
+#[cfg(target_os = "windows")]
+const CU_AD_FORMAT_UNSIGNED_INT8: u32 = 0x01;
 
 /// CUDA UUID (16 bytes, matching Vulkan's device UUID).
 #[repr(C)]
@@ -169,6 +174,36 @@ struct CudaExternalMemoryBufferDesc {
     _reserved: [u32; 16],
 }
 
+/// 3D array descriptor (matches CUDA's `CUDA_ARRAY3D_DESCRIPTOR`).
+///
+/// `Width`, `Height`, `Depth` are `size_t` in the C API (8 bytes on
+/// 64-bit). `Format` is the `CUarray_format` enum (4 bytes).
+/// `Depth = 0` means 2D.
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct CudaArray3dDescriptor {
+    width: usize,
+    height: usize,
+    depth: usize,
+    format: u32,
+    num_channels: u32,
+    flags: u32,
+}
+
+/// Mipmapped array descriptor for `cuExternalMemoryGetMappedMipmappedArray`.
+///
+/// Maps an imported external memory object (D3D12 TEXTURE2D) as a CUDA
+/// mipmapped array. This is the only valid mapping for texture resources;
+/// `cuExternalMemoryGetMappedBuffer` only works for buffer resources.
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct CudaExternalMemoryMipmappedArrayDesc {
+    offset: u64,
+    array_desc: CudaArray3dDescriptor,
+    num_levels: u32,
+    _reserved: [u32; 16],
+}
+
 // ── Dynamic loader ──────────────────────────────────────────────────
 
 /// Opaque CUDA context handle.
@@ -235,6 +270,17 @@ struct CudaFunctions {
     ) -> CUresult,
     #[cfg(target_os = "windows")]
     cu_destroy_external_memory: unsafe extern "C" fn(*mut c_void) -> CUresult,
+    #[cfg(target_os = "windows")]
+    cu_external_memory_get_mapped_mipmapped_array: unsafe extern "C" fn(
+        *mut *mut c_void,
+        *mut c_void,
+        *const CudaExternalMemoryMipmappedArrayDesc,
+    ) -> CUresult,
+    #[cfg(target_os = "windows")]
+    cu_mipmapped_array_get_level:
+        unsafe extern "C" fn(*mut *mut c_void, *mut c_void, u32) -> CUresult,
+    #[cfg(target_os = "windows")]
+    cu_mipmapped_array_destroy: unsafe extern "C" fn(*mut c_void) -> CUresult,
 
     // 2D copy
     cu_memcpy_2d_v2: unsafe extern "C" fn(*const CudaMemcpy2D) -> CUresult,
@@ -353,6 +399,15 @@ impl CudaFunctions {
                 ),
                 #[cfg(target_os = "windows")]
                 cu_destroy_external_memory: load_sym!(lib_cuda, "cuDestroyExternalMemory"),
+                #[cfg(target_os = "windows")]
+                cu_external_memory_get_mapped_mipmapped_array: load_sym!(
+                    lib_cuda,
+                    "cuExternalMemoryGetMappedMipmappedArray"
+                ),
+                #[cfg(target_os = "windows")]
+                cu_mipmapped_array_get_level: load_sym!(lib_cuda, "cuMipmappedArrayGetLevel"),
+                #[cfg(target_os = "windows")]
+                cu_mipmapped_array_destroy: load_sym!(lib_cuda, "cuMipmappedArrayDestroy"),
                 cu_memcpy_2d_v2: load_sym!(lib_cuda, "cuMemcpy2D_v2"),
                 cu_mem_alloc_v2: load_sym!(lib_cuda, "cuMemAlloc_v2"),
                 cu_mem_free_v2: load_sym!(lib_cuda, "cuMemFree_v2"),
@@ -720,11 +775,11 @@ pub fn cuda_memcpy_htod_2d(
 ///
 /// Import a D3D12 resource's shared handle into CUDA as a mapped buffer.
 ///
-/// The D3D12 resource must be created with `D3D12_HEAP_FLAG_SHARED`.
-/// Returns a CUDA device pointer that maps to the same physical memory.
-/// CUDA writes via `cuMemcpy2D` are visible to DX12/wgpu reads after
-/// `cuCtxSynchronize`.
+/// Import a D3D12 BUFFER resource's shared handle into CUDA as a
+/// linear device pointer. Only valid for `D3D12_RESOURCE_DIMENSION_BUFFER`
+/// resources. For TEXTURE2D, use [`import_d3d12_shared_texture`] instead.
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 pub fn import_d3d12_shared_handle(
     shared_handle: *mut c_void,
     size: usize,
@@ -769,6 +824,139 @@ pub fn import_d3d12_shared_handle(
 
         Ok((device_ptr, ext_mem))
     }
+}
+
+/// Import a D3D12 TEXTURE2D resource as a CUDA array.
+///
+/// For TEXTURE2D resources, `cuExternalMemoryGetMappedBuffer` fails
+/// because DX12 textures use GPU-specific tiling (not linear memory).
+/// This function uses `cuExternalMemoryGetMappedMipmappedArray` which
+/// understands the tiled layout, then extracts the base mip level as a
+/// `CUarray` suitable for `cuMemcpy2D` with `CU_MEMORYTYPE_ARRAY`.
+///
+/// Returns `(cuda_array, ext_mem_handle, mipmapped_array_handle)`.
+/// The caller must destroy the mipmapped array and external memory on
+/// cleanup (in that order).
+#[cfg(target_os = "windows")]
+pub fn import_d3d12_shared_texture(
+    shared_handle: *mut c_void,
+    alloc_size: usize,
+    width: u32,
+    height: u32,
+    num_channels: u32,
+) -> Result<(*mut c_void, *mut c_void, *mut c_void), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        let desc = CudaExternalMemoryHandleDesc {
+            handle_type: CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE,
+            handle_win32: CudaExternalMemoryWin32Handle {
+                handle: shared_handle,
+                name: std::ptr::null(),
+            },
+            size: alloc_size as u64,
+            flags: 1, // CUDA_EXTERNAL_MEMORY_DEDICATED
+            _reserved: [0; 16],
+        };
+
+        let mut ext_mem: *mut c_void = std::ptr::null_mut();
+        check_cuda(
+            "cuImportExternalMemory",
+            (cuda.cu_import_external_memory)(&mut ext_mem, &desc),
+        )?;
+
+        let mipmap_desc = CudaExternalMemoryMipmappedArrayDesc {
+            offset: 0,
+            array_desc: CudaArray3dDescriptor {
+                width: width as usize,
+                height: height as usize,
+                depth: 0, // 2D texture
+                format: CU_AD_FORMAT_UNSIGNED_INT8,
+                num_channels,
+                flags: 0,
+            },
+            num_levels: 1, // single mip level (MUST be >= 1)
+            _reserved: [0; 16],
+        };
+
+        let mut mipmapped_array: *mut c_void = std::ptr::null_mut();
+        check_cuda(
+            "cuExternalMemoryGetMappedMipmappedArray",
+            (cuda.cu_external_memory_get_mapped_mipmapped_array)(
+                &mut mipmapped_array,
+                ext_mem,
+                &mipmap_desc,
+            ),
+        )?;
+
+        let mut cuda_array: *mut c_void = std::ptr::null_mut();
+        check_cuda(
+            "cuMipmappedArrayGetLevel",
+            (cuda.cu_mipmapped_array_get_level)(&mut cuda_array, mipmapped_array, 0),
+        )?;
+
+        log::debug!(
+            "CUDA imported D3D12 texture as array: {}x{} ch={}, array={:?}",
+            width,
+            height,
+            num_channels,
+            cuda_array,
+        );
+
+        Ok((cuda_array, ext_mem, mipmapped_array))
+    }
+}
+
+/// Destroy a CUDA mipmapped array (from `cuExternalMemoryGetMappedMipmappedArray`).
+#[cfg(target_os = "windows")]
+pub fn destroy_mipmapped_array(mipmap: *mut c_void) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        check_cuda(
+            "cuMipmappedArrayDestroy",
+            (cuda.cu_mipmapped_array_destroy)(mipmap),
+        )
+    }
+}
+
+/// Copy a 2D region from a CUDA device pointer to a CUDA array.
+///
+/// Used for the DX12 TEXTURE2D zero-copy path: NVDEC produces device
+/// pointers, but DX12 textures are mapped as CUDA arrays (tiled
+/// memory layout). `cuMemcpy2D` with `CU_MEMORYTYPE_ARRAY` handles
+/// the linear-to-tiled conversion internally.
+pub fn cuda_2d_copy_to_array(
+    dst_array: *mut c_void,
+    src: CUdeviceptr,
+    src_pitch: usize,
+    width_bytes: usize,
+    height: usize,
+) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+
+    let desc = CudaMemcpy2D {
+        src_x_in_bytes: 0,
+        src_y: 0,
+        src_memory_type: CU_MEMORYTYPE_DEVICE,
+        src_host: std::ptr::null(),
+        src_device: src,
+        src_array: std::ptr::null(),
+        src_pitch,
+        dst_x_in_bytes: 0,
+        dst_y: 0,
+        dst_memory_type: CU_MEMORYTYPE_ARRAY,
+        dst_host: std::ptr::null_mut(),
+        dst_device: 0,
+        dst_array: dst_array as *const c_void,
+        dst_pitch: 0, // ignored for array destinations
+        width_in_bytes: width_bytes,
+        height,
+    };
+
+    unsafe {
+        check_cuda("cuMemcpy2D_v2 (D->A)", (cuda.cu_memcpy_2d_v2)(&desc))?;
+    }
+
+    Ok(())
 }
 
 /// Destroy an imported external memory object.

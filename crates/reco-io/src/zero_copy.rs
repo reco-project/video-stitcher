@@ -84,29 +84,52 @@ pub fn spawn_single_decoder_gpu(
                         let bps = buf.pixel_format.bytes_per_sample();
                         let y_width_bytes = buf.width as usize * bps;
                         let uv_width_bytes = buf.width as usize * bps;
+                        let use_array = buf.y_array[s] != 0;
 
                         // Copy Y plane: NVDEC -> shared texture
-                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
-                            buf.y_ptr[s],
-                            buf.y_pitch[s],
-                            frame.y_ptr,
-                            frame.y_pitch,
-                            y_width_bytes,
-                            buf.height as usize,
-                        ) {
+                        let y_result = if use_array {
+                            reco_core::cuda_interop::cuda_2d_copy_to_array(
+                                buf.y_array[s] as *mut std::ffi::c_void,
+                                frame.y_ptr,
+                                frame.y_pitch,
+                                y_width_bytes,
+                                buf.height as usize,
+                            )
+                        } else {
+                            reco_core::cuda_interop::cuda_2d_copy(
+                                buf.y_ptr[s],
+                                buf.y_pitch[s],
+                                frame.y_ptr,
+                                frame.y_pitch,
+                                y_width_bytes,
+                                buf.height as usize,
+                            )
+                        };
+                        if let Err(e) = y_result {
                             log::error!("{label} cuMemcpy2D Y: {e}");
                             break;
                         }
 
                         // Copy UV plane: NVDEC -> shared texture
-                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
-                            buf.uv_ptr[s],
-                            buf.uv_pitch[s],
-                            frame.uv_ptr,
-                            frame.uv_pitch,
-                            uv_width_bytes,
-                            buf.height as usize / 2,
-                        ) {
+                        let uv_result = if use_array {
+                            reco_core::cuda_interop::cuda_2d_copy_to_array(
+                                buf.uv_array[s] as *mut std::ffi::c_void,
+                                frame.uv_ptr,
+                                frame.uv_pitch,
+                                uv_width_bytes,
+                                buf.height as usize / 2,
+                            )
+                        } else {
+                            reco_core::cuda_interop::cuda_2d_copy(
+                                buf.uv_ptr[s],
+                                buf.uv_pitch[s],
+                                frame.uv_ptr,
+                                frame.uv_pitch,
+                                uv_width_bytes,
+                                buf.height as usize / 2,
+                            )
+                        };
+                        if let Err(e) = uv_result {
                             log::error!("{label} cuMemcpy2D UV: {e}");
                             break;
                         }

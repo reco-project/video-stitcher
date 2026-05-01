@@ -28,23 +28,40 @@ impl PlatformSharedTexture {
         }
     }
 
-    /// CUDA device pointer for this texture.
+    /// CUDA device pointer for this texture (Vulkan path only).
+    ///
+    /// Returns 0 for DX12 textures which use CUDA arrays instead.
     pub fn cuda_ptr(&self) -> crate::cuda_interop::CUdeviceptr {
         match self {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             Self::Vulkan(t) => t.cuda_ptr,
             #[cfg(target_os = "windows")]
-            Self::Dx12Cuda(t) => t.cuda_ptr,
+            Self::Dx12Cuda(_) => 0,
         }
     }
 
-    /// Row pitch in bytes.
+    /// Row pitch in bytes (Vulkan path only).
+    ///
+    /// Returns 0 for DX12 textures which use CUDA arrays (pitch is
+    /// handled internally by the tiled memory layout).
     pub fn pitch(&self) -> usize {
         match self {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             Self::Vulkan(t) => t.pitch,
             #[cfg(target_os = "windows")]
-            Self::Dx12Cuda(t) => t.pitch,
+            Self::Dx12Cuda(_) => 0,
+        }
+    }
+
+    /// CUDA array handle for this texture (DX12 path only).
+    ///
+    /// Returns null for Vulkan textures which use linear device pointers.
+    pub fn cuda_array(&self) -> *mut std::ffi::c_void {
+        match self {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            Self::Vulkan(_) => std::ptr::null_mut(),
+            #[cfg(target_os = "windows")]
+            Self::Dx12Cuda(t) => t.cuda_array,
         }
     }
 }
@@ -155,6 +172,8 @@ impl StitchSession {
             uv_ptr: [left_uv_0.cuda_ptr, left_uv_1.cuda_ptr],
             y_pitch: [left_y_0.pitch, left_y_1.pitch],
             uv_pitch: [left_uv_0.pitch, left_uv_1.pitch],
+            y_array: [0; 2],
+            uv_array: [0; 2],
             width: input_width,
             height: input_height,
             pixel_format,
@@ -164,6 +183,8 @@ impl StitchSession {
             uv_ptr: [right_uv_0.cuda_ptr, right_uv_1.cuda_ptr],
             y_pitch: [right_y_0.pitch, right_y_1.pitch],
             uv_pitch: [right_uv_0.pitch, right_uv_1.pitch],
+            y_array: [0; 2],
+            uv_array: [0; 2],
             width: input_width,
             height: input_height,
             pixel_format,

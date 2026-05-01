@@ -21,6 +21,14 @@ pub struct GpuBufInfo {
     pub y_pitch: [usize; 2],
     /// Row pitch of shared UV textures.
     pub uv_pitch: [usize; 2],
+    /// CUDA array handles for Y textures (DX12 TEXTURE2D path).
+    /// Stored as `usize` (cast from `*mut c_void`) to keep `GpuBufInfo`
+    /// `Send` without manual impls. Non-zero when the shared textures
+    /// are DX12 resources mapped as CUDA arrays; the decode thread uses
+    /// `cuda_2d_copy_to_array` instead of `cuda_2d_copy`.
+    pub y_array: [usize; 2],
+    /// CUDA array handles for UV textures (DX12 TEXTURE2D path).
+    pub uv_array: [usize; 2],
     /// Frame width in pixels.
     pub width: u32,
     /// Frame height in pixels.
