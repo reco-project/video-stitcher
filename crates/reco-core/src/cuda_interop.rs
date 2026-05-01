@@ -407,6 +407,12 @@ pub struct CudaSharedMemory {
     pub shared_handle: *mut c_void,
 }
 
+// SAFETY: CudaSharedMemory contains CUDA device pointers and OS handles
+// that are valid across threads. The CUDA context is thread-safe when
+// accessed via cuCtxSetCurrent.
+unsafe impl Send for CudaSharedMemory {}
+unsafe impl Sync for CudaSharedMemory {}
+
 impl Drop for CudaSharedMemory {
     fn drop(&mut self) {
         if let Ok(cuda) = cuda() {
