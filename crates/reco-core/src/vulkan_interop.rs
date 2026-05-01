@@ -49,7 +49,7 @@ pub struct SharedTexture {
 /// - `NotVulkan` if the wgpu backend is not Vulkan
 /// - `CudaError` if shared memory allocation fails
 /// - `VulkanError` if Vulkan image creation or memory import fails
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn create_shared_texture(
     gpu: &GpuContext,
     width: u32,
@@ -302,7 +302,7 @@ pub enum Nv12Plane {
 ///
 /// Unorm normalization maps both 8-bit and 16-bit values to `[0.0, 1.0]`
 /// in the shader, so the fragment shader works unchanged across formats.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn create_nv12_shared_texture(
     gpu: &GpuContext,
     width: u32,

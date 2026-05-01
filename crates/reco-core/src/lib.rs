@@ -139,7 +139,7 @@ pub mod telemetry;
 pub mod tracker;
 pub mod undistort;
 pub mod viewport;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod vulkan_interop;
 pub mod yuv_stack_packer;
 pub mod zero_copy;
