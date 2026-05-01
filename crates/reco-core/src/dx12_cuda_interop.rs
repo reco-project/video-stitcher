@@ -20,10 +20,19 @@ use std::ffi::c_void;
 pub struct SharedTexture {
     /// The wgpu texture for rendering.
     pub texture: wgpu::Texture,
-    /// CUDA device pointer mapped to the same memory.
+    /// CUDA device pointer mapped to the same memory as `shared_buffer`.
     pub cuda_ptr: crate::cuda_interop::CUdeviceptr,
     /// Row pitch in bytes (aligned to 256 for DX12).
     pub pitch: usize,
+    /// DX12 shared buffer that CUDA writes to.
+    /// Per-frame: copy this buffer → texture before rendering.
+    pub shared_buffer: wgpu::Buffer,
+    /// Buffer size in bytes.
+    pub buffer_size: usize,
+    /// Texture width (for buffer→texture copy).
+    pub width: u32,
+    /// Texture height (for buffer→texture copy).
+    pub height: u32,
     /// CUDA external memory handle (freed on drop).
     _ext_mem: *mut c_void,
 }
@@ -84,19 +93,23 @@ pub fn create_shared_texture(
             ..Default::default()
         };
 
+        // Use a BUFFER resource so CUDA can map it as a linear device
+        // pointer via cuExternalMemoryGetMappedBuffer. Textures would
+        // need cuExternalMemoryGetMappedMipmappedArray which doesn't
+        // give us a device pointer for cuMemcpy2D.
         let desc = D3D12_RESOURCE_DESC {
-            Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
             Alignment: 0,
-            Width: width as u64,
-            Height: height,
+            Width: buffer_size as u64,
+            Height: 1,
             DepthOrArraySize: 1,
             MipLevels: 1,
-            Format: dxgi_format,
+            Format: DXGI_FORMAT_UNKNOWN,
             SampleDesc: DXGI_SAMPLE_DESC {
                 Count: 1,
                 Quality: 0,
             },
-            Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
+            Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
             Flags: D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
         };
 
@@ -140,36 +153,36 @@ pub fn create_shared_texture(
         let _ = CloseHandle(shared_handle);
     }
 
-    // Wrap the DX12 resource into a wgpu texture.
-    let wgpu_texture = unsafe {
-        let hal_texture = wgpu::hal::dx12::Device::texture_from_raw(
-            d3d12_resource,
-            format,
-            wgpu::TextureDimension::D2,
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            1,
-            1,
-        );
+    // Create a regular wgpu texture for rendering. CUDA writes to
+    // the shared buffer, then we copy buffer→texture per frame.
+    // This adds ~0.1ms but avoids the CUDA array vs device pointer
+    // mismatch with DX12 texture resources.
+    let wgpu_texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
+        label: Some("cuda_dx12_render"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
 
-        gpu.device().create_texture_from_hal::<Dx12>(
-            hal_texture,
-            &wgpu::TextureDescriptor {
-                label: Some("cuda_dx12_shared"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
+    // Wrap the DX12 buffer as a wgpu buffer for the copy source.
+    let shared_buffer = unsafe {
+        let hal_buffer =
+            wgpu::hal::dx12::Device::buffer_from_raw(d3d12_resource, buffer_size as u64);
+        gpu.device().create_buffer_from_hal::<Dx12>(
+            hal_buffer,
+            &wgpu::BufferDescriptor {
+                label: Some("cuda_dx12_shared_buf"),
+                size: buffer_size as u64,
+                usage: wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
             },
         )
     };
@@ -187,6 +200,10 @@ pub fn create_shared_texture(
         texture: wgpu_texture,
         cuda_ptr,
         pitch,
+        shared_buffer,
+        buffer_size,
+        width,
+        height,
         _ext_mem: ext_mem,
     })
 }
