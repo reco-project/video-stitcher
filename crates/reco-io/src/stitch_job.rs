@@ -573,7 +573,7 @@ impl StitchJob {
         let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
         // Configure GPU bind groups if source is GPU-resident
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         if let Some(shared) = source.shared_texture_set() {
             session.setup_gpu_source(shared);
         }
