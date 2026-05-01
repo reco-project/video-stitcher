@@ -278,6 +278,21 @@ impl DetectionPipeline {
 
         let ls = left_slot as usize;
         let rs = right_slot as usize;
+
+        // DX12 CUDA array path: readback to CPU for detection.
+        // The CUDA arrays use tiled memory (not linear device pointers),
+        // so we copy array->host and feed the CPU detector variant.
+        if left_buf.y_array[ls] != 0 {
+            return self.run_gpu_detection_array_readback(
+                left_buf,
+                right_buf,
+                ls,
+                rs,
+                left_rotation,
+                right_rotation,
+            );
+        }
+
         let is_10bit = left_buf.pixel_format == crate::renderer::GpuPixelFormat::P010;
 
         let left_frame = crate::detector::GpuNv12Frame {
@@ -317,6 +332,103 @@ impl DetectionPipeline {
         let mut detections = Vec::new();
         detections.extend(run(detector, CameraId::Left, left_frame));
         detections.extend(run(detector, CameraId::Right, right_frame));
+        detections
+    }
+
+    /// Readback NV12 from CUDA arrays (DX12 path) and run CPU detection.
+    fn run_gpu_detection_array_readback(
+        &mut self,
+        left_buf: &crate::zero_copy::GpuBufInfo,
+        right_buf: &crate::zero_copy::GpuBufInfo,
+        ls: usize,
+        rs: usize,
+        _left_rotation: i32,
+        _right_rotation: i32,
+    ) -> Vec<Detection> {
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+
+        let w = left_buf.width as usize;
+        let h = left_buf.height as usize;
+        let y_size = w * h;
+        let uv_size = w * (h / 2); // Rg8Unorm at width/2: (w/2)*2 * (h/2) = w*(h/2)
+
+        let mut left_y = vec![0u8; y_size];
+        let mut left_uv = vec![0u8; uv_size];
+        let mut right_y = vec![0u8; y_size];
+        let mut right_uv = vec![0u8; uv_size];
+
+        let readback_t0 = std::time::Instant::now();
+
+        // Y planes: R8Unorm, width bytes per row
+        if let Err(e) = crate::cuda_interop::cuda_2d_copy_from_array(
+            left_buf.y_array[ls] as *mut std::ffi::c_void,
+            left_y.as_mut_ptr(),
+            w,
+            w,
+            h,
+        ) {
+            log::warn!("detection readback left Y: {e}");
+            return Vec::new();
+        }
+        if let Err(e) = crate::cuda_interop::cuda_2d_copy_from_array(
+            right_buf.y_array[rs] as *mut std::ffi::c_void,
+            right_y.as_mut_ptr(),
+            w,
+            w,
+            h,
+        ) {
+            log::warn!("detection readback right Y: {e}");
+            return Vec::new();
+        }
+
+        // UV planes: Rg8Unorm at width/2, so width bytes per row
+        if let Err(e) = crate::cuda_interop::cuda_2d_copy_from_array(
+            left_buf.uv_array[ls] as *mut std::ffi::c_void,
+            left_uv.as_mut_ptr(),
+            w,
+            w,
+            h / 2,
+        ) {
+            log::warn!("detection readback left UV: {e}");
+            return Vec::new();
+        }
+        if let Err(e) = crate::cuda_interop::cuda_2d_copy_from_array(
+            right_buf.uv_array[rs] as *mut std::ffi::c_void,
+            right_uv.as_mut_ptr(),
+            w,
+            w,
+            h / 2,
+        ) {
+            log::warn!("detection readback right UV: {e}");
+            return Vec::new();
+        }
+
+        let readback_ms = readback_t0.elapsed().as_secs_f64() * 1000.0;
+        log::debug!("detection array readback: {readback_ms:.1}ms (2 cameras, {w}x{h})");
+
+        use crate::detector::{ChromaFormat, RawFrame};
+        let left_frame = RawFrame {
+            y: &left_y,
+            chroma: ChromaFormat::Nv12 { uv: &left_uv },
+            width: left_buf.width,
+            height: left_buf.height,
+        };
+        let right_frame = RawFrame {
+            y: &right_y,
+            chroma: ChromaFormat::Nv12 { uv: &right_uv },
+            width: right_buf.width,
+            height: right_buf.height,
+        };
+
+        let mut detections = Vec::new();
+        for (camera, frame) in [(CameraId::Left, left_frame), (CameraId::Right, right_frame)] {
+            match detector.detect(camera, &DetectorFrame::Cpu(frame)) {
+                Ok(v) => detections.extend(v),
+                Err(e) => log::warn!("detector '{}' {camera:?}: {e}", detector.name()),
+            }
+        }
         detections
     }
 

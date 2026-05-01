@@ -959,6 +959,46 @@ pub fn cuda_2d_copy_to_array(
     Ok(())
 }
 
+/// Copy a 2D region from a CUDA array to host memory.
+///
+/// Used for AI detection readback on the DX12 TEXTURE2D zero-copy
+/// path: the frame lives in a CUDA array (tiled layout) and the
+/// detector needs CPU-resident pixels.
+pub fn cuda_2d_copy_from_array(
+    src_array: *mut c_void,
+    dst: *mut u8,
+    dst_pitch: usize,
+    width_bytes: usize,
+    height: usize,
+) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+
+    let desc = CudaMemcpy2D {
+        src_x_in_bytes: 0,
+        src_y: 0,
+        src_memory_type: CU_MEMORYTYPE_ARRAY,
+        src_host: std::ptr::null(),
+        src_device: 0,
+        src_array: src_array as *const c_void,
+        src_pitch: 0, // ignored for array sources
+        dst_x_in_bytes: 0,
+        dst_y: 0,
+        dst_memory_type: CU_MEMORYTYPE_HOST,
+        dst_host: dst as *mut c_void,
+        dst_device: 0,
+        dst_array: std::ptr::null(),
+        dst_pitch,
+        width_in_bytes: width_bytes,
+        height,
+    };
+
+    unsafe {
+        check_cuda("cuMemcpy2D_v2 (A->H)", (cuda.cu_memcpy_2d_v2)(&desc))?;
+    }
+
+    Ok(())
+}
+
 /// Destroy an imported external memory object.
 #[cfg(target_os = "windows")]
 pub fn destroy_external_memory(ext_mem: *mut c_void) -> Result<(), CudaInteropError> {
