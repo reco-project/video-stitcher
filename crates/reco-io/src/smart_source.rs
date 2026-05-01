@@ -297,6 +297,9 @@ impl SmartFileSource {
             reason: msg,
         };
 
+        reco_core::cuda_interop::cuda_ensure_context()
+            .map_err(|e| map_err(format!("CUDA context init: {e}")))?;
+
         let input_width = info.width;
         let input_height = info.height;
 
