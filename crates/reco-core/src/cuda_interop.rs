@@ -444,36 +444,35 @@ pub fn allocate_shared_memory(size: usize) -> Result<CudaSharedMemory, CudaInter
             use windows::Win32::Security::PSECURITY_DESCRIPTOR;
             use windows::core::PCSTR;
 
-            thread_local! {
-                static OBJ_ATTRS: Option<(OBJECT_ATTRIBUTES, PSECURITY_DESCRIPTOR)> = unsafe {
-                    let sddl = c"D:P(OA;;GARCSDWDWOCCDCLCSWLODTWPRPCRFA;;;WD)";
-                    let mut sec_desc = PSECURITY_DESCRIPTOR::default();
-                    let result = ConvertStringSecurityDescriptorToSecurityDescriptorA(
-                        PCSTR::from_raw(sddl.as_ptr() as *const u8),
-                        SDDL_REVISION_1,
-                        &mut sec_desc,
-                        None,
-                    );
-                    if result.is_ok() {
-                        Some((OBJECT_ATTRIBUTES {
-                            Length: std::mem::size_of::<OBJECT_ATTRIBUTES>() as u32,
-                            RootDirectory: HANDLE::default(),
-                            ObjectName: std::ptr::null_mut(),
-                            Attributes: OBJECT_ATTRIBUTE_FLAGS::default(),
-                            SecurityDescriptor: sec_desc.0 as *const _,
-                            SecurityQualityOfService: std::ptr::null_mut(),
-                        }, sec_desc))
-                    } else {
-                        log::warn!("Failed to create security descriptor for CUDA Win32 handle");
-                        None
-                    }
-                };
-            }
-            OBJ_ATTRS.with(|x| {
-                x.as_ref()
-                    .map(|(attrs, _)| attrs as *const _ as *mut c_void)
-                    .unwrap_or(std::ptr::null_mut())
-            })
+            static OBJ_ATTRS_PTR: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+            let ptr = *OBJ_ATTRS_PTR.get_or_init(|| {
+                let sddl = c"D:P(OA;;GARCSDWDWOCCDCLCSWLODTWPRPCRFA;;;WD)";
+                let mut sec_desc = PSECURITY_DESCRIPTOR::default();
+                let result = ConvertStringSecurityDescriptorToSecurityDescriptorA(
+                    PCSTR::from_raw(sddl.as_ptr() as *const u8),
+                    SDDL_REVISION_1,
+                    &mut sec_desc,
+                    None,
+                );
+                if result.is_err() {
+                    log::warn!("Failed to create security descriptor for CUDA Win32 handle");
+                    return 0;
+                }
+                let attrs = Box::new(OBJECT_ATTRIBUTES {
+                    Length: std::mem::size_of::<OBJECT_ATTRIBUTES>() as u32,
+                    RootDirectory: HANDLE::default(),
+                    ObjectName: std::ptr::null_mut(),
+                    Attributes: OBJECT_ATTRIBUTE_FLAGS::default(),
+                    SecurityDescriptor: sec_desc.0 as *const _,
+                    SecurityQualityOfService: std::ptr::null_mut(),
+                });
+                let ptr = Box::into_raw(attrs) as usize;
+                // Intentionally leak: CUDA needs this for the process lifetime.
+                // The security descriptor is also leaked (LocalFree not called).
+                log::debug!("CUDA Win32 OBJECT_ATTRIBUTES at 0x{ptr:x}");
+                ptr
+            });
+            ptr as *mut c_void
         };
         #[cfg(not(target_os = "windows"))]
         let win32_handle_value: *mut c_void = std::ptr::null_mut();
