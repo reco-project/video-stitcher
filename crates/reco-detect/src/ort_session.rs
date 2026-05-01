@@ -141,16 +141,16 @@ pub fn create_ort_session(
     // DirectML EP for Windows (AMD/Intel/NVIDIA via DX12).
     #[cfg(target_os = "windows")]
     let mut builder = if std::env::var("RECO_NO_DIRECTML").is_ok() {
-        eprintln!("ORT: DirectML disabled via RECO_NO_DIRECTML, using CPU");
+        log::info!("ORT: DirectML disabled via RECO_NO_DIRECTML, using CPU");
         builder
     } else {
         match builder.with_execution_providers([ort::ep::DirectML::default().build()]) {
             Ok(b) => {
-                eprintln!("ORT: DirectML execution provider enabled");
+                log::info!("ORT: DirectML execution provider enabled");
                 b
             }
             Err(e) => {
-                eprintln!("ORT: DirectML EP failed ({e}), using CPU");
+                log::warn!("ORT: DirectML EP failed ({e}), using CPU");
                 e.recover()
             }
         }
