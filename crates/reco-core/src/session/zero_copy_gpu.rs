@@ -8,11 +8,46 @@ use super::{FrameProgress, ProgressCallback, SessionError, StitchSession};
 use crate::vulkan_interop::{Nv12Plane, create_nv12_shared_texture};
 use crate::zero_copy::GpuBufInfo;
 
-/// Platform-specific shared texture type.
-#[cfg(target_os = "linux")]
-pub type PlatformSharedTexture = crate::vulkan_interop::SharedTexture;
-#[cfg(target_os = "windows")]
-pub type PlatformSharedTexture = crate::dx12_cuda_interop::SharedTexture;
+/// Platform-specific shared texture that owns both the wgpu texture
+/// and the underlying shared memory (CUDA VMM or DX12 resource).
+pub enum PlatformSharedTexture {
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    Vulkan(crate::vulkan_interop::SharedTexture),
+    #[cfg(target_os = "windows")]
+    Dx12Cuda(crate::dx12_cuda_interop::SharedTexture),
+}
+
+impl PlatformSharedTexture {
+    /// Access the wgpu texture for rendering.
+    pub fn texture(&self) -> &wgpu::Texture {
+        match self {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            Self::Vulkan(t) => &t.texture,
+            #[cfg(target_os = "windows")]
+            Self::Dx12Cuda(t) => &t.texture,
+        }
+    }
+
+    /// CUDA device pointer for this texture.
+    pub fn cuda_ptr(&self) -> crate::cuda_interop::CUdeviceptr {
+        match self {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            Self::Vulkan(t) => t.cuda_ptr,
+            #[cfg(target_os = "windows")]
+            Self::Dx12Cuda(t) => t.cuda_ptr,
+        }
+    }
+
+    /// Row pitch in bytes.
+    pub fn pitch(&self) -> usize {
+        match self {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            Self::Vulkan(t) => t.pitch,
+            #[cfg(target_os = "windows")]
+            Self::Dx12Cuda(t) => t.pitch,
+        }
+    }
+}
 
 /// Bundled shared textures, CUDA buffer info, slot channels, and bind
 /// groups for the GPU zero-copy path.
@@ -150,10 +185,17 @@ impl StitchSession {
             [(&right_y_0, &right_uv_0), (&right_y_1, &right_uv_1)],
         );
 
+        use PlatformSharedTexture::Vulkan;
         Ok(SharedTextureSet {
             textures: [
-                left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0, right_uv_0, right_y_1,
-                right_uv_1,
+                Vulkan(left_y_0),
+                Vulkan(left_uv_0),
+                Vulkan(left_y_1),
+                Vulkan(left_uv_1),
+                Vulkan(right_y_0),
+                Vulkan(right_uv_0),
+                Vulkan(right_y_1),
+                Vulkan(right_uv_1),
             ],
             left_buf,
             right_buf,
@@ -205,12 +247,12 @@ impl StitchSession {
                 let t = &textures;
                 self.core.pipeline_mut().configure_gpu_source_raw(
                     [
-                        (&t[0].texture, &t[1].texture),
-                        (&t[2].texture, &t[3].texture),
+                        (t[0].texture(), t[1].texture()),
+                        (t[2].texture(), t[3].texture()),
                     ],
                     [
-                        (&t[4].texture, &t[5].texture),
-                        (&t[6].texture, &t[7].texture),
+                        (t[4].texture(), t[5].texture()),
+                        (t[6].texture(), t[7].texture()),
                     ],
                 )
             }
@@ -223,31 +265,16 @@ impl StitchSession {
         // Indexed per slot below via signal.left_slot / right_slot.
         // Views are reused every frame — wgpu makes them cheap via
         // Arc refcounting on the inner texture.
+        let desc = wgpu::TextureViewDescriptor::default();
         let shared_views: [wgpu::TextureView; 8] = [
-            textures[0]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            textures[1]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            textures[2]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            textures[3]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            textures[4]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            textures[5]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            textures[6]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            textures[7]
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
+            textures[0].texture().create_view(&desc),
+            textures[1].texture().create_view(&desc),
+            textures[2].texture().create_view(&desc),
+            textures[3].texture().create_view(&desc),
+            textures[4].texture().create_view(&desc),
+            textures[5].texture().create_view(&desc),
+            textures[6].texture().create_view(&desc),
+            textures[7].texture().create_view(&desc),
         ];
 
         let frame_rx = decode_handles.frame_rx;

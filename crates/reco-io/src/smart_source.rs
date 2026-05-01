@@ -394,10 +394,17 @@ impl SmartFileSource {
         // We'll need to split SharedTextureSet or use a different approach.
         // For now, let's store the textures and bufs directly.
 
+        use reco_core::session::zero_copy_gpu::PlatformSharedTexture::Vulkan;
         let shared = SharedTextureSet {
             textures: [
-                left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0, right_uv_0, right_y_1,
-                right_uv_1,
+                Vulkan(left_y_0),
+                Vulkan(left_uv_0),
+                Vulkan(left_y_1),
+                Vulkan(left_uv_1),
+                Vulkan(right_y_0),
+                Vulkan(right_uv_0),
+                Vulkan(right_y_1),
+                Vulkan(right_uv_1),
             ],
             left_buf,
             right_buf,
@@ -629,15 +636,16 @@ impl SmartFileSource {
         let mut lu = left_uv.into_iter();
         let mut ry = right_y.into_iter();
         let mut ru = right_uv.into_iter();
+        use reco_core::session::zero_copy_gpu::PlatformSharedTexture::Dx12Cuda;
         let textures = [
-            ly.next().unwrap(),
-            lu.next().unwrap(),
-            ly.next().unwrap(),
-            lu.next().unwrap(),
-            ry.next().unwrap(),
-            ru.next().unwrap(),
-            ry.next().unwrap(),
-            ru.next().unwrap(),
+            Dx12Cuda(ly.next().unwrap()),
+            Dx12Cuda(lu.next().unwrap()),
+            Dx12Cuda(ly.next().unwrap()),
+            Dx12Cuda(lu.next().unwrap()),
+            Dx12Cuda(ry.next().unwrap()),
+            Dx12Cuda(ru.next().unwrap()),
+            Dx12Cuda(ry.next().unwrap()),
+            Dx12Cuda(ru.next().unwrap()),
         ];
 
         let (left_slot_free_tx, left_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);

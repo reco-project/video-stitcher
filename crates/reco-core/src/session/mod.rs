@@ -21,7 +21,7 @@ pub mod detection;
 #[cfg(test)]
 mod tests;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-mod zero_copy_gpu;
+pub mod zero_copy_gpu;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod zero_copy_macos;
 
@@ -1595,12 +1595,12 @@ impl StitchSession {
         let t = &shared.textures;
         let bind_groups = self.core.pipeline_mut().configure_gpu_source_raw(
             [
-                (&t[0].texture, &t[1].texture),
-                (&t[2].texture, &t[3].texture),
+                (t[0].texture(), t[1].texture()),
+                (t[2].texture(), t[3].texture()),
             ],
             [
-                (&t[4].texture, &t[5].texture),
-                (&t[6].texture, &t[7].texture),
+                (t[4].texture(), t[5].texture()),
+                (t[6].texture(), t[7].texture()),
             ],
         );
         self.gpu_bind_groups = Some(bind_groups);
@@ -1609,23 +1609,16 @@ impl StitchSession {
             shared.right_slot_free_tx.clone(),
         ));
         self.gpu_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
-        // Pre-build the 8 shared texture views for the GPU
-        // stacked-replay pack shader. Same order as `t` above so
-        // `step_gpu_with_bufs` can index per slot:
-        //   left  y: [ls * 2],     uv: [ls * 2 + 1]
-        //   right y: [4 + rs * 2], uv: [4 + rs * 2 + 1]
-        // Views hold Arcs to the underlying textures, so the
-        // SharedTextureSet still owns the lifetime.
         let desc = wgpu::TextureViewDescriptor::default();
         self.gpu_shared_views = Some([
-            t[0].texture.create_view(&desc),
-            t[1].texture.create_view(&desc),
-            t[2].texture.create_view(&desc),
-            t[3].texture.create_view(&desc),
-            t[4].texture.create_view(&desc),
-            t[5].texture.create_view(&desc),
-            t[6].texture.create_view(&desc),
-            t[7].texture.create_view(&desc),
+            t[0].texture().create_view(&desc),
+            t[1].texture().create_view(&desc),
+            t[2].texture().create_view(&desc),
+            t[3].texture().create_view(&desc),
+            t[4].texture().create_view(&desc),
+            t[5].texture().create_view(&desc),
+            t[6].texture().create_view(&desc),
+            t[7].texture().create_view(&desc),
         ]);
         log::info!("Session configured for GPU-resident source");
     }
