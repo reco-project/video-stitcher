@@ -83,8 +83,12 @@ pub fn create_shared_texture(
         let vk_format = wgpu_format_to_vk(format);
 
         // Create VkImage with external memory support
-        let mut external_info = vk::ExternalMemoryImageCreateInfo::default()
-            .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+        #[cfg(target_os = "linux")]
+        let handle_type = vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
+        #[cfg(target_os = "windows")]
+        let handle_type = vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32;
+        let mut external_info =
+            vk::ExternalMemoryImageCreateInfo::default().handle_types(handle_type);
 
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
@@ -147,19 +151,39 @@ pub fn create_shared_texture(
                 CudaInteropError::VulkanError("no compatible memory type for imported image".into())
             })?;
 
-        // Import the CUDA fd as Vulkan memory
-        let mut import_info = vk::ImportMemoryFdInfoKHR::default()
-            .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD)
-            .fd(fd);
+        // Import the CUDA shared handle as Vulkan memory
+        #[cfg(target_os = "linux")]
+        let device_memory = {
+            let mut import_info = vk::ImportMemoryFdInfoKHR::default()
+                .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD)
+                .fd(fd);
 
-        let alloc_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(shared_mem.alloc_size as u64)
-            .memory_type_index(memory_type_index)
-            .push_next(&mut import_info);
+            let alloc_info = vk::MemoryAllocateInfo::default()
+                .allocation_size(shared_mem.alloc_size as u64)
+                .memory_type_index(memory_type_index)
+                .push_next(&mut import_info);
 
-        let device_memory = raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
-            CudaInteropError::VulkanError(format!("vkAllocateMemory (import fd): {e:?}"))
-        })?;
+            raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
+                CudaInteropError::VulkanError(format!("vkAllocateMemory (import fd): {e:?}"))
+            })?
+        };
+        #[cfg(target_os = "windows")]
+        let device_memory = {
+            let mut import_info = vk::ImportMemoryWin32HandleInfoKHR::default()
+                .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32)
+                .handle(vk::HANDLE::from_raw(fd as u64));
+
+            let alloc_info = vk::MemoryAllocateInfo::default()
+                .allocation_size(shared_mem.alloc_size as u64)
+                .memory_type_index(memory_type_index)
+                .push_next(&mut import_info);
+
+            raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
+                CudaInteropError::VulkanError(format!(
+                    "vkAllocateMemory (import Win32 handle): {e:?}"
+                ))
+            })?
+        };
 
         // Bind the imported memory to the image
         raw_device
@@ -167,7 +191,7 @@ pub fn create_shared_texture(
             .map_err(|e| CudaInteropError::VulkanError(format!("vkBindImageMemory: {e:?}")))?;
 
         log::info!(
-            "Vulkan image created: {}x{} {:?}, pitch={}, imported fd={}",
+            "Vulkan image created: {}x{} {:?}, pitch={}, imported handle={:?}",
             width,
             height,
             format,
