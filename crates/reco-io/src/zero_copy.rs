@@ -87,7 +87,7 @@ pub fn spawn_single_decoder_gpu(
                         let use_array = buf.y_array[s] != 0;
 
                         if use_array {
-                            log::debug!(
+                            log::info!(
                                 "{label}[{s}] array copy: Y src=0x{:x} pitch={}, dst_array=0x{:x}, {}x{}",
                                 frame.y_ptr, frame.y_pitch, buf.y_array[s],
                                 y_width_bytes, buf.height,
@@ -118,7 +118,7 @@ pub fn spawn_single_decoder_gpu(
                             break;
                         }
                         if use_array {
-                            log::debug!("{label}[{s}] Y copy done, starting UV");
+                            log::info!("{label}[{s}] Y copy done, starting UV");
                         }
 
                         // Copy UV plane: NVDEC -> shared texture
@@ -146,14 +146,14 @@ pub fn spawn_single_decoder_gpu(
                         }
 
                         if use_array {
-                            log::debug!("{label}[{s}] UV copy done, synchronizing");
+                            log::info!("{label}[{s}] UV copy done, synchronizing");
                         }
                         if let Err(e) = reco_core::cuda_interop::cuda_synchronize() {
                             log::error!("{label} cuCtxSynchronize: {e}");
                             break;
                         }
                         if use_array {
-                            log::debug!("{label}[{s}] frame complete");
+                            log::info!("{label}[{s}] frame complete");
                         }
 
                         if tx.send(slot).is_err() {
