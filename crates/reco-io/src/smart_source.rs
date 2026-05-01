@@ -595,7 +595,7 @@ impl SmartFileSource {
             })?;
             let uv = reco_core::dx12_cuda_interop::create_shared_texture(
                 gpu,
-                info.width,
+                info.width / 2,
                 info.height / 2,
                 uv_format,
             )
@@ -621,7 +621,7 @@ impl SmartFileSource {
             })?;
             let uv = reco_core::dx12_cuda_interop::create_shared_texture(
                 gpu,
-                info.width,
+                info.width / 2,
                 info.height / 2,
                 uv_format,
             )
