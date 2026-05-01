@@ -171,7 +171,7 @@ pub fn create_shared_texture(
         let device_memory = {
             let mut import_info = vk::ImportMemoryWin32HandleInfoKHR::default()
                 .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32)
-                .handle(vk::HANDLE::from_raw(fd as u64));
+                .handle(fd as isize);
 
             let alloc_info = vk::MemoryAllocateInfo::default()
                 .allocation_size(shared_mem.alloc_size as u64)
