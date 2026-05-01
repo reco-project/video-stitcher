@@ -413,7 +413,8 @@ impl GpuContext {
         }
         #[cfg(target_os = "windows")]
         {
-            self.is_dx12()
+            // DX12 for D3D11VA (AMD/Intel), or Vulkan+CUDA for NVIDIA
+            self.is_dx12() || (self.is_vulkan() && crate::cuda_interop::is_cuda_available())
         }
         #[cfg(not(any(
             target_os = "linux",
