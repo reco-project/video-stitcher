@@ -1,38 +1,50 @@
-//! DX12 side of CUDA/DX12 interop for NVIDIA Windows zero-copy.
+//! DX12/CUDA interop for NVIDIA Windows zero-copy.
 //!
-//! Mirrors [`vulkan_interop`](crate::vulkan_interop) for Windows:
-//! imports CUDA-exported shared memory into DX12, then wraps the
-//! resulting resource into a [`wgpu::Texture`] via the HAL.
+//! DX12 allocates shared buffers, CUDA imports them via
+//! `cuImportExternalMemory`. Decode threads write via `cuMemcpy2D`,
+//! wgpu renders from the same DX12 resources.
 //!
 //! ## Flow
-//! 1. CUDA allocates shareable memory and exports a Win32 NT handle
-//! 2. DX12 opens the handle as a committed resource
-//! 3. Wraps into `wgpu::Texture` via `create_texture_from_hal`
-//! 4. Decode threads write via `cuMemcpy2D` + `cuCtxSynchronize`
-//! 5. wgpu renders from the DX12 texture (same physical memory)
+//! 1. DX12 creates a committed buffer with `D3D12_HEAP_FLAG_SHARED`
+//! 2. Gets NT shared handle via `CreateSharedResourceHandle`
+//! 3. CUDA imports via `cuImportExternalMemory(D3D12_RESOURCE)`
+//! 4. Maps to CUDA device pointer via `cuExternalMemoryGetMappedBuffer`
+//! 5. Decode threads: `cuMemcpy2D` + `cuCtxSynchronize`
+//! 6. wgpu renders from the DX12 buffer (same physical memory)
 
-use crate::cuda_interop::{CudaInteropError, CudaSharedMemory};
+use crate::cuda_interop::CudaInteropError;
 use crate::gpu::GpuContext;
+use std::ffi::c_void;
 
-/// A wgpu texture backed by CUDA shared memory (DX12 import).
+/// A wgpu texture backed by a DX12 buffer shared with CUDA.
 pub struct SharedTexture {
-    /// The wgpu texture, usable in bind groups and render passes.
+    /// The wgpu texture for rendering.
     pub texture: wgpu::Texture,
-    /// The CUDA device pointer to the shared memory.
+    /// CUDA device pointer mapped to the same memory.
     pub cuda_ptr: crate::cuda_interop::CUdeviceptr,
-    /// Pitch (row stride in bytes) of the DX12 resource.
+    /// Row pitch in bytes (aligned to 256 for DX12).
     pub pitch: usize,
-    /// Keeps the CUDA allocation alive.
-    _shared_mem: CudaSharedMemory,
+    /// CUDA external memory handle (freed on drop).
+    _ext_mem: *mut c_void,
 }
 
-// SAFETY: SharedTexture's only non-Send field is the *mut c_void handle
-// in CudaSharedMemory, which is a Win32 NT handle that can be used from
-// any thread. The wgpu::Texture and CUDA device pointer are also thread-safe.
 unsafe impl Send for SharedTexture {}
 unsafe impl Sync for SharedTexture {}
 
-/// Create a wgpu texture backed by CUDA shared memory via DX12 import.
+impl Drop for SharedTexture {
+    fn drop(&mut self) {
+        if !self._ext_mem.is_null() {
+            let _ = crate::cuda_interop::destroy_external_memory(self._ext_mem);
+        }
+    }
+}
+
+/// Create a wgpu texture backed by DX12/CUDA shared memory.
+///
+/// DX12 allocates a buffer with `D3D12_HEAP_FLAG_SHARED`, exports an
+/// NT handle, and CUDA imports it. The returned texture can be used
+/// in wgpu bind groups, and `cuda_ptr` can be written to via
+/// `cuMemcpy2D`.
 pub fn create_shared_texture(
     gpu: &GpuContext,
     width: u32,
@@ -40,33 +52,95 @@ pub fn create_shared_texture(
     format: wgpu::TextureFormat,
 ) -> Result<SharedTexture, CudaInteropError> {
     use wgpu::hal::api::Dx12;
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
+    use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE};
+    use windows::Win32::Graphics::Direct3D12::*;
+    use windows::Win32::Graphics::Dxgi::Common::*;
+    use windows::Win32::Graphics::Dxgi::IDXGIResource1;
+    use windows::core::Interface;
 
     let bpp = format_bytes_per_pixel(format);
     let row_bytes = width as usize * bpp;
     let pitch = row_bytes.div_ceil(256) * 256;
-    let alloc_size = pitch * height as usize;
+    let buffer_size = pitch * height as usize;
 
-    let shared_mem = crate::cuda_interop::allocate_shared_memory(alloc_size)?;
-    let cuda_ptr = shared_mem.device_ptr;
-    let win32_handle = shared_mem.shared_handle;
+    let dxgi_format = match format {
+        wgpu::TextureFormat::R8Unorm => DXGI_FORMAT_R8_UNORM,
+        wgpu::TextureFormat::Rg8Unorm => DXGI_FORMAT_R8G8_UNORM,
+        wgpu::TextureFormat::R16Unorm => DXGI_FORMAT_R16_UNORM,
+        wgpu::TextureFormat::Rg16Unorm => DXGI_FORMAT_R16G16_UNORM,
+        _ => DXGI_FORMAT_R8_UNORM,
+    };
 
+    // Create a DX12 committed resource with SHARED heap flag.
     let d3d12_resource: ID3D12Resource = unsafe {
         let hal_device_guard = gpu
             .device()
             .as_hal::<Dx12>()
             .ok_or(CudaInteropError::NotVulkan)?;
         let raw_device = hal_device_guard.raw_device();
-        let handle = HANDLE(win32_handle);
+
+        let heap_props = D3D12_HEAP_PROPERTIES {
+            Type: D3D12_HEAP_TYPE_DEFAULT,
+            ..Default::default()
+        };
+
+        let desc = D3D12_RESOURCE_DESC {
+            Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            Alignment: 0,
+            Width: width as u64,
+            Height: height,
+            DepthOrArraySize: 1,
+            MipLevels: 1,
+            Format: dxgi_format,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
+            Flags: D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
+        };
+
         let mut resource: Option<ID3D12Resource> = None;
         raw_device
-            .OpenSharedHandle(handle, &mut resource)
-            .map_err(|e| CudaInteropError::VulkanError(format!("DX12 OpenSharedHandle: {e}")))?;
-        resource
-            .ok_or_else(|| CudaInteropError::VulkanError("OpenSharedHandle returned None".into()))?
+            .CreateCommittedResource(
+                &heap_props,
+                D3D12_HEAP_FLAG_SHARED,
+                &desc,
+                D3D12_RESOURCE_STATE_COMMON,
+                None,
+                &mut resource,
+            )
+            .map_err(|e| {
+                CudaInteropError::VulkanError(format!("DX12 CreateCommittedResource: {e}"))
+            })?;
+        resource.ok_or_else(|| {
+            CudaInteropError::VulkanError("CreateCommittedResource returned None".into())
+        })?
     };
 
+    // Get shared NT handle for CUDA import.
+    let shared_handle: HANDLE = unsafe {
+        let hal_device_guard = gpu
+            .device()
+            .as_hal::<Dx12>()
+            .ok_or(CudaInteropError::NotVulkan)?;
+        let raw_device = hal_device_guard.raw_device();
+        raw_device
+            .CreateSharedHandle(&d3d12_resource, None, GENERIC_ALL.0, None)
+            .map_err(|e| CudaInteropError::VulkanError(format!("DX12 CreateSharedHandle: {e}")))?
+    };
+
+    // CUDA imports the D3D12 resource via the shared handle.
+    let (cuda_ptr, ext_mem) = crate::cuda_interop::import_d3d12_shared_handle(
+        shared_handle.0 as *mut c_void,
+        buffer_size,
+    )?;
+
+    unsafe {
+        let _ = CloseHandle(shared_handle);
+    }
+
+    // Wrap the DX12 resource into a wgpu texture.
     let wgpu_texture = unsafe {
         let hal_texture = wgpu::hal::dx12::Device::texture_from_raw(
             d3d12_resource,
@@ -113,7 +187,7 @@ pub fn create_shared_texture(
         texture: wgpu_texture,
         cuda_ptr,
         pitch,
-        _shared_mem: shared_mem,
+        _ext_mem: ext_mem,
     })
 }
 

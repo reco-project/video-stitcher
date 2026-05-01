@@ -135,6 +135,40 @@ struct CudaMemcpy2D {
 
 type CUmemGenericAllocationHandle = u64;
 
+/// External memory handle types for cuImportExternalMemory.
+#[cfg(target_os = "windows")]
+const CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE: u32 = 5;
+
+/// External memory handle descriptor.
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct CudaExternalMemoryHandleDesc {
+    handle_type: u32,
+    handle_win32: CudaExternalMemoryWin32Handle,
+    size: u64,
+    flags: u32,
+    _reserved: [u32; 16],
+}
+
+/// Win32 handle for external memory.
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CudaExternalMemoryWin32Handle {
+    handle: *mut c_void,
+    name: *const c_void,
+}
+
+/// Buffer descriptor for mapping external memory.
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct CudaExternalMemoryBufferDesc {
+    offset: u64,
+    size: u64,
+    flags: u32,
+    _reserved: [u32; 16],
+}
+
 // ── Dynamic loader ──────────────────────────────────────────────────
 
 /// Opaque CUDA context handle.
@@ -188,6 +222,19 @@ struct CudaFunctions {
     cu_mem_release: unsafe extern "C" fn(CUmemGenericAllocationHandle) -> CUresult,
     cu_mem_unmap: unsafe extern "C" fn(CUdeviceptr, usize) -> CUresult,
     cu_mem_address_free: unsafe extern "C" fn(CUdeviceptr, usize) -> CUresult,
+
+    // External memory (DX12 resource import, Windows only)
+    #[cfg(target_os = "windows")]
+    cu_import_external_memory:
+        unsafe extern "C" fn(*mut *mut c_void, *const CudaExternalMemoryHandleDesc) -> CUresult,
+    #[cfg(target_os = "windows")]
+    cu_external_memory_get_mapped_buffer: unsafe extern "C" fn(
+        *mut CUdeviceptr,
+        *mut c_void,
+        *const CudaExternalMemoryBufferDesc,
+    ) -> CUresult,
+    #[cfg(target_os = "windows")]
+    cu_destroy_external_memory: unsafe extern "C" fn(*mut c_void) -> CUresult,
 
     // 2D copy
     cu_memcpy_2d_v2: unsafe extern "C" fn(*const CudaMemcpy2D) -> CUresult,
@@ -297,6 +344,15 @@ impl CudaFunctions {
                 cu_mem_release: load_sym!(lib_cuda, "cuMemRelease"),
                 cu_mem_unmap: load_sym!(lib_cuda, "cuMemUnmap"),
                 cu_mem_address_free: load_sym!(lib_cuda, "cuMemAddressFree"),
+                #[cfg(target_os = "windows")]
+                cu_import_external_memory: load_sym!(lib_cuda, "cuImportExternalMemory"),
+                #[cfg(target_os = "windows")]
+                cu_external_memory_get_mapped_buffer: load_sym!(
+                    lib_cuda,
+                    "cuExternalMemoryGetMappedBuffer"
+                ),
+                #[cfg(target_os = "windows")]
+                cu_destroy_external_memory: load_sym!(lib_cuda, "cuDestroyExternalMemory"),
                 cu_memcpy_2d_v2: load_sym!(lib_cuda, "cuMemcpy2D_v2"),
                 cu_mem_alloc_v2: load_sym!(lib_cuda, "cuMemAlloc_v2"),
                 cu_mem_free_v2: load_sym!(lib_cuda, "cuMemFree_v2"),
@@ -656,6 +712,71 @@ pub fn cuda_memcpy_htod_2d(
 
 /// Copy a 2D region between CUDA device pointers (GPU-to-GPU, no CPU involved).
 ///
+/// Import a D3D12 resource's shared handle into CUDA as a mapped buffer.
+///
+/// The D3D12 resource must be created with `D3D12_HEAP_FLAG_SHARED`.
+/// Returns a CUDA device pointer that maps to the same physical memory.
+/// CUDA writes via `cuMemcpy2D` are visible to DX12/wgpu reads after
+/// `cuCtxSynchronize`.
+#[cfg(target_os = "windows")]
+pub fn import_d3d12_shared_handle(
+    shared_handle: *mut c_void,
+    size: usize,
+) -> Result<(CUdeviceptr, *mut c_void), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        let desc = CudaExternalMemoryHandleDesc {
+            handle_type: CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE,
+            handle_win32: CudaExternalMemoryWin32Handle {
+                handle: shared_handle,
+                name: std::ptr::null(),
+            },
+            size: size as u64,
+            flags: 1, // CUDA_EXTERNAL_MEMORY_DEDICATED
+            _reserved: [0; 16],
+        };
+
+        let mut ext_mem: *mut c_void = std::ptr::null_mut();
+        check_cuda(
+            "cuImportExternalMemory",
+            (cuda.cu_import_external_memory)(&mut ext_mem, &desc),
+        )?;
+
+        let buf_desc = CudaExternalMemoryBufferDesc {
+            offset: 0,
+            size: size as u64,
+            flags: 0,
+            _reserved: [0; 16],
+        };
+
+        let mut device_ptr: CUdeviceptr = 0;
+        check_cuda(
+            "cuExternalMemoryGetMappedBuffer",
+            (cuda.cu_external_memory_get_mapped_buffer)(&mut device_ptr, ext_mem, &buf_desc),
+        )?;
+
+        log::debug!(
+            "CUDA imported D3D12 resource: {} bytes at 0x{:x}",
+            size,
+            device_ptr
+        );
+
+        Ok((device_ptr, ext_mem))
+    }
+}
+
+/// Destroy an imported external memory object.
+#[cfg(target_os = "windows")]
+pub fn destroy_external_memory(ext_mem: *mut c_void) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+    unsafe {
+        check_cuda(
+            "cuDestroyExternalMemory",
+            (cuda.cu_destroy_external_memory)(ext_mem),
+        )
+    }
+}
+
 /// This replaces the CPU round-trip (`av_hwframe_transfer_data` → swscale → upload).
 /// For NV12→NV12 copy, this is a simple device memcpy on the GPU.
 pub fn cuda_2d_copy(
