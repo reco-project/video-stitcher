@@ -247,6 +247,9 @@ jobs:
           Copy-Item LICENSE "$staging\"
           if (Test-Path "$env:FFMPEG_DLL_DIR") {
             Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
+            if (Test-Path "$env:FFMPEG_DLL_DIR\ffmpeg.exe") {
+              Copy-Item "$env:FFMPEG_DLL_DIR\ffmpeg.exe" "$staging\"
+            }
           }
           Compress-Archive -Path $staging -DestinationPath "$staging.zip"
 
@@ -262,6 +265,9 @@ jobs:
             Copy-Item LICENSE "$staging\"
             if (Test-Path "$env:FFMPEG_DLL_DIR") {
               Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
+              if (Test-Path "$env:FFMPEG_DLL_DIR\ffmpeg.exe") {
+                Copy-Item "$env:FFMPEG_DLL_DIR\ffmpeg.exe" "$staging\"
+              }
             }
             # Bundle ONNX Runtime DirectML for AI detection
             if (Test-Path "$env:ORT_DLL") {

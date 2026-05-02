@@ -1174,6 +1174,18 @@ fn main() -> anyhow::Result<()> {
     app.set_ai_status(ai_status.clone().into());
     app.set_ai_available(ai_available);
 
+    match reco_io::ffmpeg::calibration_io::check_ffmpeg_available() {
+        Ok(_) => {}
+        Err(msg) => {
+            log::warn!("{msg}");
+            state
+                .borrow_mut()
+                .toasts
+                .push(toast::Severity::Warn, "ffmpeg not found", &msg);
+            toast::sync_to_ui(&state.borrow().toasts, &app);
+        }
+    }
+
     // Send context telemetry after AI probe.
     {
         let s = state.borrow();
@@ -1699,7 +1711,7 @@ fn main() -> anyhow::Result<()> {
         };
         let seek_str = format!("{:.2}", current_secs);
         let extract_frame = |video: &std::path::Path, out: &std::path::Path, seek: &str| {
-            match std::process::Command::new("ffmpeg")
+            match std::process::Command::new(reco_io::ffmpeg::calibration_io::ffmpeg_cli_path())
                 .args(["-y", "-ss", seek, "-i"])
                 .arg(video)
                 .args(["-frames:v", "1", "-q:v", "2"])

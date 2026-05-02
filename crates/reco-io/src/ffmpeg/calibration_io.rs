@@ -10,9 +10,54 @@
 //! now public so that any consumer can use them without copying the
 //! CLI's code.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use reco_core::source::YuvFrame;
+
+/// Find the ffmpeg CLI binary. Checks next to the current executable first
+/// (for bundled Windows releases), then falls back to PATH lookup.
+pub fn ffmpeg_cli_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        let dir = exe.parent().unwrap_or(Path::new("."));
+        let candidate = dir.join(if cfg!(windows) {
+            "ffmpeg.exe"
+        } else {
+            "ffmpeg"
+        });
+        if candidate.exists() {
+            log::info!("ffmpeg CLI: using bundled {}", candidate.display());
+            return candidate;
+        }
+    }
+    log::info!("ffmpeg CLI: not bundled, will search PATH for 'ffmpeg'");
+    PathBuf::from("ffmpeg")
+}
+
+/// Check if the ffmpeg CLI is available. Returns the path if found, or an
+/// error message suitable for user-facing display.
+pub fn check_ffmpeg_available() -> Result<PathBuf, String> {
+    let path = ffmpeg_cli_path();
+    match std::process::Command::new(&path)
+        .arg("-version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        Ok(s) if s.success() => {
+            log::info!("ffmpeg CLI: verified at {}", path.display());
+            Ok(path)
+        }
+        Ok(s) => Err(format!(
+            "ffmpeg found at {} but exited with {s}",
+            path.display()
+        )),
+        Err(_) => Err(
+            "ffmpeg not found. Audio sync and audio passthrough require ffmpeg. \
+             Install it from https://ffmpeg.org or place ffmpeg.exe next to the app."
+                .into(),
+        ),
+    }
+}
 use thiserror::Error;
 
 use super::decoder::{DecodeError, VideoDecoder};
@@ -141,7 +186,7 @@ pub fn extract_audio_pcm(
         }
     }
 
-    let output = std::process::Command::new("ffmpeg")
+    let output = std::process::Command::new(ffmpeg_cli_path())
         .args([
             "-i",
             path_str,
