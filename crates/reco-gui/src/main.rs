@@ -2896,6 +2896,14 @@ fn main() -> anyhow::Result<()> {
         };
         let output_str = app.get_export_output_path().to_string();
         if output_str.is_empty() {
+            log::warn!("Export: no output path set, ignoring");
+            let mut s = state_ref.borrow_mut();
+            s.toasts.push(
+                Severity::Warn,
+                "No output path",
+                "Set an output file path before exporting.",
+            );
+            crate::toast::sync_to_ui(&s.toasts, &app);
             return;
         }
         let mut s = state_ref.borrow_mut();
@@ -2914,18 +2922,9 @@ fn main() -> anyhow::Result<()> {
                 crate::toast::sync_to_ui(&s.toasts, &app);
                 return;
             }
-            if parent
-                .metadata()
-                .map_or(true, |m| m.permissions().readonly())
-            {
-                s.toasts.push(
-                    Severity::Error,
-                    "Output directory is not writable",
-                    parent.display().to_string(),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-                return;
-            }
+            // Skip readonly check - unreliable on Windows (OneDrive marks
+            // synced folders as ReadOnly). Let the encoder report the error
+            // if the directory is truly unwritable.
         }
         let (Some(left_path), Some(right_path), Some(cal)) = (
             s.left_path.clone(),
