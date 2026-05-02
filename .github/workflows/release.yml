@@ -210,6 +210,16 @@ jobs:
           echo "Bundled ONNX Runtime 1.24.4 CPU ($(du -h "$ORT_LIB" | cut -f1))"
 
       # ----------------------------------------------------------------
+      # YOLO model (bundled for out-of-the-box AI detection)
+      # ----------------------------------------------------------------
+      - name: Download YOLO model
+        run: |
+          curl -sL "https://github.com/reco-project/video-stitcher/releases/download/v0.4.0/yolo26n.onnx" -o "${{ runner.temp }}/yolo26n.onnx"
+          echo "YOLO_MODEL=${{ runner.temp }}/yolo26n.onnx" >> $GITHUB_ENV
+          echo "Bundled YOLO26n model ($(du -h "${{ runner.temp }}/yolo26n.onnx" | cut -f1))"
+        shell: bash
+
+      # ----------------------------------------------------------------
       # Package
       # ----------------------------------------------------------------
       - name: Package CLI (Unix)
@@ -232,6 +242,10 @@ jobs:
             # Bundle ONNX Runtime for AI detection
             if [ -n "$ORT_LIB" ] && [ -f "$ORT_LIB" ]; then
               cp "$ORT_LIB" "$staging/"
+            fi
+            # Bundle YOLO model for out-of-the-box detection
+            if [ -n "$YOLO_MODEL" ] && [ -f "$YOLO_MODEL" ]; then
+              cp "$YOLO_MODEL" "$staging/"
             fi
             cp LICENSE "$staging/"
             tar czf "$staging.tar.gz" "$staging"
@@ -272,6 +286,10 @@ jobs:
             # Bundle ONNX Runtime DirectML for AI detection
             if (Test-Path "$env:ORT_DLL") {
               Copy-Item "$env:ORT_DLL" "$staging\"
+            }
+            # Bundle YOLO model for out-of-the-box detection
+            if (Test-Path "$env:YOLO_MODEL") {
+              Copy-Item "$env:YOLO_MODEL" "$staging\"
             }
             Compress-Archive -Path $staging -DestinationPath "$staging.zip"
           }
