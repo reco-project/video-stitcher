@@ -163,10 +163,10 @@ enum Commands {
         #[arg(long)]
         model: Option<String>,
 
-        /// Run detection every N frames (default: 1 = every frame).
+        /// Run detection every N frames (default: 15).
         /// Higher values reduce detection overhead. The director uses
         /// the last known detections on skipped frames.
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 15)]
         detection_interval: u64,
 
         /// Director lead time in seconds. Buffers decoded frames and runs
@@ -335,8 +335,8 @@ enum Commands {
         #[arg(long)]
         model: Option<String>,
 
-        /// Detection interval: run detection every N frames (default: 1).
-        #[arg(long, default_value_t = 1)]
+        /// Detection interval: run detection every N frames (default: 15).
+        #[arg(long, default_value_t = 15)]
         detection_interval: u64,
 
         /// Override encoder CRF/quality value (lower = better, typical 18-28).
@@ -468,8 +468,8 @@ enum Commands {
         #[arg(long)]
         model: Option<String>,
 
-        /// Detection interval: run detection every N frames (default: 1).
-        #[arg(long, default_value_t = 1)]
+        /// Detection interval: run detection every N frames (default: 15).
+        #[arg(long, default_value_t = 15)]
         detection_interval: u64,
 
         /// Override encoder CRF/quality value (lower = better, typical 18-28).
