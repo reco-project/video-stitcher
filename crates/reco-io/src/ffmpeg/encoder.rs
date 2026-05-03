@@ -755,42 +755,58 @@ impl VideoEncoder {
         url: &str,
         primary_octx: &format::context::Output,
         primary_video_index: usize,
-        _fps: Rational,
+        fps: Rational,
     ) -> Result<StreamOutput, EncodeError> {
         let mut octx = format::output_as(url, "flv")?;
 
-        // Copy video stream parameters from primary output.
         let primary_video = primary_octx
             .stream(primary_video_index)
             .ok_or_else(|| EncodeError::CodecNotFound("primary video stream missing".into()))?;
 
+        let params = primary_video.parameters();
+        let extradata_len = unsafe { (*params.as_ptr()).extradata_size };
+        log::info!("Stream output: copying H.264 params (extradata={extradata_len} bytes)");
+        if extradata_len == 0 {
+            log::warn!(
+                "Stream output: H.264 extradata is empty - FLV header will \
+                 lack SPS/PPS, YouTube will likely reject the stream"
+            );
+        }
+
         let mut ost = octx.add_stream(ffmpeg::encoder::find(codec::Id::None))?;
-        ost.set_parameters(primary_video.parameters());
+        ost.set_parameters(params);
         unsafe {
             (*ost.parameters().as_mut_ptr()).codec_tag = 0;
         }
         let video_index = ost.index();
 
-        // Add silent AAC audio (YouTube RTMP requires an audio track).
         let silent_audio = SilentAudio::new(&mut octx)?;
 
-        let mut opts = ffmpeg::Dictionary::new();
-        opts.set("flvflags", "no_duration_filesize");
-        octx.write_header_with(opts)?;
+        octx.write_header()?;
 
         let video_time_base = octx
             .stream(video_index)
             .expect("stream we just added")
             .time_base();
 
-        // Update silent audio time base after write_header.
-        let silent_audio = {
+        let mut silent_audio = {
             let mut sa = silent_audio;
             if let Some(s) = octx.stream(sa.stream_index) {
                 sa.output_time_base = s.time_base();
             }
             sa
         };
+
+        // Pre-write one frame of silent audio so YouTube sees audio
+        // before the first video packet arrives. RTMP ingest servers
+        // expect interleaved A/V from the start.
+        let preroll_pts =
+            unsafe { ffmpeg::sys::av_rescale_q(1, fps.into(), video_time_base.into()) };
+        if let Err(e) = silent_audio.write_up_to(&mut octx, preroll_pts, video_time_base) {
+            log::warn!("Stream audio preroll failed: {e}");
+        }
+
+        log::info!("Stream output ready: {url} (video tb={video_time_base}, fps={fps})");
 
         Ok(StreamOutput {
             octx,
