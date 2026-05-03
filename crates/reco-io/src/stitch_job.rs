@@ -636,6 +636,7 @@ impl StitchJob {
                 crate::output::Format::Flv => crate::ffmpeg::encoder::Container::Flv,
             },
             gop_size: None,
+            stream_url: None,
         };
         let encoder = crate::adapters::FfmpegFileEncoder::new(
             &self.output,

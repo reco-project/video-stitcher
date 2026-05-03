@@ -538,6 +538,7 @@ pub mod encoder {
                     // at 30fps costs ~5-10% bitrate vs the libx264
                     // default of 250.
                     gop_size: Some(30),
+                    stream_url: None,
                 },
                 fps: (30, 1),
             }

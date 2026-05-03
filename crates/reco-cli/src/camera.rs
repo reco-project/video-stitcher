@@ -39,9 +39,8 @@ pub struct CameraRunConfig<'a> {
     pub detection_interval: u64,
     pub crf: Option<u8>,
     pub preset: Option<String>,
-    /// Output container (`mp4` / `fmp4` / `mkv`). None → `mp4`.
-    /// Pick `mkv` or `fmp4` for streamable tee via external
-    /// `ffmpeg -c copy -f flv rtmp://...`.
+    /// Output container (`mp4` / `fmp4` / `mkv`). None -> `mp4`.
+    /// `mkv` recommended for live recording (crash-safe, streamable).
     pub container: Option<&'a str>,
     /// Tracking director: `ball`, `field`, `sweep`. Sweep mode
     /// bypasses detection entirely (no --model needed).
@@ -56,6 +55,8 @@ pub struct CameraRunConfig<'a> {
     /// Optional downscaled replay tile dims `(width, height)`.
     /// GPU-pack path only; no-op when replay_path is None.
     pub replay_scale: Option<(u32, u32)>,
+    /// RTMP stream URL for simultaneous file + stream output.
+    pub stream_url: Option<&'a str>,
     /// Use NVMM zero-copy capture (DMA-buf + NvBufSurfTransform).
     /// Auto-enabled on Tegra when NvBufSurfTransform is available.
     pub use_nvmm: bool,
@@ -93,6 +94,7 @@ pub fn run_camera(
         unconstrained,
         replay_path,
         replay_scale,
+        stream_url,
         use_nvmm,
         v4l2_direct,
         exposure: _exposure,
@@ -337,6 +339,7 @@ pub fn run_camera(
         preset,
         container: container_choice,
         gop_size: Some(60),
+        stream_url: stream_url.map(|s| s.to_string()),
         ..Default::default()
     };
 

@@ -495,6 +495,7 @@ pub fn create_encoder(
         audio_source: None,
         container: ffmpeg::encoder::Container::default(),
         gop_size: None,
+        stream_url: None,
     };
     let encoder = FfmpegFileEncoder::new(path, width, height, fps, &enc_config)?;
     let name = encoder.encoder_name().to_string();
