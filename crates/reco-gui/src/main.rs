@@ -1698,8 +1698,8 @@ fn main() -> anyhow::Result<()> {
             }
             return;
         }
-        let left_png = tmp_dir.join("left.png");
-        let right_png = tmp_dir.join("right.png");
+        let left_png = tmp_dir.join("left.jpg");
+        let right_png = tmp_dir.join("right.jpg");
 
         let current_secs = {
             let s = state_ref.borrow();
@@ -1714,7 +1714,7 @@ fn main() -> anyhow::Result<()> {
             match std::process::Command::new(reco_io::ffmpeg::calibration_io::ffmpeg_cli_path())
                 .args(["-y", "-ss", seek, "-i"])
                 .arg(video)
-                .args(["-frames:v", "1", "-q:v", "2"])
+                .args(["-frames:v", "1", "-vf", "scale=1920:-1", "-q:v", "5"])
                 .arg(out)
                 .output()
             {
@@ -1743,11 +1743,11 @@ fn main() -> anyhow::Result<()> {
 
         let left_data = std::fs::read(&left_png)
             .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
+            .map(|bytes| format!("data:image/jpeg;base64,{}", b64.encode(&bytes)))
             .unwrap_or_default();
         let right_data = std::fs::read(&right_png)
             .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
+            .map(|bytes| format!("data:image/jpeg;base64,{}", b64.encode(&bytes)))
             .unwrap_or_default();
 
         let cal_json_str = std::fs::read_to_string(&cal_path).unwrap_or_else(|_| "{}".into());
