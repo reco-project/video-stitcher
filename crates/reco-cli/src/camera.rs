@@ -111,6 +111,8 @@ pub fn run_camera(
         width,
         height,
         blend_width: blend,
+        rig_tilt: cal.rig_tilt as f32,
+        rig_roll: cal.rig_roll as f32,
         ..Default::default()
     };
 
