@@ -20,6 +20,9 @@ pub struct SweepPanner {
     yaw_range: f32,
     cycle_secs: f32,
     fov_degrees: f32,
+    fov_min: f32,
+    fov_max: f32,
+    zoom_cycle_secs: f32,
     /// Source frame rate used to turn the session's monotonically
     /// increasing `frame_index` into a seconds-valued phase. Matches
     /// the director's hard-coded 30 fps for behavior parity.
@@ -36,13 +39,26 @@ impl SweepPanner {
             yaw_range,
             cycle_secs: cycle_secs.max(0.1),
             fov_degrees: 50.0,
+            fov_min: 0.0,
+            fov_max: 0.0,
+            zoom_cycle_secs: 0.0,
             fps: 30.0,
         }
     }
 
-    /// Override the FOV in degrees.
+    /// Override the fixed FOV in degrees (disables zoom).
     pub fn with_fov(mut self, fov_degrees: f32) -> Self {
         self.fov_degrees = fov_degrees;
+        self
+    }
+
+    /// Enable sinusoidal zoom between `fov_min` and `fov_max` degrees
+    /// over `cycle_secs`. Uses a different period than the yaw sweep
+    /// so the zoom and pan don't synchronize.
+    pub fn with_zoom(mut self, fov_min: f32, fov_max: f32, cycle_secs: f32) -> Self {
+        self.fov_min = fov_min;
+        self.fov_max = fov_max;
+        self.zoom_cycle_secs = cycle_secs.max(0.1);
         self
     }
 
@@ -55,12 +71,22 @@ impl SweepPanner {
 
 impl Panner for SweepPanner {
     fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
-        let video_time_secs = ctx.frame_index as f32 / self.fps;
-        let phase = (video_time_secs * std::f32::consts::TAU / self.cycle_secs).sin();
+        let t = ctx.frame_index as f32 / self.fps;
+        let yaw_phase = (t * std::f32::consts::TAU / self.cycle_secs).sin();
+
+        let fov = if self.zoom_cycle_secs > 0.0 {
+            let zoom_phase = (t * std::f32::consts::TAU / self.zoom_cycle_secs).sin();
+            let mid = (self.fov_min + self.fov_max) * 0.5;
+            let amp = (self.fov_max - self.fov_min) * 0.5;
+            mid + zoom_phase * amp
+        } else {
+            self.fov_degrees
+        };
+
         ViewportPosition {
-            yaw: phase * self.yaw_range,
+            yaw: yaw_phase * self.yaw_range,
             pitch: 0.0,
-            fov_degrees: Some(self.fov_degrees),
+            fov_degrees: Some(fov),
         }
     }
 }
