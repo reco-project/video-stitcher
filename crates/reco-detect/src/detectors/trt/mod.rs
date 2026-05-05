@@ -566,6 +566,12 @@ impl UnifiedDetector for TrtGpuDetector {
                 width,
                 height,
             } => self.detect_gpu_rgba(camera, *ptr, *width, *height),
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            DetectorFrame::CudaRgbaLetterboxed {
+                ptr,
+                src_width,
+                src_height,
+            } => self.detect_preletterboxed(camera, *ptr, *src_width, *src_height),
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }
@@ -717,6 +723,33 @@ impl TrtGpuDetector {
         }
 
         self.run_inference_and_postprocess(camera, width, height)
+    }
+
+    /// Pre-letterboxed RGBA detection: the caller already produced a
+    /// model-size letterboxed RGBA buffer (via NvBufSurfTransform).
+    /// Only normalize + inference remain.
+    fn detect_preletterboxed(
+        &mut self,
+        camera: CameraId,
+        rgba_ptr: CUdeviceptr,
+        src_width: u32,
+        src_height: u32,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        cuda_ensure_context()
+            .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
+
+        {
+            reco_core::profile_scope!("cuda_normalize_rgba");
+            crate::cuda_kernels::normalize_rgba_to_chw(
+                rgba_ptr,
+                self.tensor_f32,
+                self.input_size,
+                self.input_size,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA RGBA normalize: {e}")))?;
+        }
+
+        self.run_inference_and_postprocess(camera, src_width, src_height)
     }
 
     /// GPU-native RGBA detection: upload RGBA to CUDA, NPP C4 resize

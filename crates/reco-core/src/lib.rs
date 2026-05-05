@@ -91,6 +91,8 @@ pub mod core;
 pub mod cuda_interop;
 #[cfg(target_os = "windows")]
 pub mod d3d11_interop;
+#[cfg(target_os = "linux")]
+pub mod nvbuf_transform;
 pub mod detection_filter;
 pub mod detector;
 pub mod director;
