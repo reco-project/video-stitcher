@@ -587,11 +587,27 @@ mod nvmm_source {
     }
 
     fn build_nvmm_pipeline_string(device: &str, config: &CameraConfig) -> Result<String, String> {
-        validate_device_string(device)?;
         let width = config.width;
         let height = config.height;
         let fps = config.fps;
 
+        // Test override: RECO_NVMM_LEFT / RECO_NVMM_RIGHT env vars pipe a video
+        // file through nvv4l2decoder to produce identical NVMM NV12 output.
+        let env_key = if device == "0" {
+            "RECO_NVMM_LEFT"
+        } else {
+            "RECO_NVMM_RIGHT"
+        };
+        if let Ok(path) = std::env::var(env_key) {
+            log::info!("[nvmm] {env_key}={path} (file override, bypassing camera)");
+            return Ok(format!(
+                "filesrc location={path} ! qtdemux ! h264parse ! nvv4l2decoder ! \
+                 video/x-raw(memory:NVMM),format=NV12 ! \
+                 appsink name=sink emit-signals=false sync=false max-buffers=4 drop=true"
+            ));
+        }
+
+        validate_device_string(device)?;
         Ok(format!(
             "nvarguscamerasrc sensor-id={device} ! \
              video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
