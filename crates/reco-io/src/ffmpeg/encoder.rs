@@ -663,7 +663,12 @@ impl VideoEncoder {
         // canonical ffmpeg-next transcode example follows the same
         // pattern: set params, open, re-set params.
         ost.set_parameters(&enc);
-        let opts = build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
+        let mut opts =
+            build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
+        if config.stream_url.is_some() && name == "libx264" {
+            opts.set("bf", "0");
+            log::info!("RTMP streaming: disabled B-frames (FLV requires monotonic DTS)");
+        }
         let encoder = enc.open_with(opts)?;
         ost.set_parameters(&encoder);
 
