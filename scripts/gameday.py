@@ -58,6 +58,8 @@ state = {
     "tracking": "field",
     "blend": 0.05,
     "log_lines": [],
+    "calibrating": False,
+    "last_calibration_result": None,
 }
 lock = threading.Lock()
 
@@ -250,6 +252,229 @@ def stop_streaming():
         return {"info": "stream is managed by reco, stop recording to stop stream"}
 
 
+def run_calibration():
+    """Run live calibration via reco camera --live-calibrate."""
+    with lock:
+        if state["reco_proc"] is not None:
+            return {"error": "stop recording first"}
+        state["calibrating"] = True
+
+    cal_output = str(Path.home() / f"calib_{datetime.now().strftime('%H%M%S')}.json")
+
+    cmd = [
+        str(RECO_BIN), "camera",
+        "--left-device", state["left_device"],
+        "--right-device", state["right_device"],
+        "--capture-width", str(state["capture_width"]),
+        "--capture-height", str(state["capture_height"]),
+        "-c", cal_output,
+        "-o", "/dev/null",
+        "--live-calibrate",
+        "--calibrate-frames", "8",
+    ]
+
+    # Lens profile (auto-loaded by reco if ~/imx477_profile.json exists).
+    lens = Path.home() / "imx477_profile.json"
+    if lens.exists():
+        cmd.extend(["--left-profile", str(lens)])
+
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        output = proc.communicate(timeout=180)[0].decode("utf-8", errors="replace")
+        returncode = proc.returncode
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        with lock:
+            state["calibrating"] = False
+        return {"error": "calibration timed out (180s)"}
+    except Exception as e:
+        with lock:
+            state["calibrating"] = False
+        return {"error": str(e)}
+
+    with lock:
+        state["calibrating"] = False
+
+    if returncode != 0:
+        return {"error": f"calibration failed (exit {returncode})", "log": output[-500:]}
+
+    # Parse machine-readable JSON from stdout (last line).
+    for line in reversed(output.strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                result = json.loads(line)
+                with lock:
+                    state["calibration"] = result.get("path", cal_output)
+                return result
+            except json.JSONDecodeError:
+                pass
+
+    with lock:
+        state["calibration"] = cal_output
+    return {"status": "ok", "path": cal_output, "log": output[-500:]}
+
+
+def capture_snapshot(device_id):
+    """Capture a single JPEG frame from a camera via gstreamer."""
+    tmp = f"/tmp/snapshot_{device_id}.jpg"
+    cmd = (
+        f"gst-launch-1.0 -e nvarguscamerasrc sensor-id={device_id} num-buffers=5 "
+        f"! 'video/x-raw(memory:NVMM),width=1920,height=1080,framerate=21/1' "
+        f"! nvjpegenc ! filesink location={tmp}"
+    )
+    try:
+        subprocess.run(cmd, shell=True, timeout=15, capture_output=True)
+        if Path(tmp).exists():
+            return Path(tmp).read_bytes()
+    except Exception:
+        pass
+    return None
+
+
+def save_roi(roi_data):
+    """Merge field_roi into the current calibration JSON."""
+    with lock:
+        cal_path = state["calibration"]
+    if not cal_path or not Path(cal_path).exists():
+        return {"error": "no calibration file loaded"}
+
+    try:
+        cal = json.loads(Path(cal_path).read_text())
+        cal["field_roi"] = roi_data
+        Path(cal_path).write_text(json.dumps(cal, indent=2))
+        return {"status": "ok", "path": cal_path}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+ROI_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>ROI Editor</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #1a1a2e; color: #eee; font-family: sans-serif; padding: 8px; }
+h2 { text-align: center; margin: 8px 0; font-size: 1.1em; }
+canvas { display: block; width: 100%; border: 2px solid #333; border-radius: 8px; margin-bottom: 8px; touch-action: none; }
+.controls { display: flex; gap: 8px; margin-bottom: 8px; }
+.controls button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 1em; font-weight: bold; cursor: pointer; }
+.btn-save { background: #27ae60; color: white; }
+.btn-undo { background: #e67e22; color: white; }
+.btn-clear { background: #e74c3c; color: white; }
+.info { text-align: center; color: #888; font-size: 0.85em; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<h2 id="title">Left Camera ROI</h2>
+<p class="info">Tap to add vertices. Draw a polygon around the playing field.</p>
+<canvas id="canvas"></canvas>
+<div class="controls">
+    <button class="btn-undo" onclick="undo()">Undo</button>
+    <button class="btn-clear" onclick="clearPoly()">Clear</button>
+    <button class="btn-save" onclick="save()">Save ROI</button>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let img = new Image();
+let side = 'left';
+let polys = {left: [], right: []};
+let imgW = 1, imgH = 1;
+
+function loadImage(s) {
+    side = s;
+    document.getElementById('title').textContent = (s === 'left' ? 'Left' : 'Right') + ' Camera ROI';
+    img = new Image();
+    img.onload = () => { imgW = img.naturalWidth; imgH = img.naturalHeight; draw(); };
+    img.src = '/api/snapshot/' + s + '?' + Date.now();
+}
+
+function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = (rect.width * 9 / 16) * window.devicePixelRatio;
+    canvas.style.height = (rect.width * 9 / 16) + 'px';
+    draw();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    }
+    const pts = polys[side];
+    if (pts.length === 0) return;
+    ctx.strokeStyle = '#00ff88';
+    ctx.lineWidth = 3;
+    ctx.fillStyle = 'rgba(0, 255, 136, 0.15)';
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0] * canvas.width, pts[0][1] * canvas.height);
+    for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i][0] * canvas.width, pts[i][1] * canvas.height);
+    }
+    if (pts.length > 2) { ctx.closePath(); ctx.fill(); }
+    ctx.stroke();
+    // Draw vertices
+    for (const p of pts) {
+        ctx.beginPath();
+        ctx.arc(p[0] * canvas.width, p[1] * canvas.height, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#00ff88';
+        ctx.fill();
+    }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    polys[side].push([Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]);
+    draw();
+});
+
+function undo() {
+    polys[side].pop();
+    draw();
+}
+
+function clearPoly() {
+    polys[side] = [];
+    draw();
+}
+
+function save() {
+    if (side === 'left') {
+        loadImage('right');
+        return;
+    }
+    // Both sides done, POST to server.
+    fetch('/api/roi', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({left: polys.left, right: polys.right}),
+    }).then(r => r.json()).then(r => {
+        if (r.status === 'ok') {
+            document.body.innerHTML = '<h2 style="text-align:center;margin-top:40vh;color:#00ff88">ROI saved! Close this tab.</h2>';
+        } else {
+            alert('Error: ' + (r.error || 'unknown'));
+        }
+    });
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+loadImage('left');
+</script>
+</body>
+</html>
+"""
+
+
 def get_status():
     with lock:
         elapsed = 0
@@ -271,6 +496,7 @@ def get_status():
             "temp_c": round(read_temp(), 1),
             "rtmp_key_set": bool(state["rtmp_key"]),
             "calibration": state["calibration"],
+            "calibrating": state["calibrating"],
             "resolution": f'{state["capture_width"]}x{state["capture_height"]}',
             "crf": state["crf"],
             "log": state["log_lines"][-10:],
@@ -354,6 +580,8 @@ input { width: 100%; padding: 12px; border: 1px solid #333; border-radius: 8px; 
 <div class="buttons">
     <button class="btn-record" id="btn-rec" onclick="toggleRecord()">Start Recording</button>
     <button class="btn-stream" id="btn-stream" onclick="toggleStream()">Start Stream</button>
+    <button style="background:#8e44ad;color:white" id="btn-cal" onclick="calibrate()">Calibrate</button>
+    <button style="background:#2c3e50;color:white" onclick="window.open('/roi','_blank')">Edit ROI</button>
 </div>
 
 <div class="settings">
@@ -430,8 +658,12 @@ function updateStatus() {
         document.getElementById('s-hw').textContent = s.cpu_pct + '% / ' + s.temp_c + 'C';
         document.getElementById('s-res').textContent = s.resolution;
         document.getElementById('s-crf').textContent = 'CRF ' + s.crf;
-        document.getElementById('s-cal').textContent = s.calibration || 'none';
+        document.getElementById('s-cal').textContent = s.calibrating ? 'Running...' : (s.calibration || 'none');
         document.getElementById('log').textContent = (s.log || []).join('\\n');
+
+        const btnCal = document.getElementById('btn-cal');
+        if (s.calibrating) { btnCal.textContent = 'Calibrating...'; btnCal.disabled = true; }
+        else { btnCal.textContent = 'Calibrate'; btnCal.disabled = false; }
 
         const btnRec = document.getElementById('btn-rec');
         btnRec.textContent = s.recording ? 'Stop Recording' : 'Start Recording';
@@ -458,6 +690,16 @@ function toggleStream() {
 
 function setConfig(key, value) {
     api('config', {[key]: value});
+}
+
+function calibrate() {
+    const btn = document.getElementById('btn-cal');
+    btn.textContent = 'Calibrating...';
+    btn.disabled = true;
+    api('calibrate', {}).then(r => {
+        btn.disabled = false;
+        btn.textContent = 'Calibrate';
+    });
 }
 
 function adjustScore(team, delta) {
@@ -507,8 +749,25 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             self.wfile.write(HTML.encode())
+        elif self.path == "/roi":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(ROI_HTML.encode())
         elif self.path == "/api/status":
             self.json_response(get_status())
+        elif self.path.startswith("/api/snapshot/"):
+            side = self.path.split("/")[-1].split("?")[0]
+            device = state["left_device"] if side == "left" else state["right_device"]
+            data = capture_snapshot(device)
+            if data:
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_error(500, "Failed to capture snapshot")
         else:
             self.send_error(404)
 
@@ -530,11 +789,22 @@ class Handler(BaseHTTPRequestHandler):
                     if k in state:
                         state[k] = v
             self.json_response({"status": "ok"})
+        elif self.path == "/api/calibrate":
+            # Run in a thread so the HTTP response returns immediately.
+            threading.Thread(target=self._run_calibrate, daemon=True).start()
+            self.json_response({"status": "calibration started"})
+        elif self.path == "/api/roi":
+            self.json_response(save_roi(body))
         elif self.path == "/api/score":
             # Score data received - could be used for overlay in the future
             self.json_response({"status": "ok"})
         else:
             self.send_error(404)
+
+    def _run_calibrate(self):
+        result = run_calibration()
+        with lock:
+            state["last_calibration_result"] = result
 
     def json_response(self, data):
         self.send_response(200)
