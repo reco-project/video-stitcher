@@ -360,47 +360,38 @@ pub fn calibrate_with(
     let left_undistort = GpuUndistort::new(gpu, lw, lh, left_aspect);
     let right_undistort = GpuUndistort::new(gpu, rw, rh, right_aspect);
 
-    // Phase 1: GPU undistort all frames (sequential - shared GPU state)
-    let undistorted: Vec<(Vec<u8>, Vec<u8>)> = {
-        profile_scope!("gpu_undistort");
-        frames
-            .iter()
-            .map(|(left, right)| {
-                let l_rgba = left_undistort.undistort(gpu, &left.y, &left.u, &left.v, left_params);
-                let r_rgba =
-                    right_undistort.undistort(gpu, &right.y, &right.u, &right.v, right_params);
-                (l_rgba, r_rgba)
-            })
-            .collect()
-    };
-
-    // Phase 2: Detect + match + filter (parallel - CPU bound)
-    let per_frame: Vec<Option<FrameMatches>> = {
-        profile_scope!("akaze_parallel");
-        use rayon::prelude::*;
-        undistorted
-            .par_iter()
-            .enumerate()
-            .map(|(i, (left_rgba, right_rgba))| {
-                process_undistorted_pair(
-                    left_rgba,
-                    right_rgba,
-                    lw,
-                    lh,
-                    rw,
-                    rh,
-                    i,
-                    config,
-                    detector,
-                    matcher,
-                    point_filter,
-                )
-            })
-            .collect()
-    };
-
-    // Collect all successful frame matches
-    let successful_frames: Vec<FrameMatches> = per_frame.into_iter().flatten().collect();
+    // Process one frame pair at a time: undistort on GPU, detect+match
+    // on CPU, then drop pixel data before the next pair. Keeps peak
+    // memory proportional to one frame pair (~100 MB) instead of all
+    // pairs (~1 GB for 8 pairs at 4K).
+    let mut successful_frames: Vec<FrameMatches> = Vec::new();
+    for (i, (left, right)) in frames.iter().enumerate() {
+        let (left_rgba, right_rgba) = {
+            profile_scope!("gpu_undistort");
+            let l = left_undistort.undistort(gpu, &left.y, &left.u, &left.v, left_params);
+            let r = right_undistort.undistort(gpu, &right.y, &right.u, &right.v, right_params);
+            (l, r)
+        };
+        let result = {
+            profile_scope!("akaze_detect_match");
+            process_undistorted_pair(
+                &left_rgba,
+                &right_rgba,
+                lw,
+                lh,
+                rw,
+                rh,
+                i,
+                config,
+                detector,
+                matcher,
+                point_filter,
+            )
+        };
+        if let Some(fm) = result {
+            successful_frames.push(fm);
+        }
+    }
 
     if successful_frames.is_empty() {
         return Err(CalibrateError::NoUsableFrames);
