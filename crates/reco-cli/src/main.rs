@@ -840,6 +840,12 @@ fn main() -> anyhow::Result<()> {
                     unconstrained,
                     replay_path: replay.as_deref(),
                     replay_scale,
+                    use_nvmm: !v4l2_direct && helpers::is_tegra() && {
+                        #[cfg(target_os = "linux")]
+                        { reco_core::nvbuf_transform::is_available() }
+                        #[cfg(not(target_os = "linux"))]
+                        { false }
+                    },
                     v4l2_direct,
                     exposure,
                     sensor_gain,

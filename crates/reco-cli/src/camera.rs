@@ -56,6 +56,9 @@ pub struct CameraRunConfig<'a> {
     /// Optional downscaled replay tile dims `(width, height)`.
     /// GPU-pack path only; no-op when replay_path is None.
     pub replay_scale: Option<(u32, u32)>,
+    /// Use NVMM zero-copy capture (DMA-buf + NvBufSurfTransform).
+    /// Auto-enabled on Tegra when NvBufSurfTransform is available.
+    pub use_nvmm: bool,
     /// Use V4L2 direct capture with raw Bayer + GPU demosaic.
     pub v4l2_direct: bool,
     /// Sensor exposure in microseconds (V4L2 direct only).
@@ -90,6 +93,7 @@ pub fn run_camera(
         unconstrained,
         replay_path,
         replay_scale,
+        use_nvmm,
         v4l2_direct,
         exposure: _exposure,
         sensor_gain: _sensor_gain,
@@ -114,11 +118,8 @@ pub fn run_camera(
 
     let (use_nv12_capture, input_format) = if v4l2_direct {
         // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path.
-        // Pass use_nv12=true so setup_autocam enables the TRT detector
-        // (it checks use_zero_copy which gates .engine loading). Detection
-        // runs via the RGBA readback path, not NV12.
         (true, reco_core::renderer::InputFormat::Bgra)
-    } else if helpers::is_tegra() {
+    } else if use_nvmm || helpers::is_tegra() {
         (true, reco_core::renderer::InputFormat::Nv12)
     } else {
         (false, reco_core::renderer::InputFormat::Yuv420p)
@@ -201,6 +202,8 @@ pub fn run_camera(
 
     let mode_str = if v4l2_direct {
         "Bayer RGGB (V4L2 direct)"
+    } else if use_nvmm {
+        "NVMM zero-copy (DMA-buf + NvBufSurfTransform)"
     } else if use_nv12_capture {
         "NV12"
     } else {
@@ -481,6 +484,126 @@ pub fn run_camera(
 
             progress.finish(frame_count, output);
         }
+    } else if use_nvmm {
+        // NVMM zero-copy path: DMA-buf Vulkan import for rendering,
+        // NvBufSurfTransform for detection. No CPU copies at all.
+        #[cfg(target_os = "linux")]
+        {
+            use reco_core::dmabuf_import;
+            use reco_core::nvbuf_transform::NvBufDetectionSurface;
+            use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
+
+            let mut source = GstreamerNvmmCameraSource::open(&cam_config)?;
+
+            // Allocate detection surfaces (one per camera, reused across frames).
+            let model_size = 1280u32;
+            let mut det_left =
+                NvBufDetectionSurface::new(model_size, capture_width, capture_height)
+                    .map_err(|e| anyhow::anyhow!("left detection surface: {e}"))?;
+            let mut det_right =
+                NvBufDetectionSurface::new(model_size, capture_width, capture_height)
+                    .map_err(|e| anyhow::anyhow!("right detection surface: {e}"))?;
+
+            log::info!(
+                "NVMM detection surfaces: {}x{} RGBA, letterbox scale={:.4}",
+                model_size, model_size, det_left.scale,
+            );
+
+            // Warmup: pull first pair to initialize ISP + Argus
+            let warmup = source
+                .next_pair()?
+                .ok_or_else(|| anyhow::anyhow!("NVMM source returned no frames"))?;
+            source.release_previous();
+            log::info!(
+                "NVMM warmup: {}x{} NV12, fd_left={}, fd_right={}",
+                warmup.left.width, warmup.left.height,
+                warmup.left.dmabuf_fd, warmup.right.dmabuf_fd,
+            );
+            println!("Warmup complete, starting NVMM capture...");
+
+            let progress = helpers::ProgressReporter::new(30);
+
+            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                let pair = {
+                    reco_core::profile_scope!("wait_capture");
+                    match source.next_pair()? {
+                        Some(p) => p,
+                        None => break,
+                    }
+                };
+
+                // Detection: NvBufSurfTransform on the raw NVMM surface pointers
+                if session.detection_should_run() {
+                    reco_core::profile_scope!("nvbuf_detect");
+                    unsafe {
+                        det_left
+                            .transform_from_nvmm(pair.left.surface_ptr)
+                            .map_err(|e| anyhow::anyhow!("left transform: {e}"))?;
+                        det_right
+                            .transform_from_nvmm(pair.right.surface_ptr)
+                            .map_err(|e| anyhow::anyhow!("right transform: {e}"))?;
+                    }
+                    session.detect_and_update_director_preletterboxed(
+                        det_left.data_ptr,
+                        det_right.data_ptr,
+                        capture_width,
+                        capture_height,
+                        start.elapsed(),
+                    )?;
+                } else {
+                    session.update_director(start.elapsed())?;
+                }
+
+                // Rendering: import DMA-buf fds as Vulkan textures
+                let left_textures = dmabuf_import::import_dmabuf_nv12(
+                    session.gpu(),
+                    pair.left.dmabuf_fd,
+                    pair.left.width,
+                    pair.left.height,
+                    pair.left.y_offset,
+                    pair.left.uv_offset,
+                    pair.left.total_size,
+                )
+                .map_err(|e| anyhow::anyhow!("left DMA-buf import: {e}"))?;
+
+                let right_textures = dmabuf_import::import_dmabuf_nv12(
+                    session.gpu(),
+                    pair.right.dmabuf_fd,
+                    pair.right.width,
+                    pair.right.height,
+                    pair.right.y_offset,
+                    pair.right.uv_offset,
+                    pair.right.total_size,
+                )
+                .map_err(|e| anyhow::anyhow!("right DMA-buf import: {e}"))?;
+
+                let pos = session.director_position();
+                session.process_frame_imported_nv12(
+                    &left_textures.y_texture,
+                    &left_textures.uv_texture,
+                    &right_textures.y_texture,
+                    &right_textures.uv_texture,
+                    pos.yaw,
+                    pos.pitch,
+                )?;
+
+                // Signal capture threads: GPU work submitted, DMA-bufs can be recycled
+                source.release_previous();
+
+                frame_count += 1;
+                progress.report(frame_count);
+            }
+
+            source.stop();
+            #[cfg(feature = "replay")]
+            session.clear_stacked_gpu_recorder();
+            session.finish()?;
+
+            progress.finish(frame_count, output);
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        anyhow::bail!("NVMM zero-copy is only available on Linux/Jetson");
     } else if use_nv12_capture {
         // NV12 path: skip nvvidconv format conversion, upload 2 planes
         let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
