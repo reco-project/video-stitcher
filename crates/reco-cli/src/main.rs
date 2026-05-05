@@ -405,6 +405,21 @@ enum Commands {
         /// Higher = brighter but noisier.
         #[arg(long, default_value_t = 16)]
         sensor_gain: u32,
+
+        /// Run live calibration instead of stitching. Captures frame
+        /// pairs from the cameras, runs AKAZE feature matching, and
+        /// writes the result to the --calibration path.
+        #[arg(long, default_value_t = false)]
+        live_calibrate: bool,
+
+        /// Number of frame pairs to sample for live calibration.
+        #[arg(long, default_value_t = 8)]
+        calibrate_frames: usize,
+
+        /// Left camera lens profile JSON (for calibration).
+        /// Falls back to ~/imx477_profile.json if not specified.
+        #[arg(long)]
+        left_lens_profile: Option<String>,
     },
 
     /// Stitch live RPi CSI camera feeds via libcamera (rpicam-vid).
@@ -803,6 +818,9 @@ fn main() -> anyhow::Result<()> {
             v4l2_direct,
             exposure,
             sensor_gain,
+            live_calibrate,
+            calibrate_frames,
+            left_lens_profile,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -823,6 +841,19 @@ fn main() -> anyhow::Result<()> {
                 left_device,
                 right_device,
             };
+
+            if live_calibrate {
+                return camera::run_live_calibrate(
+                    cam_config,
+                    &calibration,
+                    capture_width,
+                    capture_height,
+                    calibrate_frames,
+                    left_lens_profile.as_deref(),
+                    None,
+                    &interrupted,
+                );
+            }
 
             camera::run_camera(
                 camera::CameraRunConfig {

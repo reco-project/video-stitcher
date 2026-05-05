@@ -508,7 +508,7 @@ pub fn run_camera(
         // NvBufSurfTransform for detection. No CPU copies at all.
         #[cfg(target_os = "linux")]
         {
-            use reco_core::dmabuf_import::{self, DmaBufTextureCache};
+            use reco_core::dmabuf_import::DmaBufTextureCache;
             use reco_core::nvbuf_transform::NvBufDetectionSurface;
             use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
 
@@ -734,6 +734,181 @@ pub fn run_camera(
 
         progress.finish(frame_count, output);
     }
+
+    Ok(())
+}
+
+fn nv12_to_yuv(
+    nv12: &reco_core::source::Nv12Data,
+    width: u32,
+    height: u32,
+) -> reco_calibrate::types::YuvFrame {
+    let mut u = Vec::with_capacity((width as usize / 2) * (height as usize / 2));
+    let mut v = Vec::with_capacity(u.capacity());
+    for pair in nv12.uv.chunks_exact(2) {
+        u.push(pair[0]);
+        v.push(pair[1]);
+    }
+    reco_calibrate::types::YuvFrame {
+        y: nv12.y.clone(),
+        u,
+        v,
+        width,
+        height,
+        timestamp_us: 0,
+    }
+}
+
+struct Nv12CameraCalibSource {
+    source: reco_io::gstreamer::camera::GstreamerNv12CameraSource,
+    width: u32,
+    height: u32,
+    fps: u32,
+    frame_count: u32,
+}
+
+impl reco_calibrate::live::LiveFramePairSource for Nv12CameraCalibSource {
+    fn next_pair(
+        &mut self,
+        timeout: std::time::Duration,
+    ) -> Option<(
+        reco_calibrate::types::YuvFrame,
+        reco_calibrate::types::YuvFrame,
+    )> {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if std::time::Instant::now() >= deadline {
+                return None;
+            }
+            match self.source.next_pair() {
+                Ok(Some(pair)) => {
+                    self.frame_count += 1;
+                    if self.frame_count < self.fps && self.frame_count > 1 {
+                        continue;
+                    }
+                    return Some((
+                        nv12_to_yuv(&pair.left, self.width, self.height),
+                        nv12_to_yuv(&pair.right, self.width, self.height),
+                    ));
+                }
+                Ok(None) => return None,
+                Err(e) => {
+                    log::error!("camera capture error: {e}");
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+/// Run live calibration from camera feeds.
+pub fn run_live_calibrate(
+    cam_config: CameraConfig,
+    output_path: &str,
+    capture_width: u32,
+    capture_height: u32,
+    num_pairs: usize,
+    left_profile: Option<&str>,
+    right_profile: Option<&str>,
+    _interrupted: &Arc<AtomicBool>,
+) -> anyhow::Result<()> {
+    use reco_core::calibration::CameraParams;
+
+    eprintln!(
+        "Live calibration: capturing {num_pairs} frame pairs at {capture_width}x{capture_height}",
+    );
+
+    let load_or_default = |path: Option<&str>, w: u32, h: u32| -> anyhow::Result<CameraParams> {
+        if let Some(p) = path {
+            let json = std::fs::read_to_string(p)?;
+            let params: CameraParams = serde_json::from_str(&json)?;
+            eprintln!("Lens profile: {p}");
+            return Ok(params);
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let convention = std::path::PathBuf::from(home).join("imx477_profile.json");
+            if convention.exists() {
+                let json = std::fs::read_to_string(&convention)?;
+                let params: CameraParams = serde_json::from_str(&json)?;
+                eprintln!("Lens profile (auto): {}", convention.display());
+                return Ok(params);
+            }
+        }
+        eprintln!("No lens profile found, using synthetic default (wide-angle)");
+        let fw = w as f64;
+        let fh = h as f64;
+        Ok(CameraParams {
+            width: w,
+            height: h,
+            fx: fw * 0.5,
+            fy: fw * 0.5,
+            cx: fw * 0.5,
+            cy: fh * 0.5,
+            d: [0.0; 4],
+        })
+    };
+    let left_params = load_or_default(left_profile, capture_width, capture_height)?;
+    let right_params = load_or_default(right_profile, capture_width, capture_height)
+        .unwrap_or_else(|_| left_params.clone());
+
+    let gpu = reco_core::gpu::GpuContext::new_blocking()?;
+    eprintln!("GPU: {}", gpu.gpu_name());
+
+    let source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
+    eprintln!("Cameras open, warming up ISP...");
+
+    let mut calib_source = Nv12CameraCalibSource {
+        source,
+        width: capture_width,
+        height: capture_height,
+        fps: cam_config.fps,
+        frame_count: 0,
+    };
+
+    let options = reco_calibrate::live::CalibrateFromLiveOptions {
+        num_pairs,
+        timeout_per_pair: std::time::Duration::from_secs(10),
+        config: reco_calibrate::types::CalibrationConfig::default(),
+    };
+
+    let result = reco_calibrate::live::calibrate_from_live(
+        &gpu,
+        &mut calib_source,
+        &left_params,
+        &right_params,
+        &options,
+        &mut |progress| {
+            eprintln!("  [{}] {}", progress.step, progress.detail);
+        },
+        &AtomicBool::new(false),
+    )?;
+
+    calib_source.source.stop();
+
+    let confidence_pct = result.confidence * 100.0;
+    eprintln!(
+        "Calibration complete: {} matches, confidence {confidence_pct:.0}%",
+        result.total_matches,
+    );
+
+    if confidence_pct < 50.0 {
+        eprintln!(
+            "WARNING: Low confidence ({confidence_pct:.0}%). \
+             Try adjusting camera overlap or improving lighting.",
+        );
+    }
+
+    let json = serde_json::to_string_pretty(&result.calibration)?;
+    std::fs::write(output_path, &json)?;
+    eprintln!("Written to {output_path}");
+
+    let summary = serde_json::json!({
+        "status": "ok",
+        "confidence": result.confidence,
+        "matches": result.total_matches,
+        "path": output_path,
+    });
+    println!("{summary}");
 
     Ok(())
 }
