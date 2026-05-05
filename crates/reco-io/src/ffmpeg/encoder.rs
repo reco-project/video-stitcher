@@ -1194,19 +1194,19 @@ impl VideoEncoder {
                 let mut clone = packet.clone();
                 clone.set_stream(stream.video_index);
                 clone.rescale_ts(self.output_time_base, stream.video_time_base);
+                // Save PTS before write_interleaved blanks the packet
+                // (av_interleaved_write_frame resets all fields to defaults).
+                let video_pts = clone.pts().unwrap_or(0);
                 if let Err(e) = clone.write_interleaved(&mut stream.octx) {
                     log::warn!("RTMP stream write failed ({e}), disabling stream");
                     self.stream = None;
-                } else {
+                } else if let Some(ref mut sa) = stream.audio {
                     // Write silent audio to keep up with video PTS.
-                    if let Some(ref mut sa) = stream.audio {
-                        let video_pts = clone.pts().unwrap_or(0);
-                        if let Err(e) =
-                            sa.write_up_to(&mut stream.octx, video_pts, stream.video_time_base)
-                        {
-                            log::warn!("Silent audio write failed ({e}), continuing without audio");
-                            stream.audio = None;
-                        }
+                    if let Err(e) =
+                        sa.write_up_to(&mut stream.octx, video_pts, stream.video_time_base)
+                    {
+                        log::warn!("Silent audio write failed ({e}), continuing without audio");
+                        stream.audio = None;
                     }
                 }
             }
