@@ -269,6 +269,7 @@ impl DetectionPipeline {
         right_src_width: u32,
         right_src_height: u32,
     ) -> Vec<Detection> {
+        crate::profile_scope!("detect_preletterboxed_total");
         let Some(ref mut detector) = self.detector else {
             return Vec::new();
         };
@@ -276,7 +277,12 @@ impl DetectionPipeline {
         let mut detections = Vec::new();
         for (camera, ptr, sw, sh) in [
             (CameraId::Left, left_ptr, left_src_width, left_src_height),
-            (CameraId::Right, right_ptr, right_src_width, right_src_height),
+            (
+                CameraId::Right,
+                right_ptr,
+                right_src_width,
+                right_src_height,
+            ),
         ] {
             let frame = DetectorFrame::CudaRgbaLetterboxed {
                 ptr,

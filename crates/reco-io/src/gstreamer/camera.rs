@@ -768,7 +768,9 @@ mod nvmm_source {
 
             log::info!(
                 "NVMM stereo source: {}x{} @ {}fps, zero-copy DMA-buf + NvBufSurfTransform",
-                config.width, config.height, config.fps,
+                config.width,
+                config.height,
+                config.fps,
             );
 
             Ok(Self {

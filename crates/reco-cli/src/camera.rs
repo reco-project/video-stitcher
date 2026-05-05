@@ -239,7 +239,9 @@ pub fn run_camera(
             let h = ((capture_height as f64 * scale) / 2.0).round() as u32 * 2;
             log::info!(
                 "Replay auto-downscale: {}x{} -> 1920x{} (--replay-scale overrides)",
-                capture_width, capture_height, h,
+                capture_width,
+                capture_height,
+                h,
             );
             (1920, h, true)
         } else {
@@ -521,9 +523,24 @@ pub fn run_camera(
                 NvBufDetectionSurface::new(model_size, capture_width, capture_height)
                     .map_err(|e| anyhow::anyhow!("right detection surface: {e}"))?;
 
+            let det_surface_mb =
+                (det_left.pitch as f64 * model_size as f64 * 2.0) / 1024.0 / 1024.0;
+            let tensor_mb =
+                (model_size as f64 * model_size as f64 * 3.0 * 4.0 * 2.0) / 1024.0 / 1024.0;
+            let nvmm_buf_mb =
+                (capture_width as f64 * capture_height as f64 * 1.5 * 8.0) / 1024.0 / 1024.0;
             log::info!(
-                "NVMM detection surfaces: {}x{} RGBA, letterbox scale={:.4}",
-                model_size, model_size, det_left.scale,
+                "NVMM detection surfaces: {}x{} RGBA, letterbox scale={:.4}, pitch={}",
+                model_size,
+                model_size,
+                det_left.scale,
+                det_left.pitch,
+            );
+            log::info!(
+                "Memory budget: det_surfaces={:.1}MB, trt_tensors={:.1}MB, nvmm_bufs={:.1}MB",
+                det_surface_mb,
+                tensor_mb,
+                nvmm_buf_mb,
             );
 
             // Warmup: pull first pair to initialize ISP + Argus
@@ -533,8 +550,10 @@ pub fn run_camera(
             source.release_previous();
             log::info!(
                 "NVMM warmup: {}x{} NV12, fd_left={}, fd_right={}",
-                warmup.left.width, warmup.left.height,
-                warmup.left.dmabuf_fd, warmup.right.dmabuf_fd,
+                warmup.left.width,
+                warmup.left.height,
+                warmup.left.dmabuf_fd,
+                warmup.right.dmabuf_fd,
             );
             println!("Warmup complete, starting NVMM capture...");
 
@@ -553,59 +572,80 @@ pub fn run_camera(
                 if session.detection_should_run() {
                     reco_core::profile_scope!("nvbuf_detect");
                     unsafe {
-                        det_left
-                            .transform_from_nvmm(pair.left.surface_ptr)
-                            .map_err(|e| anyhow::anyhow!("left transform: {e}"))?;
-                        det_right
-                            .transform_from_nvmm(pair.right.surface_ptr)
-                            .map_err(|e| anyhow::anyhow!("right transform: {e}"))?;
+                        {
+                            reco_core::profile_scope!("nvbuf_transform_left");
+                            det_left
+                                .transform_from_nvmm(pair.left.surface_ptr)
+                                .map_err(|e| anyhow::anyhow!("left transform: {e}"))?;
+                        }
+                        {
+                            reco_core::profile_scope!("nvbuf_transform_right");
+                            det_right
+                                .transform_from_nvmm(pair.right.surface_ptr)
+                                .map_err(|e| anyhow::anyhow!("right transform: {e}"))?;
+                        }
                     }
-                    session.detect_and_update_director_preletterboxed(
-                        det_left.data_ptr,
-                        det_right.data_ptr,
-                        capture_width,
-                        capture_height,
-                        start.elapsed(),
-                    )?;
+                    {
+                        reco_core::profile_scope!("trt_detect_preletterboxed");
+                        session.detect_and_update_director_preletterboxed(
+                            det_left.data_ptr,
+                            det_right.data_ptr,
+                            capture_width,
+                            capture_height,
+                            start.elapsed(),
+                        )?;
+                    }
                 } else {
                     session.update_director(start.elapsed())?;
                 }
 
                 // Rendering: import DMA-buf fds as Vulkan textures
-                let left_textures = dmabuf_import::import_dmabuf_nv12(
-                    session.gpu(),
-                    pair.left.dmabuf_fd,
-                    pair.left.width,
-                    pair.left.height,
-                    pair.left.y_offset,
-                    pair.left.uv_offset,
-                    pair.left.total_size,
-                )
-                .map_err(|e| anyhow::anyhow!("left DMA-buf import: {e}"))?;
+                let left_textures = {
+                    reco_core::profile_scope!("dmabuf_import_left");
+                    dmabuf_import::import_dmabuf_nv12(
+                        session.gpu(),
+                        pair.left.dmabuf_fd,
+                        pair.left.width,
+                        pair.left.height,
+                        pair.left.y_offset,
+                        pair.left.uv_offset,
+                        pair.left.total_size,
+                    )
+                    .map_err(|e| anyhow::anyhow!("left DMA-buf import: {e}"))?
+                };
 
-                let right_textures = dmabuf_import::import_dmabuf_nv12(
-                    session.gpu(),
-                    pair.right.dmabuf_fd,
-                    pair.right.width,
-                    pair.right.height,
-                    pair.right.y_offset,
-                    pair.right.uv_offset,
-                    pair.right.total_size,
-                )
-                .map_err(|e| anyhow::anyhow!("right DMA-buf import: {e}"))?;
+                let right_textures = {
+                    reco_core::profile_scope!("dmabuf_import_right");
+                    dmabuf_import::import_dmabuf_nv12(
+                        session.gpu(),
+                        pair.right.dmabuf_fd,
+                        pair.right.width,
+                        pair.right.height,
+                        pair.right.y_offset,
+                        pair.right.uv_offset,
+                        pair.right.total_size,
+                    )
+                    .map_err(|e| anyhow::anyhow!("right DMA-buf import: {e}"))?
+                };
 
                 let pos = session.director_position();
-                session.process_frame_imported_nv12(
-                    &left_textures.y_texture,
-                    &left_textures.uv_texture,
-                    &right_textures.y_texture,
-                    &right_textures.uv_texture,
-                    pos.yaw,
-                    pos.pitch,
-                )?;
+                {
+                    reco_core::profile_scope!("stitch_and_encode");
+                    session.process_frame_imported_nv12(
+                        &left_textures.y_texture,
+                        &left_textures.uv_texture,
+                        &right_textures.y_texture,
+                        &right_textures.uv_texture,
+                        pos.yaw,
+                        pos.pitch,
+                    )?;
+                }
 
                 // Signal capture threads: GPU work submitted, DMA-bufs can be recycled
-                source.release_previous();
+                {
+                    reco_core::profile_scope!("release_nvmm_bufs");
+                    source.release_previous();
+                }
 
                 frame_count += 1;
                 progress.report(frame_count);

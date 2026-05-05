@@ -1079,8 +1079,7 @@ impl StitchSession {
 
         if should_detect {
             let detections = self.detection.run_detection_preletterboxed(
-                left_ptr, src_width, src_height,
-                right_ptr, src_width, src_height,
+                left_ptr, src_width, src_height, right_ptr, src_width, src_height,
             );
             self.detection.last_detections = self.map_detections(detections);
         }

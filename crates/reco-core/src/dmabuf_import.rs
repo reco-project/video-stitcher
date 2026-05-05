@@ -39,6 +39,7 @@ pub fn import_dmabuf_nv12(
     uv_offset: u32,
     total_size: u32,
 ) -> Result<DmaBufNv12Textures, DmaBufImportError> {
+    crate::profile_scope!("dmabuf_import_nv12");
     let y_fd = unsafe { libc::dup(fd) };
     if y_fd < 0 {
         return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));

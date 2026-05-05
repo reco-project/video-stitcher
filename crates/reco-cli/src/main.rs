@@ -850,9 +850,13 @@ fn main() -> anyhow::Result<()> {
                     stream_url: stream_url.as_deref(),
                     use_nvmm: !v4l2_direct && helpers::is_tegra() && {
                         #[cfg(target_os = "linux")]
-                        { reco_core::nvbuf_transform::is_available() }
+                        {
+                            reco_core::nvbuf_transform::is_available()
+                        }
                         #[cfg(not(target_os = "linux"))]
-                        { false }
+                        {
+                            false
+                        }
                     },
                     v4l2_direct,
                     exposure,

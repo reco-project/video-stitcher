@@ -41,43 +41,43 @@ const NVBUF_TRANSFORM_FILTER: u32 = 4;
 #[repr(C)]
 #[derive(Clone)]
 struct NvBufSurfaceCreateParams {
-    gpu_id: u32,          // offset 0
-    width: u32,           // offset 4
-    height: u32,          // offset 8
-    size: u32,            // offset 12
-    is_contiguous: i32,   // offset 16
-    color_format: i32,    // offset 20
-    layout: i32,          // offset 24
-    mem_type: i32,        // offset 28
+    gpu_id: u32,        // offset 0
+    width: u32,         // offset 4
+    height: u32,        // offset 8
+    size: u32,          // offset 12
+    is_contiguous: i32, // offset 16
+    color_format: i32,  // offset 20
+    layout: i32,        // offset 24
+    mem_type: i32,      // offset 28
 }
 
 /// Rectangle for crop/placement operations (sizeof=16).
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct NvBufSurfTransformRect {
-    top: u32,             // offset 0
-    left: u32,            // offset 4
-    width: u32,           // offset 8
-    height: u32,          // offset 12
+    top: u32,    // offset 0
+    left: u32,   // offset 4
+    width: u32,  // offset 8
+    height: u32, // offset 12
 }
 
 /// Transform session parameters (sizeof=16, must be set per-thread).
 #[repr(C)]
 struct NvBufSurfTransformSessionParams {
-    compute_mode: i32,    // offset 0
-    gpu_id: i32,          // offset 4
+    compute_mode: i32,        // offset 0
+    gpu_id: i32,              // offset 4
     cuda_stream: *mut c_void, // offset 8
 }
 
 /// Transform parameters for a single operation (sizeof=32 on aarch64).
 #[repr(C)]
 struct NvBufSurfTransformParams {
-    transform_flag: u32,      // offset 0
-    transform_flip: i32,      // offset 4
-    transform_filter: i32,    // offset 8
-    _pad: i32,                // offset 12 (padding to align pointers at 16)
-    src_rect: *const NvBufSurfTransformRect,  // offset 16
-    dst_rect: *const NvBufSurfTransformRect,  // offset 24
+    transform_flag: u32,                     // offset 0
+    transform_flip: i32,                     // offset 4
+    transform_filter: i32,                   // offset 8
+    _pad: i32,                               // offset 12 (padding to align pointers at 16)
+    src_rect: *const NvBufSurfTransformRect, // offset 16
+    dst_rect: *const NvBufSurfTransformRect, // offset 24
 }
 
 /// Dynamically loaded NvBufSurface + NvBufSurfTransform functions.
@@ -90,8 +90,7 @@ struct NvBufFunctions {
     destroy: unsafe extern "C" fn(*mut c_void) -> i32,
 
     // NvBufSurfTransform
-    set_session_params:
-        unsafe extern "C" fn(*const NvBufSurfTransformSessionParams) -> i32,
+    set_session_params: unsafe extern "C" fn(*const NvBufSurfTransformSessionParams) -> i32,
     transform:
         unsafe extern "C" fn(*mut c_void, *mut c_void, *const NvBufSurfTransformParams) -> i32,
 }
@@ -176,15 +175,14 @@ impl NvBufDetectionSurface {
     /// computing the letterbox geometry.
     pub fn new(model_size: u32, src_width: u32, src_height: u32) -> Result<Self, String> {
         let fns = load_nvbuf().ok_or("NvBufSurfTransform libraries not available")?;
-        crate::cuda_interop::cuda_ensure_context()
-            .map_err(|e| format!("CUDA context: {e}"))?;
+        crate::cuda_interop::cuda_ensure_context().map_err(|e| format!("CUDA context: {e}"))?;
 
         // Compute letterbox geometry: scale to fit, center
         let scale_w = model_size as f32 / src_width as f32;
         let scale_h = model_size as f32 / src_height as f32;
         let scale = scale_w.min(scale_h);
-        let content_w = (src_width as f32 * scale) as u32;
-        let content_h = (src_height as f32 * scale) as u32;
+        let content_w = (src_width as f32 * scale).round() as u32;
+        let content_h = (src_height as f32 * scale).round() as u32;
         let pad_left = (model_size - content_w) / 2;
         let pad_top = (model_size - content_h) / 2;
 
@@ -246,7 +244,14 @@ impl NvBufDetectionSurface {
 
         log::info!(
             "NvBufDetectionSurface: {}x{} RGBA, pitch={}, content={}x{} at ({},{}), scale={:.4}",
-            model_size, model_size, pitch, content_w, content_h, pad_left, pad_top, scale,
+            model_size,
+            model_size,
+            pitch,
+            content_w,
+            content_h,
+            pad_left,
+            pad_top,
+            scale,
         );
 
         Ok(Self {
@@ -276,6 +281,7 @@ impl NvBufDetectionSurface {
     /// `src_surface` must point to a valid, mapped NvBufSurface with at least
     /// one filled NV12 buffer.
     pub unsafe fn transform_from_nvmm(&mut self, src_surface: *mut c_void) -> Result<(), String> {
+        crate::profile_scope!("nvbuf_surf_transform");
         let fns = load_nvbuf().ok_or("NvBufSurfTransform libraries not available")?;
 
         // Initialize per-thread session on first call
@@ -363,9 +369,9 @@ mod tests {
         let pad_top = (1280 - content_h) / 2;
 
         assert_eq!(content_w, 1280);
-        assert!((964..=966).contains(&content_h));
+        assert_eq!(content_h, 965);
         assert_eq!(pad_left, 0);
-        assert!((157..=158).contains(&pad_top));
+        assert_eq!(pad_top, 157);
     }
 
     #[test]

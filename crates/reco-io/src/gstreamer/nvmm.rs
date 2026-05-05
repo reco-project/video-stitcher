@@ -41,16 +41,16 @@ pub struct NvBufSurfaceMappedAddr {
 /// Per-buffer parameters (sizeof=384, verified on aarch64).
 #[repr(C)]
 pub struct NvBufSurfaceParams {
-    pub width: u32,                        // offset 0
-    pub height: u32,                       // offset 4
-    pub pitch: u32,                        // offset 8
-    pub color_format: u32,                 // offset 12
-    pub layout: u32,                       // offset 16
-    _pad0: u32,                            // offset 20
-    pub buffer_desc: i64,                  // offset 24 (DMA-buf fd as signed)
-    pub data_size: u32,                    // offset 32
-    _pad1: u32,                            // offset 36
-    pub data_ptr: *mut c_void,             // offset 40
+    pub width: u32,                            // offset 0
+    pub height: u32,                           // offset 4
+    pub pitch: u32,                            // offset 8
+    pub color_format: u32,                     // offset 12
+    pub layout: u32,                           // offset 16
+    _pad0: u32,                                // offset 20
+    pub buffer_desc: i64,                      // offset 24 (DMA-buf fd as signed)
+    pub data_size: u32,                        // offset 32
+    _pad1: u32,                                // offset 36
+    pub data_ptr: *mut c_void,                 // offset 40
     pub plane_params: NvBufSurfacePlaneParams, // offset 48
     pub mapped_addr: NvBufSurfaceMappedAddr,
     pub paramex: *mut c_void,
@@ -60,15 +60,15 @@ pub struct NvBufSurfaceParams {
 /// Top-level batched buffer container (sizeof=64, verified on aarch64).
 #[repr(C)]
 pub struct NvBufSurface {
-    pub gpu_id: u32,                       // offset 0
-    pub batch_size: u32,                   // offset 4
-    pub num_filled: u32,                   // offset 8
-    pub is_contiguous: u8,                 // offset 12
-    _pad0: [u8; 3],                        // offset 13
-    pub mem_type: u32,                     // offset 16
-    _pad1: u32,                            // offset 20
+    pub gpu_id: u32,                           // offset 0
+    pub batch_size: u32,                       // offset 4
+    pub num_filled: u32,                       // offset 8
+    pub is_contiguous: u8,                     // offset 12
+    _pad0: [u8; 3],                            // offset 13
+    pub mem_type: u32,                         // offset 16
+    _pad1: u32,                                // offset 20
     pub surface_list: *mut NvBufSurfaceParams, // offset 24
-    pub is_imported_buf: u8,               // offset 32
+    pub is_imported_buf: u8,                   // offset 32
     _pad2: [u8; 7],
     _reserved: [*mut c_void; STRUCTURE_PADDING - 1],
 }
