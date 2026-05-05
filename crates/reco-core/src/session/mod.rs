@@ -1411,6 +1411,8 @@ impl StitchSession {
     ///
     /// Takes Y and UV textures for both cameras (from DMA-buf Vulkan import),
     /// renders the stitch, converts to NV12, and submits to encoders.
+    /// Uses the imported textures directly for replay packing (not the
+    /// renderer's internal planes, which aren't written by this path).
     pub fn process_frame_imported_nv12(
         &mut self,
         left_y: &wgpu::Texture,
@@ -1424,7 +1426,17 @@ impl StitchSession {
             .core
             .render_imported_textures_at_pose(left_y, left_uv, right_y, right_uv, yaw, pitch);
         self.submit_render_output(render_buf)?;
-        self.core.drive_gpu_stacked_pack();
+
+        // Replay pack from the imported views (not internal plane textures,
+        // since render_imported_textures doesn't copy into them).
+        let ly = left_y.create_view(&wgpu::TextureViewDescriptor::default());
+        let lu = left_uv.create_view(&wgpu::TextureViewDescriptor::default());
+        let ry = right_y.create_view(&wgpu::TextureViewDescriptor::default());
+        let ru = right_uv.create_view(&wgpu::TextureViewDescriptor::default());
+        self.core.pack_gpu_stacked_replay_from_views(
+            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
+            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
+        );
         Ok(())
     }
 

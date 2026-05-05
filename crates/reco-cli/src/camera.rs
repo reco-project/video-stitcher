@@ -230,7 +230,19 @@ pub fn run_camera(
     // regardless of whether the source is NV12 or I420.
     #[cfg(feature = "replay")]
     let _replay_attached = if let Some(replay_path) = replay_path {
-        let (out_w, out_h) = replay_scale.unwrap_or((capture_width, capture_height));
+        let (out_w, out_h, is_scaled) = if let Some((w, h)) = replay_scale {
+            (w, h, true)
+        } else if capture_width > 1920 {
+            let scale = 1920.0 / capture_width as f64;
+            let h = ((capture_height as f64 * scale) / 2.0).round() as u32 * 2;
+            log::info!(
+                "Replay auto-downscale: {}x{} -> 1920x{} (--replay-scale overrides)",
+                capture_width, capture_height, h,
+            );
+            (1920, h, true)
+        } else {
+            (capture_width, capture_height, false)
+        };
         let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
             .ok_or_else(|| {
                 anyhow::anyhow!(
@@ -238,7 +250,7 @@ pub fn run_camera(
                      (width divisible by 4, height even)"
                 )
             })?;
-        let output_size = if replay_scale.is_some() {
+        let output_size = if is_scaled {
             reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
         } else {
             reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
