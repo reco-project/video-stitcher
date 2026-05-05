@@ -1468,7 +1468,6 @@ fn build_encoder_opts(
                 Quality::High => ("fast", "23"),
             };
             opts.set("preset", preset);
-            opts.set("tune", "zerolatency");
             opts.set("crf", crf);
             opts.set("profile", "high");
             // On Tegra (Jetson), limit threads to avoid starving other
