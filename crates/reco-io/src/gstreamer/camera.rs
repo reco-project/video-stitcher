@@ -568,6 +568,251 @@ impl Drop for GstreamerNv12CameraSource {
     }
 }
 
+// ── NVMM zero-copy camera source (Jetson only) ─────────────────────
+
+#[cfg(target_os = "linux")]
+pub use nvmm_source::GstreamerNvmmCameraSource;
+#[cfg(target_os = "linux")]
+pub use nvmm_source::NvmmFramePair;
+
+#[cfg(target_os = "linux")]
+mod nvmm_source {
+    use super::*;
+    use crate::gstreamer::nvmm::{self, NvmmFrameInfo};
+
+    /// Stereo pair of NVMM frame metadata (DMA-buf fds + surface ptrs).
+    pub struct NvmmFramePair {
+        pub left: NvmmFrameInfo,
+        pub right: NvmmFrameInfo,
+    }
+
+    fn build_nvmm_pipeline_string(device: &str, config: &CameraConfig) -> Result<String, String> {
+        validate_device_string(device)?;
+        let width = config.width;
+        let height = config.height;
+        let fps = config.fps;
+
+        Ok(format!(
+            "nvarguscamerasrc sensor-id={device} ! \
+             video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
+             appsink name=sink emit-signals=false sync=false max-buffers=4 drop=true"
+        ))
+    }
+
+    fn spawn_nvmm_capture_thread(
+        device: String,
+        label: &'static str,
+        config: CameraConfig,
+        stop: Arc<AtomicBool>,
+    ) -> (mpsc::Receiver<NvmmFrameInfo>, mpsc::SyncSender<()>) {
+        let (info_tx, info_rx) = mpsc::sync_channel::<NvmmFrameInfo>(2);
+        let (release_tx, release_rx) = mpsc::sync_channel::<()>(4);
+
+        std::thread::Builder::new()
+            .name(format!("nvmm_{label}"))
+            .spawn(move || {
+                let pipeline_str = match build_nvmm_pipeline_string(&device, &config) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::error!("[{label}] NVMM pipeline build: {e}");
+                        return;
+                    }
+                };
+
+                log::info!("[{label}] NVMM pipeline: {pipeline_str}");
+
+                let pipeline = gst::parse::launch(&pipeline_str)
+                    .expect("NVMM pipeline parse")
+                    .downcast::<gst::Pipeline>()
+                    .expect("not a pipeline");
+                let appsink = pipeline
+                    .by_name("sink")
+                    .expect("appsink not found")
+                    .downcast::<gst_app::AppSink>()
+                    .expect("not an AppSink");
+                appsink.set_max_buffers(4);
+                appsink.set_drop(true);
+                pipeline
+                    .set_state(gst::State::Playing)
+                    .expect("NVMM pipeline start");
+
+                log::info!("[{label}] NVMM capture started (sensor={device})");
+
+                let mut prev_sample: Option<gst::Sample> = None;
+
+                loop {
+                    if stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+
+                    let sample = match appsink.pull_sample() {
+                        Ok(s) => s,
+                        Err(_) => break,
+                    };
+
+                    let buffer = match sample.buffer() {
+                        Some(b) => b,
+                        None => {
+                            log::error!("[{label}] NVMM sample has no buffer");
+                            break;
+                        }
+                    };
+
+                    let map = match buffer.map_readable() {
+                        Ok(m) => m,
+                        Err(e) => {
+                            log::error!("[{label}] NVMM buffer map failed: {e}");
+                            break;
+                        }
+                    };
+
+                    let frame_info =
+                        match unsafe { nvmm::extract_nvmm_frame_info(map.as_slice().as_ptr()) } {
+                            Ok(info) => info,
+                            Err(e) => {
+                                log::error!("[{label}] NVMM extract failed: {e}");
+                                break;
+                            }
+                        };
+
+                    drop(map);
+
+                    // Release the previous sample now that the render thread
+                    // has had a full frame to use the prior DMA-buf.
+                    if let Some(prev) = prev_sample.take() {
+                        drop(prev);
+                    }
+
+                    if info_tx.send(frame_info).is_err() {
+                        break;
+                    }
+
+                    prev_sample = Some(sample);
+
+                    // Wait for the render thread to signal it's done importing
+                    // this frame's DMA-buf before we let the next pull_sample
+                    // potentially recycle the buffer.
+                    let _ = release_rx.recv();
+                }
+
+                let _ = pipeline.set_state(gst::State::Null);
+                log::info!("[{label}] NVMM capture stopped");
+            })
+            .expect("spawn NVMM capture thread");
+
+        (info_rx, release_tx)
+    }
+
+    /// Stereo NVMM camera source for zero-copy Vulkan import + NvBufSurfTransform.
+    ///
+    /// Each call to `next_pair()` returns DMA-buf fds and NvBufSurface pointers
+    /// for both cameras. The caller must call `release_previous()` after GPU
+    /// work (rendering + detection) is submitted, before calling `next_pair()`
+    /// again - this signals the capture threads to release the old GstSample
+    /// and pull the next frame.
+    pub struct GstreamerNvmmCameraSource {
+        left_rx: mpsc::Receiver<NvmmFrameInfo>,
+        right_rx: mpsc::Receiver<NvmmFrameInfo>,
+        left_release: mpsc::SyncSender<()>,
+        right_release: mpsc::SyncSender<()>,
+        info: SourceInfo,
+        stop: Arc<AtomicBool>,
+    }
+
+    impl GstreamerNvmmCameraSource {
+        /// Open a stereo NVMM camera source.
+        pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
+            gst::init().map_err(|e| SourceError::Init {
+                path: format!("{} + {}", config.left_device, config.right_device),
+                reason: format!("GStreamer init: {e}"),
+            })?;
+
+            let stop = Arc::new(AtomicBool::new(false));
+
+            let (left_rx, left_release) = spawn_nvmm_capture_thread(
+                config.left_device.clone(),
+                "left",
+                config.clone(),
+                stop.clone(),
+            );
+            let (right_rx, right_release) = spawn_nvmm_capture_thread(
+                config.right_device.clone(),
+                "right",
+                config.clone(),
+                stop.clone(),
+            );
+
+            let info = SourceInfo {
+                width: config.width,
+                height: config.height,
+                fps: config.fps as f64,
+                fps_rational: None,
+                total_frames: None,
+            };
+
+            log::info!(
+                "NVMM stereo source: {}x{} @ {}fps, zero-copy DMA-buf + NvBufSurfTransform",
+                config.width, config.height, config.fps,
+            );
+
+            Ok(Self {
+                left_rx,
+                right_rx,
+                left_release,
+                right_release,
+                info,
+                stop,
+            })
+        }
+
+        /// Get the next stereo NVMM frame pair.
+        ///
+        /// Blocks until both cameras deliver a frame. Returns `None` on EOS.
+        pub fn next_pair(&mut self) -> Result<Option<NvmmFramePair>, SourceError> {
+            let left = match self.left_rx.recv() {
+                Ok(info) => info,
+                Err(_) => return Ok(None),
+            };
+            let right = match self.right_rx.recv() {
+                Ok(info) => info,
+                Err(_) => return Ok(None),
+            };
+            Ok(Some(NvmmFramePair { left, right }))
+        }
+
+        /// Signal capture threads that GPU work on the current frame is done.
+        ///
+        /// Must be called after rendering + detection are submitted for the
+        /// frame returned by the most recent `next_pair()`.
+        pub fn release_previous(&self) {
+            let _ = self.left_release.send(());
+            let _ = self.right_release.send(());
+        }
+
+        /// Source metadata.
+        pub fn info(&self) -> SourceInfo {
+            self.info.clone()
+        }
+
+        /// Stop capture gracefully.
+        pub fn stop(&self) {
+            self.stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    impl Drop for GstreamerNvmmCameraSource {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Relaxed);
+            // Drain pending frames and send release signals to unblock threads
+            while self.left_rx.try_recv().is_ok() {}
+            while self.right_rx.try_recv().is_ok() {}
+            let _ = self.left_release.send(());
+            let _ = self.right_release.send(());
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::validate_device_string;
