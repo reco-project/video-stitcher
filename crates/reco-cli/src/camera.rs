@@ -508,7 +508,7 @@ pub fn run_camera(
         // NvBufSurfTransform for detection. No CPU copies at all.
         #[cfg(target_os = "linux")]
         {
-            use reco_core::dmabuf_import;
+            use reco_core::dmabuf_import::{self, DmaBufTextureCache};
             use reco_core::nvbuf_transform::NvBufDetectionSurface;
             use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
 
@@ -542,6 +542,8 @@ pub fn run_camera(
                 tensor_mb,
                 nvmm_buf_mb,
             );
+
+            let mut dmabuf_cache = DmaBufTextureCache::new();
 
             // Warmup: pull first pair to initialize ISP + Argus
             let warmup = source
@@ -599,34 +601,34 @@ pub fn run_camera(
                     session.update_director(start.elapsed())?;
                 }
 
-                // Rendering: import DMA-buf fds as Vulkan textures
-                let left_textures = {
-                    reco_core::profile_scope!("dmabuf_import_left");
-                    dmabuf_import::import_dmabuf_nv12(
-                        session.gpu(),
-                        pair.left.dmabuf_fd,
-                        pair.left.width,
-                        pair.left.height,
-                        pair.left.y_offset,
-                        pair.left.uv_offset,
-                        pair.left.total_size,
-                    )
-                    .map_err(|e| anyhow::anyhow!("left DMA-buf import: {e}"))?
-                };
-
-                let right_textures = {
-                    reco_core::profile_scope!("dmabuf_import_right");
-                    dmabuf_import::import_dmabuf_nv12(
-                        session.gpu(),
-                        pair.right.dmabuf_fd,
-                        pair.right.width,
-                        pair.right.height,
-                        pair.right.y_offset,
-                        pair.right.uv_offset,
-                        pair.right.total_size,
-                    )
-                    .map_err(|e| anyhow::anyhow!("right DMA-buf import: {e}"))?
-                };
+                // Rendering: ensure DMA-buf textures are cached, then borrow both
+                {
+                    reco_core::profile_scope!("dmabuf_ensure_cached");
+                    dmabuf_cache
+                        .ensure_imported(
+                            session.gpu(),
+                            pair.left.dmabuf_fd,
+                            pair.left.width,
+                            pair.left.height,
+                            pair.left.y_offset,
+                            pair.left.uv_offset,
+                            pair.left.total_size,
+                        )
+                        .map_err(|e| anyhow::anyhow!("left DMA-buf import: {e}"))?;
+                    dmabuf_cache
+                        .ensure_imported(
+                            session.gpu(),
+                            pair.right.dmabuf_fd,
+                            pair.right.width,
+                            pair.right.height,
+                            pair.right.y_offset,
+                            pair.right.uv_offset,
+                            pair.right.total_size,
+                        )
+                        .map_err(|e| anyhow::anyhow!("right DMA-buf import: {e}"))?;
+                }
+                let left_textures = dmabuf_cache.get(pair.left.dmabuf_fd);
+                let right_textures = dmabuf_cache.get(pair.right.dmabuf_fd);
 
                 let pos = session.director_position();
                 {

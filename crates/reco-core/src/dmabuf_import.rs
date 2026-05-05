@@ -5,6 +5,8 @@
 //! The ISP writes NV12 to NVMM buffers backed by DMA-buf fds; this module
 //! imports those fds as Vulkan images for the stitch shader to sample.
 
+use std::collections::HashMap;
+
 use crate::gpu::GpuContext;
 use ash::vk;
 use thiserror::Error;
@@ -24,6 +26,71 @@ pub enum DmaBufImportError {
 pub struct DmaBufNv12Textures {
     pub y_texture: wgpu::Texture,
     pub uv_texture: wgpu::Texture,
+}
+
+/// Caches Vulkan textures by DMA-buf fd to avoid per-frame Vulkan
+/// object creation. NVMM ISP uses a rotating pool of ~4 buffers per
+/// camera; each buffer has a stable DMA-buf fd. On first encounter we
+/// import (dup + vkAllocateMemory + vkCreateImage), on subsequent
+/// frames we reuse the cached wgpu::Texture. The ISP writes new pixel
+/// content to the same physical memory and the GPU sees it
+/// automatically (shared LPDDR5, no separate VRAM).
+#[derive(Default)]
+pub struct DmaBufTextureCache {
+    cache: HashMap<i32, DmaBufNv12Textures>,
+}
+
+impl DmaBufTextureCache {
+    pub fn new() -> Self {
+        Self {
+            cache: HashMap::with_capacity(8),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cache.is_empty()
+    }
+
+    /// Import the DMA-buf if not already cached. Call this for each fd
+    /// before calling [`get`] to borrow the textures.
+    pub fn ensure_imported(
+        &mut self,
+        gpu: &GpuContext,
+        fd: i32,
+        width: u32,
+        height: u32,
+        y_offset: u32,
+        uv_offset: u32,
+        total_size: u32,
+    ) -> Result<(), DmaBufImportError> {
+        if !self.cache.contains_key(&fd) {
+            crate::profile_scope!("dmabuf_cache_miss");
+            let textures =
+                import_dmabuf_nv12(gpu, fd, width, height, y_offset, uv_offset, total_size)?;
+            log::info!(
+                "DMA-buf cache: imported fd={} ({}x{} NV12, pool size: {})",
+                fd,
+                width,
+                height,
+                self.cache.len() + 1,
+            );
+            self.cache.insert(fd, textures);
+        }
+        Ok(())
+    }
+
+    /// Borrow cached textures for an already-imported fd.
+    ///
+    /// Panics if the fd was not previously imported via [`ensure_imported`].
+    pub fn get(&self, fd: i32) -> &DmaBufNv12Textures {
+        self.cache
+            .get(&fd)
+            .expect("DmaBufTextureCache::get called before ensure_imported")
+    }
+
+    pub fn len(&self) -> usize {
+        self.cache.len()
+    }
 }
 
 /// Import an NV12 DMA-buf as two wgpu textures (Y: R8, UV: RG8).
