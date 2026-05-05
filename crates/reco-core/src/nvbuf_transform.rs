@@ -106,6 +106,7 @@ fn load_nvbuf() -> Option<&'static NvBufFunctions> {
         .get_or_init(|| unsafe {
             let lib_surface = [
                 "libnvbufsurface.so",
+                "/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurface.so",
                 "/usr/lib/aarch64-linux-gnu/tegra/libnvbufsurface.so",
             ]
             .iter()
@@ -113,6 +114,7 @@ fn load_nvbuf() -> Option<&'static NvBufFunctions> {
 
             let lib_transform = [
                 "libnvbufsurftransform.so",
+                "/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurftransform.so",
                 "/usr/lib/aarch64-linux-gnu/tegra/libnvbufsurftransform.so",
             ]
             .iter()
