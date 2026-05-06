@@ -173,9 +173,7 @@ impl D3d11StagingPool {
             let staging: ID3D11Texture2D = unsafe {
                 let mut tex = None;
                 device.CreateTexture2D(&desc, None, Some(&mut tex))?;
-                tex.ok_or_else(|| {
-                    D3d11InteropError::D3d11("CreateTexture2D returned None".into())
-                })?
+                tex.ok_or_else(|| D3d11InteropError::D3d11("CreateTexture2D returned None".into()))?
             };
 
             // Get shared NT handle.
@@ -412,7 +410,10 @@ unsafe fn import_d3d11_shared_handle(
     };
 
     // Wrap the HAL texture into a wgpu::Texture.
-    let texture = unsafe { gpu.device().create_texture_from_hal::<Dx12>(hal_texture, &desc) };
+    let texture = unsafe {
+        gpu.device()
+            .create_texture_from_hal::<Dx12>(hal_texture, &desc)
+    };
 
     Ok(texture)
 }
