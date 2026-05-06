@@ -235,7 +235,7 @@ fn matroska_reader_sees_partial_writes() {
 /// pushed frames recoverable.
 #[test]
 fn session_recorder_records_planes() {
-    use reco_core::pipeline::YuvPlanes;
+    use reco_core::render::pipeline::YuvPlanes;
 
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("session_replay.mkv");

@@ -7,8 +7,8 @@
 
 use crate::detect::detector::{CameraId, ChromaFormat, Detection, DetectorFrame, RawFrame};
 use crate::detect::director::{MappedDetection, ViewportPosition};
-use crate::pipeline::YuvPlanes;
 use crate::projection;
+use crate::render::pipeline::YuvPlanes;
 
 impl super::StitchCore {
     pub(super) fn anchor_session_start(&mut self) {

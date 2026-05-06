@@ -66,7 +66,7 @@ pub fn run_libcamera(
 
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
 
-    let viewport = reco_core::viewport::ViewportConfig {
+    let viewport = reco_core::render::viewport::ViewportConfig {
         width,
         height,
         blend_width: blend,
@@ -86,7 +86,7 @@ pub fn run_libcamera(
         input_width: capture_width,
         input_height: capture_height,
         output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
-        input_format: reco_core::renderer::InputFormat::Yuv420p,
+        input_format: reco_core::render::renderer::InputFormat::Yuv420p,
         left_rotation: 0,
         right_rotation: 0,
     };

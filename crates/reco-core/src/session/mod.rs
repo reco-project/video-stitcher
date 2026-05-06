@@ -54,8 +54,8 @@ use crate::core::types::StitchCoreConfig;
 use crate::detect::director::ViewportPosition;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::nv12_converter::Nv12Converter;
-use crate::pipeline::StitchPipeline;
-use crate::renderer::InputFormat;
+use crate::render::pipeline::StitchPipeline;
+use crate::render::renderer::InputFormat;
 
 use detection::DetectionPipeline;
 
@@ -111,7 +111,7 @@ pub struct StitchSession {
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
     #[cfg(target_os = "linux")]
-    pub(crate) gpu_bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
+    pub(crate) gpu_bind_groups: Option<crate::render::pipeline::GpuSourceBindGroups>,
     /// Slot-free senders for decode backpressure (GPU zero-copy).
     #[cfg(target_os = "linux")]
     pub(crate) gpu_slot_free_tx: Option<(

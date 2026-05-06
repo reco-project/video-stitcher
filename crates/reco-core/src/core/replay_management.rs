@@ -6,7 +6,7 @@
 //! + [`StackedReplayGpuRecorder`](super::types::StackedReplayGpuRecorder)).
 
 use super::types::{StackedReplayGpuRecorder, StackedReplayRecorder, StitchCoreError};
-use crate::renderer::InputFormat;
+use crate::render::renderer::InputFormat;
 use crate::yuv_stack_packer::{
     OutputTileSize, SourceFormat, StackGridLayout, StackedPackSource, YuvStackPacker,
 };

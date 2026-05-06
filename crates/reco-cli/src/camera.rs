@@ -109,7 +109,7 @@ pub fn run_camera(
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
     let field_roi = cal.field_roi.clone();
 
-    let viewport = reco_core::viewport::ViewportConfig {
+    let viewport = reco_core::render::viewport::ViewportConfig {
         width,
         height,
         blend_width: blend,
@@ -122,11 +122,11 @@ pub fn run_camera(
 
     let (use_nv12_capture, input_format) = if v4l2_direct {
         // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path.
-        (true, reco_core::renderer::InputFormat::Bgra)
+        (true, reco_core::render::renderer::InputFormat::Bgra)
     } else if use_nvmm || helpers::is_tegra() {
-        (true, reco_core::renderer::InputFormat::Nv12)
+        (true, reco_core::render::renderer::InputFormat::Nv12)
     } else {
-        (false, reco_core::renderer::InputFormat::Yuv420p)
+        (false, reco_core::render::renderer::InputFormat::Yuv420p)
     };
 
     let capture_width = cam_config.width;

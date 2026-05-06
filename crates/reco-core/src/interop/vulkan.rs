@@ -308,7 +308,7 @@ pub fn create_nv12_shared_texture(
     width: u32,
     height: u32,
     plane: Nv12Plane,
-    pixel_format: crate::renderer::GpuPixelFormat,
+    pixel_format: crate::render::renderer::GpuPixelFormat,
 ) -> Result<SharedTexture, CudaInteropError> {
     match plane {
         Nv12Plane::Y => create_shared_texture(gpu, width, height, pixel_format.y_format()),

@@ -87,7 +87,7 @@ pub struct GpuFrame {
     pub timestamp_us: i64,
     /// GPU pixel format (NV12 or P010). Determines shared texture formats
     /// and CUDA copy byte widths.
-    pub pixel_format: reco_core::renderer::GpuPixelFormat,
+    pub pixel_format: reco_core::render::renderer::GpuPixelFormat,
 }
 
 /// A decoded frame from VideoToolbox, holding a `CVPixelBufferRef`.
@@ -449,11 +449,11 @@ impl VideoDecoder {
     ///
     /// Returns `GpuPixelFormat::P010` for 10-bit sources (R16Unorm/Rg16Unorm)
     /// or `GpuPixelFormat::Nv12` for 8-bit (R8Unorm/Rg8Unorm).
-    pub fn pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+    pub fn pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         if self.is_10bit {
-            reco_core::renderer::GpuPixelFormat::P010
+            reco_core::render::renderer::GpuPixelFormat::P010
         } else {
-            reco_core::renderer::GpuPixelFormat::Nv12
+            reco_core::render::renderer::GpuPixelFormat::Nv12
         }
     }
 

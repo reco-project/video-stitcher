@@ -48,7 +48,7 @@ pub struct SceneGeometry {
 impl SceneGeometry {
     /// Compute the 3D scene geometry from a plane layout.
     ///
-    /// Uses the deprecated [`PLANE_ASPECT`](crate::renderer::PLANE_ASPECT)
+    /// Uses the deprecated [`PLANE_ASPECT`](crate::render::renderer::PLANE_ASPECT)
     /// constant (16:9). Prefer [`from_layout_with_aspect`](Self::from_layout_with_aspect)
     /// for new code, passing the actual camera aspect ratio.
     #[deprecated(
@@ -57,7 +57,7 @@ impl SceneGeometry {
     )]
     pub fn from_layout(layout: &PlaneLayout) -> Self {
         #[allow(deprecated)]
-        Self::from_layout_with_aspect(layout, crate::renderer::PLANE_ASPECT)
+        Self::from_layout_with_aspect(layout, super::renderer::PLANE_ASPECT)
     }
 
     /// Compute the 3D scene geometry from a plane layout with an explicit

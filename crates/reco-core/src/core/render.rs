@@ -5,7 +5,7 @@
 //! `render_*_at_pose` methods (GPU-only, no readback).
 
 use crate::detect::director::ViewportPosition;
-use crate::pipeline::{BgraPlanes, YuvPlanes};
+use crate::render::pipeline::{BgraPlanes, YuvPlanes};
 
 use super::types::{RenderOutcome, ReplayFrame, StitchCoreError};
 
@@ -318,7 +318,7 @@ impl super::StitchCore {
     /// (YUV / NV12 / GpuResident) at an explicit pose.
     ///
     /// Thin wrapper over
-    /// [`StitchPipeline::render_stereo_frame`](crate::pipeline::StitchPipeline::render_stereo_frame)
+    /// [`StitchPipeline::render_stereo_frame`](crate::render::pipeline::StitchPipeline::render_stereo_frame)
     /// that converts the pipeline error into a `StitchCoreError`. The
     /// `MetalResident` variant is NOT handled here; use
     /// [`Self::render_imported_textures_at_pose`] after importing the
@@ -378,7 +378,7 @@ impl super::StitchCore {
     #[cfg(target_os = "linux")]
     pub fn render_gpu_frame_at_pose(
         &mut self,
-        bind_groups: &crate::pipeline::GpuSourceBindGroups,
+        bind_groups: &crate::render::pipeline::GpuSourceBindGroups,
         left_slot: u8,
         right_slot: u8,
         yaw: f32,

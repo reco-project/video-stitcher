@@ -29,9 +29,9 @@
 use reco_core::calibration::{CameraParams, MatchCalibration};
 use reco_core::gpu::GpuContext;
 use reco_core::lens_preview::LensPreviewRenderer;
-use reco_core::pipeline::{PipelineError, YuvPlanes};
-use reco_core::stitch_renderer::StitchRenderer;
-use reco_core::viewport::ViewportConfig;
+use reco_core::render::pipeline::{PipelineError, YuvPlanes};
+use reco_core::render::stitch_renderer::StitchRenderer;
+use reco_core::render::viewport::ViewportConfig;
 use reco_core::wgpu;
 
 /// Bridges reco-core GPU rendering to Slint via a shared wgpu device.
@@ -94,7 +94,7 @@ impl PreviewBridge {
             input_width,
             input_height,
             texture_format,
-            reco_core::renderer::InputFormat::Yuv420p,
+            reco_core::render::renderer::InputFormat::Yuv420p,
         )?;
 
         Ok(Self {

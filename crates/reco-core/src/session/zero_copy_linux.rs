@@ -36,7 +36,7 @@ pub struct SharedTextureSet {
     /// `None` when the source creates textures without pipeline access
     /// (e.g. `SmartFileSource`). The session creates them lazily at
     /// the start of `run()`.
-    pub bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
+    pub bind_groups: Option<crate::render::pipeline::GpuSourceBindGroups>,
 }
 
 impl StitchSession {
@@ -46,8 +46,8 @@ impl StitchSession {
     /// `GpuBufInfo` for each camera (CUDA pointers for decode threads),
     /// and slot-free channels for backpressure.
     ///
-    /// The `pixel_format` selects texture formats: [`GpuPixelFormat::Nv12`](crate::renderer::GpuPixelFormat::Nv12)
-    /// uses R8Unorm/Rg8Unorm, [`GpuPixelFormat::P010`](crate::renderer::GpuPixelFormat::P010) uses R16Unorm/Rg16Unorm.
+    /// The `pixel_format` selects texture formats: [`GpuPixelFormat::Nv12`](crate::render::renderer::GpuPixelFormat::Nv12)
+    /// uses R8Unorm/Rg8Unorm, [`GpuPixelFormat::P010`](crate::render::renderer::GpuPixelFormat::P010) uses R16Unorm/Rg16Unorm.
     ///
     /// Call this once during setup, then pass the results to
     /// [`Self::run_zero_copy_linux`].
@@ -55,7 +55,7 @@ impl StitchSession {
         &mut self,
         input_width: u32,
         input_height: u32,
-        pixel_format: crate::renderer::GpuPixelFormat,
+        pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<SharedTextureSet, SessionError> {
         log::info!("Creating shared textures for zero-copy ({pixel_format:?})...");
 
@@ -93,7 +93,7 @@ impl StitchSession {
         // Only needed for P010 (10-bit). Both Y (R16Unorm) and UV (Rg16Unorm)
         // formats need separate warm-ups.
         // Tracked in: https://github.com/reco-project/video-stitcher/issues/134
-        let _warmup = if pixel_format == crate::renderer::GpuPixelFormat::P010 {
+        let _warmup = if pixel_format == crate::render::renderer::GpuPixelFormat::P010 {
             let y = create_nv12_shared_texture(gpu, 16, 16, Nv12Plane::Y, pixel_format)
                 .map_err(|e| SessionError::ZeroCopy(format!("warmup Y texture: {e}")))?;
             let uv = create_nv12_shared_texture(gpu, 16, 16, Nv12Plane::Uv, pixel_format)

@@ -11,27 +11,27 @@
 //! use cases like preview windows that need direct surface rendering.
 //!
 //! ```rust,no_run,compile_fail
-//! use reco_core::pipeline::StitchPipeline;
+//! use reco_core::render::pipeline::StitchPipeline;
 //! use reco_core::gpu::GpuContext;
 //!
 //! let gpu = pollster::block_on(GpuContext::new())?;
 //! let pipeline = StitchPipeline::with_gpu(
 //!     gpu, calibration, viewport, 1920, 1080,
 //!     wgpu::TextureFormat::Rgba8UnormSrgb,
-//!     reco_core::renderer::InputFormat::Yuv420p,
+//!     reco_core::render::renderer::InputFormat::Yuv420p,
 //! )?;
 //! ```
 
+use super::renderer::{InputFormat, RenderError, Renderer};
+use super::scene::SceneGeometry;
+use super::viewport::{ResolvedViewport, ViewportConfig};
 use crate::calibration::MatchCalibration;
 use crate::detect::director::ViewportPosition;
 use crate::gpu::{GpuContext, GpuError};
-use crate::renderer::{InputFormat, RenderError, Renderer};
-use crate::scene::SceneGeometry;
-use crate::viewport::{ResolvedViewport, ViewportConfig};
 
 use thiserror::Error;
 
-pub use crate::planes::{BgraPlanes, FramePlaneView, Nv12Planes, StridedYuvPlanes, YuvPlanes};
+pub use super::planes::{BgraPlanes, FramePlaneView, Nv12Planes, StridedYuvPlanes, YuvPlanes};
 
 /// Errors from the stitch pipeline. `Clone + Send + Sync` so consumers
 /// posting results to worker threads can carry the typed error.
@@ -188,7 +188,7 @@ impl StitchPipeline {
     /// kernel variant (separate R8 planes for YUV420P vs interleaved
     /// Rg8 UV for NV12) without the consumer passing the format
     /// through a second time.
-    pub(crate) fn input_format(&self) -> crate::renderer::InputFormat {
+    pub(crate) fn input_format(&self) -> super::renderer::InputFormat {
         self.renderer.input_format()
     }
 
@@ -621,7 +621,7 @@ impl StitchPipeline {
     /// Expects each plane as `width * height * 4` bytes in (R, G, B, A) byte
     /// order. Use [`BgraPlanes::from_bgra_swizzle_into`] when the source
     /// is BGRA. Requires the pipeline to be initialized with
-    /// [`InputFormat::Bgra`](crate::renderer::InputFormat#variant.Bgra).
+    /// [`InputFormat::Bgra`](crate::render::renderer::InputFormat#variant.Bgra).
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "render_to_target_bgra")
@@ -731,7 +731,7 @@ impl StitchPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::planes::copy_plane_tight;
+    use crate::render::planes::copy_plane_tight;
 
     /// Build a test plane where row `r` contains byte value `r` for the first
     /// `width` bytes, followed by `0xFF` padding up to `stride`.

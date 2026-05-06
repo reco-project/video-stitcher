@@ -328,7 +328,7 @@ impl DetectionPipeline {
 
         let ls = left_slot as usize;
         let rs = right_slot as usize;
-        let is_10bit = left_buf.pixel_format == crate::renderer::GpuPixelFormat::P010;
+        let is_10bit = left_buf.pixel_format == crate::render::renderer::GpuPixelFormat::P010;
 
         let left_frame = crate::detect::detector::GpuNv12Frame {
             y_ptr: left_buf.y_ptr[ls],

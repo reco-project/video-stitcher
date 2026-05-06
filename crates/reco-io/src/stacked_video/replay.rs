@@ -25,7 +25,7 @@ use super::encoder::{StackedEncodeError, StackedEncoder, StackedEncoderConfig};
 use super::{GridLayout, StackError};
 use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
 use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
-use reco_core::pipeline::YuvPlanes;
+use reco_core::render::pipeline::YuvPlanes;
 use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame, YuvFrame};
 use reco_core::yuv_stack_packer::StackedAtlas;
 use std::path::Path;
@@ -177,7 +177,7 @@ impl FrameSource for ReplayRecordingSource {
         self.inner.is_gpu_resident()
     }
 
-    fn gpu_pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+    fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.inner.gpu_pixel_format()
     }
 

@@ -546,13 +546,13 @@ impl StitchJob {
 
         // Determine input format from source capabilities
         let input_format = if source.is_gpu_resident() {
-            reco_core::renderer::InputFormat::Nv12
+            reco_core::render::renderer::InputFormat::Nv12
         } else {
-            reco_core::renderer::InputFormat::Yuv420p
+            reco_core::render::renderer::InputFormat::Yuv420p
         };
 
         // Build session
-        let viewport = reco_core::viewport::ViewportConfig {
+        let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
             blend_width: self.blend_width,

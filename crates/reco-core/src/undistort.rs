@@ -7,7 +7,7 @@
 
 use crate::calibration::CameraParams;
 use crate::gpu::GpuContext;
-use crate::renderer::{InputFormat, build_gpu_uniforms, opengl_to_wgpu_matrix};
+use crate::render::renderer::{InputFormat, build_gpu_uniforms, opengl_to_wgpu_matrix};
 
 use bytemuck::Pod;
 use nalgebra::Orthographic3;
@@ -249,7 +249,7 @@ impl GpuUndistort {
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("undistort_uniforms"),
-            size: std::mem::size_of::<crate::renderer::GpuUniforms>() as u64,
+            size: std::mem::size_of::<crate::render::renderer::GpuUniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

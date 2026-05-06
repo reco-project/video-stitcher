@@ -2,7 +2,7 @@
 
 use crate::calibration::MatchCalibration;
 use crate::detect::detector::CameraId;
-use crate::scene::SceneGeometry;
+use crate::render::scene::SceneGeometry;
 
 use super::camera_to_panorama;
 

@@ -218,7 +218,8 @@ pub fn run_export(
                 "sweep" => reco_autocam::TrackingMode::Sweep,
                 _ => reco_autocam::TrackingMode::Field,
             };
-            let is_10bit = source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
+            let is_10bit =
+                source.gpu_pixel_format() == reco_core::render::renderer::GpuPixelFormat::P010;
             let autocam_config = reco_autocam::AutocamConfig::new(&model_path_owned)
                 .with_tracking_mode(mode)
                 .with_detection_interval(interval)

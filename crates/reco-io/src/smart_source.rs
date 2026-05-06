@@ -18,7 +18,7 @@
 //! // source implements FrameSource - pass to session.run()
 //! ```
 
-use reco_core::renderer::GpuPixelFormat;
+use reco_core::render::renderer::GpuPixelFormat;
 use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame};
 
 /// GPU-aware stereo file source that auto-selects the optimal decode path.

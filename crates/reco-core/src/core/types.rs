@@ -9,13 +9,13 @@ use thiserror::Error;
 
 use crate::calibration::MatchCalibration;
 use crate::detect::director::ViewportPosition;
-use crate::pipeline::PipelineError;
-use crate::planes::YuvPlanes;
 use crate::projection::Projection;
-use crate::renderer::InputFormat;
+use crate::render::pipeline::PipelineError;
+use crate::render::planes::YuvPlanes;
+use crate::render::renderer::InputFormat;
+use crate::render::viewport::ViewportConfig;
 use crate::rgba_readback::RgbaReadbackError;
 use crate::source::CameraInput;
-use crate::viewport::ViewportConfig;
 use crate::yuv_stack_packer::{PackerError, StackedAtlas};
 
 /// Errors from [`super::StitchCore`]. `Clone + Send + Sync` so consumers

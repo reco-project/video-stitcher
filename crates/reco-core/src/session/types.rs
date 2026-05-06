@@ -10,10 +10,10 @@ use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::Nv12Error;
-use crate::pipeline::PipelineError;
-use crate::renderer::InputFormat;
+use crate::render::pipeline::PipelineError;
+use crate::render::renderer::InputFormat;
+use crate::render::viewport::ViewportConfig;
 use crate::source::SourceError;
-use crate::viewport::ViewportConfig;
 
 use thiserror::Error;
 

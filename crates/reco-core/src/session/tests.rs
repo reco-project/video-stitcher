@@ -16,8 +16,8 @@ use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::encoder::{EncodeError, Encoder, OutputFrame};
+use crate::render::viewport::ViewportConfig;
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
-use crate::viewport::ViewportConfig;
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
