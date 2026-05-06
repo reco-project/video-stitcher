@@ -1242,7 +1242,6 @@ impl SilentAudio {
         enc.set_format(ffmpeg::format::Sample::F32(
             ffmpeg::format::sample::Type::Planar,
         ));
-        enc.set_channels(2);
         enc.set_channel_layout(ffmpeg::ChannelLayout::STEREO);
         enc.set_bit_rate(128_000);
         enc.set_time_base(Rational(1, sample_rate as i32));
