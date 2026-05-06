@@ -46,7 +46,6 @@ impl reco_core::telemetry::TelemetrySink for ExportTelemetrySink {
                 app.set_telem_active_tracks(snap.active_tracks as i32);
                 app.set_telem_ball_pct(snap.ball_presence_pct);
                 app.set_telem_det_per_frame(snap.detections_per_frame);
-                app.set_telem_frames_dropped(snap.frames_dropped as i32);
                 app.set_telem_gpu_name(snap.gpu_name.clone().into());
                 app.set_telem_bottleneck(
                     snap.bottleneck
