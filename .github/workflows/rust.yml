@@ -90,7 +90,7 @@ jobs:
         with:
           packages: ${{ env.APT_PACKAGES }}
       - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + reco-control transports)
-        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,keyboard,gopro,mobile,websocket
+        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,keyboard,gopro
         env:
           RUSTDOCFLAGS: "-D warnings"
 

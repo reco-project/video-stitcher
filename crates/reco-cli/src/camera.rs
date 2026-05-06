@@ -881,24 +881,23 @@ pub fn run_live_calibrate(
 
     // Preserve field_roi and rig_tilt from existing calibration file
     let mut cal = result.calibration;
-    if let Ok(existing) = std::fs::read_to_string(output_path) {
-        if let Ok(prev) =
+    if let Ok(existing) = std::fs::read_to_string(output_path)
+        && let Ok(prev) =
             serde_json::from_str::<reco_core::calibration::MatchCalibration>(&existing)
-        {
-            if prev.field_roi.is_some() {
-                cal.field_roi = prev.field_roi;
-                eprintln!("Preserved existing field_roi");
-            }
-            if prev.rig_tilt.abs() > 1e-6 {
-                cal.rig_tilt = prev.rig_tilt;
-                eprintln!(
-                    "Preserved existing rig_tilt ({:.1} deg)",
-                    prev.rig_tilt.to_degrees()
-                );
-            }
-            if prev.rig_roll.abs() > 1e-6 {
-                cal.rig_roll = prev.rig_roll;
-            }
+    {
+        if prev.field_roi.is_some() {
+            cal.field_roi = prev.field_roi;
+            eprintln!("Preserved existing field_roi");
+        }
+        if prev.rig_tilt.abs() > 1e-6 {
+            cal.rig_tilt = prev.rig_tilt;
+            eprintln!(
+                "Preserved existing rig_tilt ({:.1} deg)",
+                prev.rig_tilt.to_degrees()
+            );
+        }
+        if prev.rig_roll.abs() > 1e-6 {
+            cal.rig_roll = prev.rig_roll;
         }
     }
     let json = serde_json::to_string_pretty(&cal)?;
