@@ -22,7 +22,7 @@
 use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::MappedDetection;
 
-use super::{DetectionSink, DetectionSinkError};
+use super::types::{DetectionSink, DetectionSinkError};
 
 /// Detection pipeline owning a unified-trait detector, interval,
 /// sink, and cached detections.

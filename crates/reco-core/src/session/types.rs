@@ -1,8 +1,8 @@
 //! Type definitions and builder for the stitching session.
 //!
 //! Extracted from `session/mod.rs` to keep the main module focused on
-//! the `StitchSession` implementation. All public items are re-exported
-//! from `crate::session` via `pub use types::*`.
+//! the `StitchSession` implementation. Import types from
+//! `reco_core::session::types` (e.g. `reco_core::session::types::SessionConfig`).
 
 use crate::calibration::MatchCalibration;
 use crate::core::types::StitchCoreError;

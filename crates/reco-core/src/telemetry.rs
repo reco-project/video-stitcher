@@ -89,11 +89,8 @@ impl<const N: usize> RingBuffer<N> {
 /// read-only view of the current state.
 pub struct TelemetryCollector {
     frame_count: u64,
-    frames_dropped: u64,
     ring: RingBuffer<256>,
     total_detections: u64,
-    total_tracks_created: u64,
-    total_tracks_lost: u64,
     ball_present_frames: u64,
     active_tracks: u32,
     max_frame_time: Duration,
@@ -109,11 +106,8 @@ impl TelemetryCollector {
     pub fn new() -> Self {
         Self {
             frame_count: 0,
-            frames_dropped: 0,
             ring: RingBuffer::new(),
             total_detections: 0,
-            total_tracks_created: 0,
-            total_tracks_lost: 0,
             ball_present_frames: 0,
             active_tracks: 0,
             max_frame_time: Duration::ZERO,
@@ -170,18 +164,6 @@ impl TelemetryCollector {
         if ball_present {
             self.ball_present_frames += 1;
         }
-    }
-
-    pub fn record_tracks_created(&mut self, count: u32) {
-        self.total_tracks_created += count as u64;
-    }
-
-    pub fn record_tracks_lost(&mut self, count: u32) {
-        self.total_tracks_lost += count as u64;
-    }
-
-    pub fn record_drop(&mut self) {
-        self.frames_dropped += 1;
     }
 
     pub fn snapshot(&self) -> TelemetrySnapshot {
@@ -255,7 +237,6 @@ impl TelemetryCollector {
 
         TelemetrySnapshot {
             frames_processed: self.frame_count,
-            frames_dropped: self.frames_dropped,
             elapsed,
             fps_average,
             fps_recent,
@@ -276,8 +257,6 @@ impl TelemetryCollector {
             },
             ball_presence_pct: ball_pct,
             active_tracks: self.active_tracks,
-            total_tracks_created: self.total_tracks_created,
-            total_tracks_lost: self.total_tracks_lost,
             gpu_name: self.gpu_name.clone(),
             encoder_name: self.encoder_name.clone(),
             decode_mode: self.decode_mode.clone(),
@@ -334,7 +313,6 @@ impl Default for TelemetryCollector {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TelemetrySnapshot {
     pub frames_processed: u64,
-    pub frames_dropped: u64,
     #[serde(with = "duration_secs")]
     pub elapsed: Duration,
     pub fps_average: f32,
@@ -352,8 +330,6 @@ pub struct TelemetrySnapshot {
     pub detections_per_frame: f32,
     pub ball_presence_pct: f32,
     pub active_tracks: u32,
-    pub total_tracks_created: u64,
-    pub total_tracks_lost: u64,
     pub gpu_name: String,
     pub encoder_name: Option<String>,
     pub decode_mode: Option<String>,
@@ -378,11 +354,7 @@ impl std::fmt::Display for SessionSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = &self.snapshot;
         writeln!(f, "--- Session Summary ---")?;
-        writeln!(
-            f,
-            "Frames:    {} processed, {} dropped",
-            s.frames_processed, s.frames_dropped
-        )?;
+        writeln!(f, "Frames:    {} processed", s.frames_processed)?;
         writeln!(f, "Duration:  {:.1}s", s.elapsed.as_secs_f64())?;
         writeln!(
             f,
@@ -416,11 +388,6 @@ impl std::fmt::Display for SessionSummary {
             writeln!(f, "Detection:")?;
             writeln!(f, "  Ball present:  {:.0}% of frames", s.ball_presence_pct)?;
             writeln!(f, "  Detections:    {:.1}/frame", s.detections_per_frame)?;
-            writeln!(
-                f,
-                "  Tracks:        {} created, {} lost",
-                s.total_tracks_created, s.total_tracks_lost
-            )?;
         }
         Ok(())
     }

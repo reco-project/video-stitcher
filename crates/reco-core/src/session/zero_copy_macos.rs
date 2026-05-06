@@ -3,7 +3,8 @@
 //! Separated from the main session module to isolate platform-specific
 //! CVPixelBuffer import and Metal texture cache management.
 
-use super::{FrameProgress, ProgressCallback, SessionError, StitchSession};
+use super::StitchSession;
+use super::types::{FrameProgress, ProgressCallback, SessionError};
 
 impl StitchSession {
     /// Run the zero-copy frame loop on macOS (VideoToolbox/Metal).

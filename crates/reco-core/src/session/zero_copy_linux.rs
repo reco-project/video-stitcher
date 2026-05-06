@@ -3,7 +3,8 @@
 //! Separated from the main session module to isolate platform-specific
 //! shared-texture orchestration (CUDA VMM, Vulkan external memory).
 
-use super::{FrameProgress, ProgressCallback, SessionError, StitchSession};
+use super::StitchSession;
+use super::types::{FrameProgress, ProgressCallback, SessionError};
 use crate::interop::vulkan::{Nv12Plane, SharedTexture, create_nv12_shared_texture};
 use crate::interop::zero_copy::GpuBufInfo;
 

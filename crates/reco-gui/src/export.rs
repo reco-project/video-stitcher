@@ -46,7 +46,6 @@ impl reco_core::telemetry::TelemetrySink for ExportTelemetrySink {
                 app.set_telem_active_tracks(snap.active_tracks as i32);
                 app.set_telem_ball_pct(snap.ball_presence_pct);
                 app.set_telem_det_per_frame(snap.detections_per_frame);
-                app.set_telem_frames_dropped(snap.frames_dropped as i32);
                 app.set_telem_gpu_name(snap.gpu_name.clone().into());
                 app.set_telem_bottleneck(
                     snap.bottleneck
@@ -155,7 +154,7 @@ pub fn run_export(
     .format(format)
     .resolution(width, height)
     .blend_width(blend)
-    .on_progress(move |p: &reco_core::session::FrameProgress| {
+    .on_progress(move |p: &reco_core::session::types::FrameProgress| {
         let frames = p.frames_completed;
         let elapsed = progress_start.elapsed().as_secs_f64();
         let fps = if elapsed > 0.0 {

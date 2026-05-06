@@ -42,7 +42,7 @@ pub enum RenderTarget<'a> {
 }
 
 /// What happened after a [`StitchRenderer::render`] call.
-pub enum RenderOutcome {
+pub enum SurfaceRenderOutcome {
     /// Surface render submitted to the GPU queue (nothing to do).
     Submitted,
     /// Texture render returned a command buffer for readback.
@@ -156,9 +156,9 @@ impl StitchRenderer {
     /// `pipeline().render_to_target` (readback). The outcome tells the
     /// caller what happened:
     ///
-    /// - [`RenderOutcome::Submitted`] — GPU work was submitted for a
+    /// - [`SurfaceRenderOutcome::Submitted`] — GPU work was submitted for a
     ///   surface present; nothing left to do.
-    /// - [`RenderOutcome::Commands`] — a command buffer is ready for
+    /// - [`SurfaceRenderOutcome::Commands`] — a command buffer is ready for
     ///   readback (pass to [`RgbaReadback::readback`](crate::gpu::rgba_readback::RgbaReadback::readback)
     ///   or [`Nv12Converter::convert_and_readback`](crate::gpu::nv12_converter::Nv12Converter::convert_and_readback)).
     pub fn render(
@@ -168,16 +168,16 @@ impl StitchRenderer {
         yaw: f32,
         pitch: f32,
         target: RenderTarget<'_>,
-    ) -> Result<RenderOutcome, PipelineError> {
+    ) -> Result<SurfaceRenderOutcome, PipelineError> {
         match target {
             RenderTarget::Surface(view) => {
                 self.pipeline
                     .render_to_view(left, right, yaw, pitch, view)?;
-                Ok(RenderOutcome::Submitted)
+                Ok(SurfaceRenderOutcome::Submitted)
             }
             RenderTarget::Texture => {
                 let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
-                Ok(RenderOutcome::Commands(cmd))
+                Ok(SurfaceRenderOutcome::Commands(cmd))
             }
         }
     }

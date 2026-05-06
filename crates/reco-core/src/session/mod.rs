@@ -18,7 +18,6 @@
 
 /// Session type definitions, error types, and builder.
 pub mod types;
-pub use types::*;
 
 /// Detection pipeline - also usable standalone without StitchSession.
 pub mod detection;
@@ -56,6 +55,8 @@ use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::pipeline::StitchPipeline;
 use crate::render::renderer::InputFormat;
+
+use types::{ErrorPolicy, SessionConfig, SessionError, SessionMetrics, StitchSessionBuilder};
 
 use detection::DetectionPipeline;
 

@@ -9,7 +9,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::*;
+use super::StitchSession;
+use super::types::*;
 use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
 use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::{MappedDetection, ViewportPosition};
