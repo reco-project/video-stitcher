@@ -21,7 +21,7 @@
 //!
 //! For GPU-resident frames (e.g. NVDEC output via CUDA interop),
 //! sources can write directly to shared GPU textures, avoiding
-//! CPU-GPU transfers entirely. See `cuda_interop` in `reco-core`.
+//! CPU-GPU transfers entirely. See `interop::cuda` in `reco-core`.
 
 use thiserror::Error;
 
@@ -274,9 +274,9 @@ pub enum StereoFrame {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     MetalResident {
         /// Left camera retained pixel buffer.
-        left: crate::metal_interop::RetainedCVPixelBuffer,
+        left: crate::interop::metal::RetainedCVPixelBuffer,
         /// Right camera retained pixel buffer.
-        right: crate::metal_interop::RetainedCVPixelBuffer,
+        right: crate::interop::metal::RetainedCVPixelBuffer,
     },
     /// Windows D3D11VA zero-copy: decoded frame still on D3D11 GPU memory.
     /// The session stages these into shared NV12 textures for wgpu rendering.
@@ -364,8 +364,8 @@ pub trait FrameSource: Send {
     ///
     /// Only meaningful when [`is_gpu_resident`](Self::is_gpu_resident) returns `true`.
     /// Determines shared texture formats (R8Unorm for NV12, R16Unorm for P010).
-    fn gpu_pixel_format(&self) -> crate::renderer::GpuPixelFormat {
-        crate::renderer::GpuPixelFormat::Nv12
+    fn gpu_pixel_format(&self) -> crate::render::renderer::GpuPixelFormat {
+        crate::render::renderer::GpuPixelFormat::Nv12
     }
 
     /// Left camera rotation from stream metadata (degrees: 0, 90, 180, 270).

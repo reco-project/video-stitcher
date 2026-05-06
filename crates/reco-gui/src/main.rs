@@ -34,8 +34,8 @@ use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
 use reco_core::calibration::MatchCalibration;
-use reco_core::director::ViewportPosition;
-use reco_core::pipeline::YuvPlanes;
+use reco_core::detect::director::ViewportPosition;
+use reco_core::render::pipeline::YuvPlanes;
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};

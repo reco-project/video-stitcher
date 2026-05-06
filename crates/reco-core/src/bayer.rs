@@ -5,10 +5,10 @@
 //! pipeline's input plane via `StitchRenderer::copy_texture_to_left`.
 //! No CPU readback in the hot path.
 
-use crate::color_grade::{ColorGradeParams, ColorGradePass};
 use crate::gpu::GpuContext;
+use crate::gpu::color_grade::{ColorGradeParams, ColorGradePass};
 #[cfg(target_os = "linux")]
-use crate::vulkan_interop::SharedTexture;
+use crate::interop::vulkan::SharedTexture;
 use wgpu::util::DeviceExt;
 
 /// ISP tuning parameters passed to the demosaic compute shader.
@@ -613,11 +613,11 @@ impl BayerDemosaic {
         gpu: &GpuContext,
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<
-        (crate::cuda_interop::CUdeviceptr, usize, u32, u32),
-        crate::cuda_interop::CudaInteropError,
+        (crate::interop::cuda::CUdeviceptr, usize, u32, u32),
+        crate::interop::cuda::CudaInteropError,
     > {
         if self.detection_shared.is_none() {
-            let shared = crate::vulkan_interop::create_shared_texture(
+            let shared = crate::interop::vulkan::create_shared_texture(
                 gpu,
                 self.width,
                 self.height,

@@ -24,8 +24,8 @@ use std::time::Instant;
 use reco_control::pose_control::HotkeyIntent;
 use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
 use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
+use reco_core::render::stitch_renderer::StitchRenderer;
 use reco_core::source::{FrameSource, YuvData};
-use reco_core::stitch_renderer::StitchRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -131,7 +131,8 @@ pub fn run_preview(
     // The actual CoverageBoundary is computed inside StitchRenderer::new().
     let max_fov = {
         let aspect = info.width as f32 / info.height as f32;
-        let scene = reco_core::scene::SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
+        let scene =
+            reco_core::render::scene::SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
         let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
@@ -159,7 +160,7 @@ pub fn run_preview(
 
         pose: {
             use reco_control::pose_control::{PoseControl, PoseControlConfig};
-            use reco_core::director::ViewportPosition;
+            use reco_core::detect::director::ViewportPosition;
             // Match preview's historical feel: 0.005 rad/px drag,
             // 0.05 rad arrow step, 3.0 deg scroll step, 0.3 smoothing.
             // `invert_drag_x = true` reproduces preview's "drag right
@@ -484,7 +485,7 @@ impl ApplicationHandler for App {
             },
         );
 
-        let viewport = reco_core::viewport::ViewportConfig {
+        let viewport = reco_core::render::viewport::ViewportConfig {
             width: self.width,
             height: self.height,
             blend_width: self.blend_width,
@@ -500,7 +501,7 @@ impl ApplicationHandler for App {
             self.input_width,
             self.input_height,
             surface_format,
-            reco_core::renderer::InputFormat::Yuv420p,
+            reco_core::render::renderer::InputFormat::Yuv420p,
         )
         .expect("create renderer");
 
@@ -833,12 +834,12 @@ impl ApplicationHandler for App {
                         ..Default::default()
                     });
 
-                let left = reco_core::pipeline::YuvPlanes {
+                let left = reco_core::render::pipeline::YuvPlanes {
                     y: &self.current_left.y,
                     u: &self.current_left.u,
                     v: &self.current_left.v,
                 };
-                let right = reco_core::pipeline::YuvPlanes {
+                let right = reco_core::render::pipeline::YuvPlanes {
                     y: &self.current_right.y,
                     u: &self.current_right.u,
                     v: &self.current_right.v,

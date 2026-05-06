@@ -20,7 +20,7 @@
 //! - [`crate::source::CameraInput`] - input-camera-count contract;
 //!   [`StereoCameraInput`](crate::source::StereoCameraInput) is the
 //!   current impl.
-//! - [`crate::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
+//! - [`crate::detect::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
 //!
 //! The first two are consumed at construction (see `StitchCoreConfig`).
@@ -46,16 +46,16 @@ pub mod types;
 use std::time::{Duration, Instant};
 
 use crate::calibration::MatchCalibration;
-use crate::detector::UnifiedDetector;
-use crate::director::{MappedDetection, ViewportPosition};
+use crate::detect::detector::UnifiedDetector;
+use crate::detect::director::{MappedDetection, ViewportPosition};
+use crate::detect::panner::Panner;
+use crate::detect::tracker::Tracker;
 use crate::gpu::GpuContext;
-use crate::panner::Panner;
-use crate::pipeline::StitchPipeline;
+use crate::gpu::rgba_readback::RgbaReadback;
+use crate::gpu::yuv_stack_packer::YuvStackPacker;
 use crate::projection::{CoverageBoundary, LShapeProjection, PanoramaExtent, Projection};
-use crate::rgba_readback::RgbaReadback;
+use crate::render::pipeline::StitchPipeline;
 use crate::source::{CameraInput, StereoCameraInput};
-use crate::tracker::Tracker;
-use crate::yuv_stack_packer::YuvStackPacker;
 
 use self::replay_buffer::ReplayBuffer;
 use self::types::{
@@ -92,7 +92,7 @@ pub struct StitchCore {
     pub(crate) camera_input: Box<dyn CameraInput>,
     pub(crate) coverage: Option<CoverageBoundary>,
 
-    /// Per-class trackers that feed a shared [`WorldState`](crate::tracker::WorldState)
+    /// Per-class trackers that feed a shared [`WorldState`](crate::detect::tracker::WorldState)
     /// consumed by [`StitchCore::panner`]. Slot-based on purpose:
     /// `ball_tracker` fills `world.ball`, `player_tracker` fills
     /// `world.players`. More slots land with future entity classes.
@@ -103,12 +103,12 @@ pub struct StitchCore {
     pub(crate) ball_tracker: Option<Box<dyn Tracker>>,
     pub(crate) player_tracker: Option<Box<dyn Tracker>>,
     /// Camera-motion policy. Consumes the assembled
-    /// [`WorldState`](crate::tracker::WorldState) each frame and emits
+    /// [`WorldState`](crate::detect::tracker::WorldState) each frame and emits
     /// a [`ViewportPosition`]. When unset, the pose stays at the
     /// pipeline default.
     pub(crate) panner: Option<Box<dyn Panner>>,
     /// Previous frame's resolved pose, passed to the panner in its
-    /// [`PanContext`](crate::panner::PanContext) so panners can
+    /// [`PanContext`](crate::detect::panner::PanContext) so panners can
     /// compute first-order motion deltas statelessly.
     pub(crate) previous_panner_pose: ViewportPosition,
 
@@ -250,7 +250,7 @@ impl StitchCore {
     /// Attach a multi-entity player tracker. Replaces any existing one.
     ///
     /// The tracker's output populates
-    /// [`WorldState::players`](crate::tracker::WorldState::players)
+    /// [`WorldState::players`](crate::detect::tracker::WorldState::players)
     /// each frame. Phase-5 implementation - until that phase lands,
     /// this setter is usable from consumers but typically left unset.
     pub fn set_player_tracker(&mut self, tracker: Box<dyn Tracker>) {
@@ -272,7 +272,7 @@ impl StitchCore {
     /// builds a [`WorldState`], and delegates to [`Panner::decide`].
     /// Without a panner the pose stays at the pipeline default.
     ///
-    /// [`WorldState`]: crate::tracker::WorldState
+    /// [`WorldState`]: crate::detect::tracker::WorldState
     pub fn set_panner(&mut self, panner: Box<dyn Panner>) {
         log::info!("StitchCore: panner attached");
         self.panner = Some(panner);
@@ -507,7 +507,7 @@ mod tests {
 
     use crate::core::replay_buffer::ReplayBuffer;
     use crate::core::types::{RenderOutcome, ReplayFrame, StitchCoreError};
-    use crate::director::ViewportPosition;
+    use crate::detect::director::ViewportPosition;
 
     /// Assert `ReplayBuffer` trims old frames as the newest ages past
     /// `max_duration`. This is the core guarantee OBS A16 relies on:

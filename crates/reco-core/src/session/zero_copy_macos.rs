@@ -20,12 +20,12 @@ impl StitchSession {
     )]
     pub fn run_zero_copy_macos(
         &mut self,
-        pair_rx: std::sync::mpsc::Receiver<crate::zero_copy::VtFramePair>,
+        pair_rx: std::sync::mpsc::Receiver<crate::interop::zero_copy::VtFramePair>,
         frame_limit: u64,
         interrupted: &std::sync::atomic::AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<u64, SessionError> {
-        use crate::metal_interop::MetalTextureCache;
+        use crate::interop::metal::MetalTextureCache;
 
         let start = std::time::Instant::now();
         let cache = MetalTextureCache::new(self.core.gpu())?;

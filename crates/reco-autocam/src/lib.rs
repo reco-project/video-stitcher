@@ -1,18 +1,18 @@
 //! Automatic camera control for reco.
 //!
 //! The intelligence layer. [`trackers`] turn noisy per-frame detections
-//! into a clean [`WorldState`](reco_core::tracker::WorldState) with
+//! into a clean [`WorldState`](reco_core::detect::tracker::WorldState) with
 //! stable identities and lifecycle flags; [`panners`] turn that world
-//! state into a virtual-camera [`ViewportPosition`](reco_core::director::ViewportPosition).
+//! state into a virtual-camera [`ViewportPosition`](reco_core::detect::director::ViewportPosition).
 //! Detector backends live in [`reco_detect`] and are re-exported at
 //! crate root for convenience but are not owned here.
 //!
 //! # What this crate owns
 //!
 //! - [`trackers::BallTracker`] / [`trackers::PlayerTracker`] - per-class
-//!   trackers implementing [`Tracker`](reco_core::tracker::Tracker).
+//!   trackers implementing [`Tracker`](reco_core::detect::tracker::Tracker).
 //! - [`panners::FieldPanner`] / [`panners::SweepPanner`] - camera-motion
-//!   policies implementing [`Panner`](reco_core::panner::Panner).
+//!   policies implementing [`Panner`](reco_core::detect::panner::Panner).
 //! - [`panners::Smoother`] / [`panners::Anticipator`] /
 //!   [`panners::DeadZone`] - composable panner decorators.
 //! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
@@ -252,9 +252,9 @@ pub fn setup_autocam(
 
     // Tiny helper so each backend's "wrap the detector in
     // RoiFilteredDetector if ROI is present" site stays one line.
-    let wrap_with_roi = |inner: Box<dyn reco_core::detector::UnifiedDetector>,
+    let wrap_with_roi = |inner: Box<dyn reco_core::detect::detector::UnifiedDetector>,
                          roi: reco_core::calibration::FieldRoi|
-     -> Box<dyn reco_core::detector::UnifiedDetector> {
+     -> Box<dyn reco_core::detect::detector::UnifiedDetector> {
         Box::new(
             RoiFilteredDetector::new(inner, roi)
                 .with_class_anchor(person_id_for_roi, RoiAnchor::Bottom),
@@ -285,7 +285,7 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(trt_det)) => {
-                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(trt_det), roi)
                     } else {
@@ -316,7 +316,7 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(gpu_det)) => {
-                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(gpu_det), roi)
                     } else {
@@ -346,7 +346,7 @@ pub fn setup_autocam(
             Vec::new(),
         ) {
             Ok(metal_det) => {
-                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(metal_det), roi)
                     } else {
@@ -375,7 +375,7 @@ pub fn setup_autocam(
             Vec::new(), // labels loaded from sidecar if needed
         ) {
             Ok(ncnn_det) => {
-                let detector: Box<dyn reco_core::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(ncnn_det), roi)
                     } else {
@@ -395,7 +395,7 @@ pub fn setup_autocam(
     #[cfg(feature = "ort")]
     if !detection_active && !use_zero_copy {
         let yolo = CpuYoloDetector::from_file(model_path)?;
-        let detector: Box<dyn reco_core::detector::UnifiedDetector> =
+        let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
             if let Some(roi) = effective_roi {
                 wrap_with_roi(Box::new(yolo), roi)
             } else {

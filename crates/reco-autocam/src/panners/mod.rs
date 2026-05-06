@@ -1,9 +1,9 @@
 //! Panner implementations for reco-autocam.
 //!
 //! Panners are the camera-motion half of the tracker/panner split
-//! (see [`reco_core::panner::Panner`]). They consume a
-//! [`WorldState`](reco_core::tracker::WorldState) each frame and
-//! emit a [`ViewportPosition`](reco_core::director::ViewportPosition)
+//! (see [`reco_core::detect::panner::Panner`]). They consume a
+//! [`WorldState`](reco_core::detect::tracker::WorldState) each frame and
+//! emit a [`ViewportPosition`](reco_core::detect::director::ViewportPosition)
 //! without ever touching raw detections.
 //!
 //! Layout:

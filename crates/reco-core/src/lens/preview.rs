@@ -1,7 +1,7 @@
 //! Single-camera lens preview renderer.
 //!
 //! Renders one camera's input through orthographic projection with the
-//! KB4 fisheye shader. Unlike [`GpuUndistort`](crate::undistort::GpuUndistort)
+//! KB4 fisheye shader. Unlike [`GpuUndistort`](super::undistort::GpuUndistort)
 //! (which does blocking GPU readback), this produces a fresh
 //! `wgpu::Texture` per frame with `RENDER_ATTACHMENT | TEXTURE_BINDING`
 //! so the result can be handed to a UI framework as a zero-copy image.
@@ -12,8 +12,8 @@
 
 use crate::calibration::CameraParams;
 use crate::gpu::GpuContext;
-use crate::pipeline::YuvPlanes;
-use crate::renderer::{InputFormat, build_gpu_uniforms, opengl_to_wgpu_matrix};
+use crate::render::pipeline::YuvPlanes;
+use crate::render::renderer::{InputFormat, build_gpu_uniforms, opengl_to_wgpu_matrix};
 
 use bytemuck::Pod;
 use nalgebra::Orthographic3;
@@ -113,7 +113,7 @@ impl LensPreviewRenderer {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("lens_preview"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/fisheye.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/fisheye.wgsl").into()),
         });
 
         let vertices = quad_vertices(plane_aspect);
@@ -231,7 +231,7 @@ impl LensPreviewRenderer {
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lens_preview_uniforms"),
-            size: std::mem::size_of::<crate::renderer::GpuUniforms>() as u64,
+            size: std::mem::size_of::<crate::render::renderer::GpuUniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

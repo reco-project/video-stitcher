@@ -1,7 +1,7 @@
 //! `DetectionFilter` implementations that run in the session's
 //! pre-tracker chain.
 //!
-//! Each filter here is a [`reco_core::detection_filter::DetectionFilter`]
+//! Each filter here is a [`reco_core::detect::filter::DetectionFilter`]
 //! impl that operates on the shared `Vec<MappedDetection>` before any
 //! tracker sees it. Composability is the hard constraint: same type
 //! in, same type out.
@@ -14,8 +14,8 @@
 //!   tracker. Class-aware so a ball flicker doesn't penalize a
 //!   stationary player at the same camera pixel.
 
-use reco_core::detection_filter::{DetectionFilter, FilterContext};
-use reco_core::director::MappedDetection;
+use reco_core::detect::director::MappedDetection;
+use reco_core::detect::filter::{DetectionFilter, FilterContext};
 
 use crate::trackers::filters::FlickerFilter;
 
@@ -67,8 +67,8 @@ impl DetectionFilter for FlickerDetectionFilter {
 mod tests {
     use super::*;
     use reco_core::calibration::{CameraParams, MatchCalibration, PlaneLayout};
-    use reco_core::detector::CameraId;
-    use reco_core::director::MappedDetection;
+    use reco_core::detect::detector::CameraId;
+    use reco_core::detect::director::MappedDetection;
 
     fn test_calibration() -> MatchCalibration {
         MatchCalibration {

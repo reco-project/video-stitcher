@@ -26,9 +26,9 @@
 //! emits a log line so an operator can reconstruct the camera's
 //! decisions from the log alone.
 
-use reco_core::director::ViewportPosition;
-use reco_core::panner::{PanContext, Panner};
-use reco_core::tracker::{TrackState, TrackedEntity, WorldState};
+use reco_core::detect::director::ViewportPosition;
+use reco_core::detect::panner::{PanContext, Panner};
+use reco_core::detect::tracker::{TrackState, TrackedEntity, WorldState};
 
 const LOG_INTERVAL: u64 = 30;
 
@@ -485,7 +485,7 @@ impl Panner for FieldPanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::detector::CameraId;
+    use reco_core::detect::detector::CameraId;
 
     fn player(yaw: f32, pitch: f32, id: u64) -> TrackedEntity {
         TrackedEntity {

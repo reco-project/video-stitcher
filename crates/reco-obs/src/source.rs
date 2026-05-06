@@ -28,11 +28,11 @@ use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::MatchCalibration;
 use reco_core::core::StitchCore;
 use reco_core::core::types::{RenderOutcome, StitchCoreConfig};
-use reco_core::director::ViewportPosition;
+use reco_core::detect::director::ViewportPosition;
 use reco_core::gpu::GpuContext;
-use reco_core::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
-use reco_core::renderer::InputFormat;
-use reco_core::viewport::ViewportConfig;
+use reco_core::render::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
+use reco_core::render::renderer::InputFormat;
+use reco_core::render::viewport::ViewportConfig;
 
 use crate::ffi;
 

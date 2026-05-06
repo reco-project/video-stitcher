@@ -5,10 +5,10 @@
 //! the detection schedule (`should_run_detection`), YUV detection
 //! dispatch, panorama-coordinate mapping, and session-start anchoring.
 
-use crate::detector::{CameraId, ChromaFormat, Detection, DetectorFrame, RawFrame};
-use crate::director::{MappedDetection, ViewportPosition};
-use crate::pipeline::YuvPlanes;
+use crate::detect::detector::{CameraId, ChromaFormat, Detection, DetectorFrame, RawFrame};
+use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::projection;
+use crate::render::pipeline::YuvPlanes;
 
 impl super::StitchCore {
     pub(super) fn anchor_session_start(&mut self) {
@@ -38,7 +38,7 @@ impl super::StitchCore {
         // `panner::dispatch` helper. When no panner is attached the pose
         // stays at the pipeline default.
         let _ = fresh_detection; // reserved for future freshness-aware panners
-        let raw = crate::panner::dispatch(
+        let raw = crate::detect::panner::dispatch(
             self.panner.as_mut(),
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
@@ -46,7 +46,7 @@ impl super::StitchCore {
             // StitchCore does not own an event sink. StitchSession
             // does the tracing when it is the active entry point.
             None,
-            crate::panner::DispatchContext {
+            crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
                 calibration: &self.pipeline.calibration,
                 frame_index: self.frame_count,

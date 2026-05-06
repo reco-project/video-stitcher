@@ -347,7 +347,7 @@ impl YuvStackPacker {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("yuv420p_stack_pack"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/yuv420p_stack_pack.wgsl").into(),
+                include_str!("../shaders/yuv420p_stack_pack.wgsl").into(),
             ),
         });
 
@@ -755,7 +755,7 @@ impl YuvStackPacker {
     /// first two calls (warmup); otherwise returns the packed atlas.
     ///
     /// Uses the same pattern as
-    /// [`crate::rgba_readback::RgbaReadback::readback`]: a
+    /// [`crate::gpu::rgba_readback::RgbaReadback::readback`]: a
     /// non-blocking `PollType::Poll` first (since the GPU work is
     /// 2 frames old and should already be done), falling back to
     /// `wait_indefinitely` + blocking `recv` if the poll didn't
@@ -828,7 +828,6 @@ impl YuvStackPacker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gpu::GpuContext;
 
     /// Fill an R8Unorm texture with a single byte value across all
     /// pixels and return the view. Helper for the smoke tests below.

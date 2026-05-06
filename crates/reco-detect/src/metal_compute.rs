@@ -17,7 +17,7 @@
 use metal::{Buffer, CommandQueue, ComputePipelineState, Device, MTLResourceOptions, MTLSize};
 
 use reco_core::gpu::GpuContext;
-use reco_core::metal_interop::{CVPixelBufferRef, MetalInteropError, MetalTextureCache};
+use reco_core::interop::metal::{CVPixelBufferRef, MetalInteropError, MetalTextureCache};
 
 /// Errors from Metal compute operations.
 #[derive(Debug, thiserror::Error)]
@@ -288,7 +288,7 @@ impl MetalPreprocessPipeline {
         reco_core::profile_scope!("metal_preprocess");
 
         // Detect pixel format (video-range vs full-range).
-        let format = unsafe { reco_core::metal_interop::pixel_buffer_format(cv_pixel_buffer) };
+        let format = unsafe { reco_core::interop::metal::pixel_buffer_format(cv_pixel_buffer) };
         self.is_full_range = format == 0x34323066; // '420f'
 
         // Import Y and UV planes as Metal textures (zero-copy via IOSurface).

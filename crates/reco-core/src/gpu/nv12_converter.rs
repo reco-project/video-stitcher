@@ -28,7 +28,7 @@
 //! - GPU compute shader: ~0.1ms
 //! - GPU readback of NV12 (3.1 MB): ~0.29ms
 
-use crate::gpu::GpuContext;
+use super::GpuContext;
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
@@ -110,7 +110,7 @@ impl Nv12Converter {
         // Compile compute shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("rgba_to_nv12"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/rgba_to_nv12.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/rgba_to_nv12.wgsl").into()),
         });
 
         // Bind group layout: input texture + output buffer + params

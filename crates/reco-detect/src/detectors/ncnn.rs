@@ -19,7 +19,7 @@ use std::ffi::{CString, c_void};
 use std::os::raw::c_char;
 use std::path::Path;
 
-use reco_core::detector::{
+use reco_core::detect::detector::{
     CameraId, ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
 

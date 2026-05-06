@@ -26,7 +26,7 @@
 //! Send`); the UI thread pulls and dispatches. This matches
 //! PoseControl's own non-`Sync` model.
 
-use reco_core::director::ViewportPosition;
+use reco_core::detect::director::ViewportPosition;
 
 use crate::pose_control::{HotkeyIntent, PoseControl};
 use crate::{CaptureIntent, ControlIntent, ModelSelectIntent, PoseIntent, QualityIntent};

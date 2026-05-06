@@ -4,7 +4,7 @@
 //! convert to NV12, and fan out to attached encoders.
 
 use super::StitchSession;
-use crate::director::ViewportPosition;
+use crate::detect::director::ViewportPosition;
 use crate::session::types::{SessionError, StepResult};
 use crate::source::StereoFrame;
 
@@ -46,7 +46,7 @@ impl StitchSession {
             let cam =
                 crate::projection::VirtualCamera::new(&self.core.pipeline().scene.camera_position);
             let rig_roll = self.core.pipeline().viewport().rig_roll;
-            let (ry, rp) = crate::rig_correction::world_to_render_pose(
+            let (ry, rp) = crate::lens::rig_correction::world_to_render_pose(
                 &cam,
                 clamped.yaw,
                 clamped.pitch,
@@ -60,10 +60,12 @@ impl StitchSession {
         // Trace: PosePresented. This is the pose the renderer will
         // actually consume for this frame (post-clamp, post-FOV-cap).
         if let Some(sink) = self.event_sink.as_deref_mut() {
-            sink.emit(crate::pipeline_event::PipelineEvent::PosePresented {
-                frame_index: self.frame_count,
-                pose: pos,
-            });
+            sink.emit(
+                crate::detect::pipeline_event::PipelineEvent::PosePresented {
+                    frame_index: self.frame_count,
+                    pose: pos,
+                },
+            );
         }
 
         if let Some(fov) = pos.fov_degrees {
@@ -202,8 +204,8 @@ impl StitchSession {
         let ry = right_y.create_view(&wgpu::TextureViewDescriptor::default());
         let ru = right_uv.create_view(&wgpu::TextureViewDescriptor::default());
         self.core.pack_gpu_stacked_replay_from_views(
-            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
-            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
         );
         Ok(())
     }
@@ -212,14 +214,14 @@ impl StitchSession {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn process_metal_frame(
         &mut self,
-        left: &crate::metal_interop::RetainedCVPixelBuffer,
-        right: &crate::metal_interop::RetainedCVPixelBuffer,
+        left: &crate::interop::metal::RetainedCVPixelBuffer,
+        right: &crate::interop::metal::RetainedCVPixelBuffer,
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
         // Lazily create the texture cache on first MetalResident frame.
         if self.metal_texture_cache.is_none() {
-            self.metal_texture_cache = Some(crate::metal_interop::MetalTextureCache::new(
+            self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
                 self.core.gpu(),
             )?);
             log::info!("Metal zero-copy: texture cache initialized");

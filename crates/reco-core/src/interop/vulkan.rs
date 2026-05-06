@@ -14,8 +14,8 @@
 //! - `VK_KHR_external_memory_fd` specification
 //! - wgpu HAL interop API (`texture_from_raw`, `create_texture_from_hal`)
 
-use crate::cuda_interop::{CudaInteropError, CudaSharedMemory};
 use crate::gpu::GpuContext;
+use crate::interop::cuda::{CudaInteropError, CudaSharedMemory};
 
 /// A wgpu texture backed by CUDA shared memory.
 ///
@@ -26,7 +26,7 @@ pub struct SharedTexture {
     pub texture: wgpu::Texture,
     /// The CUDA device pointer to the shared memory.
     /// Used for `cuMemcpy2D` from NVDEC output to this texture.
-    pub cuda_ptr: crate::cuda_interop::CUdeviceptr,
+    pub cuda_ptr: crate::interop::cuda::CUdeviceptr,
     /// Pitch (row stride in bytes) of the Vulkan image.
     /// May differ from `width * bpp` due to alignment requirements.
     pub pitch: usize,
@@ -67,7 +67,7 @@ pub fn create_shared_texture(
     let pitch = (row_bytes + 255) & !255; // align to 256
     let alloc_size = pitch * height as usize;
 
-    let shared_mem = crate::cuda_interop::allocate_shared_memory(alloc_size)?;
+    let shared_mem = crate::interop::cuda::allocate_shared_memory(alloc_size)?;
     let cuda_ptr = shared_mem.device_ptr;
     let fd = shared_mem.shared_handle;
 
@@ -308,7 +308,7 @@ pub fn create_nv12_shared_texture(
     width: u32,
     height: u32,
     plane: Nv12Plane,
-    pixel_format: crate::renderer::GpuPixelFormat,
+    pixel_format: crate::render::renderer::GpuPixelFormat,
 ) -> Result<SharedTexture, CudaInteropError> {
     match plane {
         Nv12Plane::Y => create_shared_texture(gpu, width, height, pixel_format.y_format()),
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_create_shared_texture() {
-        if !crate::cuda_interop::is_cuda_available() {
+        if !crate::interop::cuda::is_cuda_available() {
             println!("Skipping: CUDA not available");
             return;
         }
@@ -373,7 +373,7 @@ mod tests {
     /// (like Gyroflow does) is performing an invalid operation.
     #[test]
     fn test_fd_ownership_transfers_to_vulkan() {
-        if !crate::cuda_interop::is_cuda_available() {
+        if !crate::interop::cuda::is_cuda_available() {
             println!("Skipping: CUDA not available");
             return;
         }
@@ -393,7 +393,7 @@ mod tests {
 
         // Step 1: Allocate CUDA shared memory and grab the fd (small size for Jetson compat)
         let shared_mem =
-            crate::cuda_interop::allocate_shared_memory(256 * 256).expect("alloc shared mem");
+            crate::interop::cuda::allocate_shared_memory(256 * 256).expect("alloc shared mem");
         let fd = shared_mem.shared_handle;
         println!("CUDA exported fd = {fd}");
 

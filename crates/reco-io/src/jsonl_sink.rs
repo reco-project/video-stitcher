@@ -1,17 +1,17 @@
-//! JSON Lines [`PipelineEventSink`](reco_core::pipeline_event::PipelineEventSink) - the default shipping sink.
+//! JSON Lines [`PipelineEventSink`](reco_core::detect::pipeline_event::PipelineEventSink) - the default shipping sink.
 //!
-//! Opens a file, serializes each [`PipelineEvent`](reco_core::pipeline_event::PipelineEvent) to JSON, and writes
+//! Opens a file, serializes each [`PipelineEvent`](reco_core::detect::pipeline_event::PipelineEvent) to JSON, and writes
 //! one event per line terminated by `\n`. Compatible with the usual
 //! jq / streaming parsers: every line is a complete JSON object.
 //!
-//! Wrap in [`reco_core::pipeline_event::BackpressuredSink`] so serde
+//! Wrap in [`reco_core::detect::pipeline_event::BackpressuredSink`] so serde
 //! serialization and file I/O run on a background thread rather than
 //! the render loop.
 //!
 //! # Example
 //!
 //! ```rust,no_run
-//! use reco_core::pipeline_event::BackpressuredSink;
+//! use reco_core::detect::pipeline_event::BackpressuredSink;
 //! use reco_io::jsonl_sink::JsonlSink;
 //!
 //! let inner = JsonlSink::create("trace.jsonl").unwrap();
@@ -19,7 +19,7 @@
 //! // session.set_event_sink(Box::new(sink));
 //! ```
 
-use reco_core::pipeline_event::{PipelineEvent, PipelineEventSink};
+use reco_core::detect::pipeline_event::{PipelineEvent, PipelineEventSink};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
@@ -79,7 +79,7 @@ impl Drop for JsonlSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::pipeline_event::PipelineEvent;
+    use reco_core::detect::pipeline_event::PipelineEvent;
     use std::io::BufRead;
 
     fn mk_frame(i: u64) -> PipelineEvent {

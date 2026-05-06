@@ -38,15 +38,15 @@ impl StitchSession {
             .push(AsyncEncodeThread::new(encoder, width, height, buffer_count));
     }
 
-    /// Attach a [`UnifiedDetector`](crate::detector::UnifiedDetector)
+    /// Attach a [`UnifiedDetector`](crate::detect::detector::UnifiedDetector)
     /// for object detection on raw camera frames.
     ///
-    /// The backend declares which [`DetectorFrame`](crate::detector::DetectorFrame)
+    /// The backend declares which [`DetectorFrame`](crate::detect::detector::DetectorFrame)
     /// residencies it accepts. Session dispatches CPU frames (YUV /
     /// NV12) and CUDA frames (shared textures) through the same
     /// detector; backends return `UnsupportedFrameKind` for residencies
     /// they cannot handle and session logs+drops those at the boundary.
-    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::UnifiedDetector>) {
+    pub fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
         self.detection.set_detector(detector);
     }
 
@@ -61,12 +61,12 @@ impl StitchSession {
 
     /// Attach a pipeline event sink for structured observability.
     ///
-    /// See [`crate::pipeline_event`] for the event vocabulary and the
+    /// See [`crate::detect::pipeline_event`] for the event vocabulary and the
     /// `BackpressuredSink` wrapper that keeps emission off the render
     /// thread. Typical usage:
     ///
     /// ```rust,ignore
-    /// use reco_core::pipeline_event::BackpressuredSink;
+    /// use reco_core::detect::pipeline_event::BackpressuredSink;
     /// use reco_io::jsonl_sink::JsonlSink;
     ///
     /// let inner = JsonlSink::create("trace.jsonl")?;
@@ -78,12 +78,15 @@ impl StitchSession {
     /// all. There is deliberately no `clear_event_sink` - in a
     /// <1.0.0 codebase we re-create the session for that. When an
     /// external consumer hits this friction we'll add one.
-    pub fn set_event_sink(&mut self, sink: Box<dyn crate::pipeline_event::PipelineEventSink>) {
+    pub fn set_event_sink(
+        &mut self,
+        sink: Box<dyn crate::detect::pipeline_event::PipelineEventSink>,
+    ) {
         log::info!("StitchSession: event sink attached");
         self.event_sink = Some(sink);
     }
 
-    /// Append a [`DetectionFilter`](crate::detection_filter::DetectionFilter)
+    /// Append a [`DetectionFilter`](crate::detect::filter::DetectionFilter)
     /// to the pre-tracker chain. Filters run in insertion order before
     /// the trackers see the detection list. With an event sink
     /// attached, each stage emits
@@ -94,7 +97,7 @@ impl StitchSession {
     /// 2. Class-specific filters (feet-in-ROI, hands-raised, etc).
     pub fn add_detection_filter(
         &mut self,
-        filter: Box<dyn crate::detection_filter::DetectionFilter>,
+        filter: Box<dyn crate::detect::filter::DetectionFilter>,
     ) {
         log::info!("StitchSession: detection filter '{}' added", filter.name());
         self.detection_filters.push(filter);
@@ -104,7 +107,7 @@ impl StitchSession {
     /// [`StitchCore::set_ball_tracker`](crate::core::StitchCore::set_ball_tracker)
     /// for semantics - the session mirrors the core's API so push
     /// and pull consumers stay symmetric.
-    pub fn set_ball_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
+    pub fn set_ball_tracker(&mut self, tracker: Box<dyn crate::detect::tracker::Tracker>) {
         log::info!(
             "StitchSession: ball tracker attached (class_id={})",
             tracker.class_id()
@@ -119,7 +122,7 @@ impl StitchSession {
 
     /// Attach a multi-entity player tracker. Mirror of
     /// [`StitchCore::set_player_tracker`](crate::core::StitchCore::set_player_tracker).
-    pub fn set_player_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
+    pub fn set_player_tracker(&mut self, tracker: Box<dyn crate::detect::tracker::Tracker>) {
         log::info!(
             "StitchSession: player tracker attached (class_id={})",
             tracker.class_id()
@@ -135,7 +138,7 @@ impl StitchSession {
     /// Attach a panner. When set, the tracker/panner path owns
     /// pose resolution each frame; without a panner the pose stays at
     /// the pipeline default.
-    pub fn set_panner(&mut self, panner: Box<dyn crate::panner::Panner>) {
+    pub fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         log::info!("StitchSession: panner attached");
         self.panner = Some(panner);
     }
@@ -200,8 +203,8 @@ impl StitchSession {
     /// its path choice once at enable time.
     pub fn enable_gpu_stacked_replay(
         &mut self,
-        layout: crate::yuv_stack_packer::StackGridLayout,
-        output_size: crate::yuv_stack_packer::OutputTileSize,
+        layout: crate::gpu::yuv_stack_packer::StackGridLayout,
+        output_size: crate::gpu::yuv_stack_packer::OutputTileSize,
     ) -> Result<(), crate::core::types::StitchCoreError> {
         self.core.enable_gpu_stacked_replay(layout, output_size)
     }

@@ -1,6 +1,6 @@
 //! Virtual camera basis for yaw/pitch decomposition.
 
-use crate::director::ViewportPosition;
+use crate::detect::director::ViewportPosition;
 
 use nalgebra::Vector3;
 

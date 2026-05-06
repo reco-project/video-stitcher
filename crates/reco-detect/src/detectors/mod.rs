@@ -16,7 +16,7 @@ pub mod trt;
 
 use std::path::Path;
 
-use reco_core::detector::{CameraId, Detection};
+use reco_core::detect::detector::{CameraId, Detection};
 
 /// Parse YOLO end-to-end NMS output `[1, N, 6]` into detections.
 ///
@@ -132,7 +132,7 @@ pub fn read_labels_file(path: impl AsRef<Path>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::detector::CameraId;
+    use reco_core::detect::detector::CameraId;
 
     /// Build a synthetic [1, N, 6] flat tensor with the given detections.
     /// Each detection is [x1, y1, x2, y2, confidence, class_id].

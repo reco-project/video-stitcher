@@ -8,15 +8,15 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::calibration::MatchCalibration;
-use crate::director::ViewportPosition;
-use crate::pipeline::PipelineError;
-use crate::planes::YuvPlanes;
+use crate::detect::director::ViewportPosition;
+use crate::gpu::rgba_readback::RgbaReadbackError;
+use crate::gpu::yuv_stack_packer::{PackerError, StackedAtlas};
 use crate::projection::Projection;
-use crate::renderer::InputFormat;
-use crate::rgba_readback::RgbaReadbackError;
+use crate::render::pipeline::PipelineError;
+use crate::render::planes::YuvPlanes;
+use crate::render::renderer::InputFormat;
+use crate::render::viewport::ViewportConfig;
 use crate::source::CameraInput;
-use crate::viewport::ViewportConfig;
-use crate::yuv_stack_packer::{PackerError, StackedAtlas};
 
 /// Errors from [`super::StitchCore`]. `Clone + Send + Sync` so consumers
 /// posting render results to worker-thread channels carry the typed

@@ -1,12 +1,12 @@
 //! Tracker trait and world-state primitives for AI camera control.
 //!
 //! A `Tracker` turns a per-frame stream of noisy `MappedDetection`s
-//! (from [`crate::director`]) into a clean list of `TrackedEntity`s
+//! (from [`super::director`]) into a clean list of `TrackedEntity`s
 //! with stable identities and a tri-valued lifecycle (`TrackState`).
 //! Trackers are single-responsibility:
 //! one class (ball, player, …) per tracker. Multiple trackers run
 //! in parallel each frame and the session merges their outputs into
-//! a `WorldState` that a [`Panner`](crate::panner::Panner) consumes.
+//! a `WorldState` that a [`Panner`](super::panner::Panner) consumes.
 //!
 //! The split is deliberate: detection-noise rejection, identity, and
 //! trajectory smoothing live here; camera-motion decisions live in
@@ -32,8 +32,8 @@
 //! - No implementations here. `BallTracker`, `PlayerTracker`, and
 //!   future tracker variants ship in `reco-autocam::trackers`.
 
-use crate::detector::CameraId;
-use crate::director::MappedDetection;
+use super::detector::CameraId;
+use super::director::MappedDetection;
 
 /// A tri-valued lifecycle flag attached to every [`TrackedEntity`].
 ///
@@ -104,7 +104,7 @@ pub struct TrackedEntity {
 
 /// The merged per-frame output of every registered tracker.
 ///
-/// This is the read-only view a [`Panner`](crate::panner::Panner)
+/// This is the read-only view a [`Panner`](super::panner::Panner)
 /// consumes each frame. The struct is intentionally flat — not a trait
 /// — so consumer crates can extend it with new fields over time in an
 /// additive, backwards-compatible way.

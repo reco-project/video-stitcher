@@ -28,9 +28,9 @@ pub use geometry::point_in_polygon;
 pub(crate) use virtual_camera::VirtualCamera;
 
 use crate::calibration::{CameraParams, MatchCalibration};
-use crate::detector::CameraId;
-use crate::director::ViewportPosition;
-use crate::scene::SceneGeometry;
+use crate::detect::detector::CameraId;
+use crate::detect::director::ViewportPosition;
+use crate::render::scene::SceneGeometry;
 
 use nalgebra::{Point3, Vector3};
 
@@ -87,7 +87,7 @@ pub trait Projection: Send + Sync {
 
 /// Marker type for today's 2-plane L-shape stereo projection.
 ///
-/// The geometry is documented in [`scene::SceneGeometry`](crate::scene::SceneGeometry).
+/// The geometry is documented in [`scene::SceneGeometry`](crate::render::scene::SceneGeometry).
 /// All the real math still lives in the free functions below and in
 /// `stitch_renderer.rs`; this struct carries no state today. It is
 /// here to make StitchCore's `Box<dyn Projection>` slot have a
@@ -229,7 +229,7 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 /// center the virtual camera on it.
 ///
 /// `norm_x` and `norm_y` are in normalized `[0.0, 1.0]` image coordinates
-/// (as returned by [`Detection`](crate::detector::Detection)).
+/// (as returned by [`Detection`](crate::detect::detector::Detection)).
 ///
 /// Returns `None` if the inverse distortion fails to converge (rare,
 /// indicates an extreme point far outside the valid lens area).
@@ -238,9 +238,9 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 ///
 /// ```rust
 /// use reco_core::projection::camera_to_panorama;
-/// use reco_core::detector::CameraId;
+/// use reco_core::detect::detector::CameraId;
 /// use reco_core::calibration::MatchCalibration;
-/// use reco_core::scene::SceneGeometry;
+/// use reco_core::render::scene::SceneGeometry;
 ///
 /// # fn example(cal: &MatchCalibration) {
 /// let aspect = cal.left.width as f32 / cal.left.height as f32;

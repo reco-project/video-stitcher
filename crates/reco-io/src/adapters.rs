@@ -31,7 +31,7 @@ pub struct FfmpegFileSource {
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
-    pixel_format: reco_core::renderer::GpuPixelFormat,
+    pixel_format: reco_core::render::renderer::GpuPixelFormat,
     /// Rotation from stream metadata (0, 90, 180, 270).
     left_rotation: i32,
     right_rotation: i32,
@@ -150,7 +150,7 @@ impl FfmpegFileSource {
     ///
     /// Returns `GpuPixelFormat::P010` for 10-bit sources or
     /// `GpuPixelFormat::Nv12` for 8-bit.
-    pub fn pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+    pub fn pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.pixel_format
     }
 
@@ -338,7 +338,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         self.right_rotation
     }
 
-    fn gpu_pixel_format(&self) -> reco_core::renderer::GpuPixelFormat {
+    fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.pixel_format
     }
 

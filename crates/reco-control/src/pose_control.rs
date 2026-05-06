@@ -49,7 +49,7 @@
 //! cross-thread access wrap in `Mutex`. Send-only is sufficient for
 //! the worker / UI split every consumer actually needs.
 
-use reco_core::director::ViewportPosition;
+use reco_core::detect::director::ViewportPosition;
 use reco_core::projection::CoverageBoundary;
 
 /// Hotkey actions consumers bind to their input system (OBS hotkey
@@ -422,7 +422,7 @@ impl PoseControl {
     pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
         ViewportPosition {
             yaw: self.current_yaw_rad,
-            pitch: reco_core::rig_correction::render_pitch(
+            pitch: reco_core::lens::rig_correction::render_pitch(
                 self.current_yaw_rad,
                 self.current_pitch_rad,
                 rig_tilt,

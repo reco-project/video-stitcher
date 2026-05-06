@@ -18,8 +18,8 @@
 //! live in reco-autocam where they can depend on autocam-internal
 //! helpers without polluting reco-core.
 
+use super::director::MappedDetection;
 use crate::calibration::MatchCalibration;
-use crate::director::MappedDetection;
 
 /// Per-frame context handed to every filter.
 ///

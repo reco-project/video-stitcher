@@ -18,7 +18,7 @@
 //! // source implements FrameSource - pass to session.run()
 //! ```
 
-use reco_core::renderer::GpuPixelFormat;
+use reco_core::render::renderer::GpuPixelFormat;
 use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame};
 
 /// GPU-aware stereo file source that auto-selects the optimal decode path.
@@ -52,7 +52,7 @@ enum SourceMode {
     #[cfg(target_os = "linux")]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
-    MetalZeroCopy(std::sync::mpsc::Receiver<reco_core::zero_copy::VtFramePair>),
+    MetalZeroCopy(std::sync::mpsc::Receiver<reco_core::interop::zero_copy::VtFramePair>),
     #[cfg(target_os = "windows")]
     D3d11ZeroCopy(Box<WindowsZeroCopyState>),
 }
@@ -71,7 +71,7 @@ struct WindowsZeroCopyState {
 struct LinuxZeroCopyState {
     /// Paired frame signal receiver. Made `Option` so Drop can take it
     /// early to unblock the pairing thread before joining decode threads.
-    frame_rx: Option<std::sync::mpsc::Receiver<reco_core::zero_copy::GpuFrameSignal>>,
+    frame_rx: Option<std::sync::mpsc::Receiver<reco_core::interop::zero_copy::GpuFrameSignal>>,
     /// Shared textures (kept alive until Drop).
     shared: reco_core::session::SharedTextureSet,
     /// Decode thread join handles.
@@ -247,9 +247,9 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
+        use reco_core::interop::vulkan::{Nv12Plane, create_nv12_shared_texture};
+        use reco_core::interop::zero_copy::GpuBufInfo;
         use reco_core::session::SharedTextureSet;
-        use reco_core::vulkan_interop::{Nv12Plane, create_nv12_shared_texture};
-        use reco_core::zero_copy::GpuBufInfo;
 
         let map_err = |msg: String| SourceError::Init {
             path: left.first_path().display().to_string(),
@@ -521,8 +521,8 @@ impl SmartFileSource {
     pub fn gpu_buf_info(
         &self,
     ) -> Option<(
-        &reco_core::zero_copy::GpuBufInfo,
-        &reco_core::zero_copy::GpuBufInfo,
+        &reco_core::interop::zero_copy::GpuBufInfo,
+        &reco_core::interop::zero_copy::GpuBufInfo,
     )> {
         match &self.mode {
             SourceMode::GpuZeroCopy(state) => {

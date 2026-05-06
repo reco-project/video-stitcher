@@ -8,7 +8,7 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use reco_core::cuda_interop::{CUdeviceptr, CudaInteropError, CudaKernel};
+use reco_core::interop::cuda::{CUdeviceptr, CudaInteropError, CudaKernel};
 
 /// PTX source for the P010-to-NV12 conversion kernel.
 ///
@@ -103,11 +103,11 @@ fn get_p010_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
 ///
 /// Note: this performs a 2D-pitched to linear conversion. If the source
 /// has padding (pitch > width), use [`p010_plane_to_nv12`] instead, which
-/// handles pitched layouts via [`cuda_2d_copy`](reco_core::cuda_interop::cuda_2d_copy)
+/// handles pitched layouts via [`cuda_2d_copy`](reco_core::interop::cuda::cuda_2d_copy)
 /// style semantics. For contiguous data (pitch == width * 2), this function
 /// is simpler.
 pub fn p010_to_nv12(src: CUdeviceptr, dst: CUdeviceptr, n: u32) -> Result<(), CudaInteropError> {
-    reco_core::cuda_interop::cuda_ensure_context()?;
+    reco_core::interop::cuda::cuda_ensure_context()?;
     let kernel = get_p010_kernel()?;
 
     let block = 256u32;
@@ -128,7 +128,7 @@ pub fn p010_to_nv12(src: CUdeviceptr, dst: CUdeviceptr, n: u32) -> Result<(), Cu
     }
 
     // Synchronize to ensure kernel completion before using the output.
-    reco_core::cuda_interop::cuda_synchronize()?;
+    reco_core::interop::cuda::cuda_synchronize()?;
 
     Ok(())
 }
@@ -510,7 +510,7 @@ pub fn nv12_to_rgb_chw_fullrange(
     pad_y: u32,
     scale: f32,
 ) -> Result<(), CudaInteropError> {
-    reco_core::cuda_interop::cuda_ensure_context()?;
+    reco_core::interop::cuda::cuda_ensure_context()?;
     let kernel = get_nv12_kernel()?;
 
     let block = (16u32, 16u32, 1u32);
@@ -546,7 +546,7 @@ pub fn nv12_to_rgb_chw_fullrange(
         kernel.launch(grid, block, 0, &mut args)?;
     }
 
-    reco_core::cuda_interop::cuda_synchronize()?;
+    reco_core::interop::cuda::cuda_synchronize()?;
     Ok(())
 }
 
@@ -580,7 +580,7 @@ pub fn normalize_hwc_to_chw(
     width: u32,
     height: u32,
 ) -> Result<(), CudaInteropError> {
-    reco_core::cuda_interop::cuda_ensure_context()?;
+    reco_core::interop::cuda::cuda_ensure_context()?;
     let kernel = get_kernel()?;
 
     let block = (16u32, 16u32, 1u32);
@@ -602,7 +602,7 @@ pub fn normalize_hwc_to_chw(
         kernel.launch(grid, block, 0, &mut args)?;
     }
 
-    reco_core::cuda_interop::cuda_synchronize()?;
+    reco_core::interop::cuda::cuda_synchronize()?;
     Ok(())
 }
 
@@ -734,7 +734,7 @@ pub fn normalize_rgba_to_chw(
     width: u32,
     height: u32,
 ) -> Result<(), CudaInteropError> {
-    reco_core::cuda_interop::cuda_ensure_context()?;
+    reco_core::interop::cuda::cuda_ensure_context()?;
     let kernel = get_rgba_kernel()?;
 
     let block = (16u32, 16u32, 1u32);
@@ -756,6 +756,6 @@ pub fn normalize_rgba_to_chw(
         kernel.launch(grid, block, 0, &mut args)?;
     }
 
-    reco_core::cuda_interop::cuda_synchronize()?;
+    reco_core::interop::cuda::cuda_synchronize()?;
     Ok(())
 }

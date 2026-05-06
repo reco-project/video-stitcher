@@ -145,7 +145,7 @@ impl StitchSession {
             let decode_time = frame_t0.elapsed();
 
             if let Some(sink) = self.event_sink.as_deref_mut() {
-                sink.emit(crate::pipeline_event::PipelineEvent::FrameStart {
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
                     frame_index: self.frame_count,
                     timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
                 });
@@ -178,7 +178,7 @@ impl StitchSession {
                 } => {
                     if self.d3d11_staging_pool.is_none() {
                         let (w, h) = self.core.pipeline().source_info();
-                        match crate::d3d11_interop::D3d11StagingPool::new(self.core.gpu(), w, h) {
+                        match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h) {
                             Ok(pool) => {
                                 log::info!(
                                     "D3D11VA staging pool created: {}x{}, 4 NV12 slots",
@@ -268,7 +268,10 @@ impl StitchSession {
     #[cfg(target_os = "linux")]
     fn step_gpu_with_bufs(
         &mut self,
-        buf_info: &Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
+        buf_info: &Option<(
+            crate::interop::zero_copy::GpuBufInfo,
+            crate::interop::zero_copy::GpuBufInfo,
+        )>,
         left_slot: u8,
         right_slot: u8,
         elapsed: std::time::Duration,
@@ -302,11 +305,11 @@ impl StitchSession {
             let ls = left_slot as usize;
             let rs = right_slot as usize;
             self.core.pack_gpu_stacked_replay_from_views(
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
                     y: &views[ls * 2],
                     uv: &views[ls * 2 + 1],
                 },
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
                     y: &views[4 + rs * 2],
                     uv: &views[4 + rs * 2 + 1],
                 },

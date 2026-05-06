@@ -546,13 +546,13 @@ impl StitchJob {
 
         // Determine input format from source capabilities
         let input_format = if source.is_gpu_resident() {
-            reco_core::renderer::InputFormat::Nv12
+            reco_core::render::renderer::InputFormat::Nv12
         } else {
-            reco_core::renderer::InputFormat::Yuv420p
+            reco_core::render::renderer::InputFormat::Yuv420p
         };
 
         // Build session
-        let viewport = reco_core::viewport::ViewportConfig {
+        let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
             blend_width: self.blend_width,
@@ -708,7 +708,7 @@ impl StitchJob {
                 // sized by the source tile dims (layout.capacity
                 // is N, atlas h = output.height * rows).
                 let (out_w, out_h) = cfg.scale.unwrap_or((info.width, info.height));
-                let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(
+                let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(
                     out_w, out_h, 2,
                 )
                 .ok_or_else(|| {
@@ -719,9 +719,9 @@ impl StitchJob {
                     ))
                 })?;
                 let output_size = if cfg.scale.is_some() {
-                    reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+                    reco_core::gpu::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
                 } else {
-                    reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+                    reco_core::gpu::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
                 };
                 session
                     .enable_gpu_stacked_replay(layout, output_size)

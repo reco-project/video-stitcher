@@ -25,11 +25,11 @@ use crate::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3
 use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
 use ort::session::Session;
 use ort::value::{Shape, TensorRefMut};
-use reco_core::cuda_interop::{
-    CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
-};
-use reco_core::detector::{
+use reco_core::detect::detector::{
     CameraId, Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
+};
+use reco_core::interop::cuda::{
+    CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
 };
 
 use super::postprocess;
@@ -252,7 +252,7 @@ impl OrtGpuDetector {
         // Ensure a CUDA context is current on this thread. The zero-copy
         // frame loop may not have one after NVDEC decode pushes/pops its
         // own context.
-        reco_core::cuda_interop::cuda_ensure_context()
+        reco_core::interop::cuda::cuda_ensure_context()
             .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
 
         // Step 0: Convert P010 (10-bit) to 8-bit NV12 if needed.

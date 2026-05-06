@@ -23,10 +23,10 @@
 //! reduces CPU-GPU transfer from 8.3 MB to 3.1 MB per frame (62% less
 //! bandwidth) and eliminates CPU-side swscale color conversion entirely.
 
+use super::scene::SceneGeometry;
+use super::viewport::ResolvedViewport;
 use crate::calibration::{CameraParams, MatchCalibration};
 use crate::gpu::GpuContext;
-use crate::scene::SceneGeometry;
-use crate::viewport::ResolvedViewport;
 
 use bytemuck::{Pod, Zeroable};
 use nalgebra::{Matrix4, Perspective3, Point3, UnitQuaternion};
@@ -42,7 +42,7 @@ const FAR_PLANE: f32 = 5.0;
 /// Aspect ratio of scene planes (matches GoPro 16:9 capture).
 ///
 /// Deprecated: derive the aspect ratio from camera parameters instead.
-/// Use [`SceneGeometry::from_layout_with_aspect`](crate::scene::SceneGeometry::from_layout_with_aspect)
+/// Use [`SceneGeometry::from_layout_with_aspect`](crate::render::scene::SceneGeometry::from_layout_with_aspect)
 /// with `camera.width as f32 / camera.height as f32`.
 #[deprecated(
     since = "0.1.0",
@@ -261,7 +261,7 @@ impl Renderer {
         // Shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("fisheye"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/fisheye.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/fisheye.wgsl").into()),
         });
 
         // Vertex buffer (quad for both planes — same shape, different model matrices)
@@ -610,7 +610,7 @@ impl Renderer {
     ///
     /// Data must be `width * height * 4` bytes in (R, G, B, A) byte order.
     /// Upload-side swizzling translates BGRA sources before calling this -
-    /// see [`pipeline::BgraPlanes`](crate::pipeline::BgraPlanes).
+    /// see [`pipeline::BgraPlanes`](crate::render::pipeline::BgraPlanes).
     pub fn upload_left_bgra(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
         debug_assert_eq!(
             self.input_format,
@@ -753,7 +753,7 @@ impl Renderer {
     }
 
     /// Create fresh `TextureView`s for the left plane's Y/U/V
-    /// textures. Needed by [`crate::yuv_stack_packer::YuvStackPacker`]
+    /// textures. Needed by [`crate::gpu::yuv_stack_packer::YuvStackPacker`]
     /// when replay recording is enabled: the packer samples the same
     /// uploaded source data the stitch shader reads, producing a
     /// tiled atlas in parallel with the panorama render.
@@ -936,7 +936,7 @@ impl Renderer {
 
     /// Access the internal render target texture.
     ///
-    /// Used by [`Nv12Converter`](crate::nv12_converter::Nv12Converter) to read
+    /// Used by [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter) to read
     /// the RGBA output without an intermediate CPU copy.
     pub fn render_target(&self) -> &wgpu::Texture {
         &self.render_target

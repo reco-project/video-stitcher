@@ -2,10 +2,10 @@
 //!
 //! The viewport defines the 16:9 (or user-chosen) rectangle that is
 //! extracted from the full panoramic view. The
-//! [`crate::panner::Panner`] emits the per-frame yaw/pitch that
+//! [`crate::detect::panner::Panner`] emits the per-frame yaw/pitch that
 //! positions this rectangle.
 
-use crate::director::ViewportPosition;
+use crate::detect::director::ViewportPosition;
 
 /// Configuration for the output viewport.
 #[derive(Debug, Clone)]

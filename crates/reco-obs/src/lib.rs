@@ -2,7 +2,7 @@
 //!
 //! This crate builds as a shared library (`.so` / `.dll` / `.dylib`) that OBS
 //! loads as a plugin. It registers a video source called "Reco Panorama
-//! Stitcher" that uses [`reco_core::pipeline::StitchPipeline`] to stitch two
+//! Stitcher" that uses [`reco_core::render::pipeline::StitchPipeline`] to stitch two
 //! camera inputs into a single panoramic output.
 //!
 //! ## Installation

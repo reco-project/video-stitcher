@@ -109,7 +109,7 @@ pub fn run_camera(
     let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
     let field_roi = cal.field_roi.clone();
 
-    let viewport = reco_core::viewport::ViewportConfig {
+    let viewport = reco_core::render::viewport::ViewportConfig {
         width,
         height,
         blend_width: blend,
@@ -122,11 +122,11 @@ pub fn run_camera(
 
     let (use_nv12_capture, input_format) = if v4l2_direct {
         // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path.
-        (true, reco_core::renderer::InputFormat::Bgra)
+        (true, reco_core::render::renderer::InputFormat::Bgra)
     } else if use_nvmm || helpers::is_tegra() {
-        (true, reco_core::renderer::InputFormat::Nv12)
+        (true, reco_core::render::renderer::InputFormat::Nv12)
     } else {
-        (false, reco_core::renderer::InputFormat::Yuv420p)
+        (false, reco_core::render::renderer::InputFormat::Yuv420p)
     };
 
     let capture_width = cam_config.width;
@@ -246,7 +246,7 @@ pub fn run_camera(
         } else {
             (capture_width, capture_height, false)
         };
-        let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
+        let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "replay tile dims {out_w}x{out_h} not YUV420P-aligned \
@@ -254,9 +254,9 @@ pub fn run_camera(
                 )
             })?;
         let output_size = if is_scaled {
-            reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+            reco_core::gpu::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
         } else {
-            reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+            reco_core::gpu::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
         };
         session
             .enable_gpu_stacked_replay(layout, output_size)
@@ -500,7 +500,7 @@ pub fn run_camera(
         // NvBufSurfTransform for detection. No CPU copies at all.
         #[cfg(target_os = "linux")]
         {
-            use reco_core::dmabuf_import::DmaBufTextureCache;
+            use reco_core::interop::dmabuf::DmaBufTextureCache;
             use reco_core::nvbuf_transform::NvBufDetectionSurface;
             use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
 

@@ -1,10 +1,10 @@
 //! Value types shared by every pose-resolution path.
 //!
 //! [`ViewportPosition`] is the camera's yaw / pitch / FOV triple, the
-//! output of any [`Panner`](crate::panner::Panner) and the input the
+//! output of any [`Panner`](super::panner::Panner) and the input the
 //! renderer crops the panorama with. [`MappedDetection`] is a raw
 //! detection enriched with panorama-space coordinates; trackers
-//! consume it and emit [`TrackedEntity`](crate::tracker::TrackedEntity)
+//! consume it and emit [`TrackedEntity`](super::tracker::TrackedEntity)
 //! values, and external detection sinks can observe it directly via
 //! [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink)
 //! without going through a tracker.
@@ -14,7 +14,7 @@
 //! trait is gone; only these value types remain. Rename deferred to
 //! avoid a repo-wide import churn.
 
-use crate::detector::CameraId;
+use super::detector::CameraId;
 
 /// The viewport position output by a director.
 ///
@@ -53,7 +53,7 @@ impl Default for ViewportPosition {
 
 /// A detection mapped to panorama coordinates.
 ///
-/// Consumed by every [`Tracker`](crate::tracker::Tracker) each frame
+/// Consumed by every [`Tracker`](super::tracker::Tracker) each frame
 /// and by external detection sinks (coaching, VAR, stats) via
 /// [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink).
 /// Wraps a raw camera-space detection with a panorama-space

@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reco_core::stitch_renderer::StitchRenderer;
+//! use reco_core::render::stitch_renderer::StitchRenderer;
 //!
 //! let renderer = StitchRenderer::new(
 //!     calibration, gpu, viewport, input_width, input_height,
@@ -20,15 +20,15 @@
 //! renderer.render_yuv(&left_planes, &right_planes, yaw, pitch, &view)?;
 //! ```
 
+use super::pipeline::{Nv12Planes, PipelineError, StitchPipeline, YuvPlanes};
+use super::renderer::InputFormat;
+use super::scene::SceneGeometry;
+use super::viewport::ViewportConfig;
 use crate::calibration::MatchCalibration;
 use crate::gpu::GpuContext;
-use crate::nv12_converter::Nv12Converter;
-use crate::pipeline::{Nv12Planes, PipelineError, StitchPipeline, YuvPlanes};
+use crate::gpu::nv12_converter::Nv12Converter;
+use crate::gpu::rgba_readback::RgbaReadback;
 use crate::projection::CoverageBoundary;
-use crate::renderer::InputFormat;
-use crate::rgba_readback::RgbaReadback;
-use crate::scene::SceneGeometry;
-use crate::viewport::ViewportConfig;
 
 /// Where to render the stitched panorama.
 ///
@@ -159,8 +159,8 @@ impl StitchRenderer {
     /// - [`RenderOutcome::Submitted`] — GPU work was submitted for a
     ///   surface present; nothing left to do.
     /// - [`RenderOutcome::Commands`] — a command buffer is ready for
-    ///   readback (pass to [`RgbaReadback::readback`](crate::rgba_readback::RgbaReadback::readback)
-    ///   or [`Nv12Converter::convert_and_readback`](crate::nv12_converter::Nv12Converter::convert_and_readback)).
+    ///   readback (pass to [`RgbaReadback::readback`](crate::gpu::rgba_readback::RgbaReadback::readback)
+    ///   or [`Nv12Converter::convert_and_readback`](crate::gpu::nv12_converter::Nv12Converter::convert_and_readback)).
     pub fn render(
         &self,
         left: &YuvPlanes<'_>,

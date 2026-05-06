@@ -25,10 +25,10 @@ pub mod probe;
 // split. See plan M5 revised analysis (commit 42d54af message).
 //
 // Types used by these that remain in reco-core:
-//   - `reco_core::cuda_interop::*` — CUDA FFI + context mgmt; shared
+//   - `reco_core::interop::cuda::*` — CUDA FFI + context mgmt; shared
 //     with reco-core's zero-copy bridge.
 //   - `reco_core::gpu::GpuContext` — used by `metal_compute`.
-//   - `reco_core::metal_interop::*` — shared Metal texture cache.
+//   - `reco_core::interop::metal::*` — shared Metal texture cache.
 //
 // CUDA kernels (normalize + HWC→CHW, P010→NV12) for GPU YOLO preprocess.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
