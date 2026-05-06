@@ -13,6 +13,20 @@
 //! Virtual camera yaw/pitch  ◄──decompose──  Direction from camera  ◄────┘
 //! ```
 
+mod coverage;
+mod geometry;
+mod virtual_camera;
+
+// Re-export coverage types so external code can still use
+// `crate::projection::CoverageBoundary` etc.
+pub use coverage::{ClampedPosition, CoverageBoundary, PanoramaExtent};
+
+// Re-export geometry utility.
+pub use geometry::point_in_polygon;
+
+// Re-export virtual camera (pub(crate) visibility preserved).
+pub(crate) use virtual_camera::VirtualCamera;
+
 use crate::calibration::{CameraParams, MatchCalibration};
 use crate::detector::CameraId;
 use crate::director::ViewportPosition;
@@ -190,7 +204,7 @@ impl CylindricalProjection {
 
 /// WGSL source for the cylindrical-mono composite pass. Embedded at
 /// compile time so `wgsl_composite_source()` can return `&'static str`.
-const CYLINDRICAL_MONO_WGSL: &str = include_str!("shaders/cylindrical_mono.wgsl");
+const CYLINDRICAL_MONO_WGSL: &str = include_str!("../shaders/cylindrical_mono.wgsl");
 
 impl Projection for CylindricalProjection {
     fn name(&self) -> &'static str {
@@ -248,13 +262,13 @@ pub fn camera_to_panorama(
         CameraId::Right => &calibration.right,
     };
 
-    // Step 1: Inverse fisheye — camera pixel [0,1] → plane UV (extended space)
+    // Step 1: Inverse fisheye - camera pixel [0,1] -> plane UV (extended space)
     let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
 
-    // Step 2: Plane UV → 3D world point
+    // Step 2: Plane UV -> 3D world point
     let world_point = plane_uv_to_world(plane_uv, camera, scene);
 
-    // Step 3: World point → yaw/pitch
+    // Step 3: World point -> yaw/pitch
     let dir = (world_point - Point3::from(Vector3::from(scene.camera_position))).normalize();
     Some(direction_to_yaw_pitch(&dir, &scene.camera_position))
 }
@@ -526,464 +540,9 @@ impl ViewportBounds {
     }
 }
 
-// ── Coverage Boundary ──────────────────────────────────────────────
-//
-// A precomputed, pitch-indexed lookup table of valid yaw ranges for
-// "no-black" viewport constraining. Replaces the per-frame frontier
-// sampling approach in `viewport_bounds` with O(1) runtime lookups.
-
-/// Precomputed coverage boundary for the stitched panorama.
-///
-/// Maps each pitch angle to the valid yaw range where both camera planes
-/// provide pixel data. Built once from calibration (~20k `camera_to_panorama`
-/// calls, <1ms on any modern CPU). Runtime lookups are O(1) via pitch-indexed
-/// linear interpolation.
-///
-/// Use [`safe_clamp`](Self::safe_clamp) to constrain a viewport position
-/// so no black edges appear.
-#[derive(Debug, Clone)]
-pub struct CoverageBoundary {
-    n_slices: usize,
-    /// Global minimum pitch with any coverage (radians).
-    pub pitch_min: f32,
-    /// Global maximum pitch with any coverage (radians).
-    pub pitch_max: f32,
-    /// Per-slice combined coverage: `(yaw_min, yaw_max)`.
-    slices: Vec<(f32, f32)>,
-    /// Per-slice left-plane coverage: `(yaw_min, yaw_max)`.
-    left_slices: Vec<(f32, f32)>,
-    /// Per-slice right-plane coverage: `(yaw_min, yaw_max)`.
-    right_slices: Vec<(f32, f32)>,
-    /// Minimum pitch range across all yaw positions.
-    /// Determines the maximum safe FOV.
-    min_pitch_range: f32,
-    /// Camera position from the scene geometry. Stored so
-    /// `safe_clamp` can construct a `VirtualCamera` for the exact
-    /// user-to-world rig correction mapping.
-    camera_position: [f32; 3],
-}
-
-/// Result of clamping a viewport position to the safe panning region.
-#[derive(Debug, Clone, Copy)]
-pub struct ClampedPosition {
-    /// Clamped yaw in radians.
-    pub yaw: f32,
-    /// Clamped pitch in radians.
-    pub pitch: f32,
-}
-
-/// Full angular extent of the stitched panorama (radians).
-///
-/// Returned by [`StitchSession::panorama_extent`](crate::session::StitchSession::panorama_extent).
-/// Analytics consumers (heatmaps, zone stats) use this to size grids that
-/// span the full coverage rather than hardcoding `±45° yaw, ±20° pitch`.
-#[derive(Debug, Clone, Copy)]
-pub struct PanoramaExtent {
-    /// Minimum yaw with coverage from either camera (radians).
-    pub yaw_min: f32,
-    /// Maximum yaw with coverage from either camera (radians).
-    pub yaw_max: f32,
-    /// Minimum pitch with coverage from either camera (radians).
-    pub pitch_min: f32,
-    /// Maximum pitch with coverage from either camera (radians).
-    pub pitch_max: f32,
-}
-
-impl PanoramaExtent {
-    /// Width of the yaw range in radians.
-    pub fn yaw_span(&self) -> f32 {
-        self.yaw_max - self.yaw_min
-    }
-
-    /// Width of the pitch range in radians.
-    pub fn pitch_span(&self) -> f32 {
-        self.pitch_max - self.pitch_min
-    }
-
-    /// Map an angular position in radians to normalized `[0, 1]`
-    /// coordinates within this extent.
-    ///
-    /// Returns `None` if the extent is degenerate (zero span on either
-    /// axis). Values outside the extent are returned as-is (not clamped),
-    /// so callers can detect out-of-bounds detections.
-    pub fn normalize(&self, yaw: f32, pitch: f32) -> Option<(f32, f32)> {
-        let yaw_span = self.yaw_span();
-        let pitch_span = self.pitch_span();
-        if yaw_span <= 0.0 || pitch_span <= 0.0 {
-            return None;
-        }
-        Some((
-            (yaw - self.yaw_min) / yaw_span,
-            (pitch - self.pitch_min) / pitch_span,
-        ))
-    }
-}
-
-/// Angular offsets of viewport boundary points from center.
-///
-impl CoverageBoundary {
-    /// Build the coverage boundary from calibration data.
-    ///
-    /// Densely samples both planes' edge loops and a sparse interior grid,
-    /// projecting into (yaw, pitch) space and grouping into pitch slices.
-    pub fn from_calibration(calibration: &MatchCalibration, scene: &SceneGeometry) -> Self {
-        let n_slices: usize = 400;
-        let margin = 0.02_f32;
-
-        let mut left_points: Vec<(f32, f32)> = Vec::new();
-        let mut right_points: Vec<(f32, f32)> = Vec::new();
-
-        for &camera in &[CameraId::Left, CameraId::Right] {
-            let points = if camera == CameraId::Left {
-                &mut left_points
-            } else {
-                &mut right_points
-            };
-
-            // Dense edge sampling: 400 points per edge (4 edges = 1600 per plane)
-            let edge_steps = 400_u32;
-            for i in 0..=edge_steps {
-                let t = margin + (1.0 - 2.0 * margin) * (i as f32 / edge_steps as f32);
-                for &(nx, ny) in &[
-                    (t, margin),
-                    (t, 1.0 - margin),
-                    (margin, t),
-                    (1.0 - margin, t),
-                ] {
-                    if let Some(pos) = camera_to_panorama(camera, nx, ny, calibration, scene) {
-                        points.push((pos.yaw, pos.pitch));
-                    }
-                }
-            }
-
-            // Sparse interior grid (20x20) for coverage at intermediate pitch levels
-            let grid_steps = 20_u32;
-            for ix in 0..=grid_steps {
-                let nx = margin + (1.0 - 2.0 * margin) * (ix as f32 / grid_steps as f32);
-                for iy in 0..=grid_steps {
-                    let ny = margin + (1.0 - 2.0 * margin) * (iy as f32 / grid_steps as f32);
-                    if let Some(pos) = camera_to_panorama(camera, nx, ny, calibration, scene) {
-                        points.push((pos.yaw, pos.pitch));
-                    }
-                }
-            }
-        }
-
-        // Find global pitch range
-        let all_points = left_points.iter().chain(right_points.iter());
-        let mut global_pitch_min = f32::MAX;
-        let mut global_pitch_max = f32::MIN;
-        for &(_, pitch) in all_points {
-            global_pitch_min = global_pitch_min.min(pitch);
-            global_pitch_max = global_pitch_max.max(pitch);
-        }
-
-        if global_pitch_min >= global_pitch_max {
-            return Self {
-                n_slices,
-                pitch_min: 0.0,
-                pitch_max: 0.0,
-                slices: vec![(0.0, 0.0); n_slices],
-                left_slices: vec![(0.0, 0.0); n_slices],
-                right_slices: vec![(0.0, 0.0); n_slices],
-                min_pitch_range: 0.0,
-                camera_position: scene.camera_position,
-            };
-        }
-
-        let pitch_range = global_pitch_max - global_pitch_min;
-        let slice_size = pitch_range / n_slices as f32;
-
-        // Bucket points into pitch slices
-        let mut slices = vec![(f32::MAX, f32::MIN); n_slices];
-        let mut left_slices = vec![(f32::MAX, f32::MIN); n_slices];
-        let mut right_slices = vec![(f32::MAX, f32::MIN); n_slices];
-
-        let pitch_to_slice = |pitch: f32| -> usize {
-            let idx = ((pitch - global_pitch_min) / slice_size) as usize;
-            idx.min(n_slices - 1)
-        };
-
-        for &(yaw, pitch) in &left_points {
-            let s = pitch_to_slice(pitch);
-            left_slices[s].0 = left_slices[s].0.min(yaw);
-            left_slices[s].1 = left_slices[s].1.max(yaw);
-            slices[s].0 = slices[s].0.min(yaw);
-            slices[s].1 = slices[s].1.max(yaw);
-        }
-        for &(yaw, pitch) in &right_points {
-            let s = pitch_to_slice(pitch);
-            right_slices[s].0 = right_slices[s].0.min(yaw);
-            right_slices[s].1 = right_slices[s].1.max(yaw);
-            slices[s].0 = slices[s].0.min(yaw);
-            slices[s].1 = slices[s].1.max(yaw);
-        }
-
-        // Compute min pitch range (determines max FOV)
-        let min_pitch_range = {
-            let quarter = n_slices / 4;
-            let three_quarter = 3 * n_slices / 4;
-            let mut yaw_lo = f32::MAX;
-            let mut yaw_hi = f32::MIN;
-            for s in &slices[quarter..three_quarter] {
-                if s.0 <= s.1 {
-                    yaw_lo = yaw_lo.min(s.0);
-                    yaw_hi = yaw_hi.max(s.1);
-                }
-            }
-
-            if yaw_lo >= yaw_hi {
-                pitch_range
-            } else {
-                // Sample pitch range at multiple yaw positions and use the
-                // 10th percentile instead of absolute minimum. The absolute
-                // minimum is dominated by narrow seam edges which the director
-                // rarely visits. The 10th percentile gives a practical FOV
-                // that works across most of the useful yaw range.
-                let n_samples = 50;
-                let mut ranges = Vec::with_capacity(n_samples + 1);
-                for j in 0..=n_samples {
-                    let t = j as f32 / n_samples as f32;
-                    let test_yaw = yaw_lo + t * (yaw_hi - yaw_lo);
-                    let mut p_lo = f32::MAX;
-                    let mut p_hi = f32::MIN;
-                    for (s, (left, right)) in
-                        left_slices.iter().zip(right_slices.iter()).enumerate()
-                    {
-                        let in_left = left.0 <= left.1 && test_yaw >= left.0 && test_yaw <= left.1;
-                        let in_right =
-                            right.0 <= right.1 && test_yaw >= right.0 && test_yaw <= right.1;
-                        if in_left || in_right {
-                            let p = global_pitch_min + (s as f32 + 0.5) * slice_size;
-                            p_lo = p_lo.min(p);
-                            p_hi = p_hi.max(p);
-                        }
-                    }
-                    if p_hi > p_lo {
-                        ranges.push(p_hi - p_lo);
-                    }
-                }
-                if ranges.is_empty() {
-                    pitch_range
-                } else {
-                    ranges.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                    // 10th percentile: skip the narrowest 10%
-                    let idx = (ranges.len() / 10).min(ranges.len() - 1);
-                    ranges[idx]
-                }
-            }
-        };
-
-        // Fill gaps: slices with no samples inherit from neighbors
-        for i in 1..n_slices {
-            if slices[i].0 > slices[i].1 {
-                slices[i] = slices[i - 1];
-                left_slices[i] = left_slices[i - 1];
-                right_slices[i] = right_slices[i - 1];
-            }
-        }
-        for i in (0..n_slices - 1).rev() {
-            if slices[i].0 > slices[i].1 {
-                slices[i] = slices[i + 1];
-                left_slices[i] = left_slices[i + 1];
-                right_slices[i] = right_slices[i + 1];
-            }
-        }
-
-        log::info!(
-            "CoverageBoundary: pitch [{:.3}, {:.3}] ({:.1} deg), min pitch range {:.1} deg",
-            global_pitch_min,
-            global_pitch_max,
-            pitch_range.to_degrees(),
-            min_pitch_range.to_degrees(),
-        );
-
-        Self {
-            n_slices,
-            pitch_min: global_pitch_min,
-            pitch_max: global_pitch_max,
-            slices,
-            left_slices,
-            right_slices,
-            min_pitch_range,
-            camera_position: scene.camera_position,
-        }
-    }
-
-    /// Global yaw coverage range across the full panorama (radians).
-    ///
-    /// Returns `(yaw_min, yaw_max)`, the widest-point extremes of the
-    /// stitched panorama. Useful for heatmap consumers that need to
-    /// bucket detections by yaw across the full coverage.
-    ///
-    /// This is the global extent, not the per-pitch range. For a
-    /// pitch-aware range, sample with [`yaw_range_at`](Self::yaw_range_at).
-    pub fn yaw_range(&self) -> (f32, f32) {
-        let mut lo = f32::INFINITY;
-        let mut hi = f32::NEG_INFINITY;
-        for &(a, b) in &self.slices {
-            if a <= b {
-                lo = lo.min(a);
-                hi = hi.max(b);
-            }
-        }
-        if lo > hi { (0.0, 0.0) } else { (lo, hi) }
-    }
-
-    /// Global pitch coverage range across the full panorama (radians).
-    ///
-    /// Returns `(pitch_min, pitch_max)`. Used alongside
-    /// [`yaw_range`](Self::yaw_range) by heatmap and analytics consumers
-    /// that need panorama bounds without reaching into private state.
-    pub fn pitch_range(&self) -> (f32, f32) {
-        (self.pitch_min, self.pitch_max)
-    }
-
-    /// Look up the combined yaw coverage range at a given pitch.
-    ///
-    /// Returns the interpolated `(yaw_min, yaw_max)` where at least one
-    /// camera plane provides coverage. Used by the director for
-    /// perspective-aware clamping; analytics consumers typically want
-    /// [`yaw_range`](Self::yaw_range) for the global extent instead.
-    pub fn yaw_range_at(&self, pitch: f32) -> (f32, f32) {
-        self.interpolate_slice(&self.slices, pitch)
-    }
-
-    /// Interpolate a slice table at the given pitch.
-    fn interpolate_slice(&self, table: &[(f32, f32)], pitch: f32) -> (f32, f32) {
-        if self.n_slices == 0 || self.pitch_max <= self.pitch_min {
-            return (0.0, 0.0);
-        }
-        let pitch_range = self.pitch_max - self.pitch_min;
-        let t = (pitch - self.pitch_min) / pitch_range;
-        let idx_f = t * (self.n_slices - 1) as f32;
-        let idx_lo = (idx_f.floor() as usize).min(self.n_slices - 1);
-        let idx_hi = (idx_lo + 1).min(self.n_slices - 1);
-        let frac = idx_f - idx_lo as f32;
-
-        let lo = table[idx_lo];
-        let hi = table[idx_hi];
-        if lo.0 > lo.1 {
-            return hi;
-        }
-        if hi.0 > hi.1 {
-            return lo;
-        }
-        (lo.0 + frac * (hi.0 - lo.0), lo.1 + frac * (hi.1 - lo.1))
-    }
-
-    /// Clamp a viewport position to the safe panning region for a given FOV.
-    ///
-    /// `rig_tilt` (radians) accounts for the renderer's rig tilt rotation.
-    /// The caller passes user-space (yaw, pitch); this method transforms
-    /// to world space (+rig_tilt), clamps against coverage, then transforms
-    /// back. Pass 0.0 when there is no rig tilt.
-    ///
-    /// `self` must be the **world-space** coverage boundary.
-    pub fn safe_clamp(
-        &self,
-        yaw: f32,
-        pitch: f32,
-        fov_v_deg: f32,
-        aspect: f32,
-        rig_tilt: f32,
-    ) -> ClampedPosition {
-        let world_pitch = crate::rig_correction::human_to_world_pitch(yaw, pitch, rig_tilt);
-        let clamped = self.safe_clamp_world(yaw, world_pitch, fov_v_deg, aspect);
-        ClampedPosition {
-            yaw: clamped.yaw,
-            pitch: crate::rig_correction::world_to_human_pitch(
-                clamped.yaw,
-                clamped.pitch,
-                rig_tilt,
-            ),
-        }
-    }
-
-    /// Clamp viewport center to coverage with perspective-correct margins.
-    fn safe_clamp_world(
-        &self,
-        yaw: f32,
-        pitch: f32,
-        fov_v_deg: f32,
-        aspect: f32,
-    ) -> ClampedPosition {
-        // B-30 defense: non-finite inputs would propagate through the
-        // clamp / comparisons and emit NaN, which then flows into the
-        // MVP matrix and produces a black or garbage frame. Upstream
-        // guards (B-28 detector boundary, B-29 director EMA) stop most
-        // NaN at the source, but user overrides and external clients
-        // can still hand us non-finite values. Fall back to the
-        // coverage center.
-        if !yaw.is_finite() || !pitch.is_finite() || !fov_v_deg.is_finite() || !aspect.is_finite() {
-            let safe_pitch = (self.pitch_min + self.pitch_max) * 0.5;
-            let (yaw_lo, yaw_hi) = self.yaw_range_at(safe_pitch);
-            let safe_yaw = (yaw_lo + yaw_hi) * 0.5;
-            return ClampedPosition {
-                yaw: safe_yaw,
-                pitch: safe_pitch,
-            };
-        }
-
-        let half_vfov = (fov_v_deg * 0.5).to_radians();
-        let half_hfov = (aspect * half_vfov.tan()).atan();
-
-        // Pitch: global bounds with vertical FOV margin
-        let clamped_pitch = if self.pitch_min + half_vfov <= self.pitch_max - half_vfov {
-            pitch.clamp(self.pitch_min + half_vfov, self.pitch_max - half_vfov)
-        } else {
-            (self.pitch_min + self.pitch_max) * 0.5
-        };
-
-        // Yaw: coverage range at clamped pitch with horizontal FOV margin
-        let (yaw_lo, yaw_hi) = self.yaw_range_at(clamped_pitch);
-        let clamped_yaw = if yaw_lo + half_hfov <= yaw_hi - half_hfov {
-            yaw.clamp(yaw_lo + half_hfov, yaw_hi - half_hfov)
-        } else {
-            (yaw_lo + yaw_hi) * 0.5
-        };
-
-        ClampedPosition {
-            yaw: clamped_yaw,
-            pitch: clamped_pitch,
-        }
-    }
-
-    /// Maximum vertical FOV (degrees) that fits within the coverage.
-    ///
-    /// This is the widest zoom-out where at least one valid viewport
-    /// position exists. Determined by the narrowest pitch range across
-    /// all yaw positions (typically at the seam between planes).
-    pub fn max_fov_degrees(&self) -> f32 {
-        if self.min_pitch_range <= 0.0 {
-            return 20.0;
-        }
-        self.min_pitch_range.to_degrees()
-    }
-
-    /// Create a copy with all pitch values shifted by an offset.
-    ///
-    /// Used to create a tilt-adjusted boundary for the director, which
-    /// operates in pre-tilt space while the boundary is in world space.
-    /// The director calls `safe_clamp` on the shifted boundary without
-    /// needing to know about rig tilt.
-    pub fn with_pitch_offset(&self, offset: f32) -> Self {
-        Self {
-            n_slices: self.n_slices,
-            pitch_min: self.pitch_min + offset,
-            pitch_max: self.pitch_max + offset,
-            slices: self.slices.clone(),
-            left_slices: self.left_slices.clone(),
-            right_slices: self.right_slices.clone(),
-            min_pitch_range: self.min_pitch_range,
-            camera_position: self.camera_position,
-        }
-    }
-}
-
 // ---- Internal functions ----
 
-/// Forward KB4 fisheye: undistorted plane UV → distorted camera pixel [0,1].
+/// Forward KB4 fisheye: undistorted plane UV -> distorted camera pixel [0,1].
 ///
 /// Mirror of [`inverse_fisheye`] in the same normalized-intrinsic
 /// convention and the same extended-UV plane space (the shader's
@@ -1010,13 +569,13 @@ fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
     (fx * x * scale + cx, fy * y * scale + cy)
 }
 
-/// Inverse KB4 fisheye: distorted camera pixel [0,1] → undistorted plane UV.
+/// Inverse KB4 fisheye: distorted camera pixel [0,1] -> undistorted plane UV.
 ///
 /// Inverts the forward KB4 model used in the shader:
 /// ```text
-/// θ_d = θ × (1 + k₁θ² + k₂θ⁴ + k₃θ⁶ + k₄θ⁸)
+/// theta_d = theta * (1 + k1*theta^2 + k2*theta^4 + k3*theta^6 + k4*theta^8)
 /// ```
-/// Uses Newton-Raphson to solve for θ given θ_d.
+/// Uses Newton-Raphson to solve for theta given theta_d.
 fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f64, f64)> {
     let w = params.width as f64;
     let h = params.height as f64;
@@ -1032,12 +591,12 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f
     let theta_d = (dx * dx + dy * dy).sqrt();
 
     if theta_d < 1e-12 {
-        // At the optical center — no distortion
+        // At the optical center - no distortion
         return Some((cx, cy));
     }
 
-    // Newton-Raphson: solve f(θ) = θ_d_poly(θ) - θ_d = 0, where
-    // θ_d_poly lives in `reco_core::lens::kb4` (SYNC_WITH WGSL).
+    // Newton-Raphson: solve f(theta) = theta_d_poly(theta) - theta_d = 0, where
+    // theta_d_poly lives in `reco_core::lens::kb4` (SYNC_WITH WGSL).
     let mut theta = theta_d; // initial guess
     for _ in 0..MAX_ITERATIONS {
         let f = crate::lens::kb4::theta_d(theta, &k) - theta_d;
@@ -1056,7 +615,7 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f
     }
 
     // Recover undistorted coordinates
-    let r = theta.tan(); // theta = atan(r) → r = tan(theta)
+    let r = theta.tan(); // theta = atan(r) -> r = tan(theta)
     let scale = if theta.abs() < 1e-12 {
         1.0
     } else {
@@ -1099,12 +658,12 @@ fn world_to_plane_uv(
     let inv_model = model.try_inverse()?;
     let local = inv_model.transform_point(&world);
 
-    // local → texture UV [0,1] (inverse of plane_uv_to_world's inner
-    // texture→local step, with plane_width = 1.0 baked in).
+    // local -> texture UV [0,1] (inverse of plane_uv_to_world's inner
+    // texture->local step, with plane_width = 1.0 baked in).
     let tex_u = local.x / scene.plane_width + 0.5;
     let tex_v = 0.5 - local.y * scene.plane_aspect / scene.plane_width;
 
-    // Texture UV → extended shader UV (inverse of `uv * 2.0 - 0.5`).
+    // Texture UV -> extended shader UV (inverse of `uv * 2.0 - 0.5`).
     let uv_x = (tex_u * 2.0 - 0.5) as f64;
     let uv_y = (tex_v * 2.0 - 0.5) as f64;
     Some((uv_x, uv_y))
@@ -1112,11 +671,11 @@ fn world_to_plane_uv(
 
 /// Convert a plane UV (in extended shader space) to a 3D world point.
 fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) -> Point3<f32> {
-    // Extended UV → texture UV [0,1]
+    // Extended UV -> texture UV [0,1]
     let tex_u = ((uv.0 + 0.5) / 2.0) as f32;
     let tex_v = ((uv.1 + 0.5) / 2.0) as f32;
 
-    // Texture UV → local quad position (matches quad_vertices)
+    // Texture UV -> local quad position (matches quad_vertices)
     let local_x = tex_u - 0.5;
     let local_y = (0.5 - tex_v) / scene.plane_aspect;
 
@@ -1128,101 +687,6 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) ->
 
     let world = model * local_point;
     Point3::new(world.x, world.y, world.z)
-}
-
-/// The virtual camera's orthonormal basis: single source of truth for
-/// `(base_forward, base_right, world_up)` shared by `view_matrix` and
-/// yaw/pitch decomposition.
-///
-/// `base_right = base_forward × world_up` so it semantically points
-/// to the viewer's right (intuitive). That makes the triple
-/// left-handed, which on its own inverts yaw sign between a right-
-/// hand rotation around `world_up` (what `view_matrix` does) and the
-/// naive `atan2(h · base_right, h · base_forward)` decomposition.
-/// The yaw API compensates by negating `h · base_right` in the
-/// atan2, so `direction_to_yaw_pitch` and `view_matrix` agree on
-/// yaw sign without any downstream reconciliation. `yaw_pitch_to_direction`
-/// mirrors the same negation for symmetry.
-///
-/// Pre-Step-2 the two APIs used the literal `atan2(h · base_right,
-/// h · base_forward)` and `cos(yaw)*bf + sin(yaw)*br` forms, so a
-/// `yaw=+θ` on one side meant `yaw=-θ` on the other. The Step 1e
-/// regression test locked that bug in; this type's yaw convention
-/// un-ignores it.
-///
-/// Rig tilt and rig roll are NOT part of this type. `view_matrix`
-/// layers them on top; Step 4 unifies them under `RigCorrection`.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct VirtualCamera {
-    /// World-space camera eye position (copy of `camera_position`).
-    pub eye: Vector3<f32>,
-    /// Unit vector from eye toward the scene origin (the L-shape corner).
-    pub base_forward: Vector3<f32>,
-    /// Unit vector to the viewer's right (`base_forward × world_up`,
-    /// left-handed triple). The yaw API compensates for the
-    /// handedness so there is no sign divergence downstream.
-    pub base_right: Vector3<f32>,
-}
-
-impl VirtualCamera {
-    /// World up axis. Constant `+Y`; exposed as an associated method
-    /// rather than a field because every VirtualCamera agrees on it.
-    pub fn world_up() -> Vector3<f32> {
-        Vector3::new(0.0, 1.0, 0.0)
-    }
-
-    /// Build the basis from a world-space camera position.
-    pub fn new(camera_position: &[f32; 3]) -> Self {
-        let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
-        let base_forward = (-eye).normalize();
-        let base_right = base_forward.cross(&Self::world_up()).normalize();
-        Self {
-            eye,
-            base_forward,
-            base_right,
-        }
-    }
-
-    /// Decompose a world-space direction into yaw/pitch relative to
-    /// the base forward axis.
-    pub fn direction_to_yaw_pitch(&self, dir: &Vector3<f32>) -> ViewportPosition {
-        // Pitch: elevation angle from the horizontal plane.
-        let pitch = dir.y.clamp(-1.0, 1.0).asin();
-
-        // Yaw: horizontal angle relative to base_forward. The minus
-        // sign on (h . base_right) compensates for the left-handed
-        // basis so yaw matches view_matrix's right-hand rotation
-        // around world_up (see type doc comment).
-        let horizontal = Vector3::new(dir.x, 0.0, dir.z);
-        let h_len = horizontal.norm();
-        let yaw = if h_len > 1e-6 {
-            let h = horizontal / h_len;
-            let cos_yaw = h.dot(&self.base_forward).clamp(-1.0, 1.0);
-            let sin_yaw = -h.dot(&self.base_right);
-            sin_yaw.atan2(cos_yaw)
-        } else {
-            0.0
-        };
-
-        ViewportPosition {
-            yaw,
-            pitch,
-            fov_degrees: None,
-        }
-    }
-
-    /// Exact inverse of [`direction_to_yaw_pitch`]. `pitch` is
-    /// expected in `(-π/2, π/2)`; at the poles yaw is undefined and
-    /// the round-trip through `direction_to_yaw_pitch` collapses.
-    pub fn yaw_pitch_to_direction(&self, yaw: f32, pitch: f32) -> Vector3<f32> {
-        let cos_pitch = pitch.cos();
-        // Matching sign compensation: `-sin(yaw) * base_right` pairs
-        // with the `-h . base_right` in direction_to_yaw_pitch so the
-        // round-trip is exact.
-        let horizontal =
-            self.base_forward * (cos_pitch * yaw.cos()) - self.base_right * (cos_pitch * yaw.sin());
-        Vector3::new(horizontal.x, pitch.sin(), horizontal.z)
-    }
 }
 
 /// Decompose a direction vector into yaw/pitch relative to the virtual camera.
@@ -1248,40 +712,6 @@ pub(crate) fn yaw_pitch_to_direction(
     camera_position: &[f32; 3],
 ) -> Vector3<f32> {
     VirtualCamera::new(camera_position).yaw_pitch_to_direction(yaw, pitch)
-}
-
-/// Test whether a point lies inside a polygon using the ray-casting algorithm.
-///
-/// Casts a horizontal ray from the point to the right and counts how many
-/// polygon edges it crosses. An odd count means the point is inside.
-///
-/// Both `point` and `polygon` use `[x, y]` coordinates in any consistent
-/// space (typically normalized `[0,1]` camera coordinates).
-///
-/// Returns `false` for degenerate polygons with fewer than 3 vertices.
-pub fn point_in_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
-    let n = polygon.len();
-    if n < 3 {
-        return false;
-    }
-
-    let (px, py) = (point[0], point[1]);
-    let mut inside = false;
-
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = (polygon[i][0], polygon[i][1]);
-        let (xj, yj) = (polygon[j][0], polygon[j][1]);
-
-        // Check if the edge from j to i crosses the horizontal ray at py.
-        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-
-        j = i;
-    }
-
-    inside
 }
 
 #[cfg(test)]
@@ -1394,7 +824,7 @@ mod tests {
         // shipping scenes set `camera_position = [d, 0, d]` (see
         // SceneGeometry::from_layout_with_aspect), so eye.y = 0 is
         // the real invariant; test positions honor that. Pitch stays
-        // clear of ±π/2 where yaw is undefined.
+        // clear of +-pi/2 where yaw is undefined.
         let camera_positions: [[f32; 3]; 3] = [[0.24, 0.0, 0.24], [0.3, 0.0, 0.2], [0.1, 0.0, 0.5]];
 
         let yaw_steps = [-1.2_f32, -0.6, -0.2, 0.0, 0.2, 0.6, 1.2];
@@ -1428,7 +858,7 @@ mod tests {
 
     #[test]
     fn world_to_plane_uv_roundtrips_with_plane_uv_to_world() {
-        // Step 1b: extended UV → world → extended UV must be the
+        // Step 1b: extended UV -> world -> extended UV must be the
         // identity. Covers both camera planes and a grid spanning the
         // shader's extended range [-0.5, 1.5] (including points
         // outside the [0,1] texture box so we catch any implicit
@@ -1462,7 +892,7 @@ mod tests {
 
     #[test]
     fn inverse_fisheye_roundtrips_with_forward_fisheye_on_pixel_grid() {
-        // Step 1c: normalized distorted pixel → extended plane UV →
+        // Step 1c: normalized distorted pixel -> extended plane UV ->
         // back to normalized distorted pixel must be the identity on
         // a 10x10 grid inside the valid image area. Realistic KB4
         // coefficients (the GoPro HERO10 4K test calibration) make
@@ -1600,7 +1030,7 @@ mod tests {
             bounds.min_pitch,
             bounds.max_pitch
         );
-        // With 40° FOV, the valid range should be non-trivial
+        // With 40 deg FOV, the valid range should be non-trivial
         assert!(
             bounds.max_yaw - bounds.min_yaw > 0.01,
             "yaw range too small: {:.4}..{:.4}",
@@ -1796,7 +1226,7 @@ mod tests {
         assert!(ext.normalize(0.0, 0.0).is_none());
     }
 
-    // ── B-30 NaN-resilience regression tests ─────────────────────────
+    // -- B-30 NaN-resilience regression tests --
 
     #[test]
     fn safe_clamp_rejects_nan_yaw() {
@@ -1845,7 +1275,7 @@ mod tests {
         assert!(out.pitch.is_finite());
     }
 
-    // ── M3 foundation: Projection trait tests ────────────────────────
+    // -- M3 foundation: Projection trait tests --
 
     #[test]
     fn l_shape_projection_identifies_itself() {
