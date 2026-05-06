@@ -319,14 +319,17 @@ def run_calibration():
 
 def capture_snapshot(device_id):
     """Capture a single JPEG frame from a camera via gstreamer."""
+    if not str(device_id).isdigit():
+        return None
     tmp = f"/tmp/snapshot_{device_id}.jpg"
-    cmd = (
-        f"gst-launch-1.0 -e nvarguscamerasrc sensor-id={device_id} num-buffers=5 "
-        f"! 'video/x-raw(memory:NVMM),width=1920,height=1080,framerate=21/1' "
-        f"! nvjpegenc ! filesink location={tmp}"
-    )
+    cmd = [
+        "gst-launch-1.0", "-e",
+        "nvarguscamerasrc", f"sensor-id={device_id}", "num-buffers=5",
+        "!", "video/x-raw(memory:NVMM),width=1920,height=1080,framerate=21/1",
+        "!", "nvjpegenc", "!", "filesink", f"location={tmp}",
+    ]
     try:
-        subprocess.run(cmd, shell=True, timeout=15, capture_output=True)
+        subprocess.run(cmd, timeout=15, capture_output=True)
         if Path(tmp).exists():
             return Path(tmp).read_bytes()
     except Exception:
@@ -784,9 +787,11 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/stream/stop":
             self.json_response(stop_streaming())
         elif self.path == "/api/config":
+            allowed = {"rtmp_key", "crf", "detection_interval", "tracking",
+                       "blend", "capture_width", "capture_height", "quality"}
             with lock:
                 for k, v in body.items():
-                    if k in state:
+                    if k in allowed:
                         state[k] = v
             self.json_response({"status": "ok"})
         elif self.path == "/api/calibrate":

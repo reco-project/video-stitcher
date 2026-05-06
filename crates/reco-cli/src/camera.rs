@@ -514,8 +514,10 @@ pub fn run_camera(
 
             let mut source = GstreamerNvmmCameraSource::open(&cam_config)?;
 
-            // Allocate detection surfaces (one per camera, reused across frames).
+            // Detection surface size must match the TRT engine's input dims.
+            // All shipped yolo26 engines use 1280x1280.
             let model_size = 1280u32;
+            log::info!("NVMM detection surface size: {model_size}x{model_size}");
             let mut det_left =
                 NvBufDetectionSurface::new(model_size, capture_width, capture_height)
                     .map_err(|e| anyhow::anyhow!("left detection surface: {e}"))?;
@@ -557,7 +559,7 @@ pub fn run_camera(
                 warmup.left.dmabuf_fd,
                 warmup.right.dmabuf_fd,
             );
-            println!("Warmup complete, starting NVMM capture...");
+            log::info!("Warmup complete, starting NVMM capture");
 
             let progress = helpers::ProgressReporter::new(30);
 
@@ -574,29 +576,20 @@ pub fn run_camera(
                 if session.detection_should_run() {
                     reco_core::profile_scope!("nvbuf_detect");
                     unsafe {
-                        {
-                            reco_core::profile_scope!("nvbuf_transform_left");
-                            det_left
-                                .transform_from_nvmm(pair.left.surface_ptr)
-                                .map_err(|e| anyhow::anyhow!("left transform: {e}"))?;
-                        }
-                        {
-                            reco_core::profile_scope!("nvbuf_transform_right");
-                            det_right
-                                .transform_from_nvmm(pair.right.surface_ptr)
-                                .map_err(|e| anyhow::anyhow!("right transform: {e}"))?;
-                        }
+                        det_left
+                            .transform_from_nvmm(pair.left.surface_ptr)
+                            .map_err(|e| anyhow::anyhow!("left transform: {e}"))?;
+                        det_right
+                            .transform_from_nvmm(pair.right.surface_ptr)
+                            .map_err(|e| anyhow::anyhow!("right transform: {e}"))?;
                     }
-                    {
-                        reco_core::profile_scope!("trt_detect_preletterboxed");
-                        session.detect_and_update_director_preletterboxed(
-                            det_left.data_ptr,
-                            det_right.data_ptr,
-                            capture_width,
-                            capture_height,
-                            start.elapsed(),
-                        )?;
-                    }
+                    session.detect_and_update_director_preletterboxed(
+                        det_left.data_ptr,
+                        det_right.data_ptr,
+                        capture_width,
+                        capture_height,
+                        start.elapsed(),
+                    )?;
                 } else {
                     session.update_director(start.elapsed())?;
                 }
@@ -643,11 +636,7 @@ pub fn run_camera(
                     )?;
                 }
 
-                // Signal capture threads: GPU work submitted, DMA-bufs can be recycled
-                {
-                    reco_core::profile_scope!("release_nvmm_bufs");
-                    source.release_previous();
-                }
+                source.release_previous();
 
                 frame_count += 1;
                 progress.report(frame_count);
@@ -810,7 +799,7 @@ pub fn run_live_calibrate(
     num_pairs: usize,
     left_profile: Option<&str>,
     right_profile: Option<&str>,
-    _interrupted: &Arc<AtomicBool>,
+    interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     use reco_core::calibration::CameraParams;
 
@@ -880,7 +869,7 @@ pub fn run_live_calibrate(
         &mut |progress| {
             eprintln!("  [{}] {}", progress.step, progress.detail);
         },
-        &AtomicBool::new(false),
+        interrupted,
     )?;
 
     calib_source.source.stop();
@@ -898,7 +887,29 @@ pub fn run_live_calibrate(
         );
     }
 
-    let json = serde_json::to_string_pretty(&result.calibration)?;
+    // Preserve field_roi and rig_tilt from existing calibration file
+    let mut cal = result.calibration;
+    if let Ok(existing) = std::fs::read_to_string(output_path) {
+        if let Ok(prev) =
+            serde_json::from_str::<reco_core::calibration::MatchCalibration>(&existing)
+        {
+            if prev.field_roi.is_some() {
+                cal.field_roi = prev.field_roi;
+                eprintln!("Preserved existing field_roi");
+            }
+            if prev.rig_tilt.abs() > 1e-6 {
+                cal.rig_tilt = prev.rig_tilt;
+                eprintln!(
+                    "Preserved existing rig_tilt ({:.1} deg)",
+                    prev.rig_tilt.to_degrees()
+                );
+            }
+            if prev.rig_roll.abs() > 1e-6 {
+                cal.rig_roll = prev.rig_roll;
+            }
+        }
+    }
+    let json = serde_json::to_string_pretty(&cal)?;
     std::fs::write(output_path, &json)?;
     eprintln!("Written to {output_path}");
 

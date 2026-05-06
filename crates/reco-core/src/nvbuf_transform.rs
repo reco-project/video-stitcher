@@ -29,9 +29,6 @@ const NVBUF_LAYOUT_PITCH: i32 = 0;
 /// NvBufSurfTransformInter_Bilinear = 1.
 const NVBUF_TRANSFORM_FILTER_BILINEAR: i32 = 1;
 
-/// NVBUFSURF_TRANSFORM_CROP_SRC = 1 (used when adding ROI crop support).
-#[allow(dead_code)]
-const NVBUF_TRANSFORM_CROP_SRC: u32 = 1;
 /// NVBUFSURF_TRANSFORM_CROP_DST = 1 << 1 = 2.
 const NVBUF_TRANSFORM_CROP_DST: u32 = 2;
 /// NVBUFSURF_TRANSFORM_FILTER = 1 << 2 = 4.
@@ -41,14 +38,45 @@ const NVBUF_TRANSFORM_FILTER: u32 = 4;
 #[repr(C)]
 #[derive(Clone)]
 struct NvBufSurfaceCreateParams {
-    gpu_id: u32,        // offset 0
-    width: u32,         // offset 4
-    height: u32,        // offset 8
-    size: u32,          // offset 12
-    is_contiguous: i32, // offset 16
-    color_format: i32,  // offset 20
-    layout: i32,        // offset 24
-    mem_type: i32,      // offset 28
+    gpu_id: u32,
+    width: u32,
+    height: u32,
+    size: u32,
+    is_contiguous: i32,
+    color_format: i32,
+    layout: i32,
+    mem_type: i32,
+}
+
+/// Minimal NvBufSurfaceParams for reading pitch and data_ptr.
+/// Matches the first 48 bytes of the full 384-byte struct defined
+/// in nvbufsurface.h. Offsets verified via offsetof() on aarch64.
+#[repr(C)]
+struct NvBufSurfaceParamsHeader {
+    _width: u32,
+    _height: u32,
+    pitch: u32,
+    _color_format: u32,
+    _layout: u32,
+    _pad0: u32,
+    _buffer_desc: i64,
+    _data_size: u32,
+    _pad1: u32,
+    data_ptr: *mut c_void,
+}
+
+/// Minimal NvBufSurface for accessing num_filled and surface_list.
+/// Matches the first 32 bytes of the full 64-byte struct.
+#[repr(C)]
+struct NvBufSurfaceHeader {
+    _gpu_id: u32,
+    _batch_size: u32,
+    num_filled: u32,
+    _is_contiguous: u8,
+    _pad0: [u8; 3],
+    _mem_type: u32,
+    _pad1: u32,
+    surface_list: *mut NvBufSurfaceParamsHeader,
 }
 
 /// Rectangle for crop/placement operations (sizeof=16).
@@ -210,24 +238,11 @@ impl NvBufDetectionSurface {
             return Err(format!("NvBufSurfaceCreate failed: {ret}"));
         }
 
-        // Set numFilled = 1 (offset 8 in NvBufSurface) so the transform
-        // processes this buffer.
-        unsafe {
-            let surf_bytes = surface as *mut u8;
-            *(surf_bytes.add(8) as *mut u32) = 1;
-        }
-
-        // Extract CUDA pointer and pitch from the created surface.
-        // Offsets verified via offsetof() on Jetson aarch64:
-        //   NvBufSurface.surfaceList: offset 24 (pointer)
-        //   NvBufSurfaceParams.pitch: offset 8 (u32)
-        //   NvBufSurfaceParams.dataPtr: offset 40 (void*)
         let (data_ptr, pitch) = unsafe {
-            let surf_bytes = surface as *const u8;
-            let surface_list = *(surf_bytes.add(24) as *const *const u8);
-            let pitch_val = *(surface_list.add(8) as *const u32);
-            let data_ptr_val = *(surface_list.add(40) as *const u64);
-            (data_ptr_val, pitch_val)
+            let hdr = surface as *mut NvBufSurfaceHeader;
+            (*hdr).num_filled = 1;
+            let params = &*(*hdr).surface_list;
+            (params.data_ptr as u64, params.pitch)
         };
 
         if data_ptr == 0 {

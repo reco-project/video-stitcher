@@ -19,7 +19,7 @@ const NVBUF_MEM_SURFACE_ARRAY: u32 = 4;
 
 /// Per-plane layout information (sizeof verified on aarch64).
 #[repr(C)]
-pub struct NvBufSurfacePlaneParams {
+pub(crate) struct NvBufSurfacePlaneParams {
     pub num_planes: u32,
     pub width: [u32; NVBUF_MAX_PLANES],
     pub height: [u32; NVBUF_MAX_PLANES],
@@ -32,7 +32,7 @@ pub struct NvBufSurfacePlaneParams {
 
 /// Mapped address pointers (used only for CPU mapping, not for zero-copy).
 #[repr(C)]
-pub struct NvBufSurfaceMappedAddr {
+pub(crate) struct NvBufSurfaceMappedAddr {
     pub addr: [*mut c_void; NVBUF_MAX_PLANES],
     pub egl_image: *mut c_void,
     _reserved: [*mut c_void; STRUCTURE_PADDING],
@@ -40,7 +40,7 @@ pub struct NvBufSurfaceMappedAddr {
 
 /// Per-buffer parameters (sizeof=384, verified on aarch64).
 #[repr(C)]
-pub struct NvBufSurfaceParams {
+pub(crate) struct NvBufSurfaceParams {
     pub width: u32,                            // offset 0
     pub height: u32,                           // offset 4
     pub pitch: u32,                            // offset 8
@@ -59,7 +59,7 @@ pub struct NvBufSurfaceParams {
 
 /// Top-level batched buffer container (sizeof=64, verified on aarch64).
 #[repr(C)]
-pub struct NvBufSurface {
+pub(crate) struct NvBufSurface {
     pub gpu_id: u32,                           // offset 0
     pub batch_size: u32,                       // offset 4
     pub num_filled: u32,                       // offset 8
