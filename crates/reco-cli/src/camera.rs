@@ -155,13 +155,12 @@ pub fn run_camera(
     // Parse tracking mode. Sweep is useful without detection.
     #[cfg(feature = "autocam")]
     let tracking_mode = match tracking {
-        "ball" => reco_autocam::TrackingMode::Ball,
-        "field" => reco_autocam::TrackingMode::Field,
         "sweep" => reco_autocam::TrackingMode::Sweep,
-        other => {
-            log::warn!("unknown tracking mode '{other}', defaulting to 'ball'");
-            reco_autocam::TrackingMode::Ball
+        other if other != "field" => {
+            log::warn!("unknown tracking mode '{other}', defaulting to 'field'");
+            reco_autocam::TrackingMode::Field
         }
+        _ => reco_autocam::TrackingMode::Field,
     };
 
     // Set up autocam (detector + director). Model path is optional in

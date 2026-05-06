@@ -184,9 +184,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         job = job.on_session(move |session, source| {
             let info = source.info();
             let mode = match mode_str.as_str() {
-                "field" => reco_autocam::TrackingMode::Field,
                 "sweep" => reco_autocam::TrackingMode::Sweep,
-                _ => reco_autocam::TrackingMode::Ball,
+                _ => reco_autocam::TrackingMode::Field,
             };
             let is_10bit = source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
             let autocam_config = reco_autocam::AutocamConfig::new(&model_path)
