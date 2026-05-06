@@ -104,6 +104,7 @@ pub mod metal_interop;
 pub mod nv12_converter;
 #[cfg(target_os = "linux")]
 pub mod nvbuf_transform;
+pub mod planes;
 /// Camera-motion policy contract — see [`Panner`](panner::Panner).
 /// The panner half of the tracker/panner split: consumes a clean
 /// [`WorldState`](tracker::WorldState) and decides where to point
