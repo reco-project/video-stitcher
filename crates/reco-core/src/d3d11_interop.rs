@@ -375,7 +375,11 @@ unsafe fn import_d3d11_shared_handle(
             .as_hal::<Dx12>()
             .ok_or(D3d11InteropError::NotDx12)?;
         let raw_device = hal_device_guard.raw_device();
-        unsafe { raw_device.OpenSharedHandle(handle)? }
+        let mut resource: Option<ID3D12Resource> = None;
+        unsafe {
+            raw_device.OpenSharedHandle(handle, &mut resource)?;
+        }
+        resource.ok_or_else(|| D3d11InteropError::D3d11("OpenSharedHandle returned None".into()))?
     };
 
     // Wrap the D3D12 resource in a wgpu HAL texture.
