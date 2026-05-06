@@ -526,10 +526,10 @@ pub mod encoder {
                     // hit it.
                     container: Container::Matroska,
                     codec: VideoCodec::H264,
-                    quality: Quality::Balanced,
+                    quality: Quality::Fast,
                     encoder_name: Some("libx264".to_string()),
                     crf: None,
-                    preset: None,
+                    preset: Some("ultrafast".to_string()),
                     audio_source: None,
                     // Short GOP so replay readers see recent
                     // frames within ~1 second. For Matroska the
@@ -538,6 +538,7 @@ pub mod encoder {
                     // at 30fps costs ~5-10% bitrate vs the libx264
                     // default of 250.
                     gop_size: Some(30),
+                    stream_url: None,
                 },
                 fps: (30, 1),
             }

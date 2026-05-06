@@ -216,6 +216,22 @@ pub enum DetectorFrame<'a> {
         height: u32,
     },
 
+    /// Pre-letterboxed CUDA RGBA at model input resolution.
+    ///
+    /// Produced by NvBufSurfTransform on Jetson: the resize, format
+    /// conversion, and letterbox padding are done in a single hardware-
+    /// accelerated operation. The detector skips NPP resize and only
+    /// runs the normalize kernel + inference.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    CudaRgbaLetterboxed {
+        /// CUDA device pointer to letterboxed RGBA data at model size.
+        ptr: crate::cuda_interop::CUdeviceptr,
+        /// Original source frame width (for detection coordinate mapping).
+        src_width: u32,
+        /// Original source frame height (for detection coordinate mapping).
+        src_height: u32,
+    },
+
     /// Metal / VideoToolbox `CVPixelBufferRef`. Local only.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     Metal {
@@ -238,6 +254,8 @@ impl DetectorFrame<'_> {
             Self::Cuda(_) => "Cuda",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             Self::CudaRgba { .. } => "CudaRgba",
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            Self::CudaRgbaLetterboxed { .. } => "CudaRgbaLetterboxed",
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             Self::Metal { .. } => "Metal",
         }

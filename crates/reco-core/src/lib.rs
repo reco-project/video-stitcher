@@ -94,6 +94,8 @@ pub mod d3d11_interop;
 pub mod detection_filter;
 pub mod detector;
 pub mod director;
+#[cfg(target_os = "linux")]
+pub mod dmabuf_import;
 pub mod encoder;
 /// M4 timestamped multi-source ingest buffer. See
 /// [`framesync::TimestampedIngestBuffer`] for the dual-source
@@ -105,6 +107,8 @@ pub mod lens_preview;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_interop;
 pub mod nv12_converter;
+#[cfg(target_os = "linux")]
+pub mod nvbuf_transform;
 /// Camera-motion policy contract — see [`Panner`](panner::Panner).
 /// The panner half of the tracker/panner split: consumes a clean
 /// [`WorldState`](tracker::WorldState) and decides where to point

@@ -350,11 +350,17 @@ enum Commands {
         /// Output container format. One of: `mp4` (default, needs
         /// close-time finalize), `fmp4` (fragmented MP4, streamable
         /// mid-write), `mkv` (Matroska, crash-safe + streamable).
-        /// Use `mkv` or `fmp4` if you plan to stream the output
-        /// via an external `ffmpeg -c copy -f flv rtmp://...`
-        /// tee while the capture is still running.
+        /// Use `mkv` for live recording (survives mid-session kills).
         #[arg(long)]
         container: Option<String>,
+
+        /// RTMP stream URL for simultaneous file + stream output.
+        /// The encoder writes the same packets to both the local
+        /// file and this URL in a single encode pass (zero extra
+        /// CPU). A silent audio track is added automatically for
+        /// YouTube RTMP compatibility.
+        #[arg(long)]
+        stream_url: Option<String>,
 
         /// Tracking director mode. `ball` (default): YOLO ball
         /// tracking via BallDirector. `field`: ball + players
@@ -399,6 +405,21 @@ enum Commands {
         /// Higher = brighter but noisier.
         #[arg(long, default_value_t = 16)]
         sensor_gain: u32,
+
+        /// Run live calibration instead of stitching. Captures frame
+        /// pairs from the cameras, runs AKAZE feature matching, and
+        /// writes the result to the --calibration path.
+        #[arg(long, default_value_t = false)]
+        live_calibrate: bool,
+
+        /// Number of frame pairs to sample for live calibration.
+        #[arg(long, default_value_t = 8)]
+        calibrate_frames: usize,
+
+        /// Left camera lens profile JSON (for calibration).
+        /// Falls back to ~/imx477_profile.json if not specified.
+        #[arg(long)]
+        left_lens_profile: Option<String>,
     },
 
     /// Stitch live RPi CSI camera feeds via libcamera (rpicam-vid).
@@ -789,6 +810,7 @@ fn main() -> anyhow::Result<()> {
             crf,
             preset,
             container,
+            stream_url,
             tracking,
             unconstrained,
             replay,
@@ -796,6 +818,9 @@ fn main() -> anyhow::Result<()> {
             v4l2_direct,
             exposure,
             sensor_gain,
+            live_calibrate,
+            calibrate_frames,
+            left_lens_profile,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -816,6 +841,19 @@ fn main() -> anyhow::Result<()> {
                 left_device,
                 right_device,
             };
+
+            if live_calibrate {
+                return camera::run_live_calibrate(
+                    cam_config,
+                    &calibration,
+                    capture_width,
+                    capture_height,
+                    calibrate_frames,
+                    left_lens_profile.as_deref(),
+                    None,
+                    &interrupted,
+                );
+            }
 
             camera::run_camera(
                 camera::CameraRunConfig {
@@ -840,6 +878,17 @@ fn main() -> anyhow::Result<()> {
                     unconstrained,
                     replay_path: replay.as_deref(),
                     replay_scale,
+                    stream_url: stream_url.as_deref(),
+                    use_nvmm: !v4l2_direct && helpers::is_tegra() && {
+                        #[cfg(target_os = "linux")]
+                        {
+                            reco_core::nvbuf_transform::is_available()
+                        }
+                        #[cfg(not(target_os = "linux"))]
+                        {
+                            false
+                        }
+                    },
                     v4l2_direct,
                     exposure,
                     sensor_gain,

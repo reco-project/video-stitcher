@@ -25,6 +25,7 @@ tracing = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ash = "0.38"
+libc = "0.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 libloading = "0.9"

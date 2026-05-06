@@ -255,6 +255,56 @@ impl DetectionPipeline {
         detections
     }
 
+    /// Run detection on pre-letterboxed CUDA RGBA buffers (NvBufSurfTransform output).
+    ///
+    /// The buffers are already at model input resolution with letterbox padding.
+    /// The detector skips NPP resize and only runs normalize + inference.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn run_detection_preletterboxed(
+        &mut self,
+        left_ptr: crate::cuda_interop::CUdeviceptr,
+        left_src_width: u32,
+        left_src_height: u32,
+        right_ptr: crate::cuda_interop::CUdeviceptr,
+        right_src_width: u32,
+        right_src_height: u32,
+    ) -> Vec<Detection> {
+        crate::profile_scope!("detect_preletterboxed_total");
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+
+        let mut detections = Vec::new();
+        for (camera, ptr, sw, sh) in [
+            (CameraId::Left, left_ptr, left_src_width, left_src_height),
+            (
+                CameraId::Right,
+                right_ptr,
+                right_src_width,
+                right_src_height,
+            ),
+        ] {
+            let frame = DetectorFrame::CudaRgbaLetterboxed {
+                ptr,
+                src_width: sw,
+                src_height: sh,
+            };
+            match detector.detect(camera, &frame) {
+                Ok(v) => detections.extend(v),
+                Err(DetectorError::UnsupportedFrameKind) => {
+                    log::debug!(
+                        "detector '{}' does not support CudaRgbaLetterboxed",
+                        detector.name()
+                    );
+                }
+                Err(e) => {
+                    log::warn!("detector '{}' {camera:?}: {e}", detector.name());
+                }
+            }
+        }
+        detections
+    }
+
     /// Run detection on a CUDA-resident stereo NV12 frame.
     ///
     /// Builds [`DetectorFrame::Cuda(GpuNv12Frame)`] for each camera

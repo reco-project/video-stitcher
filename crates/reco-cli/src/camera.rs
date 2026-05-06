@@ -39,9 +39,8 @@ pub struct CameraRunConfig<'a> {
     pub detection_interval: u64,
     pub crf: Option<u8>,
     pub preset: Option<String>,
-    /// Output container (`mp4` / `fmp4` / `mkv`). None → `mp4`.
-    /// Pick `mkv` or `fmp4` for streamable tee via external
-    /// `ffmpeg -c copy -f flv rtmp://...`.
+    /// Output container (`mp4` / `fmp4` / `mkv`). None -> `mp4`.
+    /// `mkv` recommended for live recording (crash-safe, streamable).
     pub container: Option<&'a str>,
     /// Tracking director: `ball`, `field`, `sweep`. Sweep mode
     /// bypasses detection entirely (no --model needed).
@@ -56,6 +55,11 @@ pub struct CameraRunConfig<'a> {
     /// Optional downscaled replay tile dims `(width, height)`.
     /// GPU-pack path only; no-op when replay_path is None.
     pub replay_scale: Option<(u32, u32)>,
+    /// RTMP stream URL for simultaneous file + stream output.
+    pub stream_url: Option<&'a str>,
+    /// Use NVMM zero-copy capture (DMA-buf + NvBufSurfTransform).
+    /// Auto-enabled on Tegra when NvBufSurfTransform is available.
+    pub use_nvmm: bool,
     /// Use V4L2 direct capture with raw Bayer + GPU demosaic.
     pub v4l2_direct: bool,
     /// Sensor exposure in microseconds (V4L2 direct only).
@@ -90,6 +94,8 @@ pub fn run_camera(
         unconstrained,
         replay_path,
         replay_scale,
+        stream_url,
+        use_nvmm,
         v4l2_direct,
         exposure: _exposure,
         sensor_gain: _sensor_gain,
@@ -107,6 +113,8 @@ pub fn run_camera(
         width,
         height,
         blend_width: blend,
+        rig_tilt: cal.rig_tilt as f32,
+        rig_roll: cal.rig_roll as f32,
         ..Default::default()
     };
 
@@ -114,11 +122,8 @@ pub fn run_camera(
 
     let (use_nv12_capture, input_format) = if v4l2_direct {
         // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path.
-        // Pass use_nv12=true so setup_autocam enables the TRT detector
-        // (it checks use_zero_copy which gates .engine loading). Detection
-        // runs via the RGBA readback path, not NV12.
         (true, reco_core::renderer::InputFormat::Bgra)
-    } else if helpers::is_tegra() {
+    } else if use_nvmm || helpers::is_tegra() {
         (true, reco_core::renderer::InputFormat::Nv12)
     } else {
         (false, reco_core::renderer::InputFormat::Yuv420p)
@@ -182,7 +187,7 @@ pub fn run_camera(
                 &mut session,
                 &autocam_config,
                 capture_fps as f32,
-                false,
+                use_nvmm,
             ) {
                 Ok(true) => println!("Autocam: {tracking_mode:?} director attached"),
                 Ok(false) => {
@@ -201,6 +206,8 @@ pub fn run_camera(
 
     let mode_str = if v4l2_direct {
         "Bayer RGGB (V4L2 direct)"
+    } else if use_nvmm {
+        "NVMM zero-copy (DMA-buf + NvBufSurfTransform)"
     } else if use_nv12_capture {
         "NV12"
     } else {
@@ -225,7 +232,21 @@ pub fn run_camera(
     // regardless of whether the source is NV12 or I420.
     #[cfg(feature = "replay")]
     let _replay_attached = if let Some(replay_path) = replay_path {
-        let (out_w, out_h) = replay_scale.unwrap_or((capture_width, capture_height));
+        let (out_w, out_h, is_scaled) = if let Some((w, h)) = replay_scale {
+            (w, h, true)
+        } else if capture_width > 1920 {
+            let scale = 1920.0 / capture_width as f64;
+            let h = ((capture_height as f64 * scale) / 2.0).round() as u32 * 2;
+            log::info!(
+                "Replay auto-downscale: {}x{} -> 1920x{} (--replay-scale overrides)",
+                capture_width,
+                capture_height,
+                h,
+            );
+            (1920, h, true)
+        } else {
+            (capture_width, capture_height, false)
+        };
         let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
             .ok_or_else(|| {
                 anyhow::anyhow!(
@@ -233,7 +254,7 @@ pub fn run_camera(
                      (width divisible by 4, height even)"
                 )
             })?;
-        let output_size = if replay_scale.is_some() {
+        let output_size = if is_scaled {
             reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
         } else {
             reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
@@ -320,6 +341,7 @@ pub fn run_camera(
         preset,
         container: container_choice,
         gop_size: Some(60),
+        stream_url: stream_url.map(|s| s.to_string()),
         ..Default::default()
     };
 
@@ -481,6 +503,155 @@ pub fn run_camera(
 
             progress.finish(frame_count, output);
         }
+    } else if use_nvmm {
+        // NVMM zero-copy path: DMA-buf Vulkan import for rendering,
+        // NvBufSurfTransform for detection. No CPU copies at all.
+        #[cfg(target_os = "linux")]
+        {
+            use reco_core::dmabuf_import::DmaBufTextureCache;
+            use reco_core::nvbuf_transform::NvBufDetectionSurface;
+            use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
+
+            let mut source = GstreamerNvmmCameraSource::open(&cam_config)?;
+
+            // Detection surface size must match the TRT engine's input dims.
+            // All shipped yolo26 engines use 1280x1280.
+            let model_size = 1280u32;
+            log::info!("NVMM detection surface size: {model_size}x{model_size}");
+            let mut det_left =
+                NvBufDetectionSurface::new(model_size, capture_width, capture_height)
+                    .map_err(|e| anyhow::anyhow!("left detection surface: {e}"))?;
+            let mut det_right =
+                NvBufDetectionSurface::new(model_size, capture_width, capture_height)
+                    .map_err(|e| anyhow::anyhow!("right detection surface: {e}"))?;
+
+            let det_surface_mb =
+                (det_left.pitch as f64 * model_size as f64 * 2.0) / 1024.0 / 1024.0;
+            let tensor_mb =
+                (model_size as f64 * model_size as f64 * 3.0 * 4.0 * 2.0) / 1024.0 / 1024.0;
+            let nvmm_buf_mb =
+                (capture_width as f64 * capture_height as f64 * 1.5 * 8.0) / 1024.0 / 1024.0;
+            log::info!(
+                "NVMM detection surfaces: {}x{} RGBA, letterbox scale={:.4}, pitch={}",
+                model_size,
+                model_size,
+                det_left.scale,
+                det_left.pitch,
+            );
+            log::info!(
+                "Memory budget: det_surfaces={:.1}MB, trt_tensors={:.1}MB, nvmm_bufs={:.1}MB",
+                det_surface_mb,
+                tensor_mb,
+                nvmm_buf_mb,
+            );
+
+            let mut dmabuf_cache = DmaBufTextureCache::new();
+
+            // Warmup: pull first pair to initialize ISP + Argus
+            let warmup = source
+                .next_pair()?
+                .ok_or_else(|| anyhow::anyhow!("NVMM source returned no frames"))?;
+            source.release_previous();
+            log::info!(
+                "NVMM warmup: {}x{} NV12, fd_left={}, fd_right={}",
+                warmup.left.width,
+                warmup.left.height,
+                warmup.left.dmabuf_fd,
+                warmup.right.dmabuf_fd,
+            );
+            log::info!("Warmup complete, starting NVMM capture");
+
+            let progress = helpers::ProgressReporter::new(30);
+
+            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                let pair = {
+                    reco_core::profile_scope!("wait_capture");
+                    match source.next_pair()? {
+                        Some(p) => p,
+                        None => break,
+                    }
+                };
+
+                // Detection: NvBufSurfTransform on the raw NVMM surface pointers
+                if session.detection_should_run() {
+                    reco_core::profile_scope!("nvbuf_detect");
+                    unsafe {
+                        det_left
+                            .transform_from_nvmm(pair.left.surface_ptr)
+                            .map_err(|e| anyhow::anyhow!("left transform: {e}"))?;
+                        det_right
+                            .transform_from_nvmm(pair.right.surface_ptr)
+                            .map_err(|e| anyhow::anyhow!("right transform: {e}"))?;
+                    }
+                    session.detect_and_update_director_preletterboxed(
+                        det_left.data_ptr,
+                        det_right.data_ptr,
+                        capture_width,
+                        capture_height,
+                        start.elapsed(),
+                    )?;
+                } else {
+                    session.update_director(start.elapsed())?;
+                }
+
+                // Rendering: ensure DMA-buf textures are cached, then borrow both
+                {
+                    reco_core::profile_scope!("dmabuf_ensure_cached");
+                    dmabuf_cache
+                        .ensure_imported(
+                            session.gpu(),
+                            pair.left.dmabuf_fd,
+                            pair.left.width,
+                            pair.left.height,
+                            pair.left.y_offset,
+                            pair.left.uv_offset,
+                            pair.left.total_size,
+                        )
+                        .map_err(|e| anyhow::anyhow!("left DMA-buf import: {e}"))?;
+                    dmabuf_cache
+                        .ensure_imported(
+                            session.gpu(),
+                            pair.right.dmabuf_fd,
+                            pair.right.width,
+                            pair.right.height,
+                            pair.right.y_offset,
+                            pair.right.uv_offset,
+                            pair.right.total_size,
+                        )
+                        .map_err(|e| anyhow::anyhow!("right DMA-buf import: {e}"))?;
+                }
+                let left_textures = dmabuf_cache.get(pair.left.dmabuf_fd);
+                let right_textures = dmabuf_cache.get(pair.right.dmabuf_fd);
+
+                let pos = session.director_position();
+                {
+                    reco_core::profile_scope!("stitch_and_encode");
+                    session.process_frame_imported_nv12(
+                        &left_textures.y_texture,
+                        &left_textures.uv_texture,
+                        &right_textures.y_texture,
+                        &right_textures.uv_texture,
+                        pos.yaw,
+                        pos.pitch,
+                    )?;
+                }
+
+                source.release_previous();
+
+                frame_count += 1;
+                progress.report(frame_count);
+            }
+
+            source.stop();
+            #[cfg(feature = "replay")]
+            session.clear_stacked_gpu_recorder();
+            session.finish()?;
+
+            progress.finish(frame_count, output);
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        anyhow::bail!("NVMM zero-copy is only available on Linux/Jetson");
     } else if use_nv12_capture {
         // NV12 path: skip nvvidconv format conversion, upload 2 planes
         let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
@@ -552,6 +723,203 @@ pub fn run_camera(
 
         progress.finish(frame_count, output);
     }
+
+    Ok(())
+}
+
+fn nv12_to_yuv(
+    nv12: &reco_core::source::Nv12Data,
+    width: u32,
+    height: u32,
+) -> reco_calibrate::types::YuvFrame {
+    let mut u = Vec::with_capacity((width as usize / 2) * (height as usize / 2));
+    let mut v = Vec::with_capacity(u.capacity());
+    for pair in nv12.uv.chunks_exact(2) {
+        u.push(pair[0]);
+        v.push(pair[1]);
+    }
+    reco_calibrate::types::YuvFrame {
+        y: nv12.y.clone(),
+        u,
+        v,
+        width,
+        height,
+        timestamp_us: 0,
+    }
+}
+
+struct Nv12CameraCalibSource {
+    source: reco_io::gstreamer::camera::GstreamerNv12CameraSource,
+    width: u32,
+    height: u32,
+    fps: u32,
+    frame_count: u32,
+}
+
+impl reco_calibrate::live::LiveFramePairSource for Nv12CameraCalibSource {
+    fn next_pair(
+        &mut self,
+        timeout: std::time::Duration,
+    ) -> Option<(
+        reco_calibrate::types::YuvFrame,
+        reco_calibrate::types::YuvFrame,
+    )> {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if std::time::Instant::now() >= deadline {
+                return None;
+            }
+            match self.source.next_pair() {
+                Ok(Some(pair)) => {
+                    self.frame_count += 1;
+                    if self.frame_count < self.fps && self.frame_count > 1 {
+                        continue;
+                    }
+                    return Some((
+                        nv12_to_yuv(&pair.left, self.width, self.height),
+                        nv12_to_yuv(&pair.right, self.width, self.height),
+                    ));
+                }
+                Ok(None) => return None,
+                Err(e) => {
+                    log::error!("camera capture error: {e}");
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+/// Run live calibration from camera feeds.
+pub fn run_live_calibrate(
+    cam_config: CameraConfig,
+    output_path: &str,
+    capture_width: u32,
+    capture_height: u32,
+    num_pairs: usize,
+    left_profile: Option<&str>,
+    right_profile: Option<&str>,
+    interrupted: &Arc<AtomicBool>,
+) -> anyhow::Result<()> {
+    use reco_core::calibration::CameraParams;
+
+    eprintln!(
+        "Live calibration: capturing {num_pairs} frame pairs at {capture_width}x{capture_height}",
+    );
+
+    let load_or_default = |path: Option<&str>, w: u32, h: u32| -> anyhow::Result<CameraParams> {
+        if let Some(p) = path {
+            let json = std::fs::read_to_string(p)?;
+            let params: CameraParams = serde_json::from_str(&json)?;
+            eprintln!("Lens profile: {p}");
+            return Ok(params);
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let convention = std::path::PathBuf::from(home).join("imx477_profile.json");
+            if convention.exists() {
+                let json = std::fs::read_to_string(&convention)?;
+                let params: CameraParams = serde_json::from_str(&json)?;
+                eprintln!("Lens profile (auto): {}", convention.display());
+                return Ok(params);
+            }
+        }
+        eprintln!("No lens profile found, using synthetic default (wide-angle)");
+        let fw = w as f64;
+        let fh = h as f64;
+        Ok(CameraParams {
+            width: w,
+            height: h,
+            fx: fw * 0.5,
+            fy: fw * 0.5,
+            cx: fw * 0.5,
+            cy: fh * 0.5,
+            d: [0.0; 4],
+        })
+    };
+    let left_params = load_or_default(left_profile, capture_width, capture_height)?;
+    let right_params = load_or_default(right_profile, capture_width, capture_height)
+        .unwrap_or_else(|_| left_params.clone());
+
+    let gpu = reco_core::gpu::GpuContext::new_blocking()?;
+    eprintln!("GPU: {}", gpu.gpu_name());
+
+    let source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
+    eprintln!("Cameras open, warming up ISP...");
+
+    let mut calib_source = Nv12CameraCalibSource {
+        source,
+        width: capture_width,
+        height: capture_height,
+        fps: cam_config.fps,
+        frame_count: 0,
+    };
+
+    let options = reco_calibrate::live::CalibrateFromLiveOptions {
+        num_pairs,
+        timeout_per_pair: std::time::Duration::from_secs(10),
+        config: reco_calibrate::types::CalibrationConfig::default(),
+    };
+
+    let result = reco_calibrate::live::calibrate_from_live(
+        &gpu,
+        &mut calib_source,
+        &left_params,
+        &right_params,
+        &options,
+        &mut |progress| {
+            eprintln!("  [{}] {}", progress.step, progress.detail);
+        },
+        interrupted,
+    )?;
+
+    calib_source.source.stop();
+
+    let confidence_pct = result.confidence * 100.0;
+    eprintln!(
+        "Calibration complete: {} matches, confidence {confidence_pct:.0}%",
+        result.total_matches,
+    );
+
+    if confidence_pct < 50.0 {
+        eprintln!(
+            "WARNING: Low confidence ({confidence_pct:.0}%). \
+             Try adjusting camera overlap or improving lighting.",
+        );
+    }
+
+    // Preserve field_roi and rig_tilt from existing calibration file
+    let mut cal = result.calibration;
+    if let Ok(existing) = std::fs::read_to_string(output_path) {
+        if let Ok(prev) =
+            serde_json::from_str::<reco_core::calibration::MatchCalibration>(&existing)
+        {
+            if prev.field_roi.is_some() {
+                cal.field_roi = prev.field_roi;
+                eprintln!("Preserved existing field_roi");
+            }
+            if prev.rig_tilt.abs() > 1e-6 {
+                cal.rig_tilt = prev.rig_tilt;
+                eprintln!(
+                    "Preserved existing rig_tilt ({:.1} deg)",
+                    prev.rig_tilt.to_degrees()
+                );
+            }
+            if prev.rig_roll.abs() > 1e-6 {
+                cal.rig_roll = prev.rig_roll;
+            }
+        }
+    }
+    let json = serde_json::to_string_pretty(&cal)?;
+    std::fs::write(output_path, &json)?;
+    eprintln!("Written to {output_path}");
+
+    let summary = serde_json::json!({
+        "status": "ok",
+        "confidence": result.confidence,
+        "matches": result.total_matches,
+        "path": output_path,
+    });
+    println!("{summary}");
 
     Ok(())
 }

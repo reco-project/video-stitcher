@@ -421,7 +421,8 @@ pub fn setup_autocam(
     // Sweep panner doesn't need detection - attach it regardless.
     if tracking_mode == TrackingMode::Sweep {
         log::info!("Tracking mode: sweep (debug, no AI)");
-        let panner = Box::new(crate::panners::SweepPanner::new(0.8, 10.0));
+        let panner =
+            Box::new(crate::panners::SweepPanner::new(0.8, 10.0).with_zoom(30.0, 90.0, 7.0));
         session.set_panner(panner);
         return Ok(true);
     }

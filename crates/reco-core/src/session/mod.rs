@@ -1062,6 +1062,31 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
+    /// Detect on pre-letterboxed CUDA RGBA from NvBufSurfTransform and update director.
+    ///
+    /// The buffers are already at model size with letterbox padding applied.
+    /// Skips NPP resize - only normalize + TRT inference.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn detect_and_update_director_preletterboxed(
+        &mut self,
+        left_ptr: crate::cuda_interop::CUdeviceptr,
+        right_ptr: crate::cuda_interop::CUdeviceptr,
+        src_width: u32,
+        src_height: u32,
+        elapsed: std::time::Duration,
+    ) -> Result<(), SessionError> {
+        let should_detect = self.detection.should_detect(self.frame_count);
+
+        if should_detect {
+            let detections = self.detection.run_detection_preletterboxed(
+                left_ptr, src_width, src_height, right_ptr, src_width, src_height,
+            );
+            self.detection.last_detections = self.map_detections(detections);
+        }
+
+        self.fire_sink_and_update_director(elapsed, should_detect)
+    }
+
     /// Update the director without detection.
     ///
     /// Advances the director state (e.g. sweep position) without running
@@ -1378,6 +1403,39 @@ impl StitchSession {
             .render_gpu_rgba_at_pose(left_rgba, right_rgba, yaw, pitch);
         self.submit_render_output(render_buf)?;
         self.core.drive_gpu_stacked_pack();
+        Ok(())
+    }
+
+    /// Process a frame from imported NV12 textures (DMA-buf zero-copy path).
+    ///
+    /// Takes Y and UV textures for both cameras (from DMA-buf Vulkan import),
+    /// renders the stitch, converts to NV12, and submits to encoders.
+    /// Uses the imported textures directly for replay packing (not the
+    /// renderer's internal planes, which aren't written by this path).
+    pub fn process_frame_imported_nv12(
+        &mut self,
+        left_y: &wgpu::Texture,
+        left_uv: &wgpu::Texture,
+        right_y: &wgpu::Texture,
+        right_uv: &wgpu::Texture,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        let render_buf = self
+            .core
+            .render_imported_textures_at_pose(left_y, left_uv, right_y, right_uv, yaw, pitch);
+        self.submit_render_output(render_buf)?;
+
+        // Replay pack from the imported views (not internal plane textures,
+        // since render_imported_textures doesn't copy into them).
+        let ly = left_y.create_view(&wgpu::TextureViewDescriptor::default());
+        let lu = left_uv.create_view(&wgpu::TextureViewDescriptor::default());
+        let ry = right_y.create_view(&wgpu::TextureViewDescriptor::default());
+        let ru = right_uv.create_view(&wgpu::TextureViewDescriptor::default());
+        self.core.pack_gpu_stacked_replay_from_views(
+            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
+            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
+        );
         Ok(())
     }
 

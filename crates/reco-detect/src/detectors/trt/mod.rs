@@ -191,39 +191,20 @@ impl TrtGpuDetector {
         let pad_x = (input_size - new_w) as f32 / 2.0;
         let pad_y = (input_size - new_h) as f32 / 2.0;
 
-        // Allocate GPU scratch buffers (same as OrtGpuDetector).
-        let rgb_size = (frame_width as usize)
-            .checked_mul(frame_height as usize)
-            .and_then(|v| v.checked_mul(3))
-            .ok_or_else(|| TrtError::Runtime("frame dimensions overflow".into()))?;
+        // Only allocate the f32 tensor (needed by ALL paths) and output
+        // buffer eagerly. The RGB/resized NPP buffers are lazy-allocated
+        // on first use - saves ~75 MB per camera when only the
+        // preletterboxed path is used (Jetson NVMM).
         let resized_size = (input_size as usize)
             .checked_mul(input_size as usize)
             .and_then(|v| v.checked_mul(3))
             .ok_or_else(|| TrtError::Runtime("input dimensions overflow".into()))?;
         let tensor_size = resized_size * 4; // f32
-
-        let rgb_u8 = cuda_mem_alloc(rgb_size)?;
-        let rgb_scratch = cuda_mem_alloc(rgb_size)?;
-        let resized_u8 = cuda_mem_alloc(resized_size)?;
         let tensor_f32 = cuda_mem_alloc(tensor_size)?;
 
-        // Allocate P010 conversion scratch buffers if needed.
-        let (nv12_8bit_y, nv12_8bit_uv) = if is_10bit {
-            let y_size = frame_width as usize * frame_height as usize;
-            let uv_size = frame_width as usize * (frame_height as usize / 2);
-            let y = cuda_mem_alloc(y_size)?;
-            let uv = cuda_mem_alloc(uv_size)?;
-            log::info!(
-                "TrtGpuDetector: allocated P010 conversion buffers ({:.1}MB)",
-                (y_size + uv_size) as f64 / 1024.0 / 1024.0,
-            );
-            (y, uv)
-        } else {
-            (0, 0)
-        };
-
-        // Fill resized buffer with grey (114) for letterbox padding.
-        cuda_memset_d8(resized_u8, 114, resized_size)?;
+        // P010 conversion buffers: lazy-allocated on first 10-bit frame.
+        let (nv12_8bit_y, nv12_8bit_uv) = (0, 0);
+        let _ = is_10bit; // stored in frame_width/height for lazy alloc
 
         // Allocate TRT output buffer and host-side copy.
         let output_buf = CudaBuffer::new(output_byte_size)?;
@@ -237,7 +218,7 @@ impl TrtGpuDetector {
 
         log::info!(
             "TrtGpuDetector ready: input={}x{}, frame={}x{}, scale={:.3}, \
-             pad=({:.1},{:.1}), GPU scratch={:.1}MB, 10bit={}",
+             pad=({:.1},{:.1}), eager GPU={:.1}MB (tensor+output), NPP buffers=lazy",
             input_size,
             input_size,
             frame_width,
@@ -245,14 +226,13 @@ impl TrtGpuDetector {
             scale,
             pad_x,
             pad_y,
-            (rgb_size + resized_size + tensor_size + output_byte_size) as f64 / 1024.0 / 1024.0,
-            is_10bit,
+            (tensor_size + output_byte_size) as f64 / 1024.0 / 1024.0,
         );
 
         let mut detector = Self {
-            rgb_u8,
-            rgb_scratch,
-            resized_u8,
+            rgb_u8: 0,
+            rgb_scratch: 0,
+            resized_u8: 0,
             tensor_f32,
             nv12_8bit_y,
             nv12_8bit_uv,
@@ -352,13 +332,38 @@ impl TrtGpuDetector {
         cuda_ensure_context()
             .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
 
+        // Lazy-allocate NPP scratch buffers on first NV12 detection call.
+        if self.rgb_u8 == 0 {
+            let rgb_size = (width as usize) * (height as usize) * 3;
+            let resized_size = (self.input_size as usize) * (self.input_size as usize) * 3;
+            self.rgb_u8 = cuda_mem_alloc(rgb_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("rgb_u8 alloc: {e}")))?;
+            self.rgb_scratch = cuda_mem_alloc(rgb_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("rgb_scratch alloc: {e}")))?;
+            self.resized_u8 = cuda_mem_alloc(resized_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("resized_u8 alloc: {e}")))?;
+            cuda_memset_d8(self.resized_u8, 114, resized_size)
+                .map_err(|e| DetectorError::InferenceFailed(format!("resized grey fill: {e}")))?;
+            log::info!(
+                "TrtGpuDetector: lazy-allocated NPP buffers ({:.1}MB)",
+                (rgb_size * 2 + resized_size) as f64 / 1024.0 / 1024.0,
+            );
+        }
+
         // Step 0: Convert P010 (10-bit) to 8-bit NV12 if needed.
         let (nv12_y, nv12_y_pitch, nv12_uv, nv12_uv_pitch) = if is_10bit {
             reco_core::profile_scope!("p010_to_nv12");
             if self.nv12_8bit_y == 0 || self.nv12_8bit_uv == 0 {
-                return Err(DetectorError::InferenceFailed(
-                    "P010 frame received but no conversion buffers allocated".into(),
-                ));
+                let y_size = width as usize * height as usize;
+                let uv_size = width as usize * (height as usize / 2);
+                self.nv12_8bit_y = cuda_mem_alloc(y_size)
+                    .map_err(|e| DetectorError::InferenceFailed(format!("P010 Y alloc: {e}")))?;
+                self.nv12_8bit_uv = cuda_mem_alloc(uv_size)
+                    .map_err(|e| DetectorError::InferenceFailed(format!("P010 UV alloc: {e}")))?;
+                log::info!(
+                    "TrtGpuDetector: lazy-allocated P010 buffers ({:.1}MB)",
+                    (y_size + uv_size) as f64 / 1024.0 / 1024.0,
+                );
             }
             crate::cuda_kernels::p010_plane_to_nv12(
                 y_ptr,
@@ -566,6 +571,12 @@ impl UnifiedDetector for TrtGpuDetector {
                 width,
                 height,
             } => self.detect_gpu_rgba(camera, *ptr, *width, *height),
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            DetectorFrame::CudaRgbaLetterboxed {
+                ptr,
+                src_width,
+                src_height,
+            } => self.detect_preletterboxed(camera, *ptr, *src_width, *src_height),
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }
@@ -717,6 +728,34 @@ impl TrtGpuDetector {
         }
 
         self.run_inference_and_postprocess(camera, width, height)
+    }
+
+    /// Pre-letterboxed RGBA detection: the caller already produced a
+    /// model-size letterboxed RGBA buffer (via NvBufSurfTransform).
+    /// Only normalize + inference remain.
+    fn detect_preletterboxed(
+        &mut self,
+        camera: CameraId,
+        rgba_ptr: CUdeviceptr,
+        src_width: u32,
+        src_height: u32,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        reco_core::profile_scope!("trt_detect_preletterboxed");
+        cuda_ensure_context()
+            .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
+
+        {
+            reco_core::profile_scope!("cuda_normalize_rgba");
+            crate::cuda_kernels::normalize_rgba_to_chw(
+                rgba_ptr,
+                self.tensor_f32,
+                self.input_size,
+                self.input_size,
+            )
+            .map_err(|e| DetectorError::InferenceFailed(format!("CUDA RGBA normalize: {e}")))?;
+        }
+
+        self.run_inference_and_postprocess(camera, src_width, src_height)
     }
 
     /// GPU-native RGBA detection: upload RGBA to CUDA, NPP C4 resize

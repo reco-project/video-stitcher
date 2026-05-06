@@ -1192,6 +1192,7 @@ impl StitchCore {
         left: StackedPackSource<'_>,
         right: StackedPackSource<'_>,
     ) {
+        crate::profile_scope!("replay_pack_from_views");
         let Some(ref mut packer) = self.stacked_packer else {
             return;
         };
@@ -1208,13 +1209,19 @@ impl StitchCore {
         if capacity >= 2 {
             packer.pack_tile_from_views(gpu, &mut encoder, 1, right);
         }
-        packer.copy_to_staging(&mut encoder);
-        gpu.queue.submit(Some(encoder.finish()));
-
-        if let Some(atlas) = packer.poll_ready(gpu)
-            && let Some(ref mut recorder) = self.stacked_gpu_recorder
         {
-            recorder.record_atlas(&atlas);
+            crate::profile_scope!("replay_copy_to_staging");
+            packer.copy_to_staging(&mut encoder);
+            gpu.queue.submit(Some(encoder.finish()));
+        }
+
+        {
+            crate::profile_scope!("replay_poll_and_record");
+            if let Some(atlas) = packer.poll_ready(gpu)
+                && let Some(ref mut recorder) = self.stacked_gpu_recorder
+            {
+                recorder.record_atlas(&atlas);
+            }
         }
     }
 
@@ -1232,6 +1239,7 @@ impl StitchCore {
     ///
     /// No-op when the packer isn't enabled.
     pub(crate) fn drive_gpu_stacked_pack(&mut self) {
+        crate::profile_scope!("replay_drive_pack");
         if self.stacked_packer.is_none() {
             return;
         }
