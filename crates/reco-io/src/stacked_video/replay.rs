@@ -25,9 +25,9 @@ use super::encoder::{StackedEncodeError, StackedEncoder, StackedEncoderConfig};
 use super::{GridLayout, StackError};
 use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
 use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
+use reco_core::gpu::yuv_stack_packer::StackedAtlas;
 use reco_core::render::pipeline::YuvPlanes;
 use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame, YuvFrame};
-use reco_core::yuv_stack_packer::StackedAtlas;
 use std::path::Path;
 
 /// Decorator FrameSource that also writes source frames to a

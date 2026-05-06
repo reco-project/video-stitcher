@@ -76,7 +76,6 @@ pub use wgpu;
 pub(crate) mod async_encode;
 pub mod bayer;
 pub mod calibration;
-pub mod color_grade;
 /// M3 push-first `StitchCore` shell — the canonical entry point.
 /// See [`core::StitchCore`] for details.
 pub mod core;
@@ -86,15 +85,12 @@ pub mod gpu;
 pub mod interop;
 pub mod lens;
 pub mod lens_preview;
-pub mod nv12_converter;
 #[cfg(target_os = "linux")]
 pub mod nvbuf_transform;
 pub mod projection;
 pub mod render;
-pub mod rgba_readback;
 pub mod rig_correction;
 pub mod session;
 pub mod source;
 pub mod telemetry;
 pub mod undistort;
-pub mod yuv_stack_packer;

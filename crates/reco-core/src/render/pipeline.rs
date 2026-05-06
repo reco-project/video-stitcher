@@ -220,7 +220,7 @@ impl StitchPipeline {
     /// Returns `Some((width, height))` on success, or `None` if the
     /// dimensions were zero (ignored). Consumers that own external
     /// staging buffers (e.g.
-    /// [`RgbaReadback`](crate::rgba_readback::RgbaReadback)) should
+    /// [`RgbaReadback`](crate::gpu::rgba_readback::RgbaReadback)) should
     /// recreate them when the returned size differs from the previous.
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
         if width == 0 || height == 0 {

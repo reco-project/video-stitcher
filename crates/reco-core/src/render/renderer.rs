@@ -753,7 +753,7 @@ impl Renderer {
     }
 
     /// Create fresh `TextureView`s for the left plane's Y/U/V
-    /// textures. Needed by [`crate::yuv_stack_packer::YuvStackPacker`]
+    /// textures. Needed by [`crate::gpu::yuv_stack_packer::YuvStackPacker`]
     /// when replay recording is enabled: the packer samples the same
     /// uploaded source data the stitch shader reads, producing a
     /// tiled atlas in parallel with the panorama render.
@@ -936,7 +936,7 @@ impl Renderer {
 
     /// Access the internal render target texture.
     ///
-    /// Used by [`Nv12Converter`](crate::nv12_converter::Nv12Converter) to read
+    /// Used by [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter) to read
     /// the RGBA output without an intermediate CPU copy.
     pub fn render_target(&self) -> &wgpu::Texture {
         &self.render_target

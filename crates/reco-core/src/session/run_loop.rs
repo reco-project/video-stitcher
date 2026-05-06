@@ -305,11 +305,11 @@ impl StitchSession {
             let ls = left_slot as usize;
             let rs = right_slot as usize;
             self.core.pack_gpu_stacked_replay_from_views(
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
                     y: &views[ls * 2],
                     uv: &views[ls * 2 + 1],
                 },
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
                     y: &views[4 + rs * 2],
                     uv: &views[4 + rs * 2 + 1],
                 },

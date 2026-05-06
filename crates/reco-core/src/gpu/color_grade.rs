@@ -4,7 +4,7 @@
 //! Designed to slot into any input pipeline (Bayer demosaic, NV12
 //! decode, file playback, OBS BGRA). Future: 1D LUT, tone mapping.
 
-use crate::gpu::GpuContext;
+use super::GpuContext;
 use wgpu::util::DeviceExt;
 
 /// Parameters for the color grade compute shader.
@@ -59,7 +59,7 @@ impl ColorGradePass {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("color_grade"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/color_grade.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/color_grade.wgsl").into()),
         });
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

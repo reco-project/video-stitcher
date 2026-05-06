@@ -204,8 +204,8 @@ impl StitchSession {
         let ry = right_y.create_view(&wgpu::TextureViewDescriptor::default());
         let ru = right_uv.create_view(&wgpu::TextureViewDescriptor::default());
         self.core.pack_gpu_stacked_replay_from_views(
-            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
-            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
         );
         Ok(())
     }

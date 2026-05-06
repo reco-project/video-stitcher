@@ -5,8 +5,8 @@
 //! pipeline's input plane via `StitchRenderer::copy_texture_to_left`.
 //! No CPU readback in the hot path.
 
-use crate::color_grade::{ColorGradeParams, ColorGradePass};
 use crate::gpu::GpuContext;
+use crate::gpu::color_grade::{ColorGradeParams, ColorGradePass};
 #[cfg(target_os = "linux")]
 use crate::interop::vulkan::SharedTexture;
 use wgpu::util::DeviceExt;

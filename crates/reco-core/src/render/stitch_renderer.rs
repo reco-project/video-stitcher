@@ -26,9 +26,9 @@ use super::scene::SceneGeometry;
 use super::viewport::ViewportConfig;
 use crate::calibration::MatchCalibration;
 use crate::gpu::GpuContext;
-use crate::nv12_converter::Nv12Converter;
+use crate::gpu::nv12_converter::Nv12Converter;
+use crate::gpu::rgba_readback::RgbaReadback;
 use crate::projection::CoverageBoundary;
-use crate::rgba_readback::RgbaReadback;
 
 /// Where to render the stitched panorama.
 ///
@@ -159,8 +159,8 @@ impl StitchRenderer {
     /// - [`RenderOutcome::Submitted`] — GPU work was submitted for a
     ///   surface present; nothing left to do.
     /// - [`RenderOutcome::Commands`] — a command buffer is ready for
-    ///   readback (pass to [`RgbaReadback::readback`](crate::rgba_readback::RgbaReadback::readback)
-    ///   or [`Nv12Converter::convert_and_readback`](crate::nv12_converter::Nv12Converter::convert_and_readback)).
+    ///   readback (pass to [`RgbaReadback::readback`](crate::gpu::rgba_readback::RgbaReadback::readback)
+    ///   or [`Nv12Converter::convert_and_readback`](crate::gpu::nv12_converter::Nv12Converter::convert_and_readback)).
     pub fn render(
         &self,
         left: &YuvPlanes<'_>,

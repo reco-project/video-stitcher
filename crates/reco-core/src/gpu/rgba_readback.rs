@@ -8,7 +8,7 @@
 //!
 //! ## Triple-buffered readback
 //!
-//! Uses the same pattern as [`Nv12Converter`](crate::nv12_converter::Nv12Converter):
+//! Uses the same pattern as [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter):
 //! three staging buffers cycle so the CPU always reads from 2 frames ago,
 //! which is guaranteed to have completed on the GPU. This avoids the
 //! blocking `poll(Wait)` stall (3-8ms at 1080p) that a single-buffered
@@ -16,7 +16,7 @@
 //!
 //! ## Why a separate type
 //!
-//! [`Nv12Converter`](crate::nv12_converter::Nv12Converter) also runs a
+//! [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter) also runs a
 //! compute shader to convert RGBA → NV12 before the readback. GUI and
 //! OBS consumers want the raw RGBA (or BGRA) pixels for display, not an
 //! encoded NV12 stream. Sharing the NV12 converter would force every
@@ -26,7 +26,7 @@
 //! ## Usage
 //!
 //! ```rust,ignore
-//! use reco_core::rgba_readback::RgbaReadback;
+//! use reco_core::gpu::rgba_readback::RgbaReadback;
 //!
 //! let mut readback = RgbaReadback::new(&gpu, width, height)?;
 //! // Inside the render loop:
@@ -37,7 +37,7 @@
 //! }
 //! ```
 
-use crate::gpu::GpuContext;
+use super::GpuContext;
 
 /// GPU → CPU RGBA readback with triple-buffered staging.
 ///

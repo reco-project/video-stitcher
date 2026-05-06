@@ -203,8 +203,8 @@ impl StitchSession {
     /// its path choice once at enable time.
     pub fn enable_gpu_stacked_replay(
         &mut self,
-        layout: crate::yuv_stack_packer::StackGridLayout,
-        output_size: crate::yuv_stack_packer::OutputTileSize,
+        layout: crate::gpu::yuv_stack_packer::StackGridLayout,
+        output_size: crate::gpu::yuv_stack_packer::OutputTileSize,
     ) -> Result<(), crate::core::types::StitchCoreError> {
         self.core.enable_gpu_stacked_replay(layout, output_size)
     }

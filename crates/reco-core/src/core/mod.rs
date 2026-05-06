@@ -51,11 +51,11 @@ use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
 use crate::gpu::GpuContext;
+use crate::gpu::rgba_readback::RgbaReadback;
+use crate::gpu::yuv_stack_packer::YuvStackPacker;
 use crate::projection::{CoverageBoundary, LShapeProjection, PanoramaExtent, Projection};
 use crate::render::pipeline::StitchPipeline;
-use crate::rgba_readback::RgbaReadback;
 use crate::source::{CameraInput, StereoCameraInput};
-use crate::yuv_stack_packer::YuvStackPacker;
 
 use self::replay_buffer::ReplayBuffer;
 use self::types::{

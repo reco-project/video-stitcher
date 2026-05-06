@@ -246,7 +246,7 @@ pub fn run_camera(
         } else {
             (capture_width, capture_height, false)
         };
-        let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
+        let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(out_w, out_h, 2)
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "replay tile dims {out_w}x{out_h} not YUV420P-aligned \
@@ -254,9 +254,9 @@ pub fn run_camera(
                 )
             })?;
         let output_size = if is_scaled {
-            reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+            reco_core::gpu::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
         } else {
-            reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+            reco_core::gpu::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
         };
         session
             .enable_gpu_stacked_replay(layout, output_size)

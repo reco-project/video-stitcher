@@ -708,7 +708,7 @@ impl StitchJob {
                 // sized by the source tile dims (layout.capacity
                 // is N, atlas h = output.height * rows).
                 let (out_w, out_h) = cfg.scale.unwrap_or((info.width, info.height));
-                let layout = reco_core::yuv_stack_packer::StackGridLayout::vstack(
+                let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(
                     out_w, out_h, 2,
                 )
                 .ok_or_else(|| {
@@ -719,9 +719,9 @@ impl StitchJob {
                     ))
                 })?;
                 let output_size = if cfg.scale.is_some() {
-                    reco_core::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+                    reco_core::gpu::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
                 } else {
-                    reco_core::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+                    reco_core::gpu::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
                 };
                 session
                     .enable_gpu_stacked_replay(layout, output_size)

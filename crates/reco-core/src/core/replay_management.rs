@@ -2,14 +2,14 @@
 //!
 //! All methods related to the stacked replay recording system: CPU-path
 //! ([`StackedReplayRecorder`](super::types::StackedReplayRecorder)) and
-//! GPU-pack path ([`YuvStackPacker`](crate::yuv_stack_packer::YuvStackPacker)
+//! GPU-pack path ([`YuvStackPacker`](crate::gpu::yuv_stack_packer::YuvStackPacker)
 //! + [`StackedReplayGpuRecorder`](super::types::StackedReplayGpuRecorder)).
 
 use super::types::{StackedReplayGpuRecorder, StackedReplayRecorder, StitchCoreError};
-use crate::render::renderer::InputFormat;
-use crate::yuv_stack_packer::{
+use crate::gpu::yuv_stack_packer::{
     OutputTileSize, SourceFormat, StackGridLayout, StackedPackSource, YuvStackPacker,
 };
+use crate::render::renderer::InputFormat;
 
 impl super::StitchCore {
     /// Attach a stacked-video replay recorder (M6.5 item 3, push

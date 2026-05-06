@@ -301,11 +301,11 @@ impl StitchSession {
             let ls = signal.left_slot as usize;
             let rs = signal.right_slot as usize;
             self.core.pack_gpu_stacked_replay_from_views(
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
                     y: &shared_views[ls * 2],
                     uv: &shared_views[ls * 2 + 1],
                 },
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
                     y: &shared_views[4 + rs * 2],
                     uv: &shared_views[4 + rs * 2 + 1],
                 },
