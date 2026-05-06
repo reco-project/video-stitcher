@@ -12,7 +12,7 @@
 //!   to an encoder. Use this for interactive/GUI applications or when
 //!   the caller controls the frame loop (e.g. zero-copy GPU decode).
 //!
-//! - [`StitchSession::run`] - batch-process an entire [`FrameSource`]
+//! - [`StitchSession::run`] - batch-process an entire `FrameSource`
 //!   into an encoder, with optional progress reporting and interrupt
 //!   support. Use this for CLI batch encoding.
 
@@ -351,7 +351,7 @@ impl StitchSession {
     ///
     /// Drains all pending frames from the triple-buffer pipeline and
     /// submits them to the encoder, then shuts down the encode thread
-    /// and calls [`Encoder::finish`]. Must be called after the frame loop ends.
+    /// and calls `Encoder::finish`. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
         // Flush remaining frames from the NV12 triple-buffer.
         while let Some(nv12_data) = self.nv12_converter.flush_pending(self.core.gpu())? {

@@ -148,7 +148,7 @@ impl StitchSession {
 
     /// Attach a stacked-video replay recorder.
     ///
-    /// Forwards to [`StitchCore::set_stacked_recorder`] on the
+    /// Forwards to `StitchCore::set_stacked_recorder` on the
     /// session's underlying core. Push-based consumers (OBS,
     /// GStreamer bridge) that wire this get the same replay-recording
     /// ergonomics the pull-side `StitchJob::with_replay_recording`
@@ -246,7 +246,7 @@ impl StitchSession {
     /// objects, frame index, and timestamp. Errors returned from the
     /// sink abort the current session call ([`run`](Self::run),
     /// [`step`](Self::step), [`process_frame`](Self::process_frame))
-    /// with [`SessionError::DetectionSink`].
+    /// with [`SessionError::DetectionSink`](super::types::SessionError::DetectionSink).
     ///
     /// Closures matching `FnMut(&[MappedDetection], u64, f64) -> Result<(),
     /// DetectionSinkError>` implement [`DetectionSink`] automatically via
@@ -273,7 +273,7 @@ impl StitchSession {
     ///
     /// Takes effect on the next render call. For interactive calibration
     /// tweaking during preview or live operation. Delegates to
-    /// [`StitchCore::update_calibration`] which re-derives the coverage
+    /// `StitchCore::update_calibration` which re-derives the coverage
     /// boundary in one call.
     pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
         self.core.update_calibration(calibration);

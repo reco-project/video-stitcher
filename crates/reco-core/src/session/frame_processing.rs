@@ -247,7 +247,7 @@ impl StitchSession {
     /// Used with the zero-copy path where decode threads write directly
     /// to shared GPU textures. The caller must configure bind groups via
     /// [`pipeline_mut()`](Self::pipeline_mut) and call
-    /// [`StitchPipeline::render_gpu_frame`] to get the command buffer,
+    /// `StitchPipeline::render_gpu_frame` to get the command buffer,
     /// then pass it here.
     #[cfg_attr(
         feature = "profiling",

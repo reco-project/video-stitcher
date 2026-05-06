@@ -31,11 +31,11 @@
 //!
 //! ## Sub-modules
 //!
-//! - [`types`] - error types, config, render outcome, replay frame, recorder traits
-//! - [`replay_buffer`] - bounded-duration ring buffer for replay frames
-//! - [`render`] - submit and render-at-pose methods
-//! - [`replay_management`] - stacked replay recorder wiring (CPU + GPU paths)
-//! - [`pose`] - pose resolution, detection scheduling, panorama mapping
+//! - `types` - error types, config, render outcome, replay frame, recorder traits
+//! - `replay_buffer` - bounded-duration ring buffer for replay frames
+//! - `render` - submit and render-at-pose methods
+//! - `replay_management` - stacked replay recorder wiring (CPU + GPU paths)
+//! - `pose` - pose resolution, detection scheduling, panorama mapping
 
 mod pose;
 mod render;

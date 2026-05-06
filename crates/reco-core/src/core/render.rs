@@ -192,7 +192,7 @@ impl super::StitchCore {
     /// Submit a stereo packed-RGBA/BGRA frame pair and render the
     /// current pose.
     ///
-    /// Requires the core to have been built with [`InputFormat::Bgra`].
+    /// Requires the core to have been built with `InputFormat::Bgra`.
     /// See [`Self::submit_frame_yuv`] for return semantics.
     pub fn submit_frame_bgra(
         &mut self,
@@ -372,9 +372,9 @@ impl super::StitchCore {
     /// an explicit pose (Linux zero-copy path).
     ///
     /// Thin wrapper over
-    /// [`StitchPipeline::render_gpu_frame`](crate::pipeline::StitchPipeline::render_gpu_frame).
+    /// `StitchPipeline::render_gpu_frame`.
     /// Consumers must have already called
-    /// [`StitchPipeline::configure_gpu_source`] via [`Self::pipeline_mut`].
+    /// `StitchPipeline::configure_gpu_source` via [`Self::pipeline_mut`].
     #[cfg(target_os = "linux")]
     pub fn render_gpu_frame_at_pose(
         &mut self,
