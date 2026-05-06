@@ -442,16 +442,6 @@ pub fn setup_autocam(
 
         // Pre-tracker flicker rejection: class-keyed bucketed-spatial
         // histogram that drops recurrent static mimics (line
-        // intersections, logos, corner flags). Skipped in field mode
-        // because the ROI already filters non-pitch detections, and
-        // stationary players (pre-kickoff, set pieces) are legitimate
-        // signal that the flicker filter aggressively removes.
-        if tracking_mode != TrackingMode::Field {
-            session.add_detection_filter(Box::new(
-                crate::detection_filters::FlickerDetectionFilter::with_defaults(),
-            ));
-        }
-
         match tracking_mode {
             TrackingMode::Field => {
                 let player_tracker = crate::trackers::PlayerTracker::new(person_id);

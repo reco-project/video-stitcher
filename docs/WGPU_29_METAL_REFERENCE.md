@@ -1,7 +1,7 @@
 # wgpu 29 Metal Interop Reference
 
-The `crates/reco-core/src/metal_interop.rs` and
-`crates/reco-core/src/metal_compute.rs` modules were ported from
+The `crates/reco-core/src/interop/metal.rs` and
+`crates/reco-detect/src/metal_compute.rs` modules were ported from
 the objc2-metal API (wgpu 29-era) to the metal crate 0.33 API
 (wgpu 28) in PR #217 as part of the wgpu version downgrade.
 

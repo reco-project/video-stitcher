@@ -290,8 +290,6 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
         let fps_recent = app.get_telem_fps_recent();
         let total_ms = app.get_telem_total_ms();
         let bottleneck = app.get_telem_bottleneck().to_string();
-        let dropped = app.get_telem_frames_dropped();
-
         if fps_avg > 0.0 || total_ms > 0.0 {
             report.push_str(&format!(
                 "\n## Performance\n\
@@ -300,9 +298,6 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
             ));
             if !bottleneck.is_empty() {
                 report.push_str(&format!("- Bottleneck: {bottleneck}\n"));
-            }
-            if dropped > 0 {
-                report.push_str(&format!("- Dropped frames: {dropped}\n"));
             }
         }
 
