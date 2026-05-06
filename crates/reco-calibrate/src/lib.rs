@@ -87,9 +87,7 @@ pub use defaults::{
     YDisparityFilter,
 };
 pub use error::CalibrateError;
-pub use traits::{
-    CalibrationOptimizer, CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
-};
+pub use traits::{CostFunction, FeatureDetector, FeatureMatcher, PointFilter};
 pub use types::{
     AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationQuality, CalibrationResult,
     CalibrationStep, GrayFrame, LensProfileInfo, LensProfileSummary, MatchConfig, OptimizerConfig,

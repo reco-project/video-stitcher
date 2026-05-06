@@ -93,7 +93,7 @@ impl D3d11StagingPool {
         }
 
         // Get the adapter LUID from wgpu so we create D3D11 on the same GPU.
-        let adapter_luid = gpu.adapter_info.device;
+        let adapter_luid = gpu.adapter_info.device as u64;
 
         // Find the matching DXGI adapter by LUID.
         let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
@@ -140,7 +140,11 @@ impl D3d11StagingPool {
             Query: D3D11_QUERY(0), // D3D11_QUERY_EVENT = 0
             MiscFlags: 0,
         };
-        let event_query: ID3D11Query = unsafe { device.CreateQuery(&query_desc)? };
+        let event_query: ID3D11Query = unsafe {
+            let mut query = None;
+            device.CreateQuery(&query_desc, Some(&mut query))?;
+            query.ok_or_else(|| D3d11InteropError::D3d11("CreateQuery returned None".into()))?
+        };
 
         // Create 4 NV12 staging textures with shared handles.
         let desc = D3D11_TEXTURE2D_DESC {
@@ -166,7 +170,11 @@ impl D3d11StagingPool {
         let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(4);
 
         for i in 0..4 {
-            let staging: ID3D11Texture2D = unsafe { device.CreateTexture2D(&desc, None)? };
+            let staging: ID3D11Texture2D = unsafe {
+                let mut tex = None;
+                device.CreateTexture2D(&desc, None, Some(&mut tex))?;
+                tex.ok_or_else(|| D3d11InteropError::D3d11("CreateTexture2D returned None".into()))?
+            };
 
             // Get shared NT handle.
             let dxgi_resource: IDXGIResource1 = staging.cast()?;
@@ -280,10 +288,8 @@ impl D3d11StagingPool {
                 let mut done: u32 = 0;
                 let hr = self.context.GetData(
                     &self.event_query,
-                    Some(std::slice::from_raw_parts_mut(
-                        &mut done as *mut u32 as *mut u8,
-                        std::mem::size_of::<u32>(),
-                    )),
+                    Some(&mut done as *mut u32 as *mut c_void),
+                    std::mem::size_of::<u32>() as u32,
                     0,
                 );
                 if hr.is_ok() && done != 0 {
@@ -370,42 +376,48 @@ unsafe fn import_d3d11_shared_handle(
             .ok_or(D3d11InteropError::NotDx12)?;
         let raw_device = hal_device_guard.raw_device();
         let mut resource: Option<ID3D12Resource> = None;
-        raw_device.OpenSharedHandle(handle, &mut resource)?;
+        unsafe {
+            raw_device.OpenSharedHandle(handle, &mut resource)?;
+        }
         resource.ok_or_else(|| D3d11InteropError::D3d11("OpenSharedHandle returned None".into()))?
     };
 
     // Wrap the D3D12 resource in a wgpu HAL texture.
-    let hal_texture = wgpu::hal::dx12::Device::texture_from_raw(
-        d3d12_resource,
-        wgpu::TextureFormat::NV12,
-        wgpu::TextureDimension::D2,
-        wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        1, // mip levels
-        1, // sample count
-    );
-
-    // Wrap the HAL texture into a wgpu::Texture.
-    let texture = gpu.device().create_texture_from_hal::<Dx12>(
-        hal_texture,
-        &wgpu::TextureDescriptor {
-            label: Some("d3d11_staging_nv12"),
-            size: wgpu::Extent3d {
+    let hal_texture = unsafe {
+        wgpu::hal::dx12::Device::texture_from_raw(
+            d3d12_resource,
+            wgpu::TextureFormat::NV12,
+            wgpu::TextureDimension::D2,
+            wgpu::Extent3d {
                 width,
                 height,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::NV12,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
+            1, // mip levels
+            1, // sample count
+        )
+    };
+
+    let desc = wgpu::TextureDescriptor {
+        label: Some("d3d11_staging_nv12"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
         },
-    );
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::NV12,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    };
+
+    // Wrap the HAL texture into a wgpu::Texture.
+    let texture = unsafe {
+        gpu.device()
+            .create_texture_from_hal::<Dx12>(hal_texture, &desc)
+    };
 
     Ok(texture)
 }

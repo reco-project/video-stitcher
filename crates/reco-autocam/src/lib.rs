@@ -11,9 +11,8 @@
 //!
 //! - [`trackers::BallTracker`] / [`trackers::PlayerTracker`] - per-class
 //!   trackers implementing [`Tracker`](reco_core::tracker::Tracker).
-//! - [`panners::BallPanner`] / [`panners::FieldPanner`] /
-//!   [`panners::SweepPanner`] - camera-motion policies implementing
-//!   [`Panner`](reco_core::panner::Panner).
+//! - [`panners::FieldPanner`] / [`panners::SweepPanner`] - camera-motion
+//!   policies implementing [`Panner`](reco_core::panner::Panner).
 //! - [`panners::Smoother`] / [`panners::Anticipator`] /
 //!   [`panners::DeadZone`] - composable panner decorators.
 //! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
@@ -38,7 +37,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! # let mut session: reco_core::session::StitchSession = todo!();
 //! let config = AutocamConfig::new("ball_v0.onnx")
-//!     .with_tracking_mode(TrackingMode::Ball);
+//!     .with_tracking_mode(TrackingMode::Field);
 //! reco_autocam::setup_autocam(&mut session, &config, 30.0, false)?;
 //! # Ok(()) }
 //! ```
@@ -127,7 +126,7 @@ impl AutocamConfig {
     pub fn new(model_path: impl Into<std::path::PathBuf>) -> Self {
         Self {
             model_path: model_path.into(),
-            tracking_mode: TrackingMode::Ball,
+            tracking_mode: TrackingMode::Field,
             detection_interval: 1,
             field_roi: None,
             is_10bit: false,
@@ -454,50 +453,7 @@ pub fn setup_autocam(
         }
 
         match tracking_mode {
-            TrackingMode::Ball => {
-                // Ball tracker picks one detection per frame with
-                // plausibility + cross-cam handoff. ROI presence widens
-                // the max-jump gate since the ROI has already removed
-                // off-pitch false positives that the gate would
-                // otherwise guard against.
-                // With ROI pre-filtering the off-pitch false positives,
-                // the plausibility gate can be permissive enough to
-                // accept long passes without rejecting legitimate
-                // detections. ~45° / 0.8 rad captures most real ball
-                // trajectories between detection intervals.
-                let has_roi = has_effective_roi;
-                let max_jump = if has_roi {
-                    0.8_f32
-                } else {
-                    crate::trackers::ball::DEFAULT_MAX_JUMP_RAD
-                };
-                let tracker =
-                    crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(max_jump);
-                log::info!(
-                    "Tracking mode: ball (BallTracker + BallPanner, \
-                     max_jump={max_jump:.3}, roi={has_roi})"
-                );
-
-                // BallPanner → Smoother → DeadZone. Anticipator was
-                // removed after pose-trace analysis showed it overshot
-                // every tracker plateau transition (ball tracker
-                // output is piecewise-constant between acquisitions,
-                // which velocity-lead extrapolation rings on). Heavy
-                // smoothing keeps the ball centered without the ring.
-                let ball_panner = crate::panners::BallPanner::new(fps);
-
-                session.set_ball_tracker(Box::new(tracker));
-                session.set_panner(Box::new(ball_panner));
-            }
             TrackingMode::Field => {
-                // Player tracker populates world.players; FieldPanner
-                // clusters them and emits the centroid. Same heavy-
-                // smoothing chain as Ball mode (BallPanner was the
-                // only difference): FieldPanner → Smoother → DeadZone.
-                //
-                // Class IDs come from the model label list so the same
-                // binary works with COCO-indexed (person=0) or custom
-                // (person=<whatever>) models.
                 let player_tracker = crate::trackers::PlayerTracker::new(person_id);
                 let ball_tracker =
                     crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.8);

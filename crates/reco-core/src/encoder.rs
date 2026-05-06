@@ -1,13 +1,7 @@
-//! Encoder trait for consuming stitched GPU frames.
+//! Encoder trait for consuming stitched frames.
 //!
-//! The encoder is the final stage of the pipeline. It receives rendered
-//! frames from the GPU and produces the output video file or stream.
-//!
-//! ## Implementations (in `reco-io`)
-//!
-//! - FFmpeg backend: encoding with support for software (libx264/libx265)
-//!   and hardware encoders (NVENC, VideoToolbox, VAAPI)
-//! - Future: direct NVENC for Jetson, WebRTC for livestreaming
+//! The encoder receives rendered frames after GPU readback and produces
+//! the output video file or stream. Implementations live in `reco-io`.
 
 use thiserror::Error;
 
@@ -77,37 +71,6 @@ pub trait Encoder: Send {
     /// Frames are submitted in presentation order. The encoder is
     /// responsible for buffering and reordering if needed (e.g. B-frames).
     fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError>;
-
-    /// Signal that all frames have been submitted.
-    ///
-    /// The encoder should flush any buffered frames and finalize the
-    /// output file or stream.
-    fn finish(&mut self) -> Result<(), EncodeError>;
-}
-
-/// Trait for GPU-resident video encoders.
-///
-/// Unlike [`Encoder`], which receives CPU-side pixel data, a `GpuEncoder`
-/// receives a [`wgpu::Texture`] reference directly. This enables zero-copy
-/// encode paths where the GPU render output is encoded without ever reading
-/// back to CPU memory (e.g. NVENC encoding from a Vulkan texture, or
-/// VideoToolbox encoding from a Metal texture).
-///
-/// No implementations exist yet - this trait defines the API surface so
-/// that future GPU encoder backends can be wired into [`StitchSession`]
-/// without breaking changes.
-///
-/// [`StitchSession`]: crate::session::StitchSession
-pub trait GpuEncoder: Send {
-    /// Submit a GPU texture for encoding.
-    ///
-    /// The texture contains the rendered panoramic frame in RGBA8 format.
-    /// The encoder is responsible for any format conversion (e.g. RGBA to NV12)
-    /// on the GPU side. `pts_us` is the presentation timestamp in microseconds.
-    ///
-    /// The texture is only valid for the duration of this call - the encoder
-    /// must either consume it immediately or copy it to an internal buffer.
-    fn submit_texture(&mut self, texture: &wgpu::Texture, pts_us: i64) -> Result<(), EncodeError>;
 
     /// Signal that all frames have been submitted.
     ///

@@ -20,18 +20,12 @@
 //! every operator action the pipeline cares about; transports
 //! translate their native input events into these intents.
 //!
-//! # Planned transports
+//! # Transports
 //!
 //! | Feature       | Transport                       | Status       |
 //! |---------------|----------------------------------|--------------|
-//! | `keyboard`    | [`keyboard::KeyboardTransport`] | **shipped** (trivial pass-through) |
-//! | `gopro`       | `gopro` module stub             | placeholder  |
-//! | `mobile`      | `mobile` module stub            | placeholder  |
-//! | `websocket`   | `websocket` module stub         | placeholder (feature-gated) |
-//!
-//! The placeholder modules contain `todo!()` bodies; they exist so
-//! the feature-combo CI matrix exercises the gates and so future
-//! work has an obvious target path.
+//! | `keyboard`    | [`keyboard::KeyboardTransport`] | shipped |
+//! | `gopro`       | `gopro` module                  | placeholder  |
 
 #![deny(unsafe_code)]
 
@@ -145,10 +139,10 @@ pub enum CaptureIntent {
     /// Capture a single frame to disk (still image).
     Snapshot,
     /// Clear the replay ring buffer
-    /// ([`reco_core::core::ReplayBuffer::clear`]).
+    /// ([`reco_core::core::replay_buffer::ReplayBuffer::clear`]).
     ClearReplay,
     /// Save the current replay ring buffer to a file and clear it
-    /// (maps to [`reco_core::core::ReplayBuffer::take`] + encode).
+    /// (maps to [`reco_core::core::replay_buffer::ReplayBuffer::take`] + encode).
     SaveReplay,
 }
 
@@ -205,12 +199,6 @@ pub mod keyboard;
 
 #[cfg(feature = "gopro")]
 pub mod gopro;
-
-#[cfg(feature = "mobile")]
-pub mod mobile;
-
-#[cfg(feature = "websocket")]
-pub mod websocket;
 
 // ---------------------------------------------------------------------------
 // Compile-time bound check

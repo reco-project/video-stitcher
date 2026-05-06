@@ -155,13 +155,12 @@ pub fn run_camera(
     // Parse tracking mode. Sweep is useful without detection.
     #[cfg(feature = "autocam")]
     let tracking_mode = match tracking {
-        "ball" => reco_autocam::TrackingMode::Ball,
-        "field" => reco_autocam::TrackingMode::Field,
         "sweep" => reco_autocam::TrackingMode::Sweep,
-        other => {
-            log::warn!("unknown tracking mode '{other}', defaulting to 'ball'");
-            reco_autocam::TrackingMode::Ball
+        other if other != "field" => {
+            log::warn!("unknown tracking mode '{other}', defaulting to 'field'");
+            reco_autocam::TrackingMode::Field
         }
+        _ => reco_autocam::TrackingMode::Field,
     };
 
     // Set up autocam (detector + director). Model path is optional in
@@ -312,34 +311,27 @@ pub fn run_camera(
     }
 
     reco_io::init();
-    let quality = match quality {
-        "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
-        "balanced" => reco_io::ffmpeg::encoder::Quality::Balanced,
-        "high" => reco_io::ffmpeg::encoder::Quality::High,
-        other => {
-            log::warn!("Unknown quality '{other}', defaulting to balanced");
-            reco_io::ffmpeg::encoder::Quality::Balanced
-        }
-    };
-    let video_codec =
-        reco_io::ffmpeg::encoder::VideoCodec::from_str_loose(codec).unwrap_or_else(|| {
-            eprintln!("Unknown codec '{codec}', defaulting to H.264");
-            reco_io::ffmpeg::encoder::VideoCodec::H264
-        });
-    let container_choice = if let Some(c) = container {
-        reco_io::ffmpeg::encoder::Container::from_str_loose(c).ok_or_else(|| {
-            anyhow::anyhow!("unknown container '{c}' (expected mp4, fmp4, or mkv)")
-        })?
+    let out_quality: reco_io::output::Quality = quality.parse().unwrap_or_else(|_| {
+        log::warn!("Unknown quality '{quality}', defaulting to balanced");
+        reco_io::output::Quality::Balanced
+    });
+    let out_codec: reco_io::output::Codec = codec.parse().unwrap_or_else(|_| {
+        log::warn!("Unknown codec '{codec}', defaulting to H.264");
+        reco_io::output::Codec::H264
+    });
+    let out_format: reco_io::output::Format = if let Some(c) = container {
+        c.parse()
+            .map_err(|e: String| anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)"))?
     } else {
-        reco_io::ffmpeg::encoder::Container::default()
+        reco_io::output::Format::default()
     };
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
-        codec: video_codec,
-        quality,
+        codec: out_codec.into(),
+        quality: out_quality.into(),
         crf,
         preset,
-        container: container_choice,
+        container: out_format.into(),
         gop_size: Some(60),
         stream_url: stream_url.map(|s| s.to_string()),
         ..Default::default()
@@ -889,24 +881,23 @@ pub fn run_live_calibrate(
 
     // Preserve field_roi and rig_tilt from existing calibration file
     let mut cal = result.calibration;
-    if let Ok(existing) = std::fs::read_to_string(output_path) {
-        if let Ok(prev) =
+    if let Ok(existing) = std::fs::read_to_string(output_path)
+        && let Ok(prev) =
             serde_json::from_str::<reco_core::calibration::MatchCalibration>(&existing)
-        {
-            if prev.field_roi.is_some() {
-                cal.field_roi = prev.field_roi;
-                eprintln!("Preserved existing field_roi");
-            }
-            if prev.rig_tilt.abs() > 1e-6 {
-                cal.rig_tilt = prev.rig_tilt;
-                eprintln!(
-                    "Preserved existing rig_tilt ({:.1} deg)",
-                    prev.rig_tilt.to_degrees()
-                );
-            }
-            if prev.rig_roll.abs() > 1e-6 {
-                cal.rig_roll = prev.rig_roll;
-            }
+    {
+        if prev.field_roi.is_some() {
+            cal.field_roi = prev.field_roi;
+            eprintln!("Preserved existing field_roi");
+        }
+        if prev.rig_tilt.abs() > 1e-6 {
+            cal.rig_tilt = prev.rig_tilt;
+            eprintln!(
+                "Preserved existing rig_tilt ({:.1} deg)",
+                prev.rig_tilt.to_degrees()
+            );
+        }
+        if prev.rig_roll.abs() > 1e-6 {
+            cal.rig_roll = prev.rig_roll;
         }
     }
     let json = serde_json::to_string_pretty(&cal)?;

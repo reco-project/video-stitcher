@@ -14,15 +14,10 @@ description = "Transport-agnostic control vocabulary for Reco (keyboard, gamepad
 #
 # The crate ships with one trivial transport (`keyboard`) enabled by
 # default. Other transports are feature-gated so headless / embedded
-# consumers pay only for what they use. Today all of
-# `gopro`/`mobile`/`websocket` are `todo!()` scaffolds — they exist so
-# the layout is visible and the feature-matrix CI exercises the gates.
 [features]
 default = ["keyboard"]
 keyboard = []
 gopro = ["dep:reqwest", "dep:tokio"]
-mobile = []
-websocket = []
 
 [dependencies]
 reco-core = { path = "../reco-core" }

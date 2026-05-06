@@ -70,6 +70,8 @@ pub fn run_libcamera(
         width,
         height,
         blend_width: blend,
+        rig_tilt: cal.rig_tilt as f32,
+        rig_roll: cal.rig_roll as f32,
         ..Default::default()
     };
 
@@ -118,24 +120,18 @@ pub fn run_libcamera(
     );
 
     reco_io::init();
-    let quality = match quality {
-        "fast" => reco_io::ffmpeg::encoder::Quality::Fast,
-        "balanced" => reco_io::ffmpeg::encoder::Quality::Balanced,
-        "high" => reco_io::ffmpeg::encoder::Quality::High,
-        other => {
-            log::warn!("Unknown quality '{other}', defaulting to balanced");
-            reco_io::ffmpeg::encoder::Quality::Balanced
-        }
-    };
-    let video_codec =
-        reco_io::ffmpeg::encoder::VideoCodec::from_str_loose(codec).unwrap_or_else(|| {
-            eprintln!("Unknown codec '{codec}', defaulting to H.264");
-            reco_io::ffmpeg::encoder::VideoCodec::H264
-        });
+    let out_quality: reco_io::output::Quality = quality.parse().unwrap_or_else(|_| {
+        log::warn!("Unknown quality '{quality}', defaulting to balanced");
+        reco_io::output::Quality::Balanced
+    });
+    let out_codec: reco_io::output::Codec = codec.parse().unwrap_or_else(|_| {
+        log::warn!("Unknown codec '{codec}', defaulting to H.264");
+        reco_io::output::Codec::H264
+    });
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
-        codec: video_codec,
-        quality,
+        codec: out_codec.into(),
+        quality: out_quality.into(),
         crf,
         preset,
         ..Default::default()

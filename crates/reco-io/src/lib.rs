@@ -39,9 +39,6 @@ pub mod smart_source;
 pub mod stitch_job;
 
 #[cfg(feature = "ffmpeg")]
-pub mod analyze_job;
-
-#[cfg(feature = "ffmpeg")]
 pub mod zero_copy;
 
 #[cfg(feature = "config")]
@@ -63,9 +60,6 @@ pub use smart_source::SmartFileSource;
 
 #[cfg(feature = "ffmpeg")]
 pub use stitch_job::{InputPath, StitchJob, StitchResult};
-
-#[cfg(feature = "ffmpeg")]
-pub use analyze_job::{AnalyzeJob, AnalyzeResult};
 
 /// Initialize enabled backends. Call once at program start.
 ///

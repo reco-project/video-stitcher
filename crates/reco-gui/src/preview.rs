@@ -151,13 +151,11 @@ impl PreviewBridge {
     }
 
     /// Access the underlying renderer for viewport adjustments.
-    #[allow(dead_code)]
     pub fn renderer(&self) -> &StitchRenderer {
         &self.renderer
     }
 
     /// Mutable access for resize, FOV, calibration updates.
-    #[allow(dead_code)]
     pub fn renderer_mut(&mut self) -> &mut StitchRenderer {
         &mut self.renderer
     }

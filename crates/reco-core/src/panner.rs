@@ -8,24 +8,18 @@
 //! those are tracker concerns. Its sole job is "given where things
 //! *are*, where should the camera *look*?"
 //!
-//! Typical implementations (shipped in `reco-autocam`):
-//! - `BallPanner` — follows `world.ball` while tracking, holds on
-//!   coast, recenters on lost.
-//! - `FieldPanner` — blends ball with the `world.players` cluster
+//! Implementations (shipped in `reco-autocam`):
+//! - `FieldPanner` - blends ball with the `world.players` cluster
 //!   centroid, widening FOV when the action spreads.
-//! - `SweepPanner` — debug-only, ignores world state and slowly
+//! - `SweepPanner` - debug-only, ignores world state and slowly
 //!   pans left-right within coverage bounds.
-//!
-//! Future (not part of this module's contract):
-//! - `ReplayPanner` — follows a specific player by ID.
-//! - `BroadcastPanner` — learned policy over world state.
 //!
 //! # Composition
 //!
 //! Panners compose via decorators in `reco-autocam`:
 //!
 //! ```text
-//! BallPanner → Smoother → Anticipator → DeadZone
+//! FieldPanner -> Smoother -> DeadZone
 //! ```
 //!
 //! Each decorator is itself a `Panner` wrapping an inner `Panner`.

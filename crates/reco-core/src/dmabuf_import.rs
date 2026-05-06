@@ -52,7 +52,7 @@ impl DmaBufTextureCache {
     }
 
     /// Import the DMA-buf if not already cached. Call this for each fd
-    /// before calling [`get`] to borrow the textures.
+    /// before calling [`Self::get`] to borrow the textures.
     pub fn ensure_imported(
         &mut self,
         gpu: &GpuContext,
@@ -81,7 +81,7 @@ impl DmaBufTextureCache {
 
     /// Borrow cached textures for an already-imported fd.
     ///
-    /// Panics if the fd was not previously imported via [`ensure_imported`].
+    /// Panics if the fd was not previously imported via [`Self::ensure_imported`].
     pub fn get(&self, fd: i32) -> &DmaBufNv12Textures {
         self.cache
             .get(&fd)

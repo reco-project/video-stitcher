@@ -825,19 +825,6 @@ impl AppState {
         IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(PoseIntent::Reset));
     }
 
-    /// Dispatch a batch of control intents from any [`ControlTransport`](reco_control::ControlTransport).
-    /// Routes through [`IntentTranslator`], then runs the coverage
-    /// clamp once for the whole batch.
-    #[allow(dead_code)] // called once transports are wired
-    fn dispatch_intents(&mut self, intents: &[ControlIntent]) {
-        if intents.is_empty() {
-            return;
-        }
-        IntentTranslator::new(&mut self.pose).dispatch_all(intents);
-        self.clamp_targets();
-        self.preview_dirty = true;
-    }
-
     /// Clamp the pose through the coverage boundary so pan input
     /// cannot set an unreachable goal. Delegates to
     /// `PoseControl::clamp_via_coverage`.

@@ -85,16 +85,8 @@ pub fn run_export(
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
 
-    let codec = match codec_str.as_str() {
-        "hevc" | "h265" => Codec::HEVC,
-        "av1" => Codec::AV1,
-        _ => Codec::H264,
-    };
-    let quality = match quality_str.as_str() {
-        "fast" => Quality::Fast,
-        "high" => Quality::High,
-        _ => Quality::Balanced,
-    };
+    let codec: Codec = codec_str.parse().unwrap_or_default();
+    let quality: Quality = quality_str.parse().unwrap_or_default();
 
     #[cfg(feature = "autocam")]
     let field_roi = cal.field_roi.clone();
@@ -223,9 +215,8 @@ pub fn run_export(
         job = job.on_session(move |session, source| {
             let info = source.info();
             let mode = match mode_str_owned.as_str() {
-                "field" => reco_autocam::TrackingMode::Field,
                 "sweep" => reco_autocam::TrackingMode::Sweep,
-                _ => reco_autocam::TrackingMode::Ball,
+                _ => reco_autocam::TrackingMode::Field,
             };
             let is_10bit = source.gpu_pixel_format() == reco_core::renderer::GpuPixelFormat::P010;
             let autocam_config = reco_autocam::AutocamConfig::new(&model_path_owned)
