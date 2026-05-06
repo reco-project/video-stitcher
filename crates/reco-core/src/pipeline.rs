@@ -23,7 +23,7 @@
 //! ```
 
 use crate::calibration::MatchCalibration;
-use crate::director::ViewportPosition;
+use crate::detect::director::ViewportPosition;
 use crate::gpu::{GpuContext, GpuError};
 use crate::renderer::{InputFormat, RenderError, Renderer};
 use crate::scene::SceneGeometry;

@@ -49,7 +49,7 @@
 //! cross-thread access wrap in `Mutex`. Send-only is sufficient for
 //! the worker / UI split every consumer actually needs.
 
-use reco_core::director::ViewportPosition;
+use reco_core::detect::director::ViewportPosition;
 use reco_core::projection::CoverageBoundary;
 
 /// Hotkey actions consumers bind to their input system (OBS hotkey

@@ -2,9 +2,9 @@
 //!
 //! Ports of the Python offline POC
 //! (`/tmp/reco-ai-eval/build_tracker_video.py`) into the
-//! `reco_core::tracker::Tracker` contract. Each tracker turns a
-//! noisy stream of [`MappedDetection`](reco_core::director::MappedDetection)s
-//! into a clean [`TrackedEntity`](reco_core::tracker::TrackedEntity)
+//! `reco_core::detect::tracker::Tracker` contract. Each tracker turns a
+//! noisy stream of [`MappedDetection`](reco_core::detect::director::MappedDetection)s
+//! into a clean [`TrackedEntity`](reco_core::detect::tracker::TrackedEntity)
 //! stream with stable identities and a tri-valued lifecycle state.
 //!
 //! Layout:

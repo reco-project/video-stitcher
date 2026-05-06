@@ -51,7 +51,7 @@ pub use zero_copy_linux::SharedTextureSet;
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
 use crate::core::types::StitchCoreConfig;
-use crate::director::ViewportPosition;
+use crate::detect::director::ViewportPosition;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::nv12_converter::Nv12Converter;
 use crate::pipeline::StitchPipeline;
@@ -87,11 +87,11 @@ pub struct StitchSession {
     /// pipeline default. Trackers are wired here rather than inside
     /// the panner so multiple panners can share the same tracker
     /// output (e.g. replay + live from the same WorldState).
-    pub(crate) ball_tracker: Option<Box<dyn crate::tracker::Tracker>>,
-    pub(crate) player_tracker: Option<Box<dyn crate::tracker::Tracker>>,
-    pub(crate) panner: Option<Box<dyn crate::panner::Panner>>,
+    pub(crate) ball_tracker: Option<Box<dyn crate::detect::tracker::Tracker>>,
+    pub(crate) player_tracker: Option<Box<dyn crate::detect::tracker::Tracker>>,
+    pub(crate) panner: Option<Box<dyn crate::detect::panner::Panner>>,
     /// Previous frame's resolved pose (post-clamping), handed to the
-    /// panner via [`PanContext::previous_position`](crate::panner::PanContext::previous_position).
+    /// panner via [`PanContext::previous_position`](crate::detect::panner::PanContext::previous_position).
     pub(crate) previous_panner_pose: ViewportPosition,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
@@ -100,13 +100,13 @@ pub struct StitchSession {
     pub(crate) error_policy: ErrorPolicy,
     /// Dropped frame counter (for metrics).
     frames_dropped: u64,
-    pub(crate) event_sink: Option<Box<dyn crate::pipeline_event::PipelineEventSink>>,
+    pub(crate) event_sink: Option<Box<dyn crate::detect::pipeline_event::PipelineEventSink>>,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
     /// Ordered pre-tracker detection filters. Empty by default; each
     /// stage transforms `detection.last_detections` in place before
     /// the trackers run. Emission of the before/after event is gated
     /// on `event_sink`.
-    pub(crate) detection_filters: Vec<Box<dyn crate::detection_filter::DetectionFilter>>,
+    pub(crate) detection_filters: Vec<Box<dyn crate::detect::filter::DetectionFilter>>,
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().

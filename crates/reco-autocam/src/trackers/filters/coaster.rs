@@ -33,7 +33,7 @@
 
 /// Current lifecycle state driven by the [`Coaster`].
 ///
-/// Maps 1:1 to [`reco_core::tracker::TrackState`] — the tracker
+/// Maps 1:1 to [`reco_core::detect::tracker::TrackState`] — the tracker
 /// translates during its update loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoastStatus {
@@ -43,13 +43,13 @@ pub enum CoastStatus {
     /// is still within the coast budget. The tracker should emit
     /// the held position with [`TrackState::Coasting`].
     ///
-    /// [`TrackState::Coasting`]: reco_core::tracker::TrackState::Coasting
+    /// [`TrackState::Coasting`]: reco_core::detect::tracker::TrackState::Coasting
     Coasting,
     /// Budget exhausted; the track is declared lost. The tracker
     /// should emit [`TrackState::Lost`] and reset its internal
     /// last-known state on the next frame.
     ///
-    /// [`TrackState::Lost`]: reco_core::tracker::TrackState::Lost
+    /// [`TrackState::Lost`]: reco_core::detect::tracker::TrackState::Lost
     Lost,
 }
 

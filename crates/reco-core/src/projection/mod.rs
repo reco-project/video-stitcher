@@ -28,8 +28,8 @@ pub use geometry::point_in_polygon;
 pub(crate) use virtual_camera::VirtualCamera;
 
 use crate::calibration::{CameraParams, MatchCalibration};
-use crate::detector::CameraId;
-use crate::director::ViewportPosition;
+use crate::detect::detector::CameraId;
+use crate::detect::director::ViewportPosition;
 use crate::scene::SceneGeometry;
 
 use nalgebra::{Point3, Vector3};
@@ -229,7 +229,7 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 /// center the virtual camera on it.
 ///
 /// `norm_x` and `norm_y` are in normalized `[0.0, 1.0]` image coordinates
-/// (as returned by [`Detection`](crate::detector::Detection)).
+/// (as returned by [`Detection`](crate::detect::detector::Detection)).
 ///
 /// Returns `None` if the inverse distortion fails to converge (rare,
 /// indicates an extreme point far outside the valid lens area).
@@ -238,7 +238,7 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 ///
 /// ```rust
 /// use reco_core::projection::camera_to_panorama;
-/// use reco_core::detector::CameraId;
+/// use reco_core::detect::detector::CameraId;
 /// use reco_core::calibration::MatchCalibration;
 /// use reco_core::scene::SceneGeometry;
 ///

@@ -6,8 +6,8 @@
 //! most `#[cfg]` platform branches in the session.
 
 use super::StitchSession;
-use crate::detector::Detection;
-use crate::director::MappedDetection;
+use crate::detect::detector::Detection;
+use crate::detect::director::MappedDetection;
 use crate::projection;
 use crate::session::types::SessionError;
 use crate::source::StereoFrame;
@@ -134,7 +134,7 @@ impl StitchSession {
 
     /// Run GPU-resident detection and update the director.
     ///
-    /// Uses the [`GpuDetector`](crate::detector::GpuDetector) to detect
+    /// Uses the [`GpuDetector`](crate::detect::detector::GpuDetector) to detect
     /// objects directly from CUDA device pointers (NV12 shared textures),
     /// avoiding any GPU-to-CPU frame readback. Only the small detection
     /// output is transferred to CPU for tracking and director updates.
@@ -170,7 +170,7 @@ impl StitchSession {
     /// Run Metal-resident detection and update the director.
     ///
     /// Dispatches to the attached unified detector through
-    /// [`DetectorFrame::Metal`](crate::detector::DetectorFrame::Metal).
+    /// [`DetectorFrame::Metal`](crate::detect::detector::DetectorFrame::Metal).
     /// The backend (e.g. `MetalYoloDetector`) owns the `GpuContext`
     /// clone it needs for CVPixelBuffer import.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -182,7 +182,7 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        use crate::detector::{CameraId, DetectorFrame};
+        use crate::detect::detector::{CameraId, DetectorFrame};
 
         let should_detect = self.detection.should_detect(self.frame_count);
 
@@ -212,7 +212,7 @@ impl StitchSession {
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
     /// Fires the sink with `last_detections` (which may be empty if no
     /// detector ran this frame), runs every registered tracker to build
-    /// a [`WorldState`](crate::tracker::WorldState), then lets the
+    /// a [`WorldState`](crate::detect::tracker::WorldState), then lets the
     /// panner decide the next pose. Viewport constraining is handled
     /// separately by [`director_position`](Self::director_position).
     ///
@@ -232,10 +232,12 @@ impl StitchSession {
 
         // Trace: DetectionsRaw. Only clones when an event sink is attached.
         if let Some(sink) = self.event_sink.as_deref_mut() {
-            sink.emit(crate::pipeline_event::PipelineEvent::DetectionsRaw {
-                frame_index: self.frame_count,
-                detections: self.detection.last_detections.clone(),
-            });
+            sink.emit(
+                crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
+                    frame_index: self.frame_count,
+                    detections: self.detection.last_detections.clone(),
+                },
+            );
         }
 
         // Pre-tracker detection-filter chain. Each stage mutates
@@ -244,7 +246,7 @@ impl StitchSession {
         // each filter changed.
         if !self.detection_filters.is_empty() {
             let calibration = self.core.pipeline().calibration();
-            let filter_ctx = crate::detection_filter::FilterContext {
+            let filter_ctx = crate::detect::filter::FilterContext {
                 frame_index: self.frame_count,
                 timestamp_ms,
                 calibration,
@@ -258,12 +260,14 @@ impl StitchSession {
                 };
                 filter.filter(&mut self.detection.last_detections, &filter_ctx);
                 if let (Some(before), Some(sink)) = (before, self.event_sink.as_deref_mut()) {
-                    sink.emit(crate::pipeline_event::PipelineEvent::DetectionFilter {
-                        frame_index: self.frame_count,
-                        filter_name: filter.name(),
-                        before,
-                        after: self.detection.last_detections.clone(),
-                    });
+                    sink.emit(
+                        crate::detect::pipeline_event::PipelineEvent::DetectionFilter {
+                            frame_index: self.frame_count,
+                            filter_name: filter.name(),
+                            before,
+                            after: self.detection.last_detections.clone(),
+                        },
+                    );
                 }
             }
         }
@@ -276,13 +280,13 @@ impl StitchSession {
         // trackers manage their own freshness via detection cadence.
         let _ = fresh_detection;
         let calibration = self.core.pipeline().calibration();
-        let dispatch_result = crate::panner::dispatch(
+        let dispatch_result = crate::detect::panner::dispatch(
             self.panner.as_mut(),
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
             &mut self.previous_panner_pose,
             self.event_sink.as_deref_mut(),
-            crate::panner::DispatchContext {
+            crate::detect::panner::DispatchContext {
                 detections: &self.detection.last_detections,
                 calibration,
                 frame_index: self.frame_count,

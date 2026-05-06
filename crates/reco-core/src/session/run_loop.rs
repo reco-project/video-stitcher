@@ -145,7 +145,7 @@ impl StitchSession {
             let decode_time = frame_t0.elapsed();
 
             if let Some(sink) = self.event_sink.as_deref_mut() {
-                sink.emit(crate::pipeline_event::PipelineEvent::FrameStart {
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
                     frame_index: self.frame_count,
                     timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
                 });

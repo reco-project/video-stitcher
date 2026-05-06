@@ -26,7 +26,7 @@
 //!
 //! ```no_run
 //! use reco_autocam::trackers::filters::FlickerFilter;
-//! use reco_core::detector::CameraId;
+//! use reco_core::detect::detector::CameraId;
 //! # let det_center = (0.58, 0.39);
 //! # let t_ms = 120.0;
 //! # let class_id = 0_u16;
@@ -39,11 +39,11 @@
 //! }
 //! ```
 //!
-//! [`MappedDetection::camera_center`]: reco_core::director::MappedDetection::camera_center
+//! [`MappedDetection::camera_center`]: reco_core::detect::director::MappedDetection::camera_center
 
 use std::collections::VecDeque;
 
-use reco_core::detector::CameraId;
+use reco_core::detect::detector::CameraId;
 
 /// A bucketed position in one camera's frame, used as the spatial
 /// key for flicker clustering.

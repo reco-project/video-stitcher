@@ -6,7 +6,7 @@
 
 use crate::calibration::MatchCalibration;
 use crate::core::types::StitchCoreError;
-use crate::director::{MappedDetection, ViewportPosition};
+use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::Nv12Error;
@@ -244,7 +244,7 @@ const _: fn() = || {
     assert_clone_send_sync::<Nv12Error>();
     assert_clone_send_sync::<EncodeError>();
     assert_clone_send_sync::<SourceError>();
-    assert_clone_send_sync::<crate::detector::DetectorError>();
+    assert_clone_send_sync::<crate::detect::detector::DetectorError>();
 };
 
 /// Builder for constructing a [`StitchSession`](super::StitchSession) with sensible defaults.
@@ -269,7 +269,7 @@ pub struct StitchSessionBuilder {
     pub(super) input_format: InputFormat,
     pub(super) gpu: Option<GpuContext>,
     pub(super) encoder: Option<(Box<dyn Encoder + Send>, usize)>,
-    pub(super) detector: Option<Box<dyn crate::detector::UnifiedDetector>>,
+    pub(super) detector: Option<Box<dyn crate::detect::detector::UnifiedDetector>>,
     pub(super) detection_interval: u64,
 }
 
@@ -325,8 +325,8 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach a [`UnifiedDetector`](crate::detector::UnifiedDetector).
-    pub fn detector(mut self, detector: Box<dyn crate::detector::UnifiedDetector>) -> Self {
+    /// Attach a [`UnifiedDetector`](crate::detect::detector::UnifiedDetector).
+    pub fn detector(mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) -> Self {
         self.detector = Some(detector);
         self
     }

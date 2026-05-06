@@ -1,8 +1,8 @@
 //! Panner trait — the camera-motion half of the tracker/panner split.
 //!
 //! A `Panner` consumes a clean `WorldState` (produced by one or
-//! more `Tracker` instances from [`crate::tracker`]) and returns a
-//! `ViewportPosition` (from [`crate::director`]) for the virtual
+//! more `Tracker` instances from [`super::tracker`]) and returns a
+//! `ViewportPosition` (from [`super::director`]) for the virtual
 //! camera. It knows nothing
 //! about raw detections, plausibility gates, or identity management —
 //! those are tracker concerns. Its sole job is "given where things
@@ -26,10 +26,10 @@
 //! Smoothing, anticipation, and dead-zone handling all live at this
 //! layer because they transform camera *motion*, not detections.
 
+use super::director::{MappedDetection, ViewportPosition};
+use super::pipeline_event::{PipelineEvent, PipelineEventSink};
+use super::tracker::{Tracker, WorldState};
 use crate::calibration::MatchCalibration;
-use crate::director::{MappedDetection, ViewportPosition};
-use crate::pipeline_event::{PipelineEvent, PipelineEventSink};
-use crate::tracker::{Tracker, WorldState};
 
 /// Per-frame context a [`Panner`] receives alongside the world state.
 ///
@@ -173,7 +173,7 @@ pub(crate) fn dispatch(
     let ball_present = world
         .ball
         .as_ref()
-        .is_some_and(|b| !matches!(b.state, crate::tracker::TrackState::Lost));
+        .is_some_and(|b| !matches!(b.state, super::tracker::TrackState::Lost));
 
     let pose = panner.decide(&world, &pan_ctx);
     *previous_panner_pose = pose;
@@ -196,8 +196,8 @@ pub(crate) fn dispatch(
 mod tests {
     use super::*;
     use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
-    use crate::detector::CameraId;
-    use crate::tracker::{TrackState, TrackedEntity, WorldState};
+    use crate::detect::detector::CameraId;
+    use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
 
     /// A fixture calibration shaped like the v1 test JSON without
     /// needing disk access or real lens data.

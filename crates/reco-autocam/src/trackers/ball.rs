@@ -3,7 +3,7 @@
 //!
 //! Port of the Python POC at `/tmp/reco-ai-eval/build_tracker_video.py`
 //! (see `build_trajectory`) into the `Tracker` contract from
-//! [`reco_core::tracker`].
+//! [`reco_core::detect::tracker`].
 //!
 //! # Filter chain
 //!
@@ -40,11 +40,11 @@
 //! (per-frame transitions). Rejection reasons for individual
 //! detections log at `trace!` to keep the normal path quiet.
 //!
-//! [`MappedDetection::position`]: reco_core::director::MappedDetection::position
+//! [`MappedDetection::position`]: reco_core::detect::director::MappedDetection::position
 
-use reco_core::detector::CameraId;
-use reco_core::director::MappedDetection;
-use reco_core::tracker::{TrackState, TrackedEntity, Tracker};
+use reco_core::detect::detector::CameraId;
+use reco_core::detect::director::MappedDetection;
+use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker};
 
 use crate::trackers::filters::{CoastStatus, Coaster};
 
@@ -121,7 +121,7 @@ impl BallTracker {
     /// Detections whose panorama yaw/pitch is further than this from
     /// the last accepted position are rejected. Cross-camera and
     /// same-camera candidates use the same gate because the
-    /// underlying [`ViewportPosition`](reco_core::director::ViewportPosition)
+    /// underlying [`ViewportPosition`](reco_core::detect::director::ViewportPosition)
     /// yaw/pitch coordinate system is camera-agnostic.
     pub fn with_max_jump_rad(mut self, rad: f32) -> Self {
         self.max_jump_rad = rad.max(0.0);
@@ -350,8 +350,8 @@ impl Tracker for BallTracker {
     /// filter short-circuits to "accept" when no players are known,
     /// preserving the Phase 2c behavior.
     ///
-    /// [`WorldState`]: reco_core::tracker::WorldState
-    fn observe_world(&mut self, world: &reco_core::tracker::WorldState) {
+    /// [`WorldState`]: reco_core::detect::tracker::WorldState
+    fn observe_world(&mut self, world: &reco_core::detect::tracker::WorldState) {
         self.set_players(&world.players);
     }
 }
@@ -359,7 +359,7 @@ impl Tracker for BallTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::director::ViewportPosition;
+    use reco_core::detect::director::ViewportPosition;
 
     fn det(camera: CameraId, yaw: f32, pitch: f32, conf: f32, cx: f32, cy: f32) -> MappedDetection {
         MappedDetection {
@@ -520,7 +520,7 @@ mod tests {
 
     #[test]
     fn observe_world_populates_player_anchors() {
-        use reco_core::tracker::WorldState;
+        use reco_core::detect::tracker::WorldState;
         let mut t = BallTracker::new(0).with_player_anchor_rad(0.1);
         let player = TrackedEntity {
             id: 7,
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn observe_world_empty_players_leaves_filter_as_noop() {
-        use reco_core::tracker::WorldState;
+        use reco_core::detect::tracker::WorldState;
         let mut t = BallTracker::new(0).with_player_anchor_rad(0.1);
         // Pre-seed with anchors, then observe an empty world: set_players
         // replaces (does not accumulate), so the filter becomes a no-op.

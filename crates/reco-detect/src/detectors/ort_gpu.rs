@@ -25,7 +25,7 @@ use crate::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3
 use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
 use ort::session::Session;
 use ort::value::{Shape, TensorRefMut};
-use reco_core::detector::{
+use reco_core::detect::detector::{
     CameraId, Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
 };
 use reco_core::interop::cuda::{

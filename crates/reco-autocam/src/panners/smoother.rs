@@ -20,9 +20,9 @@
 
 use std::collections::VecDeque;
 
-use reco_core::director::ViewportPosition;
-use reco_core::panner::{PanContext, Panner};
-use reco_core::tracker::WorldState;
+use reco_core::detect::director::ViewportPosition;
+use reco_core::detect::panner::{PanContext, Panner};
+use reco_core::detect::tracker::WorldState;
 
 /// Fallback FOV (degrees) when an inner panner publishes
 /// `fov_degrees = None`. The pipeline defaults to 75°; tracking FOV
@@ -250,8 +250,8 @@ impl Panner for Smoother {
 mod tests {
     use super::*;
     use reco_core::calibration::{CameraParams, MatchCalibration, PlaneLayout};
-    use reco_core::detector::CameraId;
-    use reco_core::tracker::{TrackState, TrackedEntity, WorldState};
+    use reco_core::detect::detector::CameraId;
+    use reco_core::detect::tracker::{TrackState, TrackedEntity, WorldState};
 
     fn test_cal() -> MatchCalibration {
         MatchCalibration {

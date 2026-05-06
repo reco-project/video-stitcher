@@ -40,9 +40,9 @@
 //! plus linear velocity × dt; a Kalman filter is future work.
 //! Detections outside the gate start new tracklets.
 
-use reco_core::detector::CameraId;
-use reco_core::director::MappedDetection;
-use reco_core::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
+use reco_core::detect::detector::CameraId;
+use reco_core::detect::director::MappedDetection;
+use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 
 use crate::trackers::filters::{CoastStatus, Coaster};
 
@@ -333,7 +333,7 @@ impl Tracker for PlayerTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::director::ViewportPosition;
+    use reco_core::detect::director::ViewportPosition;
 
     fn det(camera: CameraId, yaw: f32, pitch: f32, conf: f32) -> MappedDetection {
         MappedDetection {

@@ -1,11 +1,11 @@
 //! Pipeline event sink - structured observability for the stitch loop.
 //!
 //! `StitchSession` optionally emits a
-//! [`PipelineEvent`](crate::pipeline_event::PipelineEvent) at each
+//! [`PipelineEvent`](crate::detect::pipeline_event::PipelineEvent) at each
 //! pipeline stage. Consumers attach a
-//! [`PipelineEventSink`](crate::pipeline_event::PipelineEventSink) to record
+//! [`PipelineEventSink`](crate::detect::pipeline_event::PipelineEventSink) to record
 //! the stream - typically wrapped in
-//! [`BackpressuredSink`](crate::pipeline_event::BackpressuredSink) so emission
+//! [`BackpressuredSink`](crate::detect::pipeline_event::BackpressuredSink) so emission
 //! never stalls the render loop, and written out as JSONL (see the
 //! companion sink in `reco-io`).
 //!
@@ -14,7 +14,7 @@
 //! - **Optional**: when no sink is attached, emission is a single `Option`
 //!   check. Zero cost for consumers that don't care.
 //! - **Non-blocking**:
-//!   [`BackpressuredSink`](crate::pipeline_event::BackpressuredSink) hands
+//!   [`BackpressuredSink`](crate::detect::pipeline_event::BackpressuredSink) hands
 //!   events to a bounded channel and a background writer thread. On overflow
 //!   the event is dropped (counter logged at power-of-two milestones); the
 //!   render loop never waits on I/O.
@@ -25,17 +25,17 @@
 //!
 //! Six variants, one per natural pipeline stage:
 //!
-//! 1. [`FrameStart`](crate::pipeline_event::PipelineEvent::FrameStart) - the frame loop picked up a new frame.
-//! 2. [`DetectionsRaw`](crate::pipeline_event::PipelineEvent::DetectionsRaw) - detector produced mapped detections.
-//! 3. [`DetectionFilter`](crate::pipeline_event::PipelineEvent::DetectionFilter) - a filter stage transformed them
+//! 1. [`FrameStart`](crate::detect::pipeline_event::PipelineEvent::FrameStart) - the frame loop picked up a new frame.
+//! 2. [`DetectionsRaw`](crate::detect::pipeline_event::PipelineEvent::DetectionsRaw) - detector produced mapped detections.
+//! 3. [`DetectionFilter`](crate::detect::pipeline_event::PipelineEvent::DetectionFilter) - a filter stage transformed them
 //!    (before + after, so consumers can audit each filter's effect).
 //!    Reserved for Step 7's `DetectionFilter` trait; not emitted yet.
-//! 4. [`WorldState`](crate::pipeline_event::PipelineEvent::WorldState) - trackers produced the per-frame world.
-//! 5. [`PanDecision`](crate::pipeline_event::PipelineEvent::PanDecision) - panner produced the raw viewport pose.
-//! 6. [`PosePresented`](crate::pipeline_event::PipelineEvent::PosePresented) - post-clamp pose the renderer saw.
+//! 4. [`WorldState`](crate::detect::pipeline_event::PipelineEvent::WorldState) - trackers produced the per-frame world.
+//! 5. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - panner produced the raw viewport pose.
+//! 6. [`PosePresented`](crate::detect::pipeline_event::PipelineEvent::PosePresented) - post-clamp pose the renderer saw.
 
-use crate::director::{MappedDetection, ViewportPosition};
-use crate::tracker::TrackedEntity;
+use super::director::{MappedDetection, ViewportPosition};
+use super::tracker::TrackedEntity;
 
 /// A single observable event from the stitch pipeline.
 ///

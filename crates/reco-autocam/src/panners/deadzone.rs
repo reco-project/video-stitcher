@@ -10,9 +10,9 @@
 //! as soon as the inner panner is moving at
 //! `velocity_threshold_rad_per_s` or more.
 
-use reco_core::director::ViewportPosition;
-use reco_core::panner::{PanContext, Panner};
-use reco_core::tracker::WorldState;
+use reco_core::detect::director::ViewportPosition;
+use reco_core::detect::panner::{PanContext, Panner};
+use reco_core::detect::tracker::WorldState;
 
 const DEFAULT_MAX_RADIUS_RAD: f32 = 0.006;
 const DEFAULT_VELOCITY_THRESHOLD: f32 = 0.30;

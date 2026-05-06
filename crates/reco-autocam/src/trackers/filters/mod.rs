@@ -11,7 +11,7 @@
 //! - [`Coaster`] holds a last-known position for up to N frames
 //!   after detection is lost, then declares the track as lost.
 //!
-//! [`Tracker`]: reco_core::tracker::Tracker
+//! [`Tracker`]: reco_core::detect::tracker::Tracker
 
 mod coaster;
 mod flicker;

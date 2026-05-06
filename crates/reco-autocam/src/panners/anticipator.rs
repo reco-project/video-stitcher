@@ -10,9 +10,9 @@
 
 use std::collections::VecDeque;
 
-use reco_core::director::ViewportPosition;
-use reco_core::panner::{PanContext, Panner};
-use reco_core::tracker::WorldState;
+use reco_core::detect::director::ViewportPosition;
+use reco_core::detect::panner::{PanContext, Panner};
+use reco_core::detect::tracker::WorldState;
 
 const MIN_HISTORY: usize = 3;
 const DEFAULT_HISTORY: usize = 8;

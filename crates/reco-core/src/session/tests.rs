@@ -11,12 +11,12 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
-use crate::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
-use crate::director::{MappedDetection, ViewportPosition};
+use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use crate::detect::director::{MappedDetection, ViewportPosition};
+use crate::detect::panner::{PanContext, Panner};
+use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::encoder::{EncodeError, Encoder, OutputFrame};
-use crate::panner::{PanContext, Panner};
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
-use crate::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::viewport::ViewportConfig;
 
 // ─── Helpers ───────────────────────────────────────────────────────────

@@ -6,9 +6,9 @@
 //! [`WorldState`] entirely. Useful for verifying stitch quality across
 //! the full FOV and for smoke-testing panner dispatch paths.
 
-use reco_core::director::ViewportPosition;
-use reco_core::panner::{PanContext, Panner};
-use reco_core::tracker::WorldState;
+use reco_core::detect::director::ViewportPosition;
+use reco_core::detect::panner::{PanContext, Panner};
+use reco_core::detect::tracker::WorldState;
 
 /// A debugging panner that sweeps the virtual camera left-right.
 ///
@@ -182,15 +182,15 @@ mod tests {
         let cal = test_cal();
         // Seed with a fake ball far from origin — sweep must not react.
         let w = WorldState {
-            ball: Some(reco_core::tracker::TrackedEntity {
+            ball: Some(reco_core::detect::tracker::TrackedEntity {
                 id: 0,
                 class_id: 0,
                 yaw: 1.5,
                 pitch: 0.3,
                 confidence: 1.0,
-                state: reco_core::tracker::TrackState::Tracking,
+                state: reco_core::detect::tracker::TrackState::Tracking,
                 age_frames: 1,
-                origin: reco_core::detector::CameraId::Left,
+                origin: reco_core::detect::detector::CameraId::Left,
             }),
             players: Vec::new(),
         };

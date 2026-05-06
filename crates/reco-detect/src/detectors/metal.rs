@@ -16,7 +16,9 @@ use std::path::Path;
 
 use crate::coreml_inference::CoreMlModel;
 use crate::metal_compute::MetalPreprocessPipeline;
-use reco_core::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use reco_core::detect::detector::{
+    CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector,
+};
 use reco_core::gpu::GpuContext;
 use reco_core::interop::metal::CVPixelBufferRef;
 

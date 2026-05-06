@@ -4,7 +4,7 @@
 //! convert to NV12, and fan out to attached encoders.
 
 use super::StitchSession;
-use crate::director::ViewportPosition;
+use crate::detect::director::ViewportPosition;
 use crate::session::types::{SessionError, StepResult};
 use crate::source::StereoFrame;
 
@@ -60,10 +60,12 @@ impl StitchSession {
         // Trace: PosePresented. This is the pose the renderer will
         // actually consume for this frame (post-clamp, post-FOV-cap).
         if let Some(sink) = self.event_sink.as_deref_mut() {
-            sink.emit(crate::pipeline_event::PipelineEvent::PosePresented {
-                frame_index: self.frame_count,
-                pose: pos,
-            });
+            sink.emit(
+                crate::detect::pipeline_event::PipelineEvent::PosePresented {
+                    frame_index: self.frame_count,
+                    pose: pos,
+                },
+            );
         }
 
         if let Some(fov) = pos.fov_degrees {

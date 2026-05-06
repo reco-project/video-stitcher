@@ -1,6 +1,6 @@
 //! Detection pipeline used by [`StitchSession`](crate::session::StitchSession).
 //!
-//! Owns the [`UnifiedDetector`](crate::detector::UnifiedDetector) backend,
+//! Owns the [`UnifiedDetector`](crate::detect::detector::UnifiedDetector) backend,
 //! detection interval, sink, and cached panorama-mapped detections. Exposes
 //! CPU and CUDA run paths so the session's decode loop (CPU-resident file
 //! sources) and zero-copy loop (GPU-resident shared textures) share one
@@ -8,9 +8,9 @@
 //!
 //! After the M3 trait-collapse commit there is **one** detector slot
 //! here: `Box<dyn UnifiedDetector>`. The backend is responsible for
-//! declaring which [`DetectorFrame`](crate::detector::DetectorFrame)
+//! declaring which [`DetectorFrame`](crate::detect::detector::DetectorFrame)
 //! residencies it accepts; calling a backend with the wrong variant
-//! yields [`DetectorError::UnsupportedFrameKind`](crate::detector::DetectorError::UnsupportedFrameKind)
+//! yields [`DetectorError::UnsupportedFrameKind`](crate::detect::detector::DetectorError::UnsupportedFrameKind)
 //! which this module logs at `warn!` and drops (so a flaky frame does
 //! not abort the render loop; typed error propagation lives at the
 //! StitchCore boundary).
@@ -19,8 +19,8 @@
 //! detection without the full stitch+encode pipeline (e.g. the
 //! analyze CLI path, Python SDKs, analytics workers).
 
-use crate::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
-use crate::director::MappedDetection;
+use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use crate::detect::director::MappedDetection;
 
 use super::{DetectionSink, DetectionSinkError};
 
@@ -108,7 +108,7 @@ impl DetectionPipeline {
         source_width: u32,
         source_height: u32,
     ) -> Vec<Detection> {
-        use crate::detector::{ChromaFormat, RawFrame};
+        use crate::detect::detector::{ChromaFormat, RawFrame};
 
         let Some(ref mut detector) = self.detector else {
             return Vec::new();
@@ -330,7 +330,7 @@ impl DetectionPipeline {
         let rs = right_slot as usize;
         let is_10bit = left_buf.pixel_format == crate::renderer::GpuPixelFormat::P010;
 
-        let left_frame = crate::detector::GpuNv12Frame {
+        let left_frame = crate::detect::detector::GpuNv12Frame {
             y_ptr: left_buf.y_ptr[ls],
             uv_ptr: left_buf.uv_ptr[ls],
             y_pitch: left_buf.y_pitch[ls],
@@ -340,7 +340,7 @@ impl DetectionPipeline {
             rotation: left_rotation,
             is_10bit,
         };
-        let right_frame = crate::detector::GpuNv12Frame {
+        let right_frame = crate::detect::detector::GpuNv12Frame {
             y_ptr: right_buf.y_ptr[rs],
             uv_ptr: right_buf.uv_ptr[rs],
             y_pitch: right_buf.y_pitch[rs],
@@ -353,7 +353,7 @@ impl DetectionPipeline {
 
         let run = |det: &mut Box<dyn UnifiedDetector>,
                    camera: CameraId,
-                   gpu_frame: crate::detector::GpuNv12Frame|
+                   gpu_frame: crate::detect::detector::GpuNv12Frame|
          -> Vec<Detection> {
             match det.detect(camera, &DetectorFrame::Cuda(gpu_frame)) {
                 Ok(v) => v,
@@ -391,7 +391,7 @@ impl DetectionPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::detector::{Detection, DetectorError};
+    use crate::detect::detector::{Detection, DetectorError};
 
     #[test]
     fn should_detect_respects_interval() {

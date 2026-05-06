@@ -8,7 +8,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::calibration::MatchCalibration;
-use crate::director::ViewportPosition;
+use crate::detect::director::ViewportPosition;
 use crate::pipeline::PipelineError;
 use crate::planes::YuvPlanes;
 use crate::projection::Projection;

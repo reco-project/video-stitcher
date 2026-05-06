@@ -1,7 +1,7 @@
 //! Precomputed coverage boundary for "no-black" viewport constraining.
 
 use crate::calibration::MatchCalibration;
-use crate::detector::CameraId;
+use crate::detect::detector::CameraId;
 use crate::scene::SceneGeometry;
 
 use super::camera_to_panorama;
