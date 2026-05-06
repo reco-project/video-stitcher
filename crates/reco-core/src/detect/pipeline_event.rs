@@ -1,11 +1,8 @@
 //! Pipeline event sink - structured observability for the stitch loop.
 //!
-//! `StitchSession` optionally emits a
-//! [`PipelineEvent`](crate::detect::pipeline_event::PipelineEvent) at each
-//! pipeline stage. Consumers attach a
-//! [`PipelineEventSink`](crate::detect::pipeline_event::PipelineEventSink) to record
-//! the stream - typically wrapped in
-//! [`BackpressuredSink`](crate::detect::pipeline_event::BackpressuredSink) so emission
+//! `StitchSession` optionally emits a [`PipelineEvent`] at each
+//! pipeline stage. Consumers attach a [`PipelineEventSink`] to record
+//! the stream - typically wrapped in [`BackpressuredSink`] so emission
 //! never stalls the render loop, and written out as JSONL (see the
 //! companion sink in `reco-io`).
 //!
@@ -13,8 +10,7 @@
 //!
 //! - **Optional**: when no sink is attached, emission is a single `Option`
 //!   check. Zero cost for consumers that don't care.
-//! - **Non-blocking**:
-//!   [`BackpressuredSink`](crate::detect::pipeline_event::BackpressuredSink) hands
+//! - **Non-blocking**: [`BackpressuredSink`] hands
 //!   events to a bounded channel and a background writer thread. On overflow
 //!   the event is dropped (counter logged at power-of-two milestones); the
 //!   render loop never waits on I/O.
