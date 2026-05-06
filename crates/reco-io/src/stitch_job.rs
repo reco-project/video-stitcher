@@ -23,7 +23,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
-use reco_core::session::{FrameProgress, StitchSession};
+use reco_core::session::StitchSession;
+use reco_core::session::types::FrameProgress;
 use reco_core::source::FrameSource;
 
 /// One-shot stitching job: video files in, encoded video out.
@@ -185,7 +186,7 @@ pub enum StitchError {
     Gpu(#[from] reco_core::gpu::GpuError),
     /// Session/pipeline error during stitching.
     #[error("session: {0}")]
-    Session(#[from] reco_core::session::SessionError),
+    Session(#[from] reco_core::session::types::SessionError),
     /// Encoder error.
     #[error("encoder: {0}")]
     Encoder(#[from] reco_core::encoder::EncodeError),
@@ -560,7 +561,7 @@ impl StitchJob {
             rig_roll: cal.rig_roll as f32,
             ..Default::default()
         };
-        let session_config = reco_core::session::SessionConfig {
+        let session_config = reco_core::session::types::SessionConfig {
             calibration: cal,
             viewport,
             input_width: info.width,
@@ -664,8 +665,11 @@ impl StitchJob {
         }
 
         // Compute frame limit
-        let frame_limit =
-            reco_core::session::compute_frame_limit(self.duration, self.max_frames, info.fps);
+        let frame_limit = reco_core::session::types::compute_frame_limit(
+            self.duration,
+            self.max_frames,
+            info.fps,
+        );
 
         // Optional replay recording: wrap the source with a
         // decorator that writes pre-stitch frames to a stacked-video

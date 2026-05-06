@@ -132,7 +132,7 @@ pub fn run_camera(
     let capture_width = cam_config.width;
     let capture_height = cam_config.height;
 
-    let session_config = reco_core::session::SessionConfig {
+    let session_config = reco_core::session::types::SessionConfig {
         calibration: cal,
         viewport,
         input_width: capture_width,
@@ -349,7 +349,7 @@ pub fn run_camera(
     session.set_encoder(Box::new(encoder), 2);
 
     let frame_limit =
-        reco_core::session::compute_frame_limit(duration, max_frames, capture_fps as f64);
+        reco_core::session::types::compute_frame_limit(duration, max_frames, capture_fps as f64);
 
     if frame_limit < u64::MAX {
         println!("Capturing up to {frame_limit} frames");

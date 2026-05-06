@@ -60,9 +60,9 @@ impl From<windows::core::Error> for D3d11InteropError {
     }
 }
 
-impl From<D3d11InteropError> for crate::session::SessionError {
+impl From<D3d11InteropError> for crate::session::types::SessionError {
     fn from(e: D3d11InteropError) -> Self {
-        crate::session::SessionError::ZeroCopy(e.to_string())
+        crate::session::types::SessionError::ZeroCopy(e.to_string())
     }
 }
 

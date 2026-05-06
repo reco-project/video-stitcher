@@ -155,7 +155,7 @@ pub fn run_export(
     .format(format)
     .resolution(width, height)
     .blend_width(blend)
-    .on_progress(move |p: &reco_core::session::FrameProgress| {
+    .on_progress(move |p: &reco_core::session::types::FrameProgress| {
         let frames = p.frames_completed;
         let elapsed = progress_start.elapsed().as_secs_f64();
         let fps = if elapsed > 0.0 {
