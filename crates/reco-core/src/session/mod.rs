@@ -22,6 +22,15 @@ pub use types::*;
 
 /// Detection pipeline - also usable standalone without StitchSession.
 pub mod detection;
+/// Detection dispatch entry points (detect_and_update_director_* variants).
+mod detection_dispatch;
+/// Per-frame render and encode methods (step, process_frame, submit_render_output).
+mod frame_processing;
+/// Batch processing entry points (run, run_immediate, setup_gpu_source).
+mod run_loop;
+/// Configuration wiring (set/clear/attach methods).
+mod wiring;
+
 #[cfg(test)]
 mod tests;
 #[cfg(target_os = "linux")]
@@ -39,19 +48,13 @@ pub use zero_copy_linux::SharedTextureSet;
 // for explicit-pose inputs. reco-obs completed the migration in the
 // same commit.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::{StitchCore, StitchCoreConfig};
-use crate::detector::Detection;
-use crate::director::{MappedDetection, ViewportPosition};
-use crate::encoder::Encoder;
+use crate::director::ViewportPosition;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::nv12_converter::Nv12Converter;
 use crate::pipeline::StitchPipeline;
-use crate::projection;
 use crate::renderer::InputFormat;
-use crate::source::{FrameSource, StereoFrame};
 
 use detection::DetectionPipeline;
 
@@ -75,7 +78,7 @@ pub struct StitchSession {
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
     /// Additional encoders for multi-output (stream + record).
-    extra_encoders: Vec<AsyncEncodeThread>,
+    pub(crate) extra_encoders: Vec<AsyncEncodeThread>,
     /// Detection backends, interval, callback, and cached detections.
     pub(crate) detection: DetectionPipeline,
     /// Tracker/panner pose resolution. When `panner` is set, it owns
@@ -93,30 +96,30 @@ pub struct StitchSession {
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
     /// Error policy for the run() batch loop.
-    error_policy: ErrorPolicy,
+    pub(crate) error_policy: ErrorPolicy,
     /// Dropped frame counter (for metrics).
     frames_dropped: u64,
-    event_sink: Option<Box<dyn crate::pipeline_event::PipelineEventSink>>,
+    pub(crate) event_sink: Option<Box<dyn crate::pipeline_event::PipelineEventSink>>,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
     /// Ordered pre-tracker detection filters. Empty by default; each
     /// stage transforms `detection.last_detections` in place before
     /// the trackers run. Emission of the before/after event is gated
     /// on `event_sink`.
-    detection_filters: Vec<Box<dyn crate::detection_filter::DetectionFilter>>,
+    pub(crate) detection_filters: Vec<Box<dyn crate::detection_filter::DetectionFilter>>,
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
     #[cfg(target_os = "linux")]
-    gpu_bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
+    pub(crate) gpu_bind_groups: Option<crate::pipeline::GpuSourceBindGroups>,
     /// Slot-free senders for decode backpressure (GPU zero-copy).
     #[cfg(target_os = "linux")]
-    gpu_slot_free_tx: Option<(
+    pub(crate) gpu_slot_free_tx: Option<(
         std::sync::mpsc::SyncSender<u8>,
         std::sync::mpsc::SyncSender<u8>,
     )>,
     /// CUDA buffer info for GPU detection (GPU zero-copy).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
+    pub(crate) gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
     /// Texture views for the 8 shared zero-copy textures, layout
     /// `[left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0,
     /// right_uv_0, right_y_1, right_uv_1]`. Stashed at
@@ -126,26 +129,26 @@ pub struct StitchSession {
     /// the underlying texture so the shared-memory lifetime is
     /// still bound to the SharedTextureSet the source owns.
     #[cfg(target_os = "linux")]
-    gpu_shared_views: Option<[wgpu::TextureView; 8]>,
+    pub(crate) gpu_shared_views: Option<[wgpu::TextureView; 8]>,
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
+    pub(crate) metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
 
     /// D3D11VA staging pool for zero-copy decode on Windows.
     /// Created lazily when the first D3d11Resident frame arrives.
     #[cfg(target_os = "windows")]
-    d3d11_staging_pool: Option<crate::d3d11_interop::D3d11StagingPool>,
+    pub(crate) d3d11_staging_pool: Option<crate::d3d11_interop::D3d11StagingPool>,
 
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    left_rotation: i32,
+    pub(crate) left_rotation: i32,
     /// Right camera rotation from stream metadata.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    right_rotation: i32,
+    pub(crate) right_rotation: i32,
 }
 
 impl StitchSession {
@@ -279,1209 +282,6 @@ impl StitchSession {
         })
     }
 
-    /// Attach an encoder to this session.
-    ///
-    /// The encoder is moved to a background thread for async encoding.
-    /// `buffer_count` controls how many frames can be in-flight between
-    /// the render thread and the encode thread (typically 2).
-    ///
-    /// Must be called before [`Self::submit_render_output`], [`Self::process_frame`],
-    /// or [`Self::run`].
-    pub fn set_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
-        self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
-    }
-
-    /// Attach a [`UnifiedDetector`](crate::detector::UnifiedDetector)
-    /// for object detection on raw camera frames.
-    ///
-    /// The backend declares which [`DetectorFrame`](crate::detector::DetectorFrame)
-    /// residencies it accepts. Session dispatches CPU frames (YUV /
-    /// NV12) and CUDA frames (shared textures) through the same
-    /// detector; backends return `UnsupportedFrameKind` for residencies
-    /// they cannot handle and session logs+drops those at the boundary.
-    pub fn set_detector(&mut self, detector: Box<dyn crate::detector::UnifiedDetector>) {
-        self.detection.set_detector(detector);
-    }
-
-    /// Set the detection interval (run detection every N frames).
-    ///
-    /// Default is 1 (every frame). Higher values reduce detection CPU load
-    /// at the cost of tracking responsiveness. The director still receives
-    /// the last known tracked objects on skipped frames.
-    pub fn set_detection_interval(&mut self, interval: u64) {
-        self.detection.set_detection_interval(interval);
-    }
-
-    /// Attach a pipeline event sink for structured observability.
-    ///
-    /// See [`crate::pipeline_event`] for the event vocabulary and the
-    /// `BackpressuredSink` wrapper that keeps emission off the render
-    /// thread. Typical usage:
-    ///
-    /// ```rust,ignore
-    /// use reco_core::pipeline_event::BackpressuredSink;
-    /// use reco_io::jsonl_sink::JsonlSink;
-    ///
-    /// let inner = JsonlSink::create("trace.jsonl")?;
-    /// let sink = BackpressuredSink::new(Box::new(inner), 256, None);
-    /// session.set_event_sink(Box::new(sink));
-    /// ```
-    ///
-    /// Pass [`None`] equivalent by not calling this at
-    /// all. There is deliberately no `clear_event_sink` - in a
-    /// <1.0.0 codebase we re-create the session for that. When an
-    /// external consumer hits this friction we'll add one.
-    pub fn set_event_sink(&mut self, sink: Box<dyn crate::pipeline_event::PipelineEventSink>) {
-        log::info!("StitchSession: event sink attached");
-        self.event_sink = Some(sink);
-    }
-
-    /// Append a [`DetectionFilter`](crate::detection_filter::DetectionFilter)
-    /// to the pre-tracker chain. Filters run in insertion order before
-    /// the trackers see the detection list. With an event sink
-    /// attached, each stage emits
-    /// `PipelineEvent::DetectionFilter { before, after, filter_name }`.
-    ///
-    /// Typical chain:
-    /// 1. `FlickerFilter` (recurrent static false-positive rejection).
-    /// 2. Class-specific filters (feet-in-ROI, hands-raised, etc).
-    pub fn add_detection_filter(
-        &mut self,
-        filter: Box<dyn crate::detection_filter::DetectionFilter>,
-    ) {
-        log::info!("StitchSession: detection filter '{}' added", filter.name());
-        self.detection_filters.push(filter);
-    }
-
-    /// Attach a singleton ball tracker. See
-    /// [`StitchCore::set_ball_tracker`](crate::core::StitchCore::set_ball_tracker)
-    /// for semantics — the session mirrors the core's API so push
-    /// and pull consumers stay symmetric.
-    pub fn set_ball_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
-        log::info!(
-            "StitchSession: ball tracker attached (class_id={})",
-            tracker.class_id()
-        );
-        self.ball_tracker = Some(tracker);
-    }
-
-    /// Remove the currently attached ball tracker.
-    pub fn clear_ball_tracker(&mut self) {
-        self.ball_tracker = None;
-    }
-
-    /// Attach a multi-entity player tracker. Mirror of
-    /// [`StitchCore::set_player_tracker`](crate::core::StitchCore::set_player_tracker).
-    pub fn set_player_tracker(&mut self, tracker: Box<dyn crate::tracker::Tracker>) {
-        log::info!(
-            "StitchSession: player tracker attached (class_id={})",
-            tracker.class_id()
-        );
-        self.player_tracker = Some(tracker);
-    }
-
-    /// Remove the currently attached player tracker.
-    pub fn clear_player_tracker(&mut self) {
-        self.player_tracker = None;
-    }
-
-    /// Attach a panner. When set, the tracker/panner path owns
-    /// pose resolution each frame; without a panner the pose stays at
-    /// the pipeline default.
-    pub fn set_panner(&mut self, panner: Box<dyn crate::panner::Panner>) {
-        log::info!("StitchSession: panner attached");
-        self.panner = Some(panner);
-    }
-
-    /// Remove the currently attached panner.
-    pub fn clear_panner(&mut self) {
-        log::info!("StitchSession: panner detached");
-        self.panner = None;
-    }
-
-    /// Attach a stacked-video replay recorder.
-    ///
-    /// Forwards to [`StitchCore::set_stacked_recorder`] on the
-    /// session's underlying core. Push-based consumers (OBS,
-    /// GStreamer bridge) that wire this get the same replay-recording
-    /// ergonomics the pull-side `StitchJob::with_replay_recording`
-    /// already provides: one method call, the session handles the
-    /// per-frame tap + encoder lifecycle internally. Closes FRICTION
-    /// A18 on the reco-obs side.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// // reco-io exposes a constructor that returns the concrete
-    /// // `Box<dyn StackedReplayRecorder>`; consumers don't touch
-    /// // the encoder type directly.
-    /// let recorder = reco_io::stacked_video::replay::session_recorder(
-    ///     "replay.mkv",
-    ///     reco_io::stacked_video::encoder::StackedEncoderConfig::default(),
-    ///     info.width,
-    ///     info.height,
-    /// )?;
-    /// session.set_stacked_recorder(recorder);
-    /// ```
-    pub fn set_stacked_recorder(&mut self, recorder: Box<dyn crate::core::StackedReplayRecorder>) {
-        self.core.set_stacked_recorder(recorder);
-    }
-
-    /// Finalize and drop the currently attached replay recorder.
-    /// No-op if no recorder is attached.
-    pub fn clear_stacked_recorder(&mut self) {
-        self.core.clear_stacked_recorder();
-    }
-
-    /// Flush the replay recorder's buffered bytes to disk. Call
-    /// periodically (e.g. once per second) so a concurrent reader
-    /// sees recent frames. No-op if no recorder is attached.
-    pub fn flush_stacked_recorder(&mut self) {
-        self.core.flush_stacked_recorder();
-    }
-
-    /// Enable the GPU-pack replay path (M7 pivot item 1).
-    ///
-    /// Forwards to [`crate::core::StitchCore::enable_gpu_stacked_replay`].
-    /// After enabling, attach a
-    /// [`crate::core::StackedReplayGpuRecorder`] via
-    /// [`Self::set_stacked_gpu_recorder`] to route the packed atlas
-    /// to an encoder. The pack runs on every YUV submit and logs
-    /// its path choice once at enable time.
-    pub fn enable_gpu_stacked_replay(
-        &mut self,
-        layout: crate::yuv_stack_packer::StackGridLayout,
-        output_size: crate::yuv_stack_packer::OutputTileSize,
-    ) -> Result<(), crate::core::StitchCoreError> {
-        self.core.enable_gpu_stacked_replay(layout, output_size)
-    }
-
-    /// Disable the GPU-pack replay path. Also finalizes any
-    /// attached GPU recorder.
-    pub fn disable_gpu_stacked_replay(&mut self) {
-        self.core.disable_gpu_stacked_replay();
-    }
-
-    /// Attach a GPU-pack atlas recorder. Call after
-    /// [`Self::enable_gpu_stacked_replay`].
-    pub fn set_stacked_gpu_recorder(
-        &mut self,
-        recorder: Box<dyn crate::core::StackedReplayGpuRecorder>,
-    ) {
-        self.core.set_stacked_gpu_recorder(recorder);
-    }
-
-    /// Finalize and drop the GPU-pack atlas recorder. No-op if none
-    /// is attached.
-    pub fn clear_stacked_gpu_recorder(&mut self) {
-        self.core.clear_stacked_gpu_recorder();
-    }
-
-    /// Flush the GPU-pack recorder's buffered bytes to disk. No-op
-    /// if none is attached.
-    pub fn flush_stacked_gpu_recorder(&mut self) {
-        self.core.flush_stacked_gpu_recorder();
-    }
-
-    /// Atlas dimensions the active GPU packer produces, or `None` if
-    /// the GPU-pack path is not enabled. Consumers use this to open
-    /// an encoder sized for the atlas.
-    pub fn stacked_atlas_dims(&self) -> Option<(u32, u32)> {
-        self.core.stacked_atlas_dims()
-    }
-
-    /// Set the sink that receives tracked detection data each frame.
-    ///
-    /// The sink is called once per frame with the current tracked
-    /// objects, frame index, and timestamp. Errors returned from the
-    /// sink abort the current session call ([`run`](Self::run),
-    /// [`step`](Self::step), [`process_frame`](Self::process_frame))
-    /// with [`SessionError::DetectionSink`].
-    ///
-    /// Closures matching `FnMut(&[MappedDetection], u64, f64) -> Result<(),
-    /// DetectionSinkError>` implement [`DetectionSink`] automatically via
-    /// the blanket impl, so typical usage is:
-    ///
-    /// ```rust,ignore
-    /// session.set_detection_sink(Box::new(|dets, frame_idx, ts_ms| {
-    ///     writer.write_row(dets, frame_idx, ts_ms)?;
-    ///     Ok(())
-    /// }));
-    /// ```
-    ///
-    /// Replaces any previously registered sink.
-    pub fn set_detection_sink(&mut self, sink: Box<dyn DetectionSink>) {
-        self.detection.set_sink(sink);
-    }
-
-    /// Get the current viewport position from the director, or default.
-    ///
-    /// Clamps the panner's raw output to the coverage boundary (no-black
-    /// region) and applies FOV limits. This keeps all viewport
-    /// constraining in the session, so panners can output unconstrained
-    /// positions.
-    pub fn director_position(&mut self) -> ViewportPosition {
-        // Source the raw pre-clamp pose from the panner's most recent
-        // decision. When no panner is attached the previous pose stays
-        // at its default (identity) value so the viewport centers.
-        let mut pos = self.previous_panner_pose;
-
-        // The panner outputs world-space coordinates (from detections
-        // mapped via camera_to_panorama). Clamp in world space, then
-        // convert to the user-space pitch the renderer expects (the
-        // view_matrix applies rig_tilt as a basis rotation, so the
-        // render-site pitch must compensate via rig_correction).
-        if let Some(coverage) = self.core.coverage() {
-            if let Some(ref mut fov) = pos.fov_degrees {
-                *fov = fov.min(coverage.max_fov_degrees());
-            }
-            let fov = pos
-                .fov_degrees
-                .unwrap_or_else(|| self.core.pipeline().fov());
-            let aspect = self.core.pipeline().viewport().aspect_ratio();
-            let rig_tilt = self.core.pipeline().viewport().rig_tilt;
-            // Clamp in world space (rig_tilt=0 so coverage stays in
-            // the panorama's native coordinate system).
-            let clamped = coverage.safe_clamp(pos.yaw, pos.pitch, fov, aspect, 0.0);
-            pos.yaw = clamped.yaw;
-            // Convert world (yaw, pitch) to render-space via exact
-            // quaternion inversion of view_matrix's tilt+roll basis.
-            // Accounts for roll coupling at non-zero yaw that the
-            // closed-form render_pitch misses.
-            let cam =
-                crate::projection::VirtualCamera::new(&self.core.pipeline().scene.camera_position);
-            let rig_roll = self.core.pipeline().viewport().rig_roll;
-            let (ry, rp) = crate::rig_correction::world_to_render_pose(
-                &cam,
-                clamped.yaw,
-                clamped.pitch,
-                rig_tilt,
-                rig_roll,
-            );
-            pos.yaw = ry;
-            pos.pitch = rp;
-        }
-
-        // Trace: PosePresented. This is the pose the renderer will
-        // actually consume for this frame (post-clamp, post-FOV-cap).
-        if let Some(sink) = self.event_sink.as_deref_mut() {
-            sink.emit(crate::pipeline_event::PipelineEvent::PosePresented {
-                frame_index: self.frame_count,
-                pose: pos,
-            });
-        }
-
-        if let Some(fov) = pos.fov_degrees {
-            self.core.pipeline_mut().set_fov(fov);
-        }
-        pos
-    }
-
-    /// Run detection on a stereo frame, track, map to panorama, and update the director.
-    ///
-    /// Detection only runs every `detection_interval` frames. On skipped
-    /// frames, the last tracked objects are reused so the director still
-    /// has context. The detection sink fires every frame; an error from
-    /// the sink aborts this call with [`SessionError::DetectionSink`].
-    pub fn detect_and_update_director(
-        &mut self,
-        frame: &StereoFrame,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let (width, height) = self.core.pipeline().source_info();
-            let detections = self.detection.run_detection(frame, width, height);
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
-    }
-
-    /// Whether detection should run on the current frame.
-    /// Returns false if no detector is attached.
-    pub fn detection_should_run(&self) -> bool {
-        self.detection.has_detector() && self.detection.should_detect(self.frame_count)
-    }
-
-    /// Run detection on CPU-resident RGBA frames and update the director.
-    ///
-    /// Used by the Bayer/V4L2 path. Detection runs only when
-    /// `should_detect` returns true (respects detection_interval).
-    /// On non-detection frames, the director still advances.
-    pub fn detect_and_update_director_rgba(
-        &mut self,
-        left_rgba: &[u8],
-        right_rgba: &[u8],
-        width: u32,
-        height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let detections = self
-                .detection
-                .run_detection_rgba(left_rgba, right_rgba, width, height);
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
-    }
-
-    /// Run detection on CUDA-resident RGBA frames and update the director.
-    ///
-    /// Zero-copy path for Bayer cameras: the RGBA data is already on
-    /// CUDA via Vulkan shared memory. No CPU readback needed.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn detect_and_update_director_cuda_rgba(
-        &mut self,
-        left_ptr: crate::cuda_interop::CUdeviceptr,
-        left_pitch: usize,
-        right_ptr: crate::cuda_interop::CUdeviceptr,
-        right_pitch: usize,
-        width: u32,
-        height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let detections = self.detection.run_detection_cuda_rgba(
-                left_ptr,
-                left_pitch,
-                right_ptr,
-                right_pitch,
-                width,
-                height,
-            );
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
-    }
-
-    /// Detect on pre-letterboxed CUDA RGBA from NvBufSurfTransform and update director.
-    ///
-    /// The buffers are already at model size with letterbox padding applied.
-    /// Skips NPP resize - only normalize + TRT inference.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn detect_and_update_director_preletterboxed(
-        &mut self,
-        left_ptr: crate::cuda_interop::CUdeviceptr,
-        right_ptr: crate::cuda_interop::CUdeviceptr,
-        src_width: u32,
-        src_height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let detections = self.detection.run_detection_preletterboxed(
-                left_ptr, src_width, src_height, right_ptr, src_width, src_height,
-            );
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
-    }
-
-    /// Update the director without detection.
-    ///
-    /// Advances the director state (e.g. sweep position) without running
-    /// object detection. Used by zero-copy paths and raw Bayer capture
-    /// where no CPU-accessible StereoFrame is available.
-    pub fn update_director(&mut self, elapsed: std::time::Duration) -> Result<(), SessionError> {
-        self.fire_sink_and_update_director(elapsed, false)
-    }
-
-    /// Run GPU-resident detection and update the director.
-    ///
-    /// Uses the [`GpuDetector`](crate::detector::GpuDetector) to detect
-    /// objects directly from CUDA device pointers (NV12 shared textures),
-    /// avoiding any GPU-to-CPU frame readback. Only the small detection
-    /// output is transferred to CPU for tracking and director updates.
-    ///
-    /// Falls back to [`update_director`](Self::update_director) if no
-    /// GPU detector is attached.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) fn detect_and_update_director_gpu(
-        &mut self,
-        left_buf: &crate::zero_copy::GpuBufInfo,
-        right_buf: &crate::zero_copy::GpuBufInfo,
-        left_slot: u8,
-        right_slot: u8,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect && self.detection.has_detector() {
-            let detections = self.detection.run_gpu_detection(
-                left_buf,
-                right_buf,
-                left_slot,
-                right_slot,
-                self.left_rotation,
-                self.right_rotation,
-            );
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
-    }
-
-    /// Run Metal-resident detection and update the director.
-    ///
-    /// Dispatches to the attached unified detector through
-    /// [`DetectorFrame::Metal`](crate::detector::DetectorFrame::Metal).
-    /// The backend (e.g. `MetalYoloDetector`) owns the `GpuContext`
-    /// clone it needs for CVPixelBuffer import.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub(crate) fn detect_and_update_director_metal(
-        &mut self,
-        left_cvpb: crate::metal_interop::CVPixelBufferRef,
-        right_cvpb: crate::metal_interop::CVPixelBufferRef,
-        width: u32,
-        height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        use crate::detector::{CameraId, DetectorFrame};
-
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect && self.detection.has_detector() {
-            if let Some(ref mut detector) = self.detection.detector {
-                let mut raw = Vec::new();
-                for (camera, cvpb) in [(CameraId::Left, left_cvpb), (CameraId::Right, right_cvpb)] {
-                    let frame = DetectorFrame::Metal {
-                        cv_pixel_buffer: cvpb,
-                        width,
-                        height,
-                    };
-                    match detector.detect(camera, &frame) {
-                        Ok(v) => raw.extend(v),
-                        Err(e) => log::warn!("detector '{}' {camera:?}: {e}", detector.name()),
-                    }
-                }
-                self.detection.last_detections = self.map_detections(raw);
-            }
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
-    }
-
-    /// Fire the detection sink and drive the tracker/panner chain.
-    ///
-    /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
-    /// Fires the sink with `last_detections` (which may be empty if no
-    /// detector ran this frame), runs every registered tracker to build
-    /// a [`WorldState`](crate::tracker::WorldState), then lets the
-    /// panner decide the next pose. Viewport constraining is handled
-    /// separately by [`director_position`](Self::director_position).
-    ///
-    /// Sink errors surface as [`SessionError::DetectionSink`] and abort the
-    /// current session call.
-    fn fire_sink_and_update_director(
-        &mut self,
-        elapsed: std::time::Duration,
-        fresh_detection: bool,
-    ) -> Result<(), SessionError> {
-        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
-
-        // Fire the legacy per-detection sink for external consumers.
-        self.detection
-            .fire_sink(self.frame_count, timestamp_ms)
-            .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
-
-        // Trace: DetectionsRaw. Only clones when an event sink is attached.
-        if let Some(sink) = self.event_sink.as_deref_mut() {
-            sink.emit(crate::pipeline_event::PipelineEvent::DetectionsRaw {
-                frame_index: self.frame_count,
-                detections: self.detection.last_detections.clone(),
-            });
-        }
-
-        // Pre-tracker detection-filter chain. Each stage mutates
-        // `last_detections` in place; with a sink attached, the
-        // before/after snapshot is emitted so a user can audit what
-        // each filter changed.
-        if !self.detection_filters.is_empty() {
-            let calibration = self.core.pipeline().calibration();
-            let filter_ctx = crate::detection_filter::FilterContext {
-                frame_index: self.frame_count,
-                timestamp_ms,
-                calibration,
-            };
-            let trace_enabled = self.event_sink.is_some();
-            for filter in self.detection_filters.iter_mut() {
-                let before = if trace_enabled {
-                    Some(self.detection.last_detections.clone())
-                } else {
-                    None
-                };
-                filter.filter(&mut self.detection.last_detections, &filter_ctx);
-                if let (Some(before), Some(sink)) = (before, self.event_sink.as_deref_mut()) {
-                    sink.emit(crate::pipeline_event::PipelineEvent::DetectionFilter {
-                        frame_index: self.frame_count,
-                        filter_name: filter.name(),
-                        before,
-                        after: self.detection.last_detections.clone(),
-                    });
-                }
-            }
-        }
-
-        // Drive pose resolution via the shared panner dispatch.
-        // Runs even when the detections list is empty so trackers get
-        // their coast / loss ticks.
-        //
-        // `fresh_detection` is unused by panner decisions today —
-        // trackers manage their own freshness via detection cadence.
-        let _ = fresh_detection;
-        let calibration = self.core.pipeline().calibration();
-        let dispatch_result = crate::panner::dispatch(
-            self.panner.as_mut(),
-            self.player_tracker.as_mut(),
-            self.ball_tracker.as_mut(),
-            &mut self.previous_panner_pose,
-            self.event_sink.as_deref_mut(),
-            crate::panner::DispatchContext {
-                detections: &self.detection.last_detections,
-                calibration,
-                frame_index: self.frame_count,
-                timestamp_ms,
-                caller: "StitchSession",
-            },
-        );
-
-        self.telemetry.record_detections(
-            self.detection.last_detections.len() as u32,
-            dispatch_result.as_ref().map_or(0, |r| r.active_tracks),
-            dispatch_result.as_ref().is_some_and(|r| r.ball_present),
-        );
-
-        Ok(())
-    }
-
-    /// Map raw detections to panorama coordinates.
-    ///
-    /// Each detection's camera-space center is projected to panorama
-    /// yaw/pitch via [`camera_to_panorama`](projection::camera_to_panorama).
-    ///
-    /// ROI filtering (discarding detections outside the playing field) is
-    /// handled at the detector level by `reco-autocam`'s `RoiFilteredDetector`
-    /// decorators, so this method is pure coordinate mapping.
-    fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
-        let calibration = self.core.pipeline().calibration();
-        let scene = &self.core.pipeline().scene;
-
-        detections
-            .iter()
-            .map(|d| {
-                let position = projection::camera_to_panorama(
-                    d.camera,
-                    d.center_x,
-                    d.center_y,
-                    calibration,
-                    scene,
-                );
-                MappedDetection {
-                    camera: d.camera,
-                    class_id: d.class_id,
-                    confidence: d.confidence,
-                    camera_center: (d.center_x, d.center_y),
-                    camera_size: (d.width, d.height),
-                    position,
-                }
-            })
-            .collect()
-    }
-
-    /// Render a single CPU-resident stereo frame and submit it to the encoder.
-    ///
-    /// Handles YUV420P and NV12 input formats. For GPU-resident frames
-    /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
-    /// instead.
-    /// Process one frame with full session features: detection, director,
-    /// coverage clamping, and encoding.
-    ///
-    /// This is the recommended API for interactive consumers (GUI apps, OBS
-    /// plugins) that control their own frame loop. It combines
-    /// `detect_and_update_director()`, `director_position()`, and
-    /// `process_frame()` into a single call and returns what happened.
-    ///
-    /// Pass `override_position` to bypass the director (e.g. when the user
-    /// grabs the viewport with their mouse). The director still updates
-    /// internally so it stays warm.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "session_step")
-    )]
-    pub fn step(
-        &mut self,
-        frame: &StereoFrame,
-        elapsed: std::time::Duration,
-        override_position: Option<ViewportPosition>,
-    ) -> Result<StepResult, SessionError> {
-        // Run detection and update director.
-        self.detect_and_update_director(frame, elapsed)?;
-
-        // Get viewport position (from director or override).
-        let pos = if let Some(ovr) = override_position {
-            if let Some(fov) = ovr.fov_degrees {
-                self.core.pipeline_mut().set_fov(fov);
-            }
-            ovr
-        } else {
-            self.director_position()
-        };
-
-        let frame_index = self.frame_count;
-
-        // Render + encode.
-        self.process_frame(frame, pos.yaw, pos.pitch)?;
-
-        Ok(StepResult {
-            viewport: pos,
-            frame_index,
-        })
-    }
-
-    /// Render a single CPU-resident stereo frame and submit it to the encoder.
-    ///
-    /// Handles YUV420P and NV12 input formats. For GPU-resident frames
-    /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
-    /// instead.
-    ///
-    /// For interactive consumers that want detection + director + encoding in
-    /// one call, use [`step()`](Self::step) instead.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "session_process_frame")
-    )]
-    pub fn process_frame(
-        &mut self,
-        frame: &StereoFrame,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<(), SessionError> {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        if let StereoFrame::MetalResident { left, right } = frame {
-            return self.process_metal_frame(left, right, yaw, pitch);
-        }
-
-        let render_buf = self.core.render_stereo_frame_at_pose(frame, yaw, pitch)?;
-        self.submit_render_output(render_buf)?;
-        // GPU stacked-replay pack tap (M7). `render_stereo_frame_at_pose`
-        // has just populated the renderer's internal plane textures
-        // via `queue.write_texture`, so the packer's pipeline-view
-        // path can read them. No-op when the packer isn't enabled.
-        // Zero-copy `StereoFrame::GpuResident` goes through
-        // `step_gpu_with_bufs` (Linux) which taps the pack with
-        // external views instead.
-        self.core.drive_gpu_stacked_pack();
-        Ok(())
-    }
-
-    /// Process a frame from GPU-resident RGBA textures (e.g. Bayer demosaic output).
-    ///
-    /// Copies the RGBA textures into the stitch pipeline's input planes,
-    /// renders the stitch, converts to NV12, and submits to encoders.
-    /// This is the Bayer/GPU-RGBA equivalent of `process_frame` for
-    /// YUV/NV12 paths - session features (encoder fan-out, replay recording,
-    /// frame counting) work automatically.
-    pub fn process_frame_gpu_rgba(
-        &mut self,
-        left_rgba: &wgpu::Texture,
-        right_rgba: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<(), SessionError> {
-        let render_buf = self
-            .core
-            .render_gpu_rgba_at_pose(left_rgba, right_rgba, yaw, pitch);
-        self.submit_render_output(render_buf)?;
-        self.core.drive_gpu_stacked_pack();
-        Ok(())
-    }
-
-    /// Process a frame from imported NV12 textures (DMA-buf zero-copy path).
-    ///
-    /// Takes Y and UV textures for both cameras (from DMA-buf Vulkan import),
-    /// renders the stitch, converts to NV12, and submits to encoders.
-    /// Uses the imported textures directly for replay packing (not the
-    /// renderer's internal planes, which aren't written by this path).
-    pub fn process_frame_imported_nv12(
-        &mut self,
-        left_y: &wgpu::Texture,
-        left_uv: &wgpu::Texture,
-        right_y: &wgpu::Texture,
-        right_uv: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<(), SessionError> {
-        let render_buf = self
-            .core
-            .render_imported_textures_at_pose(left_y, left_uv, right_y, right_uv, yaw, pitch);
-        self.submit_render_output(render_buf)?;
-
-        // Replay pack from the imported views (not internal plane textures,
-        // since render_imported_textures doesn't copy into them).
-        let ly = left_y.create_view(&wgpu::TextureViewDescriptor::default());
-        let lu = left_uv.create_view(&wgpu::TextureViewDescriptor::default());
-        let ry = right_y.create_view(&wgpu::TextureViewDescriptor::default());
-        let ru = right_uv.create_view(&wgpu::TextureViewDescriptor::default());
-        self.core.pack_gpu_stacked_replay_from_views(
-            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
-            crate::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
-        );
-        Ok(())
-    }
-
-    /// Process a MetalResident frame: import CVPixelBuffers as textures, render.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    fn process_metal_frame(
-        &mut self,
-        left: &crate::metal_interop::RetainedCVPixelBuffer,
-        right: &crate::metal_interop::RetainedCVPixelBuffer,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<(), SessionError> {
-        // Lazily create the texture cache on first MetalResident frame.
-        if self.metal_texture_cache.is_none() {
-            self.metal_texture_cache = Some(crate::metal_interop::MetalTextureCache::new(
-                self.core.gpu(),
-            )?);
-            log::info!("Metal zero-copy: texture cache initialized");
-        }
-        let cache = self.metal_texture_cache.as_ref().unwrap();
-
-        // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
-        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
-        let (right_y, right_uv) = unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
-
-        let render_buf = self.core.render_imported_textures_at_pose(
-            &left_y.texture,
-            &left_uv.texture,
-            &right_y.texture,
-            &right_uv.texture,
-            yaw,
-            pitch,
-        );
-        self.submit_render_output(render_buf)?;
-        Ok(())
-    }
-
-    /// Render from GPU-resident textures and submit to the async encoder.
-    ///
-    /// Used with the zero-copy path where decode threads write directly
-    /// to shared GPU textures. The caller must configure bind groups via
-    /// [`pipeline_mut()`](Self::pipeline_mut) and call
-    /// [`StitchPipeline::render_gpu_frame`] to get the command buffer,
-    /// then pass it here.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "session_submit_render")
-    )]
-    pub fn submit_render_output(
-        &mut self,
-        render_commands: wgpu::CommandBuffer,
-    ) -> Result<(), SessionError> {
-        let nv12_data = self.nv12_converter.convert_and_readback(
-            self.core.gpu(),
-            self.core.pipeline().render_target(),
-            render_commands,
-        )?;
-
-        // First two calls return None (triple-buffer warmup).
-        // From the third call onward, we get data from 2 frames ago.
-        if let Some(data) = nv12_data {
-            if let Some(ref encoder) = self.encoder {
-                encoder.submit(data, self.frame_count as i64)?;
-            }
-            // Fan out to extra encoders (multi-output).
-            for enc in &self.extra_encoders {
-                enc.submit(data, self.frame_count as i64)?;
-            }
-        }
-
-        self.frame_count += 1;
-        Ok(())
-    }
-
-    /// Process one GPU-resident frame with pre-extracted buffer info.
-    ///
-    /// The `buf_info` is extracted once before the frame loop to avoid
-    /// per-frame clones and satisfy the borrow checker.
-    #[cfg(target_os = "linux")]
-    fn step_gpu_with_bufs(
-        &mut self,
-        buf_info: &Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
-        left_slot: u8,
-        right_slot: u8,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        if let Some((left_buf, right_buf)) = buf_info {
-            self.detect_and_update_director_gpu(
-                left_buf, right_buf, left_slot, right_slot, elapsed,
-            )?;
-        }
-        let pos = self.director_position();
-
-        let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
-            SessionError::ZeroCopy(
-                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
-            )
-        })?;
-        let render_buf = self.core.render_gpu_frame_at_pose(
-            bind_groups,
-            left_slot,
-            right_slot,
-            pos.yaw,
-            pos.pitch,
-        );
-        self.submit_render_output(render_buf)?;
-
-        // GPU stacked-replay pack on zero-copy sources. No-op when
-        // the packer isn't enabled. Must complete before slot-free
-        // release so the decode thread doesn't overwrite the
-        // shared textures mid-pack.
-        if let Some(ref views) = self.gpu_shared_views {
-            let ls = left_slot as usize;
-            let rs = right_slot as usize;
-            self.core.pack_gpu_stacked_replay_from_views(
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
-                    y: &views[ls * 2],
-                    uv: &views[ls * 2 + 1],
-                },
-                crate::yuv_stack_packer::StackedPackSource::Nv12 {
-                    y: &views[4 + rs * 2],
-                    uv: &views[4 + rs * 2 + 1],
-                },
-            );
-        }
-
-        // Release slots for decode thread to reuse
-        if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
-            if left_tx.send(left_slot).is_err() {
-                log::error!(
-                    "Failed to release left GPU slot {left_slot} - decode thread may have died"
-                );
-            }
-            if right_tx.send(right_slot).is_err() {
-                log::error!(
-                    "Failed to release right GPU slot {right_slot} - decode thread may have died"
-                );
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Auto-configure the session from source metadata.
-    ///
-    /// Called at the start of [`run`](Self::run). Applies rotation from
-    /// the source's metadata.
-    fn configure_from_source(&mut self, source: &dyn FrameSource) {
-        // Apply rotation via shader UV flip ONLY for GPU-resident sources.
-        // CPU sources handle rotation via buffer reversal in the decoder,
-        // so applying the shader flip too would rotate 360 degrees (no-op but wrong).
-        if source.is_gpu_resident() {
-            let (lr, rr) = (source.left_rotation(), source.right_rotation());
-            if lr == 180 || rr == 180 {
-                self.core.pipeline_mut().set_flip_180(lr == 180, rr == 180);
-                log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
-            }
-            // Store rotation for the GPU detector preprocessing path.
-            // The detector needs to flip frames independently of the render shader.
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
-            {
-                self.left_rotation = lr;
-                self.right_rotation = rr;
-            }
-        }
-    }
-
-    /// Configure the session for a GPU-resident source.
-    ///
-    /// Creates bind groups from the source's shared textures and stores
-    /// slot-free senders for decode backpressure. Call this before
-    /// [`run`](Self::run) when using a GPU-resident [`FrameSource`] like
-    /// `SmartFileSource`.
-    ///
-    /// For the Layer 1 API (`run_zero_copy_linux`), this is handled
-    /// internally and you don't need to call it.
-    #[cfg(target_os = "linux")]
-    pub fn setup_gpu_source(&mut self, shared: &SharedTextureSet) {
-        let t = &shared.textures;
-        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
-            [(&t[0], &t[1]), (&t[2], &t[3])],
-            [(&t[4], &t[5]), (&t[6], &t[7])],
-        );
-        self.gpu_bind_groups = Some(bind_groups);
-        self.gpu_slot_free_tx = Some((
-            shared.left_slot_free_tx.clone(),
-            shared.right_slot_free_tx.clone(),
-        ));
-        self.gpu_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
-        // Pre-build the 8 shared texture views for the GPU
-        // stacked-replay pack shader. Same order as `t` above so
-        // `step_gpu_with_bufs` can index per slot:
-        //   left  y: [ls * 2],     uv: [ls * 2 + 1]
-        //   right y: [4 + rs * 2], uv: [4 + rs * 2 + 1]
-        // Views hold Arcs to the underlying textures, so the
-        // SharedTextureSet still owns the lifetime.
-        let desc = wgpu::TextureViewDescriptor::default();
-        self.gpu_shared_views = Some([
-            t[0].texture.create_view(&desc),
-            t[1].texture.create_view(&desc),
-            t[2].texture.create_view(&desc),
-            t[3].texture.create_view(&desc),
-            t[4].texture.create_view(&desc),
-            t[5].texture.create_view(&desc),
-            t[6].texture.create_view(&desc),
-            t[7].texture.create_view(&desc),
-        ]);
-        log::info!("Session configured for GPU-resident source");
-    }
-
-    /// Batch-process frames from a source into the encoder.
-    ///
-    /// Runs the full decode-render-encode loop until the source is
-    /// exhausted, the frame limit is reached, or the interrupt flag
-    /// is set. Returns the number of frames processed.
-    ///
-    /// Automatically handles CPU-resident and GPU-resident frames:
-    /// - CPU frames (Yuv420p, Nv12): uploaded to GPU, rendered, encoded
-    /// - GPU frames (GpuResident): rendered directly from shared textures
-    ///
-    /// Does NOT call [`Self::finish`] - the caller must do that after this
-    /// returns to flush the last frame and finalize encoding.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "session_run")
-    )]
-    pub fn run(
-        &mut self,
-        source: &mut dyn FrameSource,
-        frame_limit: u64,
-        interrupted: &AtomicBool,
-        mut on_progress: Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
-        self.configure_from_source(source);
-
-        let result = self.run_immediate(source, frame_limit, interrupted, &mut on_progress);
-
-        // Drop GPU slot senders so decode threads can exit gracefully.
-        // Without this, SmartFileSource::drop() deadlocks because the
-        // session's cloned senders keep the decode threads' recv() alive.
-        #[cfg(target_os = "linux")]
-        {
-            self.gpu_slot_free_tx = None;
-        }
-
-        result
-    }
-
-    /// Standard frame loop. Handles CPU-resident and GPU-resident
-    /// frames transparently.
-    fn run_immediate(
-        &mut self,
-        source: &mut dyn FrameSource,
-        frame_limit: u64,
-        interrupted: &AtomicBool,
-        on_progress: &mut Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
-        let start = std::time::Instant::now();
-
-        // Extract GPU buf info once before the loop to avoid per-frame clones.
-        // Needed to satisfy the borrow checker (immutable borrow of buf_info
-        // vs mutable borrow for detect_and_update_director_gpu).
-        #[cfg(target_os = "linux")]
-        let gpu_buf_info = self.gpu_buf_info.clone();
-
-        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            let frame_t0 = std::time::Instant::now();
-
-            let frame = {
-                crate::profile_scope!("wait_decode");
-                match source.next_frame()? {
-                    Some(f) => f,
-                    None => break,
-                }
-            };
-            let decode_time = frame_t0.elapsed();
-
-            if let Some(sink) = self.event_sink.as_deref_mut() {
-                sink.emit(crate::pipeline_event::PipelineEvent::FrameStart {
-                    frame_index: self.frame_count,
-                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
-                });
-            }
-
-            match &frame {
-                #[cfg(target_os = "linux")]
-                StereoFrame::GpuResident {
-                    left_slot,
-                    right_slot,
-                } => {
-                    self.step_gpu_with_bufs(
-                        &gpu_buf_info,
-                        *left_slot,
-                        *right_slot,
-                        start.elapsed(),
-                    )?;
-                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
-                        total: Some(frame_t0.elapsed()),
-                        ..Default::default()
-                    });
-                }
-                #[cfg(target_os = "windows")]
-                StereoFrame::D3d11Resident {
-                    left_texture,
-                    left_slice,
-                    right_texture,
-                    right_slice,
-                } => {
-                    if self.d3d11_staging_pool.is_none() {
-                        let (w, h) = self.core.pipeline().source_info();
-                        match crate::d3d11_interop::D3d11StagingPool::new(self.core.gpu(), w, h) {
-                            Ok(pool) => {
-                                log::info!(
-                                    "D3D11VA staging pool created: {}x{}, 4 NV12 slots",
-                                    w,
-                                    h
-                                );
-                                self.d3d11_staging_pool = Some(pool);
-                            }
-                            Err(e) => {
-                                return Err(SessionError::ZeroCopy(format!(
-                                    "D3D11 staging pool: {e}"
-                                )));
-                            }
-                        }
-                    }
-                    let left_slot = self.frame_count as usize % 2;
-                    let right_slot = left_slot + 2;
-
-                    // Stage frames (borrows pool immutably, scoped).
-                    {
-                        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                        pool.stage_frame(*left_texture, *left_slice, left_slot)?;
-                        pool.stage_frame(*right_texture, *right_slice, right_slot)?;
-                    }
-
-                    // Director update (borrows self mutably).
-                    self.update_director(start.elapsed())?;
-                    let pos = self.director_position();
-
-                    // Render from staged views (borrows pool immutably again).
-                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                    let render_buf = self.core.render_imported_views_at_pose(
-                        pool.y_view(left_slot),
-                        pool.uv_view(left_slot),
-                        pool.y_view(right_slot),
-                        pool.uv_view(right_slot),
-                        pos.yaw,
-                        pos.pitch,
-                    );
-                    self.submit_render_output(render_buf)?;
-
-                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
-                        total: Some(frame_t0.elapsed()),
-                        ..Default::default()
-                    });
-                }
-                _ => {
-                    let detect_t0 = std::time::Instant::now();
-                    self.detect_and_update_director(&frame, start.elapsed())?;
-                    let detect_time = detect_t0.elapsed();
-
-                    let render_t0 = std::time::Instant::now();
-                    let pos = self.director_position();
-                    self.process_frame(&frame, pos.yaw, pos.pitch)?;
-                    let render_time = render_t0.elapsed();
-
-                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
-                        detection: if self.detection_should_run() {
-                            Some(detect_time)
-                        } else {
-                            None
-                        },
-                        stitch: Some(render_time),
-                        total: Some(frame_t0.elapsed()),
-                        ..Default::default()
-                    });
-                }
-            }
-
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&FrameProgress {
-                    frames_completed: self.frame_count,
-                    elapsed: start.elapsed(),
-                });
-            }
-        }
-
-        Ok(self.frame_count)
-    }
-
-    /// Flush the NV12 triple-buffer and finalize the encoder.
-    ///
-    /// Drains all pending frames from the triple-buffer pipeline and
-    /// submits them to the encoder, then shuts down the encode thread
-    /// and calls [`Encoder::finish`]. Must be called after the frame loop ends.
-    pub fn finish(&mut self) -> Result<(), SessionError> {
-        // Flush remaining frames from the NV12 triple-buffer.
-        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.core.gpu())? {
-            if let Some(ref encoder) = self.encoder {
-                encoder.submit(nv12_data, self.frame_count as i64)?;
-            }
-            for enc in &self.extra_encoders {
-                enc.submit(nv12_data, self.frame_count as i64)?;
-            }
-            self.frame_count += 1;
-        }
-
-        // Shut down all encode threads.
-        if let Some(mut encoder) = self.encoder.take() {
-            encoder.finish()?;
-        }
-        for mut enc in self.extra_encoders.drain(..) {
-            enc.finish()?;
-        }
-
-        Ok(())
-    }
-
-    /// Convert a pre-rendered frame to NV12 without encoding.
-    ///
-    /// Returns NV12 data from 2 frames ago (or `None` on the first two calls).
-    /// Used by the preview path where the caller displays frames directly
-    /// instead of encoding them.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "session_convert_nv12")
-    )]
-    pub fn convert_to_nv12(
-        &mut self,
-        render_commands: wgpu::CommandBuffer,
-    ) -> Result<Option<&[u8]>, SessionError> {
-        let nv12_data = self.nv12_converter.convert_and_readback(
-            self.core.gpu(),
-            self.core.pipeline().render_target(),
-            render_commands,
-        )?;
-        self.frame_count += 1;
-        Ok(nv12_data)
-    }
-
     /// Number of frames processed so far.
     pub fn frame_count(&self) -> u64 {
         self.frame_count
@@ -1536,40 +336,41 @@ impl StitchSession {
         }
     }
 
+    /// Snapshot of the session's telemetry collector.
     pub fn telemetry_snapshot(&self) -> crate::telemetry::TelemetrySnapshot {
         self.telemetry.snapshot()
     }
 
+    /// Mutable reference to the telemetry collector.
     pub fn telemetry_mut(&mut self) -> &mut crate::telemetry::TelemetryCollector {
         &mut self.telemetry
     }
 
-    /// Add an additional encoder for multi-output (e.g. record + stream).
+    /// Flush the NV12 triple-buffer and finalize the encoder.
     ///
-    /// The NV12 data from each rendered frame is fanned out to all attached
-    /// encoders. Each encoder runs on its own background thread.
-    ///
-    /// Use [`set_encoder`](Self::set_encoder) for the primary encoder,
-    /// then `add_encoder` for additional outputs.
-    pub fn add_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
-        self.extra_encoders
-            .push(AsyncEncodeThread::new(encoder, width, height, buffer_count));
-    }
+    /// Drains all pending frames from the triple-buffer pipeline and
+    /// submits them to the encoder, then shuts down the encode thread
+    /// and calls [`Encoder::finish`]. Must be called after the frame loop ends.
+    pub fn finish(&mut self) -> Result<(), SessionError> {
+        // Flush remaining frames from the NV12 triple-buffer.
+        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.core.gpu())? {
+            if let Some(ref encoder) = self.encoder {
+                encoder.submit(nv12_data, self.frame_count as i64)?;
+            }
+            for enc in &self.extra_encoders {
+                enc.submit(nv12_data, self.frame_count as i64)?;
+            }
+            self.frame_count += 1;
+        }
 
-    /// Set the error policy for the [`run()`](Self::run) batch loop.
-    pub fn set_error_policy(&mut self, policy: ErrorPolicy) {
-        self.error_policy = policy;
-    }
+        // Shut down all encode threads.
+        if let Some(mut encoder) = self.encoder.take() {
+            encoder.finish()?;
+        }
+        for mut enc in self.extra_encoders.drain(..) {
+            enc.finish()?;
+        }
 
-    /// Update calibration parameters and recompute coverage boundary.
-    ///
-    /// Takes effect on the next render call. For interactive calibration
-    /// tweaking during preview or live operation. Delegates to
-    /// [`StitchCore::update_calibration`] which re-derives the coverage
-    /// boundary in one call.
-    pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
-        self.core.update_calibration(calibration);
+        Ok(())
     }
 }
