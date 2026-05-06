@@ -13,7 +13,7 @@ use reco_calibrate::geometry;
 use reco_calibrate::types::CalibrationConfig;
 use reco_core::calibration::MatchCalibration;
 use reco_core::gpu::GpuContext;
-use reco_core::undistort::GpuUndistort;
+use reco_core::lens::undistort::GpuUndistort;
 
 fn main() {
     reco_io::init();

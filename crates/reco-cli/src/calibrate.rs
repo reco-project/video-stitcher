@@ -233,7 +233,7 @@ fn save_debug_frames(
     std::fs::create_dir_all(dir)?;
     let (w, h) = (left_frames[0].width, left_frames[0].height);
     let aspect = w as f32 / h as f32;
-    let undistort = reco_core::undistort::GpuUndistort::new(gpu, w, h, aspect);
+    let undistort = reco_core::lens::undistort::GpuUndistort::new(gpu, w, h, aspect);
     for (i, (lf, rf)) in left_frames.iter().zip(right_frames.iter()).enumerate() {
         let l_rgba = undistort.undistort(gpu, &lf.y, &lf.u, &lf.v, left_params);
         let r_rgba = undistort.undistort(gpu, &rf.y, &rf.u, &rf.v, right_params);

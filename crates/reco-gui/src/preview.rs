@@ -28,7 +28,7 @@
 
 use reco_core::calibration::{CameraParams, MatchCalibration};
 use reco_core::gpu::GpuContext;
-use reco_core::lens_preview::LensPreviewRenderer;
+use reco_core::lens::preview::LensPreviewRenderer;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
 use reco_core::render::stitch_renderer::StitchRenderer;
 use reco_core::render::viewport::ViewportConfig;

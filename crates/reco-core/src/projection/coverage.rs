@@ -368,11 +368,11 @@ impl CoverageBoundary {
         aspect: f32,
         rig_tilt: f32,
     ) -> ClampedPosition {
-        let world_pitch = crate::rig_correction::human_to_world_pitch(yaw, pitch, rig_tilt);
+        let world_pitch = crate::lens::rig_correction::human_to_world_pitch(yaw, pitch, rig_tilt);
         let clamped = self.safe_clamp_world(yaw, world_pitch, fov_v_deg, aspect);
         ClampedPosition {
             yaw: clamped.yaw,
-            pitch: crate::rig_correction::world_to_human_pitch(
+            pitch: crate::lens::rig_correction::world_to_human_pitch(
                 clamped.yaw,
                 clamped.pitch,
                 rig_tilt,

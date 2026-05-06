@@ -46,7 +46,7 @@ impl StitchSession {
             let cam =
                 crate::projection::VirtualCamera::new(&self.core.pipeline().scene.camera_position);
             let rig_roll = self.core.pipeline().viewport().rig_roll;
-            let (ry, rp) = crate::rig_correction::world_to_render_pose(
+            let (ry, rp) = crate::lens::rig_correction::world_to_render_pose(
                 &cam,
                 clamped.yaw,
                 clamped.pitch,

@@ -104,7 +104,7 @@ impl GpuUndistort {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("undistort_fisheye"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/fisheye.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/fisheye.wgsl").into()),
         });
 
         let vertices = quad_vertices(plane_aspect);

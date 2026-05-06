@@ -1,7 +1,7 @@
 //! Single-camera lens preview renderer.
 //!
 //! Renders one camera's input through orthographic projection with the
-//! KB4 fisheye shader. Unlike [`GpuUndistort`](crate::undistort::GpuUndistort)
+//! KB4 fisheye shader. Unlike [`GpuUndistort`](super::undistort::GpuUndistort)
 //! (which does blocking GPU readback), this produces a fresh
 //! `wgpu::Texture` per frame with `RENDER_ATTACHMENT | TEXTURE_BINDING`
 //! so the result can be handed to a UI framework as a zero-copy image.
@@ -113,7 +113,7 @@ impl LensPreviewRenderer {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("lens_preview"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/fisheye.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/fisheye.wgsl").into()),
         });
 
         let vertices = quad_vertices(plane_aspect);

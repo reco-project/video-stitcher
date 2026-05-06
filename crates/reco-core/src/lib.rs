@@ -84,13 +84,10 @@ pub mod encoder;
 pub mod gpu;
 pub mod interop;
 pub mod lens;
-pub mod lens_preview;
 #[cfg(target_os = "linux")]
 pub mod nvbuf_transform;
 pub mod projection;
 pub mod render;
-pub mod rig_correction;
 pub mod session;
 pub mod source;
 pub mod telemetry;
-pub mod undistort;

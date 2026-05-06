@@ -96,7 +96,7 @@ pub use types::{
 
 use reco_core::calibration::{CameraParams, MatchCalibration};
 use reco_core::gpu::GpuContext;
-use reco_core::undistort::GpuUndistort;
+use reco_core::lens::undistort::GpuUndistort;
 
 use types::{FrameMatches, MatchedPoint};
 

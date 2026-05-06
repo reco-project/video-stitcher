@@ -422,7 +422,7 @@ impl PoseControl {
     pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
         ViewportPosition {
             yaw: self.current_yaw_rad,
-            pitch: reco_core::rig_correction::render_pitch(
+            pitch: reco_core::lens::rig_correction::render_pitch(
                 self.current_yaw_rad,
                 self.current_pitch_rad,
                 rig_tilt,
