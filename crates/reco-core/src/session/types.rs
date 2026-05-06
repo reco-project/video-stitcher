@@ -206,7 +206,7 @@ pub enum SessionError {
     /// Metal interop error (macOS zero-copy).
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     #[error("Metal interop: {0}")]
-    MetalInterop(#[from] crate::metal_interop::MetalInteropError),
+    MetalInterop(#[from] crate::interop::metal::MetalInteropError),
 
     /// Zero-copy setup or runtime error.
     #[error("zero-copy: {0}")]

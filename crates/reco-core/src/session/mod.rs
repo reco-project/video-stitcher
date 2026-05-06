@@ -120,7 +120,10 @@ pub struct StitchSession {
     )>,
     /// CUDA buffer info for GPU detection (GPU zero-copy).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) gpu_buf_info: Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
+    pub(crate) gpu_buf_info: Option<(
+        crate::interop::zero_copy::GpuBufInfo,
+        crate::interop::zero_copy::GpuBufInfo,
+    )>,
     /// Texture views for the 8 shared zero-copy textures, layout
     /// `[left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0,
     /// right_uv_0, right_y_1, right_uv_1]`. Stashed at
@@ -135,12 +138,12 @@ pub struct StitchSession {
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub(crate) metal_texture_cache: Option<crate::metal_interop::MetalTextureCache>,
+    pub(crate) metal_texture_cache: Option<crate::interop::metal::MetalTextureCache>,
 
     /// D3D11VA staging pool for zero-copy decode on Windows.
     /// Created lazily when the first D3d11Resident frame arrives.
     #[cfg(target_os = "windows")]
-    pub(crate) d3d11_staging_pool: Option<crate::d3d11_interop::D3d11StagingPool>,
+    pub(crate) d3d11_staging_pool: Option<crate::interop::d3d11::D3d11StagingPool>,
 
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).

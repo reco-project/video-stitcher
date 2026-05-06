@@ -217,9 +217,9 @@ impl DetectionPipeline {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn run_detection_cuda_rgba(
         &mut self,
-        left_ptr: crate::cuda_interop::CUdeviceptr,
+        left_ptr: crate::interop::cuda::CUdeviceptr,
         left_pitch: usize,
-        right_ptr: crate::cuda_interop::CUdeviceptr,
+        right_ptr: crate::interop::cuda::CUdeviceptr,
         right_pitch: usize,
         width: u32,
         height: u32,
@@ -262,10 +262,10 @@ impl DetectionPipeline {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn run_detection_preletterboxed(
         &mut self,
-        left_ptr: crate::cuda_interop::CUdeviceptr,
+        left_ptr: crate::interop::cuda::CUdeviceptr,
         left_src_width: u32,
         left_src_height: u32,
-        right_ptr: crate::cuda_interop::CUdeviceptr,
+        right_ptr: crate::interop::cuda::CUdeviceptr,
         right_src_width: u32,
         right_src_height: u32,
     ) -> Vec<Detection> {
@@ -314,8 +314,8 @@ impl DetectionPipeline {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(super) fn run_gpu_detection(
         &mut self,
-        left_buf: &crate::zero_copy::GpuBufInfo,
-        right_buf: &crate::zero_copy::GpuBufInfo,
+        left_buf: &crate::interop::zero_copy::GpuBufInfo,
+        right_buf: &crate::interop::zero_copy::GpuBufInfo,
         left_slot: u8,
         right_slot: u8,
         left_rotation: i32,

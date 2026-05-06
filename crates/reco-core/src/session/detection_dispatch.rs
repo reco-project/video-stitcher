@@ -73,9 +73,9 @@ impl StitchSession {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn detect_and_update_director_cuda_rgba(
         &mut self,
-        left_ptr: crate::cuda_interop::CUdeviceptr,
+        left_ptr: crate::interop::cuda::CUdeviceptr,
         left_pitch: usize,
-        right_ptr: crate::cuda_interop::CUdeviceptr,
+        right_ptr: crate::interop::cuda::CUdeviceptr,
         right_pitch: usize,
         width: u32,
         height: u32,
@@ -105,8 +105,8 @@ impl StitchSession {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn detect_and_update_director_preletterboxed(
         &mut self,
-        left_ptr: crate::cuda_interop::CUdeviceptr,
-        right_ptr: crate::cuda_interop::CUdeviceptr,
+        left_ptr: crate::interop::cuda::CUdeviceptr,
+        right_ptr: crate::interop::cuda::CUdeviceptr,
         src_width: u32,
         src_height: u32,
         elapsed: std::time::Duration,
@@ -144,8 +144,8 @@ impl StitchSession {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(crate) fn detect_and_update_director_gpu(
         &mut self,
-        left_buf: &crate::zero_copy::GpuBufInfo,
-        right_buf: &crate::zero_copy::GpuBufInfo,
+        left_buf: &crate::interop::zero_copy::GpuBufInfo,
+        right_buf: &crate::interop::zero_copy::GpuBufInfo,
         left_slot: u8,
         right_slot: u8,
         elapsed: std::time::Duration,
@@ -176,8 +176,8 @@ impl StitchSession {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn detect_and_update_director_metal(
         &mut self,
-        left_cvpb: crate::metal_interop::CVPixelBufferRef,
-        right_cvpb: crate::metal_interop::CVPixelBufferRef,
+        left_cvpb: crate::interop::metal::CVPixelBufferRef,
+        right_cvpb: crate::interop::metal::CVPixelBufferRef,
         width: u32,
         height: u32,
         elapsed: std::time::Duration,

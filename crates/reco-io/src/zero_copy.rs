@@ -2,7 +2,7 @@
 //!
 //! These functions spawn FFmpeg decode threads that write directly to
 //! GPU-shared memory (CUDA/Vulkan on Linux, VideoToolbox/Metal on macOS).
-//! The types they consume and produce are defined in [`reco_core::zero_copy`].
+//! The types they consume and produce are defined in [`reco_core::interop::zero_copy`].
 //!
 //! This module lives in `reco-io` (not `reco-core`) because it needs
 //! `VideoDecoder` from the FFmpeg backend. `reco-core` orchestrates
@@ -14,7 +14,7 @@
 pub fn spawn_single_decoder_gpu(
     input: crate::stitch_job::InputPath,
     label: &'static str,
-    buf: reco_core::zero_copy::GpuBufInfo,
+    buf: reco_core::interop::zero_copy::GpuBufInfo,
     slot_free_rx: std::sync::mpsc::Receiver<u8>,
     skip_frames: u64,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -73,7 +73,7 @@ pub fn spawn_single_decoder_gpu(
                     Ok(Some(frame)) => {
                         let s = slot as usize;
 
-                        if let Err(e) = reco_core::cuda_interop::cuda_ensure_context() {
+                        if let Err(e) = reco_core::interop::cuda::cuda_ensure_context() {
                             log::error!("{label} cuda_ensure_context: {e}");
                             break;
                         }
@@ -85,7 +85,7 @@ pub fn spawn_single_decoder_gpu(
                         let uv_width_bytes = buf.width as usize * bps;
 
                         // Copy Y plane: NVDEC -> shared texture
-                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
+                        if let Err(e) = reco_core::interop::cuda::cuda_2d_copy(
                             buf.y_ptr[s],
                             buf.y_pitch[s],
                             frame.y_ptr,
@@ -98,7 +98,7 @@ pub fn spawn_single_decoder_gpu(
                         }
 
                         // Copy UV plane: NVDEC -> shared texture
-                        if let Err(e) = reco_core::cuda_interop::cuda_2d_copy(
+                        if let Err(e) = reco_core::interop::cuda::cuda_2d_copy(
                             buf.uv_ptr[s],
                             buf.uv_pitch[s],
                             frame.uv_ptr,
@@ -110,7 +110,7 @@ pub fn spawn_single_decoder_gpu(
                             break;
                         }
 
-                        if let Err(e) = reco_core::cuda_interop::cuda_synchronize() {
+                        if let Err(e) = reco_core::interop::cuda::cuda_synchronize() {
                             log::error!("{label} cuCtxSynchronize: {e}");
                             break;
                         }
@@ -140,20 +140,20 @@ pub fn spawn_single_decoder_gpu(
 /// `sync_offset` applies temporal alignment: positive skips right frames,
 /// negative skips left frames (see [`FfmpegFileSource::open_with_offset`](crate::adapters::FfmpegFileSource::open_with_offset)).
 ///
-/// Returns [`GpuDecodeHandles`](reco_core::zero_copy::GpuDecodeHandles) containing the paired frame signal
+/// Returns [`GpuDecodeHandles`](reco_core::interop::zero_copy::GpuDecodeHandles) containing the paired frame signal
 /// receiver and join handles for graceful shutdown.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn spawn_decode_threads_gpu(
     left_input: crate::stitch_job::InputPath,
     right_input: crate::stitch_job::InputPath,
-    left_buf: reco_core::zero_copy::GpuBufInfo,
-    right_buf: reco_core::zero_copy::GpuBufInfo,
+    left_buf: reco_core::interop::zero_copy::GpuBufInfo,
+    right_buf: reco_core::interop::zero_copy::GpuBufInfo,
     left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
     right_slot_free_rx: std::sync::mpsc::Receiver<u8>,
     sync_offset: i64,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) -> reco_core::zero_copy::GpuDecodeHandles {
-    use reco_core::zero_copy::{GpuDecodeHandles, GpuFrameSignal};
+) -> reco_core::interop::zero_copy::GpuDecodeHandles {
+    use reco_core::interop::zero_copy::{GpuDecodeHandles, GpuFrameSignal};
 
     // Compute per-decoder skip counts from the sync offset.
     let (left_skip, right_skip) = if sync_offset > 0 {
@@ -209,9 +209,9 @@ pub fn spawn_decode_threads_gpu(
 pub fn spawn_vt_decode_thread(
     input: crate::stitch_job::InputPath,
     label: &'static str,
-) -> std::sync::mpsc::Receiver<reco_core::metal_interop::RetainedCVPixelBuffer> {
+) -> std::sync::mpsc::Receiver<reco_core::interop::metal::RetainedCVPixelBuffer> {
     use crate::ffmpeg::decoder::VideoDecoder;
-    use reco_core::metal_interop::RetainedCVPixelBuffer;
+    use reco_core::interop::metal::RetainedCVPixelBuffer;
 
     let (tx, rx) = std::sync::mpsc::sync_channel::<RetainedCVPixelBuffer>(4);
 
@@ -260,8 +260,8 @@ pub fn spawn_vt_decode_pair(
     left: &crate::stitch_job::InputPath,
     right: &crate::stitch_job::InputPath,
     sync_offset: i64,
-) -> std::sync::mpsc::Receiver<reco_core::zero_copy::VtFramePair> {
-    use reco_core::zero_copy::VtFramePair;
+) -> std::sync::mpsc::Receiver<reco_core::interop::zero_copy::VtFramePair> {
+    use reco_core::interop::zero_copy::VtFramePair;
 
     let left_rx = spawn_vt_decode_thread(left.clone(), "left");
     let right_rx = spawn_vt_decode_thread(right.clone(), "right");

@@ -10,7 +10,7 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use crate::cuda_interop::CUdeviceptr;
+use crate::interop::cuda::CUdeviceptr;
 
 // Values verified via offsetof()/printf on Jetson Orin Nano, JetPack 6.
 
@@ -203,7 +203,7 @@ impl NvBufDetectionSurface {
     /// computing the letterbox geometry.
     pub fn new(model_size: u32, src_width: u32, src_height: u32) -> Result<Self, String> {
         let fns = load_nvbuf().ok_or("NvBufSurfTransform libraries not available")?;
-        crate::cuda_interop::cuda_ensure_context().map_err(|e| format!("CUDA context: {e}"))?;
+        crate::interop::cuda::cuda_ensure_context().map_err(|e| format!("CUDA context: {e}"))?;
 
         // Compute letterbox geometry: scale to fit, center
         let scale_w = model_size as f32 / src_width as f32;
@@ -254,7 +254,7 @@ impl NvBufDetectionSurface {
         // RGBA grey = [114, 114, 114, 255] but memset fills byte-by-byte,
         // so we fill with 114 (close enough for detection, alpha is ignored).
         let total_bytes = pitch as usize * model_size as usize;
-        crate::cuda_interop::cuda_memset_d8(data_ptr, 114, total_bytes)
+        crate::interop::cuda::cuda_memset_d8(data_ptr, 114, total_bytes)
             .map_err(|e| format!("grey fill: {e}"))?;
 
         log::info!(
@@ -334,7 +334,7 @@ impl NvBufDetectionSurface {
     /// changes and the letterbox geometry needs to be recalculated.
     pub fn refill_grey(&self) -> Result<(), String> {
         let total_bytes = self.pitch as usize * self.size as usize;
-        crate::cuda_interop::cuda_memset_d8(self.data_ptr, 114, total_bytes)
+        crate::interop::cuda::cuda_memset_d8(self.data_ptr, 114, total_bytes)
             .map_err(|e| format!("grey fill: {e}"))?;
         Ok(())
     }

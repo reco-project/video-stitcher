@@ -316,12 +316,12 @@ impl StitchPipeline {
     pub fn configure_gpu_source(
         &mut self,
         left_textures: [(
-            &crate::vulkan_interop::SharedTexture,
-            &crate::vulkan_interop::SharedTexture,
+            &crate::interop::vulkan::SharedTexture,
+            &crate::interop::vulkan::SharedTexture,
         ); 2],
         right_textures: [(
-            &crate::vulkan_interop::SharedTexture,
-            &crate::vulkan_interop::SharedTexture,
+            &crate::interop::vulkan::SharedTexture,
+            &crate::interop::vulkan::SharedTexture,
         ); 2],
     ) -> GpuSourceBindGroups {
         let left_bg_0 = self.renderer.create_texture_bind_group(

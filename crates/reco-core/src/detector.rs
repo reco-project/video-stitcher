@@ -207,7 +207,7 @@ pub enum DetectorFrame<'a> {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     CudaRgba {
         /// CUDA device pointer to packed RGBA data.
-        ptr: crate::cuda_interop::CUdeviceptr,
+        ptr: crate::interop::cuda::CUdeviceptr,
         /// Row pitch in bytes (may differ from width*4 due to alignment).
         pitch: usize,
         /// Frame width in pixels.
@@ -225,7 +225,7 @@ pub enum DetectorFrame<'a> {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     CudaRgbaLetterboxed {
         /// CUDA device pointer to letterboxed RGBA data at model size.
-        ptr: crate::cuda_interop::CUdeviceptr,
+        ptr: crate::interop::cuda::CUdeviceptr,
         /// Original source frame width (for detection coordinate mapping).
         src_width: u32,
         /// Original source frame height (for detection coordinate mapping).
@@ -236,7 +236,7 @@ pub enum DetectorFrame<'a> {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     Metal {
         /// Opaque CVPixelBuffer pointer from VideoToolbox.
-        cv_pixel_buffer: crate::metal_interop::CVPixelBufferRef,
+        cv_pixel_buffer: crate::interop::metal::CVPixelBufferRef,
         /// Frame width in pixels.
         width: u32,
         /// Frame height in pixels.

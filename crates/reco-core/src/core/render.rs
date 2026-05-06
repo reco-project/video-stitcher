@@ -336,7 +336,7 @@ impl super::StitchCore {
     ///
     /// Used by the macOS zero-copy path where `CVPixelBuffer` Y/UV
     /// planes are imported as wgpu textures via `MetalTextureCache`
-    /// (in `metal_interop`), and the Linux zero-copy path that shares
+    /// (in `interop::metal`), and the Linux zero-copy path that shares
     /// textures through the bind-group variant below.
     pub fn render_imported_textures_at_pose(
         &mut self,

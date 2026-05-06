@@ -500,7 +500,7 @@ pub fn run_camera(
         // NvBufSurfTransform for detection. No CPU copies at all.
         #[cfg(target_os = "linux")]
         {
-            use reco_core::dmabuf_import::DmaBufTextureCache;
+            use reco_core::interop::dmabuf::DmaBufTextureCache;
             use reco_core::nvbuf_transform::NvBufDetectionSurface;
             use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
 

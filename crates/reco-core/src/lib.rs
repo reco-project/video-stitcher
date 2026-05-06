@@ -80,27 +80,14 @@ pub mod color_grade;
 /// M3 push-first `StitchCore` shell — the canonical entry point.
 /// See [`core::StitchCore`] for details.
 pub mod core;
-// `coreml_inference`, `cuda_kernels`, `npp_interop`, `metal_compute`
-// moved to reco-detect (the only consumer) — per the revised M5
-// analysis: those four are detection-preprocess, not GPU pipeline
-// infrastructure. reco-core keeps `cuda_interop`, `metal_interop`,
-// `vulkan_interop`, `zero_copy`, which are wgpu-native platform
-// paths used by the stitch pipeline's zero-copy bridge.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod cuda_interop;
-#[cfg(target_os = "windows")]
-pub mod d3d11_interop;
 pub mod detection_filter;
 pub mod detector;
 pub mod director;
-#[cfg(target_os = "linux")]
-pub mod dmabuf_import;
 pub mod encoder;
 pub mod gpu;
+pub mod interop;
 pub mod lens;
 pub mod lens_preview;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod metal_interop;
 pub mod nv12_converter;
 #[cfg(target_os = "linux")]
 pub mod nvbuf_transform;
@@ -136,7 +123,4 @@ pub mod telemetry;
 pub mod tracker;
 pub mod undistort;
 pub mod viewport;
-#[cfg(target_os = "linux")]
-pub mod vulkan_interop;
 pub mod yuv_stack_packer;
-pub mod zero_copy;

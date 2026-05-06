@@ -178,7 +178,7 @@ impl StitchSession {
                 } => {
                     if self.d3d11_staging_pool.is_none() {
                         let (w, h) = self.core.pipeline().source_info();
-                        match crate::d3d11_interop::D3d11StagingPool::new(self.core.gpu(), w, h) {
+                        match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h) {
                             Ok(pool) => {
                                 log::info!(
                                     "D3D11VA staging pool created: {}x{}, 4 NV12 slots",
@@ -268,7 +268,10 @@ impl StitchSession {
     #[cfg(target_os = "linux")]
     fn step_gpu_with_bufs(
         &mut self,
-        buf_info: &Option<(crate::zero_copy::GpuBufInfo, crate::zero_copy::GpuBufInfo)>,
+        buf_info: &Option<(
+            crate::interop::zero_copy::GpuBufInfo,
+            crate::interop::zero_copy::GpuBufInfo,
+        )>,
         left_slot: u8,
         right_slot: u8,
         elapsed: std::time::Duration,

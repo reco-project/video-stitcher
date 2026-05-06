@@ -4,8 +4,8 @@
 //! shared-texture orchestration (CUDA VMM, Vulkan external memory).
 
 use super::{FrameProgress, ProgressCallback, SessionError, StitchSession};
-use crate::vulkan_interop::{Nv12Plane, SharedTexture, create_nv12_shared_texture};
-use crate::zero_copy::GpuBufInfo;
+use crate::interop::vulkan::{Nv12Plane, SharedTexture, create_nv12_shared_texture};
+use crate::interop::zero_copy::GpuBufInfo;
 
 /// Bundled shared textures, CUDA buffer info, slot channels, and bind
 /// groups for the Linux CUDA/Vulkan zero-copy path.
@@ -181,7 +181,7 @@ impl StitchSession {
     pub fn run_zero_copy_linux(
         &mut self,
         shared: SharedTextureSet,
-        decode_handles: crate::zero_copy::GpuDecodeHandles,
+        decode_handles: crate::interop::zero_copy::GpuDecodeHandles,
         frame_limit: u64,
         interrupted: &std::sync::atomic::AtomicBool,
         mut on_progress: Option<ProgressCallback>,

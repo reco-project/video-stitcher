@@ -212,14 +212,14 @@ impl StitchSession {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn process_metal_frame(
         &mut self,
-        left: &crate::metal_interop::RetainedCVPixelBuffer,
-        right: &crate::metal_interop::RetainedCVPixelBuffer,
+        left: &crate::interop::metal::RetainedCVPixelBuffer,
+        right: &crate::interop::metal::RetainedCVPixelBuffer,
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
         // Lazily create the texture cache on first MetalResident frame.
         if self.metal_texture_cache.is_none() {
-            self.metal_texture_cache = Some(crate::metal_interop::MetalTextureCache::new(
+            self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
                 self.core.gpu(),
             )?);
             log::info!("Metal zero-copy: texture cache initialized");

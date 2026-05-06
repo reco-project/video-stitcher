@@ -15,7 +15,7 @@
 
 use std::sync::OnceLock;
 
-use reco_core::cuda_interop::CUdeviceptr;
+use reco_core::interop::cuda::CUdeviceptr;
 
 /// Errors from NPP operations.
 #[derive(Debug, thiserror::Error)]
@@ -354,7 +354,7 @@ unsafe fn create_npp_stream_ctx(
             .map_err(|e| format!("cudaStreamDestroy: {e}"))?
     };
 
-    // Bind device 0 (same one reco-core's cuda_interop + zero-copy
+    // Bind device 0 (same one reco-core's interop::cuda + zero-copy
     // path uses). This implicitly creates a primary CUDA context on
     // this thread if one doesn't exist yet — which is the key
     // difference vs the driver-API cuStreamCreate path that fails

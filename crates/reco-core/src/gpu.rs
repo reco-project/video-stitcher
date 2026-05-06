@@ -405,7 +405,7 @@ impl GpuContext {
     pub fn supports_zero_copy(&self) -> bool {
         #[cfg(target_os = "linux")]
         {
-            self.is_vulkan() && crate::cuda_interop::is_cuda_available()
+            self.is_vulkan() && crate::interop::cuda::is_cuda_available()
         }
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
