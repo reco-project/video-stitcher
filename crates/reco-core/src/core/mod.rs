@@ -1,4 +1,4 @@
-//! `StitchCore` — push-first canonical entry point for the stitching engine.
+//! `StitchCore` - push-first canonical entry point for the stitching engine.
 //!
 //! `StitchCore` is the M3 unification of what used to be two parallel
 //! session APIs: `StitchSession` (pull, batch-oriented) and the former
@@ -15,12 +15,12 @@
 //!
 //! `StitchCore` composes the foundation traits:
 //!
-//! - [`crate::projection::Projection`] — camera-geometry contract; today's
+//! - [`crate::projection::Projection`] - camera-geometry contract; today's
 //!   L-shape is [`LShapeProjection`](crate::projection::LShapeProjection).
-//! - [`crate::source::CameraInput`] — input-camera-count contract;
+//! - [`crate::source::CameraInput`] - input-camera-count contract;
 //!   [`StereoCameraInput`](crate::source::StereoCameraInput) is the
 //!   current impl.
-//! - [`crate::detector::UnifiedDetector`] — collapsed CPU/CUDA/Metal
+//! - [`crate::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
 //!
 //! The first two are consumed at construction (see `StitchCoreConfig`).
@@ -28,6 +28,11 @@
 //! runs on every `submit_frame_*` whose frame count is a multiple of
 //! `StitchCore::detection_interval`, and raw detections are mapped to
 //! panorama coordinates before reaching the director.
+//!
+//! ## Sub-modules
+//!
+//! - [`types`] - error types, config, render outcome, replay frame, recorder traits
+//! - [`replay_buffer`] - bounded-duration ring buffer for replay frames
 //!
 //! ## Usage (push, live)
 //!
@@ -41,7 +46,7 @@
 //!     output_format: wgpu::TextureFormat::Rgba8Unorm,
 //!     input_format: InputFormat::Yuv420p,
 //!     ..Default::default()
-//! })?;
+//! });
 //!
 //! core.set_director(Box::new(MyDirector::new()));
 //!
@@ -52,10 +57,13 @@
 //! }
 //! ```
 
-use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+pub mod replay_buffer;
+pub mod types;
 
-use thiserror::Error;
+pub use replay_buffer::ReplayBuffer;
+pub use types::*;
+
+use std::time::{Duration, Instant};
 
 use crate::calibration::MatchCalibration;
 use crate::detector::{
@@ -64,241 +72,15 @@ use crate::detector::{
 use crate::director::{MappedDetection, ViewportPosition};
 use crate::gpu::GpuContext;
 use crate::panner::Panner;
-use crate::pipeline::{BgraPlanes, PipelineError, StitchPipeline, YuvPlanes};
+use crate::pipeline::{BgraPlanes, StitchPipeline, YuvPlanes};
 use crate::projection::{self, CoverageBoundary, LShapeProjection, PanoramaExtent, Projection};
 use crate::renderer::InputFormat;
-use crate::rgba_readback::{RgbaReadback, RgbaReadbackError};
+use crate::rgba_readback::RgbaReadback;
 use crate::source::{CameraInput, StereoCameraInput};
 use crate::tracker::Tracker;
-use crate::viewport::ViewportConfig;
 use crate::yuv_stack_packer::{
-    OutputTileSize, PackerError, SourceFormat, StackGridLayout, StackedAtlas, StackedPackSource,
-    YuvStackPacker,
+    OutputTileSize, SourceFormat, StackGridLayout, StackedPackSource, YuvStackPacker,
 };
-
-/// Errors from [`StitchCore`]. `Clone + Send + Sync` so consumers
-/// posting render results to worker-thread channels carry the typed
-/// error instead of stringifying at the boundary.
-#[derive(Debug, Clone, Error)]
-pub enum StitchCoreError {
-    /// GPU pipeline error (upload, render, or state mismatch).
-    #[error("pipeline: {0}")]
-    Pipeline(#[from] PipelineError),
-    /// Readback staging / mapping error.
-    #[error("readback: {0}")]
-    Readback(#[from] RgbaReadbackError),
-    /// Caller-facing configuration error (e.g. unsupported combination).
-    #[error("config: {0}")]
-    Config(String),
-    /// GPU stacked-replay packer error (shader pipeline build, dim check).
-    #[error("stacked packer: {0}")]
-    StackedPacker(#[from] PackerError),
-}
-
-/// Returned from every [`StitchCore::submit_frame_yuv`] /
-/// [`StitchCore::submit_frame_bgra`] call.
-///
-/// The pipeline triple-buffers readback, so the first two calls produce
-/// [`RenderOutcome::Warmup`] while the GPU fills the staging ring; from
-/// the third call onward every submit produces
-/// [`RenderOutcome::Rgba`] holding the tight RGBA bytes of the frame
-/// submitted two frames ago.
-pub enum RenderOutcome<'a> {
-    /// Pipeline warm-up — submit more frames before expecting output.
-    /// Only returned on the first two submit calls after construction.
-    Warmup,
-    /// A rendered panorama frame, tightly packed as RGBA
-    /// (`output_width * output_height * 4` bytes). Borrowed from the
-    /// core's internal staging; valid until the next submit call.
-    Rgba(&'a [u8]),
-}
-
-/// A snapshot of one rendered panorama frame for the replay buffer.
-///
-/// The bytes are owned (not a borrow into the readback ring) because
-/// the replay buffer outlives any single frame's staging slot.
-#[derive(Debug, Clone)]
-pub struct ReplayFrame {
-    /// Tight RGBA bytes: `output_width * output_height * 4`.
-    pub rgba: Vec<u8>,
-    /// Monotonic timestamp captured at submit time (from the
-    /// `StitchCore`'s session-start anchor).
-    pub captured_at: Duration,
-    /// Viewport pose the frame was rendered with. Useful for replay
-    /// overlays that want to annotate where the camera pointed.
-    pub pose: ViewportPosition,
-}
-
-/// Bounded-duration ring of recently-rendered panorama frames.
-///
-/// Solves FRICTION A16 (OBS replay). Opt-in via
-/// [`StitchCore::enable_replay_buffer`]; when disabled the core
-/// allocates nothing for replay and `submit_frame_*` does zero extra
-/// work. Ring trimming runs per-submit and is `O(frames_evicted)`.
-pub struct ReplayBuffer {
-    frames: VecDeque<ReplayFrame>,
-    max_duration: Duration,
-}
-
-impl ReplayBuffer {
-    fn new(max_duration: Duration) -> Self {
-        Self {
-            frames: VecDeque::new(),
-            max_duration,
-        }
-    }
-
-    fn push(&mut self, frame: ReplayFrame) {
-        self.frames.push_back(frame);
-        // Evict from the front until the oldest kept frame is within
-        // max_duration of the newest. Using wrapping subtraction on
-        // Duration is not allowed, so compare directly.
-        let cutoff = self
-            .frames
-            .back()
-            .map(|f| f.captured_at)
-            .unwrap_or_default()
-            .saturating_sub(self.max_duration);
-        while let Some(front) = self.frames.front() {
-            if front.captured_at < cutoff {
-                self.frames.pop_front();
-            } else {
-                break;
-            }
-        }
-    }
-
-    /// Number of frames currently buffered.
-    pub fn len(&self) -> usize {
-        self.frames.len()
-    }
-
-    /// Whether the buffer holds zero frames.
-    pub fn is_empty(&self) -> bool {
-        self.frames.is_empty()
-    }
-
-    /// Maximum age of retained frames (set at enable time).
-    pub fn max_duration(&self) -> Duration {
-        self.max_duration
-    }
-
-    /// Iterate buffered frames oldest-to-newest.
-    pub fn iter(&self) -> impl Iterator<Item = &ReplayFrame> {
-        self.frames.iter()
-    }
-
-    /// Most recently buffered frame, if any.
-    pub fn latest(&self) -> Option<&ReplayFrame> {
-        self.frames.back()
-    }
-
-    /// Oldest buffered frame, if any. Useful for consumers that want
-    /// to know the effective buffered duration
-    /// (`latest.captured_at - oldest.captured_at`).
-    pub fn oldest(&self) -> Option<&ReplayFrame> {
-        self.frames.front()
-    }
-
-    /// The effective buffered duration: the difference between
-    /// oldest and newest frame timestamps. Returns `Duration::ZERO`
-    /// for empty or single-frame buffers.
-    pub fn buffered_duration(&self) -> Duration {
-        match (self.frames.front(), self.frames.back()) {
-            (Some(first), Some(last)) => last.captured_at.saturating_sub(first.captured_at),
-            _ => Duration::ZERO,
-        }
-    }
-
-    /// Drop every buffered frame without changing `max_duration`.
-    /// Consumers wire this to a "Clear replay" UI button so the user
-    /// can start a fresh replay window after an event.
-    pub fn clear(&mut self) {
-        self.frames.clear();
-    }
-
-    /// Clone every buffered frame into an owned vector.
-    ///
-    /// Used by consumers that want to ship the replay off the render
-    /// thread (to disk, to a "Save replay" dialog, to a network
-    /// stream). The buffer itself keeps the frames, so the consumer
-    /// can keep recording while it exports a snapshot.
-    ///
-    /// Returns the vector in oldest-to-newest order, matching
-    /// [`Self::iter`].
-    pub fn snapshot(&self) -> Vec<ReplayFrame> {
-        self.frames.iter().cloned().collect()
-    }
-
-    /// Drain every buffered frame into an owned vector, leaving the
-    /// buffer empty. Same ordering contract as [`Self::snapshot`].
-    /// Unlike `snapshot`, this transfers ownership — no clone cost
-    /// for consumers that are about to discard the buffer anyway
-    /// (e.g. a "Save + reset" UI flow).
-    pub fn take(&mut self) -> Vec<ReplayFrame> {
-        self.frames.drain(..).collect()
-    }
-}
-
-/// Configuration for building a [`StitchCore`].
-///
-/// Required fields: `calibration`, `input_width`, `input_height`,
-/// `input_format`. Everything else has sensible defaults.
-pub struct StitchCoreConfig {
-    /// Camera calibration data.
-    pub calibration: MatchCalibration,
-    /// Output viewport (dimensions, blend width, FOV).
-    pub viewport: ViewportConfig,
-    /// Input frame width in pixels (per camera).
-    pub input_width: u32,
-    /// Input frame height in pixels (per camera).
-    pub input_height: u32,
-    /// GPU render target format. `Rgba8Unorm` is the default and is
-    /// what every compositor consumer needs; `Bgra8Unorm` matches
-    /// native Windows DirectX surfaces for consumers that prefer to
-    /// swizzle on upload instead of on readback.
-    pub output_format: wgpu::TextureFormat,
-    /// Input pixel format.
-    pub input_format: InputFormat,
-    /// Optional custom projection. Defaults to
-    /// [`LShapeProjection`] — the 2-plane L-shape that matches today's
-    /// geometric model.
-    pub projection: Option<Box<dyn Projection>>,
-    /// Optional camera-input marker. Defaults to
-    /// [`StereoCameraInput`]; future mono / N-input builds pick a
-    /// different impl here.
-    pub camera_input: Option<Box<dyn CameraInput>>,
-    /// Opt-in replay ring buffer duration. `None` (default) keeps no
-    /// history and allocates nothing for replay.
-    pub replay_buffer_duration: Option<Duration>,
-}
-
-impl StitchCoreConfig {
-    /// New config with required fields only; defaults everywhere else.
-    pub fn new(
-        calibration: MatchCalibration,
-        input_width: u32,
-        input_height: u32,
-        input_format: InputFormat,
-    ) -> Self {
-        Self {
-            calibration,
-            viewport: ViewportConfig {
-                width: 1920,
-                height: 1080,
-                blend_width: 0.15,
-                ..Default::default()
-            },
-            input_width,
-            input_height,
-            output_format: wgpu::TextureFormat::Rgba8Unorm,
-            input_format,
-            projection: None,
-            camera_input: None,
-            replay_buffer_duration: None,
-        }
-    }
-}
 
 /// Canonical push-first stitching core.
 ///
@@ -320,84 +102,6 @@ impl StitchCoreConfig {
 /// Raw detections are mapped to panorama coordinates and fed to the
 /// attached director each submit; directors see a non-empty
 /// `detections` slice on detection frames, empty otherwise.
-/// Recorder hook for the push-API replay backend (FRICTION A18 /
-/// plan M6.5 item 3 on the push side).
-///
-/// reco-core doesn't know about ffmpeg or the stacked-video file
-/// format - this trait is the abstraction boundary so a concrete
-/// implementation in reco-io (under the `stacked-output` feature)
-/// can be plugged into [`StitchCore`] without pulling I/O types
-/// into core. Consumers who only care about the pull API and go
-/// through [`crate::session::StitchSession`] plus a
-/// `reco_io::StitchJob::with_replay_recording(...)` builder never
-/// touch this trait directly.
-///
-/// # Semantics
-///
-/// - `record_yuv` fires after every successful YUV submit via
-///   [`StitchCore::submit_frame_yuv`] and
-///   [`StitchCore::submit_frame_yuv_at_pose`]. It sees the tight
-///   (no-stride) YUV420P planes the render consumed, so the
-///   recorded replay exactly matches what the stitch pipeline saw.
-/// - BGRA submit paths are not recorded today: the stacked
-///   encoder is YUV-native, so recording BGRA frames would force
-///   a BGRA→YUV420P conversion on the hot path. Skipped with a
-///   one-shot `warn!`.
-/// - `flush` and `finish` are best-effort; errors are logged by
-///   the implementation and never propagated back to the submit
-///   path so a failing recorder cannot break the stitch output.
-///
-/// # Thread safety
-///
-/// The recorder is owned by `StitchCore` (single-thread consumer
-/// of the push API) so `Send` is sufficient; no `Sync`.
-pub trait StackedReplayRecorder: Send {
-    /// Record a stereo YUV420P tile pair. `width` / `height` are
-    /// the tile dimensions for both cameras (identical).
-    fn record_yuv(&mut self, left: &YuvPlanes<'_>, right: &YuvPlanes<'_>, width: u32, height: u32);
-    /// Best-effort push buffered bytes to disk. Called on demand
-    /// by the session (e.g. once per second) so a concurrent
-    /// reader sees recent frames.
-    fn flush(&mut self) {}
-    /// Finalize the recording. Called when the session ends.
-    /// After this call the recorder stops recording; subsequent
-    /// `record_yuv` calls are no-ops.
-    fn finish(&mut self) {}
-}
-
-/// Recorder hook for the GPU-pack replay path (M7 pivot item 1).
-///
-/// The GPU-pack path is chosen by
-/// [`StitchCore::enable_gpu_stacked_replay`] when the source frames
-/// are already on the GPU: the pack shader reads the renderer's
-/// YUV textures into a tiled atlas and reads back a single
-/// YUV420P buffer via a triple-buffered staging ring. Consumers
-/// receive that buffer here, two frames after the submit that
-/// produced it — mirroring the RGBA readback's lag.
-///
-/// Unlike [`StackedReplayRecorder`], this trait does NOT fire on
-/// every submit; it fires when `YuvStackPacker::poll_ready`
-/// returns a complete atlas. Early submits during the warm-up
-/// (first two frames) produce no `record_atlas` call at all.
-/// Path-choice is decided once per session at
-/// [`StitchCore::enable_gpu_stacked_replay`] and logged explicitly
-/// so CPU vs GPU packing is never a silent decision.
-///
-/// # Thread safety
-///
-/// Owned by `StitchCore` on the render thread; `Send` is enough.
-pub trait StackedReplayGpuRecorder: Send {
-    /// Receive a packed YUV420P atlas. The bytes live in
-    /// `atlas.y / u / v`; dimensions are `atlas.width × atlas.height`
-    /// (Y-plane). Called at most once per `submit_frame_*` call,
-    /// and only when the triple-buffer produces a ready slot.
-    fn record_atlas(&mut self, atlas: &StackedAtlas);
-    /// Best-effort push buffered bytes to disk.
-    fn flush(&mut self) {}
-    /// Finalize the recording. Called when the session ends.
-    fn finish(&mut self) {}
-}
-
 pub struct StitchCore {
     pipeline: StitchPipeline,
     readback: RgbaReadback,
@@ -441,7 +145,7 @@ pub struct StitchCore {
 
     /// Optional stacked-video replay recorder attached via
     /// [`Self::set_stacked_recorder`]. Fires on every successful
-    /// YUV submit (not BGRA — see [`StackedReplayRecorder`] docs).
+    /// YUV submit (not BGRA - see [`StackedReplayRecorder`] docs).
     /// Decouples reco-core from the actual encoder implementation
     /// (lives in reco-io under `stacked-output`) so mobile / wasm
     /// builds that skip reco-io see no replay-recording code.
@@ -457,19 +161,19 @@ pub struct StitchCore {
     /// [`Self::set_stacked_gpu_recorder`]. Receives the packed atlas
     /// bytes every time [`YuvStackPacker::poll_ready`] yields a
     /// completed readback slot. `None` means the pack still runs
-    /// (if enabled) but the bytes are dropped — useful when a
+    /// (if enabled) but the bytes are dropped - useful when a
     /// consumer wants to attach the recorder lazily.
     stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
 
     /// Whether `resolve_current_pose` clamps output through the
-    /// coverage boundary (FRICTION A13 — "constrained look"). `true`
+    /// coverage boundary (FRICTION A13 - "constrained look"). `true`
     /// by default so the viewport never reveals black panorama
     /// edges; toggle off when the user wants to explore the raw
     /// panorama space (e.g. to find the edge of coverage during
     /// debugging or a cinematographic effect).
     ///
     /// The public [`Self::safe_clamp`] method remains available
-    /// regardless of this flag — it's the primitive consumers use
+    /// regardless of this flag - it's the primitive consumers use
     /// for ad-hoc clamping outside the render loop.
     constrained_look: bool,
 
@@ -616,10 +320,10 @@ impl StitchCore {
 
     /// Submit a stereo YUV420P frame pair at an explicit pose.
     ///
-    /// Same full loop as [`Self::submit_frame_yuv`] — anchors the
+    /// Same full loop as [`Self::submit_frame_yuv`] - anchors the
     /// session-start clock, runs detection when
     /// `frame_count % detection_interval == 0`, renders, reads back
-    /// RGBA, pushes into the replay buffer, increments frame_count —
+    /// RGBA, pushes into the replay buffer, increments frame_count -
     /// but bypasses the director and uses the caller-supplied
     /// `(yaw, pitch)` directly. The FOV stays at whatever the
     /// pipeline currently has (set via [`Self::pipeline_mut`] or
@@ -637,7 +341,7 @@ impl StitchCore {
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
 
-        // Replay recording tap — see `submit_frame_yuv` for the
+        // Replay recording tap - see `submit_frame_yuv` for the
         // rationale (record-before-render so the file exactly
         // matches what the pipeline consumed).
         if let Some(ref mut recorder) = self.stacked_recorder {
@@ -656,7 +360,7 @@ impl StitchCore {
         }
 
         let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
-        // GPU stacked-replay pack — see `submit_frame_yuv` for
+        // GPU stacked-replay pack - see `submit_frame_yuv` for
         // ordering rationale. No-op when not enabled.
         self.drive_gpu_stacked_pack();
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
@@ -945,7 +649,7 @@ impl StitchCore {
     ///
     /// The tracker's output populates
     /// [`WorldState::players`](crate::tracker::WorldState::players)
-    /// each frame. Phase-5 implementation — until that phase lands,
+    /// each frame. Phase-5 implementation - until that phase lands,
     /// this setter is usable from consumers but typically left unset.
     pub fn set_player_tracker(&mut self, tracker: Box<dyn Tracker>) {
         log::info!(
@@ -1044,7 +748,7 @@ impl StitchCore {
 
     /// Enable the GPU-pack replay path (M7 pivot item 1).
     ///
-    /// Builds a [`YuvStackPacker`] sized for `layout` × `output_size`
+    /// Builds a [`YuvStackPacker`] sized for `layout` x `output_size`
     /// and wires it into subsequent YUV submit calls. The packer's
     /// source-format variant is derived from the pipeline's input
     /// format so consumers don't risk a YUV/NV12 mismatch.
@@ -1052,11 +756,11 @@ impl StitchCore {
     /// Call [`Self::set_stacked_gpu_recorder`] to attach an
     /// atlas-consuming sink (typically a
     /// [`reco_io`](../../../reco_io/index.html) encoder) before the
-    /// first submit, or later — the pack still runs either way and
+    /// first submit, or later - the pack still runs either way and
     /// the first two submits are warmup.
     ///
     /// Emits one `log::info!` line stating the pack path has been
-    /// chosen (GPU), the tile dims, `N`, and the source format — so
+    /// chosen (GPU), the tile dims, `N`, and the source format - so
     /// the CPU vs GPU decision is never silent.
     ///
     /// Returns `StitchCoreError::Config` when the pipeline's input
@@ -1112,7 +816,7 @@ impl StitchCore {
 
     /// Attach a GPU-pack atlas recorder. Must be called after
     /// [`Self::enable_gpu_stacked_replay`] for the pack output to
-    /// reach disk — without a recorder the packer still runs but
+    /// reach disk - without a recorder the packer still runs but
     /// the readback bytes are dropped.
     pub fn set_stacked_gpu_recorder(&mut self, recorder: Box<dyn StackedReplayGpuRecorder>) {
         if self.stacked_gpu_recorder.is_some() {
@@ -1167,7 +871,7 @@ impl StitchCore {
     /// the triple-buffer ring for a ready atlas to feed to the
     /// attached recorder.
     ///
-    /// The storytelling flow (per the project principle — no silent
+    /// The storytelling flow (per the project principle - no silent
     /// decisions): the caller chose this path because the source is
     /// GPU-resident. The packer's configured `SourceFormat` was
     /// logged at `enable_gpu_stacked_replay` time. From here on,
@@ -1219,7 +923,7 @@ impl StitchCore {
     /// Runs the GPU pack from the pipeline's internal plane
     /// textures. Used by CPU-upload submit paths where
     /// `queue.write_texture` has just populated the renderer's
-    /// own textures — fires from `submit_frame_yuv*` and from the
+    /// own textures - fires from `submit_frame_yuv*` and from the
     /// session's `process_frame` non-zero-copy branch. Zero-copy
     /// paths take [`Self::pack_gpu_stacked_replay_from_views`]
     /// instead because their source data lives in shared
@@ -1237,7 +941,7 @@ impl StitchCore {
         // Pipeline's plane-view accessors return
         // (y_view, u_or_uv_view, v_or_dummy_view). Build the
         // StackedPackSource variant matching the packer's
-        // configured source format — the packer will route to the
+        // configured source format - the packer will route to the
         // right shader kernel internally.
         let (ly, lu, lv) = self.pipeline.left_plane_views();
         let (ry, ru, rv) = self.pipeline.right_plane_views();
@@ -1359,7 +1063,7 @@ impl StitchCore {
     /// still respected (pipeline-set) but coverage-based yaw/pitch
     /// clamping is skipped.
     ///
-    /// The public [`Self::safe_clamp`] method is unaffected — it
+    /// The public [`Self::safe_clamp`] method is unaffected - it
     /// always clamps, regardless of this flag.
     pub fn set_constrained_look(&mut self, enabled: bool) {
         self.constrained_look = enabled;
@@ -1494,7 +1198,7 @@ impl StitchCore {
         // not the schedule-would-fire predicate. The BGRA submit path
         // deliberately skips detection (no BGRA-aware backend exists
         // today) so it must pass `false` even when the interval would
-        // have fired — otherwise directors over-count hysteresis on
+        // have fired - otherwise directors over-count hysteresis on
         // stale cached detections.
         let timestamp_ms = self
             .session_start
@@ -1737,7 +1441,7 @@ mod tests {
         assert_error::<StitchCoreError>();
     }
 
-    /// `RenderOutcome` is `Send` — needed so consumers that post
+    /// `RenderOutcome` is `Send` - needed so consumers that post
     /// rendered frames onto worker channels (or mpsc splits) can
     /// forward the enum without boxing it.
     #[test]
