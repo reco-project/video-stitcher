@@ -230,9 +230,8 @@ pub enum StackError {
 ///
 /// The returned frame's `timestamp_us` is taken from the first
 /// non-`None` tile. Callers that drive the stacked encoder with
-/// pre-synced input (e.g. from
-/// `reco_core::framesync::TimestampedIngestBuffer`) will have all
-/// tiles sharing the same timestamp anyway.
+/// pre-synced input will have all tiles sharing the same timestamp
+/// anyway.
 pub fn pack_yuv420p(
     layout: &GridLayout,
     tiles: &[Option<&YuvFrame>],

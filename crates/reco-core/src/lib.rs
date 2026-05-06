@@ -97,10 +97,6 @@ pub mod director;
 #[cfg(target_os = "linux")]
 pub mod dmabuf_import;
 pub mod encoder;
-/// M4 timestamped multi-source ingest buffer. See
-/// [`framesync::TimestampedIngestBuffer`] for the dual-source
-/// pairing case and the N-source livestream-sync foundation.
-pub mod framesync;
 pub mod gpu;
 pub mod lens;
 pub mod lens_preview;
@@ -128,7 +124,6 @@ pub mod rig_correction;
 pub mod scene;
 pub mod session;
 pub mod source;
-pub mod stage;
 pub mod stitch_renderer;
 pub mod telemetry;
 /// Tracker contract — see [`Tracker`](tracker::Tracker),

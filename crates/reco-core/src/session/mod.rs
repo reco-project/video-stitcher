@@ -42,7 +42,7 @@ use crate::calibration::MatchCalibration;
 use crate::core::{StitchCore, StitchCoreConfig, StitchCoreError};
 use crate::detector::Detection;
 use crate::director::{MappedDetection, ViewportPosition};
-use crate::encoder::{EncodeError, Encoder, GpuEncoder};
+use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::nv12_converter::{Nv12Converter, Nv12Error};
 use crate::pipeline::{PipelineError, StitchPipeline};
@@ -307,7 +307,6 @@ pub struct StitchSessionBuilder {
     input_format: InputFormat,
     gpu: Option<GpuContext>,
     encoder: Option<(Box<dyn Encoder + Send>, usize)>,
-    gpu_encoder: Option<Box<dyn GpuEncoder>>,
     detector: Option<Box<dyn crate::detector::UnifiedDetector>>,
     detection_interval: u64,
 }
@@ -361,17 +360,6 @@ impl StitchSessionBuilder {
     /// Attach an encoder with the given double-buffer count.
     pub fn encoder(mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) -> Self {
         self.encoder = Some((encoder, buffer_count));
-        self
-    }
-
-    /// Attach a GPU-resident encoder for zero-copy encode.
-    ///
-    /// A [`GpuEncoder`] receives `wgpu::Texture` references directly,
-    /// avoiding the GPU-to-CPU readback that the regular [`Encoder`] path
-    /// requires. No implementations exist yet - this reserves the API slot
-    /// for future NVENC/VideoToolbox GPU encode backends.
-    pub fn gpu_encoder(mut self, encoder: Box<dyn GpuEncoder>) -> Self {
-        self.gpu_encoder = Some(encoder);
         self
     }
 
@@ -440,7 +428,6 @@ impl StitchSessionBuilder {
         if let Some((enc, buf_count)) = self.encoder {
             session.set_encoder(enc, buf_count);
         }
-        session.gpu_encoder = self.gpu_encoder;
         if let Some(det) = self.detector {
             session.set_detector(det);
         }
@@ -469,9 +456,6 @@ pub struct StitchSession {
     pub(crate) encoder: Option<AsyncEncodeThread>,
     /// Additional encoders for multi-output (stream + record).
     extra_encoders: Vec<AsyncEncodeThread>,
-    /// GPU-resident encoder (zero-copy encode path, no implementations yet).
-    #[allow(dead_code)]
-    gpu_encoder: Option<Box<dyn GpuEncoder>>,
     /// Detection backends, interval, callback, and cached detections.
     pub(crate) detection: DetectionPipeline,
     /// Tracker/panner pose resolution. When `panner` is set, it owns
@@ -556,7 +540,6 @@ impl StitchSession {
             input_format: InputFormat::Yuv420p,
             gpu: None,
             encoder: None,
-            gpu_encoder: None,
             detector: None,
             detection_interval: 1,
         }
@@ -613,7 +596,6 @@ impl StitchSession {
             core,
             nv12_converter,
             encoder: None,
-            gpu_encoder: None,
             detection: DetectionPipeline::new(),
             ball_tracker: None,
             player_tracker: None,

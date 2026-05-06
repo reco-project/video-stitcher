@@ -13,16 +13,13 @@
 //!
 //! ## Foundation traits
 //!
-//! `StitchCore` composes the four M3 foundation traits that landed as
-//! separate commits immediately before this one:
+//! `StitchCore` composes the foundation traits:
 //!
 //! - [`crate::projection::Projection`] — camera-geometry contract; today's
 //!   L-shape is [`LShapeProjection`](crate::projection::LShapeProjection).
 //! - [`crate::source::CameraInput`] — input-camera-count contract;
 //!   [`StereoCameraInput`](crate::source::StereoCameraInput) is the
 //!   current impl.
-//! - [`crate::stage::PipelineStage`] — pluggable mid-pipeline transforms
-//!   (color correction, exposure, remote compute shims).
 //! - [`crate::detector::UnifiedDetector`] — collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
 //!
@@ -30,9 +27,7 @@
 //! `UnifiedDetector` is wired via `StitchCore::set_detector`; detection
 //! runs on every `submit_frame_*` whose frame count is a multiple of
 //! `StitchCore::detection_interval`, and raw detections are mapped to
-//! panorama coordinates before reaching the director. `PipelineStage`
-//! slots in via `StitchCore::push_pipeline_stage` but has no registered
-//! stages yet.
+//! panorama coordinates before reaching the director.
 //!
 //! ## Usage (push, live)
 //!
@@ -74,7 +69,6 @@ use crate::projection::{self, CoverageBoundary, LShapeProjection, PanoramaExtent
 use crate::renderer::InputFormat;
 use crate::rgba_readback::{RgbaReadback, RgbaReadbackError};
 use crate::source::{CameraInput, StereoCameraInput};
-use crate::stage::PipelineStage;
 use crate::tracker::Tracker;
 use crate::viewport::ViewportConfig;
 use crate::yuv_stack_packer::{
@@ -412,8 +406,6 @@ pub struct StitchCore {
 
     projection: Box<dyn Projection>,
     camera_input: Box<dyn CameraInput>,
-    stages: Vec<Box<dyn PipelineStage>>,
-
     coverage: Option<CoverageBoundary>,
 
     /// Per-class trackers that feed a shared [`WorldState`](crate::tracker::WorldState)
@@ -530,7 +522,6 @@ impl StitchCore {
             output_height,
             projection,
             camera_input,
-            stages: Vec::new(),
             coverage: Some(coverage),
             ball_tracker: None,
             player_tracker: None,
@@ -1425,20 +1416,6 @@ impl StitchCore {
     // Pipeline stages (slot reserved; no registered stages yet)
     // -----------------------------------------------------------------
 
-    /// Append a pipeline stage to the mid-pipeline chain.
-    ///
-    /// The chain has no registered stages today; this method is the
-    /// registration point for future stages (color correction, exposure
-    /// normalization, remote-compute shims) without another breaking
-    /// change. Stages are executed in push order.
-    pub fn push_pipeline_stage(&mut self, stage: Box<dyn PipelineStage>) {
-        self.stages.push(stage);
-    }
-
-    /// Number of registered pipeline stages.
-    pub fn pipeline_stage_count(&self) -> usize {
-        self.stages.len()
-    }
 
     // -----------------------------------------------------------------
     // Replay buffer
