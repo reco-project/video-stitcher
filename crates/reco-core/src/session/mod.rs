@@ -1452,38 +1452,6 @@ impl StitchSession {
             pitch,
         );
         self.submit_render_output(render_buf)?;
-
-        // TODO(M7 macOS Metal): wire GPU stacked-replay pack here
-        // for feature parity with the Linux zero-copy path that
-        // already taps after `submit_render_output` in
-        // `step_gpu_with_bufs`. The shape mirrors exactly:
-        //
-        //   let left_y_view  = left_y.texture.create_view(&..);
-        //   let left_uv_view = left_uv.texture.create_view(&..);
-        //   let right_y_view  = right_y.texture.create_view(&..);
-        //   let right_uv_view = right_uv.texture.create_view(&..);
-        //   self.core.pack_gpu_stacked_replay_from_views(
-        //       StackedPackSource::Nv12 { y: &left_y_view,  uv: &left_uv_view },
-        //       StackedPackSource::Nv12 { y: &right_y_view, uv: &right_uv_view },
-        //   );
-        //
-        // Caveat on MetalTextureCache: `import_nv12` returns
-        // `MetalTextureHandle` which holds its own wgpu::Texture;
-        // creating views every frame is a non-trivial cost on
-        // Metal. Linux stashes 8 views once at `setup_gpu_source`
-        // time because the decode slots are known in advance. On
-        // Metal the CVPixelBuffer pool rotates dynamically — the
-        // cleanest equivalent is caching views inside
-        // `MetalTextureHandle` itself rather than here.
-        //
-        // Tracking: not yet filed as an issue; opens when a macOS
-        // consumer wants GPU stacked replay end-to-end. Today the
-        // CPU `ReplayRecordingSource` decorator handles the CPU-
-        // resident arm of replay recording and the Metal path
-        // doesn't fire it either (`StereoFrame::MetalResident`
-        // isn't handled by the decorator). So macOS replay is
-        // currently no-op regardless of source residency — a
-        // separate gap from #270.
         Ok(())
     }
 

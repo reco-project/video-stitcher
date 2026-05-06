@@ -73,7 +73,6 @@ macro_rules! profile_scope {
 /// use [`gpu::OutputFormat`] and the [`session`] API instead.
 pub use wgpu;
 
-pub mod analyze;
 pub(crate) mod async_encode;
 pub mod bayer;
 pub mod calibration;
