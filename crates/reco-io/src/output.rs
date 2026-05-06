@@ -4,6 +4,9 @@
 //! encoded video output. Encoder backends in this crate map these to
 //! their native parameters (NVENC CQ values, x264 CRF, etc.).
 
+use std::fmt;
+use std::str::FromStr;
+
 /// Video codec for the output stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -17,27 +20,36 @@ pub enum Codec {
     AV1,
 }
 
+impl FromStr for Codec {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "h264" | "avc" | "h.264" | "x264" => Ok(Self::H264),
+            "hevc" | "h265" | "h.265" | "x265" => Ok(Self::HEVC),
+            "av1" | "svt-av1" | "libaom-av1" => Ok(Self::AV1),
+            _ => Err(format!("unknown codec: {s:?}")),
+        }
+    }
+}
+
+impl fmt::Display for Codec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::H264 => f.write_str("h264"),
+            Self::HEVC => f.write_str("hevc"),
+            Self::AV1 => f.write_str("av1"),
+        }
+    }
+}
+
 /// Bitrate control strategy for the encoder.
-///
-/// Different encoders map these to their native rate control modes:
-/// - NVENC: CRF maps to constqp, VBR to vbr, CBR to cbr
-/// - libx264/libx265: CRF maps to `-crf`, VBR to `-b:v`
-/// - SVT-AV1: CRF maps to `-crf`
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Bitrate {
     /// Constant rate factor (quality-based, variable bitrate).
     /// Lower values = higher quality. Typical range: 18-28 for H.264.
     Crf(u8),
-    /// Variable bitrate with target and optional maximum (kbps).
-    Vbr {
-        /// Target bitrate in kbps.
-        target_kbps: u32,
-        /// Maximum bitrate in kbps (optional cap).
-        max_kbps: Option<u32>,
-    },
-    /// Constant bitrate (kbps). Predictable file size.
-    Cbr(u32),
     /// Encoder-agnostic quality preset. Each encoder backend maps this
     /// to appropriate CRF/CQ values internally.
     Quality(Quality),
@@ -52,8 +64,7 @@ impl Default for Bitrate {
 /// Encoder-agnostic quality tier.
 ///
 /// Each encoder backend maps these to its own CRF/CQ/preset values,
-/// abstracting away encoder-specific knobs like x264's `ultrafast..veryslow`
-/// or NVENC's `p1..p7`.
+/// abstracting away encoder-specific knobs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Quality {
     /// Prioritize encode speed over quality/compression.
@@ -65,23 +76,41 @@ pub enum Quality {
     High,
 }
 
+impl FromStr for Quality {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "fast" | "low" => Ok(Self::Fast),
+            "balanced" | "medium" => Ok(Self::Balanced),
+            "high" | "slow" => Ok(Self::High),
+            _ => Err(format!("unknown quality: {s:?}")),
+        }
+    }
+}
+
+impl fmt::Display for Quality {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fast => f.write_str("fast"),
+            Self::Balanced => f.write_str("balanced"),
+            Self::High => f.write_str("high"),
+        }
+    }
+}
+
 /// Output container format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum Format {
     /// MPEG-4 Part 14. Widest compatibility. `moov` atom finalized
-    /// at close — partial files are unreadable and external tools
-    /// can't stream the output while it's still being written.
+    /// at close - partial files are unreadable.
     #[default]
     Mp4,
-    /// Fragmented MP4 (`.mp4` with empty_moov + frag_keyframe).
+    /// Fragmented MP4 (empty_moov + frag_keyframe).
     /// Readable mid-write, self-contained fragments on keyframes.
-    /// Use this or [`Self::Mkv`] if you need to tee the output
-    /// via `ffmpeg -c copy -f flv rtmp://...` while the stitch is
-    /// still running.
     Mp4Fragmented,
     /// Matroska (`.mkv`). Naturally streamable, crash-safe.
-    /// OBS's default for live recording.
     Mkv,
     /// QuickTime. Preferred on macOS.
     Mov,
@@ -118,10 +147,22 @@ impl Format {
     }
 }
 
+impl FromStr for Format {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "mp4" => Ok(Self::Mp4),
+            "fmp4" | "mp4-fragmented" | "mp4_fragmented" => Ok(Self::Mp4Fragmented),
+            "mkv" | "matroska" => Ok(Self::Mkv),
+            "mov" | "quicktime" => Ok(Self::Mov),
+            "flv" => Ok(Self::Flv),
+            _ => Err(format!("unknown format: {s:?}")),
+        }
+    }
+}
+
 /// Audio handling for the output.
-///
-/// Extensible for future audio processing (noise cancellation, stereo
-/// mixing, wind filtering) via additional variants.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum AudioMode {
@@ -136,29 +177,4 @@ impl Default for AudioMode {
     fn default() -> Self {
         Self::CopyFrom(0)
     }
-}
-
-/// Complete output configuration for encoding.
-///
-/// Passed to [`StitchJob`](crate::StitchJob) or the encoder factory.
-/// The encoder backend maps these to encoder-specific parameters.
-#[derive(Debug, Clone, Default)]
-pub struct OutputConfig {
-    /// Video codec.
-    pub codec: Codec,
-    /// Bitrate / quality control.
-    pub bitrate: Bitrate,
-    /// Container format.
-    pub format: Format,
-    /// Audio handling.
-    pub audio: AudioMode,
-    /// Output resolution. `None` means match input dimensions.
-    pub resolution: Option<(u32, u32)>,
-    /// Force a specific encoder by name (e.g. `"h264_nvenc"`, `"libx264"`).
-    /// When `None`, the backend auto-selects the best available encoder.
-    pub encoder_name: Option<String>,
-    /// Override the CRF/quality value (passed through to the encoder).
-    pub crf: Option<u8>,
-    /// Override the encoder preset string (passed through to the encoder).
-    pub preset: Option<String>,
 }

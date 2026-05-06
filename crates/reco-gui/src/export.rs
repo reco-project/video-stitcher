@@ -85,16 +85,8 @@ pub fn run_export(
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
 
-    let codec = match codec_str.as_str() {
-        "hevc" | "h265" => Codec::HEVC,
-        "av1" => Codec::AV1,
-        _ => Codec::H264,
-    };
-    let quality = match quality_str.as_str() {
-        "fast" => Quality::Fast,
-        "high" => Quality::High,
-        _ => Quality::Balanced,
-    };
+    let codec: Codec = codec_str.parse().unwrap_or_default();
+    let quality: Quality = quality_str.parse().unwrap_or_default();
 
     #[cfg(feature = "autocam")]
     let field_roi = cal.field_roi.clone();

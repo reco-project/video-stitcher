@@ -119,18 +119,10 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         job = job.preset(preset);
     }
     if let Some(container) = args.container {
-        let c =
-            reco_io::ffmpeg::encoder::Container::from_str_loose(container).ok_or_else(|| {
-                anyhow::anyhow!("unknown container '{container}' (expected mp4, fmp4, or mkv)")
-            })?;
-        job = job.format(match c {
-            reco_io::ffmpeg::encoder::Container::Mp4 => reco_io::output::Format::Mp4,
-            reco_io::ffmpeg::encoder::Container::Mp4Fragmented => {
-                reco_io::output::Format::Mp4Fragmented
-            }
-            reco_io::ffmpeg::encoder::Container::Matroska => reco_io::output::Format::Mkv,
-            reco_io::ffmpeg::encoder::Container::Flv => reco_io::output::Format::Flv,
-        });
+        let fmt: reco_io::output::Format = container.parse().map_err(|e: String| {
+            anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)")
+        })?;
+        job = job.format(fmt);
     }
 
     // Opt-in replay recording. The builder call is all the
@@ -276,25 +268,15 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
 }
 
 fn parse_codec(s: &str) -> reco_io::output::Codec {
-    match s {
-        "h264" | "avc" => reco_io::output::Codec::H264,
-        "hevc" | "h265" => reco_io::output::Codec::HEVC,
-        "av1" => reco_io::output::Codec::AV1,
-        other => {
-            log::warn!("Unknown codec '{other}', defaulting to H.264");
-            reco_io::output::Codec::H264
-        }
-    }
+    s.parse().unwrap_or_else(|_| {
+        log::warn!("Unknown codec '{s}', defaulting to H.264");
+        reco_io::output::Codec::H264
+    })
 }
 
 fn parse_quality(s: &str) -> reco_io::output::Quality {
-    match s {
-        "fast" => reco_io::output::Quality::Fast,
-        "balanced" => reco_io::output::Quality::Balanced,
-        "high" => reco_io::output::Quality::High,
-        other => {
-            log::warn!("Unknown quality '{other}', defaulting to balanced");
-            reco_io::output::Quality::Balanced
-        }
-    }
+    s.parse().unwrap_or_else(|_| {
+        log::warn!("Unknown quality '{s}', defaulting to balanced");
+        reco_io::output::Quality::Balanced
+    })
 }

@@ -310,6 +310,37 @@ impl Container {
     }
 }
 
+impl From<crate::output::Codec> for VideoCodec {
+    fn from(c: crate::output::Codec) -> Self {
+        match c {
+            crate::output::Codec::H264 => Self::H264,
+            crate::output::Codec::HEVC => Self::Hevc,
+            crate::output::Codec::AV1 => Self::Av1,
+        }
+    }
+}
+
+impl From<crate::output::Quality> for Quality {
+    fn from(q: crate::output::Quality) -> Self {
+        match q {
+            crate::output::Quality::Fast => Self::Fast,
+            crate::output::Quality::Balanced => Self::Balanced,
+            crate::output::Quality::High => Self::High,
+        }
+    }
+}
+
+impl From<crate::output::Format> for Container {
+    fn from(f: crate::output::Format) -> Self {
+        match f {
+            crate::output::Format::Mp4 | crate::output::Format::Mov => Self::Mp4,
+            crate::output::Format::Mp4Fragmented => Self::Mp4Fragmented,
+            crate::output::Format::Mkv => Self::Matroska,
+            crate::output::Format::Flv => Self::Flv,
+        }
+    }
+}
+
 /// Configuration for the video encoder.
 #[derive(Debug, Clone, Default)]
 pub struct EncoderConfig {

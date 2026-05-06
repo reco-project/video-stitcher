@@ -600,7 +600,10 @@ impl StitchJob {
             log::warn!("FPS not available from source metadata, defaulting to 30fps");
             (30, 1)
         });
-        let (codec_str, quality_str) = map_output_config(&self.codec, &self.bitrate);
+        let quality = match &self.bitrate {
+            Bitrate::Quality(q) => crate::ffmpeg::encoder::Quality::from(*q),
+            Bitrate::Crf(_) => crate::ffmpeg::encoder::Quality::Balanced,
+        };
 
         // Resolve audio source path from AudioMode.
         let audio_source = match &self.audio {
@@ -615,26 +618,12 @@ impl StitchJob {
 
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
             encoder_name: self.encoder_name.clone(),
-            codec: crate::ffmpeg::encoder::VideoCodec::from_str_loose(codec_str)
-                .unwrap_or_default(),
-            quality: match quality_str {
-                "fast" => crate::ffmpeg::encoder::Quality::Fast,
-                "high" => crate::ffmpeg::encoder::Quality::High,
-                _ => crate::ffmpeg::encoder::Quality::Balanced,
-            },
+            codec: self.codec.into(),
+            quality,
             crf: self.crf,
             preset: self.preset.clone(),
             audio_source,
-            container: match self.format {
-                crate::output::Format::Mp4 | crate::output::Format::Mov => {
-                    crate::ffmpeg::encoder::Container::Mp4
-                }
-                crate::output::Format::Mp4Fragmented => {
-                    crate::ffmpeg::encoder::Container::Mp4Fragmented
-                }
-                crate::output::Format::Mkv => crate::ffmpeg::encoder::Container::Matroska,
-                crate::output::Format::Flv => crate::ffmpeg::encoder::Container::Flv,
-            },
+            container: self.format.into(),
             gop_size: None,
             stream_url: None,
         };
@@ -882,24 +871,4 @@ impl StitchJob {
             telemetry: Some(telemetry_snap),
         })
     }
-}
-
-/// Map our output config types to the current encoder's string-based API.
-/// This bridges the new OutputConfig types with the existing create_encoder.
-fn map_output_config(codec: &Codec, bitrate: &Bitrate) -> (&'static str, &'static str) {
-    let codec_str = match codec {
-        Codec::H264 => "h264",
-        Codec::HEVC => "hevc",
-        Codec::AV1 => "av1",
-    };
-    let quality_str = match bitrate {
-        Bitrate::Quality(Quality::Fast) => "fast",
-        Bitrate::Quality(Quality::Balanced) => "balanced",
-        Bitrate::Quality(Quality::High) => "high",
-        // For explicit bitrate control, use balanced preset and let the
-        // encoder backend handle the rate control. Full bitrate support
-        // requires updating the encoder API (future work).
-        _ => "balanced",
-    };
-    (codec_str, quality_str)
 }

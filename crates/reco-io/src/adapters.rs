@@ -477,19 +477,20 @@ pub fn create_encoder(
     crf: Option<u8>,
     preset: Option<String>,
 ) -> Result<(FfmpegFileEncoder, String), reco_core::encoder::EncodeError> {
-    let quality_enum = match quality {
-        "fast" => ffmpeg::encoder::Quality::Fast,
-        "high" => ffmpeg::encoder::Quality::High,
-        _ => ffmpeg::encoder::Quality::Balanced,
-    };
-    let video_codec = ffmpeg::encoder::VideoCodec::from_str_loose(codec).unwrap_or_else(|| {
+    use crate::output;
+
+    let out_codec: output::Codec = codec.parse().unwrap_or_else(|_| {
         log::warn!("Unknown codec '{codec}', defaulting to H.264");
-        ffmpeg::encoder::VideoCodec::H264
+        output::Codec::H264
+    });
+    let out_quality: output::Quality = quality.parse().unwrap_or_else(|_| {
+        log::warn!("Unknown quality '{quality}', defaulting to balanced");
+        output::Quality::Balanced
     });
     let enc_config = ffmpeg::encoder::EncoderConfig {
         encoder_name,
-        codec: video_codec,
-        quality: quality_enum,
+        codec: out_codec.into(),
+        quality: out_quality.into(),
         crf,
         preset,
         audio_source: None,
