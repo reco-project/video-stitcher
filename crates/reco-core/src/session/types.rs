@@ -5,7 +5,7 @@
 //! from `crate::session` via `pub use types::*`.
 
 use crate::calibration::MatchCalibration;
-use crate::core::StitchCoreError;
+use crate::core::types::StitchCoreError;
 use crate::director::{MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::{GpuContext, GpuError, OutputFormat};

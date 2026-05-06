@@ -876,11 +876,11 @@ pub mod replay {
     // ─────────────────────────────────────────────────────────────
 
     use crate::stacked_video::StackError;
-    use reco_core::core::StackedReplayRecorder as CoreStackedReplayRecorder;
+    use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
     use reco_core::pipeline::YuvPlanes;
 
     /// Push-API stacked-video recorder. Implements reco-core's
-    /// [`reco_core::core::StackedReplayRecorder`] trait so any
+    /// [`reco_core::core::types::StackedReplayRecorder`] trait so any
     /// [`reco_core::session::StitchSession`] can attach a recording
     /// file with a single call.
     ///
@@ -1075,11 +1075,11 @@ pub mod replay {
         SessionStackedRecorder::open(path, config, width, height)
     }
 
-    use reco_core::core::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
+    use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
     use reco_core::yuv_stack_packer::StackedAtlas;
 
     /// GPU-pack atlas recorder (M7 pivot). Implements
-    /// [`reco_core::core::StackedReplayGpuRecorder`] by forwarding
+    /// [`reco_core::core::types::StackedReplayGpuRecorder`] by forwarding
     /// pre-packed [`StackedAtlas`] bytes straight to a
     /// [`StackedEncoder`]. There's no pack work in this type — the
     /// compute shader already produced the Y/U/V atlas planes; this

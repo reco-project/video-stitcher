@@ -139,10 +139,10 @@ pub enum CaptureIntent {
     /// Capture a single frame to disk (still image).
     Snapshot,
     /// Clear the replay ring buffer
-    /// ([`reco_core::core::ReplayBuffer::clear`]).
+    /// ([`reco_core::core::replay_buffer::ReplayBuffer::clear`]).
     ClearReplay,
     /// Save the current replay ring buffer to a file and clear it
-    /// (maps to [`reco_core::core::ReplayBuffer::take`] + encode).
+    /// (maps to [`reco_core::core::replay_buffer::ReplayBuffer::take`] + encode).
     SaveReplay,
 }
 

@@ -49,7 +49,8 @@ pub use zero_copy_linux::SharedTextureSet;
 // same commit.
 
 use crate::async_encode::AsyncEncodeThread;
-use crate::core::{StitchCore, StitchCoreConfig};
+use crate::core::StitchCore;
+use crate::core::types::StitchCoreConfig;
 use crate::director::ViewportPosition;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::nv12_converter::Nv12Converter;

@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use super::ReplayFrame;
+use super::types::ReplayFrame;
 
 /// Bounded-duration ring of recently-rendered panorama frames.
 pub struct ReplayBuffer {

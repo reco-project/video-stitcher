@@ -170,7 +170,10 @@ impl StitchSession {
     /// )?;
     /// session.set_stacked_recorder(recorder);
     /// ```
-    pub fn set_stacked_recorder(&mut self, recorder: Box<dyn crate::core::StackedReplayRecorder>) {
+    pub fn set_stacked_recorder(
+        &mut self,
+        recorder: Box<dyn crate::core::types::StackedReplayRecorder>,
+    ) {
         self.core.set_stacked_recorder(recorder);
     }
 
@@ -191,7 +194,7 @@ impl StitchSession {
     ///
     /// Forwards to [`crate::core::StitchCore::enable_gpu_stacked_replay`].
     /// After enabling, attach a
-    /// [`crate::core::StackedReplayGpuRecorder`] via
+    /// [`crate::core::types::StackedReplayGpuRecorder`] via
     /// [`Self::set_stacked_gpu_recorder`] to route the packed atlas
     /// to an encoder. The pack runs on every YUV submit and logs
     /// its path choice once at enable time.
@@ -199,7 +202,7 @@ impl StitchSession {
         &mut self,
         layout: crate::yuv_stack_packer::StackGridLayout,
         output_size: crate::yuv_stack_packer::OutputTileSize,
-    ) -> Result<(), crate::core::StitchCoreError> {
+    ) -> Result<(), crate::core::types::StitchCoreError> {
         self.core.enable_gpu_stacked_replay(layout, output_size)
     }
 
@@ -213,7 +216,7 @@ impl StitchSession {
     /// [`Self::enable_gpu_stacked_replay`].
     pub fn set_stacked_gpu_recorder(
         &mut self,
-        recorder: Box<dyn crate::core::StackedReplayGpuRecorder>,
+        recorder: Box<dyn crate::core::types::StackedReplayGpuRecorder>,
     ) {
         self.core.set_stacked_gpu_recorder(recorder);
     }

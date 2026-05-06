@@ -26,7 +26,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::MatchCalibration;
-use reco_core::core::{RenderOutcome, StitchCore, StitchCoreConfig};
+use reco_core::core::StitchCore;
+use reco_core::core::types::{RenderOutcome, StitchCoreConfig};
 use reco_core::director::ViewportPosition;
 use reco_core::gpu::GpuContext;
 use reco_core::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
