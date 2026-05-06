@@ -307,13 +307,7 @@ impl SessionStackedRecorder {
 }
 
 impl CoreStackedReplayRecorder for SessionStackedRecorder {
-    fn record_yuv(
-        &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        width: u32,
-        height: u32,
-    ) {
+    fn record_yuv(&mut self, left: &YuvPlanes<'_>, right: &YuvPlanes<'_>, width: u32, height: u32) {
         // Reject dimension drift: the recorder was opened for
         // a fixed layout. If the session starts feeding
         // differently-sized frames (e.g. resolution change

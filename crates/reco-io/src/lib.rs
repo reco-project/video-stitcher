@@ -61,7 +61,6 @@ pub use smart_source::SmartFileSource;
 #[cfg(feature = "ffmpeg")]
 pub use stitch_job::{InputPath, StitchJob, StitchResult};
 
-
 /// Initialize enabled backends. Call once at program start.
 ///
 /// Currently initializes FFmpeg when the `ffmpeg` feature is active.

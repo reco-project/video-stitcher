@@ -104,7 +104,6 @@ pub mod metal_interop;
 pub mod nv12_converter;
 #[cfg(target_os = "linux")]
 pub mod nvbuf_transform;
-pub mod planes;
 /// Camera-motion policy contract — see [`Panner`](panner::Panner).
 /// The panner half of the tracker/panner split: consumes a clean
 /// [`WorldState`](tracker::WorldState) and decides where to point
@@ -117,6 +116,7 @@ pub mod pipeline;
 /// stitch loop. See [`pipeline_event`](crate::pipeline_event) for the event vocabulary
 /// and the non-blocking [`BackpressuredSink`](crate::pipeline_event::BackpressuredSink) wrapper (Step 6b).
 pub mod pipeline_event;
+pub mod planes;
 pub mod projection;
 pub mod renderer;
 pub mod rgba_readback;

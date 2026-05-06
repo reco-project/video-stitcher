@@ -78,4 +78,3 @@ pub trait Encoder: Send {
     /// output file or stream.
     fn finish(&mut self) -> Result<(), EncodeError>;
 }
-

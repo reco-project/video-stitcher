@@ -320,9 +320,8 @@ pub fn run_camera(
         reco_io::output::Codec::H264
     });
     let out_format: reco_io::output::Format = if let Some(c) = container {
-        c.parse().map_err(|e: String| {
-            anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)")
-        })?
+        c.parse()
+            .map_err(|e: String| anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)"))?
     } else {
         reco_io::output::Format::default()
     };

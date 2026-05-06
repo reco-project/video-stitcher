@@ -119,9 +119,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         job = job.preset(preset);
     }
     if let Some(container) = args.container {
-        let fmt: reco_io::output::Format = container.parse().map_err(|e: String| {
-            anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)")
-        })?;
+        let fmt: reco_io::output::Format = container
+            .parse()
+            .map_err(|e: String| anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)"))?;
         job = job.format(fmt);
     }
 

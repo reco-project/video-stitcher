@@ -93,9 +93,7 @@ pub(crate) fn copy_plane_tight(src: &FramePlaneView<'_>, dst: &mut [u8]) {
         return;
     }
     if stride < width {
-        log::warn!(
-            "copy_plane_tight: stride {stride} < width {width}; zero-filling plane",
-        );
+        log::warn!("copy_plane_tight: stride {stride} < width {width}; zero-filling plane",);
         dst.fill(0);
         return;
     }

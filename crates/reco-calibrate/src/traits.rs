@@ -81,4 +81,3 @@ pub trait CostFunction: Send + Sync {
     /// Compute per-point costs (for trimming and diagnostics).
     fn per_point_cost(&self, points: &[MatchedPoint], params: &OptParams) -> Vec<f64>;
 }
-
