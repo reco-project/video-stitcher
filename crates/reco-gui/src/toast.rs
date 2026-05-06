@@ -16,9 +16,6 @@ use crate::Toast;
 
 /// Severity categorizes the toast's visual accent and default lifetime.
 ///
-/// `Warn` is not consumed yet but is part of the public surface so
-/// future call sites can use it without a signature change.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     Info,

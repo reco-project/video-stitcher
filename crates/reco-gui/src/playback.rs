@@ -254,8 +254,4 @@ impl Playback {
         self.info.as_ref().map(|i| (i.width, i.height))
     }
 
-    #[allow(dead_code)]
-    pub fn frame_duration(&self) -> Duration {
-        self.frame_duration
-    }
 }

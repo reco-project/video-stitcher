@@ -26,7 +26,6 @@
 use crate::features::{Descriptor, KeyPoint, RawMatch};
 use crate::geometry::OptParams;
 use crate::types::MatchedPoint;
-use reco_core::calibration::PlaneLayout;
 
 /// Detects feature keypoints and computes descriptors from an image.
 ///
@@ -83,15 +82,3 @@ pub trait CostFunction: Send + Sync {
     fn per_point_cost(&self, points: &[MatchedPoint], params: &OptParams) -> Vec<f64>;
 }
 
-/// Finds the optimal placement parameters from matched points.
-///
-/// The optimizer trait is already defined in `optimizer.rs` but
-/// re-exported here for completeness. See [`crate::optimizer::Optimizer`].
-pub trait CalibrationOptimizer: Send + Sync {
-    /// Find the placement parameters that minimize the calibration error.
-    fn optimize(
-        &self,
-        points: &[MatchedPoint],
-        cost_fn: &dyn CostFunction,
-    ) -> Result<(PlaneLayout, f64), crate::CalibrateError>;
-}

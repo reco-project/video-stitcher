@@ -88,7 +88,7 @@ pub use defaults::{
 };
 pub use error::CalibrateError;
 pub use traits::{
-    CalibrationOptimizer, CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
+    CostFunction, FeatureDetector, FeatureMatcher, PointFilter,
 };
 pub use types::{
     AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationQuality, CalibrationResult,
