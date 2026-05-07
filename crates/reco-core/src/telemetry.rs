@@ -378,6 +378,9 @@ impl std::fmt::Display for SessionSummary {
         writeln!(f, "  Stitch:    {:.1} ms", s.avg_stitch_ms)?;
         writeln!(f, "  Readback:  {:.1} ms", s.avg_readback_ms)?;
         writeln!(f, "  Encode:    {:.1} ms", s.avg_encode_ms)?;
+        if s.avg_detection_ms > 0.0 {
+            writeln!(f, "  Detection: {:.1} ms", s.avg_detection_ms)?;
+        }
         writeln!(
             f,
             "  Total:     {:.1} / {:.1} ms",
