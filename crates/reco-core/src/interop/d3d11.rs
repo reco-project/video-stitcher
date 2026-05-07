@@ -20,7 +20,7 @@ use crate::gpu::GpuContext;
 use std::ffi::c_void;
 use thiserror::Error;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE, LUID};
+use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE, LUID, S_OK};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
@@ -282,18 +282,38 @@ impl D3d11StagingPool {
             );
 
             // Flush and wait for the copy to complete.
+            //
+            // The windows 0.62 GetData wrapper maps both S_OK and S_FALSE
+            // to Ok(()), losing the "not ready yet" distinction. Raw vtable
+            // call preserves the HRESULT so we can poll correctly and bail
+            // on real errors instead of spinning forever.
             self.context.Flush();
             self.context.End(&self.event_query);
+            let mut spins: u32 = 0;
             loop {
-                let mut done: u32 = 0;
-                let hr = self.context.GetData(
-                    &self.event_query,
-                    Some(&mut done as *mut u32 as *mut c_void),
-                    std::mem::size_of::<u32>() as u32,
+                let mut done: i32 = 0;
+                let hr = (Interface::vtable(&self.context).GetData)(
+                    Interface::as_raw(&self.context),
+                    Interface::as_raw(&self.event_query),
+                    &mut done as *mut i32 as *mut c_void,
+                    std::mem::size_of::<i32>() as u32,
                     0,
                 );
-                if hr.is_ok() && done != 0 {
+                if hr == windows::Win32::Foundation::S_OK {
                     break;
+                }
+                if hr.is_err() {
+                    return Err(D3d11InteropError::StagingCopy(format!(
+                        "GetData failed after {spins} polls: HRESULT {:#x}",
+                        hr.0
+                    )));
+                }
+                // S_FALSE: not ready yet
+                spins += 1;
+                if spins > 1_000_000 {
+                    return Err(D3d11InteropError::StagingCopy(
+                        "GetData timed out (>1M polls)".into(),
+                    ));
                 }
                 std::hint::spin_loop();
             }
