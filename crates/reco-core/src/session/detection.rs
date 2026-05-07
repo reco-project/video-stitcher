@@ -22,14 +22,11 @@
 use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::MappedDetection;
 
-use super::types::{DetectionSink, DetectionSinkError};
-
 /// Detection pipeline owning a unified-trait detector, interval,
 /// sink, and cached detections.
 pub struct DetectionPipeline {
     pub(super) detector: Option<Box<dyn UnifiedDetector>>,
     detection_interval: u64,
-    sink: Option<Box<dyn DetectionSink>>,
     pub(super) last_detections: Vec<MappedDetection>,
 }
 
@@ -45,7 +42,6 @@ impl DetectionPipeline {
         Self {
             detector: None,
             detection_interval: 1,
-            sink: None,
             last_detections: Vec::new(),
         }
     }
@@ -70,15 +66,6 @@ impl DetectionPipeline {
     /// Clamped to a minimum of 1 (every frame).
     pub fn set_detection_interval(&mut self, interval: u64) {
         self.detection_interval = interval.max(1);
-    }
-
-    /// Set the sink that receives tracked detection data each frame.
-    ///
-    /// Replaces any sink set previously. Sink errors returned from
-    /// [`DetectionSink::on_detections`] abort the current session call
-    /// with [`SessionError::DetectionSink`](super::SessionError::DetectionSink).
-    pub fn set_sink(&mut self, sink: Box<dyn DetectionSink>) {
-        self.sink = Some(sink);
     }
 
     /// The most recent panorama-mapped detections.
@@ -368,23 +355,6 @@ impl DetectionPipeline {
         detections.extend(run(detector, CameraId::Left, left_frame));
         detections.extend(run(detector, CameraId::Right, right_frame));
         detections
-    }
-
-    /// Fire the detection sink with the current cached detections.
-    ///
-    /// Returns `Ok(())` when no sink is attached or the sink succeeds.
-    /// Sink errors propagate so `run` / `step` can abort. Callers that
-    /// compute panorama-mapped detections externally should first call
-    /// [`set_last_detections`](Self::set_last_detections).
-    pub fn fire_sink(
-        &mut self,
-        frame_index: u64,
-        timestamp_ms: f64,
-    ) -> Result<(), DetectionSinkError> {
-        if let Some(ref mut sink) = self.sink {
-            sink.on_detections(&self.last_detections, frame_index, timestamp_ms)?;
-        }
-        Ok(())
     }
 }
 

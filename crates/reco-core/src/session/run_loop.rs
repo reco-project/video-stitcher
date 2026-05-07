@@ -41,8 +41,8 @@ impl StitchSession {
     /// [`run`](Self::run) when using a GPU-resident [`FrameSource`] like
     /// `SmartFileSource`.
     ///
-    /// For the Layer 1 API (`run_zero_copy_linux`), this is handled
-    /// internally and you don't need to call it.
+    /// The `run` loop uses these bind groups for GPU-resident
+    /// `StereoFrame::GpuResident` frames.
     #[cfg(target_os = "linux")]
     pub fn setup_gpu_source(&mut self, shared: &super::SharedTextureSet) {
         let t = &shared.textures;

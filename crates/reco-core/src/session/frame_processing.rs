@@ -5,7 +5,7 @@
 
 use super::StitchSession;
 use crate::detect::director::ViewportPosition;
-use crate::session::types::{SessionError, StepResult};
+use crate::session::types::SessionError;
 use crate::source::StereoFrame;
 
 impl StitchSession {
@@ -72,51 +72,6 @@ impl StitchSession {
             self.core.pipeline_mut().set_fov(fov);
         }
         pos
-    }
-
-    /// Process one frame with full session features: detection, director,
-    /// coverage clamping, and encoding.
-    ///
-    /// This is the recommended API for interactive consumers (GUI apps, OBS
-    /// plugins) that control their own frame loop. It combines
-    /// `detect_and_update_director()`, `director_position()`, and
-    /// `process_frame()` into a single call and returns what happened.
-    ///
-    /// Pass `override_position` to bypass the director (e.g. when the user
-    /// grabs the viewport with their mouse). The director still updates
-    /// internally so it stays warm.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "session_step")
-    )]
-    pub fn step(
-        &mut self,
-        frame: &StereoFrame,
-        elapsed: std::time::Duration,
-        override_position: Option<ViewportPosition>,
-    ) -> Result<StepResult, SessionError> {
-        // Run detection and update director.
-        self.detect_and_update_director(frame, elapsed)?;
-
-        // Get viewport position (from director or override).
-        let pos = if let Some(ovr) = override_position {
-            if let Some(fov) = ovr.fov_degrees {
-                self.core.pipeline_mut().set_fov(fov);
-            }
-            ovr
-        } else {
-            self.director_position()
-        };
-
-        let frame_index = self.frame_count;
-
-        // Render + encode.
-        self.process_frame(frame, pos.yaw, pos.pitch)?;
-
-        Ok(StepResult {
-            viewport: pos,
-            frame_index,
-        })
     }
 
     /// Render a single CPU-resident stereo frame and submit it to the encoder.

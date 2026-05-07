@@ -7,7 +7,7 @@
 use super::StitchSession;
 use crate::async_encode::AsyncEncodeThread;
 use crate::encoder::Encoder;
-use crate::session::types::{DetectionSink, ErrorPolicy};
+use crate::session::types::ErrorPolicy;
 
 impl StitchSession {
     /// Attach an encoder to this session.
@@ -241,30 +241,6 @@ impl StitchSession {
     /// an encoder sized for the atlas.
     pub fn stacked_atlas_dims(&self) -> Option<(u32, u32)> {
         self.core.stacked_atlas_dims()
-    }
-
-    /// Set the sink that receives tracked detection data each frame.
-    ///
-    /// The sink is called once per frame with the current tracked
-    /// objects, frame index, and timestamp. Errors returned from the
-    /// sink abort the current session call ([`run`](Self::run),
-    /// [`step`](Self::step), [`process_frame`](Self::process_frame))
-    /// with [`SessionError::DetectionSink`](super::types::SessionError::DetectionSink).
-    ///
-    /// Closures matching `FnMut(&[MappedDetection], u64, f64) -> Result<(),
-    /// DetectionSinkError>` implement [`DetectionSink`] automatically via
-    /// the blanket impl, so typical usage is:
-    ///
-    /// ```rust,ignore
-    /// session.set_detection_sink(Box::new(|dets, frame_idx, ts_ms| {
-    ///     writer.write_row(dets, frame_idx, ts_ms)?;
-    ///     Ok(())
-    /// }));
-    /// ```
-    ///
-    /// Replaces any previously registered sink.
-    pub fn set_detection_sink(&mut self, sink: Box<dyn DetectionSink>) {
-        self.detection.set_sink(sink);
     }
 
     /// Set the error policy for the [`run()`](Self::run) batch loop.

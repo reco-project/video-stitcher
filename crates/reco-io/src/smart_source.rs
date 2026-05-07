@@ -364,7 +364,7 @@ impl SmartFileSource {
             right_slot_free_tx,
             left_slot_free_rx: None,
             right_slot_free_rx: None,
-            // Bind groups are created lazily by the session's run_zero_copy_linux()
+            // Bind groups are created lazily by setup_gpu_source()
             // when it sees None. The source doesn't have pipeline access.
             bind_groups: None,
         };

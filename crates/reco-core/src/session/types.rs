@@ -6,7 +6,6 @@
 
 use crate::calibration::MatchCalibration;
 use crate::core::types::StitchCoreError;
-use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::nv12_converter::Nv12Error;
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
@@ -69,20 +68,6 @@ pub struct FrameProgress {
 /// Callback for progress reporting during [`StitchSession::run`](super::StitchSession::run).
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
-/// Result from [`StitchSession::step`](super::StitchSession::step) - one frame with full session features.
-///
-/// Detections are not returned here - consumers that need them should
-/// attach a [`DetectionSink`] at construction. Keeping detections off
-/// the per-frame return path avoids a `Vec<MappedDetection>` clone that
-/// showed up on the plan M7.5 alloc audit with no in-tree consumer.
-#[derive(Debug, Clone)]
-pub struct StepResult {
-    /// Where the virtual camera pointed for this frame.
-    pub viewport: ViewportPosition,
-    /// Frame index (0-based).
-    pub frame_index: u64,
-}
-
 /// Session performance metrics for health monitoring.
 ///
 /// Read via [`StitchSession::metrics`](super::StitchSession::metrics). Updated per-frame.
@@ -114,63 +99,6 @@ pub enum ErrorPolicy {
         /// Maximum consecutive frame errors before aborting.
         max_consecutive: u64,
     },
-}
-
-/// Boxed error type propagated by a [`DetectionSink`] implementation.
-///
-/// Sinks return this so I/O failures (disk full, broken pipe) can bubble
-/// up through [`StitchSession::run`](super::StitchSession::run) as a [`SessionError::DetectionSink`]
-/// instead of being swallowed by a logger.
-pub type DetectionSinkError = Box<dyn std::error::Error + Send + Sync>;
-
-/// Fallible sink for per-frame tracked detection data.
-///
-/// Sinks receive detections mapped to panorama coordinates every frame
-/// (including frames where no detector ran; the vector will be empty or
-/// hold the last known positions). The sink returns a `Result`, so CSV
-/// writers, socket senders, and similar consumers can surface I/O
-/// failures instead of logging and continuing with a corrupt output.
-///
-/// Any closure matching the signature `FnMut(&[MappedDetection], u64, f64)
-/// -> Result<(), DetectionSinkError>` automatically implements this trait
-/// via the blanket impl below, so callers can write:
-///
-/// ```rust,ignore
-/// session.set_detection_sink(Box::new(|dets, frame_idx, ts_ms| {
-///     writer.write_csv_row(dets, frame_idx, ts_ms)?;
-///     Ok(())
-/// }));
-/// ```
-///
-/// A sink is called once per frame. Errors returned from the sink abort
-/// the current session call (`step`, `process_frame`, or `run`) with
-/// [`SessionError::DetectionSink`].
-pub trait DetectionSink: Send {
-    /// Receive tracked detections for a single frame.
-    ///
-    /// `detections` is the same data the director sees (panorama
-    /// coordinates, camera origin, confidence). `frame_index` is 0-based.
-    /// `timestamp_ms` is measured from session start (not PTS).
-    fn on_detections(
-        &mut self,
-        detections: &[MappedDetection],
-        frame_index: u64,
-        timestamp_ms: f64,
-    ) -> Result<(), DetectionSinkError>;
-}
-
-impl<F> DetectionSink for F
-where
-    F: FnMut(&[MappedDetection], u64, f64) -> Result<(), DetectionSinkError> + Send,
-{
-    fn on_detections(
-        &mut self,
-        detections: &[MappedDetection],
-        frame_index: u64,
-        timestamp_ms: f64,
-    ) -> Result<(), DetectionSinkError> {
-        (self)(detections, frame_index, timestamp_ms)
-    }
 }
 
 /// Errors from [`StitchSession`](super::StitchSession). `Clone + Send + Sync` so consumers
@@ -215,18 +143,6 @@ pub enum SessionError {
     /// Missing or invalid configuration.
     #[error("config: {0}")]
     Config(String),
-
-    /// A [`DetectionSink`] returned an error.
-    ///
-    /// Surfaces I/O failures from user-supplied sinks (CSV writers,
-    /// network senders, ...) so they are not silently swallowed.
-    /// The sink's typed error is stringified at this boundary
-    /// because the sink trait uses `Box<dyn Error + Send + Sync>`
-    /// which is not `Clone`. Consumers that need the typed
-    /// underlying error should catch it before returning from the
-    /// sink closure; anything that reaches here is already formatted.
-    #[error("detection sink: {0}")]
-    DetectionSink(String),
 }
 
 // Compile-time assertion (plan step 7): every error type reachable
