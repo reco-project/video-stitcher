@@ -574,9 +574,7 @@ impl StitchJob {
         let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
-        session
-            .telemetry_mut()
-            .set_decode_mode(decode_mode.clone());
+        session.telemetry_mut().set_decode_mode(decode_mode.clone());
 
         // Configure GPU bind groups if source is GPU-resident
         #[cfg(target_os = "linux")]

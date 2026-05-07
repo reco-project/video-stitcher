@@ -184,9 +184,9 @@ impl StitchSession {
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect && self.detection.has_detector() {
-            let detections =
-                self.detection
-                    .run_detection_metal(left_cvpb, right_cvpb, width, height);
+            let detections = self
+                .detection
+                .run_detection_metal(left_cvpb, right_cvpb, width, height);
             self.detection.last_detections = self.map_detections(detections);
         }
 
