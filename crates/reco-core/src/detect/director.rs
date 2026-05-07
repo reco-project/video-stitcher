@@ -5,9 +5,8 @@
 //! renderer crops the panorama with. [`MappedDetection`] is a raw
 //! detection enriched with panorama-space coordinates; trackers
 //! consume it and emit [`TrackedEntity`](super::tracker::TrackedEntity)
-//! values, and external detection sinks can observe it directly via
-//! [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink)
-//! without going through a tracker.
+//! values. External consumers can observe detections via
+//! [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
 //!
 //! The module is named `director` for historical reasons — the old
 //! `Director` trait lived here before the tracker/panner split. The
@@ -53,9 +52,9 @@ impl Default for ViewportPosition {
 
 /// A detection mapped to panorama coordinates.
 ///
-/// Consumed by every [`Tracker`](super::tracker::Tracker) each frame
-/// and by external detection sinks (coaching, VAR, stats) via
-/// [`StitchSession::set_detection_sink`](crate::session::StitchSession::set_detection_sink).
+/// Consumed by every [`Tracker`](super::tracker::Tracker) each frame.
+/// External consumers (coaching, VAR, stats) observe detections via
+/// [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
 /// Wraps a raw camera-space detection with a panorama-space
 /// [`ViewportPosition`] computed via
 /// [`camera_to_panorama`](crate::projection::camera_to_panorama).
