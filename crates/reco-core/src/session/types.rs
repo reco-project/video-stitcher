@@ -101,6 +101,22 @@ pub enum ErrorPolicy {
     },
 }
 
+/// Pre-extracted state for the frame loop, cloned once before iterating.
+///
+/// The borrow checker prevents reading `self.gpu_buf_info` immutably
+/// while calling `&mut self` methods (detect, render). Cloning the
+/// buffer info once and passing it through this struct sidesteps the
+/// conflict with trivial cost (~150 bytes of scalars).
+#[derive(Default)]
+pub struct FrameLoopContext {
+    /// CUDA buffer info for GPU detection (Linux zero-copy path).
+    #[cfg(target_os = "linux")]
+    pub gpu_buf_info: Option<(
+        crate::interop::zero_copy::GpuBufInfo,
+        crate::interop::zero_copy::GpuBufInfo,
+    )>,
+}
+
 /// Errors from [`StitchSession`](super::StitchSession). `Clone + Send + Sync` so consumers
 /// posting session results across thread boundaries (reco-gui export
 /// thread, reco-obs async init) can keep the typed enum instead of
