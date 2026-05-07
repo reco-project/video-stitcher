@@ -34,8 +34,6 @@ mod wiring;
 mod tests;
 #[cfg(target_os = "linux")]
 mod zero_copy_linux;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-mod zero_copy_macos;
 
 #[cfg(target_os = "linux")]
 pub use zero_copy_linux::SharedTextureSet;

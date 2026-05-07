@@ -17,8 +17,7 @@ impl StitchSession {
     ///
     /// Detection only runs every `detection_interval` frames. On skipped
     /// frames, the last tracked objects are reused so the director still
-    /// has context. The detection sink fires every frame; an error from
-    /// the sink aborts this call with [`SessionError::DetectionSink`].
+    /// has context.
     pub fn detect_and_update_director(
         &mut self,
         frame: &StereoFrame,
@@ -171,8 +170,8 @@ impl StitchSession {
     ///
     /// Dispatches to the attached unified detector through
     /// [`DetectorFrame::Metal`](crate::detect::detector::DetectorFrame::Metal).
-    /// The backend (e.g. `MetalYoloDetector`) owns the `GpuContext`
-    /// clone it needs for CVPixelBuffer import.
+    /// Falls back to [`update_director`](Self::update_director) if no
+    /// detector is attached or the backend doesn't support Metal frames.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn detect_and_update_director_metal(
         &mut self,
@@ -182,53 +181,32 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        use crate::detect::detector::{CameraId, DetectorFrame};
-
         let should_detect = self.detection.should_detect(self.frame_count);
 
         if should_detect && self.detection.has_detector() {
-            if let Some(ref mut detector) = self.detection.detector {
-                let mut raw = Vec::new();
-                for (camera, cvpb) in [(CameraId::Left, left_cvpb), (CameraId::Right, right_cvpb)] {
-                    let frame = DetectorFrame::Metal {
-                        cv_pixel_buffer: cvpb,
-                        width,
-                        height,
-                    };
-                    match detector.detect(camera, &frame) {
-                        Ok(v) => raw.extend(v),
-                        Err(e) => log::warn!("detector '{}' {camera:?}: {e}", detector.name()),
-                    }
-                }
-                self.detection.last_detections = self.map_detections(raw);
-            }
+            let detections = self
+                .detection
+                .run_detection_metal(left_cvpb, right_cvpb, width, height);
+            self.detection.last_detections = self.map_detections(detections);
         }
 
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
-    /// Fire the detection sink and drive the tracker/panner chain.
+    /// Drive the tracker/panner chain after detection.
     ///
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
-    /// Fires the sink with `last_detections` (which may be empty if no
-    /// detector ran this frame), runs every registered tracker to build
-    /// a [`WorldState`](crate::detect::tracker::WorldState), then lets the
+    /// Emits DetectionsRaw events, runs detection filters, drives every
+    /// registered tracker to build a
+    /// [`WorldState`](crate::detect::tracker::WorldState), then lets the
     /// panner decide the next pose. Viewport constraining is handled
     /// separately by [`director_position`](Self::director_position).
-    ///
-    /// Sink errors surface as [`SessionError::DetectionSink`] and abort the
-    /// current session call.
     pub(crate) fn fire_sink_and_update_director(
         &mut self,
         elapsed: std::time::Duration,
         fresh_detection: bool,
     ) -> Result<(), SessionError> {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
-
-        // Fire the legacy per-detection sink for external consumers.
-        self.detection
-            .fire_sink(self.frame_count, timestamp_ms)
-            .map_err(|e| SessionError::DetectionSink(e.to_string()))?;
 
         // Trace: DetectionsRaw. Only clones when an event sink is attached.
         if let Some(sink) = self.event_sink.as_deref_mut() {

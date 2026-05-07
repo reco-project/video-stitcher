@@ -5,7 +5,7 @@
 
 use super::StitchSession;
 use crate::detect::director::ViewportPosition;
-use crate::session::types::{SessionError, StepResult};
+use crate::session::types::{FrameLoopContext, SessionError};
 use crate::source::StereoFrame;
 
 impl StitchSession {
@@ -74,49 +74,193 @@ impl StitchSession {
         pos
     }
 
-    /// Process one frame with full session features: detection, director,
-    /// coverage clamping, and encoding.
+    /// Full per-frame pipeline: detect, pose, render, replay, telemetry.
     ///
-    /// This is the recommended API for interactive consumers (GUI apps, OBS
-    /// plugins) that control their own frame loop. It combines
-    /// `detect_and_update_director()`, `director_position()`, and
-    /// `process_frame()` into a single call and returns what happened.
+    /// Dispatches to the correct detection and render path per
+    /// [`StereoFrame`] variant. Every variant gets the same five stages;
+    /// the dispatch inside each stage takes platform shortcuts (CUDA
+    /// shared textures, Metal IOSurface import, D3D11 staging, etc.).
     ///
-    /// Pass `override_position` to bypass the director (e.g. when the user
-    /// grabs the viewport with their mouse). The director still updates
-    /// internally so it stays warm.
+    /// `decode_time` and `frame_t0` are measured by the caller so that
+    /// telemetry captures the full frame timing including source decode.
     #[cfg_attr(
         feature = "profiling",
-        tracing::instrument(skip_all, name = "session_step")
+        tracing::instrument(skip_all, name = "session_process_frame_any")
     )]
-    pub fn step(
+    pub(crate) fn process_frame_any(
         &mut self,
         frame: &StereoFrame,
         elapsed: std::time::Duration,
-        override_position: Option<ViewportPosition>,
-    ) -> Result<StepResult, SessionError> {
-        // Run detection and update director.
-        self.detect_and_update_director(frame, elapsed)?;
+        decode_time: std::time::Duration,
+        frame_t0: std::time::Instant,
+        ctx: &FrameLoopContext,
+    ) -> Result<(), SessionError> {
+        let ran_detection =
+            self.detection.has_detector() && self.detection.should_detect(self.frame_count);
 
-        // Get viewport position (from director or override).
-        let pos = if let Some(ovr) = override_position {
-            if let Some(fov) = ovr.fov_degrees {
-                self.core.pipeline_mut().set_fov(fov);
+        // ── 1. Detect ──────────────────────────────────────────────
+        let detect_t0 = std::time::Instant::now();
+        match frame {
+            #[cfg(target_os = "linux")]
+            StereoFrame::GpuResident {
+                left_slot,
+                right_slot,
+            } => {
+                if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
+                    self.detect_and_update_director_gpu(
+                        left_buf,
+                        right_buf,
+                        *left_slot,
+                        *right_slot,
+                        elapsed,
+                    )?;
+                }
             }
-            ovr
-        } else {
-            self.director_position()
-        };
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            StereoFrame::MetalResident { left, right } => {
+                self.detect_and_update_director_metal(
+                    left.as_ptr(),
+                    right.as_ptr(),
+                    left.width(),
+                    left.height(),
+                    elapsed,
+                )?;
+            }
+            #[cfg(target_os = "windows")]
+            StereoFrame::D3d11Resident { .. } => {
+                self.update_director(elapsed)?;
+            }
+            _ => {
+                self.detect_and_update_director(frame, elapsed)?;
+            }
+        }
+        let detect_time = detect_t0.elapsed();
 
-        let frame_index = self.frame_count;
+        // ── 2. Pose ────────────────────────────────────────────────
+        let pos = self.director_position();
 
-        // Render + encode.
-        self.process_frame(frame, pos.yaw, pos.pitch)?;
+        // ── 3. Render + replay ─────────────────────────────────────
+        let render_t0 = std::time::Instant::now();
+        match frame {
+            #[cfg(target_os = "linux")]
+            StereoFrame::GpuResident {
+                left_slot,
+                right_slot,
+            } => {
+                let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
+                    SessionError::ZeroCopy(
+                        "GPU bind groups not configured - call setup_gpu_source() before run()"
+                            .into(),
+                    )
+                })?;
+                let render_buf = self.core.render_gpu_frame_at_pose(
+                    bind_groups,
+                    *left_slot,
+                    *right_slot,
+                    pos.yaw,
+                    pos.pitch,
+                );
+                self.submit_render_output(render_buf)?;
 
-        Ok(StepResult {
-            viewport: pos,
-            frame_index,
-        })
+                if let Some(ref views) = self.gpu_shared_views {
+                    let ls = *left_slot as usize;
+                    let rs = *right_slot as usize;
+                    self.core.pack_gpu_stacked_replay_from_views(
+                        crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                            y: &views[ls * 2],
+                            uv: &views[ls * 2 + 1],
+                        },
+                        crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                            y: &views[4 + rs * 2],
+                            uv: &views[4 + rs * 2 + 1],
+                        },
+                    );
+                }
+
+                if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
+                    if left_tx.send(*left_slot).is_err() {
+                        log::error!(
+                            "Failed to release left GPU slot {left_slot} - decode thread may have died"
+                        );
+                    }
+                    if right_tx.send(*right_slot).is_err() {
+                        log::error!(
+                            "Failed to release right GPU slot {right_slot} - decode thread may have died"
+                        );
+                    }
+                }
+            }
+            #[cfg(target_os = "windows")]
+            StereoFrame::D3d11Resident {
+                left_texture,
+                left_slice,
+                right_texture,
+                right_slice,
+            } => {
+                if self.d3d11_staging_pool.is_none() {
+                    let (w, h) = self.core.pipeline().source_info();
+                    match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h) {
+                        Ok(pool) => {
+                            log::info!("D3D11VA staging pool created: {}x{}, 4 NV12 slots", w, h);
+                            self.d3d11_staging_pool = Some(pool);
+                        }
+                        Err(e) => {
+                            return Err(SessionError::ZeroCopy(format!("D3D11 staging pool: {e}")));
+                        }
+                    }
+                }
+                let left_pool_slot = self.frame_count as usize % 2;
+                let right_pool_slot = left_pool_slot + 2;
+
+                {
+                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                    pool.stage_frame(*left_texture, *left_slice, left_pool_slot)?;
+                    pool.stage_frame(*right_texture, *right_slice, right_pool_slot)?;
+                }
+
+                let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                let render_buf = self.core.render_imported_views_at_pose(
+                    pool.y_view(left_pool_slot),
+                    pool.uv_view(left_pool_slot),
+                    pool.y_view(right_pool_slot),
+                    pool.uv_view(right_pool_slot),
+                    pos.yaw,
+                    pos.pitch,
+                );
+                self.submit_render_output(render_buf)?;
+
+                let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                self.core.pack_gpu_stacked_replay_from_views(
+                    crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                        y: pool.y_view(left_pool_slot),
+                        uv: pool.uv_view(left_pool_slot),
+                    },
+                    crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                        y: pool.y_view(right_pool_slot),
+                        uv: pool.uv_view(right_pool_slot),
+                    },
+                );
+            }
+            _ => {
+                self.process_frame(frame, pos.yaw, pos.pitch)?;
+            }
+        }
+        let render_time = render_t0.elapsed();
+
+        // ── 4. Telemetry (uniform for all paths) ───────────────────
+        self.telemetry.record_frame(crate::telemetry::FrameTiming {
+            decode: Some(decode_time),
+            detection: if ran_detection {
+                Some(detect_time)
+            } else {
+                None
+            },
+            stitch: Some(render_time),
+            total: Some(frame_t0.elapsed()),
+            ..Default::default()
+        });
+
+        Ok(())
     }
 
     /// Render a single CPU-resident stereo frame and submit it to the encoder.
@@ -124,9 +268,6 @@ impl StitchSession {
     /// Handles YUV420P and NV12 input formats. For GPU-resident frames
     /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
     /// instead.
-    ///
-    /// For interactive consumers that want detection + director + encoding in
-    /// one call, use [`step()`](Self::step) instead.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_process_frame")
@@ -241,6 +382,16 @@ impl StitchSession {
             pitch,
         );
         self.submit_render_output(render_buf)?;
+
+        let desc = wgpu::TextureViewDescriptor::default();
+        let ly = left_y.texture.create_view(&desc);
+        let lu = left_uv.texture.create_view(&desc);
+        let ry = right_y.texture.create_view(&desc);
+        let ru = right_uv.texture.create_view(&desc);
+        self.core.pack_gpu_stacked_replay_from_views(
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
+        );
         Ok(())
     }
 

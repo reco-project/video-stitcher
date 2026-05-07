@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::StitchSession;
 use crate::session::types::{FrameProgress, ProgressCallback, SessionError};
-use crate::source::{FrameSource, StereoFrame};
+use crate::source::FrameSource;
 
 impl StitchSession {
     /// Auto-configure the session from source metadata.
@@ -41,8 +41,8 @@ impl StitchSession {
     /// [`run`](Self::run) when using a GPU-resident [`FrameSource`] like
     /// `SmartFileSource`.
     ///
-    /// For the Layer 1 API (`run_zero_copy_linux`), this is handled
-    /// internally and you don't need to call it.
+    /// The `run` loop uses these bind groups for GPU-resident
+    /// `StereoFrame::GpuResident` frames.
     #[cfg(target_os = "linux")]
     pub fn setup_gpu_source(&mut self, shared: &super::SharedTextureSet) {
         let t = &shared.textures;
@@ -116,7 +116,7 @@ impl StitchSession {
     }
 
     /// Standard frame loop. Handles CPU-resident and GPU-resident
-    /// frames transparently.
+    /// frames transparently via [`process_frame_any`](Self::process_frame_any).
     fn run_immediate(
         &mut self,
         source: &mut dyn FrameSource,
@@ -126,11 +126,10 @@ impl StitchSession {
     ) -> Result<u64, SessionError> {
         let start = std::time::Instant::now();
 
-        // Extract GPU buf info once before the loop to avoid per-frame clones.
-        // Needed to satisfy the borrow checker (immutable borrow of buf_info
-        // vs mutable borrow for detect_and_update_director_gpu).
-        #[cfg(target_os = "linux")]
-        let gpu_buf_info = self.gpu_buf_info.clone();
+        let ctx = crate::session::types::FrameLoopContext {
+            #[cfg(target_os = "linux")]
+            gpu_buf_info: self.gpu_buf_info.clone(),
+        };
 
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
             let frame_t0 = std::time::Instant::now();
@@ -151,104 +150,7 @@ impl StitchSession {
                 });
             }
 
-            match &frame {
-                #[cfg(target_os = "linux")]
-                StereoFrame::GpuResident {
-                    left_slot,
-                    right_slot,
-                } => {
-                    self.step_gpu_with_bufs(
-                        &gpu_buf_info,
-                        *left_slot,
-                        *right_slot,
-                        start.elapsed(),
-                    )?;
-                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
-                        total: Some(frame_t0.elapsed()),
-                        ..Default::default()
-                    });
-                }
-                #[cfg(target_os = "windows")]
-                StereoFrame::D3d11Resident {
-                    left_texture,
-                    left_slice,
-                    right_texture,
-                    right_slice,
-                } => {
-                    if self.d3d11_staging_pool.is_none() {
-                        let (w, h) = self.core.pipeline().source_info();
-                        match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h) {
-                            Ok(pool) => {
-                                log::info!(
-                                    "D3D11VA staging pool created: {}x{}, 4 NV12 slots",
-                                    w,
-                                    h
-                                );
-                                self.d3d11_staging_pool = Some(pool);
-                            }
-                            Err(e) => {
-                                return Err(SessionError::ZeroCopy(format!(
-                                    "D3D11 staging pool: {e}"
-                                )));
-                            }
-                        }
-                    }
-                    let left_slot = self.frame_count as usize % 2;
-                    let right_slot = left_slot + 2;
-
-                    // Stage frames (borrows pool immutably, scoped).
-                    {
-                        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                        pool.stage_frame(*left_texture, *left_slice, left_slot)?;
-                        pool.stage_frame(*right_texture, *right_slice, right_slot)?;
-                    }
-
-                    // Director update (borrows self mutably).
-                    self.update_director(start.elapsed())?;
-                    let pos = self.director_position();
-
-                    // Render from staged views (borrows pool immutably again).
-                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                    let render_buf = self.core.render_imported_views_at_pose(
-                        pool.y_view(left_slot),
-                        pool.uv_view(left_slot),
-                        pool.y_view(right_slot),
-                        pool.uv_view(right_slot),
-                        pos.yaw,
-                        pos.pitch,
-                    );
-                    self.submit_render_output(render_buf)?;
-
-                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
-                        total: Some(frame_t0.elapsed()),
-                        ..Default::default()
-                    });
-                }
-                _ => {
-                    let detect_t0 = std::time::Instant::now();
-                    self.detect_and_update_director(&frame, start.elapsed())?;
-                    let detect_time = detect_t0.elapsed();
-
-                    let render_t0 = std::time::Instant::now();
-                    let pos = self.director_position();
-                    self.process_frame(&frame, pos.yaw, pos.pitch)?;
-                    let render_time = render_t0.elapsed();
-
-                    self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                        decode: Some(decode_time),
-                        detection: if self.detection_should_run() {
-                            Some(detect_time)
-                        } else {
-                            None
-                        },
-                        stitch: Some(render_time),
-                        total: Some(frame_t0.elapsed()),
-                        ..Default::default()
-                    });
-                }
-            }
+            self.process_frame_any(&frame, start.elapsed(), decode_time, frame_t0, &ctx)?;
 
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
@@ -259,77 +161,5 @@ impl StitchSession {
         }
 
         Ok(self.frame_count)
-    }
-
-    /// Process one GPU-resident frame with pre-extracted buffer info.
-    ///
-    /// The `buf_info` is extracted once before the frame loop to avoid
-    /// per-frame clones and satisfy the borrow checker.
-    #[cfg(target_os = "linux")]
-    fn step_gpu_with_bufs(
-        &mut self,
-        buf_info: &Option<(
-            crate::interop::zero_copy::GpuBufInfo,
-            crate::interop::zero_copy::GpuBufInfo,
-        )>,
-        left_slot: u8,
-        right_slot: u8,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        if let Some((left_buf, right_buf)) = buf_info {
-            self.detect_and_update_director_gpu(
-                left_buf, right_buf, left_slot, right_slot, elapsed,
-            )?;
-        }
-        let pos = self.director_position();
-
-        let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
-            SessionError::ZeroCopy(
-                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
-            )
-        })?;
-        let render_buf = self.core.render_gpu_frame_at_pose(
-            bind_groups,
-            left_slot,
-            right_slot,
-            pos.yaw,
-            pos.pitch,
-        );
-        self.submit_render_output(render_buf)?;
-
-        // GPU stacked-replay pack on zero-copy sources. No-op when
-        // the packer isn't enabled. Must complete before slot-free
-        // release so the decode thread doesn't overwrite the
-        // shared textures mid-pack.
-        if let Some(ref views) = self.gpu_shared_views {
-            let ls = left_slot as usize;
-            let rs = right_slot as usize;
-            self.core.pack_gpu_stacked_replay_from_views(
-                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                    y: &views[ls * 2],
-                    uv: &views[ls * 2 + 1],
-                },
-                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                    y: &views[4 + rs * 2],
-                    uv: &views[4 + rs * 2 + 1],
-                },
-            );
-        }
-
-        // Release slots for decode thread to reuse
-        if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
-            if left_tx.send(left_slot).is_err() {
-                log::error!(
-                    "Failed to release left GPU slot {left_slot} - decode thread may have died"
-                );
-            }
-            if right_tx.send(right_slot).is_err() {
-                log::error!(
-                    "Failed to release right GPU slot {right_slot} - decode thread may have died"
-                );
-            }
-        }
-
-        Ok(())
     }
 }
