@@ -95,6 +95,7 @@ impl StitchSession {
         frame_t0: std::time::Instant,
         ctx: &FrameLoopContext,
     ) -> Result<(), SessionError> {
+        let _ = &ctx;
         let ran_detection =
             self.detection.has_detector() && self.detection.should_detect(self.frame_count);
 
