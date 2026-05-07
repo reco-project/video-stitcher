@@ -166,46 +166,6 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
-    /// Run Metal-resident detection and update the director.
-    ///
-    /// Dispatches to the attached unified detector through
-    /// [`DetectorFrame::Metal`](crate::detect::detector::DetectorFrame::Metal).
-    /// The backend (e.g. `MetalYoloDetector`) owns the `GpuContext`
-    /// clone it needs for CVPixelBuffer import.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub(crate) fn detect_and_update_director_metal(
-        &mut self,
-        left_cvpb: crate::interop::metal::CVPixelBufferRef,
-        right_cvpb: crate::interop::metal::CVPixelBufferRef,
-        width: u32,
-        height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        use crate::detect::detector::{CameraId, DetectorFrame};
-
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect && self.detection.has_detector() {
-            if let Some(ref mut detector) = self.detection.detector {
-                let mut raw = Vec::new();
-                for (camera, cvpb) in [(CameraId::Left, left_cvpb), (CameraId::Right, right_cvpb)] {
-                    let frame = DetectorFrame::Metal {
-                        cv_pixel_buffer: cvpb,
-                        width,
-                        height,
-                    };
-                    match detector.detect(camera, &frame) {
-                        Ok(v) => raw.extend(v),
-                        Err(e) => log::warn!("detector '{}' {camera:?}: {e}", detector.name()),
-                    }
-                }
-                self.detection.last_detections = self.map_detections(raw);
-            }
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
-    }
-
     /// Drive the tracker/panner chain after detection.
     ///
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
