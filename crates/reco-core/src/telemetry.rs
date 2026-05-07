@@ -206,15 +206,18 @@ impl TelemetryCollector {
         let p99_total = self.percentile_ms(|t| t.total, 0.99);
 
         let fps_recent = if ring_len > 1.0 {
-            let total_ms: f32 = self
-                .ring
-                .iter()
-                .filter_map(|t| t.total.map(|d| d.as_secs_f32() * 1000.0))
-                .sum();
-            if total_ms > 0.0 {
-                ring_len / (total_ms / 1000.0)
+            let mut total_secs: f32 = 0.0;
+            let mut timed_frames: u32 = 0;
+            for t in self.ring.iter() {
+                if let Some(d) = t.total {
+                    total_secs += d.as_secs_f32();
+                    timed_frames += 1;
+                }
+            }
+            if timed_frames > 1 && total_secs > 0.0 {
+                timed_frames as f32 / total_secs
             } else {
-                0.0
+                fps_average
             }
         } else {
             fps_average
@@ -444,6 +447,24 @@ mod tests {
         });
         let snap = tc.snapshot();
         assert!((snap.p99_total_ms - 5.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn fps_recent_uses_timed_frame_count() {
+        let mut tc = TelemetryCollector::new();
+        // 10 frames at 10ms each = 100 FPS
+        for _ in 0..10 {
+            tc.record_frame(FrameTiming {
+                total: Some(Duration::from_millis(10)),
+                ..Default::default()
+            });
+        }
+        let snap = tc.snapshot();
+        assert!(
+            (snap.fps_recent - 100.0).abs() < 5.0,
+            "fps_recent should be ~100, got {}",
+            snap.fps_recent
+        );
     }
 
     #[test]
