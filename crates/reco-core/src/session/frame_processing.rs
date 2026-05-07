@@ -218,6 +218,18 @@ impl StitchSession {
                     pos.pitch,
                 );
                 self.submit_render_output(render_buf)?;
+
+                let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                self.core.pack_gpu_stacked_replay_from_views(
+                    crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                        y: pool.y_view(left_pool_slot),
+                        uv: pool.uv_view(left_pool_slot),
+                    },
+                    crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                        y: pool.y_view(right_pool_slot),
+                        uv: pool.uv_view(right_pool_slot),
+                    },
+                );
             }
             _ => {
                 self.process_frame(frame, pos.yaw, pos.pitch)?;
@@ -360,6 +372,16 @@ impl StitchSession {
             pitch,
         );
         self.submit_render_output(render_buf)?;
+
+        let desc = wgpu::TextureViewDescriptor::default();
+        let ly = left_y.texture.create_view(&desc);
+        let lu = left_uv.texture.create_view(&desc);
+        let ry = right_y.texture.create_view(&desc);
+        let ru = right_uv.texture.create_view(&desc);
+        self.core.pack_gpu_stacked_replay_from_views(
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
+        );
         Ok(())
     }
 
