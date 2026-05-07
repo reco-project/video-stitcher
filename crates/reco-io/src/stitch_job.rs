@@ -573,6 +573,11 @@ impl StitchJob {
         };
         let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
+        session.telemetry_mut().set_gpu_name(gpu_name.clone());
+        session
+            .telemetry_mut()
+            .set_decode_mode(decode_mode.clone());
+
         // Configure GPU bind groups if source is GPU-resident
         #[cfg(target_os = "linux")]
         if let Some(shared) = source.shared_texture_set() {
@@ -636,6 +641,7 @@ impl StitchJob {
             &enc_config,
         )?;
         let enc_name = encoder.encoder_name().to_string();
+        session.telemetry_mut().set_encoder_name(enc_name.clone());
         session.set_encoder(Box::new(encoder), 2);
 
         // Drain-and-discard frames up to start_frame.
