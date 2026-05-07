@@ -20,7 +20,7 @@ use crate::gpu::GpuContext;
 use std::ffi::c_void;
 use thiserror::Error;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE, LUID, S_OK};
+use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE, S_OK};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
@@ -92,12 +92,12 @@ impl D3d11StagingPool {
             return Err(D3d11InteropError::NotDx12);
         }
 
-        // Get the adapter LUID from wgpu so we create D3D11 on the same GPU.
-        let adapter_luid = gpu.adapter_info.device as u64;
-
-        // Find the matching DXGI adapter by LUID.
+        // Find the DXGI adapter matching wgpu's selected GPU.
+        //
+        // wgpu's adapter_info.device is a PCI device ID (not a LUID),
+        // so we match by adapter description (name) instead.
         let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
-        let adapter = find_adapter_by_luid(&factory, adapter_luid)?;
+        let adapter = find_adapter_by_name(&factory, &gpu.adapter_info.name)?;
         let adapter_desc = unsafe { adapter.GetDesc1()? };
         log::info!(
             "D3D11 interop: matched adapter '{}' (LUID {}:{})",
@@ -299,7 +299,7 @@ impl D3d11StagingPool {
                     std::mem::size_of::<i32>() as u32,
                     0,
                 );
-                if hr == windows::Win32::Foundation::S_OK {
+                if hr == S_OK {
                     break;
                 }
                 if hr.is_err() {
@@ -344,17 +344,10 @@ impl D3d11StagingPool {
 }
 
 /// Find a DXGI adapter matching the given adapter device ID (LUID encoding).
-fn find_adapter_by_luid(
+fn find_adapter_by_name(
     factory: &IDXGIFactory1,
-    device_id: u64,
+    name: &str,
 ) -> Result<IDXGIAdapter1, D3d11InteropError> {
-    // wgpu stores the LUID as a u64 in AdapterInfo.device.
-    // Reconstruct the LUID: low 32 bits = LowPart, high 32 bits = HighPart.
-    let target_luid = LUID {
-        LowPart: device_id as u32,
-        HighPart: (device_id >> 32) as i32,
-    };
-
     let mut i = 0u32;
     loop {
         let adapter: IDXGIAdapter1 = match unsafe { factory.EnumAdapters1(i) } {
@@ -362,17 +355,22 @@ fn find_adapter_by_luid(
             Err(_) => break,
         };
         let desc = unsafe { adapter.GetDesc1()? };
-        if desc.AdapterLuid.LowPart == target_luid.LowPart
-            && desc.AdapterLuid.HighPart == target_luid.HighPart
-        {
+        let adapter_name = String::from_utf16_lossy(
+            &desc
+                .Description
+                .iter()
+                .take_while(|c| **c != 0)
+                .copied()
+                .collect::<Vec<_>>(),
+        );
+        if adapter_name == name {
             return Ok(adapter);
         }
         i += 1;
     }
 
     Err(D3d11InteropError::Dxgi(format!(
-        "no DXGI adapter with LUID {}:{} (device_id={})",
-        target_luid.HighPart, target_luid.LowPart, device_id
+        "no DXGI adapter matching '{name}'"
     )))
 }
 
