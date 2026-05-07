@@ -356,6 +356,45 @@ impl DetectionPipeline {
         detections.extend(run(detector, CameraId::Right, right_frame));
         detections
     }
+
+    /// Run detection on Metal-resident CVPixelBuffer stereo frames.
+    ///
+    /// Dispatches through [`DetectorFrame::Metal`] which the backend
+    /// (e.g. CoreML) imports natively without CPU readback.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    pub(super) fn run_detection_metal(
+        &mut self,
+        left_cvpb: crate::interop::metal::CVPixelBufferRef,
+        right_cvpb: crate::interop::metal::CVPixelBufferRef,
+        width: u32,
+        height: u32,
+    ) -> Vec<Detection> {
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+
+        let mut detections = Vec::new();
+        for (camera, cvpb) in [(CameraId::Left, left_cvpb), (CameraId::Right, right_cvpb)] {
+            let frame = DetectorFrame::Metal {
+                cv_pixel_buffer: cvpb,
+                width,
+                height,
+            };
+            match detector.detect(camera, &frame) {
+                Ok(v) => detections.extend(v),
+                Err(DetectorError::UnsupportedFrameKind) => {
+                    log::debug!(
+                        "detector '{}' does not support Metal frames",
+                        detector.name()
+                    );
+                }
+                Err(e) => {
+                    log::warn!("detector '{}' {camera:?}: {e}", detector.name());
+                }
+            }
+        }
+        detections
+    }
 }
 
 #[cfg(test)]

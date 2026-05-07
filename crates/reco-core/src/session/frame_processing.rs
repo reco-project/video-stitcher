@@ -116,6 +116,16 @@ impl StitchSession {
                     )?;
                 }
             }
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            StereoFrame::MetalResident { left, right } => {
+                self.detect_and_update_director_metal(
+                    left.as_ptr(),
+                    right.as_ptr(),
+                    left.width(),
+                    left.height(),
+                    elapsed,
+                )?;
+            }
             #[cfg(target_os = "windows")]
             StereoFrame::D3d11Resident { .. } => {
                 self.update_director(elapsed)?;

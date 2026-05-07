@@ -166,6 +166,33 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
+    /// Run Metal-resident detection and update the director.
+    ///
+    /// Dispatches to the attached unified detector through
+    /// [`DetectorFrame::Metal`](crate::detect::detector::DetectorFrame::Metal).
+    /// Falls back to [`update_director`](Self::update_director) if no
+    /// detector is attached or the backend doesn't support Metal frames.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    pub(crate) fn detect_and_update_director_metal(
+        &mut self,
+        left_cvpb: crate::interop::metal::CVPixelBufferRef,
+        right_cvpb: crate::interop::metal::CVPixelBufferRef,
+        width: u32,
+        height: u32,
+        elapsed: std::time::Duration,
+    ) -> Result<(), SessionError> {
+        let should_detect = self.detection.should_detect(self.frame_count);
+
+        if should_detect && self.detection.has_detector() {
+            let detections =
+                self.detection
+                    .run_detection_metal(left_cvpb, right_cvpb, width, height);
+            self.detection.last_detections = self.map_detections(detections);
+        }
+
+        self.fire_sink_and_update_director(elapsed, should_detect)
+    }
+
     /// Drive the tracker/panner chain after detection.
     ///
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
