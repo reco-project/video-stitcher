@@ -117,6 +117,12 @@ impl StitchSession {
                     )?;
                     scheduled_detection
                 } else {
+                    if self.frame_count == 0 {
+                        log::warn!(
+                            "GpuResident frame but no gpu_buf_info - detection disabled, \
+                             director advancing without detections"
+                        );
+                    }
                     self.update_director(elapsed)?;
                     false
                 }
