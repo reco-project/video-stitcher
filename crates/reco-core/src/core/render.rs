@@ -60,7 +60,7 @@ impl super::StitchCore {
         // textures, and the subsequent stitch submit reads the
         // same textures into the render target. No-op when packer
         // is not enabled.
-        self.drive_gpu_stacked_pack();
+        self.pack_replay_from_pipeline();
         // Split-borrow: push_replay only accesses self.replay +
         // self.session_start; self.readback keeps the rgba slice
         // alive. Inlining the replay push (instead of going through
@@ -128,7 +128,7 @@ impl super::StitchCore {
         let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
         // GPU stacked-replay pack - see `submit_frame_yuv` for
         // ordering rationale. No-op when not enabled.
-        self.drive_gpu_stacked_pack();
+        self.pack_replay_from_pipeline();
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let rgba =
             self.readback

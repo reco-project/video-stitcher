@@ -230,7 +230,7 @@ impl StitchSession {
         // Zero-copy `StereoFrame::GpuResident` goes through
         // `step_gpu_with_bufs` (Linux) which taps the pack with
         // external views instead.
-        self.core.drive_gpu_stacked_pack();
+        self.core.pack_replay_from_pipeline();
         Ok(())
     }
 
@@ -252,7 +252,7 @@ impl StitchSession {
             .core
             .render_gpu_rgba_at_pose(left_rgba, right_rgba, yaw, pitch);
         self.submit_render_output(render_buf)?;
-        self.core.drive_gpu_stacked_pack();
+        self.core.pack_replay_from_pipeline();
         Ok(())
     }
 

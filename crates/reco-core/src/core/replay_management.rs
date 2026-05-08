@@ -243,7 +243,7 @@ impl super::StitchCore {
     /// every entry point shares behavior.
     ///
     /// No-op when the packer isn't enabled.
-    pub(crate) fn drive_gpu_stacked_pack(&mut self) {
+    pub(crate) fn pack_replay_from_pipeline(&mut self) {
         crate::profile_scope!("replay_drive_pack");
         if self.stacked_packer.is_none() {
             return;
@@ -279,7 +279,7 @@ impl super::StitchCore {
                 // live render loop can't panic on an invariant
                 // violation.
                 log::error!(
-                    "drive_gpu_stacked_pack: packer enabled but pipeline input_format is \
+                    "pack_replay_from_pipeline: packer enabled but pipeline input_format is \
                      BGRA; skipping pack (this is a logic bug in StitchCore)"
                 );
                 return;
