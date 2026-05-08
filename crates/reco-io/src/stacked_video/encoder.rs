@@ -33,15 +33,16 @@ pub enum StackedEncodeError {
 
 /// Configuration for [`StackedEncoder`]. Derived from
 /// [`EncoderConfig`] but with replay-friendly defaults:
-/// fragmented MP4, `libx264` software encoder, no audio
-/// passthrough. Override any field as needed.
+/// Matroska container, auto-detect encoder, no audio passthrough.
+/// Override any field as needed.
 #[derive(Debug, Clone)]
 pub struct StackedEncoderConfig {
     /// Inner encoder config. Container defaults to
-    /// [`Container::Mp4Fragmented`]; codec defaults to
-    /// [`VideoCodec::H264`]; `encoder_name` is forced to the
-    /// software encoder for the chosen codec so pack output
-    /// (YUV420P) is accepted without a pixel-format conversion.
+    /// [`Container::Matroska`]; codec defaults to
+    /// [`VideoCodec::H264`]; encoder auto-detects hardware
+    /// (NVENC/AMF/VT) with software fallback. The encoder
+    /// handles YUV420P-to-NV12 interleave automatically when
+    /// a hardware encoder is selected.
     pub inner: EncoderConfig,
     /// Output frames-per-second (numerator, denominator).
     pub fps: (i32, i32),

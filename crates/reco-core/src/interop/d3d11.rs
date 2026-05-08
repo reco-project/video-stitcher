@@ -343,7 +343,7 @@ impl D3d11StagingPool {
     }
 }
 
-/// Find a DXGI adapter matching the given adapter device ID (LUID encoding).
+/// Find a DXGI adapter whose description matches the wgpu adapter name.
 fn find_adapter_by_name(
     factory: &IDXGIFactory1,
     name: &str,

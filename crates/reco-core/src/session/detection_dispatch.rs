@@ -133,8 +133,7 @@ impl StitchSession {
 
     /// Run GPU-resident detection and update the director.
     ///
-    /// Uses the [`GpuDetector`](crate::detect::detector::GpuDetector) to detect
-    /// objects directly from CUDA device pointers (NV12 shared textures),
+    /// Detects objects directly from CUDA device pointers (NV12 shared textures),
     /// avoiding any GPU-to-CPU frame readback. Only the small detection
     /// output is transferred to CPU for tracking and director updates.
     ///

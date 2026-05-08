@@ -96,12 +96,12 @@ impl StitchSession {
         ctx: &FrameLoopContext,
     ) -> Result<(), SessionError> {
         let _ = &ctx;
-        let ran_detection =
+        let scheduled_detection =
             self.detection.has_detector() && self.detection.should_detect(self.frame_count);
 
         // ── 1. Detect ──────────────────────────────────────────────
         let detect_t0 = std::time::Instant::now();
-        match frame {
+        let ran_detection = match frame {
             #[cfg(target_os = "linux")]
             StereoFrame::GpuResident {
                 left_slot,
@@ -115,6 +115,10 @@ impl StitchSession {
                         *right_slot,
                         elapsed,
                     )?;
+                    scheduled_detection
+                } else {
+                    self.update_director(elapsed)?;
+                    false
                 }
             }
             #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -126,15 +130,18 @@ impl StitchSession {
                     left.height(),
                     elapsed,
                 )?;
+                scheduled_detection
             }
             #[cfg(target_os = "windows")]
             StereoFrame::D3d11Resident { .. } => {
                 self.update_director(elapsed)?;
+                false
             }
             _ => {
                 self.detect_and_update_director(frame, elapsed)?;
+                scheduled_detection
             }
-        }
+        };
         let detect_time = detect_t0.elapsed();
 
         // ── 2. Pose ────────────────────────────────────────────────

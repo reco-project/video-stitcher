@@ -108,10 +108,10 @@ pub enum ErrorPolicy {
 /// buffer info once and passing it through this struct sidesteps the
 /// conflict with trivial cost (~150 bytes of scalars).
 #[derive(Default)]
-pub struct FrameLoopContext {
+pub(crate) struct FrameLoopContext {
     /// CUDA buffer info for GPU detection (Linux zero-copy path).
     #[cfg(target_os = "linux")]
-    pub gpu_buf_info: Option<(
+    pub(crate) gpu_buf_info: Option<(
         crate::interop::zero_copy::GpuBufInfo,
         crate::interop::zero_copy::GpuBufInfo,
     )>,

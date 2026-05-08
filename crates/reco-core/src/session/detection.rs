@@ -1,7 +1,7 @@
 //! Detection pipeline used by [`StitchSession`](crate::session::StitchSession).
 //!
 //! Owns the [`UnifiedDetector`](crate::detect::detector::UnifiedDetector) backend,
-//! detection interval, sink, and cached panorama-mapped detections. Exposes
+//! detection interval, and cached panorama-mapped detections. Exposes
 //! CPU and CUDA run paths so the session's decode loop (CPU-resident file
 //! sources) and zero-copy loop (GPU-resident shared textures) share one
 //! detection state.
@@ -23,7 +23,7 @@ use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame,
 use crate::detect::director::MappedDetection;
 
 /// Detection pipeline owning a unified-trait detector, interval,
-/// sink, and cached detections.
+/// and cached detections.
 pub struct DetectionPipeline {
     pub(super) detector: Option<Box<dyn UnifiedDetector>>,
     detection_interval: u64,
@@ -89,7 +89,7 @@ impl DetectionPipeline {
     /// dispatches through the unified trait, once per camera. GPU-resident
     /// variants return an empty vec (see `run_gpu_detection` for the CUDA
     /// zero-copy path).
-    pub fn run_detection(
+    pub(super) fn run_detection(
         &mut self,
         frame: &crate::source::StereoFrame,
         source_width: u32,
@@ -166,7 +166,7 @@ impl DetectionPipeline {
     ///
     /// Used by the Bayer/V4L2 path where the demosaiced RGBA is read
     /// back from the GPU periodically for detection.
-    pub fn run_detection_rgba(
+    pub(super) fn run_detection_rgba(
         &mut self,
         left_rgba: &[u8],
         right_rgba: &[u8],
