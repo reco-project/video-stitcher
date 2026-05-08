@@ -78,9 +78,7 @@ pub use tracking_mode::TrackingMode;
 #[cfg(feature = "ort")]
 use std::path::Path;
 
-use reco_core::session::StitchSession;
-
-/// Set up automatic camera control on a [`StitchSession`].
+/// Set up automatic camera control on any [`DetectionTarget`](reco_core::detect::DetectionTarget).
 ///
 /// Configures the appropriate detector (CPU, GPU/CUDA, or Metal) based
 /// on the current platform and zero-copy mode, then attaches the
@@ -177,14 +175,14 @@ impl AutocamConfig {
     allow(unused_variables, unreachable_code)
 )]
 pub fn setup_autocam(
-    session: &mut StitchSession,
+    target: &mut impl reco_core::detect::DetectionTarget,
     config: &AutocamConfig,
     fps: f32,
     source_is_gpu_resident: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     #[cfg(not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")))]
     {
-        let _ = (session, config, fps);
+        let _ = (target, config, fps);
         log::warn!(
             "Autocam: no detector backend compiled in (enable ort, tensorrt-native, or ncnn). \
              Session will run without AI camera control."
@@ -192,7 +190,7 @@ pub fn setup_autocam(
         return Ok(false);
     }
 
-    let (input_width, input_height) = session.pipeline().source_info();
+    let (input_width, input_height) = target.pipeline().source_info();
     let use_zero_copy = source_is_gpu_resident;
     let model_path = config.model_path.to_str().unwrap_or("");
     let detection_interval = config.detection_interval;
@@ -291,7 +289,7 @@ pub fn setup_autocam(
                     } else {
                         Box::new(trt_det)
                     };
-                session.set_detector(detector);
+                target.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: native TensorRT tracking enabled (engine: {model_path})");
             }
@@ -322,7 +320,7 @@ pub fn setup_autocam(
                     } else {
                         Box::new(gpu_det)
                     };
-                session.set_detector(detector);
+                target.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: GPU YOLO ball tracking enabled (model: {model_path})");
             }
@@ -339,7 +337,7 @@ pub fn setup_autocam(
     if use_zero_copy {
         match MetalYoloDetector::try_new(
             model_path,
-            session.gpu(),
+            target.gpu(),
             input_width,
             input_height,
             0.10,
@@ -352,7 +350,7 @@ pub fn setup_autocam(
                     } else {
                         Box::new(metal_det)
                     };
-                session.set_detector(detector);
+                target.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: Metal YOLO ball tracking enabled (model: {model_path})");
             }
@@ -381,7 +379,7 @@ pub fn setup_autocam(
                     } else {
                         Box::new(ncnn_det)
                     };
-                session.set_detector(detector);
+                target.set_detector(detector);
                 detection_active = true;
                 log::info!("Autocam: NCNN YOLO tracking enabled (model: {model_path})");
             }
@@ -401,7 +399,7 @@ pub fn setup_autocam(
             } else {
                 Box::new(yolo)
             };
-        session.set_detector(detector);
+        target.set_detector(detector);
         detection_active = true;
         log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
     }
@@ -422,13 +420,13 @@ pub fn setup_autocam(
         log::info!("Tracking mode: sweep (debug, no AI)");
         let panner =
             Box::new(crate::panners::SweepPanner::new(0.8, 10.0).with_zoom(30.0, 90.0, 7.0));
-        session.set_panner(panner);
+        target.set_panner(panner);
         return Ok(true);
     }
 
     if detection_active {
         if detection_interval > 1 {
-            session.set_detection_interval(detection_interval);
+            target.set_detection_interval(detection_interval);
             log::info!("Detection interval: every {detection_interval} frames");
         }
 
@@ -460,9 +458,9 @@ pub fn setup_autocam(
                 );
                 let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
 
-                session.set_ball_tracker(Box::new(ball_tracker));
-                session.set_player_tracker(Box::new(player_tracker));
-                session.set_panner(Box::new(field_panner));
+                target.set_ball_tracker(Box::new(ball_tracker));
+                target.set_player_tracker(Box::new(player_tracker));
+                target.set_panner(Box::new(field_panner));
             }
             TrackingMode::Sweep => unreachable!("handled before detection block"),
         }

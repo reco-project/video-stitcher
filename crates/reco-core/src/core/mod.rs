@@ -502,6 +502,31 @@ impl StitchCore {
 }
 
 #[cfg(test)]
+impl crate::detect::DetectionTarget for StitchCore {
+    fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
+        self.set_detector(detector);
+    }
+    fn set_detection_interval(&mut self, interval: u64) {
+        self.set_detection_interval(interval);
+    }
+    fn set_ball_tracker(&mut self, tracker: Box<dyn crate::detect::tracker::Tracker>) {
+        self.set_ball_tracker(tracker);
+    }
+    fn set_player_tracker(&mut self, tracker: Box<dyn crate::detect::tracker::Tracker>) {
+        self.set_player_tracker(tracker);
+    }
+    fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
+        self.set_panner(panner);
+    }
+    fn pipeline(&self) -> &crate::render::pipeline::StitchPipeline {
+        self.pipeline()
+    }
+    fn gpu(&self) -> &crate::gpu::GpuContext {
+        self.gpu()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::time::Duration;
 
