@@ -161,48 +161,7 @@ impl StitchSession {
                 left_slot,
                 right_slot,
             } => {
-                let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
-                    SessionError::ZeroCopy(
-                        "GPU bind groups not configured - call setup_gpu_source() before run()"
-                            .into(),
-                    )
-                })?;
-                let render_buf = self.core.render_gpu_frame_at_pose(
-                    bind_groups,
-                    *left_slot,
-                    *right_slot,
-                    pos.yaw,
-                    pos.pitch,
-                );
-                self.submit_render_output(render_buf)?;
-
-                if let Some(ref views) = self.gpu_shared_views {
-                    let ls = *left_slot as usize;
-                    let rs = *right_slot as usize;
-                    self.core.pack_gpu_stacked_replay_from_views(
-                        crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                            y: &views[ls * 2],
-                            uv: &views[ls * 2 + 1],
-                        },
-                        crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                            y: &views[4 + rs * 2],
-                            uv: &views[4 + rs * 2 + 1],
-                        },
-                    );
-                }
-
-                if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
-                    if left_tx.send(*left_slot).is_err() {
-                        log::error!(
-                            "Failed to release left GPU slot {left_slot} - decode thread may have died"
-                        );
-                    }
-                    if right_tx.send(*right_slot).is_err() {
-                        log::error!(
-                            "Failed to release right GPU slot {right_slot} - decode thread may have died"
-                        );
-                    }
-                }
+                self.render_gpu_resident(*left_slot, *right_slot, pos.yaw, pos.pitch)?;
             }
             #[cfg(target_os = "windows")]
             StereoFrame::D3d11Resident {
@@ -211,49 +170,14 @@ impl StitchSession {
                 right_texture,
                 right_slice,
             } => {
-                if self.d3d11_staging_pool.is_none() {
-                    let (w, h) = self.core.pipeline().source_info();
-                    match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h) {
-                        Ok(pool) => {
-                            log::info!("D3D11VA staging pool created: {}x{}, 4 NV12 slots", w, h);
-                            self.d3d11_staging_pool = Some(pool);
-                        }
-                        Err(e) => {
-                            return Err(SessionError::ZeroCopy(format!("D3D11 staging pool: {e}")));
-                        }
-                    }
-                }
-                let left_pool_slot = self.frame_count as usize % 2;
-                let right_pool_slot = left_pool_slot + 2;
-
-                {
-                    let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                    pool.stage_frame(*left_texture, *left_slice, left_pool_slot)?;
-                    pool.stage_frame(*right_texture, *right_slice, right_pool_slot)?;
-                }
-
-                let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                let render_buf = self.core.render_imported_views_at_pose(
-                    pool.y_view(left_pool_slot),
-                    pool.uv_view(left_pool_slot),
-                    pool.y_view(right_pool_slot),
-                    pool.uv_view(right_pool_slot),
+                self.render_d3d11_resident(
+                    *left_texture,
+                    *left_slice,
+                    *right_texture,
+                    *right_slice,
                     pos.yaw,
                     pos.pitch,
-                );
-                self.submit_render_output(render_buf)?;
-
-                let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                self.core.pack_gpu_stacked_replay_from_views(
-                    crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                        y: pool.y_view(left_pool_slot),
-                        uv: pool.uv_view(left_pool_slot),
-                    },
-                    crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                        y: pool.y_view(right_pool_slot),
-                        uv: pool.uv_view(right_pool_slot),
-                    },
-                );
+                )?;
             }
             _ => {
                 self.process_frame(frame, pos.yaw, pos.pitch)?;
@@ -406,6 +330,121 @@ impl StitchSession {
             crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
             crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
         );
+        Ok(())
+    }
+
+    /// Render a GpuResident frame: shared CUDA/Vulkan textures.
+    ///
+    /// Renders from pre-built bind groups, packs replay from shared
+    /// texture views, and releases decode slots for thread reuse.
+    #[cfg(target_os = "linux")]
+    fn render_gpu_resident(
+        &mut self,
+        left_slot: u8,
+        right_slot: u8,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
+            SessionError::ZeroCopy(
+                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
+            )
+        })?;
+        let render_buf =
+            self.core
+                .render_gpu_frame_at_pose(bind_groups, left_slot, right_slot, yaw, pitch);
+        self.submit_render_output(render_buf)?;
+
+        if let Some(ref views) = self.gpu_shared_views {
+            let ls = left_slot as usize;
+            let rs = right_slot as usize;
+            self.core.pack_gpu_stacked_replay_from_views(
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[ls * 2],
+                    uv: &views[ls * 2 + 1],
+                },
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[4 + rs * 2],
+                    uv: &views[4 + rs * 2 + 1],
+                },
+            );
+        }
+
+        if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
+            if left_tx.send(left_slot).is_err() {
+                log::error!(
+                    "Failed to release left GPU slot {left_slot} - decode thread may have died"
+                );
+            }
+            if right_tx.send(right_slot).is_err() {
+                log::error!(
+                    "Failed to release right GPU slot {right_slot} - decode thread may have died"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Render a D3d11Resident frame: stage from D3D11VA pool, render, replay.
+    ///
+    /// Lazily creates the D3D11 staging pool on first call. Stages the
+    /// decoded textures, renders from staged NV12 views, and packs
+    /// replay from the same views.
+    #[cfg(target_os = "windows")]
+    fn render_d3d11_resident(
+        &mut self,
+        left_texture: *mut std::ffi::c_void,
+        left_slice: u32,
+        right_texture: *mut std::ffi::c_void,
+        right_slice: u32,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        if self.d3d11_staging_pool.is_none() {
+            let (w, h) = self.core.pipeline().source_info();
+            match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h) {
+                Ok(pool) => {
+                    log::info!("D3D11VA staging pool created: {}x{}, 4 NV12 slots", w, h);
+                    self.d3d11_staging_pool = Some(pool);
+                }
+                Err(e) => {
+                    return Err(SessionError::ZeroCopy(format!("D3D11 staging pool: {e}")));
+                }
+            }
+        }
+        let left_pool_slot = self.frame_count as usize % 2;
+        let right_pool_slot = left_pool_slot + 2;
+
+        {
+            let pool = self.d3d11_staging_pool.as_ref().unwrap();
+            pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
+            pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
+        }
+
+        let pool = self.d3d11_staging_pool.as_ref().unwrap();
+        let render_buf = self.core.render_imported_views_at_pose(
+            pool.y_view(left_pool_slot),
+            pool.uv_view(left_pool_slot),
+            pool.y_view(right_pool_slot),
+            pool.uv_view(right_pool_slot),
+            yaw,
+            pitch,
+        );
+        self.submit_render_output(render_buf)?;
+
+        let pool = self.d3d11_staging_pool.as_ref().unwrap();
+        self.core.pack_gpu_stacked_replay_from_views(
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                y: pool.y_view(left_pool_slot),
+                uv: pool.uv_view(left_pool_slot),
+            },
+            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                y: pool.y_view(right_pool_slot),
+                uv: pool.uv_view(right_pool_slot),
+            },
+        );
+
         Ok(())
     }
 
