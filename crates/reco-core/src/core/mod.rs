@@ -501,7 +501,6 @@ impl StitchCore {
     }
 }
 
-#[cfg(test)]
 impl crate::detect::DetectionTarget for StitchCore {
     fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
         self.set_detector(detector);
