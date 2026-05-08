@@ -1066,19 +1066,7 @@ impl VideoEncoder {
             });
         }
 
-        if self.yuv_frame.format() != Pixel::YUV420P {
-            // Hardware encoders take NV12; plane-packed YUV420P is
-            // for software encoders only. Callers hitting this path
-            // have either misconfigured the encoder or need
-            // `write_nv12_frame`.
-            return Err(EncodeError::CodecNotFound(format!(
-                "write_yuv420p_planes requires YUV420P encoder, got {:?}",
-                self.yuv_frame.format(),
-            )));
-        }
-
-        // Row-by-row copy honoring ffmpeg's plane strides (which may
-        // exceed the logical row width due to SIMD alignment).
+        // Y plane: identical for both YUV420P and NV12.
         let y_stride = self.yuv_frame.stride(0);
         if y_stride == w {
             self.yuv_frame.data_mut(0)[..y_expected].copy_from_slice(y);
@@ -1091,16 +1079,33 @@ impl VideoEncoder {
             }
         }
 
-        for (plane_idx, src) in [(1usize, u), (2, v)] {
-            let stride = self.yuv_frame.stride(plane_idx);
-            if stride == chroma_w {
-                self.yuv_frame.data_mut(plane_idx)[..uv_expected].copy_from_slice(src);
-            } else {
-                for row in 0..chroma_h {
-                    let src_start = row * chroma_w;
-                    let dst_start = row * stride;
-                    self.yuv_frame.data_mut(plane_idx)[dst_start..dst_start + chroma_w]
-                        .copy_from_slice(&src[src_start..src_start + chroma_w]);
+        if self.yuv_frame.format() == Pixel::NV12 {
+            // Hardware encoders (NVENC, AMF, VT): interleave U+V
+            // into a single UV plane. ~0.3ms for 1080p.
+            let uv_stride = self.yuv_frame.stride(1);
+            let dst = self.yuv_frame.data_mut(1);
+            for row in 0..chroma_h {
+                let u_start = row * chroma_w;
+                let v_start = row * chroma_w;
+                let dst_start = row * uv_stride;
+                for col in 0..chroma_w {
+                    dst[dst_start + col * 2] = u[u_start + col];
+                    dst[dst_start + col * 2 + 1] = v[v_start + col];
+                }
+            }
+        } else {
+            // Software encoders (libx264): separate U and V planes.
+            for (plane_idx, src) in [(1usize, u), (2, v)] {
+                let stride = self.yuv_frame.stride(plane_idx);
+                if stride == chroma_w {
+                    self.yuv_frame.data_mut(plane_idx)[..uv_expected].copy_from_slice(src);
+                } else {
+                    for row in 0..chroma_h {
+                        let src_start = row * chroma_w;
+                        let dst_start = row * stride;
+                        self.yuv_frame.data_mut(plane_idx)[dst_start..dst_start + chroma_w]
+                            .copy_from_slice(&src[src_start..src_start + chroma_w]);
+                    }
                 }
             }
         }

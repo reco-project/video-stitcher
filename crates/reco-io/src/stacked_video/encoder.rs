@@ -68,13 +68,9 @@ impl Default for StackedEncoderConfig {
                 container: Container::Matroska,
                 codec: VideoCodec::H264,
                 quality: Quality::Fast,
-                // Hardware encoders (NVENC/AMF/VT) need NV12 input but
-                // the replay readback produces YUV420P planes. Until the
-                // readback outputs NV12, force libx264 which accepts
-                // YUV420P natively. TODO: NV12 readback or interleave.
-                encoder_name: Some("libx264".to_string()),
+                encoder_name: None,
                 crf: None,
-                preset: Some("ultrafast".to_string()),
+                preset: None,
                 audio_source: None,
                 // Short GOP so replay readers see recent
                 // frames within ~1 second. For Matroska the
