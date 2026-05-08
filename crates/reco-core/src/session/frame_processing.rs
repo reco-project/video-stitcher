@@ -186,6 +186,11 @@ impl StitchSession {
         let render_time = render_t0.elapsed();
 
         // ── 4. Telemetry (uniform for all paths) ───────────────────
+        // Stitch = total render time minus readback and encode, which
+        // were measured inside submit_render_output.
+        let stitch_time = render_time
+            .saturating_sub(self.last_readback_time)
+            .saturating_sub(self.last_encode_time);
         self.telemetry.record_frame(crate::telemetry::FrameTiming {
             decode: Some(decode_time),
             detection: if ran_detection {
@@ -193,7 +198,9 @@ impl StitchSession {
             } else {
                 None
             },
-            stitch: Some(render_time),
+            stitch: Some(stitch_time),
+            readback: Some(self.last_readback_time),
+            encode: Some(self.last_encode_time),
             total: Some(frame_t0.elapsed()),
             ..Default::default()
         });
@@ -463,23 +470,26 @@ impl StitchSession {
         &mut self,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
+        let readback_t0 = std::time::Instant::now();
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.core.gpu(),
             self.core.pipeline().render_target(),
             render_commands,
         )?;
+        self.last_readback_time = readback_t0.elapsed();
 
         // First two calls return None (triple-buffer warmup).
         // From the third call onward, we get data from 2 frames ago.
+        let encode_t0 = std::time::Instant::now();
         if let Some(data) = nv12_data {
             if let Some(ref encoder) = self.encoder {
                 encoder.submit(data, self.frame_count as i64)?;
             }
-            // Fan out to extra encoders (multi-output).
             for enc in &self.extra_encoders {
                 enc.submit(data, self.frame_count as i64)?;
             }
         }
+        self.last_encode_time = encode_t0.elapsed();
 
         self.frame_count += 1;
         Ok(())

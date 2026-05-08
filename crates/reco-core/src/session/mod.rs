@@ -101,6 +101,11 @@ pub struct StitchSession {
     frames_dropped: u64,
     pub(crate) event_sink: Option<Box<dyn crate::detect::pipeline_event::PipelineEventSink>>,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
+    /// Sub-timing from the last `submit_render_output` call.
+    /// Used by `process_frame_any` to split "stitch" into
+    /// render / readback / encode for accurate telemetry.
+    pub(crate) last_readback_time: std::time::Duration,
+    pub(crate) last_encode_time: std::time::Duration,
     /// Ordered pre-tracker detection filters. Empty by default; each
     /// stage transforms `detection.last_detections` in place before
     /// the trackers run. Emission of the before/after event is gated
@@ -234,6 +239,8 @@ impl StitchSession {
             frames_dropped: 0,
             event_sink: None,
             telemetry: crate::telemetry::TelemetryCollector::new(),
+            last_readback_time: std::time::Duration::ZERO,
+            last_encode_time: std::time::Duration::ZERO,
             detection_filters: Vec::new(),
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
