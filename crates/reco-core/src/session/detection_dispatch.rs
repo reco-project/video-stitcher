@@ -1,50 +1,55 @@
 //! Detection entry points for [`StitchSession`].
 //!
-//! All `detect_and_update_director_*` variants, the shared
-//! `fire_sink_and_update_director` tail, coordinate mapping, and the
-//! no-detection `update_director` path live here. These methods have the
-//! most `#[cfg]` platform branches in the session.
+//! Each `detect_and_update_director_*` variant delegates to the shared
+//! [`detect_and_update_director_with`](StitchSession::detect_and_update_director_with)
+//! skeleton, passing a closure that calls the right detection backend.
+//! The skeleton handles interval gating, coordinate mapping, and the
+//! tracker/panner chain.
 
 use super::StitchSession;
 use crate::detect::detector::Detection;
 use crate::detect::director::MappedDetection;
 use crate::projection;
+use crate::session::detection::DetectionPipeline;
 use crate::session::types::SessionError;
 use crate::source::StereoFrame;
 
 impl StitchSession {
-    /// Run detection on a stereo frame, track, map to panorama, and update the director.
+    /// Shared detection skeleton: gate by interval, run the backend,
+    /// map to panorama, drive trackers/panners.
     ///
-    /// Detection only runs every `detection_interval` frames. On skipped
-    /// frames, the last tracked objects are reused so the director still
-    /// has context.
+    /// Every `detect_and_update_director_*` variant is a one-liner
+    /// wrapper that passes a closure here. Adding a new detection
+    /// backend means writing one closure, not copying 15 lines.
+    fn detect_and_update_director_with(
+        &mut self,
+        elapsed: std::time::Duration,
+        detect_fn: impl FnOnce(&mut DetectionPipeline) -> Vec<Detection>,
+    ) -> Result<(), SessionError> {
+        let should_detect = self.detection.should_detect(self.frame_count);
+        if should_detect {
+            let detections = detect_fn(&mut self.detection);
+            self.detection.last_detections = self.map_detections(detections);
+        }
+        self.fire_sink_and_update_director(elapsed, should_detect)
+    }
+
+    /// Run detection on a CPU-resident stereo frame (YUV420P / NV12).
     pub fn detect_and_update_director(
         &mut self,
         frame: &StereoFrame,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let (width, height) = self.core.pipeline().source_info();
-            let detections = self.detection.run_detection(frame, width, height);
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
+        let (w, h) = self.core.pipeline().source_info();
+        self.detect_and_update_director_with(elapsed, |det| det.run_detection(frame, w, h))
     }
 
     /// Whether detection should run on the current frame.
-    /// Returns false if no detector is attached.
     pub fn detection_should_run(&self) -> bool {
         self.detection.has_detector() && self.detection.should_detect(self.frame_count)
     }
 
-    /// Run detection on CPU-resident RGBA frames and update the director.
-    ///
-    /// Used by the Bayer/V4L2 path. Detection runs only when
-    /// `should_detect` returns true (respects detection_interval).
-    /// On non-detection frames, the director still advances.
+    /// Run detection on CPU-resident RGBA frames.
     pub fn detect_and_update_director_rgba(
         &mut self,
         left_rgba: &[u8],
@@ -53,22 +58,12 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let detections = self
-                .detection
-                .run_detection_rgba(left_rgba, right_rgba, width, height);
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
+        self.detect_and_update_director_with(elapsed, |det| {
+            det.run_detection_rgba(left_rgba, right_rgba, width, height)
+        })
     }
 
-    /// Run detection on CUDA-resident RGBA frames and update the director.
-    ///
-    /// Zero-copy path for Bayer cameras: the RGBA data is already on
-    /// CUDA via Vulkan shared memory. No CPU readback needed.
+    /// Run detection on CUDA-resident RGBA frames (Bayer zero-copy).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn detect_and_update_director_cuda_rgba(
         &mut self,
@@ -80,27 +75,12 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let detections = self.detection.run_detection_cuda_rgba(
-                left_ptr,
-                left_pitch,
-                right_ptr,
-                right_pitch,
-                width,
-                height,
-            );
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
+        self.detect_and_update_director_with(elapsed, |det| {
+            det.run_detection_cuda_rgba(left_ptr, left_pitch, right_ptr, right_pitch, width, height)
+        })
     }
 
-    /// Detect on pre-letterboxed CUDA RGBA from NvBufSurfTransform and update director.
-    ///
-    /// The buffers are already at model size with letterbox padding applied.
-    /// Skips NPP resize - only normalize + TRT inference.
+    /// Detect on pre-letterboxed CUDA RGBA (NvBufSurfTransform output).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn detect_and_update_director_preletterboxed(
         &mut self,
@@ -110,35 +90,23 @@ impl StitchSession {
         src_height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect {
-            let detections = self.detection.run_detection_preletterboxed(
+        self.detect_and_update_director_with(elapsed, |det| {
+            det.run_detection_preletterboxed(
                 left_ptr, src_width, src_height, right_ptr, src_width, src_height,
-            );
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
+            )
+        })
     }
 
     /// Update the director without detection.
     ///
-    /// Advances the director state (e.g. sweep position) without running
-    /// object detection. Used by zero-copy paths and raw Bayer capture
-    /// where no CPU-accessible StereoFrame is available.
+    /// Advances the panner/tracker state without running object
+    /// detection. Used when the frame residency has no detection
+    /// backend (e.g. D3D11VA without CUDA).
     pub fn update_director(&mut self, elapsed: std::time::Duration) -> Result<(), SessionError> {
         self.fire_sink_and_update_director(elapsed, false)
     }
 
-    /// Run GPU-resident detection and update the director.
-    ///
-    /// Detects objects directly from CUDA device pointers (NV12 shared textures),
-    /// avoiding any GPU-to-CPU frame readback. Only the small detection
-    /// output is transferred to CPU for tracking and director updates.
-    ///
-    /// Falls back to [`update_director`](Self::update_director) if no
-    /// GPU detector is attached.
+    /// Run GPU-resident detection from CUDA NV12 shared textures.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(crate) fn detect_and_update_director_gpu(
         &mut self,
@@ -148,29 +116,14 @@ impl StitchSession {
         right_slot: u8,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect && self.detection.has_detector() {
-            let detections = self.detection.run_gpu_detection(
-                left_buf,
-                right_buf,
-                left_slot,
-                right_slot,
-                self.left_rotation,
-                self.right_rotation,
-            );
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
+        let lr = self.left_rotation;
+        let rr = self.right_rotation;
+        self.detect_and_update_director_with(elapsed, |det| {
+            det.run_gpu_detection(left_buf, right_buf, left_slot, right_slot, lr, rr)
+        })
     }
 
-    /// Run Metal-resident detection and update the director.
-    ///
-    /// Dispatches to the attached unified detector through
-    /// [`DetectorFrame::Metal`](crate::detect::detector::DetectorFrame::Metal).
-    /// Falls back to [`update_director`](Self::update_director) if no
-    /// detector is attached or the backend doesn't support Metal frames.
+    /// Run Metal-resident detection from CVPixelBuffers.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) fn detect_and_update_director_metal(
         &mut self,
@@ -180,16 +133,9 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let should_detect = self.detection.should_detect(self.frame_count);
-
-        if should_detect && self.detection.has_detector() {
-            let detections = self
-                .detection
-                .run_detection_metal(left_cvpb, right_cvpb, width, height);
-            self.detection.last_detections = self.map_detections(detections);
-        }
-
-        self.fire_sink_and_update_director(elapsed, should_detect)
+        self.detect_and_update_director_with(elapsed, |det| {
+            det.run_detection_metal(left_cvpb, right_cvpb, width, height)
+        })
     }
 
     /// Drive the tracker/panner chain after detection.
@@ -217,10 +163,6 @@ impl StitchSession {
             );
         }
 
-        // Pre-tracker detection-filter chain. Each stage mutates
-        // `last_detections` in place; with a sink attached, the
-        // before/after snapshot is emitted so a user can audit what
-        // each filter changed.
         if !self.detection_filters.is_empty() {
             let calibration = self.core.pipeline().calibration();
             let filter_ctx = crate::detect::filter::FilterContext {
@@ -249,12 +191,6 @@ impl StitchSession {
             }
         }
 
-        // Drive pose resolution via the shared panner dispatch.
-        // Runs even when the detections list is empty so trackers get
-        // their coast / loss ticks.
-        //
-        // `fresh_detection` is unused by panner decisions today -
-        // trackers manage their own freshness via detection cadence.
         let _ = fresh_detection;
         let calibration = self.core.pipeline().calibration();
         let dispatch_result = crate::detect::panner::dispatch(
@@ -282,13 +218,6 @@ impl StitchSession {
     }
 
     /// Map raw detections to panorama coordinates.
-    ///
-    /// Each detection's camera-space center is projected to panorama
-    /// yaw/pitch via [`camera_to_panorama`](projection::camera_to_panorama).
-    ///
-    /// ROI filtering (discarding detections outside the playing field) is
-    /// handled at the detector level by `reco-autocam`'s `RoiFilteredDetector`
-    /// decorators, so this method is pure coordinate mapping.
     pub(crate) fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
         let calibration = self.core.pipeline().calibration();
         let scene = &self.core.pipeline().scene;
