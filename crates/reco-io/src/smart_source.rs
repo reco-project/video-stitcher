@@ -625,6 +625,20 @@ impl FrameSource for SmartFileSource {
 
 impl Drop for SmartFileSource {
     fn drop(&mut self) {
+        // D3D11VA / Metal: dropping the pair receiver breaks the
+        // channel, causing decode threads to exit when send() fails.
+        // Without this, orphaned decode threads keep the process alive.
+        #[cfg(target_os = "windows")]
+        if let SourceMode::D3d11ZeroCopy(state) = &mut self.mode {
+            drop(std::mem::replace(
+                &mut state.pair_rx,
+                std::sync::mpsc::sync_channel(0).1,
+            ));
+            log::debug!("D3D11VA source dropped, decode threads signalled to exit");
+        }
+        // MetalZeroCopy: the Receiver is owned directly by the enum
+        // variant and drops naturally when the mode is replaced.
+
         #[cfg(target_os = "linux")]
         if let SourceMode::GpuZeroCopy(state) = &mut self.mode {
             // Graceful shutdown ordering to prevent CUDA error 700:
