@@ -1,6 +1,6 @@
 # Reco Video Stitcher
 
-**Open-source GPU-accelerated panoramic sports camera software.**
+**Open-source GPU-accelerated panoramic sports camera software. NEXT RELEASE: May 15th. Desktop App, Demos and Tutorials!**
 
 [![CI](https://github.com/reco-project/video-stitcher/actions/workflows/rust.yml/badge.svg)](https://github.com/reco-project/video-stitcher/actions)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
