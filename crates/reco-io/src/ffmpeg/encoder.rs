@@ -732,6 +732,22 @@ impl VideoEncoder {
         &self.encoder_name
     }
 
+    /// Pick the best encoder for a secondary stream (replay) that
+    /// runs concurrently with a primary encode.
+    ///
+    /// NVENC has a dedicated ASIC and benefits from hardware encode
+    /// even under concurrent stitch load. All other hardware encoders
+    /// (VideoToolbox, AMF, QSV, VAAPI) share GPU resources with the
+    /// stitch shader and benchmark slower than libx264 ultrafast
+    /// when both run simultaneously.
+    pub fn replay_encoder_name(primary_encoder: &str) -> Option<&'static str> {
+        if primary_encoder.contains("nvenc") {
+            None
+        } else {
+            Some("libx264")
+        }
+    }
+
     /// Set up audio passthrough by adding an audio stream to the output context.
     ///
     /// Called before `write_header`. Returns `None` if no audio stream found.

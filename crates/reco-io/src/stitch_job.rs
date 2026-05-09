@@ -642,6 +642,15 @@ impl StitchJob {
         session.telemetry_mut().set_encoder_name(enc_name.clone());
         session.set_encoder(Box::new(encoder), 2);
 
+        #[cfg(feature = "stacked-output")]
+        if let Some(ref mut cfg) = self.replay_recording
+            && cfg.encoder_config.inner.encoder_name.is_none()
+        {
+            cfg.encoder_config.inner.encoder_name =
+                crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
+                    .map(String::from);
+        }
+
         // Drain-and-discard frames up to start_frame.
         // Done here (before session.run) so the session's frame counter
         // and progress callback reflect the exported window, not the skip.
