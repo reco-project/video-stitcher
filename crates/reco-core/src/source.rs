@@ -209,6 +209,17 @@ pub struct YuvData {
     pub v: Vec<u8>,
 }
 
+impl YuvData {
+    /// Borrow as pipeline-ready plane references.
+    pub fn as_planes(&self) -> crate::render::planes::YuvPlanes<'_> {
+        crate::render::planes::YuvPlanes {
+            y: &self.y,
+            u: &self.u,
+            v: &self.v,
+        }
+    }
+}
+
 /// Owned NV12 plane data.
 ///
 /// Tightly packed (no stride padding):

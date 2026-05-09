@@ -834,16 +834,8 @@ impl ApplicationHandler for App {
                         ..Default::default()
                     });
 
-                let left = reco_core::render::pipeline::YuvPlanes {
-                    y: &self.current_left.y,
-                    u: &self.current_left.u,
-                    v: &self.current_left.v,
-                };
-                let right = reco_core::render::pipeline::YuvPlanes {
-                    y: &self.current_right.y,
-                    u: &self.current_right.u,
-                    v: &self.current_right.v,
-                };
+                let left = self.current_left.as_planes();
+                let right = self.current_right.as_planes();
                 // PoseControl::render_pose applies the Model 3
                 // rig_tilt yaw-pitch coupling so the horizon stays
                 // level as yaw changes. See pose_control.rs docs.

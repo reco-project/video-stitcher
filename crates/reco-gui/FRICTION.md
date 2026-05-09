@@ -11,17 +11,6 @@ reco-core and reco-io.
 (AKAZE on dense scenes, optimizer on 100+ pairs, audio PCM extraction).
 A consumer can't distinguish "making progress" from "hung."
 
-### N5. ExportOutcome::Failed loses structured StitchError variants
-
-**Impact**: Medium. The cross-thread channel flattens `StitchError`
-into `ExportOutcome::Failed(String)`. The UI can't branch on the
-variant (retry-friendly vs hard-fail). Fix: `StitchError: Clone + Send + Sync`.
-
-### N6. Calibration thread loses reco_calibrate::Error variants
-
-**Impact**: Medium. Sibling of N5. `CalibrationProgress::Failed` is
-a flat string. Users see "calibration failed" without actionable guidance.
-
 ### N7. FfmpegFileSource opens full container just to read total_frames
 
 **Impact**: Low. Two muxer opens per export (probe + real read).

@@ -35,7 +35,6 @@ use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
 use reco_core::calibration::MatchCalibration;
 use reco_core::detect::director::ViewportPosition;
-use reco_core::render::pipeline::YuvPlanes;
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
@@ -637,16 +636,8 @@ impl AppState {
         let frame = self.playback.current_frame()?;
         let bridge = self.bridge.as_ref()?;
 
-        let left = YuvPlanes {
-            y: &frame.left.y,
-            u: &frame.left.u,
-            v: &frame.left.v,
-        };
-        let right = YuvPlanes {
-            y: &frame.right.y,
-            u: &frame.right.u,
-            v: &frame.right.v,
-        };
+        let left = frame.left.as_planes();
+        let right = frame.right.as_planes();
 
         // Lens preview mode: render single camera flat
         if self.lens_preview_active {
