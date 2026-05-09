@@ -3187,22 +3187,28 @@ fn main() -> anyhow::Result<()> {
                             app.set_export_status_text("".into());
                             app.set_status_text("Export cancelled".into());
                         }
-                        ExportOutcome::Failed(msg) => {
+                        ExportOutcome::Failed(err) => {
                             app.set_export_status_text("".into());
                             app.set_status_text("Export failed".into());
-                            // Detect the empty-output sanity-check hit
-                            // (Batch G) so we can give a codec-specific
-                            // nudge instead of the raw ffmpeg error.
-                            let is_empty_output =
-                                msg.contains("encoder produced no video frames");
-                            let (title, body) = if is_empty_output {
-                                (
+                            let (title, body) = match &err {
+                                reco_io::stitch_job::StitchError::EmptyOutput { .. } => (
                                     "Export produced no video",
                                     "The selected codec may not be supported on this hardware. Try H.264 or HEVC.".to_string(),
-                                )
-                            } else {
-                                ("Export failed", msg.clone())
+                                ),
+                                reco_io::stitch_job::StitchError::Gpu(e) => (
+                                    "GPU error",
+                                    format!("{e}"),
+                                ),
+                                reco_io::stitch_job::StitchError::Calibration(e) => (
+                                    "Calibration error",
+                                    e.clone(),
+                                ),
+                                other => (
+                                    "Export failed",
+                                    format!("{other}"),
+                                ),
                             };
+                            let msg = format!("{err}");
                             if let Some(ref t) = s.telemetry {
                                 t.export_error(&msg);
                             }

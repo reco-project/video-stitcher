@@ -172,7 +172,7 @@ impl StitchResult {
 }
 
 /// Errors from [`StitchJob::run`].
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
 pub enum StitchError {
     /// Calibration file could not be loaded or parsed.

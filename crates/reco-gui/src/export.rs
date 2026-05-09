@@ -19,8 +19,8 @@ pub enum ExportOutcome {
     Ok(u64, PathBuf),
     /// Export was cancelled by the user.
     Cancelled,
-    /// Export failed with an error message.
-    Failed(String),
+    /// Export failed with the structured error.
+    Failed(reco_io::stitch_job::StitchError),
 }
 
 /// Telemetry sink that forwards snapshots to the Slint UI thread.
@@ -269,7 +269,7 @@ pub fn run_export(
             if interrupted.load(Ordering::Relaxed) {
                 ExportOutcome::Cancelled
             } else {
-                ExportOutcome::Failed(format!("{e}"))
+                ExportOutcome::Failed(e)
             }
         }
     }
