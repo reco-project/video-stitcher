@@ -388,10 +388,11 @@ unsafe fn import_d3d11_shared_handle(
 
     // Open the shared handle as a D3D12 resource.
     let d3d12_resource: ID3D12Resource = {
-        let hal_device_guard = gpu
-            .device()
-            .as_hal::<Dx12>()
-            .ok_or(D3d11InteropError::NotDx12)?;
+        let hal_device_guard = unsafe {
+            gpu.device()
+                .as_hal::<Dx12>()
+                .ok_or(D3d11InteropError::NotDx12)?
+        };
         let raw_device = hal_device_guard.raw_device();
         let mut resource: Option<ID3D12Resource> = None;
         unsafe {

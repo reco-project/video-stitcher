@@ -402,9 +402,9 @@ impl StitchSession {
     fn render_d3d11_resident(
         &mut self,
         left_texture: *mut std::ffi::c_void,
-        left_slice: u32,
+        left_slice: usize,
         right_texture: *mut std::ffi::c_void,
-        right_slice: u32,
+        right_slice: usize,
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
