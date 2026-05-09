@@ -2181,6 +2181,10 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_toggle_playback(move || {
         let mut s = state_ref.borrow_mut();
+        if s.is_exporting() {
+            log::info!("Playback toggle ignored: export in progress");
+            return;
+        }
         let new_state = s.playback.toggle();
         if let Some(app) = app_weak.upgrade() {
             app.set_playing(new_state == PlayState::Playing);
@@ -2191,6 +2195,9 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_step_forward(move || {
         let mut s = state_ref.borrow_mut();
+        if s.is_exporting() {
+            return;
+        }
         if s.playback.state() == PlayState::Playing {
             s.playback.toggle();
         }
@@ -2214,6 +2221,9 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_step_backward(move || {
         let mut s = state_ref.borrow_mut();
+        if s.is_exporting() {
+            return;
+        }
         if s.playback.state() == PlayState::Playing {
             s.playback.toggle();
         }
