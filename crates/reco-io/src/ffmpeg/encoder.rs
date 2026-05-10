@@ -696,9 +696,9 @@ impl VideoEncoder {
         ost.set_parameters(&enc);
         let mut opts =
             build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
-        if config.stream_url.is_some() && name == "libx264" {
+        if config.stream_url.is_some() {
             opts.set("bf", "0");
-            log::info!("RTMP streaming: disabled B-frames (FLV requires monotonic DTS)");
+            log::info!("RTMP streaming: disabled B-frames for {name} (FLV requires monotonic DTS)");
         }
         let encoder = enc.open_with(opts)?;
         ost.set_parameters(&encoder);
@@ -852,8 +852,9 @@ impl VideoEncoder {
         // Pre-write one frame of silent audio so YouTube sees audio
         // before the first video packet arrives. RTMP ingest servers
         // expect interleaved A/V from the start.
+        let one_frame_duration = ffmpeg::Rational(fps.1, fps.0);
         let preroll_pts =
-            unsafe { ffmpeg::sys::av_rescale_q(1, fps.into(), video_time_base.into()) };
+            unsafe { ffmpeg::sys::av_rescale_q(1, one_frame_duration.into(), video_time_base.into()) };
         if let Err(e) = silent_audio.write_up_to(&mut octx, preroll_pts, video_time_base) {
             log::warn!("Stream audio preroll failed: {e}");
         }
