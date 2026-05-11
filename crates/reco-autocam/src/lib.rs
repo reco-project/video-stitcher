@@ -305,7 +305,10 @@ pub fn setup_autocam(
     }
 
     // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
-    #[cfg(all(feature = "ort", any(target_os = "linux", target_os = "windows")))]
+    // Linux only: OrtGpuDetector accepts DetectorFrame::Cuda (CUDA NV12 pointers from V4L2/VAAPI).
+    // On Windows, D3D11VA zero-copy produces WgpuNv12 frames instead — use the wgpu preprocessing
+    // path below which wraps CpuYoloDetector (still gets TensorRT EP for inference).
+    #[cfg(all(feature = "ort", target_os = "linux"))]
     if !detection_active && use_zero_copy {
         match OrtGpuDetector::try_new(
             model_path,
