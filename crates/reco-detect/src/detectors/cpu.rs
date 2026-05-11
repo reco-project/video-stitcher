@@ -280,6 +280,64 @@ impl CpuYoloDetector {
 
         Ok(detections)
     }
+
+    fn detect_preprocessed(
+        &mut self,
+        camera: CameraId,
+        data: &[f32],
+        input_size: u32,
+        src_width: u32,
+        src_height: u32,
+    ) -> Result<Vec<Detection>, DetectorError> {
+        reco_core::profile_scope!("yolo_detect_preprocessed");
+
+        let sz = input_size as usize;
+        let expected = 3 * sz * sz;
+        if data.len() != expected {
+            return Err(DetectorError::InferenceFailed(format!(
+                "PreprocessedChw: expected {expected} floats, got {}",
+                data.len()
+            )));
+        }
+
+        let input_tensor = TensorRef::from_array_view(([1, 3, sz, sz], data))
+            .map_err(|e| DetectorError::InferenceFailed(format!("tensor build: {e}")))?;
+
+        let outputs = {
+            reco_core::profile_scope!("yolo_inference");
+            self.session
+                .run(ort::inputs![input_tensor])
+                .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?
+        };
+
+        let (shape, slice) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
+        let n = shape[1] as usize;
+
+        // Recompute letterbox params to match the preprocessor's layout
+        let fw = src_width as f32;
+        let fh = src_height as f32;
+        let is = input_size as f32;
+        let scale = (is / fw).min(is / fh);
+        let pad_x = (is - (fw * scale).round()) / 2.0;
+        let pad_y = (is - (fh * scale).round()) / 2.0;
+
+        let detections = postprocess(
+            slice,
+            n,
+            camera,
+            self.confidence_threshold,
+            scale,
+            pad_x,
+            pad_y,
+            src_width,
+            src_height,
+        );
+        drop(outputs);
+
+        Ok(detections)
+    }
 }
 
 impl UnifiedDetector for CpuYoloDetector {
@@ -301,6 +359,12 @@ impl UnifiedDetector for CpuYoloDetector {
         // silently producing zero detections.
         match frame {
             DetectorFrame::Cpu(raw) => self.detect_raw(camera, raw),
+            DetectorFrame::PreprocessedChw {
+                data,
+                input_size,
+                src_width,
+                src_height,
+            } => self.detect_preprocessed(camera, data, *input_size, *src_width, *src_height),
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }

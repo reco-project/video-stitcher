@@ -5492,6 +5492,7 @@ name = "reco-detect"
 version = "0.5.0"
 dependencies = [
  "block2 0.6.2",
+ "bytemuck",
  "cc",
  "dirs",
  "foreign-types 0.5.0",
@@ -5506,6 +5507,7 @@ dependencies = [
  "reco-core",
  "thiserror 2.0.18",
  "tracing",
+ "wgpu",
 ]
 
 [[package]]

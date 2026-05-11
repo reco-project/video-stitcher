@@ -193,6 +193,22 @@ pub enum DetectorFrame<'a> {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     Cuda(GpuNv12Frame),
 
+    /// Pre-processed float32 CHW tensor at model input resolution.
+    ///
+    /// Produced by `WgpuPreprocessor`: the NV12→RGB conversion, resize,
+    /// letterbox, and normalize are done on the GPU. The detector skips
+    /// all preprocessing and runs inference directly on this data.
+    PreprocessedChw {
+        /// Float32 CHW data, `3 * input_size * input_size` elements.
+        data: &'a [f32],
+        /// Model input size (square dimension).
+        input_size: u32,
+        /// Original source frame width (for detection coordinate mapping).
+        src_width: u32,
+        /// Original source frame height (for detection coordinate mapping).
+        src_height: u32,
+    },
+
     /// CPU-resident packed RGBA frame (e.g. Bayer demosaic readback).
     Rgba {
         /// Packed RGBA bytes, `width * height * 4` length.
@@ -258,6 +274,7 @@ impl DetectorFrame<'_> {
             Self::CudaRgbaLetterboxed { .. } => "CudaRgbaLetterboxed",
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             Self::Metal { .. } => "Metal",
+            Self::PreprocessedChw { .. } => "PreprocessedChw",
         }
     }
 }

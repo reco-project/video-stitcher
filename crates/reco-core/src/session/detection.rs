@@ -454,6 +454,42 @@ impl DetectionPipeline {
         }
         detections
     }
+
+    /// Run detection from pre-processed float32 CHW tensors.
+    ///
+    /// Used by the wgpu preprocessing path where the compute shader
+    /// already produced the model-ready tensor on the GPU.
+    #[allow(dead_code)]
+    pub(super) fn run_detection_preprocessed(
+        &mut self,
+        left_data: &[f32],
+        right_data: &[f32],
+        input_size: u32,
+        src_width: u32,
+        src_height: u32,
+    ) -> Vec<Detection> {
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+        crate::profile_scope!("detect_preprocessed");
+
+        let mut detections = Vec::new();
+        for (camera, data) in [(CameraId::Left, left_data), (CameraId::Right, right_data)] {
+            let frame = DetectorFrame::PreprocessedChw {
+                data,
+                input_size,
+                src_width,
+                src_height,
+            };
+            match detector.detect(camera, &frame) {
+                Ok(v) => detections.extend(v),
+                Err(e) => {
+                    log::warn!("detector '{}' {camera:?}: {e}", detector.name());
+                }
+            }
+        }
+        detections
+    }
 }
 
 #[cfg(test)]
