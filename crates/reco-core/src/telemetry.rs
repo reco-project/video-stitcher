@@ -290,9 +290,11 @@ impl TelemetryCollector {
         encode: f32,
         detection: f32,
     ) -> Option<PipelineStage> {
+        // Upload (staging copies) is a sub-step of decode for zero-copy paths.
+        // Combine them so the bottleneck correctly reports "decode" when
+        // the hardware decoder is the limiting factor.
         let stages = [
-            (PipelineStage::Decode, decode),
-            (PipelineStage::Upload, upload),
+            (PipelineStage::Decode, decode + upload),
             (PipelineStage::Stitch, stitch),
             (PipelineStage::Readback, readback),
             (PipelineStage::Encode, encode),
@@ -373,8 +375,16 @@ impl std::fmt::Display for SessionSummary {
         }
         writeln!(f)?;
         writeln!(f, "Per-frame timing (avg / p99):")?;
-        writeln!(f, "  Decode:    {:.1} ms", s.avg_decode_ms)?;
-        writeln!(f, "  Upload:    {:.1} ms", s.avg_upload_ms)?;
+        let total_decode = s.avg_decode_ms + s.avg_upload_ms;
+        if s.avg_upload_ms > 0.05 {
+            writeln!(
+                f,
+                "  Decode:    {:.1} ms (wait {:.1} + staging {:.1})",
+                total_decode, s.avg_decode_ms, s.avg_upload_ms
+            )?;
+        } else {
+            writeln!(f, "  Decode:    {:.1} ms", total_decode)?;
+        }
         writeln!(f, "  Stitch:    {:.1} ms", s.avg_stitch_ms)?;
         writeln!(f, "  Readback:  {:.1} ms", s.avg_readback_ms)?;
         writeln!(f, "  Encode:    {:.1} ms", s.avg_encode_ms)?;

@@ -9,30 +9,31 @@
 //! ```text
 //! D3D11VA decode pool (FFmpeg-owned)
 //!        |  CopySubresourceRegion (~0.2ms GPU-GPU)
-//! D3D11 staging texture (SHARED_NTHANDLE)
+//! D3D11 staging texture (SHARED_NTHANDLE, on FFmpeg's D3D11 device)
 //!        |  NT handle -> DX12 OpenSharedHandle
 //! wgpu NV12 texture -> Plane0 (R8Unorm Y) + Plane1 (Rg8Unorm UV)
 //!        |
 //! stitch render pass
 //! ```
+//!
+//! The staging pool is initialized lazily on the first `stage_frame` call.
+//! It extracts the D3D11 device from the source texture via `GetDevice`,
+//! ensuring staging textures live on the same device as FFmpeg's decode
+//! pool. This avoids cross-device copies which hang on NVIDIA GPUs.
 
 use crate::gpu::GpuContext;
 use std::ffi::c_void;
 use thiserror::Error;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE, S_OK};
-use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
+use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, S_OK};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
-    D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
-    D3D11_USAGE_DEFAULT, D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Query,
+    D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
+    D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11DeviceContext, ID3D11Multithread, ID3D11Query,
     ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
-use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIResource1,
-};
+use windows::Win32::Graphics::Dxgi::IDXGIResource1;
 use windows::core::Interface;
 
 /// Errors from D3D11VA interop.
@@ -66,74 +67,89 @@ impl From<D3d11InteropError> for crate::session::types::SessionError {
     }
 }
 
-/// Double-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
+/// Lazily-initialized D3D11 staging resources.
 ///
-/// Pre-allocates 4 staging textures (2 per camera, ping-pong) with shared
-/// handles. Each staging texture is imported into wgpu as an NV12 texture
-/// with pre-built Y and UV plane views.
-pub struct D3d11StagingPool {
-    _device: ID3D11Device,
+/// Created on the first `stage_frame` call using the device obtained from
+/// the source texture, so all D3D11 operations stay on a single device.
+struct StagingState {
     context: ID3D11DeviceContext,
     staging: [ID3D11Texture2D; 4],
     _wgpu_textures: [wgpu::Texture; 4],
     y_views: [wgpu::TextureView; 4],
     uv_views: [wgpu::TextureView; 4],
     event_query: ID3D11Query,
+}
+
+/// Double-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
+///
+/// Allocates 4 staging textures (2 per camera, ping-pong) with shared
+/// handles. Each staging texture is imported into wgpu as an NV12 texture
+/// with pre-built Y and UV plane views.
+///
+/// The pool is constructed lightweight; the D3D11 device and staging
+/// textures are created lazily on the first `stage_frame` call by
+/// extracting FFmpeg's own device from the source texture. This ensures
+/// `CopySubresourceRegion` never crosses device boundaries, which would
+/// hang on NVIDIA hardware.
+pub struct D3d11StagingPool {
+    /// wgpu device, needed for DX12 shared handle import during lazy init.
+    wgpu_device: wgpu::Device,
     width: u32,
     height: u32,
+    /// Lazily initialized on first `stage_frame` call.
+    state: Option<StagingState>,
 }
 
 impl D3d11StagingPool {
-    /// Create a staging pool on the same physical adapter as wgpu's DX12 device.
+    /// Create a staging pool that will bind to FFmpeg's D3D11 device lazily.
+    ///
+    /// This only validates the wgpu backend and stores the dimensions.
+    /// The actual D3D11 device, staging textures, and wgpu imports are
+    /// created on the first `stage_frame` call.
     pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, D3d11InteropError> {
-        use wgpu::hal::api::Dx12;
-
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
         }
 
-        // Find the DXGI adapter matching wgpu's selected GPU.
-        //
-        // wgpu's adapter_info.device is a PCI device ID (not a LUID),
-        // so we match by adapter description (name) instead.
-        let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
-        let adapter = find_adapter_by_name(&factory, &gpu.adapter_info.name)?;
-        let adapter_desc = unsafe { adapter.GetDesc1()? };
-        log::info!(
-            "D3D11 interop: matched adapter '{}' (LUID {}:{})",
-            String::from_utf16_lossy(
-                &adapter_desc
-                    .Description
-                    .iter()
-                    .take_while(|c| **c != 0)
-                    .copied()
-                    .collect::<Vec<_>>()
-            ),
-            adapter_desc.AdapterLuid.HighPart,
-            adapter_desc.AdapterLuid.LowPart,
-        );
+        Ok(Self {
+            wgpu_device: gpu.device().clone(),
+            width,
+            height,
+            state: None,
+        })
+    }
 
-        // Create D3D11 device on that adapter.
-        let mut d3d11_device: Option<ID3D11Device> = None;
-        let mut d3d11_context: Option<ID3D11DeviceContext> = None;
-        unsafe {
-            D3D11CreateDevice(
-                &adapter,
-                D3D_DRIVER_TYPE_UNKNOWN,
-                HMODULE::default(),
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                None,
-                D3D11_SDK_VERSION,
-                Some(&mut d3d11_device),
-                None,
-                Some(&mut d3d11_context),
-            )?;
+    /// Initialize staging resources using FFmpeg's D3D11 device.
+    ///
+    /// Extracts the device from `src_texture` via `ID3D11DeviceChild::GetDevice`,
+    /// then creates staging textures and wgpu imports on that device.
+    fn ensure_initialized(
+        &mut self,
+        src_texture: &ID3D11Texture2D,
+    ) -> Result<(), D3d11InteropError> {
+        if self.state.is_some() {
+            return Ok(());
         }
-        let device = d3d11_device
-            .ok_or_else(|| D3d11InteropError::D3d11("D3D11CreateDevice returned None".into()))?;
-        let context = d3d11_context.ok_or_else(|| {
-            D3d11InteropError::D3d11("D3D11CreateDevice returned no context".into())
-        })?;
+
+        // Get FFmpeg's D3D11 device from the source texture.
+        //
+        // ID3D11Texture2D derefs to ID3D11Resource derefs to ID3D11DeviceChild,
+        // so GetDevice is callable directly. It returns the device that created
+        // this texture, which is FFmpeg's D3D11VA device. Creating staging
+        // textures on this same device ensures CopySubresourceRegion stays
+        // within one device.
+        let device = unsafe { src_texture.GetDevice()? };
+
+        // Enable multithread protection on FFmpeg's device. FFmpeg's decode
+        // threads and our staging thread share the immediate context. D3D11
+        // immediate contexts are single-threaded by default; this adds an
+        // internal critical section that serializes access.
+        let multithread: ID3D11Multithread = device.cast()?;
+        unsafe { multithread.SetMultithreadProtected(true) };
+
+        let context = unsafe { device.GetImmediateContext()? };
+
+        log::info!("D3D11VA staging pool: using FFmpeg's device with multithread protection");
 
         // Create event query for staging copy synchronization.
         let query_desc = D3D11_QUERY_DESC {
@@ -146,10 +162,10 @@ impl D3d11StagingPool {
             query.ok_or_else(|| D3d11InteropError::D3d11("CreateQuery returned None".into()))?
         };
 
-        // Create 4 NV12 staging textures with shared handles.
+        // Create 4 NV12 staging textures with shared handles on FFmpeg's device.
         let desc = D3D11_TEXTURE2D_DESC {
-            Width: width,
-            Height: height,
+            Width: self.width,
+            Height: self.height,
             MipLevels: 1,
             ArraySize: 1,
             Format: DXGI_FORMAT_NV12,
@@ -182,7 +198,9 @@ impl D3d11StagingPool {
                 unsafe { dxgi_resource.CreateSharedHandle(None, GENERIC_ALL.0, None)? };
 
             // Import into wgpu via DX12 HAL.
-            let wgpu_texture = unsafe { import_d3d11_shared_handle(gpu, handle, width, height)? };
+            let wgpu_texture = unsafe {
+                import_d3d11_shared_handle(&self.wgpu_device, handle, self.width, self.height)?
+            };
 
             // Close the NT handle (DX12 has its own reference now).
             unsafe {
@@ -220,30 +238,33 @@ impl D3d11StagingPool {
         }
 
         log::info!(
-            "D3D11VA staging pool ready: {}x{} NV12, 4 slots",
-            width,
-            height
+            "D3D11VA staging pool ready: {}x{} NV12, 4 slots (same-device)",
+            self.width,
+            self.height
         );
 
-        Ok(Self {
-            _device: device,
+        self.state = Some(StagingState {
             context,
             staging: staging_textures.try_into().unwrap(),
             _wgpu_textures: wgpu_textures.try_into().unwrap(),
             y_views: y_views.try_into().unwrap(),
             uv_views: uv_views.try_into().unwrap(),
             event_query,
-            width,
-            height,
-        })
+        });
+
+        Ok(())
     }
 
     /// Copy a D3D11VA decoded frame from the decode pool to a staging slot.
     ///
+    /// On the first call, extracts the D3D11 device from the source texture
+    /// and creates all staging resources on that device. Subsequent calls
+    /// reuse the initialized state.
+    ///
     /// Performs `CopySubresourceRegion` (GPU-to-GPU, ~0.2ms) then waits
     /// for completion via an event query before returning.
     pub fn stage_frame(
-        &self,
+        &mut self,
         src_texture: *mut c_void,
         array_slice: usize,
         slot: usize,
@@ -264,37 +285,32 @@ impl D3d11StagingPool {
             // to get our own reference, then release at scope end.
             let unknown: windows::core::IUnknown = windows::core::IUnknown::from_raw(src_texture);
             let src: ID3D11Texture2D = unknown.cast()?;
-            // Re-leak the original pointer so FFmpeg keeps its reference.
             std::mem::forget(unknown);
 
-            // D3D11CalcSubresource(MipSlice=0, ArraySlice, MipLevels=1) = ArraySlice
+            self.ensure_initialized(&src)?;
+            let state = self.state.as_ref().unwrap();
+
             let src_subresource = array_slice as u32;
 
-            self.context.CopySubresourceRegion(
-                &self.staging[slot],
-                0, // dst subresource
+            state.context.CopySubresourceRegion(
+                &state.staging[slot],
                 0,
                 0,
-                0, // dst x, y, z
+                0,
+                0,
                 &src,
                 src_subresource,
-                None, // full region
+                None,
             );
 
-            // Flush and wait for the copy to complete.
-            //
-            // The windows 0.62 GetData wrapper maps both S_OK and S_FALSE
-            // to Ok(()), losing the "not ready yet" distinction. Raw vtable
-            // call preserves the HRESULT so we can poll correctly and bail
-            // on real errors instead of spinning forever.
-            self.context.Flush();
-            self.context.End(&self.event_query);
+            state.context.Flush();
+            state.context.End(&state.event_query);
             let mut spins: u32 = 0;
             loop {
                 let mut done: i32 = 0;
-                let hr = (Interface::vtable(&self.context).GetData)(
-                    Interface::as_raw(&self.context),
-                    Interface::as_raw(&self.event_query),
+                let hr = (Interface::vtable(&state.context).GetData)(
+                    Interface::as_raw(&state.context),
+                    Interface::as_raw(&state.event_query),
                     &mut done as *mut i32 as *mut c_void,
                     std::mem::size_of::<i32>() as u32,
                     0,
@@ -323,13 +339,27 @@ impl D3d11StagingPool {
     }
 
     /// Y plane view (R8Unorm, full resolution) for the given slot.
+    ///
+    /// # Panics
+    /// Panics if called before the first `stage_frame` (pool not initialized).
     pub fn y_view(&self, slot: usize) -> &wgpu::TextureView {
-        &self.y_views[slot]
+        &self
+            .state
+            .as_ref()
+            .expect("staging pool not initialized")
+            .y_views[slot]
     }
 
     /// UV plane view (Rg8Unorm, half resolution) for the given slot.
+    ///
+    /// # Panics
+    /// Panics if called before the first `stage_frame` (pool not initialized).
     pub fn uv_view(&self, slot: usize) -> &wgpu::TextureView {
-        &self.uv_views[slot]
+        &self
+            .state
+            .as_ref()
+            .expect("staging pool not initialized")
+            .uv_views[slot]
     }
 
     /// Staging texture width.
@@ -343,43 +373,12 @@ impl D3d11StagingPool {
     }
 }
 
-/// Find a DXGI adapter whose description matches the wgpu adapter name.
-fn find_adapter_by_name(
-    factory: &IDXGIFactory1,
-    name: &str,
-) -> Result<IDXGIAdapter1, D3d11InteropError> {
-    let mut i = 0u32;
-    loop {
-        let adapter: IDXGIAdapter1 = match unsafe { factory.EnumAdapters1(i) } {
-            Ok(a) => a,
-            Err(_) => break,
-        };
-        let desc = unsafe { adapter.GetDesc1()? };
-        let adapter_name = String::from_utf16_lossy(
-            &desc
-                .Description
-                .iter()
-                .take_while(|c| **c != 0)
-                .copied()
-                .collect::<Vec<_>>(),
-        );
-        if adapter_name == name {
-            return Ok(adapter);
-        }
-        i += 1;
-    }
-
-    Err(D3d11InteropError::Dxgi(format!(
-        "no DXGI adapter matching '{name}'"
-    )))
-}
-
 /// Import a D3D11 shared handle into wgpu as an NV12 texture.
 ///
 /// # Safety
 /// `handle` must be a valid NT shared handle from `CreateSharedHandle`.
 unsafe fn import_d3d11_shared_handle(
-    gpu: &GpuContext,
+    device: &wgpu::Device,
     handle: HANDLE,
     width: u32,
     height: u32,
@@ -388,11 +387,8 @@ unsafe fn import_d3d11_shared_handle(
 
     // Open the shared handle as a D3D12 resource.
     let d3d12_resource: ID3D12Resource = {
-        let hal_device_guard = unsafe {
-            gpu.device()
-                .as_hal::<Dx12>()
-                .ok_or(D3d11InteropError::NotDx12)?
-        };
+        let hal_device_guard =
+            unsafe { device.as_hal::<Dx12>().ok_or(D3d11InteropError::NotDx12)? };
         let raw_device = hal_device_guard.raw_device();
         let mut resource: Option<ID3D12Resource> = None;
         unsafe {
@@ -433,10 +429,7 @@ unsafe fn import_d3d11_shared_handle(
     };
 
     // Wrap the HAL texture into a wgpu::Texture.
-    let texture = unsafe {
-        gpu.device()
-            .create_texture_from_hal::<Dx12>(hal_texture, &desc)
-    };
+    let texture = unsafe { device.create_texture_from_hal::<Dx12>(hal_texture, &desc) };
 
     Ok(texture)
 }

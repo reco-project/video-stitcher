@@ -299,11 +299,12 @@ pub fn spawn_vt_decode_pair(
     pair_rx
 }
 
-/// Spawn a D3D11VA decode thread that sends raw texture pointers + slice indices.
+/// Spawn a D3D11VA decode thread using a shared hw device.
 #[cfg(target_os = "windows")]
-pub fn spawn_d3d11_decode_thread(
+fn spawn_d3d11_decode_thread_shared(
     input: crate::stitch_job::InputPath,
     label: &'static str,
+    shared_device: crate::ffmpeg::decoder::SharedHwDevice,
 ) -> std::sync::mpsc::Receiver<crate::ffmpeg::decoder::D3d11Frame> {
     use crate::ffmpeg::decoder::{D3d11Frame, VideoDecoder};
 
@@ -312,7 +313,8 @@ pub fn spawn_d3d11_decode_thread(
     std::thread::Builder::new()
         .name(format!("d3d11_decode_{label}"))
         .spawn(move || {
-            let mut dec = match VideoDecoder::open_input(&input) {
+            let mut dec = match VideoDecoder::open_input_with_shared_device(&input, &shared_device)
+            {
                 Ok(d) => d,
                 Err(e) => {
                     log::error!("Failed to open {label} video: {e}");
@@ -343,6 +345,10 @@ pub fn spawn_d3d11_decode_thread(
 
 /// Spawn paired D3D11VA decode threads and return the pair receiver.
 ///
+/// Creates a single shared D3D11VA device so both decoders produce textures
+/// on the same `ID3D11Device`. This is required for `CopySubresourceRegion`
+/// in the staging pool.
+///
 /// `sync_offset` applies temporal alignment: positive skips right frames,
 /// negative skips left frames.
 #[cfg(target_os = "windows")]
@@ -356,8 +362,12 @@ pub fn spawn_d3d11_decode_pair(
 )> {
     use crate::ffmpeg::decoder::D3d11Frame;
 
-    let left_rx = spawn_d3d11_decode_thread(left.clone(), "left");
-    let right_rx = spawn_d3d11_decode_thread(right.clone(), "right");
+    let shared_device = crate::ffmpeg::decoder::create_shared_hw_device()
+        .expect("D3D11VA hw device creation failed");
+
+    let left_rx = spawn_d3d11_decode_thread_shared(left.clone(), "left", shared_device.new_ref());
+    let right_rx =
+        spawn_d3d11_decode_thread_shared(right.clone(), "right", shared_device.new_ref());
 
     let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<(D3d11Frame, D3d11Frame)>(4);
     std::thread::Builder::new()

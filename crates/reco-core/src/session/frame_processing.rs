@@ -154,6 +154,8 @@ impl StitchSession {
         let pos = self.director_position();
 
         // ── 3. Render + replay ─────────────────────────────────────
+        #[allow(unused_mut)]
+        let mut upload_time = std::time::Duration::ZERO;
         let render_t0 = std::time::Instant::now();
         match frame {
             #[cfg(target_os = "linux")]
@@ -170,14 +172,20 @@ impl StitchSession {
                 right_texture,
                 right_slice,
             } => {
-                self.render_d3d11_resident(
+                let staging_t0 = std::time::Instant::now();
+                let first = self.stage_d3d11_frames(
                     *left_texture,
                     *left_slice,
                     *right_texture,
                     *right_slice,
-                    pos.yaw,
-                    pos.pitch,
                 )?;
+                upload_time = staging_t0.elapsed();
+                if first {
+                    // First D3D11VA frame has cross-API initialization artifacts.
+                    // Skip rendering it - the next frame will be the first output.
+                    return Ok(());
+                }
+                self.render_d3d11_staged(pos.yaw, pos.pitch)?;
             }
             _ => {
                 self.process_frame(frame, pos.yaw, pos.pitch)?;
@@ -186,13 +194,13 @@ impl StitchSession {
         let render_time = render_t0.elapsed();
 
         // ── 4. Telemetry (uniform for all paths) ───────────────────
-        // Stitch = total render time minus readback and encode, which
-        // were measured inside submit_render_output.
         let stitch_time = render_time
+            .saturating_sub(upload_time)
             .saturating_sub(self.last_readback_time)
             .saturating_sub(self.last_encode_time);
         self.telemetry.record_frame(crate::telemetry::FrameTiming {
             decode: Some(decode_time),
+            upload: Some(upload_time),
             detection: if ran_detection {
                 Some(detect_time)
             } else {
@@ -393,22 +401,22 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Render a D3d11Resident frame: stage from D3D11VA pool, render, replay.
+    /// Stage D3D11VA decoded frames into the shared staging pool.
     ///
-    /// Lazily creates the D3D11 staging pool on first call. Stages the
-    /// decoded textures, renders from staged NV12 views, and packs
-    /// replay from the same views.
+    /// Lazily creates the pool on first call. Performs `CopySubresourceRegion`
+    /// from FFmpeg's decode textures to our SHARED_NTHANDLE staging textures.
+    /// Returns `true` on the first call (pool just created) to signal
+    /// that this frame should be skipped (cross-API warmup).
     #[cfg(target_os = "windows")]
-    fn render_d3d11_resident(
+    fn stage_d3d11_frames(
         &mut self,
         left_texture: *mut std::ffi::c_void,
         left_slice: usize,
         right_texture: *mut std::ffi::c_void,
         right_slice: usize,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<(), SessionError> {
-        if self.d3d11_staging_pool.is_none() {
+    ) -> Result<bool, SessionError> {
+        let first_frame = self.d3d11_staging_pool.is_none();
+        if first_frame {
             let (w, h) = self.core.pipeline().source_info();
             match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h) {
                 Ok(pool) => {
@@ -423,11 +431,17 @@ impl StitchSession {
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
 
-        {
-            let pool = self.d3d11_staging_pool.as_ref().unwrap();
-            pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
-            pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
-        }
+        let pool = self.d3d11_staging_pool.as_mut().unwrap();
+        pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
+        pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
+        Ok(first_frame)
+    }
+
+    /// Render from already-staged D3D11VA views.
+    #[cfg(target_os = "windows")]
+    fn render_d3d11_staged(&mut self, yaw: f32, pitch: f32) -> Result<(), SessionError> {
+        let left_pool_slot = self.frame_count as usize % 2;
+        let right_pool_slot = left_pool_slot + 2;
 
         let pool = self.d3d11_staging_pool.as_ref().unwrap();
         let render_buf = self.core.render_imported_views_at_pose(

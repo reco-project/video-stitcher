@@ -24,7 +24,7 @@ use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame};
 /// GPU-aware stereo file source that auto-selects the optimal decode path.
 ///
 /// Probes the input files at construction and selects the best available
-/// backend: CUDA/Vulkan zero-copy on Linux/Windows, VideoToolbox/Metal
+/// backend: CUDA/Vulkan zero-copy on Linux, D3D11VA/DX12 on Windows, VideoToolbox/Metal
 /// on macOS, or CPU software decode as a fallback. The selection is
 /// transparent to the consumer.
 ///

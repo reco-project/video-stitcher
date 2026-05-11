@@ -115,8 +115,12 @@ pub struct VtFrame {
 ///
 /// `texture` is the pool's `ID3D11Texture2D` (same pointer for all frames)
 /// and `array_slice` selects which slice within the pool holds this frame.
-/// The caller must stage-copy the frame before the next decode call, as
-/// the decoder may reuse the slice.
+/// Holds a D3D11VA decoded frame with a retained AVFrame reference.
+///
+/// The `_frame_ref` keeps the underlying texture slice pinned in FFmpeg's
+/// decode pool until this struct is dropped. Without it, FFmpeg recycles
+/// the slice and the decoder writes new frame data into it before the
+/// staging copy reads the original.
 #[cfg(target_os = "windows")]
 pub struct D3d11Frame {
     /// Pointer to the D3D11VA decode pool texture (`ID3D11Texture2D*`).
@@ -129,8 +133,23 @@ pub struct D3d11Frame {
     pub height: u32,
     /// Presentation timestamp in microseconds.
     pub timestamp_us: i64,
+    /// Cloned AVFrame that pins the texture slice in the decode pool.
+    _frame_ref: *mut ffi::AVFrame,
 }
 
+#[cfg(target_os = "windows")]
+impl Drop for D3d11Frame {
+    fn drop(&mut self) {
+        if !self._frame_ref.is_null() {
+            unsafe {
+                ffi::av_frame_free(&mut self._frame_ref);
+            }
+        }
+    }
+}
+
+// SAFETY: The AVFrame and its texture slice are refcounted. The D3d11Frame
+// owns an independent reference that keeps the slice alive across threads.
 #[cfg(target_os = "windows")]
 unsafe impl Send for D3d11Frame {}
 
@@ -243,7 +262,39 @@ impl VideoDecoder {
         }
     }
 
+    /// Open with a pre-created shared hw device.
+    ///
+    /// Both decoders in a stereo pair must share the same device so D3D11VA
+    /// textures are on a single device (required by `CopySubresourceRegion`).
+    pub fn open_input_with_shared_device(
+        input_path: &crate::stitch_job::InputPath,
+        shared: &SharedHwDevice,
+    ) -> Result<Self, DecodeError> {
+        crate::init();
+        let ictx = match input_path {
+            crate::stitch_job::InputPath::Single(p) => input(p)?,
+            crate::stitch_job::InputPath::Chained(_) => {
+                return Self::open_input(input_path);
+            }
+        };
+        Self::from_input_context_with_shared(ictx, shared)
+    }
+
     fn from_input_context(ictx: ffmpeg::format::context::Input) -> Result<Self, DecodeError> {
+        Self::from_input_context_inner(ictx, None)
+    }
+
+    fn from_input_context_with_shared(
+        ictx: ffmpeg::format::context::Input,
+        shared: &SharedHwDevice,
+    ) -> Result<Self, DecodeError> {
+        Self::from_input_context_inner(ictx, Some(shared))
+    }
+
+    fn from_input_context_inner(
+        ictx: ffmpeg::format::context::Input,
+        shared_device: Option<&SharedHwDevice>,
+    ) -> Result<Self, DecodeError> {
         let stream = ictx
             .streams()
             .best(Type::Video)
@@ -252,17 +303,15 @@ impl VideoDecoder {
         let time_base = stream.time_base();
 
         let mut context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
-        // Enable multithreaded decode (frame-level threading).
-        // count(0) = auto-detect optimal thread count.
-        // kind(Frame) = decode multiple frames in parallel.
         let mut threading = ffmpeg::threading::Config::kind(ffmpeg::threading::Type::Frame);
         threading.count = 0;
         context.set_threading(threading);
 
-        // Try hardware acceleration (unless disabled via env var)
         let (backend, hw_device_ref) = if std::env::var("RECO_NO_HWACCEL").is_ok() {
             log::info!("Hardware acceleration disabled via RECO_NO_HWACCEL");
             (DecodeBackend::Software, ptr::null_mut())
+        } else if let Some(shared) = shared_device {
+            attach_shared_hw_device(&mut context, shared)
         } else {
             try_hwaccel(&mut context)
         };
@@ -757,13 +806,14 @@ impl VideoDecoder {
 
     /// Extract the D3D11VA texture pointer and array slice from a decoded frame.
     ///
-    /// Per FFmpeg's D3D11VA convention, `frame->data[0]` is the
-    /// `ID3D11Texture2D*` (the shared pool texture) and `frame->data[1]`
-    /// is the array slice index (as `intptr_t`).
+    /// Clones the AVFrame so the texture slice stays pinned in the decode
+    /// pool until the `D3d11Frame` is dropped (after staging).
     #[cfg(target_os = "windows")]
     fn extract_d3d11_frame(&self) -> D3d11Frame {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
         let timestamp_us = self.pts_to_us(raw.pts);
+        let frame_ref = unsafe { ffi::av_frame_clone(self.decoded_frame.as_ptr()) };
+        assert!(!frame_ref.is_null(), "av_frame_clone failed (OOM?)");
 
         D3d11Frame {
             texture: raw.data[0] as *mut std::ffi::c_void,
@@ -771,6 +821,7 @@ impl VideoDecoder {
             width: self.width,
             height: self.height,
             timestamp_us,
+            _frame_ref: frame_ref,
         }
     }
 
@@ -938,28 +989,99 @@ fn is_hw_frame(frame: &VideoFrame) -> bool {
     unsafe { !(*frame.as_ptr()).hw_frames_ctx.is_null() }
 }
 
-/// Try to enable hardware-accelerated decoding on the codec context.
+/// Pre-created hw device that can be shared across multiple decoders.
 ///
-/// Attempts CUDA (NVDEC) first, then VAAPI. Returns the active backend
-/// and the hw device reference (must be kept alive and freed on drop).
-fn try_hwaccel(
+/// D3D11VA textures are device-bound: `CopySubresourceRegion` requires source
+/// and destination on the same device. When two decoders each create their own
+/// device, the staging pool can only copy from one. Sharing a single device
+/// solves this.
+pub struct SharedHwDevice {
+    device_ref: *mut ffi::AVBufferRef,
+    backend: DecodeBackend,
+}
+
+// SAFETY: The underlying AVBufferRef is refcounted. The D3D11VA/CUDA device
+// it wraps is either thread-safe (CUDA) or protected via ID3D11Multithread.
+unsafe impl Send for SharedHwDevice {}
+
+impl SharedHwDevice {
+    /// Create a new reference suitable for passing to another decoder.
+    ///
+    /// Each reference is independently owned and freed on drop.
+    pub fn new_ref(&self) -> Self {
+        Self {
+            device_ref: unsafe { ffi::av_buffer_ref(self.device_ref) },
+            backend: self.backend,
+        }
+    }
+
+    /// The decode backend this device supports.
+    pub fn backend(&self) -> DecodeBackend {
+        self.backend
+    }
+}
+
+impl Drop for SharedHwDevice {
+    fn drop(&mut self) {
+        if !self.device_ref.is_null() {
+            unsafe {
+                ffi::av_buffer_unref(&mut self.device_ref);
+            }
+        }
+    }
+}
+
+/// Create a shared hardware device for multi-decoder use.
+///
+/// Returns `None` if no hardware device is available (falls back to software).
+pub fn create_shared_hw_device() -> Option<SharedHwDevice> {
+    let candidates = hwaccel_candidates();
+    for (hw_type, backend) in candidates {
+        let mut device_ref: *mut ffi::AVBufferRef = ptr::null_mut();
+        let ret = unsafe {
+            ffi::av_hwdevice_ctx_create(&mut device_ref, hw_type, ptr::null(), ptr::null_mut(), 0)
+        };
+        if ret >= 0 {
+            log::info!("Shared hw device created: {backend}");
+            return Some(SharedHwDevice {
+                device_ref,
+                backend,
+            });
+        }
+    }
+    None
+}
+
+/// Attach a pre-created hw device to a codec context.
+fn attach_shared_hw_device(
     context: &mut ffmpeg::codec::context::Context,
+    shared: &SharedHwDevice,
 ) -> (DecodeBackend, *mut ffi::AVBufferRef) {
-    // Hardware device types to try, in priority order.
-    // CUDA is tried first on all platforms. On Windows, if the
-    // zero-copy D3D11VA path is needed, SmartFileSource detects
-    // the CUDA backend and falls back to CPU upload (D3D11VA
-    // staging hangs on NVIDIA Pascal - see investigation notes).
-    let candidates = [
-        (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
-            DecodeBackend::Cuda,
-        ),
+    let our_ref = unsafe { ffi::av_buffer_ref(shared.device_ref) };
+    unsafe {
+        (*context.as_mut_ptr()).hw_device_ctx = ffi::av_buffer_ref(shared.device_ref);
+    }
+    log::debug!(
+        "Hardware decode attached: {} (shared device)",
+        shared.backend
+    );
+    (shared.backend, our_ref)
+}
+
+/// Platform-preferred hwaccel candidates.
+fn hwaccel_candidates() -> Vec<(ffi::AVHWDeviceType, DecodeBackend)> {
+    vec![
         #[cfg(target_os = "windows")]
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_D3D11VA,
             DecodeBackend::D3d11va,
         ),
+        #[cfg(not(target_os = "macos"))]
+        (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
+            DecodeBackend::Cuda,
+        ),
+        #[cfg(not(target_os = "windows"))]
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
             DecodeBackend::Vaapi,
@@ -969,7 +1091,17 @@ fn try_hwaccel(
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
             DecodeBackend::VideoToolbox,
         ),
-    ];
+    ]
+}
+
+/// Try to enable hardware-accelerated decoding on the codec context.
+///
+/// Attempts platform-preferred backends first. Returns the active backend
+/// and the hw device reference (must be kept alive and freed on drop).
+fn try_hwaccel(
+    context: &mut ffmpeg::codec::context::Context,
+) -> (DecodeBackend, *mut ffi::AVBufferRef) {
+    let candidates = hwaccel_candidates();
 
     for (hw_type, backend) in candidates {
         let hw_type_name = unsafe {

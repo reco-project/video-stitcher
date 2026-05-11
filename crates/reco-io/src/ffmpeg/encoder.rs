@@ -696,10 +696,10 @@ impl VideoEncoder {
         ost.set_parameters(&enc);
         let mut opts =
             build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
-        if config.stream_url.is_some() {
-            opts.set("bf", "0");
-            log::info!("RTMP streaming: disabled B-frames for {name} (FLV requires monotonic DTS)");
-        }
+        // B-frames cause negative initial PTS offsets and frame reordering
+        // in the encoded output. For real-time stitching they add latency
+        // with no visual benefit, so disable unconditionally.
+        opts.set("bf", "0");
         let encoder = enc.open_with(opts)?;
         ost.set_parameters(&encoder);
 
