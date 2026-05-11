@@ -945,7 +945,11 @@ fn is_hw_frame(frame: &VideoFrame) -> bool {
 fn try_hwaccel(
     context: &mut ffmpeg::codec::context::Context,
 ) -> (DecodeBackend, *mut ffi::AVBufferRef) {
-    // Hardware device types to try, in priority order
+    // Hardware device types to try, in priority order.
+    // CUDA is tried first on all platforms. On Windows, if the
+    // zero-copy D3D11VA path is needed, SmartFileSource detects
+    // the CUDA backend and falls back to CPU upload (D3D11VA
+    // staging hangs on NVIDIA Pascal - see investigation notes).
     let candidates = [
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
