@@ -42,6 +42,9 @@ pub mod coreml_inference;
 // Metal compute pipeline (NV12 → CHW f32 preprocess).
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal_compute;
+// wgpu compute preprocessing (NV12 → CHW f32). Universal path for
+// DirectML / non-CUDA detection on any GPU with wgpu support.
+pub mod wgpu_preprocess;
 
 // Re-export detector types at crate root for convenience.
 #[cfg(feature = "ort")]
