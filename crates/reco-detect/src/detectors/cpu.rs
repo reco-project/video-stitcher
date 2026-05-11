@@ -95,6 +95,11 @@ impl CpuYoloDetector {
         &self.labels
     }
 
+    /// Model input size (square dimension, e.g. 640 or 1280).
+    pub fn input_size(&self) -> u32 {
+        self.input_size
+    }
+
     /// Fill `self.rgb_chw_buf` from a raw YUV frame: flat RGB float32 in
     /// CHW layout, letterboxed to `input_size x input_size`, normalized
     /// to `[0, 1]`. The buffer is reused across frames so no allocation

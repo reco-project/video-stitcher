@@ -391,6 +391,34 @@ pub fn setup_autocam(
         }
     }
 
+    // wgpu preprocessing path: when GPU detection backends failed but we
+    // have wgpu texture views from D3D11VA staging. Uses the compute shader
+    // preprocessor (NV12 → float32 CHW) + CpuYoloDetector with DirectML EP.
+    // Works on any DX12 GPU including Pascal, AMD, and Intel.
+    #[cfg(feature = "ort")]
+    if !detection_active && use_zero_copy {
+        let gpu = target.gpu();
+        let yolo = CpuYoloDetector::from_file(model_path)?;
+        let input_size = yolo.input_size();
+        let wrapper = WgpuPreprocessingDetector::new(
+            Box::new(yolo),
+            gpu.device().clone(),
+            gpu.queue().clone(),
+            input_size,
+            input_width,
+            input_height,
+        );
+        let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
+            if let Some(roi) = effective_roi.clone() {
+                wrap_with_roi(Box::new(wrapper), roi)
+            } else {
+                Box::new(wrapper)
+            };
+        target.set_detector(detector);
+        detection_active = true;
+        log::info!("Autocam: wgpu preprocessing + DirectML tracking enabled (model: {model_path})");
+    }
+
     // ORT CPU fallback for .onnx files.
     #[cfg(feature = "ort")]
     if !detection_active && !use_zero_copy {

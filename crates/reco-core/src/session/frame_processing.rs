@@ -140,28 +140,29 @@ impl StitchSession {
             }
             #[cfg(target_os = "windows")]
             StereoFrame::D3d11Resident { .. } => {
-                let left_slot = self.frame_count as usize % 2;
-                let right_slot = left_slot + 2;
-                let pool = self.d3d11_staging_pool.as_ref();
-                let left_cuda = pool.and_then(|p| p.cuda_nv12_ptrs(left_slot));
-                let right_cuda = pool.and_then(|p| p.cuda_nv12_ptrs(right_slot));
-                if let (Some((ly, luv, lp)), Some((ry, ruv, _))) = (left_cuda, right_cuda) {
-                    // CUDA path: direct device pointers (TensorRT/CUDA EP)
+                if self.d3d11_staging_pool.is_some() {
+                    let left_slot = self.frame_count as usize % 2;
+                    let right_slot = left_slot + 2;
                     let (w, h) = self.core.pipeline().source_info();
-                    self.detect_and_update_director_d3d11(ly, luv, ry, ruv, lp, w, h, elapsed)?;
-                    scheduled_detection
-                } else if let Some(pool) = self.d3d11_staging_pool.as_ref() {
-                    // wgpu path: texture views (DirectML/CPU EP via WgpuPreprocessor)
-                    let (w, h) = self.core.pipeline().source_info();
-                    self.detect_and_update_director_wgpu_nv12(
-                        pool.y_view(left_slot),
-                        pool.uv_view(left_slot),
-                        pool.y_view(right_slot),
-                        pool.uv_view(right_slot),
-                        w,
-                        h,
-                        elapsed,
-                    )?;
+                    let lr = self.left_rotation;
+                    let rr = self.right_rotation;
+                    let should_detect = self.detection.has_detector()
+                        && self.detection.should_detect(self.frame_count);
+                    if should_detect {
+                        let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                        let detections = self.detection.run_detection_wgpu_nv12(
+                            pool.y_view(left_slot),
+                            pool.uv_view(left_slot),
+                            pool.y_view(right_slot),
+                            pool.uv_view(right_slot),
+                            w,
+                            h,
+                            lr,
+                            rr,
+                        );
+                        self.detection.last_detections = self.map_detections(detections);
+                    }
+                    self.fire_sink_and_update_director(elapsed, should_detect)?;
                     scheduled_detection
                 } else {
                     self.update_director(elapsed)?;
