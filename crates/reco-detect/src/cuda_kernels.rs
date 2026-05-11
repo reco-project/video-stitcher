@@ -308,7 +308,8 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
     .param .u32 dst_h,
     .param .u32 pad_x,
     .param .u32 pad_y,
-    .param .f32 scale
+    .param .f32 scale,
+    .param .u32 flip180
 )
 {
     .reg .u32 %ox, %oy, %dw, %dh, %px, %py, %sw, %sh, %ypitch;
@@ -375,6 +376,14 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
     cvt.rzi.u32.f32 %sy0, %srcy;
     sub.u32 %tmp2, %sh, 1;
     min.u32 %sy0, %sy0, %tmp2;
+
+    // 180-degree rotation: invert both source coordinates
+    ld.param.u32 %tmp, [flip180];
+    setp.ne.u32 %q, %tmp, 0;
+    sub.u32 %tmp, %sw, 1;
+    @%q sub.u32 %sx0, %tmp, %sx0;
+    sub.u32 %tmp, %sh, 1;
+    @%q sub.u32 %sy0, %tmp, %sy0;
 
     // read Y sample
     ld.param.u64 %yp, [y_ptr];
@@ -509,6 +518,7 @@ pub fn nv12_to_rgb_chw_fullrange(
     pad_x: u32,
     pad_y: u32,
     scale: f32,
+    rotation: i32,
 ) -> Result<(), CudaInteropError> {
     reco_core::interop::cuda::cuda_ensure_context()?;
     let kernel = get_nv12_kernel()?;
@@ -527,8 +537,9 @@ pub fn nv12_to_rgb_chw_fullrange(
     let mut px_val = pad_x;
     let mut py_val = pad_y;
     let mut sc_val = scale;
+    let mut flip_val: u32 = if rotation == 180 { 1 } else { 0 };
 
-    let mut args: [*mut c_void; 11] = [
+    let mut args: [*mut c_void; 12] = [
         (&mut y_val as *mut u64).cast(),
         (&mut uv_val as *mut u64).cast(),
         (&mut dst_val as *mut u64).cast(),
@@ -540,6 +551,7 @@ pub fn nv12_to_rgb_chw_fullrange(
         (&mut px_val as *mut u32).cast(),
         (&mut py_val as *mut u32).cast(),
         (&mut sc_val as *mut f32).cast(),
+        (&mut flip_val as *mut u32).cast(),
     ];
 
     unsafe {

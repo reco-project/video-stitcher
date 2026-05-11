@@ -102,8 +102,9 @@ pub fn create_ort_session(
         }
     };
 
-    // Try CUDA execution provider, fall back to CPU.
-    #[cfg(all(feature = "cuda", not(feature = "tensorrt")))]
+    // Try CUDA execution provider (works on any NVIDIA GPU including Pascal).
+    // Also tried after TensorRT as a fallback when TRT engine build fails.
+    #[cfg(feature = "cuda")]
     let mut builder = {
         match builder.with_execution_providers([ort::ep::CUDA::default().build()]) {
             Ok(b) => {

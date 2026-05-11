@@ -20,8 +20,6 @@ unsafe impl Send for SendMemoryInfo {}
 use std::ffi::c_void;
 use std::path::Path;
 
-use crate::cuda_kernels::normalize_hwc_to_chw;
-use crate::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
 use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
 use ort::session::Session;
 use ort::value::{Shape, TensorRefMut};
@@ -49,7 +47,9 @@ pub struct OrtGpuDetector {
     labels: Vec<String>,
     // Pre-computed letterbox parameters (constant for fixed frame dimensions).
     scale: f32,
+    #[allow(dead_code)]
     new_w: u32,
+    #[allow(dead_code)]
     new_h: u32,
     pad_x: f32,
     pad_y: f32,
@@ -95,17 +95,12 @@ impl OrtGpuDetector {
         labels: Vec<String>,
         is_10bit: bool,
     ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
-        if !crate::npp_interop::is_npp_available() {
-            log::warn!("OrtGpuDetector: NPP not available, GPU detection disabled");
-            return Ok(None);
-        }
-
-        // GPU detection requires TensorRT EP to handle CUDA device pointers.
-        // Without it, ORT falls back to CPU EP which segfaults on GPU memory.
-        if !cfg!(feature = "tensorrt") {
+        // GPU detection needs a CUDA-capable EP (TensorRT or CUDA) to
+        // process device pointers. Without one, ORT falls back to CPU EP
+        // which segfaults on CUDA memory.
+        if !cfg!(feature = "tensorrt") && !cfg!(feature = "cuda") {
             log::warn!(
-                "OrtGpuDetector: TensorRT feature not enabled, GPU detection disabled. \
-                 Build with --features tensorrt for zero-copy GPU inference."
+                "OrtGpuDetector: no GPU EP available (need --features tensorrt or --features cuda)"
             );
             return Ok(None);
         }
@@ -258,7 +253,7 @@ impl OrtGpuDetector {
         // Step 0: Convert P010 (10-bit) to 8-bit NV12 if needed.
         // NPP's NV12->RGB expects 8-bit samples, so we must down-convert
         // first by extracting the high byte of each u16 sample.
-        let (nv12_y, nv12_y_pitch, nv12_uv, nv12_uv_pitch) = if is_10bit {
+        let (nv12_y, nv12_y_pitch, nv12_uv, _nv12_uv_pitch) = if is_10bit {
             reco_core::profile_scope!("p010_to_nv12");
             if self.nv12_8bit_y == 0 || self.nv12_8bit_uv == 0 {
                 return Err(DetectorError::InferenceFailed(
@@ -302,48 +297,7 @@ impl OrtGpuDetector {
         // yuvj420p output. Replaces the NPP NV12-to-RGB (BT.601
         // video-range) + NPP resize + normalize pipeline that was
         // producing a 10x detection count difference vs CPU ORT (#284).
-        if rotation == 180 {
-            // Rotated streams: fall back to the NPP path since the
-            // combined kernel doesn't handle in-place NV12 mirroring.
-            // TODO: add rotation support to the combined kernel.
-            reco_core::profile_scope!("npp_nv12_to_rgb");
-            npp_nv12_to_rgb(
-                nv12_y,
-                nv12_y_pitch,
-                nv12_uv,
-                nv12_uv_pitch,
-                self.rgb_u8,
-                width,
-                height,
-            )
-            .map_err(|e| DetectorError::InferenceFailed(format!("NPP NV12->RGB: {e}")))?;
-
-            reco_core::profile_scope!("npp_mirror_180");
-            npp_mirror_c3(self.rgb_u8, self.rgb_scratch, width, height).map_err(|e| {
-                DetectorError::InferenceFailed(format!("NPP mirror (rotation=180): {e}"))
-            })?;
-
-            let is = self.input_size;
-            let dst_roi = NppiRect {
-                x: self.pad_x as i32,
-                y: self.pad_y as i32,
-                width: self.new_w as i32,
-                height: self.new_h as i32,
-            };
-            npp_resize_c3(
-                self.rgb_scratch,
-                width,
-                height,
-                self.resized_u8,
-                is,
-                is,
-                dst_roi,
-            )
-            .map_err(|e| DetectorError::InferenceFailed(format!("NPP resize: {e}")))?;
-
-            normalize_hwc_to_chw(self.resized_u8, self.tensor_f32, is, is)
-                .map_err(|e| DetectorError::InferenceFailed(format!("CUDA normalize: {e}")))?;
-        } else {
+        {
             reco_core::profile_scope!("nv12_to_rgb_chw");
             crate::cuda_kernels::nv12_to_rgb_chw_fullrange(
                 nv12_y,
@@ -357,6 +311,7 @@ impl OrtGpuDetector {
                 self.pad_x as u32,
                 self.pad_y as u32,
                 self.scale,
+                rotation,
             )
             .map_err(|e| DetectorError::InferenceFailed(format!("NV12->RGB CHW: {e}")))?;
         }
