@@ -66,6 +66,8 @@ pub use reco_detect::OrtGpuDetector;
 pub use reco_detect::TrtGpuDetector;
 
 pub use roi_filter::{RoiAnchor, RoiFilteredDetector};
+pub mod wgpu_detector;
+pub use wgpu_detector::WgpuPreprocessingDetector;
 // `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
 // deleted: the unified `RoiFilteredDetector` covers every residency
 // because it wraps `Box<dyn UnifiedDetector>`.

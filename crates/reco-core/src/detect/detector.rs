@@ -258,6 +258,25 @@ pub enum DetectorFrame<'a> {
         /// Frame height in pixels.
         height: u32,
     },
+
+    /// wgpu NV12 texture views from D3D11VA staging or similar.
+    ///
+    /// The detector backend (typically a composite wrapper) owns a
+    /// `WgpuPreprocessor` that converts these views to float32 CHW
+    /// via a compute shader, then delegates to the inner detector
+    /// with `PreprocessedChw`.
+    WgpuNv12 {
+        /// Y plane view (R8Unorm, full resolution).
+        y_view: &'a wgpu::TextureView,
+        /// UV plane view (Rg8Unorm, half resolution).
+        uv_view: &'a wgpu::TextureView,
+        /// Frame width in pixels.
+        width: u32,
+        /// Frame height in pixels.
+        height: u32,
+        /// Stream rotation (0 or 180 for DJI).
+        rotation: i32,
+    },
 }
 
 impl DetectorFrame<'_> {
@@ -275,6 +294,7 @@ impl DetectorFrame<'_> {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             Self::Metal { .. } => "Metal",
             Self::PreprocessedChw { .. } => "PreprocessedChw",
+            Self::WgpuNv12 { .. } => "WgpuNv12",
         }
     }
 }

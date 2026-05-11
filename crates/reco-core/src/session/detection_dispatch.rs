@@ -119,6 +119,25 @@ impl StitchSession {
         })
     }
 
+    /// Run detection via wgpu NV12 texture views (universal GPU path).
+    #[cfg(target_os = "windows")]
+    pub(crate) fn detect_and_update_director_wgpu_nv12(
+        &mut self,
+        left_y: &wgpu::TextureView,
+        left_uv: &wgpu::TextureView,
+        right_y: &wgpu::TextureView,
+        right_uv: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        elapsed: std::time::Duration,
+    ) -> Result<(), SessionError> {
+        let lr = self.left_rotation;
+        let rr = self.right_rotation;
+        self.detect_and_update_director_with(elapsed, |det| {
+            det.run_detection_wgpu_nv12(left_y, left_uv, right_y, right_uv, width, height, lr, rr)
+        })
+    }
+
     /// Update the director without detection.
     ///
     /// Advances the panner/tracker state without running object

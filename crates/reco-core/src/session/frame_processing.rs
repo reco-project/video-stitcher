@@ -146,8 +146,22 @@ impl StitchSession {
                 let left_cuda = pool.and_then(|p| p.cuda_nv12_ptrs(left_slot));
                 let right_cuda = pool.and_then(|p| p.cuda_nv12_ptrs(right_slot));
                 if let (Some((ly, luv, lp)), Some((ry, ruv, _))) = (left_cuda, right_cuda) {
+                    // CUDA path: direct device pointers (TensorRT/CUDA EP)
                     let (w, h) = self.core.pipeline().source_info();
                     self.detect_and_update_director_d3d11(ly, luv, ry, ruv, lp, w, h, elapsed)?;
+                    scheduled_detection
+                } else if let Some(pool) = self.d3d11_staging_pool.as_ref() {
+                    // wgpu path: texture views (DirectML/CPU EP via WgpuPreprocessor)
+                    let (w, h) = self.core.pipeline().source_info();
+                    self.detect_and_update_director_wgpu_nv12(
+                        pool.y_view(left_slot),
+                        pool.uv_view(left_slot),
+                        pool.y_view(right_slot),
+                        pool.uv_view(right_slot),
+                        w,
+                        h,
+                        elapsed,
+                    )?;
                     scheduled_detection
                 } else {
                     self.update_director(elapsed)?;

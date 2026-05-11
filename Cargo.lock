@@ -5391,6 +5391,7 @@ dependencies = [
  "reco-core",
  "reco-detect",
  "tracing",
+ "wgpu",
 ]
 
 [[package]]

@@ -459,6 +459,50 @@ impl DetectionPipeline {
     ///
     /// Used by the wgpu preprocessing path where the compute shader
     /// already produced the model-ready tensor on the GPU.
+    /// Run detection from wgpu NV12 texture views.
+    ///
+    /// Dispatches `DetectorFrame::WgpuNv12` to the detector. The detector
+    /// (typically `WgpuPreprocessingDetector` from reco-autocam) handles
+    /// the compute shader preprocessing internally.
+    #[cfg(target_os = "windows")]
+    pub(super) fn run_detection_wgpu_nv12(
+        &mut self,
+        left_y: &wgpu::TextureView,
+        left_uv: &wgpu::TextureView,
+        right_y: &wgpu::TextureView,
+        right_uv: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        left_rotation: i32,
+        right_rotation: i32,
+    ) -> Vec<Detection> {
+        let Some(ref mut detector) = self.detector else {
+            return Vec::new();
+        };
+        crate::profile_scope!("detect_wgpu_nv12");
+
+        let mut detections = Vec::new();
+        for (camera, yv, uvv, rot) in [
+            (CameraId::Left, left_y, left_uv, left_rotation),
+            (CameraId::Right, right_y, right_uv, right_rotation),
+        ] {
+            let frame = DetectorFrame::WgpuNv12 {
+                y_view: yv,
+                uv_view: uvv,
+                width,
+                height,
+                rotation: rot,
+            };
+            match detector.detect(camera, &frame) {
+                Ok(v) => detections.extend(v),
+                Err(e) => {
+                    log::warn!("detector '{}' {camera:?}: {e}", detector.name());
+                }
+            }
+        }
+        detections
+    }
+
     #[allow(dead_code)]
     pub(super) fn run_detection_preprocessed(
         &mut self,
