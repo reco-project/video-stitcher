@@ -191,21 +191,41 @@ impl GpuContext {
             features |= wgpu::Features::TEXTURE_FORMAT_NV12;
         }
 
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("reco"),
-                required_features: features,
-                required_limits: wgpu::Limits::downlevel_defaults()
-                    .using_resolution(adapter.limits()),
-                ..Default::default()
-            })
-            .await?;
+        let (device, queue) =
+            Self::request_device_with_fallback(&adapter, features).await?;
 
         Ok(Self {
             device,
             queue,
             adapter_info,
         })
+    }
+
+    /// Request a device, clamping requested limits to what the adapter
+    /// actually supports.
+    ///
+    /// `downlevel_defaults()` can exceed what embedded GPUs report (e.g.
+    /// VeriSilicon GC8000 supports `max_compute_workgroup_size_y = 128`
+    /// but `downlevel_defaults` asks for 256). We take the minimum of
+    /// our desired defaults and the adapter's reported limits for each
+    /// field, ensuring we never ask for more than the hardware offers.
+    async fn request_device_with_fallback(
+        adapter: &wgpu::Adapter,
+        features: wgpu::Features,
+    ) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
+        let supported = adapter.limits();
+        let desired = wgpu::Limits::downlevel_defaults()
+            .using_resolution(supported.clone());
+        let clamped = clamp_limits(&desired, &supported);
+
+        adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("reco"),
+                required_features: features,
+                required_limits: clamped,
+                ..Default::default()
+            })
+            .await
     }
 
     /// Select wgpu backends based on environment and platform.
@@ -307,15 +327,8 @@ impl GpuContext {
             features |= wgpu::Features::TEXTURE_FORMAT_NV12;
         }
 
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("reco"),
-                required_features: features,
-                required_limits: wgpu::Limits::downlevel_defaults()
-                    .using_resolution(adapter.limits()),
-                ..Default::default()
-            })
-            .await?;
+        let (device, queue) =
+            Self::request_device_with_fallback(&adapter, features).await?;
 
         let ctx = Self {
             device,
@@ -437,6 +450,48 @@ impl GpuContext {
     /// Access the wgpu command queue.
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
+    }
+}
+
+/// Clamp each limit field to what the adapter actually supports.
+///
+/// For "more is better" limits (max_*), takes the minimum of desired and
+/// supported. For "less is better" limits (min_*), takes the maximum.
+fn clamp_limits(desired: &wgpu::Limits, supported: &wgpu::Limits) -> wgpu::Limits {
+    wgpu::Limits {
+        max_texture_dimension_1d: desired.max_texture_dimension_1d.min(supported.max_texture_dimension_1d),
+        max_texture_dimension_2d: desired.max_texture_dimension_2d.min(supported.max_texture_dimension_2d),
+        max_texture_dimension_3d: desired.max_texture_dimension_3d.min(supported.max_texture_dimension_3d),
+        max_texture_array_layers: desired.max_texture_array_layers.min(supported.max_texture_array_layers),
+        max_bind_groups: desired.max_bind_groups.min(supported.max_bind_groups),
+        max_bindings_per_bind_group: desired.max_bindings_per_bind_group.min(supported.max_bindings_per_bind_group),
+        max_dynamic_uniform_buffers_per_pipeline_layout: desired.max_dynamic_uniform_buffers_per_pipeline_layout.min(supported.max_dynamic_uniform_buffers_per_pipeline_layout),
+        max_dynamic_storage_buffers_per_pipeline_layout: desired.max_dynamic_storage_buffers_per_pipeline_layout.min(supported.max_dynamic_storage_buffers_per_pipeline_layout),
+        max_sampled_textures_per_shader_stage: desired.max_sampled_textures_per_shader_stage.min(supported.max_sampled_textures_per_shader_stage),
+        max_samplers_per_shader_stage: desired.max_samplers_per_shader_stage.min(supported.max_samplers_per_shader_stage),
+        max_storage_buffers_per_shader_stage: desired.max_storage_buffers_per_shader_stage.min(supported.max_storage_buffers_per_shader_stage),
+        max_storage_textures_per_shader_stage: desired.max_storage_textures_per_shader_stage.min(supported.max_storage_textures_per_shader_stage),
+        max_uniform_buffers_per_shader_stage: desired.max_uniform_buffers_per_shader_stage.min(supported.max_uniform_buffers_per_shader_stage),
+        max_uniform_buffer_binding_size: desired.max_uniform_buffer_binding_size.min(supported.max_uniform_buffer_binding_size),
+        max_storage_buffer_binding_size: desired.max_storage_buffer_binding_size.min(supported.max_storage_buffer_binding_size),
+        max_vertex_buffers: desired.max_vertex_buffers.min(supported.max_vertex_buffers),
+        max_vertex_attributes: desired.max_vertex_attributes.min(supported.max_vertex_attributes),
+        max_vertex_buffer_array_stride: desired.max_vertex_buffer_array_stride.min(supported.max_vertex_buffer_array_stride),
+        max_inter_stage_shader_components: desired.max_inter_stage_shader_components.min(supported.max_inter_stage_shader_components),
+        max_color_attachments: desired.max_color_attachments.min(supported.max_color_attachments),
+        max_color_attachment_bytes_per_sample: desired.max_color_attachment_bytes_per_sample.min(supported.max_color_attachment_bytes_per_sample),
+        max_compute_workgroup_storage_size: desired.max_compute_workgroup_storage_size.min(supported.max_compute_workgroup_storage_size),
+        max_compute_invocations_per_workgroup: desired.max_compute_invocations_per_workgroup.min(supported.max_compute_invocations_per_workgroup),
+        max_compute_workgroup_size_x: desired.max_compute_workgroup_size_x.min(supported.max_compute_workgroup_size_x),
+        max_compute_workgroup_size_y: desired.max_compute_workgroup_size_y.min(supported.max_compute_workgroup_size_y),
+        max_compute_workgroup_size_z: desired.max_compute_workgroup_size_z.min(supported.max_compute_workgroup_size_z),
+        max_compute_workgroups_per_dimension: desired.max_compute_workgroups_per_dimension.min(supported.max_compute_workgroups_per_dimension),
+        max_buffer_size: desired.max_buffer_size.min(supported.max_buffer_size),
+        // "less is better" limits: take the max (stricter alignment)
+        min_uniform_buffer_offset_alignment: desired.min_uniform_buffer_offset_alignment.max(supported.min_uniform_buffer_offset_alignment),
+        min_storage_buffer_offset_alignment: desired.min_storage_buffer_offset_alignment.max(supported.min_storage_buffer_offset_alignment),
+        // Copy remaining fields from desired (zero-default features like mesh shaders, RT)
+        ..*desired
     }
 }
 
