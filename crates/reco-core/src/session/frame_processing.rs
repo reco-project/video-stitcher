@@ -140,8 +140,19 @@ impl StitchSession {
             }
             #[cfg(target_os = "windows")]
             StereoFrame::D3d11Resident { .. } => {
-                self.update_director(elapsed)?;
-                false
+                let left_slot = self.frame_count as usize % 2;
+                let right_slot = left_slot + 2;
+                let pool = self.d3d11_staging_pool.as_ref();
+                let left_cuda = pool.and_then(|p| p.cuda_nv12_ptrs(left_slot));
+                let right_cuda = pool.and_then(|p| p.cuda_nv12_ptrs(right_slot));
+                if let (Some((ly, luv, lp)), Some((ry, ruv, _))) = (left_cuda, right_cuda) {
+                    let (w, h) = self.core.pipeline().source_info();
+                    self.detect_and_update_director_d3d11(ly, luv, ry, ruv, lp, w, h, elapsed)?;
+                    scheduled_detection
+                } else {
+                    self.update_director(elapsed)?;
+                    false
+                }
             }
             _ => {
                 self.detect_and_update_director(frame, elapsed)?;

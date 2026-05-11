@@ -78,6 +78,7 @@ struct StagingState {
     y_views: [wgpu::TextureView; 4],
     uv_views: [wgpu::TextureView; 4],
     event_query: ID3D11Query,
+    cuda_nv12: Option<[crate::interop::cuda::CudaImportedNv12; 4]>,
 }
 
 /// Double-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
@@ -184,6 +185,8 @@ impl D3d11StagingPool {
         let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(4);
         let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(4);
         let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(4);
+        let mut cuda_imports: Vec<Option<crate::interop::cuda::CudaImportedNv12>> =
+            Vec::with_capacity(4);
 
         for i in 0..4 {
             let staging: ID3D11Texture2D = unsafe {
@@ -192,7 +195,7 @@ impl D3d11StagingPool {
                 tex.ok_or_else(|| D3d11InteropError::D3d11("CreateTexture2D returned None".into()))?
             };
 
-            // Get shared NT handle.
+            // Get shared NT handle (kept open for both DX12 and CUDA import).
             let dxgi_resource: IDXGIResource1 = staging.cast()?;
             let handle: HANDLE =
                 unsafe { dxgi_resource.CreateSharedHandle(None, GENERIC_ALL.0, None)? };
@@ -202,7 +205,24 @@ impl D3d11StagingPool {
                 import_d3d11_shared_handle(&self.wgpu_device, handle, self.width, self.height)?
             };
 
-            // Close the NT handle (DX12 has its own reference now).
+            // Import into CUDA for AI detection (NVIDIA only, non-fatal).
+            let nv12_pitch = self.width as usize;
+            let cuda_import = crate::interop::cuda::cuda_import_d3d11_nv12(
+                handle.0,
+                self.width,
+                self.height,
+                nv12_pitch,
+            );
+            match &cuda_import {
+                Ok(m) => log::debug!(
+                    "CUDA imported staging slot {i}: Y=0x{:x} UV=0x{:x}",
+                    m.y_ptr,
+                    m.uv_ptr
+                ),
+                Err(e) => log::debug!("CUDA import for slot {i} skipped: {e}"),
+            }
+            cuda_imports.push(cuda_import.ok());
+
             unsafe {
                 let _ = CloseHandle(handle);
             }
@@ -243,12 +263,30 @@ impl D3d11StagingPool {
             self.height
         );
 
+        // Convert CUDA imports: all-Some → Some([4]), any None → None.
+        let cuda_nv12 = if cuda_imports.iter().all(|c| c.is_some()) {
+            let arr: [crate::interop::cuda::CudaImportedNv12; 4] = cuda_imports
+                .into_iter()
+                .map(|c| c.unwrap())
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+            log::info!("CUDA detection enabled on D3D11VA staging textures");
+            Some(arr)
+        } else {
+            log::info!(
+                "CUDA detection not available on D3D11VA staging (non-NVIDIA or CUDA not found)"
+            );
+            None
+        };
+
         self.state = Some(StagingState {
             context,
             staging: staging_textures.try_into().unwrap(),
             _wgpu_textures: wgpu_textures.try_into().unwrap(),
             y_views: y_views.try_into().unwrap(),
             uv_views: uv_views.try_into().unwrap(),
+            cuda_nv12,
             event_query,
         });
 
@@ -360,6 +398,24 @@ impl D3d11StagingPool {
             .as_ref()
             .expect("staging pool not initialized")
             .uv_views[slot]
+    }
+
+    /// CUDA NV12 pointers for the given slot, if CUDA import succeeded.
+    ///
+    /// Returns `(y_ptr, uv_ptr, pitch)` for feeding to the GPU detection
+    /// pipeline. None on non-NVIDIA hardware or if CUDA is unavailable.
+    pub fn cuda_nv12_ptrs(
+        &self,
+        slot: usize,
+    ) -> Option<(
+        crate::interop::cuda::CUdeviceptr,
+        crate::interop::cuda::CUdeviceptr,
+        usize,
+    )> {
+        let state = self.state.as_ref()?;
+        let imports = state.cuda_nv12.as_ref()?;
+        let m = &imports[slot];
+        Some((m.y_ptr, m.uv_ptr, m.pitch))
     }
 
     /// Staging texture width.
