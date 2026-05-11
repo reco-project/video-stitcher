@@ -76,6 +76,13 @@ pub struct CameraMetadata {
     pub camera_model: Option<String>,
     pub lens_profile: Option<CameraParams>,
     pub lens_info: Option<String>,
+    /// Whether the camera records native gyroscope data (not derived
+    /// from quaternions). Cameras with native gyro (GoPro, Insta360,
+    /// Sony) produce reliable IMU sync; cameras without (DJI) produce
+    /// low-correlation derived signals that fail sync and have
+    /// inaccurate rig tilt. Used by the pipeline to skip the expensive
+    /// full telemetry parse when the data won't be useful.
+    pub has_native_gyro: bool,
 }
 
 /// Extract only camera metadata and lens profile (fast path).
@@ -110,6 +117,14 @@ pub fn extract_metadata(path: &Path) -> Result<CameraMetadata, TelemetryError> {
 
     let camera_type = input.camera_type();
     let camera_model = input.camera_model().cloned();
+
+    // Check for native gyro by probing the IMU normalization path.
+    // Cameras with native gyro (GoPro, Insta360, Sony) return samples
+    // even in probe_only mode. DJI cameras return 0 because they only
+    // have quaternions that need full-file derivation.
+    let raw_imu =
+        telemetry_parser::util::normalized_imu_interpolated(&input, None).unwrap_or_default();
+    let has_native_gyro = raw_imu.iter().any(|s| s.gyro.is_some());
 
     let mut lens_profile = None;
     let mut lens_info = None;
@@ -153,6 +168,7 @@ pub fn extract_metadata(path: &Path) -> Result<CameraMetadata, TelemetryError> {
         camera_model,
         lens_profile,
         lens_info,
+        has_native_gyro,
     })
 }
 

@@ -93,6 +93,10 @@ pub struct CalibrationPipeline {
     imu_xrx_seed: Option<f64>,
     imu_zrx_seed: Option<f64>,
     enable_x_rx: bool,
+    /// Whether the camera has native gyroscope data (set by detect_profiles).
+    /// When false, the full telemetry parse is skipped because derived
+    /// quaternion data produces unreliable sync and rig tilt.
+    has_native_gyro: bool,
     /// Rig tilt in radians (forward lean from vertical).
     rig_tilt: f64,
     /// Rig roll in radians (lateral lean).
@@ -117,6 +121,7 @@ impl CalibrationPipeline {
             imu_xrx_seed: None,
             imu_zrx_seed: None,
             enable_x_rx: false,
+            has_native_gyro: false,
             rig_tilt: 0.0,
             rig_roll: 0.0,
         }
@@ -154,6 +159,8 @@ impl CalibrationPipeline {
         // this saves ~75s of I/O on cold HDD reads.
         let left_meta = telemetry::extract_metadata(&self.left_info.path).ok();
         let right_meta = telemetry::extract_metadata(&self.right_info.path).ok();
+
+        self.has_native_gyro = left_meta.as_ref().is_some_and(|m| m.has_native_gyro);
 
         // Build a lightweight TelemetryData with just the metadata fields
         // that detect_profile needs (camera_type, camera_model, lens_profile, lens_info).
@@ -286,6 +293,14 @@ impl CalibrationPipeline {
     /// Returns the sync offset in frames, or `None` if telemetry is
     /// unavailable or cross-correlation fails.
     pub fn imu_sync(&mut self) -> Result<Option<i64>, CalibrateError> {
+        if !self.has_native_gyro {
+            log::info!(
+                "IMU sync skipped: camera has no native gyroscope (quaternion-derived \
+                 gyro produces unreliable sync). Falling back to audio sync."
+            );
+            return Ok(None);
+        }
+
         self.ensure_left_telemetry();
         self.ensure_right_telemetry();
 
