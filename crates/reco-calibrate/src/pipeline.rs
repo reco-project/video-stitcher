@@ -147,10 +147,29 @@ impl CalibrationPipeline {
     pub fn detect_profiles(&mut self) -> Result<(CameraParams, CameraParams), CalibrateError> {
         let db = lens_database::LensDatabase::load_embedded();
 
-        self.ensure_left_telemetry();
-        self.ensure_right_telemetry();
-        let left_tel = self.left_telemetry.as_ref().and_then(|r| r.as_ref().ok());
-        let right_tel = self.right_telemetry.as_ref().and_then(|r| r.as_ref().ok());
+        // Use the fast metadata-only path for lens detection. The full
+        // telemetry parse (quaternion derivation, IMU normalization) is
+        // deferred to ensure_*_telemetry which only runs when IMU data
+        // is actually needed (sync offset, rig tilt). On DJI Action 4
+        // this saves ~75s of I/O on cold HDD reads.
+        let left_meta = telemetry::extract_metadata(&self.left_info.path).ok();
+        let right_meta = telemetry::extract_metadata(&self.right_info.path).ok();
+
+        // Build a lightweight TelemetryData with just the metadata fields
+        // that detect_profile needs (camera_type, camera_model, lens_profile, lens_info).
+        let to_stub = |m: &telemetry::CameraMetadata| telemetry::TelemetryData {
+            camera_type: m.camera_type.clone(),
+            camera_model: m.camera_model.clone(),
+            lens_profile: m.lens_profile.clone(),
+            lens_info: m.lens_info.clone(),
+            gyro: Vec::new(),
+            accel: Vec::new(),
+            quaternions: Vec::new(),
+        };
+        let left_tel_stub = left_meta.as_ref().map(to_stub);
+        let right_tel_stub = right_meta.as_ref().map(to_stub);
+        let left_tel = left_tel_stub.as_ref();
+        let right_tel = right_tel_stub.as_ref();
 
         let (left_p, left_info) = lens_database::detect_profile(
             &self.left_info.path,

@@ -70,6 +70,92 @@ impl ImuSample {
     }
 }
 
+/// Camera metadata extracted via the fast `probe_only` path.
+pub struct CameraMetadata {
+    pub camera_type: String,
+    pub camera_model: Option<String>,
+    pub lens_profile: Option<CameraParams>,
+    pub lens_info: Option<String>,
+}
+
+/// Extract only camera metadata and lens profile (fast path).
+///
+/// Uses `probe_only` mode to skip the expensive quaternion derivation
+/// and IMU normalization. For DJI Action 4 this reduces parse time
+/// from ~76s to under 1s.
+pub fn extract_metadata(path: &Path) -> Result<CameraMetadata, TelemetryError> {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let filesize = std::fs::metadata(path)
+        .map_err(|e| TelemetryError::Io(e.to_string()))?
+        .len() as usize;
+
+    let mut file = std::fs::File::open(path).map_err(|e| TelemetryError::Io(e.to_string()))?;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let options = telemetry_parser::InputOptions {
+        probe_only: true,
+        ..Default::default()
+    };
+    let input = telemetry_parser::Input::from_stream_with_options(
+        &mut file,
+        filesize,
+        path,
+        |_| {},
+        cancel,
+        options,
+    )
+    .map_err(|e| TelemetryError::Parse(e.to_string()))?;
+
+    let camera_type = input.camera_type();
+    let camera_model = input.camera_model().cloned();
+
+    let mut lens_profile = None;
+    let mut lens_info = None;
+
+    if let Some(ref samples) = input.samples {
+        for sample in samples {
+            if let Some(ref tag_map) = sample.tag_map {
+                if lens_profile.is_none() {
+                    lens_profile = extract_lens_from_tags(tag_map)
+                        .or_else(|| extract_lens_from_clip_meta(tag_map));
+                }
+                if lens_info.is_none()
+                    && let Some(map) = tag_map.get(&telemetry_parser::tags_impl::GroupId::Default)
+                {
+                    use telemetry_parser::tags_impl::{GetWithType, TagId};
+                    if let Some(v) = map.get_t(TagId::Unknown(0x56464f56)) as Option<&String> {
+                        lens_info = Some(
+                            match v.as_str() {
+                                "X" => "Max",
+                                "W" => "Wide",
+                                "S" => "Super",
+                                "H" => "Hyper",
+                                "L" => "Linear",
+                                "N" => "Narrow",
+                                "M" => "Medium",
+                                other => other,
+                            }
+                            .to_string(),
+                        );
+                    }
+                }
+                if lens_profile.is_some() && lens_info.is_some() {
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(CameraMetadata {
+        camera_type,
+        camera_model,
+        lens_profile,
+        lens_info,
+    })
+}
+
 /// Extract telemetry data from a video file.
 ///
 /// Auto-detects the camera type and extracts all available IMU data

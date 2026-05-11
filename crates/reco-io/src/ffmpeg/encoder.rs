@@ -853,8 +853,9 @@ impl VideoEncoder {
         // before the first video packet arrives. RTMP ingest servers
         // expect interleaved A/V from the start.
         let one_frame_duration = ffmpeg::Rational(fps.1, fps.0);
-        let preroll_pts =
-            unsafe { ffmpeg::sys::av_rescale_q(1, one_frame_duration.into(), video_time_base.into()) };
+        let preroll_pts = unsafe {
+            ffmpeg::sys::av_rescale_q(1, one_frame_duration.into(), video_time_base.into())
+        };
         if let Err(e) = silent_audio.write_up_to(&mut octx, preroll_pts, video_time_base) {
             log::warn!("Stream audio preroll failed: {e}");
         }
