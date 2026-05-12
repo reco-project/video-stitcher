@@ -275,11 +275,15 @@ fn import_dmabuf_nv12_shared_memory(
         let mut uv_dedicated = vk::MemoryDedicatedAllocateInfo::default()
             .image(uv_image);
         let _uv_reqs = raw_device.get_image_memory_requirements(uv_image);
-        let uv_alloc = vk::MemoryAllocateInfo::default()
+        // UV binds at uv_offset (non-zero) - skip dedicated allocation
+        // to avoid VUID-vkBindImageMemory-memory-01509 violation.
+        let mut uv_alloc = vk::MemoryAllocateInfo::default()
             .allocation_size(total_size as u64)
             .memory_type_index(memory_type_index)
-            .push_next(&mut uv_import)
-            .push_next(&mut uv_dedicated);
+            .push_next(&mut uv_import);
+        if uv_offset == 0 {
+            uv_alloc = uv_alloc.push_next(&mut uv_dedicated);
+        }
         let uv_memory = raw_device.allocate_memory(&uv_alloc, None)
             .map_err(|e| DmaBufImportError::Vulkan(format!("UV vkAllocateMemory: {e:?}")))?;
 
@@ -541,11 +545,16 @@ fn import_single_plane(
         // dedicatedInfo->pNext instead of the main pNext chain. Pushing
         // import first then dedicated produces: alloc -> dedicated -> import,
         // which puts import_info as dedicated_info.pNext.
-        let alloc_info = vk::MemoryAllocateInfo::default()
+        //
+        // Dedicated allocation with non-zero bind offset violates
+        // VUID-vkBindImageMemory-memory-01509. Only add it when offset=0.
+        let mut alloc_info = vk::MemoryAllocateInfo::default()
             .allocation_size(alloc_size)
             .memory_type_index(memory_type_index)
-            .push_next(&mut import_info)
-            .push_next(&mut dedicated_info);
+            .push_next(&mut import_info);
+        if offset == 0 {
+            alloc_info = alloc_info.push_next(&mut dedicated_info);
+        }
 
         let device_memory = raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
             DmaBufImportError::Vulkan(format!("vkAllocateMemory (DMA-buf fd={fd}): {e:?}"))
