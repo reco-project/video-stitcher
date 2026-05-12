@@ -24,13 +24,13 @@ pub(crate) use kb4::kb4_forward_scale;
 /// Callers that need the polynomial (inverse_fisheye's Newton-Raphson
 /// iteration, forward_fisheye, `kb4_forward_scale`) all delegate here
 /// so the formula lives in exactly one place Rust-side. The WGSL
-/// mirror at `shaders/fisheye.wgsl` lines 164-170 can't cross-
+/// mirror at `shaders/fisheye.wgsl` lines 184-188 can't cross-
 /// language-link; the `wgsl_kb4_matches_rust_kb4_on_theta_grid`
 /// compute-dispatch test locks the two sides together numerically.
 pub(crate) mod kb4 {
     /// Evaluate `θ_d = θ * (1 + k₁θ² + k₂θ⁴ + k₃θ⁶ + k₄θ⁸)`.
     ///
-    /// SYNC_WITH `shaders/fisheye.wgsl` lines 164-170. Any edit here
+    /// SYNC_WITH `shaders/fisheye.wgsl` lines 184-188. Any edit here
     /// must stay numerically in agreement with the WGSL fragment; the
     /// `wgsl_kb4_matches_rust_kb4_on_theta_grid` test will catch
     /// f32-vs-f64 drift within 1e-5.
@@ -236,7 +236,7 @@ mod tests {
     // Step 1f: evaluate the KB4 polynomial on a real GPU via wgpu
     // compute dispatch and compare against the f64 Rust canonical. The
     // polynomial body in the compute shader below is a deliberate
-    // SYNC_WITH copy of `shaders/fisheye.wgsl` lines 164-170; Step 3
+    // SYNC_WITH copy of `shaders/fisheye.wgsl` lines 184-188; Step 3
     // will pull both behind a single `reco_core::lens::kb4` module
     // so the duplication collapses.
     #[test]
@@ -289,7 +289,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (i >= u.count) { return; }
     let theta = theta_in[i];
     let theta2 = theta * theta;
-    // SYNC_WITH shaders/fisheye.wgsl lines 164-170 (KB4 polynomial body)
+    // SYNC_WITH shaders/fisheye.wgsl lines 184-188 (KB4 polynomial body)
     let theta_d = theta * (1.0
         + u.k.x * theta2
         + u.k.y * theta2 * theta2
