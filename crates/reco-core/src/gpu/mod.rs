@@ -204,7 +204,7 @@ impl GpuContext {
     /// actually supports.
     ///
     /// `downlevel_defaults()` can exceed what embedded GPUs report (e.g.
-    /// VeriSilicon GC8000 supports `max_compute_workgroup_size_y = 128`
+    /// Some embedded GPUs support `max_compute_workgroup_size_y = 128`
     /// but `downlevel_defaults` asks for 256). We take the minimum of
     /// our desired defaults and the adapter's reported limits for each
     /// field, ensuring we never ask for more than the hardware offers.
