@@ -337,16 +337,11 @@ fn import_single_plane(
         // dedicatedInfo->pNext instead of the main pNext chain. Pushing
         // import first then dedicated produces: alloc -> dedicated -> import,
         // which puts import_info as dedicated_info.pNext.
-        //
-        // Dedicated allocation with non-zero bind offset violates
-        // VUID-vkBindImageMemory-memory-01509. Only add it when offset=0.
-        let mut alloc_info = vk::MemoryAllocateInfo::default()
+        let alloc_info = vk::MemoryAllocateInfo::default()
             .allocation_size(alloc_size)
             .memory_type_index(memory_type_index)
-            .push_next(&mut import_info);
-        if offset == 0 {
-            alloc_info = alloc_info.push_next(&mut dedicated_info);
-        }
+            .push_next(&mut import_info)
+            .push_next(&mut dedicated_info);
 
         let device_memory = raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
             DmaBufImportError::Vulkan(format!("vkAllocateMemory (DMA-buf fd={fd}): {e:?}"))
