@@ -63,10 +63,25 @@ impl DmaBufTextureCache {
         uv_offset: u32,
         total_size: u32,
     ) -> Result<(), DmaBufImportError> {
+        self.ensure_imported_tiling(gpu, fd, width, height, y_offset, uv_offset, total_size, false)
+    }
+
+    /// Import with explicit tiling control.
+    pub fn ensure_imported_tiling(
+        &mut self,
+        gpu: &GpuContext,
+        fd: i32,
+        width: u32,
+        height: u32,
+        y_offset: u32,
+        uv_offset: u32,
+        total_size: u32,
+        linear: bool,
+    ) -> Result<(), DmaBufImportError> {
         if !self.cache.contains_key(&fd) {
             crate::profile_scope!("dmabuf_cache_miss");
             let textures =
-                import_dmabuf_nv12(gpu, fd, width, height, y_offset, uv_offset, total_size)?;
+                import_dmabuf_nv12_tiling(gpu, fd, width, height, y_offset, uv_offset, total_size, linear)?;
             log::info!(
                 "DMA-buf cache: imported fd={} ({}x{} NV12, pool size: {})",
                 fd,
@@ -106,43 +121,313 @@ pub fn import_dmabuf_nv12(
     uv_offset: u32,
     total_size: u32,
 ) -> Result<DmaBufNv12Textures, DmaBufImportError> {
+    import_dmabuf_nv12_tiling(gpu, fd, width, height, y_offset, uv_offset, total_size, false)
+}
+
+/// Import an NV12 DMA-buf with explicit tiling control.
+///
+/// `linear`: if true, uses `VK_IMAGE_TILING_LINEAR` (for ION/CMA buffers
+/// where pixel data is stored row-by-row). If false, uses `OPTIMAL`
+/// (for NVMM/tiled buffers where the driver handles layout).
+pub fn import_dmabuf_nv12_tiling(
+    gpu: &GpuContext,
+    fd: i32,
+    width: u32,
+    height: u32,
+    y_offset: u32,
+    uv_offset: u32,
+    total_size: u32,
+    linear: bool,
+) -> Result<DmaBufNv12Textures, DmaBufImportError> {
     crate::profile_scope!("dmabuf_import_nv12");
-    let y_fd = unsafe { libc::dup(fd) };
-    if y_fd < 0 {
+
+    if linear {
+        import_dmabuf_nv12_shared_memory(
+            gpu, fd, width, height, y_offset, uv_offset, total_size,
+        )
+    } else {
+        // OPTIMAL tiling: separate imports per plane (Jetson NVMM path)
+        let y_fd = unsafe { libc::dup(fd) };
+        if y_fd < 0 {
+            return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
+        }
+        let uv_fd = unsafe { libc::dup(fd) };
+        if uv_fd < 0 {
+            unsafe { libc::close(y_fd) };
+            return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
+        }
+
+        let y_texture = import_single_plane(
+            gpu, y_fd, width, height,
+            wgpu::TextureFormat::R8Unorm, y_offset, total_size,
+            vk::ImageTiling::OPTIMAL, "nvmm_y",
+        )?;
+        let uv_texture = import_single_plane(
+            gpu, uv_fd, width / 2, height / 2,
+            wgpu::TextureFormat::Rg8Unorm, uv_offset, total_size,
+            vk::ImageTiling::OPTIMAL, "nvmm_uv",
+        )?;
+        Ok(DmaBufNv12Textures { y_texture, uv_texture })
+    }
+}
+
+/// Import NV12 using a single VkDeviceMemory shared between Y and UV images.
+/// This avoids double-importing the same DMA-BUF fd, which some drivers
+/// (VeriSilicon GC8000) don't handle correctly for non-zero bind offsets.
+fn import_dmabuf_nv12_shared_memory(
+    gpu: &GpuContext,
+    fd: i32,
+    width: u32,
+    height: u32,
+    y_offset: u32,
+    uv_offset: u32,
+    total_size: u32,
+) -> Result<DmaBufNv12Textures, DmaBufImportError> {
+    let dup_fd = unsafe { libc::dup(fd) };
+    if dup_fd < 0 {
         return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
     }
-    let uv_fd = unsafe { libc::dup(fd) };
-    if uv_fd < 0 {
-        unsafe { libc::close(y_fd) };
+
+    let (y_image, uv_image, shared_memory, uv_memory) = unsafe {
+        let hal_device_guard = gpu
+            .device
+            .as_hal::<Vulkan>()
+            .ok_or(DmaBufImportError::NotVulkan)?;
+        let hal_device = &*hal_device_guard;
+        let raw_device = hal_device.raw_device();
+
+        let mut external_info = vk::ExternalMemoryImageCreateInfo::default()
+            .handle_types(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
+
+        // Y image: R8, full resolution
+        let y_info = vk::ImageCreateInfo::default()
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk::Format::R8_UNORM)
+            .extent(vk::Extent3D { width, height, depth: 1 })
+            .mip_levels(1).array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::LINEAR)
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_SRC)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .push_next(&mut external_info);
+        let y_image = raw_device.create_image(&y_info, None)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("Y vkCreateImage: {e:?}")))?;
+
+        // UV image: RG8, half resolution
+        let mut external_info2 = vk::ExternalMemoryImageCreateInfo::default()
+            .handle_types(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
+        let uv_info = vk::ImageCreateInfo::default()
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk::Format::R8G8_UNORM)
+            .extent(vk::Extent3D { width: width / 2, height: height / 2, depth: 1 })
+            .mip_levels(1).array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::LINEAR)
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_SRC)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .push_next(&mut external_info2);
+        let uv_image = raw_device.create_image(&uv_info, None)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("UV vkCreateImage: {e:?}")))?;
+
+        // Single memory allocation from the DMA-BUF
+        let mem_reqs = raw_device.get_image_memory_requirements(y_image);
+        let mem_props = {
+            let instance = hal_device.shared_instance().raw_instance();
+            instance.get_physical_device_memory_properties(hal_device.raw_physical_device())
+        };
+        let memory_type_index = (0..mem_props.memory_type_count)
+            .find(|&i| (mem_reqs.memory_type_bits & (1 << i)) != 0)
+            .ok_or_else(|| DmaBufImportError::Vulkan("no compatible memory type".into()))?;
+
+        let mut import_info = vk::ImportMemoryFdInfoKHR::default()
+            .handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
+            .fd(dup_fd);
+        let mut y_dedicated = vk::MemoryDedicatedAllocateInfo::default()
+            .image(y_image);
+        let alloc_info = vk::MemoryAllocateInfo::default()
+            .allocation_size(total_size as u64)
+            .memory_type_index(memory_type_index)
+            .push_next(&mut import_info)
+            .push_next(&mut y_dedicated);
+        let shared_memory = raw_device.allocate_memory(&alloc_info, None)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("vkAllocateMemory: {e:?}")))?;
+
+        // Bind Y at offset 0 (shared memory)
+        raw_device.bind_image_memory(y_image, shared_memory, y_offset as u64)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("Y vkBindImageMemory: {e:?}")))?;
+
+        // UV needs a SEPARATE memory import because VeriSilicon doesn't
+        // handle non-zero bind offsets for imported DMA-BUF memory.
+        // Import the same fd again but bind at offset 0 with a modified
+        // allocation that offsets into the buffer via the DMA-BUF.
+        let uv_dup_fd = libc::dup(fd);
+        if uv_dup_fd < 0 {
+            raw_device.destroy_image(y_image, None);
+            raw_device.destroy_image(uv_image, None);
+            raw_device.free_memory(shared_memory, None);
+            return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
+        }
+        let mut uv_import = vk::ImportMemoryFdInfoKHR::default()
+            .handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
+            .fd(uv_dup_fd);
+        let mut uv_dedicated = vk::MemoryDedicatedAllocateInfo::default()
+            .image(uv_image);
+        let _uv_reqs = raw_device.get_image_memory_requirements(uv_image);
+        let uv_alloc = vk::MemoryAllocateInfo::default()
+            .allocation_size(total_size as u64)
+            .memory_type_index(memory_type_index)
+            .push_next(&mut uv_import)
+            .push_next(&mut uv_dedicated);
+        let uv_memory = raw_device.allocate_memory(&uv_alloc, None)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("UV vkAllocateMemory: {e:?}")))?;
+
+        raw_device.bind_image_memory(uv_image, uv_memory, uv_offset as u64)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("UV vkBindImageMemory: {e:?}")))?;
+
+        (y_image, uv_image, shared_memory, uv_memory)
+    };
+
+    let device_for_drop = gpu.device.clone();
+
+    let y_drop_dev = device_for_drop.clone();
+    let y_drop: Box<dyn FnOnce() + Send + Sync> = Box::new(move || unsafe {
+        if let Some(hal_device) = y_drop_dev.as_hal::<Vulkan>() {
+            let raw = hal_device.raw_device();
+            raw.destroy_image(y_image, None);
+            raw.free_memory(shared_memory, None);
+        }
+    });
+
+    let uv_drop_dev = device_for_drop.clone();
+    let uv_drop: Box<dyn FnOnce() + Send + Sync> = Box::new(move || unsafe {
+        if let Some(hal_device) = uv_drop_dev.as_hal::<Vulkan>() {
+            let raw = hal_device.raw_device();
+            raw.destroy_image(uv_image, None);
+            raw.free_memory(uv_memory, None);
+        }
+    });
+
+    let y_texture = unsafe {
+        let hal_device_guard = gpu.device.as_hal::<Vulkan>()
+            .ok_or(DmaBufImportError::NotVulkan)?;
+        let hal_texture = hal_device_guard.texture_from_raw(
+            y_image,
+            &wgpu::hal::TextureDescriptor {
+                label: Some("ion_y"),
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1, sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R8Unorm,
+                usage: wgpu::TextureUses::RESOURCE | wgpu::TextureUses::COPY_SRC,
+                memory_flags: wgpu::hal::MemoryFlags::empty(),
+                view_formats: vec![],
+            },
+            Some(y_drop),
+            wgpu::hal::vulkan::TextureMemory::External,
+        );
+        drop(hal_device_guard);
+        gpu.device.create_texture_from_hal::<Vulkan>(
+            hal_texture,
+            &wgpu::TextureDescriptor {
+                label: Some("ion_y"), size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC, view_formats: &[],
+            },
+        )
+    };
+
+    let uv_texture = unsafe {
+        let hal_device_guard = gpu.device.as_hal::<Vulkan>()
+            .ok_or(DmaBufImportError::NotVulkan)?;
+        let hal_texture = hal_device_guard.texture_from_raw(
+            uv_image,
+            &wgpu::hal::TextureDescriptor {
+                label: Some("ion_uv"),
+                size: wgpu::Extent3d { width: width / 2, height: height / 2, depth_or_array_layers: 1 },
+                mip_level_count: 1, sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rg8Unorm,
+                usage: wgpu::TextureUses::RESOURCE | wgpu::TextureUses::COPY_SRC,
+                memory_flags: wgpu::hal::MemoryFlags::empty(),
+                view_formats: vec![],
+            },
+            Some(uv_drop),
+            wgpu::hal::vulkan::TextureMemory::External,
+        );
+        drop(hal_device_guard);
+        gpu.device.create_texture_from_hal::<Vulkan>(
+            hal_texture,
+            &wgpu::TextureDescriptor {
+                label: Some("ion_uv"),
+                size: wgpu::Extent3d { width: width / 2, height: height / 2, depth_or_array_layers: 1 },
+                mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rg8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC, view_formats: &[],
+            },
+        )
+    };
+
+    Ok(DmaBufNv12Textures { y_texture, uv_texture })
+}
+
+/// Import a single DMA-BUF plane as a wgpu texture.
+/// Use for platforms where Y and UV have separate fds (non-contiguous NV12).
+pub fn import_dmabuf_plane(
+    gpu: &GpuContext,
+    fd: i32,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+    linear: bool,
+) -> Result<wgpu::Texture, DmaBufImportError> {
+    let dup_fd = unsafe { libc::dup(fd) };
+    if dup_fd < 0 {
         return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
     }
+    let tiling = if linear { vk::ImageTiling::LINEAR } else { vk::ImageTiling::OPTIMAL };
+    import_single_plane(gpu, dup_fd, width, height, format, 0, 0, tiling, "dmabuf_plane")
+}
 
-    let y_texture = import_single_plane(
-        gpu,
-        y_fd,
-        width,
-        height,
-        wgpu::TextureFormat::R8Unorm,
-        y_offset,
-        total_size,
-        "nvmm_y",
-    )?;
+/// Cache for individually-imported DMA-BUF plane textures.
+/// Used on platforms where NV12 Y and UV have separate fds.
+#[derive(Default)]
+pub struct DmaBufPlaneCache {
+    cache: HashMap<i32, wgpu::Texture>,
+}
 
-    let uv_texture = import_single_plane(
-        gpu,
-        uv_fd,
-        width / 2,
-        height / 2,
-        wgpu::TextureFormat::Rg8Unorm,
-        uv_offset,
-        total_size,
-        "nvmm_uv",
-    )?;
+impl DmaBufPlaneCache {
+    pub fn new() -> Self {
+        Self { cache: HashMap::with_capacity(8) }
+    }
 
-    Ok(DmaBufNv12Textures {
-        y_texture,
-        uv_texture,
-    })
+    pub fn ensure_imported(
+        &mut self,
+        gpu: &GpuContext,
+        fd: i32,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        linear: bool,
+    ) -> Result<(), DmaBufImportError> {
+        if !self.cache.contains_key(&fd) {
+            let tex = import_dmabuf_plane(gpu, fd, width, height, format, linear)?;
+            log::info!("DMA-BUF plane cache: imported fd={} {}x{} {:?} (pool: {})",
+                fd, width, height, format, self.cache.len() + 1);
+            self.cache.insert(fd, tex);
+        }
+        Ok(())
+    }
+
+    pub fn get(&self, fd: i32) -> &wgpu::Texture {
+        self.cache.get(&fd).expect("DmaBufPlaneCache::get before ensure_imported")
+    }
+
+    pub fn len(&self) -> usize {
+        self.cache.len()
+    }
 }
 
 fn import_single_plane(
@@ -153,6 +438,7 @@ fn import_single_plane(
     format: wgpu::TextureFormat,
     offset: u32,
     total_size: u32,
+    tiling: vk::ImageTiling,
     label: &'static str,
 ) -> Result<wgpu::Texture, DmaBufImportError> {
     let (vk_image, device_memory) = unsafe {
@@ -186,10 +472,10 @@ fn import_single_plane(
             .mip_levels(1)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(vk::ImageUsageFlags::SAMPLED)
+            .tiling(tiling)
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_SRC)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .initial_layout(vk::ImageLayout::PREINITIALIZED)
             .push_next(&mut external_info);
 
         let vk_image = raw_device
@@ -197,6 +483,23 @@ fn import_single_plane(
             .map_err(|e| DmaBufImportError::Vulkan(format!("vkCreateImage: {e:?}")))?;
 
         let mem_reqs = raw_device.get_image_memory_requirements(vk_image);
+
+        // Query the driver's expected row pitch for LINEAR tiling
+        let subresource = vk::ImageSubresource {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            mip_level: 0,
+            array_layer: 0,
+        };
+        let layout = raw_device.get_image_subresource_layout(vk_image, subresource);
+        log::info!(
+            "DMA-BUF import {label}: {}x{} {format:?} tiling={tiling:?} \
+             mreq.size={} mreq.align={} mreq.type_bits=0x{:x} \
+             layout: offset={} size={} rowPitch={} arrayPitch={} depthPitch={}",
+            width, height, mem_reqs.size, mem_reqs.alignment,
+            mem_reqs.memory_type_bits,
+            layout.offset, layout.size, layout.row_pitch,
+            layout.array_pitch, layout.depth_pitch,
+        );
 
         let mem_props = {
             let instance = hal_device.shared_instance().raw_instance();
@@ -213,10 +516,36 @@ fn import_single_plane(
             .handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
             .fd(fd);
 
+        // VK_KHR_dedicated_allocation: some drivers require this for imported memory
+        let mut dedicated_info = vk::MemoryDedicatedAllocateInfo::default()
+            .image(vk_image);
+
+        // Vulkan spec requires allocationSize = lseek(fd, 0, SEEK_END) for DMA-BUF.
+        let dmabuf_size = unsafe {
+            let size = libc::lseek(fd, 0, libc::SEEK_END);
+            libc::lseek(fd, 0, libc::SEEK_SET);
+            if size > 0 { size as u64 } else { 0 }
+        };
+        let alloc_size = if total_size > 0 {
+            total_size as u64
+        } else if dmabuf_size > 0 {
+            dmabuf_size
+        } else {
+            mem_reqs.size
+        };
+        log::info!(
+            "DMA-BUF import {label}: allocationSize={alloc_size} (dmabuf_lseek={dmabuf_size} mreq.size={}) memTypeIdx={memory_type_index}",
+            mem_reqs.size
+        );
+        // VeriSilicon GC8000 blob looks for VkImportMemoryFdInfoKHR in
+        // dedicatedInfo->pNext instead of the main pNext chain. Pushing
+        // import first then dedicated produces: alloc -> dedicated -> import,
+        // which puts import_info as dedicated_info.pNext.
         let alloc_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(total_size as u64)
+            .allocation_size(alloc_size)
             .memory_type_index(memory_type_index)
-            .push_next(&mut import_info);
+            .push_next(&mut import_info)
+            .push_next(&mut dedicated_info);
 
         let device_memory = raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
             DmaBufImportError::Vulkan(format!("vkAllocateMemory (DMA-buf fd={fd}): {e:?}"))
@@ -225,6 +554,68 @@ fn import_single_plane(
         raw_device
             .bind_image_memory(vk_image, device_memory, offset as u64)
             .map_err(|e| DmaBufImportError::Vulkan(format!("vkBindImageMemory: {e:?}")))?;
+
+        // Queue family ownership transfer from external producer (ISP/camera)
+        // to our Vulkan queue. Without this, the GPU cache may not see the
+        // DMA-BUF data written by the external producer.
+        // VK_QUEUE_FAMILY_FOREIGN_EXT = 0xFFFFFFFE
+        const VK_QUEUE_FAMILY_FOREIGN_EXT: u32 = !1u32; // 0xFFFFFFFE
+        let queue_family = hal_device.queue_family_index();
+
+        let barrier = vk::ImageMemoryBarrier::default()
+            .src_access_mask(vk::AccessFlags::HOST_WRITE)
+            .dst_access_mask(vk::AccessFlags::TRANSFER_READ | vk::AccessFlags::SHADER_READ)
+            .old_layout(vk::ImageLayout::PREINITIALIZED)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .src_queue_family_index(VK_QUEUE_FAMILY_FOREIGN_EXT)
+            .dst_queue_family_index(queue_family)
+            .image(vk_image)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            });
+
+        let pool_info = vk::CommandPoolCreateInfo::default()
+            .queue_family_index(queue_family)
+            .flags(vk::CommandPoolCreateFlags::TRANSIENT);
+        let cmd_pool = raw_device.create_command_pool(&pool_info, None)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("cmd pool: {e:?}")))?;
+
+        let alloc_cmd = vk::CommandBufferAllocateInfo::default()
+            .command_pool(cmd_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+        let cmd_bufs = raw_device.allocate_command_buffers(&alloc_cmd)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("cmd alloc: {e:?}")))?;
+        let cmd = cmd_bufs[0];
+
+        let begin = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        raw_device.begin_command_buffer(cmd, &begin)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("begin cmd: {e:?}")))?;
+        raw_device.cmd_pipeline_barrier(
+            cmd,
+            vk::PipelineStageFlags::HOST,
+            vk::PipelineStageFlags::ALL_COMMANDS,
+            vk::DependencyFlags::empty(),
+            &[], &[], &[barrier],
+        );
+        raw_device.end_command_buffer(cmd)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("end cmd: {e:?}")))?;
+
+        let raw_queue = hal_device.raw_queue();
+        let submit = vk::SubmitInfo::default()
+            .command_buffers(&cmd_bufs);
+        raw_device.queue_submit(raw_queue, &[submit], vk::Fence::null())
+            .map_err(|e| DmaBufImportError::Vulkan(format!("queue submit: {e:?}")))?;
+        raw_device.queue_wait_idle(raw_queue)
+            .map_err(|e| DmaBufImportError::Vulkan(format!("queue wait: {e:?}")))?;
+
+        raw_device.destroy_command_pool(cmd_pool, None);
+        log::info!("DMA-BUF import {label}: foreign queue family transfer done (foreign -> qf={queue_family})");
 
         (vk_image, device_memory)
     };
@@ -259,7 +650,7 @@ fn import_single_plane(
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUses::RESOURCE,
+                usage: wgpu::TextureUses::RESOURCE | wgpu::TextureUses::COPY_SRC,
                 memory_flags: wgpu::hal::MemoryFlags::empty(),
                 view_formats: vec![],
             },
@@ -282,7 +673,7 @@ fn import_single_plane(
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             },
         )
