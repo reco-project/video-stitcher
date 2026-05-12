@@ -694,7 +694,11 @@ impl StitchPipeline {
         feature = "profiling",
         tracing::instrument(skip_all, name = "render_to_target_gpu")
     )]
-    pub(crate) fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
+    /// Render to the internal target using whatever textures are currently
+    /// bound. Call [`Self::render_imported_textures`] once to set up
+    /// bind groups, then use this for subsequent frames with the same
+    /// textures to avoid per-frame bind group allocation.
+    pub fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {
