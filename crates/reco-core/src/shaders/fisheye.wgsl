@@ -51,10 +51,7 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.clip_position = u.mvp * vec4<f32>(in.position, 1.0);
-    // Remap UV from [0,1] to [-0.5, 1.5] — matches v1 vertex shader.
-    // This extends the coordinate space so the undistortion can
-    // map points outside the plane back to valid texture coords.
-    out.uv = in.uv * 2.0 - vec2<f32>(0.5);
+    out.uv = in.uv;
     return out;
 }
 
@@ -155,13 +152,21 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Remap UV from [0,1] to [-0.5, 1.5] in the fragment shader.
+    // This extends the coordinate space so the undistortion can
+    // map points outside the plane back to valid texture coords.
+    // (Done here instead of the vertex shader because some embedded
+    // GPU drivers pass vertex attributes directly to the fragment
+    // stage, ignoring vertex shader output for user-defined varyings.)
+    let uv = in.uv * 2.0 - vec2<f32>(0.5);
+
     // Raw mode: negative correction bypasses all projection math
     // and samples the input texture directly at the fragment UV.
     if u.lens_preview.x < 0.0 {
-        if in.uv.x < 0.0 || in.uv.x > 1.0 || in.uv.y < 0.0 || in.uv.y > 1.0 {
+        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
             return vec4<f32>(0.0, 0.0, 0.0, 0.0);
         }
-        let raw = sample_yuv(in.uv);
+        let raw = sample_yuv(uv);
         return vec4<f32>(raw.rgb, 1.0);
     }
 
@@ -171,8 +176,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cy = u.intrinsics.w;
 
     // KB4 fisheye undistortion: map from plane UV to video texture coordinate
-    let x = (in.uv.x - cx) / fx;
-    let y = (in.uv.y - cy) / fy;
+    let x = (uv.x - cx) / fx;
+    let y = (uv.y - cy) / fy;
     let r = sqrt(x * x + y * y);
     let theta = atan(r);
     let theta2 = theta * theta;
@@ -186,7 +191,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Split view: left half uncorrected, right half fully corrected.
     var correction = u.lens_preview.x;
     if u.lens_preview.y > 0.5 {
-        correction = select(0.0, 1.0, in.uv.x > 0.5);
+        correction = select(0.0, 1.0, uv.x > 0.5);
     }
     let theta_d = mix(theta, theta_d_full, correction);
 
@@ -216,12 +221,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var alpha = 1.0;
     let blend_width = u.color_offset_blend.w;
     if u.flags.x == 1u && blend_width > 0.0 {
-        let edge_dist = in.uv.x;
+        let edge_dist = uv.x;
         alpha = smoothstep(0.0, blend_width, edge_dist);
     }
 
     // Split-view separator line (1px white at the midpoint)
-    if u.lens_preview.y > 0.5 && abs(in.uv.x - 0.5) < 0.001 {
+    if u.lens_preview.y > 0.5 && abs(uv.x - 0.5) < 0.001 {
         return vec4<f32>(1.0, 1.0, 1.0, alpha);
     }
 
