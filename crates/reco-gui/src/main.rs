@@ -1671,28 +1671,46 @@ fn main() -> anyhow::Result<()> {
             }
         };
         let seek_str = format!("{:.2}", current_secs);
-        let extract_frame = |video: &std::path::Path, out: &std::path::Path, seek: &str| {
-            match std::process::Command::new("ffmpeg")
-                .args(["-y", "-ss", seek, "-i"])
-                .arg(video)
-                .args(["-frames:v", "1", "-q:v", "2"])
-                .arg(out)
-                .output()
-            {
-                Ok(output) => {
-                    if !output.status.success() {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        log::warn!(
-                            "ffmpeg frame extraction failed for {}: {stderr}",
-                            video.display()
-                        );
+        let frame_index = {
+            let s = state_ref.borrow();
+            s.playback.frame_index() as u64
+        };
+        let extract_frame = |video: &std::path::Path, out: &std::path::Path, idx: u64| {
+            match reco_io::ffmpeg::calibration_io::extract_frames(video, &[idx]) {
+                Ok(frames) if !frames.is_empty() => {
+                    let yuv = &frames[0];
+                    let w = yuv.width as usize;
+                    let h = yuv.height as usize;
+                    let uv_w = w / 2;
+                    let mut rgb = vec![0u8; w * h * 3];
+                    for row in 0..h {
+                        for col in 0..w {
+                            let yi = row * w + col;
+                            let uvi = (row / 2) * uv_w + (col / 2);
+                            let y = yuv.y[yi] as f32;
+                            let u = yuv.u[uvi] as f32;
+                            let v = yuv.v[uvi] as f32;
+                            let r = y + 1.402 * (v - 128.0);
+                            let g = y - 0.344 * (u - 128.0) - 0.714 * (v - 128.0);
+                            let b = y + 1.772 * (u - 128.0);
+                            let pi = yi * 3;
+                            rgb[pi] = r.clamp(0.0, 255.0) as u8;
+                            rgb[pi + 1] = g.clamp(0.0, 255.0) as u8;
+                            rgb[pi + 2] = b.clamp(0.0, 255.0) as u8;
+                        }
+                    }
+                    if let Err(e) = image::save_buffer(
+                        out, &rgb, w as u32, h as u32, image::ColorType::Rgb8,
+                    ) {
+                        log::warn!("Failed to save ROI frame {}: {e}", out.display());
                     }
                 }
-                Err(e) => log::error!("ffmpeg not found or failed to run: {e}"),
+                Ok(_) => log::warn!("No frame decoded from {}", video.display()),
+                Err(e) => log::error!("Frame extraction failed for {}: {e}", video.display()),
             }
         };
-        extract_frame(&left, &left_png, &seek_str);
-        extract_frame(&right, &right_png, &seek_str);
+        extract_frame(&left, &left_png, frame_index);
+        extract_frame(&right, &right_png, frame_index);
         log::info!(
             "ROI frame extraction: left={} right={}",
             left_png.exists(),
