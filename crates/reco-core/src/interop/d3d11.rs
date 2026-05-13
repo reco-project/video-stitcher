@@ -264,7 +264,9 @@ impl D3d11StagingPool {
         );
 
         // Convert CUDA imports: all-Some → Some([4]), any None → None.
-        let cuda_nv12 = if cuda_imports.iter().all(|c| c.is_some()) {
+        // Only enable CUDA if there's a CUDA-based detector. CUDA imports
+        // can lock D3D11 textures and block wgpu compute (DirectML hang).
+        let cuda_nv12 = if false && cuda_imports.iter().all(|c| c.is_some()) {
             let arr: [crate::interop::cuda::CudaImportedNv12; 4] = cuda_imports
                 .into_iter()
                 .map(|c| c.unwrap())
