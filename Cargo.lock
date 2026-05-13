@@ -5518,6 +5518,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "base64",
+ "image",
  "log",
  "open",
  "reco-autocam",

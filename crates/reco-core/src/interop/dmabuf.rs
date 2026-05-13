@@ -63,7 +63,9 @@ impl DmaBufTextureCache {
         uv_offset: u32,
         total_size: u32,
     ) -> Result<(), DmaBufImportError> {
-        self.ensure_imported_tiling(gpu, fd, width, height, y_offset, uv_offset, total_size, false)
+        self.ensure_imported_tiling(
+            gpu, fd, width, height, y_offset, uv_offset, total_size, false,
+        )
     }
 
     /// Import with explicit tiling control.
@@ -80,8 +82,9 @@ impl DmaBufTextureCache {
     ) -> Result<(), DmaBufImportError> {
         if !self.cache.contains_key(&fd) {
             crate::profile_scope!("dmabuf_cache_miss");
-            let textures =
-                import_dmabuf_nv12_tiling(gpu, fd, width, height, y_offset, uv_offset, total_size, linear)?;
+            let textures = import_dmabuf_nv12_tiling(
+                gpu, fd, width, height, y_offset, uv_offset, total_size, linear,
+            )?;
             log::info!(
                 "DMA-buf cache: imported fd={} ({}x{} NV12, pool size: {})",
                 fd,
@@ -121,7 +124,9 @@ pub fn import_dmabuf_nv12(
     uv_offset: u32,
     total_size: u32,
 ) -> Result<DmaBufNv12Textures, DmaBufImportError> {
-    import_dmabuf_nv12_tiling(gpu, fd, width, height, y_offset, uv_offset, total_size, false)
+    import_dmabuf_nv12_tiling(
+        gpu, fd, width, height, y_offset, uv_offset, total_size, false,
+    )
 }
 
 /// Import an NV12 DMA-buf with explicit tiling control.
@@ -141,7 +146,11 @@ pub fn import_dmabuf_nv12_tiling(
 ) -> Result<DmaBufNv12Textures, DmaBufImportError> {
     crate::profile_scope!("dmabuf_import_nv12");
 
-    let tiling = if linear { vk::ImageTiling::LINEAR } else { vk::ImageTiling::OPTIMAL };
+    let tiling = if linear {
+        vk::ImageTiling::LINEAR
+    } else {
+        vk::ImageTiling::OPTIMAL
+    };
 
     {
         let y_fd = unsafe { libc::dup(fd) };
@@ -155,19 +164,33 @@ pub fn import_dmabuf_nv12_tiling(
         }
 
         let y_texture = import_single_plane(
-            gpu, y_fd, width, height,
-            wgpu::TextureFormat::R8Unorm, y_offset, total_size,
-            tiling, "dmabuf_y",
+            gpu,
+            y_fd,
+            width,
+            height,
+            wgpu::TextureFormat::R8Unorm,
+            y_offset,
+            total_size,
+            tiling,
+            "dmabuf_y",
         )?;
         let uv_texture = import_single_plane(
-            gpu, uv_fd, width / 2, height / 2,
-            wgpu::TextureFormat::Rg8Unorm, uv_offset, total_size,
-            tiling, "dmabuf_uv",
+            gpu,
+            uv_fd,
+            width / 2,
+            height / 2,
+            wgpu::TextureFormat::Rg8Unorm,
+            uv_offset,
+            total_size,
+            tiling,
+            "dmabuf_uv",
         )?;
-        Ok(DmaBufNv12Textures { y_texture, uv_texture })
+        Ok(DmaBufNv12Textures {
+            y_texture,
+            uv_texture,
+        })
     }
 }
-
 
 /// Import a single DMA-BUF plane as a wgpu texture.
 /// Use for platforms where Y and UV have separate fds (non-contiguous NV12).
@@ -183,8 +206,22 @@ pub fn import_dmabuf_plane(
     if dup_fd < 0 {
         return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
     }
-    let tiling = if linear { vk::ImageTiling::LINEAR } else { vk::ImageTiling::OPTIMAL };
-    import_single_plane(gpu, dup_fd, width, height, format, 0, 0, tiling, "dmabuf_plane")
+    let tiling = if linear {
+        vk::ImageTiling::LINEAR
+    } else {
+        vk::ImageTiling::OPTIMAL
+    };
+    import_single_plane(
+        gpu,
+        dup_fd,
+        width,
+        height,
+        format,
+        0,
+        0,
+        tiling,
+        "dmabuf_plane",
+    )
 }
 
 /// Cache for individually-imported DMA-BUF plane textures.
@@ -196,7 +233,9 @@ pub struct DmaBufPlaneCache {
 
 impl DmaBufPlaneCache {
     pub fn new() -> Self {
-        Self { cache: HashMap::with_capacity(8) }
+        Self {
+            cache: HashMap::with_capacity(8),
+        }
     }
 
     pub fn ensure_imported(
@@ -210,15 +249,23 @@ impl DmaBufPlaneCache {
     ) -> Result<(), DmaBufImportError> {
         if !self.cache.contains_key(&fd) {
             let tex = import_dmabuf_plane(gpu, fd, width, height, format, linear)?;
-            log::info!("DMA-BUF plane cache: imported fd={} {}x{} {:?} (pool: {})",
-                fd, width, height, format, self.cache.len() + 1);
+            log::info!(
+                "DMA-BUF plane cache: imported fd={} {}x{} {:?} (pool: {})",
+                fd,
+                width,
+                height,
+                format,
+                self.cache.len() + 1
+            );
             self.cache.insert(fd, tex);
         }
         Ok(())
     }
 
     pub fn get(&self, fd: i32) -> &wgpu::Texture {
-        self.cache.get(&fd).expect("DmaBufPlaneCache::get before ensure_imported")
+        self.cache
+            .get(&fd)
+            .expect("DmaBufPlaneCache::get before ensure_imported")
     }
 
     pub fn len(&self) -> usize {
@@ -291,10 +338,16 @@ fn import_single_plane(
             "DMA-BUF import {label}: {}x{} {format:?} tiling={tiling:?} \
              mreq.size={} mreq.align={} mreq.type_bits=0x{:x} \
              layout: offset={} size={} rowPitch={} arrayPitch={} depthPitch={}",
-            width, height, mem_reqs.size, mem_reqs.alignment,
+            width,
+            height,
+            mem_reqs.size,
+            mem_reqs.alignment,
             mem_reqs.memory_type_bits,
-            layout.offset, layout.size, layout.row_pitch,
-            layout.array_pitch, layout.depth_pitch,
+            layout.offset,
+            layout.size,
+            layout.row_pitch,
+            layout.array_pitch,
+            layout.depth_pitch,
         );
 
         let mem_props = {
@@ -313,8 +366,7 @@ fn import_single_plane(
             .fd(fd);
 
         // VK_KHR_dedicated_allocation: some drivers require this for imported memory
-        let mut dedicated_info = vk::MemoryDedicatedAllocateInfo::default()
-            .image(vk_image);
+        let mut dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(vk_image);
 
         // Vulkan spec requires allocationSize = lseek(fd, 0, SEEK_END) for DMA-BUF.
         let dmabuf_size = unsafe {
@@ -377,41 +429,50 @@ fn import_single_plane(
         let pool_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue_family)
             .flags(vk::CommandPoolCreateFlags::TRANSIENT);
-        let cmd_pool = raw_device.create_command_pool(&pool_info, None)
+        let cmd_pool = raw_device
+            .create_command_pool(&pool_info, None)
             .map_err(|e| DmaBufImportError::Vulkan(format!("cmd pool: {e:?}")))?;
 
         let alloc_cmd = vk::CommandBufferAllocateInfo::default()
             .command_pool(cmd_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
-        let cmd_bufs = raw_device.allocate_command_buffers(&alloc_cmd)
+        let cmd_bufs = raw_device
+            .allocate_command_buffers(&alloc_cmd)
             .map_err(|e| DmaBufImportError::Vulkan(format!("cmd alloc: {e:?}")))?;
         let cmd = cmd_bufs[0];
 
         let begin = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        raw_device.begin_command_buffer(cmd, &begin)
+        raw_device
+            .begin_command_buffer(cmd, &begin)
             .map_err(|e| DmaBufImportError::Vulkan(format!("begin cmd: {e:?}")))?;
         raw_device.cmd_pipeline_barrier(
             cmd,
             vk::PipelineStageFlags::HOST,
             vk::PipelineStageFlags::ALL_COMMANDS,
             vk::DependencyFlags::empty(),
-            &[], &[], &[barrier],
+            &[],
+            &[],
+            &[barrier],
         );
-        raw_device.end_command_buffer(cmd)
+        raw_device
+            .end_command_buffer(cmd)
             .map_err(|e| DmaBufImportError::Vulkan(format!("end cmd: {e:?}")))?;
 
         let raw_queue = hal_device.raw_queue();
-        let submit = vk::SubmitInfo::default()
-            .command_buffers(&cmd_bufs);
-        raw_device.queue_submit(raw_queue, &[submit], vk::Fence::null())
+        let submit = vk::SubmitInfo::default().command_buffers(&cmd_bufs);
+        raw_device
+            .queue_submit(raw_queue, &[submit], vk::Fence::null())
             .map_err(|e| DmaBufImportError::Vulkan(format!("queue submit: {e:?}")))?;
-        raw_device.queue_wait_idle(raw_queue)
+        raw_device
+            .queue_wait_idle(raw_queue)
             .map_err(|e| DmaBufImportError::Vulkan(format!("queue wait: {e:?}")))?;
 
         raw_device.destroy_command_pool(cmd_pool, None);
-        log::info!("DMA-BUF import {label}: foreign queue family transfer done (foreign -> qf={queue_family})");
+        log::info!(
+            "DMA-BUF import {label}: foreign queue family transfer done (foreign -> qf={queue_family})"
+        );
 
         (vk_image, device_memory)
     };

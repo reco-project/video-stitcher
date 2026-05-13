@@ -1699,9 +1699,9 @@ fn main() -> anyhow::Result<()> {
                             rgb[pi + 2] = b.clamp(0.0, 255.0) as u8;
                         }
                     }
-                    if let Err(e) = image::save_buffer(
-                        out, &rgb, w as u32, h as u32, image::ColorType::Rgb8,
-                    ) {
+                    if let Err(e) =
+                        image::save_buffer(out, &rgb, w as u32, h as u32, image::ColorType::Rgb8)
+                    {
                         log::warn!("Failed to save ROI frame {}: {e}", out.display());
                     }
                 }
