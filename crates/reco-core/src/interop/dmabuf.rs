@@ -69,6 +69,7 @@ impl DmaBufTextureCache {
     }
 
     /// Import with explicit tiling control.
+    #[allow(clippy::too_many_arguments)]
     pub fn ensure_imported_tiling(
         &mut self,
         gpu: &GpuContext,
@@ -271,8 +272,13 @@ impl DmaBufPlaneCache {
     pub fn len(&self) -> usize {
         self.cache.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.cache.is_empty()
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn import_single_plane(
     gpu: &GpuContext,
     fd: i32,
@@ -369,7 +375,7 @@ fn import_single_plane(
         let mut dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(vk_image);
 
         // Vulkan spec requires allocationSize = lseek(fd, 0, SEEK_END) for DMA-BUF.
-        let dmabuf_size = unsafe {
+        let dmabuf_size = {
             let size = libc::lseek(fd, 0, libc::SEEK_END);
             libc::lseek(fd, 0, libc::SEEK_SET);
             if size > 0 { size as u64 } else { 0 }
