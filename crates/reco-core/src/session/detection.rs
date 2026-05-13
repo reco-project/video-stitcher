@@ -56,6 +56,15 @@ impl DetectionPipeline {
         self.detector.is_some()
     }
 
+    /// Whether the detector needs CUDA device pointers (OrtGpuDetector).
+    /// If false, CUDA texture imports should be skipped to avoid locking
+    /// D3D11 textures needed by wgpu compute preprocessing.
+    pub fn needs_cuda_frames(&self) -> bool {
+        self.detector
+            .as_ref()
+            .is_some_and(|d| d.name().contains("ort-cuda"))
+    }
+
     /// Attach a detector. Replaces any existing one.
     pub fn set_detector(&mut self, detector: Box<dyn UnifiedDetector>) {
         self.detector = Some(detector);

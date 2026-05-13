@@ -97,6 +97,10 @@ pub struct D3d11StagingPool {
     wgpu_device: wgpu::Device,
     width: u32,
     height: u32,
+    /// Import D3D11 textures into CUDA for GPU-resident detection.
+    /// Only needed when the detector uses CUDA EP (OrtGpuDetector).
+    /// CUDA imports lock D3D11 textures which blocks wgpu compute access.
+    enable_cuda: bool,
     /// Lazily initialized on first `stage_frame` call.
     state: Option<StagingState>,
 }
@@ -107,7 +111,7 @@ impl D3d11StagingPool {
     /// This only validates the wgpu backend and stores the dimensions.
     /// The actual D3D11 device, staging textures, and wgpu imports are
     /// created on the first `stage_frame` call.
-    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, D3d11InteropError> {
+    pub fn new(gpu: &GpuContext, width: u32, height: u32, enable_cuda: bool) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
         }
@@ -116,6 +120,7 @@ impl D3d11StagingPool {
             wgpu_device: gpu.device().clone(),
             width,
             height,
+            enable_cuda,
             state: None,
         })
     }
@@ -263,10 +268,9 @@ impl D3d11StagingPool {
             self.height
         );
 
-        // Convert CUDA imports: all-Some → Some([4]), any None → None.
-        // Only enable CUDA if there's a CUDA-based detector. CUDA imports
-        // can lock D3D11 textures and block wgpu compute (DirectML hang).
-        let cuda_nv12 = if false && cuda_imports.iter().all(|c| c.is_some()) {
+        // CUDA imports lock D3D11 textures, blocking wgpu compute access.
+        // Only enable when the detector actually needs CUDA pointers.
+        let cuda_nv12 = if self.enable_cuda && cuda_imports.iter().all(|c| c.is_some()) {
             let arr: [crate::interop::cuda::CudaImportedNv12; 4] = cuda_imports
                 .into_iter()
                 .map(|c| c.unwrap())
