@@ -16,7 +16,7 @@ reco-core = { path = "../reco-core" }
 # unification. Needed for Jetson builds where prebuilt ort-sys
 # references glibc symbols the Tegra host doesn't have.
 reco-detect = { path = "../reco-detect", default-features = false }
-wgpu = "28"
+wgpu = "29"
 log = "0.4"
 
 [features]
