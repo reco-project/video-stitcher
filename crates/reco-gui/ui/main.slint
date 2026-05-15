@@ -2160,15 +2160,14 @@ export component RecoApp inherits Window {
                                 value <=> root.export-start-secs;
                                 enabled: root.clip-duration-secs > 0;
                                 changed(v) => {
-                                    if root.export-end-secs < v { root.export-end-secs = v; }
+                                    if v > root.export-end-secs { root.export-start-secs = root.export-end-secs; }
                                 }
                             }
                             LineEdit {
                                 text: root.export-start-secs == 0 ? "" : root.export-start-secs;
                                 placeholder-text: "0:00";
                                 edited(v) => {
-                                    root.export-start-secs = clamp(v.to-float(), 0, root.clip-duration-secs);
-                                    if root.export-end-secs < root.export-start-secs { root.export-end-secs = root.export-start-secs; }
+                                    root.export-start-secs = Math.min(max(0, v.to-float()), root.export-end-secs);
                                 }
                             }
                         }
@@ -2183,15 +2182,14 @@ export component RecoApp inherits Window {
                                 value <=> root.export-end-secs;
                                 enabled: root.clip-duration-secs > 0;
                                 changed(v) => {
-                                    if root.export-start-secs > v { root.export-start-secs = v; }
+                                    if v < root.export-start-secs { root.export-end-secs = root.export-start-secs; }
                                 }
                             }
                             LineEdit {
                                 text: root.export-end-secs;
                                 placeholder-text: "";
                                 edited(v) => {
-                                    root.export-end-secs = clamp(v.to-float(), 0, root.clip-duration-secs);
-                                    if root.export-start-secs > root.export-end-secs { root.export-start-secs = root.export-end-secs; }
+                                    root.export-end-secs = Math.max(Math.min(v.to-float(), root.clip-duration-secs), root.export-start-secs);
                                 }
                             }
                         }

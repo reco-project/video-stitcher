@@ -657,12 +657,13 @@ impl StitchJob {
         let start_secs = self.start_time.unwrap_or(0.0);
         let skip_frames = (start_secs * fps).round() as u64;
 
-        if let Some(end) = self.end_time
-            && end <= start_secs
-        {
-            return Err(StitchError::Other(format!(
-                "end_time ({end:.2}s) must be greater than start_time ({start_secs:.2}s)"
-            )));
+        if let Some(end) = self.end_time {
+            let end_frames = ((end - start_secs) * fps).round() as i64;
+            if end_frames <= 0 {
+                return Err(StitchError::Other(format!(
+                    "end_time ({end:.2}s) must be greater than start_time ({start_secs:.2}s)"
+                )));
+            }
         }
 
         use reco_core::source::FrameSource as _;
